@@ -30,36 +30,37 @@ class Command(BaseCommand):
         parser.add_argument(
             '--test-data',
             action='store_true',
-            help='Populate test data (20 users, 100 customers, 1000 products)',
+            help='Populate comprehensive soft furnishings data (users, products, customers, sales, expenses)',
         )
         parser.add_argument(
-            '--soft-furnishings-data',
-            action='store_true',
-            help='Populate soft furnishings data (products, customers, sales with installments, expenses)',
+            '--users',
+            type=int,
+            default=20,
+            help='Number of users to create (default: 20)',
         )
         parser.add_argument(
             '--products',
             type=int,
             default=200,
-            help='Number of products to create (for soft-furnishings-data, default: 200)',
+            help='Number of products to create (default: 200)',
         )
         parser.add_argument(
             '--customers',
             type=int,
             default=50,
-            help='Number of customers to create (for soft-furnishings-data, default: 50)',
+            help='Number of customers to create (default: 50)',
         )
         parser.add_argument(
             '--sales',
             type=int,
             default=100,
-            help='Number of sales to create (for soft-furnishings-data, default: 100)',
+            help='Number of sales to create (default: 100)',
         )
         parser.add_argument(
             '--expenses',
             type=int,
             default=30,
-            help='Number of expenses to create (for soft-furnishings-data, default: 30)',
+            help='Number of expenses to create (default: 30)',
         )
 
     def handle(self, *args, **options):
@@ -162,10 +163,11 @@ class Command(BaseCommand):
                     self.stdout.write(self.style.WARNING(f'  ⚠ Organization setup: {str(e)[:100]}'))
 
                 # Step 10: Populate data (optional)
-                if options['soft_furnishings_data'] and not options['skip_test_data']:
-                    self.stdout.write('\nStep 10: Populating soft furnishings data...')
+                if options['test_data'] and not options['skip_test_data']:
+                    self.stdout.write('\nStep 10: Populating comprehensive soft furnishings data...')
                     try:
-                        call_command('populate_soft_furnishings_data',
+                        call_command('populate_test_data',
+                                    users=options['users'],
                                     products=options['products'],
                                     customers=options['customers'],
                                     sales=options['sales'],
@@ -173,26 +175,15 @@ class Command(BaseCommand):
                                     verbosity=1)
                         self.stdout.write(self.style.SUCCESS(
                             f'  ✓ Soft furnishings data populated '
-                            f'({options["products"]} products, {options["customers"]} customers, '
-                            f'{options["sales"]} sales, {options["expenses"]} expenses)'
+                            f'({options["users"]} users, {options["products"]} products, '
+                            f'{options["customers"]} customers, {options["sales"]} sales, '
+                            f'{options["expenses"]} expenses)'
                         ))
                     except Exception as e:
-                        self.stdout.write(self.style.WARNING(f'  ⚠ Soft furnishings data population: {str(e)[:100]}'))
-                elif options['test_data'] and not options['skip_test_data']:
-                    self.stdout.write('\nStep 10: Populating test data...')
-                    try:
-                        call_command('populate_test_data', 
-                                    users=20, 
-                                    customers=100, 
-                                    products=1000,
-                                    verbosity=0)
-                        self.stdout.write(self.style.SUCCESS('  ✓ Test data populated (20 users, 100 customers, 1000 products)'))
-                    except Exception as e:
-                        self.stdout.write(self.style.WARNING(f'  ⚠ Test data population: {str(e)[:100]}'))
+                        self.stdout.write(self.style.WARNING(f'  ⚠ Data population: {str(e)[:100]}'))
                 else:
                     self.stdout.write('\nStep 10: Skipping data population...')
-                    self.stdout.write(self.style.WARNING('  💡 Tip: Use --soft-furnishings-data to populate realistic soft furnishings data'))
-                    self.stdout.write(self.style.WARNING('  💡 Or use --test-data to populate generic test data'))
+                    self.stdout.write(self.style.WARNING('  💡 Tip: Use --test-data to populate comprehensive soft furnishings data'))
 
             self.stdout.write('')
             self.stdout.write(self.style.SUCCESS('=' * 70))
