@@ -41,9 +41,17 @@
 }
 
 .logo {
+  display: flex;
+  align-items: center;
   font-size: 1.25rem;
   font-weight: bold;
   color: white;
+}
+
+.logo-img {
+  height: 40px;
+  width: auto;
+  max-width: 200px;
 }
 
 

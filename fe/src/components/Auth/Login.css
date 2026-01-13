@@ -15,10 +15,17 @@
   max-width: 400px;
 }
 
-.login-box h1 {
+.login-logo {
   text-align: center;
-  color: #333;
-  margin-bottom: 0.5rem;
+  margin-bottom: 1rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.login-logo img {
+  max-width: 200px;
+  height: auto;
 }
 
 .login-box h2 {

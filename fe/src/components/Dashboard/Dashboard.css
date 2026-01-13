@@ -7,6 +7,24 @@
   margin-bottom: 2rem;
 }
 
+.dashboard-header-content {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.dashboard-logo {
+  display: flex;
+  align-items: center;
+}
+
+.dashboard-logo-img {
+  height: 50px;
+  width: auto;
+  max-width: 200px;
+}
+
 .dashboard-header h1 {
   font-size: 1.75rem;
   color: #111827;

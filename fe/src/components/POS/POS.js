@@ -451,7 +451,9 @@ const POS = () => {
       {/* Top Bar */}
       <div className="pos-topbar">
         <div className="topbar-left">
-          <div className="logo">CompleteByte POS</div>
+          <div className="logo">
+            <img src="/logo.svg" alt="CompleteByte POS" className="logo-img" />
+          </div>
           <div className="time-display">{formatTime(currentTime)}</div>
         </div>
         <div className="topbar-center">

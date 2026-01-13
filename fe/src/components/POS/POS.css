@@ -25,9 +25,17 @@
 }
 
 .topbar-left .logo {
+  display: flex;
+  align-items: center;
   font-size: 1.5rem;
   font-weight: 700;
   color: white;
+}
+
+.topbar-left .logo .logo-img {
+  height: 35px;
+  width: auto;
+  max-width: 180px;
 }
 
 .time-display {

@@ -79,6 +79,20 @@
   text-align: center;
   padding-bottom: 1rem;
   margin-bottom: 1rem;
+  border-bottom: 2px dashed #e5e7eb;
+}
+
+.receipt-logo {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.receipt-logo-img {
+  max-width: 180px;
+  height: auto;
+  max-height: 50px;
 }
 
 .receipt-title {
@@ -335,6 +349,18 @@
     visibility: visible !important;
   }
 
+  .receipt-logo {
+    display: flex !important;
+    justify-content: center !important;
+    margin-bottom: 0.75rem !important;
+  }
+  
+  .receipt-logo-img {
+    max-width: 180px !important;
+    max-height: 50px !important;
+    height: auto !important;
+  }
+  
   .receipt-title {
     font-size: 1.3rem !important;
   }

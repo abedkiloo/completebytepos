@@ -123,6 +123,9 @@ const Installation = () => {
     <div className="installation-page">
       <div className="installation-container">
         <div className="installation-header">
+          <div className="installation-logo">
+            <img src="/logo.svg" alt="CompleteByte POS" className="installation-logo-img" />
+          </div>
           <h1>🚀 CompleteBytePOS Installation</h1>
           <p>Welcome! Let's set up your POS system from scratch.</p>
         </div>

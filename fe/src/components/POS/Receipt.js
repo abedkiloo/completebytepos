@@ -58,6 +58,17 @@ const Receipt = ({ sale, onClose }) => {
                 padding-bottom: 1rem;
                 margin-bottom: 1rem;
               }
+              .receipt-logo {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                margin-bottom: 0.75rem;
+              }
+              .receipt-logo-img {
+                max-width: 180px;
+                height: auto;
+                max-height: 50px;
+              }
               .receipt-title {
                 font-size: 1.5rem;
                 font-weight: bold;
@@ -254,7 +265,9 @@ const Receipt = ({ sale, onClose }) => {
       <div className="receipt-content" id="receipt-content">
         {/* Receipt Header */}
         <div className="receipt-header">
-          <h1 className="receipt-title">CompleteByte POS</h1>
+          <div className="receipt-logo">
+            <img src="/logo.svg" alt="CompleteByte POS" className="receipt-logo-img" />
+          </div>
           <p className="receipt-location">HQ</p>
           <p className="receipt-address">Nairobi, Kenya</p>
         </div>

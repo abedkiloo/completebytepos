@@ -33,6 +33,19 @@
   margin-bottom: 2rem;
 }
 
+.installation-logo {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.installation-logo-img {
+  max-width: 250px;
+  height: auto;
+  max-height: 70px;
+}
+
 .installation-header h1 {
   font-size: 2.5rem;
   color: #2d3748;

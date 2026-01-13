@@ -183,7 +183,9 @@ const Layout = ({ children }) => {
           <button className="menu-toggle" onClick={() => setSidebarOpen(!sidebarOpen)}>
             ☰
           </button>
-          <div className="logo">CompleteByte POS</div>
+          <div className="logo">
+            <img src="/logo.svg" alt="CompleteByte POS" className="logo-img" />
+          </div>
         </div>
         <div className="header-right">
           <BranchSelector showAllOption={isSuperAdmin} />

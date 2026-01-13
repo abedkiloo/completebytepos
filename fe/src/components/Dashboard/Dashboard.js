@@ -153,11 +153,16 @@ const Dashboard = () => {
     <Layout>
       <div className="dashboard-page">
         <div className="dashboard-header">
-          <div>
-            <h1>Welcome, {user?.username || user?.first_name || 'Admin'}</h1>
-            <p className="dashboard-subtitle">
-              You have {data.today?.sales_count || 0}+ Orders, Today
-            </p>
+          <div className="dashboard-header-content">
+            <div className="dashboard-logo">
+              <img src="/logo.svg" alt="CompleteByte POS" className="dashboard-logo-img" />
+            </div>
+            <div>
+              <h1>Welcome, {user?.username || user?.first_name || 'Admin'}</h1>
+              <p className="dashboard-subtitle">
+                You have {data.today?.sales_count || 0}+ Orders, Today
+              </p>
+            </div>
           </div>
           {lowStockProducts.length > 0 && (
             <div className="low-stock-alert">
