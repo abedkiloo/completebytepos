@@ -4,6 +4,37 @@ import axios from 'axios';
 import { toast } from '../../utils/toast';
 import './Installation.css';
 
+// Determine API URL (same logic as api.js)
+const getApiBaseUrl = () => {
+  const isHttps = window.location.protocol === 'https:';
+  const isNgrok = window.location.hostname.includes('ngrok');
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  
+  let API_BASE_URL = process.env.REACT_APP_API_URL;
+  
+  if (!API_BASE_URL) {
+    if (window.REACT_APP_API_URL) {
+      API_BASE_URL = window.REACT_APP_API_URL;
+    } else if (isHttps || isNgrok) {
+      const backendNgrokUrl = localStorage.getItem('backend_ngrok_url');
+      if (backendNgrokUrl) {
+        API_BASE_URL = `${backendNgrokUrl}/api`;
+      } else {
+        API_BASE_URL = 'http://localhost:8000/api';
+      }
+    } else if (!isLocalhost) {
+      // Server deployment - use same hostname, port 8000
+      const protocol = window.location.protocol;
+      const hostname = window.location.hostname;
+      API_BASE_URL = `${protocol}//${hostname}:8000/api`;
+    } else {
+      API_BASE_URL = 'http://localhost:8000/api';
+    }
+  }
+  
+  return API_BASE_URL;
+};
+
 const Installation = () => {
   const navigate = useNavigate();
   const [installing, setInstalling] = useState(false);
@@ -12,7 +43,7 @@ const Installation = () => {
   const [completed, setCompleted] = useState(false);
   const [credentials, setCredentials] = useState(null);
 
-  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
+  const API_BASE_URL = getApiBaseUrl();
 
   const handleInstall = async () => {
     if (installing) return;

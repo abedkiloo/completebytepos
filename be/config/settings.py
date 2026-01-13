@@ -265,6 +265,8 @@ SIMPLE_JWT = {
 CSRF_TRUSTED_ORIGINS = [
     'http://localhost:3000',
     'http://127.0.0.1:3000',
+    'http://216.158.230.163:3000',  # Server frontend
+    'http://216.158.230.163:8000',  # Server backend
     'https://b8cc9dec4d71.ngrok-free.app',
     'https://*.ngrok-free.app',
     'https://*.ngrok.io',

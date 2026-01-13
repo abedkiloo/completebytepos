@@ -3,9 +3,10 @@ import axios from 'axios';
 // Detect if we're running on ngrok or HTTPS
 const isHttps = window.location.protocol === 'https:';
 const isNgrok = window.location.hostname.includes('ngrok');
+const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
 // Determine API URL
-// Priority: 1. Environment variable, 2. Window config, 3. Auto-detect ngrok, 4. Default localhost
+// Priority: 1. Environment variable, 2. Window config, 3. Auto-detect server, 4. Auto-detect ngrok, 5. Default localhost
 let API_BASE_URL = process.env.REACT_APP_API_URL;
 
 if (!API_BASE_URL) {
@@ -28,6 +29,17 @@ if (!API_BASE_URL) {
       // Fallback - this will fail but at least show the error
       API_BASE_URL = 'http://localhost:8000/api';
     }
+  } else if (!isLocalhost) {
+    // Running on a server (not localhost) - construct backend URL from current hostname
+    // Use same protocol and hostname, but port 8000 for backend
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    // Extract port if present, otherwise use default
+    const port = window.location.port ? `:${window.location.port}` : '';
+    // For server deployments, backend is typically on port 8000
+    // If frontend is on port 3000, backend should be on 8000
+    API_BASE_URL = `${protocol}//${hostname}:8000/api`;
+    console.log(`[API] Auto-detected server deployment. Using backend URL: ${API_BASE_URL}`);
   } else {
     // Local development - use localhost
     API_BASE_URL = 'http://localhost:8000/api';
