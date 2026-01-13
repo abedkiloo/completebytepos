@@ -454,8 +454,27 @@ def fresh_install(request):
                 steps[-1]['status'] = 'warning'
                 steps[-1]['message'] = str(e)[:100]
             
-            # Step 10: Populate test data (optional)
-            if include_test_data:
+            # Step 10: Populate data (optional)
+            include_soft_furnishings = request.data.get('include_soft_furnishings_data', False)
+            if include_soft_furnishings:
+                steps.append({'step': 10, 'name': 'Populating soft furnishings data', 'status': 'running'})
+                try:
+                    products_count = request.data.get('products', 200)
+                    customers_count = request.data.get('customers', 50)
+                    sales_count = request.data.get('sales', 100)
+                    expenses_count = request.data.get('expenses', 30)
+                    call_command('populate_soft_furnishings_data',
+                                products=products_count,
+                                customers=customers_count,
+                                sales=sales_count,
+                                expenses=expenses_count,
+                                verbosity=0)
+                    steps[-1]['status'] = 'completed'
+                    steps[-1]['message'] = f'Soft furnishings data populated ({products_count} products, {customers_count} customers, {sales_count} sales, {expenses_count} expenses)'
+                except Exception as e:
+                    steps[-1]['status'] = 'warning'
+                    steps[-1]['message'] = str(e)[:100]
+            elif include_test_data:
                 steps.append({'step': 10, 'name': 'Populating test data', 'status': 'running'})
                 try:
                     call_command('populate_test_data', users=20, customers=100, products=1000, verbosity=0)
