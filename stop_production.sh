@@ -1,50 +1,33 @@
 #!/bin/bash
 
 ###############################################################################
-# CompleteBytePOS Production Stop Script
-# This script stops the production server
+# CompleteBytePOS - Production Stop Script
+# Stops production Docker containers
 ###############################################################################
 
-# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Get project root directory
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BACKEND_DIR="$PROJECT_ROOT/be"
 
 echo -e "${BLUE}Stopping CompleteBytePOS production server...${NC}"
 
-# Stop gunicorn if running
-if [ -f "$BACKEND_DIR/gunicorn.pid" ]; then
-    PID=$(cat "$BACKEND_DIR/gunicorn.pid")
-    if ps -p $PID > /dev/null 2>&1; then
-        echo -e "${YELLOW}Stopping Gunicorn (PID: $PID)...${NC}"
-        kill $PID
-        sleep 2
-        
-        # Force kill if still running
-        if ps -p $PID > /dev/null 2>&1; then
-            echo -e "${YELLOW}Force stopping Gunicorn...${NC}"
-            kill -9 $PID
-        fi
-        
-        rm -f "$BACKEND_DIR/gunicorn.pid"
-        echo -e "${GREEN}Gunicorn stopped${NC}"
+if docker ps --filter "name=completebytepos" --format "{{.Names}}" | grep -q completebytepos; then
+    echo -e "${YELLOW}Stopping Docker containers...${NC}"
+    
+    if docker compose version &> /dev/null; then
+        COMPOSE_CMD="docker compose"
     else
-        echo -e "${YELLOW}Gunicorn process not found (PID: $PID)${NC}"
-        rm -f "$BACKEND_DIR/gunicorn.pid"
+        COMPOSE_CMD="docker-compose"
     fi
+    
+    cd "$PROJECT_ROOT"
+    $COMPOSE_CMD down
+    
+    echo -e "${GREEN}Production containers stopped${NC}"
 else
-    echo -e "${YELLOW}No Gunicorn PID file found${NC}"
+    echo -e "${YELLOW}No Docker containers found${NC}"
 fi
-
-# Kill any remaining processes on ports
-echo -e "${YELLOW}Cleaning up processes on ports 8000 and 3000...${NC}"
-lsof -ti:8000 | xargs kill -9 2>/dev/null || true
-lsof -ti:3000 | xargs kill -9 2>/dev/null || true
-
-echo -e "${GREEN}Production server stopped${NC}"

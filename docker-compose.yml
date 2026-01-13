@@ -1,4 +1,5 @@
-# Docker Compose file - version is obsolete in newer Docker Compose
+# Docker Compose file for CompleteBytePOS
+# Uses a shared network to avoid CORS issues
 
 services:
   backend:
@@ -6,6 +7,7 @@ services:
       context: ./be
       dockerfile: Dockerfile
     container_name: completebytepos_backend
+    hostname: backend
     ports:
       - "8000:8000"
     volumes:
@@ -22,7 +24,7 @@ services:
       - PYTHONUNBUFFERED=1
     command: >
       sh -c "
-        mkdir -p /app/db &&
+        mkdir -p /app/db /app/logs &&
         python manage.py makemigrations --noinput || true &&
         python manage.py migrate --noinput &&
         python manage.py collectstatic --noinput || true &&
@@ -31,19 +33,31 @@ services:
     restart: unless-stopped
     networks:
       - completebytepos_network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/accounts/auth/me/')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   frontend:
     build:
       context: ./fe
       dockerfile: Dockerfile
+      args:
+        - REACT_APP_API_URL=/api
     container_name: completebytepos_frontend
+    hostname: frontend
     ports:
       - "3000:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - completebytepos_network
+    environment:
+      - REACT_APP_API_URL=/api
 
 volumes:
   backend_static:

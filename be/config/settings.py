@@ -267,10 +267,7 @@ CSRF_TRUSTED_ORIGINS = [
     'http://127.0.0.1:3000',
     'http://216.158.230.163:3000',  # Server frontend
     'http://216.158.230.163:8000',  # Server backend
-    'https://b8cc9dec4d71.ngrok-free.app',
-    'https://*.ngrok-free.app',
-    'https://*.ngrok.io',
-    'https://*.ngrok.app',
+ 
 ]
 CSRF_COOKIE_HTTPONLY = False  # Allow JavaScript to read CSRF token
 CSRF_COOKIE_SAMESITE = 'Lax'
@@ -278,8 +275,19 @@ CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_COOKIE_SECURE = False  # Set to True in production with HTTPS
 
 # CORS settings - Allow all origins for now
+# In Docker, nginx proxy handles CORS, but we keep this for direct API access
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
+
+# Docker network origins (if accessing backend directly)
+CORS_ALLOWED_ORIGINS = [
+    'http://localhost:3000',
+    'http://localhost:8000',
+    'http://frontend:80',
+    'http://frontend',
+    'http://216.158.230.163:3000',
+    'http://216.158.230.163:8000',
+]
 
 # Allow all headers (including preflight request headers)
 # Use default headers from django-cors-headers and add our custom header
