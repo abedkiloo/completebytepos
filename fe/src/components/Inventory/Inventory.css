@@ -1,0 +1,494 @@
+.inventory-page {
+  padding: 0;
+  background: transparent;
+  min-height: auto;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: visible;
+}
+
+/* Ensure buttons stay in a single row */
+.inventory-page .page-header {
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: nowrap;
+  width: 100%;
+  max-width: 100%;
+  overflow: visible;
+  position: relative;
+}
+
+.inventory-page .page-header-content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.inventory-page .page-header-actions {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: nowrap !important;
+  flex-shrink: 0;
+  min-width: fit-content;
+  width: auto;
+  max-width: none;
+  overflow: visible !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  position: relative;
+  z-index: 10;
+}
+
+/* Force all buttons to be visible */
+.inventory-page .page-header-actions .btn {
+  display: inline-flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  position: relative;
+  z-index: 1;
+}
+
+.inventory-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  padding: 0;
+}
+
+.inventory-header h1 {
+  margin: 0;
+  color: #111827;
+  font-size: 1.75rem;
+}
+
+.inventory-header h1 {
+  margin: 0;
+  color: #333;
+}
+
+.header-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+/* Inventory-specific button styles - ensure they stay in one row */
+.inventory-page .btn-primary,
+.inventory-page .btn-secondary {
+  padding: 0.625rem 1.25rem;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: fit-content;
+  display: inline-flex !important;
+  align-items: center;
+  gap: 0.5rem;
+  visibility: visible !important;
+  opacity: 1 !important;
+  position: relative;
+  z-index: 1;
+}
+
+.inventory-page .btn-primary {
+  background: #7A89DE;
+  color: white;
+  box-shadow: 0 2px 4px rgba(122, 137, 222, 0.3);
+}
+
+.inventory-page .btn-primary:hover:not(:disabled) {
+  background: #6b7acf;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(122, 137, 222, 0.4);
+}
+
+.inventory-page .btn-primary:active {
+  background: #5c6abf;
+  transform: translateY(0);
+}
+
+.inventory-page .btn-secondary {
+  background: #EAEAEA;
+  color: #374151;
+  border: 1px solid #d1d5db;
+}
+
+.inventory-page .btn-secondary:hover:not(:disabled) {
+  background: #d1d5db;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.inventory-page .btn-secondary:active {
+  background: #c9c9c9;
+  transform: translateY(0);
+}
+
+.inventory-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  background: white;
+  padding: 0.5rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.inventory-tabs button {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  transition: all 0.3s;
+}
+
+.inventory-tabs button:hover {
+  background: #f3f4f6;
+}
+
+.inventory-tabs button.active {
+  background: #667eea;
+  color: white;
+}
+
+.inventory-content {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.filters-section {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.filter-select,
+.filter-input {
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.filter-select {
+  min-width: 150px;
+}
+
+.filter-input {
+  min-width: 150px;
+}
+
+.movements-table-container {
+  overflow-x: auto;
+}
+
+.movements-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.movements-table thead {
+  background: #f9fafb;
+}
+
+.movements-table th,
+.movements-table td {
+  padding: 1rem;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.movements-table th {
+  font-weight: 600;
+  color: #374151;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+}
+
+.movements-table tr:hover {
+  background: #f9fafb;
+}
+
+.product-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.product-name {
+  font-weight: 600;
+  color: #111827;
+}
+
+.product-sku {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.movement-type-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: white;
+  text-transform: capitalize;
+}
+
+.positive {
+  color: #10b981;
+  font-weight: 600;
+}
+
+.negative {
+  color: #ef4444;
+  font-weight: 600;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: #667eea;
+  cursor: pointer;
+  text-decoration: underline;
+  font-size: 0.875rem;
+}
+
+.btn-link:hover {
+  color: #5568d3;
+}
+
+.products-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.product-card {
+  background: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.product-card.danger {
+  border-color: #ef4444;
+}
+
+.product-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  margin-bottom: 1rem;
+}
+
+.product-header h3 {
+  margin: 0;
+  color: #111827;
+}
+
+.low-stock-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  background: #fef3c7;
+  color: #92400e;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.out-of-stock-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  background: #fee2e2;
+  color: #991b1b;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.product-details {
+  margin-bottom: 1rem;
+}
+
+.product-details p {
+  margin: 0.5rem 0;
+  color: #374151;
+}
+
+.product-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.report-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+}
+
+.report-card {
+  background: #f9fafb;
+  padding: 1.5rem;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.report-card h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.9rem;
+  color: #6b7280;
+  text-transform: uppercase;
+}
+
+.report-card .stat-value {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: bold;
+  color: #111827;
+}
+
+.report-card.warning .stat-value {
+  color: #f59e0b;
+}
+
+.report-card.danger .stat-value {
+  color: #ef4444;
+}
+
+.report-card.success .stat-value {
+  color: #10b981;
+}
+
+.stock-form {
+  padding: 1.5rem;
+}
+
+.product-info-box {
+  background: #f9fafb;
+  padding: 1rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+}
+
+.product-info-box h3 {
+  margin: 0 0 0.5rem 0;
+}
+
+.product-info-box p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+.total-cost-display {
+  background: #e0e7ff;
+  padding: 1rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+  text-align: center;
+  font-size: 1.1rem;
+  color: #667eea;
+}
+
+.history-modal {
+  width: 90%;
+  max-width: 1200px;
+}
+
+.history-content {
+  padding: 1.5rem;
+}
+
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.history-table thead {
+  background: #f9fafb;
+}
+
+.history-table th,
+.history-table td {
+  padding: 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 0.875rem;
+}
+
+.history-table th {
+  font-weight: 600;
+  color: #374151;
+  text-transform: uppercase;
+}
+
+.history-table tr:hover {
+  background: #f9fafb;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 3rem;
+  color: #6b7280;
+}
+
+.loading {
+  text-align: center;
+  padding: 3rem;
+  color: #6b7280;
+}
+
+.error-message {
+  background: #fee;
+  color: #c33;
+  padding: 0.75rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+/* Responsive adjustments for inventory buttons */
+@media (max-width: 1024px) {
+  .inventory-page .page-header-actions {
+    gap: 0.5rem;
+  }
+  
+  .inventory-page .btn-primary,
+  .inventory-page .btn-secondary {
+    padding: 0.5rem 1rem;
+    font-size: 0.8125rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .inventory-page .page-header {
+    flex-wrap: wrap;
+  }
+  
+  .inventory-page .page-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  
+  .inventory-page .btn-primary,
+  .inventory-page .btn-secondary {
+    flex: 1 1 auto;
+    min-width: 120px;
+    font-size: 0.8125rem;
+    padding: 0.5rem 1rem;
+  }
+}

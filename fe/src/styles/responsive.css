@@ -1,0 +1,338 @@
+/* ============================================
+   MOBILE-FIRST RESPONSIVE DESIGN SYSTEM
+   Optimized for Mobile, Tablet, and Desktop
+   ============================================ */
+
+/* ===== BREAKPOINTS ===== */
+/* Mobile: < 640px (default - mobile-first) */
+/* Tablet: 640px - 1024px */
+/* Desktop: > 1024px */
+
+/* ===== BASE MOBILE STYLES ===== */
+/* All styles are mobile-first by default */
+
+/* ===== TABLET STYLES (640px+) ===== */
+@media (min-width: 640px) {
+  /* Page Headers */
+  .page-header {
+    margin-bottom: 1.75rem;
+  }
+
+  .page-header h1 {
+    font-size: 1.625rem;
+  }
+
+  /* Buttons - slightly larger on tablet */
+  .btn {
+    padding: 0.5625rem 1.125rem;
+    font-size: 0.9375rem;
+    min-height: 40px;
+  }
+
+  /* Main Content */
+  .main-content {
+    padding: 1.5rem;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    width: 280px;
+  }
+}
+
+/* ===== DESKTOP STYLES (1024px+) ===== */
+@media (min-width: 1024px) {
+  /* Page Headers */
+  .page-header h1 {
+    font-size: 1.5rem;
+  }
+
+  /* Buttons - standard desktop size */
+  .btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    min-height: 36px;
+  }
+
+  /* Main Content */
+  .main-content {
+    padding: 2rem;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    width: 260px;
+  }
+}
+
+/* ===== MOBILE-SPECIFIC OPTIMIZATIONS ===== */
+@media (max-width: 639px) {
+  /* Page Headers - Stack on mobile */
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .page-header-content {
+    width: 100%;
+  }
+
+  .page-header h1 {
+    font-size: 1.25rem;
+    white-space: normal; /* Allow wrapping on very small screens */
+    line-height: 1.4;
+  }
+
+  .page-header-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .page-header-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Main Content - Reduced padding on mobile */
+  .main-content {
+    padding: 1rem;
+  }
+
+  /* Buttons - Larger touch targets on mobile */
+  .btn {
+    padding: 0.625rem 1rem;
+    font-size: 0.9375rem;
+    min-height: 44px; /* Better touch target */
+    width: 100%;
+    max-width: 100%;
+  }
+
+  /* Cards and Grids */
+  .categories-grid,
+  .products-grid,
+  .customers-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  /* Tables - Make scrollable on mobile */
+  .table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  table {
+    min-width: 600px; /* Ensure table doesn't get too cramped */
+  }
+
+  /* Forms */
+  .form-group {
+    margin-bottom: 1.25rem;
+  }
+
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    font-size: 16px; /* Prevents zoom on iOS */
+    padding: 0.75rem;
+  }
+
+  /* Modals - Full screen on mobile */
+  .modal-content {
+    width: 100%;
+    max-width: 100%;
+    height: 100vh;
+    max-height: 100vh;
+    border-radius: 0;
+    margin: 0;
+  }
+
+  /* Filters - Stack on mobile */
+  .categories-filters,
+  .products-filters,
+  .expenses-filters {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .filter-buttons {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+  }
+
+  .filter-buttons button {
+    width: 100%;
+    padding: 0.625rem;
+    font-size: 0.875rem;
+    min-height: 44px;
+  }
+
+  /* Search Inputs */
+  .search-input,
+  .search-box input {
+    font-size: 16px; /* Prevents zoom on iOS */
+    padding: 0.75rem;
+    width: 100%;
+  }
+
+  /* Statistics Cards */
+  .product-statistics,
+  .stat-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  /* Action Buttons in Cards */
+  .category-actions,
+  .product-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .category-actions button,
+  .product-actions button {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
+/* ===== TABLET-SPECIFIC OPTIMIZATIONS (640px - 1023px) ===== */
+@media (min-width: 640px) and (max-width: 1023px) {
+  /* Page Headers */
+  .page-header {
+    flex-wrap: wrap;
+  }
+
+  .page-header-actions {
+    flex-wrap: wrap;
+  }
+
+  /* Grids - 2 columns on tablet */
+  .categories-grid,
+  .products-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* Statistics - 2 columns */
+  .product-statistics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* Tables - Better spacing */
+  table {
+    font-size: 0.9375rem;
+  }
+
+  /* Modals - Centered with max width */
+  .modal-content {
+    max-width: 90%;
+    max-height: 90vh;
+  }
+}
+
+/* ===== TOUCH-FRIENDLY INTERACTIONS ===== */
+/* Larger touch targets for mobile */
+@media (max-width: 1023px) {
+  /* All interactive elements */
+  button,
+  a,
+  input[type="checkbox"],
+  input[type="radio"],
+  select,
+  .clickable {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Icons */
+  .header-icon,
+  .menu-toggle {
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Sidebar items */
+  .sidebar-item {
+    min-height: 48px;
+    padding: 0.875rem 1.5rem;
+  }
+
+  /* Section headers */
+  .section-header {
+    min-height: 44px;
+    padding: 0.875rem 1.5rem;
+  }
+}
+
+/* ===== LANDSCAPE ORIENTATION ===== */
+@media (max-width: 1023px) and (orientation: landscape) {
+  /* Reduce padding in landscape */
+  .main-content {
+    padding: 1rem;
+  }
+
+  /* Compact headers */
+  .page-header {
+    margin-bottom: 1rem;
+  }
+
+  .page-header h1 {
+    font-size: 1.125rem;
+  }
+}
+
+/* ===== HIGH DPI DISPLAYS ===== */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  /* Ensure crisp rendering on retina displays */
+  * {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* ===== ACCESSIBILITY - REDUCED MOTION ===== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ===== SAFE AREA INSETS (iOS) ===== */
+@supports (padding: max(0px)) {
+  .app-layout,
+  .main-content {
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+
+  .app-header {
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+  }
+}
+
+/* ===== PRINT STYLES ===== */
+@media print {
+  .sidebar,
+  .app-header,
+  .page-header-actions,
+  button,
+  .btn {
+    display: none !important;
+  }
+
+  .main-content {
+    padding: 0;
+    background: white;
+  }
+}

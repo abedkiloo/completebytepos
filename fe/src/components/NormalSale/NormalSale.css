@@ -1,0 +1,54 @@
+/* Normal Sale Page Styles */
+.normal-sale-page {
+  padding: 0;
+  background: transparent;
+  min-height: auto;
+}
+
+.normal-sale-content {
+  margin-top: 2rem;
+}
+
+.normal-sale-info-card {
+  background: white;
+  border-radius: 8px;
+  padding: 2rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.normal-sale-info-card h3 {
+  margin: 0 0 1rem 0;
+  color: #111827;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.normal-sale-info-card ul {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.5rem 0;
+}
+
+.normal-sale-info-card ul li {
+  padding: 0.5rem 0;
+  color: #374151;
+  font-size: 0.95rem;
+}
+
+.normal-sale-info-text {
+  color: #6b7280;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  margin: 0;
+  padding: 1rem;
+  background: #f9fafb;
+  border-radius: 6px;
+  border-left: 3px solid #3b82f6;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .normal-sale-info-card {
+    padding: 1.5rem;
+  }
+}

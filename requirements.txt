@@ -1,0 +1,32 @@
+# CompleteBytePOS - Phase 1 Requirements
+# On-Premise Basic Features
+
+# Core Django
+Django>=4.2,<5.0
+djangorestframework>=3.14.0
+
+# CORS for React frontend
+django-cors-headers>=4.0.0
+
+# Image handling (for product images)
+Pillow>=10.0.0
+
+# Environment variables (optional, for .env files)
+python-dotenv>=1.0.0
+
+# Date/time utilities (optional)
+python-dateutil>=2.8.2
+
+# CSV export (for reports)
+openpyxl>=3.1.0  # For Excel export
+
+# PDF generation (for receipts - optional)
+reportlab>=4.0.0  # For PDF receipts
+
+# Development tools (optional)
+ipython>=8.0.0  # Better Django shell
+django-extensions>=3.2.0  # Useful Django extensions
+
+# Note: SQLite comes with Python, no need to install
+# Note: No Redis, Celery, or PostgreSQL needed for Phase 1
+

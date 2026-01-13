@@ -1,0 +1,338 @@
+/* ============================================
+   MOBILE-SPECIFIC FIXES & GLITCH PREVENTION
+   Fixes common mobile issues across all modules
+   ============================================ */
+
+/* ===== TABLE SCROLLING ===== */
+.table-container,
+.products-table-container,
+.customers-table-container,
+.invoices-table-container,
+.expenses-table-container {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+}
+
+@media (max-width: 639px) {
+  .table-container,
+  .products-table-container,
+  .customers-table-container,
+  .invoices-table-container,
+  .expenses-table-container {
+    margin: 0 -1rem;
+    border-radius: 0;
+  }
+
+  table {
+    min-width: 600px;
+  }
+}
+
+/* ===== MODAL FIXES ===== */
+@media (max-width: 639px) {
+  .modal-overlay {
+    padding: 0;
+  }
+
+  .modal-content {
+    width: 100vw;
+    height: 100vh;
+    max-width: 100vw;
+    max-height: 100vh;
+    border-radius: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .modal-header {
+    flex-shrink: 0;
+    padding: 1rem;
+  }
+
+  .modal-body {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 1rem;
+  }
+
+  .modal-footer {
+    flex-shrink: 0;
+    padding: 1rem;
+    border-top: 1px solid #e5e7eb;
+  }
+}
+
+/* ===== FORM FIXES ===== */
+@media (max-width: 639px) {
+  /* Prevent zoom on iOS */
+  input[type="text"],
+  input[type="email"],
+  input[type="number"],
+  input[type="tel"],
+  input[type="date"],
+  input[type="time"],
+  input[type="search"],
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  /* Full width inputs on mobile */
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Better spacing for form groups */
+  .form-group {
+    margin-bottom: 1.25rem;
+  }
+}
+
+/* ===== BUTTON FIXES ===== */
+@media (max-width: 639px) {
+  /* Ensure buttons don't overflow */
+  .btn,
+  button {
+    max-width: 100%;
+    word-wrap: break-word;
+    white-space: normal;
+    padding: 0.75rem 1rem;
+    min-height: 44px;
+  }
+
+  /* Stack action buttons */
+  .category-actions,
+  .product-actions,
+  .customer-actions {
+    flex-direction: column;
+    width: 100%;
+    gap: 0.5rem;
+  }
+
+  .category-actions button,
+  .product-actions button,
+  .customer-actions button {
+    width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  border-radius: 6px;
+    transition: all 0.2s;
+  }
+
+  .category-actions button:active,
+  .product-actions button:active,
+  .customer-actions button:active {
+    transform: scale(0.98);
+  }
+}
+
+/* ===== GRID FIXES ===== */
+@media (max-width: 639px) {
+  .categories-grid,
+  .products-grid,
+  .customers-grid,
+  .expenses-grid,
+  .income-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .product-statistics,
+  .stat-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
+
+/* ===== FILTER FIXES ===== */
+@media (max-width: 639px) {
+  .categories-filters,
+  .products-filters,
+  .expenses-filters,
+  .income-filters {
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 1rem;
+  }
+
+  .filter-buttons {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+    width: 100%;
+  }
+
+  .filter-buttons button {
+    width: 100%;
+    padding: 0.75rem;
+    min-height: 44px;
+    font-size: 0.875rem;
+  }
+
+  .search-input,
+  .filter-input {
+    width: 100%;
+    font-size: 16px;
+    padding: 0.75rem;
+  }
+}
+
+/* ===== CARD FIXES ===== */
+@media (max-width: 639px) {
+  .category-card,
+  .product-card,
+  .customer-card,
+  .expense-card,
+  .income-card {
+    padding: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .category-card h3,
+  .product-card h3,
+  .customer-card h3 {
+    font-size: 1.125rem;
+    margin-bottom: 0.5rem;
+  }
+}
+
+/* ===== NAVIGATION FIXES ===== */
+@media (max-width: 1023px) {
+  /* Ensure sidebar doesn't cause horizontal scroll */
+  .app-body {
+    overflow-x: hidden;
+  }
+
+  /* Prevent body scroll when sidebar is open */
+  body.sidebar-open {
+    overflow: hidden;
+  }
+}
+
+/* ===== TOUCH TARGET FIXES ===== */
+@media (max-width: 1023px) {
+  /* All interactive elements should be touch-friendly */
+  a,
+  button,
+  input[type="checkbox"],
+  input[type="radio"],
+  select,
+  .clickable,
+  .sidebar-item,
+  .section-header {
+    min-height: 44px;
+    min-width: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Icons need padding for touch */
+  .header-icon,
+  .menu-toggle {
+    padding: 0.75rem;
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* ===== SCROLL FIXES ===== */
+@media (max-width: 1023px) {
+  /* Smooth scrolling on all scrollable areas */
+  .main-content,
+  .sidebar,
+  .modal-body,
+  .table-container {
+    -webkit-overflow-scrolling: touch;
+    overflow-scrolling: touch;
+  }
+
+  /* Prevent pull-to-refresh on iOS */
+  body {
+    overscroll-behavior-y: contain;
+  }
+}
+
+/* ===== Z-INDEX FIXES ===== */
+/* Ensure proper layering on mobile */
+.sidebar {
+  z-index: 999;
+}
+
+.sidebar-overlay {
+  z-index: 998;
+}
+
+.modal-overlay {
+  z-index: 1000;
+}
+
+.modal-content {
+  z-index: 1001;
+}
+
+.app-header {
+  z-index: 1000;
+}
+
+/* ===== SAFE AREA FIXES (iOS) ===== */
+@supports (padding: max(0px)) {
+  .app-header {
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+  }
+
+  .main-content {
+    padding-bottom: max(2rem, env(safe-area-inset-bottom));
+  }
+
+  .sidebar {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+}
+
+/* ===== PERFORMANCE FIXES ===== */
+/* GPU acceleration for smooth animations */
+.sidebar,
+.modal-content,
+.btn,
+.page-header {
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* ===== PREVENT LAYOUT SHIFTS ===== */
+/* Reserve space for images */
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Prevent text overflow */
+h1, h2, h3, h4, h5, h6, p, span {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* ===== FOCUS FIXES ===== */
+/* Better focus visibility on mobile */
+@media (max-width: 1023px) {
+  *:focus {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+  }
+
+  /* Remove focus outline for mouse users, keep for keyboard */
+  *:focus:not(:focus-visible) {
+    outline: none;
+  }
+}

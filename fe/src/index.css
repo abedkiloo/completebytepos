@@ -1,0 +1,50 @@
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* Global Print Styles - Hide everything by default */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  /* Only show receipt content when printing */
+  .receipt-content,
+  .receipt-content *,
+  .receipt-container .receipt-content,
+  .receipt-container .receipt-content *,
+  .modal-overlay .receipt-content,
+  .modal-overlay .receipt-content * {
+    visibility: visible;
+  }
+
+  /* Hide all buttons, headers, and UI elements ONLY when printing */
+  button:not(.receipt-content button),
+  .btn-print,
+  .btn-close,
+  .receipt-actions,
+  .modal-header,
+  .modal-close,
+  .modal-footer,
+  .checkout-actions,
+  .pos-topbar,
+  .pos-sidebar-left,
+  .pos-sidebar-right,
+  .pos-main,
+  .success-modal,
+  .success-content,
+  .success-actions {
+    display: none !important;
+    visibility: hidden !important;
+  }
+}

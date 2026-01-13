@@ -1,0 +1,55 @@
+# Docker Compose file - version is obsolete in newer Docker Compose
+
+services:
+  backend:
+    build:
+      context: ./be
+      dockerfile: Dockerfile
+    container_name: completebytepos_backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./be:/app
+      - backend_static:/app/staticfiles
+      - backend_media:/app/media
+      - backend_db:/app/db
+    working_dir: /app
+    environment:
+      - DEBUG=True
+      - DJANGO_SETTINGS_MODULE=config.settings
+      - DATABASE_URL=sqlite:///db/db.sqlite3
+      - DB_PATH=/app/db/db.sqlite3
+      - PYTHONUNBUFFERED=1
+    command: >
+      sh -c "
+        mkdir -p /app/db &&
+        python manage.py makemigrations --noinput || true &&
+        python manage.py migrate --noinput &&
+        python manage.py collectstatic --noinput || true &&
+        gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 4 --threads 2 --reload
+      "
+    restart: unless-stopped
+    networks:
+      - completebytepos_network
+
+  frontend:
+    build:
+      context: ./fe
+      dockerfile: Dockerfile
+    container_name: completebytepos_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - completebytepos_network
+
+volumes:
+  backend_static:
+  backend_media:
+  backend_db:
+
+networks:
+  completebytepos_network:
+    driver: bridge
