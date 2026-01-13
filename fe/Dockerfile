@@ -3,6 +3,10 @@ FROM node:20-alpine as build
 # Set working directory
 WORKDIR /app
 
+# Accept build argument for API URL
+ARG REACT_APP_API_URL=http://backend:8000/api
+ENV REACT_APP_API_URL=$REACT_APP_API_URL
+
 # Copy package files
 COPY package*.json ./
 
@@ -12,7 +16,7 @@ RUN npm install
 # Copy source code
 COPY . .
 
-# Build React app
+# Build React app with environment variable
 RUN npm run build
 
 # Production stage

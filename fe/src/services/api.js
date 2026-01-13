@@ -4,9 +4,11 @@ import axios from 'axios';
 const isHttps = window.location.protocol === 'https:';
 const isNgrok = window.location.hostname.includes('ngrok');
 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+// Detect if running in Docker (nginx serves from /, and we check if API_BASE_URL contains 'backend')
+const isDocker = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL.includes('backend');
 
 // Determine API URL
-// Priority: 1. Environment variable, 2. Window config, 3. Auto-detect server, 4. Auto-detect ngrok, 5. Default localhost
+// Priority: 1. Environment variable (Docker/build-time), 2. Window config, 3. Auto-detect server, 4. Auto-detect ngrok, 5. Default localhost
 let API_BASE_URL = process.env.REACT_APP_API_URL;
 
 if (!API_BASE_URL) {
@@ -44,6 +46,12 @@ if (!API_BASE_URL) {
     // Local development - use localhost
     API_BASE_URL = 'http://localhost:8000/api';
   }
+}
+
+// If API_BASE_URL is a relative path (starts with /), we're using nginx proxy (Docker)
+// This is already set correctly, just log it
+if (API_BASE_URL.startsWith('/')) {
+  console.log('[API] Using relative URL (nginx proxy). API calls will go through nginx to backend.');
 }
 
 console.log(`[API] Using API Base URL: ${API_BASE_URL}`);
