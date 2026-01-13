@@ -1,6 +1,6 @@
 """
-Comprehensive data generation script for soft furnishings business
-Generates: Users, Products (soft furnishings), Customers, Sales (with installments), Expenses
+Comprehensive data generation script for sofa making and repair business
+Generates: Users, Products (sofa making materials & tools), Customers, Sales (with installments), Expenses
 """
 from django.core.management.base import BaseCommand
 from django.contrib.auth.models import User
@@ -27,7 +27,7 @@ except ImportError:
 
 
 class Command(BaseCommand):
-    help = 'Populate database with comprehensive soft furnishings data: users, products, customers, sales, installments, expenses'
+    help = 'Populate database with comprehensive sofa making & repair data: users, products (materials & tools), customers, sales, installments, expenses'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -89,7 +89,7 @@ class Command(BaseCommand):
     @transaction.atomic
     def handle(self, *args, **options):
         self.stdout.write(self.style.SUCCESS('=' * 70))
-        self.stdout.write(self.style.SUCCESS('POPULATING SOFT FURNISHINGS DATA'))
+        self.stdout.write(self.style.SUCCESS('POPULATING SOFA MAKING & REPAIR DATA'))
         self.stdout.write(self.style.SUCCESS('=' * 70))
         
         # Initialize Faker if available
@@ -145,10 +145,10 @@ class Command(BaseCommand):
         if not options['skip_users']:
             self.create_users(options['users'], superuser, admin_role, manager_role, cashier_role)
         
-        # 2. Create Products (Soft Furnishings)
+        # 2. Create Products (Sofa Making & Repair Materials)
         products = []
         if not options['skip_products']:
-            products = self.create_soft_furnishings_products(options['products'], superuser, branch)
+            products = self.create_sofa_making_products(options['products'], superuser, branch)
         
         # 3. Create Customers
         customers = []
@@ -248,104 +248,182 @@ class Command(BaseCommand):
         
         self.stdout.write(self.style.SUCCESS(f'  ✓ Created {created} users'))
 
-    def create_soft_furnishings_products(self, count, superuser, branch):
-        """Create soft furnishings products with variants"""
-        self.stdout.write(f'\n2. Creating {count} soft furnishings products with variants...')
+    def create_sofa_making_products(self, count, superuser, branch):
+        """Create sofa making and repair products with variants"""
+        self.stdout.write(f'\n2. Creating {count} sofa making & repair products with variants...')
         
-        # Soft furnishings categories
+        # Sofa making and repair categories
         categories_data = [
             {
-                'name': 'Sofas & Couches',
-                'description': 'Complete sofas and couches',
+                'name': 'Upholstery Fabrics',
+                'description': 'Fabrics for covering and reupholstering sofas',
                 'products': [
-                    '2-Seater Sofa', '3-Seater Sofa', '4-Seater Sofa', '5-Seater Sofa',
-                    'Corner Sofa', 'Sectional Sofa', 'L-Shaped Sofa', 'Chaise Lounge',
-                    'Sofa Bed', 'Recliner Sofa', 'Loveseat', 'Futon'
+                    'Cotton Upholstery Fabric', 'Linen Upholstery Fabric', 'Polyester Upholstery Fabric',
+                    'Velvet Upholstery Fabric', 'Suede Upholstery Fabric', 'Leather Upholstery Sheet',
+                    'Microfiber Upholstery Fabric', 'Chenille Upholstery Fabric', 'Tweed Upholstery Fabric',
+                    'Canvas Upholstery Fabric', 'Jacquard Upholstery Fabric', 'Brocade Upholstery Fabric',
+                    'Denim Upholstery Fabric', 'Faux Leather', 'Vinyl Upholstery Fabric', 'Wool Upholstery Fabric'
                 ],
                 'has_variants': True,
                 'use_colors': True,
-                'use_sizes': True,
-                'price_range': (50000, 500000),
+                'use_sizes': False,  # Fabric sold by meter/yard
+                'price_range': (800, 15000),
             },
             {
-                'name': 'Cushions & Pillows',
-                'description': 'Cushions, pillows, and throw pillows',
+                'name': 'Foam & Cushioning Materials',
+                'description': 'Foam and cushioning for sofa seats and backs',
                 'products': [
-                    'Square Cushion', 'Rectangular Cushion', 'Round Cushion', 'Bolster Pillow',
-                    'Lumbar Pillow', 'Throw Pillow', 'Floor Cushion', 'Corner Cushion',
-                    'Decorative Pillow', 'Accent Pillow', 'Wedge Pillow', 'Neck Pillow'
-                ],
-                'has_variants': True,
-                'use_colors': True,
-                'use_sizes': True,
-                'price_range': (500, 15000),
-            },
-            {
-                'name': 'Curtains & Drapes',
-                'description': 'Window curtains and drapes',
-                'products': [
-                    'Sheer Curtains', 'Blackout Curtains', 'Thermal Curtains', 'Voile Curtains',
-                    'Velvet Curtains', 'Linen Curtains', 'Cotton Curtains', 'Silk Curtains',
-                    'Roman Blinds', 'Roller Blinds', 'Vertical Blinds', 'Panel Curtains'
-                ],
-                'has_variants': True,
-                'use_colors': True,
-                'use_sizes': True,
-                'price_range': (2000, 50000),
-            },
-            {
-                'name': 'Cushion Covers',
-                'description': 'Covers for cushions and pillows',
-                'products': [
-                    'Zipper Cushion Cover', 'Envelope Cushion Cover', 'Button Cushion Cover',
-                    'Velcro Cushion Cover', 'Tie Cushion Cover', 'Decorative Cushion Cover',
-                    'Embroidered Cover', 'Printed Cover', 'Plain Cover', 'Patterned Cover'
-                ],
-                'has_variants': True,
-                'use_colors': True,
-                'use_sizes': True,
-                'price_range': (300, 8000),
-            },
-            {
-                'name': 'Fabric & Upholstery',
-                'description': 'Fabrics for upholstery and decoration',
-                'products': [
-                    'Cotton Fabric', 'Linen Fabric', 'Polyester Fabric', 'Velvet Fabric',
-                    'Suede Fabric', 'Leather Sheet', 'Microfiber Fabric', 'Chenille Fabric',
-                    'Tweed Fabric', 'Canvas Fabric', 'Jacquard Fabric', 'Brocade Fabric'
-                ],
-                'has_variants': True,
-                'use_colors': True,
-                'use_sizes': False,  # Fabric sold by meter
-                'price_range': (500, 10000),
-            },
-            {
-                'name': 'Foam & Cushioning',
-                'description': 'Foam and cushioning materials',
-                'products': [
-                    'High Density Foam', 'Medium Density Foam', 'Low Density Foam',
-                    'Memory Foam', 'Rebonded Foam', 'HR Foam', 'PU Foam',
-                    'Polyester Fiber', 'Polyester Fill', 'Cotton Batting', 'Feather Fill'
+                    'High Density Foam (HD)', 'Medium Density Foam (MD)', 'Low Density Foam (LD)',
+                    'Memory Foam', 'Rebonded Foam', 'HR Foam (High Resilience)', 'PU Foam (Polyurethane)',
+                    'Polyester Fiber Fill', 'Polyester Batting', 'Cotton Batting', 'Feather Fill',
+                    'Down Fill', 'Dacron Wrap', 'Foam Wrap', 'Cushion Core Foam'
                 ],
                 'has_variants': True,
                 'use_colors': False,
                 'use_sizes': True,
-                'price_range': (1000, 25000),
+                'price_range': (1500, 30000),
+            },
+            {
+                'name': 'Springs & Suspension',
+                'description': 'Springs and suspension systems for sofa frames',
+                'products': [
+                    'Coil Springs (8-way)', 'Sinuous Springs (S-shaped)', 'Drop-in Coil Springs',
+                    'Pocket Coil Springs', 'Bonnell Springs', 'Elastic Webbing', 'Jute Webbing',
+                    'Rubber Webbing', 'Spring Clips', 'Spring Ties', 'Suspension Wire',
+                    'Spring Edge Wire', 'Spring Clamps', 'Webbing Stretcher'
+                ],
+                'has_variants': True,
+                'use_colors': False,
+                'use_sizes': True,
+                'price_range': (200, 8000),
+            },
+            {
+                'name': 'Wood & Frame Materials',
+                'description': 'Wood and materials for sofa frames',
+                'products': [
+                    'Hardwood Timber (Oak)', 'Hardwood Timber (Maple)', 'Hardwood Timber (Cherry)',
+                    'Pine Timber', 'Plywood Sheets', 'MDF Boards', 'Particle Board',
+                    'Frame Corner Braces', 'Frame Support Blocks', 'Dowels', 'Wood Screws',
+                    'Frame Reinforcement Brackets', 'Wood Glue', 'Wood Filler'
+                ],
+                'has_variants': True,
+                'use_colors': False,
+                'use_sizes': True,
+                'price_range': (500, 25000),
+            },
+            {
+                'name': 'Hardware & Fasteners',
+                'description': 'Hardware components and fasteners for sofa assembly',
+                'products': [
+                    'Upholstery Screws', 'Wood Screws (Various Sizes)', 'Staples (Heavy Duty)',
+                    'Tacks (Decorative)', 'Nails (Upholstery)', 'Corner Braces', 'L-Brackets',
+                    'Sofa Legs (Wood)', 'Sofa Legs (Metal)', 'Sofa Legs (Plastic)', 'Casters',
+                    'Glides', 'Brackets', 'Bolts & Nuts', 'Washers', 'Screw Eyes', 'S-Hooks'
+                ],
+                'has_variants': True,
+                'use_colors': True,  # For legs
+                'use_sizes': True,
+                'price_range': (50, 5000),
+            },
+            {
+                'name': 'Thread & Sewing Supplies',
+                'description': 'Thread and sewing materials for upholstery work',
+                'products': [
+                    'Upholstery Thread (Heavy Duty)', 'Waxed Thread', 'Nylon Thread',
+                    'Polyester Thread', 'Cotton Thread', 'Upholstery Needles', 'Curved Needles',
+                    'Straight Needles', 'Thread Snips', 'Seam Ripper', 'Thimble',
+                    'Thread Wax', 'Thread Conditioner'
+                ],
+                'has_variants': True,
+                'use_colors': True,  # Thread colors
+                'use_sizes': True,  # Needle sizes
+                'price_range': (100, 2000),
+            },
+            {
+                'name': 'Zippers & Closures',
+                'description': 'Zippers and closure systems for removable covers',
+                'products': [
+                    'Heavy Duty Zipper (Long)', 'Heavy Duty Zipper (Medium)', 'Heavy Duty Zipper (Short)',
+                    'Invisible Zipper', 'Separating Zipper', 'Two-Way Zipper', 'Zipper Pulls',
+                    'Zipper Sliders', 'Velcro Strips (Heavy Duty)', 'Snap Fasteners',
+                    'Button Fasteners', 'Hook & Loop Tape'
+                ],
+                'has_variants': True,
+                'use_colors': True,
+                'use_sizes': True,
+                'price_range': (150, 3000),
+            },
+            {
+                'name': 'Batting & Padding',
+                'description': 'Batting and padding materials for cushioning layers',
+                'products': [
+                    'Dacron Batting', 'Polyester Batting', 'Cotton Batting', 'Wool Batting',
+                    'Bonded Batting', 'Quilted Batting', 'Foam Padding', 'Fiber Padding',
+                    'Cushion Wrap', 'Back Padding', 'Arm Padding', 'Seat Padding'
+                ],
+                'has_variants': True,
+                'use_colors': False,
+                'use_sizes': True,
+                'price_range': (300, 5000),
+            },
+            {
+                'name': 'Adhesives & Glues',
+                'description': 'Adhesives for bonding upholstery materials',
+                'products': [
+                    'Upholstery Adhesive', 'Fabric Glue', 'Spray Adhesive', 'Contact Cement',
+                    'Wood Glue', 'Hot Glue Sticks', 'Foam Adhesive', 'Leather Adhesive',
+                    'Multi-Purpose Adhesive', 'Fabric Bonding Agent'
+                ],
+                'has_variants': True,
+                'use_colors': False,
+                'use_sizes': True,  # Container sizes
+                'price_range': (200, 4000),
+            },
+            {
+                'name': 'Tools & Equipment',
+                'description': 'Tools for sofa making and repair work',
+                'products': [
+                    'Staple Gun (Heavy Duty)', 'Staple Remover', 'Upholstery Hammer',
+                    'Tack Hammer', 'Upholstery Scissors', 'Fabric Shears', 'Utility Knife',
+                    'Chalk Line', 'Measuring Tape', 'Sewing Machine (Industrial)',
+                    'Foam Cutter', 'Webbing Stretcher Tool', 'Spring Clamp Tool'
+                ],
+                'has_variants': True,
+                'use_colors': False,
+                'use_sizes': True,
+                'price_range': (500, 50000),
             },
         ]
         
-        # Create sizes
+        # Create sizes for sofa making materials
         sizes_data = [
-            {'name': 'Small (2-Seater)', 'code': 'S', 'order': 1},
-            {'name': 'Medium (3-Seater)', 'code': 'M', 'order': 2},
-            {'name': 'Large (4-Seater)', 'code': 'L', 'order': 3},
-            {'name': 'Extra Large (5-Seater)', 'code': 'XL', 'order': 4},
-            {'name': 'Sectional', 'code': 'SEC', 'order': 5},
-            {'name': 'Corner Unit', 'code': 'COR', 'order': 6},
-            {'name': 'One Size', 'code': 'OS', 'order': 7},
-            {'name': '18x18 inches', 'code': '18x18', 'order': 8},
-            {'name': '20x20 inches', 'code': '20x20', 'order': 9},
-            {'name': '24x24 inches', 'code': '24x24', 'order': 10},
+            # Foam sizes (thickness)
+            {'name': '2 inches', 'code': '2IN', 'order': 1},
+            {'name': '3 inches', 'code': '3IN', 'order': 2},
+            {'name': '4 inches', 'code': '4IN', 'order': 3},
+            {'name': '5 inches', 'code': '5IN', 'order': 4},
+            {'name': '6 inches', 'code': '6IN', 'order': 5},
+            # Spring sizes
+            {'name': 'Small (4 inch)', 'code': 'S', 'order': 6},
+            {'name': 'Medium (6 inch)', 'code': 'M', 'order': 7},
+            {'name': 'Large (8 inch)', 'code': 'L', 'order': 8},
+            # Hardware sizes
+            {'name': '1/2 inch', 'code': 'HALF', 'order': 9},
+            {'name': '3/4 inch', 'code': '3Q', 'order': 10},
+            {'name': '1 inch', 'code': '1IN', 'order': 11},
+            {'name': '2 inch', 'code': '2INH', 'order': 12},
+            # Thread/Needle sizes
+            {'name': 'Size 18', 'code': 'SZ18', 'order': 13},
+            {'name': 'Size 16', 'code': 'SZ16', 'order': 14},
+            {'name': 'Size 14', 'code': 'SZ14', 'order': 15},
+            # Zipper lengths
+            {'name': '12 inches', 'code': '12IN', 'order': 16},
+            {'name': '18 inches', 'code': '18IN', 'order': 17},
+            {'name': '24 inches', 'code': '24IN', 'order': 18},
+            {'name': '36 inches', 'code': '36IN', 'order': 19},
+            # Standard sizes
+            {'name': 'Standard', 'code': 'STD', 'order': 20},
+            {'name': 'One Size', 'code': 'OS', 'order': 21},
         ]
         sizes = {}
         for size_data in sizes_data:
@@ -377,8 +455,8 @@ class Command(BaseCommand):
         
         # Create main category
         main_category, _ = Category.objects.get_or_create(
-            name='Soft Furnishings',
-            defaults={'description': 'Complete soft furnishings collection', 'is_active': True}
+            name='Sofa Making & Repair Supplies',
+            defaults={'description': 'Materials, tools, and components for making, furnishing, and repairing sofas', 'is_active': True}
         )
         
         products_list = []
@@ -402,10 +480,34 @@ class Command(BaseCommand):
                 cost = Decimal(str(round(random.uniform(price_min * 0.4, price_max * 0.4), 2)))
                 price = cost * Decimal(str(round(random.uniform(1.5, 2.5), 2)))
                 
-                sku = f"SF-{sub_category.name[:3].upper()}-{str(i+1).zfill(4)}"
+                sku = f"SMR-{sub_category.name[:3].upper()}-{str(i+1).zfill(4)}"
                 barcode = f"{random.randint(100000000000, 999999999999)}"
                 while Product.objects.filter(barcode=barcode).exists():
                     barcode = f"{random.randint(100000000000, 999999999999)}"
+                
+                # Determine unit based on category
+                if 'Fabric' in sub_category.name:
+                    unit = 'meter'
+                elif 'Foam' in sub_category.name or 'Cushioning' in sub_category.name:
+                    unit = 'sheet' if 'Foam' in sub_category.name else 'kg'
+                elif 'Spring' in sub_category.name or 'Suspension' in sub_category.name:
+                    unit = 'piece'
+                elif 'Wood' in sub_category.name or 'Frame' in sub_category.name:
+                    unit = 'piece' if 'Timber' in template or 'Board' in template else 'piece'
+                elif 'Hardware' in sub_category.name or 'Fasteners' in sub_category.name:
+                    unit = 'piece' if 'Legs' not in template else 'set'
+                elif 'Thread' in sub_category.name or 'Sewing' in sub_category.name:
+                    unit = 'spool' if 'Thread' in template else 'piece'
+                elif 'Zipper' in sub_category.name or 'Closures' in sub_category.name:
+                    unit = 'piece'
+                elif 'Batting' in sub_category.name or 'Padding' in sub_category.name:
+                    unit = 'meter' if 'Batting' in template else 'piece'
+                elif 'Adhesive' in sub_category.name or 'Glue' in sub_category.name:
+                    unit = 'bottle' if 'Glue' in template or 'Adhesive' in template else 'can'
+                elif 'Tools' in sub_category.name or 'Equipment' in sub_category.name:
+                    unit = 'piece'
+                else:
+                    unit = 'piece'
                 
                 product = Product.objects.create(
                     name=template,
@@ -417,8 +519,8 @@ class Command(BaseCommand):
                     cost=cost,
                     stock_quantity=random.randint(0, 200),
                     low_stock_threshold=random.randint(10, 50),
-                    description=f"{template} - High quality soft furnishing item",
-                    unit='piece',
+                    description=f"{template} - Professional quality material for sofa making and repair",
+                    unit=unit,
                     is_taxable=True,
                     track_stock=True,
                     has_variants=cat_data['has_variants'],
@@ -741,20 +843,24 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f'  ✓ Created {len(sales_created)} sales'))
 
     def create_expenses(self, count, superuser, branch):
-        """Create expenses relevant to soft furnishings business"""
+        """Create expenses relevant to sofa making and repair business"""
         self.stdout.write(f'\n5. Creating {count} expenses...')
         
-        # Expense categories for soft furnishings business
+        # Expense categories for sofa making and repair business
         categories_data = [
-            {'name': 'Fabric Purchase', 'description': 'Purchase of fabrics and upholstery materials'},
-            {'name': 'Foam & Cushioning', 'description': 'Purchase of foam and cushioning materials'},
-            {'name': 'Hardware & Tools', 'description': 'Purchase of hardware, tools, and equipment'},
-            {'name': 'Rent & Utilities', 'description': 'Shop rent, electricity, water bills'},
-            {'name': 'Transportation', 'description': 'Delivery and transportation costs'},
+            {'name': 'Upholstery Fabric Purchase', 'description': 'Purchase of upholstery fabrics and materials'},
+            {'name': 'Foam & Cushioning Materials', 'description': 'Purchase of foam, batting, and cushioning materials'},
+            {'name': 'Springs & Suspension', 'description': 'Purchase of springs, webbing, and suspension components'},
+            {'name': 'Wood & Frame Materials', 'description': 'Purchase of timber, plywood, and frame materials'},
+            {'name': 'Hardware & Fasteners', 'description': 'Purchase of screws, brackets, legs, and hardware'},
+            {'name': 'Tools & Equipment', 'description': 'Purchase of upholstery tools and equipment'},
+            {'name': 'Thread & Sewing Supplies', 'description': 'Purchase of thread, needles, and sewing materials'},
+            {'name': 'Rent & Utilities', 'description': 'Workshop rent, electricity, water bills'},
+            {'name': 'Transportation & Delivery', 'description': 'Delivery and transportation costs for materials and finished sofas'},
             {'name': 'Marketing & Advertising', 'description': 'Marketing and advertising expenses'},
-            {'name': 'Staff Salaries', 'description': 'Employee salaries and wages'},
+            {'name': 'Staff Salaries', 'description': 'Employee salaries and wages (upholsterers, carpenters, etc.)'},
             {'name': 'Insurance', 'description': 'Business insurance premiums'},
-            {'name': 'Maintenance & Repairs', 'description': 'Equipment maintenance and repairs'},
+            {'name': 'Equipment Maintenance', 'description': 'Sewing machine and tool maintenance and repairs'},
             {'name': 'Office Supplies', 'description': 'Office supplies and stationery'},
             {'name': 'Professional Services', 'description': 'Legal, accounting, consulting fees'},
             {'name': 'Telecommunications', 'description': 'Phone, internet, and communication costs'},
@@ -770,23 +876,29 @@ class Command(BaseCommand):
         
         # Expense amounts by category
         expense_ranges = {
-            'Fabric Purchase': (5000, 100000),
-            'Foam & Cushioning': (3000, 50000),
-            'Hardware & Tools': (1000, 30000),
-            'Rent & Utilities': (20000, 150000),
-            'Transportation': (500, 10000),
+            'Upholstery Fabric Purchase': (8000, 120000),
+            'Foam & Cushioning Materials': (5000, 60000),
+            'Springs & Suspension': (2000, 40000),
+            'Wood & Frame Materials': (3000, 50000),
+            'Hardware & Fasteners': (1000, 20000),
+            'Tools & Equipment': (2000, 80000),
+            'Thread & Sewing Supplies': (500, 5000),
+            'Rent & Utilities': (25000, 180000),
+            'Transportation & Delivery': (1000, 15000),
             'Marketing & Advertising': (2000, 50000),
-            'Staff Salaries': (15000, 200000),
+            'Staff Salaries': (20000, 250000),
             'Insurance': (5000, 50000),
-            'Maintenance & Repairs': (1000, 25000),
+            'Equipment Maintenance': (1500, 30000),
             'Office Supplies': (500, 10000),
             'Professional Services': (5000, 100000),
             'Telecommunications': (1000, 15000),
         }
         
         vendors = [
-            'Fabric Suppliers Ltd', 'Foam World', 'Hardware Express', 'Utility Company',
-            'Transport Services', 'Marketing Agency', 'Insurance Co', 'Repair Services',
+            'Premium Upholstery Fabrics Ltd', 'Foam & Cushioning Supplies', 'Spring Systems Co',
+            'Hardwood Timber Suppliers', 'Upholstery Hardware Express', 'Professional Tools Ltd',
+            'Sewing Supplies Warehouse', 'Utility Company', 'Delivery Services Co',
+            'Marketing Agency', 'Insurance Co', 'Equipment Repair Services',
             'Office Depot', 'Law Firm', 'Telecom Provider'
         ]
         
