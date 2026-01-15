@@ -23,11 +23,16 @@ const Users = () => {
   const loadUsers = async () => {
     setLoading(true);
     try {
-      const response = await usersAPI.list();
-      setUsers(response.data.results || response.data || []);
+      // Request all users (no pagination limit for now)
+      const response = await usersAPI.list({ page_size: 1000 });
+      const usersData = response.data.results || response.data || [];
+      const usersArray = Array.isArray(usersData) ? usersData : [];
+      console.log(`Loaded ${usersArray.length} users`);
+      setUsers(usersArray);
     } catch (error) {
       console.error('Error loading users:', error);
       toast.error('Failed to load users: ' + (error.response?.data?.error || error.message));
+      setUsers([]);
     } finally {
       setLoading(false);
     }
@@ -79,7 +84,14 @@ const Users = () => {
   const handleFormClose = () => {
     setShowForm(false);
     setEditingUser(null);
-    loadUsers();
+    // Clear filters to ensure new user is visible
+    setSearchQuery('');
+    setFilterRole('all');
+    setFilterStatus('all');
+    // Reload users after a short delay to ensure backend has processed
+    setTimeout(() => {
+      loadUsers();
+    }, 200);
   };
 
   const filteredUsers = users.filter(user => {

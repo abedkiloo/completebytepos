@@ -59,18 +59,22 @@ const UserForm = ({ user, roles, onClose }) => {
     try {
       if (user) {
         // Update existing user
-        await usersAPI.update(user.id, formData);
+        const response = await usersAPI.update(user.id, formData);
+        console.log('User updated:', response.data);
         toast.success('User updated successfully');
+        // Wait a bit for backend to process, then close and refresh
         setTimeout(() => {
           onClose();
-        }, 500); // Close modal after a brief delay to show the toast
+        }, 300);
       } else {
         // Create new user
-        await usersAPI.create(formData);
+        const response = await usersAPI.create(formData);
+        console.log('User created:', response.data);
         toast.success('User created successfully');
+        // Wait a bit for backend to process, then close and refresh
         setTimeout(() => {
           onClose();
-        }, 500); // Close modal after a brief delay to show the toast
+        }, 300);
       }
     } catch (error) {
       if (error.response?.data) {

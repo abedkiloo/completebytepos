@@ -199,13 +199,21 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
         submitData.append('image', image);
       }
 
+      let response;
       if (product) {
-        await productsAPI.update(product.id, submitData);
+        response = await productsAPI.update(product.id, submitData);
+        console.log('Product updated:', response.data);
+        toast.success('Product updated successfully');
       } else {
-        await productsAPI.create(submitData);
+        response = await productsAPI.create(submitData);
+        console.log('Product created:', response.data);
+        toast.success('Product created successfully');
       }
       
-      onSave();
+      // Wait a bit for backend to process, then save and refresh
+      setTimeout(() => {
+        onSave();
+      }, 200);
     } catch (error) {
       if (error.response?.data) {
         setErrors(error.response.data);

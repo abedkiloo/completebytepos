@@ -38,7 +38,7 @@ const Products = () => {
   const loadProducts = async () => {
     setLoading(true);
     try {
-      const params = {};
+      const params = { page_size: 1000 }; // Request more items to avoid pagination issues
       if (filters.search) params.search = filters.search;
       if (filters.category) params.category = filters.category;
       if (filters.is_active !== '') params.is_active = filters.is_active;
@@ -48,7 +48,9 @@ const Products = () => {
       const response = await productsAPI.list(params);
       // Handle paginated or direct array response
       const productsData = response.data.results || response.data || [];
-      setProducts(Array.isArray(productsData) ? productsData : []);
+      const productsArray = Array.isArray(productsData) ? productsData : [];
+      console.log(`Loaded ${productsArray.length} products with filters:`, filters);
+      setProducts(productsArray);
     } catch (error) {
       console.error('Error loading products:', error);
       toast.error('Failed to load products');
@@ -664,8 +666,19 @@ const Products = () => {
           onSave={() => {
             setShowForm(false);
             setEditingProduct(null);
-            loadProducts();
-            loadStatistics();
+            // Clear filters to ensure new product is visible
+            setFilters({
+              search: '',
+              category: '',
+              is_active: '',
+              low_stock: false,
+              out_of_stock: false,
+            });
+            // Reload after a short delay to ensure backend has processed
+            setTimeout(() => {
+              loadProducts();
+              loadStatistics();
+            }, 200);
           }}
         />
       )}
