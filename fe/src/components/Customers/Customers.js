@@ -222,7 +222,8 @@ const Customers = () => {
                 <h2>{selectedCustomer ? 'Edit Customer' : 'Add Customer'}</h2>
                 <button onClick={() => setShowModal(false)} className="close-btn">×</button>
               </div>
-              <form onSubmit={handleSubmit}>
+              <div className="modal-body">
+                <form onSubmit={handleSubmit}>
                 <div className="form-row">
                   <div className="form-group">
                     <label>Name *</label>
@@ -317,7 +318,7 @@ const Customers = () => {
                 </div>
                 </form>
               </div>
-              <div className="slide-in-panel-footer">
+              <div className="modal-footer">
                 <button type="button" onClick={() => setShowModal(false)} className="btn btn-secondary">
                   Cancel
                 </button>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { authAPI, modulesAPI } from '../../services/api';
 import BranchSelector from '../BranchSelector/BranchSelector';
@@ -25,6 +25,63 @@ const Layout = ({ children }) => {
     accounting: false,
     settings: false,
   });
+  const [hoveredSection, setHoveredSection] = useState(null);
+  const [submenuPosition, setSubmenuPosition] = useState({ top: 0 });
+  const hoverTimeoutRef = useRef(null);
+  
+  // Check if mobile - needs to be defined before handlers
+  // Use state to make it reactive to window resize
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== 'undefined' && window.innerWidth < 1024
+  );
+  
+  // Update isMobile on window resize
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 1024);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  
+  // Calculate submenu position based on hovered section
+  const handleSectionHover = (section, event) => {
+    if (!isMobile && event) {
+      // Clear any existing timeout
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
+      
+      const sectionElement = event.currentTarget;
+      const rect = sectionElement.getBoundingClientRect();
+      setSubmenuPosition({ top: rect.top - 60 }); // Subtract header height
+      
+      // Small delay to prevent flickering when moving mouse quickly
+      hoverTimeoutRef.current = setTimeout(() => {
+        setHoveredSection(section);
+      }, 100);
+    } else if (!isMobile) {
+      setHoveredSection(section);
+    }
+  };
+  
+  const handleSectionLeave = () => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+    }
+    if (!isMobile) {
+      setHoveredSection(null);
+    }
+  };
+  
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const userProfile = user.profile || {};
@@ -135,11 +192,14 @@ const Layout = ({ children }) => {
   // Handle window resize for responsive sidebar
   useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth >= 1024) {
+      const width = window.innerWidth;
+      setIsMobile(width < 1024);
+      
+      if (width >= 1024) {
         setSidebarOpen(true);
-      } else if (window.innerWidth < 640) {
+      } else if (width < 640) {
         // Keep current state on tablet, close on mobile
-        if (window.innerWidth < 640) {
+        if (width < 640) {
           setSidebarOpen(false);
         }
       }
@@ -164,8 +224,6 @@ const Layout = ({ children }) => {
       return () => document.removeEventListener('click', handleClickOutside);
     }
   }, [sidebarOpen]);
-
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 1024;
 
   return (
     <div className="app-layout">
@@ -227,8 +285,15 @@ const Layout = ({ children }) => {
 
             {/* Inventory Section */}
             {isModuleEnabled('products') && (
-              <div className="sidebar-section">
-                <div className="section-header" onClick={() => toggleSection('inventory')}>
+              <div 
+                className="sidebar-section"
+                onMouseEnter={(e) => handleSectionHover('inventory', e)}
+                onMouseLeave={handleSectionLeave}
+              >
+                <div 
+                  className="section-header" 
+                  onClick={() => toggleSection('inventory')}
+                >
                   <span>Inventory</span>
                   <span className="section-arrow">{expandedSections.inventory ? '▼' : '▶'}</span>
                 </div>
@@ -256,12 +321,62 @@ const Layout = ({ children }) => {
                     )}
                   </div>
                 )}
+                {/* Hover Sub-menu */}
+                {hoveredSection === 'inventory' && !isMobile && (
+                  <div 
+                    className="submenu-panel" 
+                    style={{ top: `${submenuPosition.top}px` }}
+                    onMouseEnter={() => setHoveredSection('inventory')}
+                    onMouseLeave={handleSectionLeave}
+                  >
+                    <Link 
+                      to="/products" 
+                      className={`submenu-item ${isActive('/products') ? 'active' : ''}`}
+                      onClick={() => setHoveredSection(null)}
+                    >
+                      <span className="item-icon">📦</span>
+                      <span>Products</span>
+                    </Link>
+                    <Link 
+                      to="/categories" 
+                      className={`submenu-item ${isActive('/categories') ? 'active' : ''}`}
+                      onClick={() => setHoveredSection(null)}
+                    >
+                      <span className="item-icon">📁</span>
+                      <span>Category</span>
+                    </Link>
+                    {isModuleEnabled('barcodes') && (
+                      <>
+                        <Link 
+                          to="/barcodes" 
+                          className={`submenu-item ${isActive('/barcodes') ? 'active' : ''}`}
+                          onClick={() => setHoveredSection(null)}
+                        >
+                          <span className="item-icon">🏷️</span>
+                          <span>Print Barcode</span>
+                        </Link>
+                        <Link 
+                          to="/barcodes" 
+                          className={`submenu-item ${isActive('/barcodes') ? 'active' : ''}`}
+                          onClick={() => setHoveredSection(null)}
+                        >
+                          <span className="item-icon">📱</span>
+                          <span>Print QR Code</span>
+                        </Link>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
             {/* Stock Section */}
             {isModuleEnabled('stock') && (
-              <div className="sidebar-section">
+              <div 
+                className="sidebar-section"
+                onMouseEnter={(e) => handleSectionHover('stock', e)}
+                onMouseLeave={handleSectionLeave}
+              >
                 <div className="section-header" onClick={() => toggleSection('stock')}>
                   <span>Stock</span>
                   <span className="section-arrow">{expandedSections.stock ? '▼' : '▶'}</span>
@@ -315,12 +430,56 @@ const Layout = ({ children }) => {
                     )}
                   </div>
                 )}
+                {/* Hover Sub-menu */}
+                {hoveredSection === 'stock' && !isMobile && (
+                  <div 
+                    className="submenu-panel" 
+                    style={{ top: `${submenuPosition.top}px` }}
+                    onMouseEnter={() => setHoveredSection('stock')}
+                    onMouseLeave={handleSectionLeave}
+                  >
+                    {isFeatureEnabled('stock', 'manage_stock') && (
+                      <Link 
+                        to="/inventory?view=movements" 
+                        className={`submenu-item ${isActive('/inventory') ? 'active' : ''}`}
+                        onClick={() => setHoveredSection(null)}
+                      >
+                        <span className="item-icon">📊</span>
+                        <span>Manage Stock</span>
+                      </Link>
+                    )}
+                    {isFeatureEnabled('stock', 'stock_adjustments') && (
+                      <Link 
+                        to="/inventory?action=adjust" 
+                        className={`submenu-item ${isActive('/inventory') ? 'active' : ''}`}
+                        onClick={() => setHoveredSection(null)}
+                      >
+                        <span className="item-icon">⚖️</span>
+                        <span>Stock Adjustment</span>
+                      </Link>
+                    )}
+                    {isFeatureEnabled('stock', 'stock_transfers') && (
+                      <Link 
+                        to="/inventory?action=transfer" 
+                        className={`submenu-item ${isActive('/inventory') ? 'active' : ''}`}
+                        onClick={() => setHoveredSection(null)}
+                      >
+                        <span className="item-icon">🔄</span>
+                        <span>Stock Transfer</span>
+                      </Link>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
             {/* Sales Section - Updated with Customers and Invoicing */}
             {isModuleEnabled('sales') && (
-              <div className="sidebar-section">
+              <div 
+                className="sidebar-section"
+                onMouseEnter={(e) => handleSectionHover('sales', e)}
+                onMouseLeave={handleSectionLeave}
+              >
                 <div className="section-header" onClick={() => toggleSection('sales')}>
                   <span>Sales</span>
                   <span className="section-arrow">{expandedSections.sales ? '▼' : '▶'}</span>
@@ -347,12 +506,56 @@ const Layout = ({ children }) => {
                     )}
                   </div>
                 )}
+                {/* Hover Sub-menu */}
+                {hoveredSection === 'sales' && !isMobile && (
+                  <div 
+                    className="submenu-panel" 
+                    style={{ top: `${submenuPosition.top}px` }}
+                    onMouseEnter={() => setHoveredSection('sales')}
+                    onMouseLeave={handleSectionLeave}
+                  >
+                    {isFeatureEnabled('sales', 'pos') && (
+                      <Link 
+                        to="/pos" 
+                        className={`submenu-item ${isActive('/pos') ? 'active' : ''}`}
+                        onClick={() => setHoveredSection(null)}
+                      >
+                        <span className="item-icon">🛒</span>
+                        <span>POS</span>
+                      </Link>
+                    )}
+                    {isFeatureEnabled('sales', 'normal_sale') && (
+                      <Link 
+                        to="/normal-sale" 
+                        className={`submenu-item ${isActive('/normal-sale') ? 'active' : ''}`}
+                        onClick={() => setHoveredSection(null)}
+                      >
+                        <span className="item-icon">💼</span>
+                        <span>Normal Sale</span>
+                      </Link>
+                    )}
+                    {isFeatureEnabled('sales', 'sales_history') && (
+                      <Link 
+                        to="/sales" 
+                        className={`submenu-item ${isActive('/sales') ? 'active' : ''}`}
+                        onClick={() => setHoveredSection(null)}
+                      >
+                        <span className="item-icon">💰</span>
+                        <span>Sales History</span>
+                      </Link>
+                    )}
+                  </div>
+                )}
               </div>
             )}
             
             {/* Customers Section */}
             {isModuleEnabled('customers') && (
-              <div className="sidebar-section">
+              <div 
+                className="sidebar-section"
+                onMouseEnter={(e) => handleSectionHover('customers', e)}
+                onMouseLeave={handleSectionLeave}
+              >
                 <div className="section-header" onClick={() => toggleSection('customers')}>
                   <span>Customers</span>
                   <span className="section-arrow">{expandedSections.customers ? '▼' : '▶'}</span>
@@ -365,12 +568,34 @@ const Layout = ({ children }) => {
                     </Link>
                   </div>
                 )}
+                {/* Hover Sub-menu */}
+                {hoveredSection === 'customers' && !isMobile && (
+                  <div 
+                    className="submenu-panel" 
+                    style={{ top: `${submenuPosition.top}px` }}
+                    onMouseEnter={() => setHoveredSection('customers')}
+                    onMouseLeave={handleSectionLeave}
+                  >
+                    <Link 
+                      to="/customers" 
+                      className={`submenu-item ${isActive('/customers') ? 'active' : ''}`}
+                      onClick={() => setHoveredSection(null)}
+                    >
+                      <span className="item-icon">👥</span>
+                      <span>Customers</span>
+                    </Link>
+                  </div>
+                )}
               </div>
             )}
             
             {/* Invoicing Section */}
             {isModuleEnabled('invoicing') && (
-              <div className="sidebar-section">
+              <div 
+                className="sidebar-section"
+                onMouseEnter={(e) => handleSectionHover('invoicing', e)}
+                onMouseLeave={handleSectionLeave}
+              >
                 <div className="section-header" onClick={() => toggleSection('invoicing')}>
                   <span>Invoicing</span>
                   <span className="section-arrow">{expandedSections.invoicing ? '▼' : '▶'}</span>
@@ -383,12 +608,34 @@ const Layout = ({ children }) => {
                     </Link>
                   </div>
                 )}
+                {/* Hover Sub-menu */}
+                {hoveredSection === 'invoicing' && !isMobile && (
+                  <div 
+                    className="submenu-panel" 
+                    style={{ top: `${submenuPosition.top}px` }}
+                    onMouseEnter={() => setHoveredSection('invoicing')}
+                    onMouseLeave={handleSectionLeave}
+                  >
+                    <Link 
+                      to="/invoices" 
+                      className={`submenu-item ${isActive('/invoices') ? 'active' : ''}`}
+                      onClick={() => setHoveredSection(null)}
+                    >
+                      <span className="item-icon">📄</span>
+                      <span>Invoices</span>
+                    </Link>
+                  </div>
+                )}
               </div>
             )}
 
             {/* Reports Section */}
             {isModuleEnabled('reports') && (
-              <div className="sidebar-section">
+              <div 
+                className="sidebar-section"
+                onMouseEnter={(e) => handleSectionHover('reports', e)}
+                onMouseLeave={handleSectionLeave}
+              >
                 <div className="section-header" onClick={() => toggleSection('reports')}>
                   <span>Reports</span>
                   <span className="section-arrow">{expandedSections.reports ? '▼' : '▶'}</span>
@@ -432,12 +679,66 @@ const Layout = ({ children }) => {
                     </Link>
                   </div>
                 )}
+                {/* Hover Sub-menu */}
+                {hoveredSection === 'reports' && !isMobile && (
+                  <div 
+                    className="submenu-panel" 
+                    style={{ top: `${submenuPosition.top}px` }}
+                    onMouseEnter={() => setHoveredSection('reports')}
+                    onMouseLeave={handleSectionLeave}
+                  >
+                    <Link 
+                      to="/reports?report=sales" 
+                      className={`submenu-item ${isActive('/reports') && location.search.includes('report=sales') ? 'active' : ''}`}
+                      onClick={() => setHoveredSection(null)}
+                    >
+                      <span className="item-icon">📊</span>
+                      <span>Sales Summary</span>
+                    </Link>
+                    <Link 
+                      to="/reports?report=sales-by-method" 
+                      className={`submenu-item ${isActive('/reports') && location.search.includes('report=sales-by-method') ? 'active' : ''}`}
+                      onClick={() => setHoveredSection(null)}
+                    >
+                      <span className="item-icon">💳</span>
+                      <span>Sales by Payment</span>
+                    </Link>
+                    <Link 
+                      to="/reports?report=daily-sales" 
+                      className={`submenu-item ${isActive('/reports') && location.search.includes('report=daily-sales') ? 'active' : ''}`}
+                      onClick={() => setHoveredSection(null)}
+                    >
+                      <span className="item-icon">📅</span>
+                      <span>Daily Sales</span>
+                    </Link>
+                    <Link 
+                      to="/reports?report=products" 
+                      className={`submenu-item ${isActive('/reports') && location.search.includes('report=products') ? 'active' : ''}`}
+                      onClick={() => setHoveredSection(null)}
+                    >
+                      <span className="item-icon">📦</span>
+                      <span>Product Performance</span>
+                    </Link>
+                    <Link 
+                      to="/reports?report=inventory" 
+                      className={`submenu-item ${isActive('/reports') && location.search.includes('report=inventory') ? 'active' : ''}`}
+                      onClick={() => setHoveredSection(null)}
+                    >
+                      <span className="item-icon">📋</span>
+                      <span>Inventory Overview</span>
+                    </Link>
+                  </div>
+                )}
               </div>
             )}
 
             {/* Accounting Section */}
             {isModuleEnabled('accounting') && (
-              <div className="sidebar-section">
+              <div 
+                className="sidebar-section"
+                onMouseEnter={(e) => handleSectionHover('accounting', e)}
+                onMouseLeave={handleSectionLeave}
+              >
                 <div className="section-header" onClick={() => toggleSection('accounting')}>
                   <span>Finance & Accounts</span>
                   <span className="section-arrow">{expandedSections.accounting ? '▼' : '▶'}</span>
@@ -462,12 +763,54 @@ const Layout = ({ children }) => {
                     )}
                   </div>
                 )}
+                {/* Hover Sub-menu */}
+                {hoveredSection === 'accounting' && !isMobile && (
+                  <div 
+                    className="submenu-panel" 
+                    style={{ top: `${submenuPosition.top}px` }}
+                    onMouseEnter={() => setHoveredSection('accounting')}
+                    onMouseLeave={handleSectionLeave}
+                  >
+                    <Link 
+                      to="/accounting" 
+                      className={`submenu-item ${isActive('/accounting') ? 'active' : ''}`}
+                      onClick={() => setHoveredSection(null)}
+                    >
+                      <span className="item-icon">📊</span>
+                      <span>Accounting</span>
+                    </Link>
+                    {isModuleEnabled('expenses') && (
+                      <Link 
+                        to="/expenses" 
+                        className={`submenu-item ${isActive('/expenses') ? 'active' : ''}`}
+                        onClick={() => setHoveredSection(null)}
+                      >
+                        <span className="item-icon">💸</span>
+                        <span>Expenses</span>
+                      </Link>
+                    )}
+                    {isModuleEnabled('income') && (
+                      <Link 
+                        to="/income" 
+                        className={`submenu-item ${isActive('/income') ? 'active' : ''}`}
+                        onClick={() => setHoveredSection(null)}
+                      >
+                        <span className="item-icon">💰</span>
+                        <span>Income</span>
+                      </Link>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
             {/* Settings Section */}
             {isModuleEnabled('settings') && (
-              <div className="sidebar-section">
+              <div 
+                className="sidebar-section"
+                onMouseEnter={(e) => handleSectionHover('settings', e)}
+                onMouseLeave={handleSectionLeave}
+              >
                 <div className="section-header" onClick={() => toggleSection('settings')}>
                   <span>Settings</span>
                   <span className="section-arrow">{expandedSections.settings ? '▼' : '▶'}</span>
@@ -494,6 +837,56 @@ const Layout = ({ children }) => {
                     )}
                     {isSuperAdmin && (
                       <Link to="/branches" className={`sidebar-item ${isActive('/branches') ? 'active' : ''}`}>
+                        <span className="item-icon">🏢</span>
+                        <span>Branch Management</span>
+                      </Link>
+                    )}
+                  </div>
+                )}
+                {/* Hover Sub-menu */}
+                {hoveredSection === 'settings' && !isMobile && (
+                  <div 
+                    className="submenu-panel" 
+                    style={{ top: `${submenuPosition.top}px` }}
+                    onMouseEnter={() => setHoveredSection('settings')}
+                    onMouseLeave={handleSectionLeave}
+                  >
+                    {isFeatureEnabled('settings', 'user_management') && (
+                      <Link 
+                        to="/users" 
+                        className={`submenu-item ${isActive('/users') ? 'active' : ''}`}
+                        onClick={() => setHoveredSection(null)}
+                      >
+                        <span className="item-icon">👥</span>
+                        <span>User Management</span>
+                      </Link>
+                    )}
+                    {isFeatureEnabled('settings', 'role_management') && (
+                      <Link 
+                        to="/roles" 
+                        className={`submenu-item ${isActive('/roles') ? 'active' : ''}`}
+                        onClick={() => setHoveredSection(null)}
+                      >
+                        <span className="item-icon">🔐</span>
+                        <span>Role Management</span>
+                      </Link>
+                    )}
+                    {isSuperAdmin && (isFeatureEnabled('settings', 'module_settings') || isModuleEnabled('settings')) && (
+                      <Link 
+                        to="/module-settings" 
+                        className={`submenu-item ${isActive('/module-settings') ? 'active' : ''}`}
+                        onClick={() => setHoveredSection(null)}
+                      >
+                        <span className="item-icon">⚙️</span>
+                        <span>Module Settings</span>
+                      </Link>
+                    )}
+                    {isSuperAdmin && (
+                      <Link 
+                        to="/branches" 
+                        className={`submenu-item ${isActive('/branches') ? 'active' : ''}`}
+                        onClick={() => setHoveredSection(null)}
+                      >
                         <span className="item-icon">🏢</span>
                         <span>Branch Management</span>
                       </Link>

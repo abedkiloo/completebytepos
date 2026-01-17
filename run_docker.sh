@@ -56,16 +56,41 @@ check_docker() {
 stop_existing() {
     print_info "Stopping existing containers..."
     cd "$PROJECT_ROOT"
+    
+    # Stop dev containers
+    if [ -f "docker-compose.dev.yml" ]; then
+        $COMPOSE_CMD -f docker-compose.dev.yml down 2>/dev/null || true
+    fi
+    
+    # Stop regular containers
     $COMPOSE_CMD down 2>/dev/null || true
 }
 
 # Build and start
 start_containers() {
-    print_info "Building and starting Docker containers..."
+    print_info "Building and starting Docker containers in DEVELOPMENT mode..."
+    print_info "Hot reloading is enabled for both frontend and backend"
     cd "$PROJECT_ROOT"
     
-    $COMPOSE_CMD build --no-cache
-    $COMPOSE_CMD up -d
+    # Use development compose file
+    COMPOSE_FILE="docker-compose.dev.yml"
+    
+    # Check if docker-compose.dev.yml exists
+    if [ ! -f "$COMPOSE_FILE" ]; then
+        print_error "Development compose file not found: $COMPOSE_FILE"
+        exit 1
+    fi
+    
+    # Build without cache on first run, then use cache for faster rebuilds
+    if [ "$1" == "--rebuild" ]; then
+        print_info "Rebuilding images from scratch..."
+        $COMPOSE_CMD -f $COMPOSE_FILE build --no-cache
+    else
+        print_info "Building images (using cache if available)..."
+        $COMPOSE_CMD -f $COMPOSE_FILE build
+    fi
+    
+    $COMPOSE_CMD -f $COMPOSE_FILE up -d
     
     print_info "Waiting for services to be ready..."
     sleep 5
@@ -74,7 +99,7 @@ start_containers() {
         print_success "Containers are running"
     else
         print_error "Some containers failed to start!"
-        print_info "Check logs with: $COMPOSE_CMD logs"
+        print_info "Check logs with: $COMPOSE_CMD -f $COMPOSE_FILE logs"
         exit 1
     fi
 }
@@ -86,30 +111,40 @@ show_status() {
     echo -e "${GREEN}Docker containers started!${NC}"
     echo -e "${GREEN}========================================${NC}"
     echo ""
-    echo -e "Frontend: ${BLUE}http://localhost:3000${NC}"
+    echo -e "Frontend (Dev Server): ${BLUE}http://localhost:3000${NC}"
     echo -e "Backend API: ${BLUE}http://localhost:8000/api${NC}"
     echo -e "Admin Panel: ${BLUE}http://localhost:8000/admin${NC}"
+    echo ""
+    echo -e "${GREEN}✨ Hot Reloading Enabled:${NC}"
+    echo -e "  • Frontend: Changes to ${BLUE}fe/src${NC} will auto-reload"
+    echo -e "  • Backend: Changes to ${BLUE}be/**/*.py${NC} will auto-reload (via gunicorn --reload)"
     echo ""
     echo -e "Container Status:"
     docker ps --filter "name=completebytepos" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
     echo ""
-    echo -e "To view logs: ${YELLOW}$COMPOSE_CMD logs -f${NC}"
-    echo -e "To stop: ${YELLOW}./stop_docker.sh${NC} or ${YELLOW}$COMPOSE_CMD down${NC}"
+    echo -e "To view logs: ${YELLOW}$COMPOSE_CMD -f docker-compose.dev.yml logs -f${NC}"
+    echo -e "To view backend logs: ${YELLOW}$COMPOSE_CMD -f docker-compose.dev.yml logs -f backend${NC}"
+    echo -e "To view frontend logs: ${YELLOW}$COMPOSE_CMD -f docker-compose.dev.yml logs -f frontend${NC}"
+    echo -e "To stop: ${YELLOW}./stop_docker.sh${NC} or ${YELLOW}$COMPOSE_CMD -f docker-compose.dev.yml down${NC}"
+    echo -e "To rebuild: ${YELLOW}./run_docker.sh --rebuild${NC}"
     echo ""
     
     # Test connections
     print_info "Testing connections..."
-    sleep 3
+    sleep 8  # Give more time for React dev server to start
+    
     if curl -s http://localhost:8000/api/accounts/auth/me/ > /dev/null 2>&1; then
         print_success "Backend is responding"
     else
         print_warning "Backend may still be starting. Check logs if issues persist."
     fi
     
+    # React dev server takes longer to start
     if curl -s http://localhost:3000 > /dev/null 2>&1; then
-        print_success "Frontend is responding"
+        print_success "Frontend dev server is responding"
     else
-        print_warning "Frontend may still be starting. Check logs if issues persist."
+        print_warning "Frontend dev server may still be starting (this can take 30-60 seconds)."
+        print_info "Check logs with: $COMPOSE_CMD -f docker-compose.dev.yml logs -f frontend"
     fi
 }
 
@@ -117,7 +152,14 @@ show_status() {
 main() {
     check_docker
     stop_existing
-    start_containers
+    
+    # Check for --rebuild flag
+    if [ "$1" == "--rebuild" ]; then
+        start_containers --rebuild
+    else
+        start_containers
+    fi
+    
     show_status
 }
 

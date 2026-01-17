@@ -144,11 +144,6 @@ const StockTransferModal = ({ isOpen, onClose, onSuccess, product }) => {
               placeholder="Optional notes about this transfer"
             />
           </div>
-
-          <div className="form-actions">
-            <button type="button" onClick={onClose} className="btn btn-tertiary">
-              Cancel
-            </button>
           </form>
         </div>
         <div className="slide-in-panel-footer">

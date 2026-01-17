@@ -102,7 +102,8 @@ const IncomeForm = ({ income, categories, onClose, onSave }) => {
           <button className="slide-in-panel-close" onClick={onClose}>×</button>
         </div>
         
-        <form onSubmit={handleSubmit}>
+        <div className="slide-in-panel-body">
+          <form onSubmit={handleSubmit}>
           <div className="form-grid">
             <div className="form-group">
               <label>Category *</label>
@@ -226,7 +227,6 @@ const IncomeForm = ({ income, categories, onClose, onSave }) => {
               />
             </div>
           </div>
-
           </form>
         </div>
         <div className="slide-in-panel-footer">

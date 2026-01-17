@@ -22,6 +22,13 @@ else
 fi
 
 cd "$PROJECT_ROOT"
-$COMPOSE_CMD down
+
+# Stop dev containers first
+if [ -f "docker-compose.dev.yml" ]; then
+    $COMPOSE_CMD -f docker-compose.dev.yml down 2>/dev/null || true
+fi
+
+# Also stop any containers using regular compose file
+$COMPOSE_CMD down 2>/dev/null || true
 
 echo -e "${GREEN}Docker containers stopped${NC}"

@@ -151,10 +151,11 @@
   background: #ffffff;
   border-right: 1px solid #e5e7eb;
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: visible; /* Allow submenu to overflow */
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s;
   box-shadow: 2px 0 4px rgba(0, 0, 0, 0.05);
   -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+  position: relative; /* Ensure submenu positioning works */
 }
 
 .sidebar.closed {
@@ -188,6 +189,12 @@
 
 .sidebar-section {
   margin-bottom: 0.5rem;
+  position: relative;
+  z-index: 1;
+}
+
+.sidebar-section:hover {
+  z-index: 1002; /* Bring hovered section to front */
 }
 
 .section-header {
@@ -255,12 +262,117 @@
   text-align: center;
 }
 
+/* Submenu Panel - Hover Effect */
+.submenu-panel {
+  position: fixed;
+  left: 260px; /* Position to the right of sidebar (sidebar width) */
+  background: #f0fdf4; /* Light green background like reference image */
+  border: 1px solid #d1fae5;
+  border-left: none;
+  border-radius: 0 8px 8px 0;
+  box-shadow: 4px 0 12px rgba(0, 0, 0, 0.1);
+  min-width: 220px;
+  max-width: 280px;
+  padding: 0.5rem 0;
+  z-index: 1001;
+  animation: slideInFromLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  max-height: calc(100vh - 60px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin-left: 2px; /* Small gap from sidebar */
+  pointer-events: all;
+}
+
+@keyframes slideInFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-15px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Exit animation for submenu */
+.submenu-panel.exiting {
+  animation: slideOutToLeft 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes slideOutToLeft {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-15px);
+  }
+}
+
+.submenu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1.5rem;
+  color: #374151;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  font-size: 0.9rem;
+  border-left: 3px solid transparent;
+  position: relative;
+}
+
+.submenu-item:hover {
+  background: #dcfce7;
+  color: #059669;
+  border-left-color: #10b981;
+  font-weight: 500;
+}
+
+.submenu-item.active {
+  background: #bbf7d0;
+  color: #047857;
+  border-left-color: #10b981;
+  font-weight: 600;
+}
+
+.submenu-item .item-icon {
+  font-size: 1.1rem;
+  width: 20px;
+  text-align: center;
+}
+
+/* Adjust submenu position based on section position */
+.sidebar-section {
+  position: relative;
+}
+
+/* Smooth transition for section header on hover */
+.section-header {
+  position: relative;
+}
+
+.section-header:hover {
+  background: #f0f9ff;
+  color: #667eea;
+}
+
+/* Responsive: Hide submenu on mobile/tablet */
+@media (max-width: 1023px) {
+  .submenu-panel {
+    display: none !important;
+  }
+}
+
 /* Main Content */
 .main-content {
   flex: 1;
   overflow-y: auto;
   background: #f5f7fa;
   padding: 2rem;
+  position: relative;
+  z-index: 1; /* Ensure content is below submenu */
 }
 
 /* Responsive */
@@ -280,6 +392,18 @@
 
   .header-center {
     display: none;
+  }
+  
+  .submenu-panel {
+    display: none !important;
+  }
+}
+
+/* Ensure submenu doesn't overflow on smaller desktop screens */
+@media (min-width: 1024px) and (max-width: 1280px) {
+  .submenu-panel {
+    max-width: 240px;
+    min-width: 200px;
   }
 }
 
