@@ -5,6 +5,7 @@ import Layout from '../Layout/Layout';
 import { toast } from '../../utils/toast';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import '../../styles/shared.css';
+import '../../styles/slide-in-panel.css';
 import './Customers.css';
 
 const Customers = () => {
@@ -314,15 +315,16 @@ const Customers = () => {
                     Active
                   </label>
                 </div>
-                <div className="modal-actions">
-                  <button type="button" onClick={() => setShowModal(false)} className="btn-cancel">
-                    Cancel
-                  </button>
-                  <button type="submit" className="btn-submit">
-                    {selectedCustomer ? 'Update' : 'Create'}
-                  </button>
-                </div>
-              </form>
+                </form>
+              </div>
+              <div className="slide-in-panel-footer">
+                <button type="button" onClick={() => setShowModal(false)} className="btn btn-secondary">
+                  Cancel
+                </button>
+                <button type="submit" onClick={handleSubmit} className="btn btn-primary">
+                  {selectedCustomer ? 'Update' : 'Create'}
+                </button>
+              </div>
             </div>
           </div>
         )}

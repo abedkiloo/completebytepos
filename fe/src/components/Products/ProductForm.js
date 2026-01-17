@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { productsAPI, categoriesAPI, sizesAPI, colorsAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
+import '../../styles/slide-in-panel.css';
 import './Products.css';
 
 const ProductForm = ({ product, categories = [], onClose, onSave }) => {
@@ -230,14 +231,15 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
   };
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-content product-form-modal">
-        <div className="modal-header">
+    <div className="slide-in-overlay" onClick={onClose}>
+      <div className="slide-in-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="slide-in-panel-header">
           <h2>{product ? 'Edit Product' : 'Add Product'}</h2>
-          <button onClick={onClose} className="close-btn">×</button>
+          <button onClick={onClose} className="slide-in-panel-close">×</button>
         </div>
 
-        <form onSubmit={handleSubmit} className="product-form">
+        <div className="slide-in-panel-body">
+          <form onSubmit={handleSubmit} className="product-form">
           <div className="form-row">
             <div className="form-group">
               <label>Product Name *</label>
@@ -551,13 +553,14 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
             </label>
           </div>
 
-          <div className="form-actions">
-            <button type="button" onClick={onClose}>Cancel</button>
-            <button type="submit" disabled={loading}>
-              {loading ? 'Saving...' : product ? 'Update' : 'Create'}
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
+        <div className="slide-in-panel-footer">
+          <button type="button" onClick={onClose} className="btn btn-secondary">Cancel</button>
+          <button type="submit" onClick={handleSubmit} disabled={loading} className="btn btn-primary">
+            {loading ? 'Saving...' : product ? 'Update' : 'Create'}
+          </button>
+        </div>
       </div>
     </div>
   );

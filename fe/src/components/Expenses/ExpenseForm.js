@@ -134,14 +134,15 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content expense-form-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
+    <div className="slide-in-overlay" onClick={onClose}>
+      <div className="slide-in-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="slide-in-panel-header">
           <h2>{expense ? 'Edit Expense' : 'Add New Expense'}</h2>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <button className="slide-in-panel-close" onClick={onClose}>×</button>
         </div>
         
-        <form onSubmit={handleSubmit}>
+        <div className="slide-in-panel-body">
+          <form onSubmit={handleSubmit}>
           <div className="form-grid">
             <div className="form-group">
               <label>Category *</label>
@@ -327,15 +328,16 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
             </div>
           </div>
 
-          <div className="modal-footer">
-            <button type="button" onClick={onClose} disabled={loading}>
-              Cancel
-            </button>
-            <button type="submit" disabled={loading}>
-              {loading ? 'Saving...' : expense ? 'Update' : 'Create'}
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
+        <div className="slide-in-panel-footer">
+          <button type="button" onClick={onClose} disabled={loading} className="btn btn-secondary">
+            Cancel
+          </button>
+          <button type="submit" onClick={handleSubmit} disabled={loading} className="btn btn-primary">
+            {loading ? 'Saving...' : expense ? 'Update' : 'Create'}
+          </button>
+        </div>
       </div>
     </div>
   );

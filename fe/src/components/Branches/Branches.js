@@ -3,6 +3,7 @@ import { branchesAPI, usersAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import Layout from '../Layout/Layout';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
+import '../../styles/slide-in-panel.css';
 import './Branches.css';
 
 const Branches = () => {
@@ -235,13 +236,14 @@ const Branches = () => {
 
         {/* Branch Modal */}
         {showModal && (
-          <div className="modal-overlay" onClick={() => setShowModal(false)}>
-            <div className="modal-content branch-modal" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-header">
+          <div className="slide-in-overlay" onClick={() => setShowModal(false)}>
+            <div className="slide-in-panel" onClick={(e) => e.stopPropagation()}>
+              <div className="slide-in-panel-header">
                 <h2>{selectedBranch ? 'Edit Branch' : 'Create Branch'}</h2>
-                <button onClick={() => setShowModal(false)} className="close-btn">×</button>
+                <button onClick={() => setShowModal(false)} className="slide-in-panel-close">×</button>
               </div>
-              <form onSubmit={handleSubmit}>
+              <div className="slide-in-panel-body">
+                <form onSubmit={handleSubmit}>
                 <div className="form-row">
                   <div className="form-group">
                     <label>Branch Code *</label>
@@ -349,15 +351,16 @@ const Branches = () => {
                     </label>
                   </div>
                 </div>
-                <div className="modal-actions">
-                  <button type="button" onClick={() => setShowModal(false)} className="btn-cancel">
-                    Cancel
-                  </button>
-                  <button type="submit" className="btn-submit">
-                    {selectedBranch ? 'Update' : 'Create'}
-                  </button>
-                </div>
-              </form>
+                </form>
+              </div>
+              <div className="slide-in-panel-footer">
+                <button type="button" onClick={() => setShowModal(false)} className="btn btn-secondary">
+                  Cancel
+                </button>
+                <button type="submit" onClick={handleSubmit} className="btn btn-primary">
+                  {selectedBranch ? 'Update' : 'Create'}
+                </button>
+              </div>
             </div>
           </div>
         )}

@@ -101,14 +101,15 @@ const RoleForm = ({ role, permissions, onClose }) => {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content role-form-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
+    <div className="slide-in-overlay" onClick={onClose}>
+      <div className="slide-in-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="slide-in-panel-header">
           <h2>{role ? 'Edit Role' : 'Create New Role'}</h2>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <button className="slide-in-panel-close" onClick={onClose}>×</button>
         </div>
 
-        <form onSubmit={handleSubmit} className="role-form">
+        <div className="slide-in-panel-body">
+          <form onSubmit={handleSubmit} className="role-form">
           <div className="form-group">
             <label htmlFor="name">Role Name *</label>
             <input
@@ -192,15 +193,16 @@ const RoleForm = ({ role, permissions, onClose }) => {
             </div>
           </div>
 
-          <div className="modal-footer">
-            <button type="button" className="btn btn-secondary" onClick={onClose}>
-              Cancel
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={loading}>
-              {loading ? 'Saving...' : (role ? 'Update' : 'Create')}
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
+        <div className="slide-in-panel-footer">
+          <button type="button" className="btn btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" onClick={handleSubmit} className="btn btn-primary" disabled={loading}>
+            {loading ? 'Saving...' : (role ? 'Update' : 'Create')}
+          </button>
+        </div>
       </div>
     </div>
   );

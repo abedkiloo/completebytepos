@@ -69,13 +69,14 @@ const StockTransferModal = ({ isOpen, onClose, onSuccess, product }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content stock-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
+    <div className="slide-in-overlay" onClick={onClose}>
+      <div className="slide-in-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="slide-in-panel-header">
           <h2>Stock Transfer</h2>
-          <button onClick={onClose} className="close-btn">×</button>
+          <button onClick={onClose} className="slide-in-panel-close">×</button>
         </div>
-        <form onSubmit={handleSubmit} className="modal-body">
+        <div className="slide-in-panel-body">
+          <form onSubmit={handleSubmit} className="modal-body">
           {!product && (
             <div className="form-group">
               <label>Product *</label>
@@ -148,11 +149,14 @@ const StockTransferModal = ({ isOpen, onClose, onSuccess, product }) => {
             <button type="button" onClick={onClose} className="btn btn-tertiary">
               Cancel
             </button>
-            <button type="submit" disabled={loading || !formData.product_id || !formData.quantity} className="btn btn-primary">
-              {loading ? 'Transferring...' : 'Transfer Stock'}
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
+        <div className="slide-in-panel-footer">
+          <button type="button" onClick={onClose} className="btn btn-secondary">Cancel</button>
+          <button type="submit" onClick={handleSubmit} disabled={loading || !formData.product_id || !formData.quantity} className="btn btn-primary">
+            {loading ? 'Transferring...' : 'Transfer Stock'}
+          </button>
+        </div>
       </div>
     </div>
   );

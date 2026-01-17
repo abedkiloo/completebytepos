@@ -5,6 +5,7 @@ import Layout from '../Layout/Layout';
 import { toast } from '../../utils/toast';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import '../../styles/shared.css';
+import '../../styles/slide-in-panel.css';
 import './Invoices.css';
 
 const Invoices = () => {
@@ -391,13 +392,14 @@ const Invoices = () => {
 
         {/* Invoice Modal */}
         {showModal && (
-          <div className="modal-overlay" onClick={() => setShowModal(false)}>
-            <div className="modal-content invoice-modal" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-header">
+          <div className="slide-in-overlay" onClick={() => setShowModal(false)}>
+            <div className="slide-in-panel" onClick={(e) => e.stopPropagation()}>
+              <div className="slide-in-panel-header">
                 <h2>{selectedInvoice ? 'Edit Invoice' : 'Create Invoice'}</h2>
-                <button onClick={() => setShowModal(false)} className="close-btn">×</button>
+                <button onClick={() => setShowModal(false)} className="slide-in-panel-close">×</button>
               </div>
-              <form onSubmit={handleSubmit}>
+              <div className="slide-in-panel-body">
+                <form onSubmit={handleSubmit}>
                 <div className="form-group">
                   <label>Customer</label>
                   <select
@@ -518,34 +520,36 @@ const Invoices = () => {
                     rows="3"
                   />
                 </div>
-                <div className="modal-actions">
-                  <button type="button" onClick={() => setShowModal(false)} className="btn-cancel">
-                    Cancel
-                  </button>
-                  <button type="submit" className="btn-submit">
-                    {selectedInvoice ? 'Update' : 'Create'}
-                  </button>
-                </div>
-              </form>
+                </form>
+              </div>
+              <div className="slide-in-panel-footer">
+                <button type="button" onClick={() => setShowModal(false)} className="btn btn-secondary">
+                  Cancel
+                </button>
+                <button type="submit" onClick={handleSubmit} className="btn btn-primary">
+                  {selectedInvoice ? 'Update' : 'Create'}
+                </button>
+              </div>
             </div>
           </div>
         )}
 
         {/* Payment Modal */}
         {showPaymentModal && selectedInvoice && (
-          <div className="modal-overlay" onClick={() => setShowPaymentModal(false)}>
-            <div className="modal-content payment-modal" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-header">
+          <div className="slide-in-overlay" onClick={() => setShowPaymentModal(false)}>
+            <div className="slide-in-panel" onClick={(e) => e.stopPropagation()}>
+              <div className="slide-in-panel-header">
                 <h2>Record Payment</h2>
-                <button onClick={() => setShowPaymentModal(false)} className="close-btn">×</button>
+                <button onClick={() => setShowPaymentModal(false)} className="slide-in-panel-close">×</button>
               </div>
-              <div className="payment-info">
-                <p><strong>Invoice:</strong> {selectedInvoice.invoice_number}</p>
-                <p><strong>Total:</strong> {formatCurrency(selectedInvoice.total)}</p>
-                <p><strong>Paid:</strong> {formatCurrency(selectedInvoice.amount_paid || 0)}</p>
-                <p><strong>Balance:</strong> {formatCurrency(selectedInvoice.balance || 0)}</p>
-              </div>
-              <form onSubmit={handlePaymentSubmit}>
+              <div className="slide-in-panel-body">
+                <div className="payment-info">
+                  <p><strong>Invoice:</strong> {selectedInvoice.invoice_number}</p>
+                  <p><strong>Total:</strong> {formatCurrency(selectedInvoice.total)}</p>
+                  <p><strong>Paid:</strong> {formatCurrency(selectedInvoice.amount_paid || 0)}</p>
+                  <p><strong>Balance:</strong> {formatCurrency(selectedInvoice.balance || 0)}</p>
+                </div>
+                <form onSubmit={handlePaymentSubmit}>
                 <div className="form-group">
                   <label>Amount *</label>
                   <input
@@ -600,15 +604,16 @@ const Invoices = () => {
                     rows="3"
                   />
                 </div>
-                <div className="modal-actions">
-                  <button type="button" onClick={() => setShowPaymentModal(false)} className="btn-cancel">
-                    Cancel
-                  </button>
-                  <button type="submit" className="btn-submit">
-                    Record Payment
-                  </button>
-                </div>
-              </form>
+                </form>
+              </div>
+              <div className="slide-in-panel-footer">
+                <button type="button" onClick={() => setShowPaymentModal(false)} className="btn btn-secondary">
+                  Cancel
+                </button>
+                <button type="submit" onClick={handlePaymentSubmit} className="btn btn-primary">
+                  Record Payment
+                </button>
+              </div>
             </div>
           </div>
         )}

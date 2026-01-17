@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { incomeAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
+import '../../styles/slide-in-panel.css';
 import './Income.css';
 
 const IncomeForm = ({ income, categories, onClose, onSave }) => {
@@ -94,11 +95,11 @@ const IncomeForm = ({ income, categories, onClose, onSave }) => {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content income-form-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
+    <div className="slide-in-overlay" onClick={onClose}>
+      <div className="slide-in-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="slide-in-panel-header">
           <h2>{income ? 'Edit Income' : 'Add New Income'}</h2>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <button className="slide-in-panel-close" onClick={onClose}>×</button>
         </div>
         
         <form onSubmit={handleSubmit}>
@@ -226,15 +227,16 @@ const IncomeForm = ({ income, categories, onClose, onSave }) => {
             </div>
           </div>
 
-          <div className="modal-footer">
-            <button type="button" onClick={onClose} disabled={loading}>
-              Cancel
-            </button>
-            <button type="submit" disabled={loading}>
-              {loading ? 'Saving...' : income ? 'Update' : 'Create'}
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
+        <div className="slide-in-panel-footer">
+          <button type="button" onClick={onClose} disabled={loading} className="btn btn-secondary">
+            Cancel
+          </button>
+          <button type="submit" onClick={handleSubmit} disabled={loading} className="btn btn-primary">
+            {loading ? 'Saving...' : income ? 'Update' : 'Create'}
+          </button>
+        </div>
       </div>
     </div>
   );

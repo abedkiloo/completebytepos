@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { usersAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
+import '../../styles/slide-in-panel.css';
 
 const UserForm = ({ user, roles, onClose }) => {
   const [formData, setFormData] = useState({
@@ -92,14 +93,15 @@ const UserForm = ({ user, roles, onClose }) => {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content user-form-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
+    <div className="slide-in-overlay" onClick={onClose}>
+      <div className="slide-in-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="slide-in-panel-header">
           <h2>{user ? 'Edit User' : 'Create New User'}</h2>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <button className="slide-in-panel-close" onClick={onClose}>×</button>
         </div>
 
-        <form onSubmit={handleSubmit} className="user-form">
+        <div className="slide-in-panel-body">
+          <form onSubmit={handleSubmit} className="user-form">
           <div className="form-row">
             <div className="form-group">
               <label htmlFor="username">Username *</label>
@@ -237,15 +239,16 @@ const UserForm = ({ user, roles, onClose }) => {
             </div>
           </div>
 
-          <div className="modal-footer">
-            <button type="button" className="btn btn-secondary" onClick={onClose}>
-              Cancel
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={loading}>
-              {loading ? 'Saving...' : (user ? 'Update' : 'Create')}
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
+        <div className="slide-in-panel-footer">
+          <button type="button" className="btn btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" onClick={handleSubmit} className="btn btn-primary" disabled={loading}>
+            {loading ? 'Saving...' : (user ? 'Update' : 'Create')}
+          </button>
+        </div>
       </div>
     </div>
   );

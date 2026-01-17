@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { inventoryAPI, productsAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
+import '../../styles/slide-in-panel.css';
 import './Inventory.css';
 
 const StockPurchaseModal = ({ product, onClose, onSave }) => {
@@ -68,14 +69,15 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
   const totalCost = formData.quantity * (formData.unit_cost || 0);
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-content">
-        <div className="modal-header">
+    <div className="slide-in-overlay" onClick={onClose}>
+      <div className="slide-in-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="slide-in-panel-header">
           <h2>Record Stock Purchase</h2>
-          <button onClick={onClose} className="close-btn">×</button>
+          <button onClick={onClose} className="slide-in-panel-close">×</button>
         </div>
 
-        <form onSubmit={handleSubmit} className="stock-form">
+        <div className="slide-in-panel-body">
+          <form onSubmit={handleSubmit} className="stock-form">
           {error && <div className="error-message">{error}</div>}
 
           {!product && (
@@ -159,13 +161,14 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
             />
           </div>
 
-          <div className="form-actions">
-            <button type="button" onClick={onClose}>Cancel</button>
-            <button type="submit" disabled={loading}>
-              {loading ? 'Recording...' : 'Record Purchase'}
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
+        <div className="slide-in-panel-footer">
+          <button type="button" onClick={onClose} className="btn btn-secondary">Cancel</button>
+          <button type="submit" onClick={handleSubmit} disabled={loading} className="btn btn-primary">
+            {loading ? 'Recording...' : 'Record Purchase'}
+          </button>
+        </div>
       </div>
     </div>
   );

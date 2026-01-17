@@ -9,24 +9,36 @@
   justify-content: center;
   align-items: center;
   z-index: 10001;
+  animation: fadeIn 0.3s ease-out;
+  backdrop-filter: blur(2px);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .confirm-dialog {
   background: white;
-  border-radius: 8px;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
   min-width: 400px;
   max-width: 500px;
-  animation: scaleIn 0.2s ease-out;
+  animation: slideInScale 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: center;
 }
 
-@keyframes scaleIn {
+@keyframes slideInScale {
   from {
-    transform: scale(0.9);
+    transform: scale(0.9) translateY(-20px);
     opacity: 0;
   }
   to {
-    transform: scale(1);
+    transform: scale(1) translateY(0);
     opacity: 1;
   }
 }
