@@ -248,6 +248,16 @@ export const colorsAPI = {
   delete: (id) => api.delete(`/products/colors/${id}/`),
 };
 
+export const suppliersAPI = {
+  list: (params) => api.get('/suppliers/suppliers/', { params }),
+  get: (id) => api.get(`/suppliers/suppliers/${id}/`),
+  create: (data) => api.post('/suppliers/suppliers/', data),
+  update: (id, data) => api.put(`/suppliers/suppliers/${id}/`, data),
+  delete: (id) => api.delete(`/suppliers/suppliers/${id}/`),
+  statistics: () => api.get('/suppliers/suppliers/statistics/'),
+  products: (id) => api.get(`/suppliers/suppliers/${id}/products/`),
+};
+
 export const variantsAPI = {
   list: (params) => api.get('/products/variants/', { params }),
   get: (id) => api.get(`/products/variants/${id}/`),

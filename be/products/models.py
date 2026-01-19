@@ -130,8 +130,16 @@ class Product(models.Model):
     unit = models.CharField(max_length=20, choices=UNIT_CHOICES, default='piece')
     image = models.ImageField(upload_to='products/', blank=True, null=True)
     description = models.TextField(blank=True)
-    supplier = models.CharField(max_length=200, blank=True, help_text='Supplier name')
-    supplier_contact = models.CharField(max_length=100, blank=True, help_text='Supplier contact info')
+    supplier = models.ForeignKey(
+        'suppliers.Supplier',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='products',
+        help_text='Supplier for this product'
+    )
+    supplier_name = models.CharField(max_length=200, blank=True, help_text='Legacy supplier name (deprecated - use supplier FK)')
+    supplier_contact = models.CharField(max_length=100, blank=True, help_text='Legacy supplier contact (deprecated - use supplier FK)')
     tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0, validators=[MinValueValidator(0)], help_text='Tax rate percentage')
     is_taxable = models.BooleanField(default=True)
     track_stock = models.BooleanField(default=True, help_text='Track inventory for this product')

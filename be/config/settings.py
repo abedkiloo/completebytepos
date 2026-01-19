@@ -88,6 +88,7 @@ INSTALLED_APPS = [
     'income',
     'bankaccounts',
     'transfers',
+    'suppliers',
     'settings',  # Settings app for module settings and future system settings
 ]
 

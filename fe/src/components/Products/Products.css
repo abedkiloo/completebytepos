@@ -1249,6 +1249,70 @@
   margin-top: 0.25rem;
 }
 
+/* Select with Add Button */
+.select-with-add {
+  position: relative;
+  width: 100%;
+}
+
+/* Category Form Styles */
+.category-form {
+  padding: 0;
+}
+
+.category-form .form-group {
+  margin-bottom: 1.5rem;
+}
+
+.category-form .form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.category-form .form-group input[type="text"],
+.category-form .form-group textarea,
+.category-form .form-group select {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.category-form .form-group input[type="text"]:focus,
+.category-form .form-group textarea:focus,
+.category-form .form-group select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.category-form .form-group textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.category-form .form-group .form-text {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.category-form .form-group .error {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: #ef4444;
+}
+
+.category-form .form-group label input[type="checkbox"] {
+  margin-right: 0.5rem;
+}
+
 .image-preview {
   max-width: 200px;
   max-height: 200px;

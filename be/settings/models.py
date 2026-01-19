@@ -8,6 +8,7 @@ class ModuleSettings(models.Model):
         ('products', 'Products Management'),
         ('sales', 'Sales'),
         ('customers', 'Customer Management'),
+        ('suppliers', 'Supplier Management'),
         ('invoicing', 'Invoicing'),
         ('inventory', 'Inventory Management'),
         ('stock', 'Stock Management'),
@@ -88,6 +89,13 @@ class ModuleFeature(models.Model):
             ('customer_reports', 'Customer Reports'),
             ('barcode_check', 'Barcode Check'),
             ('qr_code_check', 'QR Code Check'),
+        ],
+        'suppliers': [
+            ('supplier_management', 'Supplier Management'),
+            ('supplier_products', 'Supplier Products'),
+            ('supplier_reports', 'Supplier Reports'),
+            ('supplier_purchases', 'Supplier Purchase History'),
+            ('credit_management', 'Credit Management'),
         ],
         'invoicing': [
             ('invoice_creation', 'Invoice Creation'),

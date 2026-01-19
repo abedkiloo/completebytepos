@@ -23,6 +23,7 @@ import Accounting from './components/Accounting/Accounting';
 import Users from './components/Users/Users';
 import Roles from './components/Roles/Roles';
 import Customers from './components/Customers/Customers';
+import Suppliers from './components/Suppliers/Suppliers';
 import NormalSale from './components/NormalSale/NormalSale';
 import ModuleSettings from './components/ModuleSettings/ModuleSettings';
 import Invoices from './components/Invoices/Invoices';
@@ -169,6 +170,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <Customers />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/suppliers"
+            element={
+              <ProtectedRoute>
+                <Suppliers />
               </ProtectedRoute>
             }
           />

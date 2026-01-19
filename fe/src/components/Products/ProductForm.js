@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { productsAPI, categoriesAPI, sizesAPI, colorsAPI } from '../../services/api';
+import { productsAPI, categoriesAPI, sizesAPI, colorsAPI, suppliersAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
+import SearchableSelect from '../Shared/SearchableSelect';
+import CategoryForm from './CategoryForm';
+import SupplierForm from '../Suppliers/SupplierForm';
 import '../../styles/slide-in-panel.css';
 import './Products.css';
 
@@ -22,6 +25,7 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
     unit: 'piece',
     description: '',
     supplier: '',
+    supplier_name: '',
     supplier_contact: '',
     tax_rate: 0,
     is_taxable: true,
@@ -35,6 +39,11 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
   const [subcategories, setSubcategories] = useState([]);
   const [sizes, setSizes] = useState([]);
   const [colors, setColors] = useState([]);
+  const [showCategoryForm, setShowCategoryForm] = useState(false);
+  const [showSubcategoryForm, setShowSubcategoryForm] = useState(false);
+  const [showSupplierForm, setShowSupplierForm] = useState(false);
+  const [allCategories, setAllCategories] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
 
   useEffect(() => {
     // Load sizes and colors
@@ -51,6 +60,36 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
       }
     };
     loadSizesAndColors();
+  }, []);
+
+  useEffect(() => {
+    // Load all categories for the searchable dropdown
+    const loadAllCategories = async () => {
+      try {
+        const response = await categoriesAPI.list({ is_active: 'true' });
+        const categoriesData = response.data.results || response.data || [];
+        setAllCategories(Array.isArray(categoriesData) ? categoriesData : []);
+      } catch (error) {
+        console.error('Error loading categories:', error);
+      }
+    };
+    loadAllCategories();
+  }, []);
+
+  useEffect(() => {
+    // Load suppliers for the searchable dropdown
+    const loadSuppliers = async () => {
+      try {
+        const response = await suppliersAPI.list({ is_active: 'true' });
+        const suppliersData = response.data.results || response.data || [];
+        setSuppliers(Array.isArray(suppliersData) ? suppliersData : []);
+      } catch (error) {
+        console.error('Error loading suppliers:', error);
+        // If suppliers module is disabled, just set empty array
+        setSuppliers([]);
+      }
+    };
+    loadSuppliers();
   }, []);
 
   useEffect(() => {
@@ -110,7 +149,8 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
         reorder_quantity: product.reorder_quantity || 50,
         unit: product.unit || 'piece',
         description: product.description || '',
-        supplier: product.supplier || '',
+        supplier: product.supplier ? String(product.supplier) : (product.supplier_detail?.id ? String(product.supplier_detail.id) : ''),
+        supplier_name: product.supplier_name || product.supplier_name_display || (product.supplier_detail?.name || ''),
         supplier_contact: product.supplier_contact || '',
         tax_rate: product.tax_rate || 0,
         is_taxable: product.is_taxable !== undefined ? product.is_taxable : true,
@@ -137,6 +177,78 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
         return newErrors;
       });
     }
+  };
+
+  const handleCategoryCreated = (newCategory) => {
+    // Reload all categories
+    const loadAllCategories = async () => {
+      try {
+        const response = await categoriesAPI.list({ is_active: 'true' });
+        const categoriesData = response.data.results || response.data || [];
+        const updatedCategories = Array.isArray(categoriesData) ? categoriesData : [];
+        setAllCategories(updatedCategories);
+        
+        // If it's a parent category, select it
+        if (!newCategory.parent) {
+          setFormData(prev => ({ ...prev, category: String(newCategory.id) }));
+        } else {
+          // If it's a subcategory, select its parent and the subcategory
+          setFormData(prev => ({ 
+            ...prev, 
+            category: String(newCategory.parent),
+            subcategory: String(newCategory.id)
+          }));
+        }
+      } catch (error) {
+        console.error('Error reloading categories:', error);
+      }
+    };
+    loadAllCategories();
+  };
+
+  const handleSubcategoryCreated = (newSubcategory) => {
+    // Reload all categories first
+    const loadAllCategories = async () => {
+      try {
+        const response = await categoriesAPI.list({ is_active: 'true' });
+        const categoriesData = response.data.results || response.data || [];
+        const updatedCategories = Array.isArray(categoriesData) ? categoriesData : [];
+        setAllCategories(updatedCategories);
+        
+        // Reload subcategories for the current category
+        const subcatResponse = await categoriesAPI.list({ parent: formData.category, is_active: 'true' });
+        const newSubcategories = subcatResponse.data.results || subcatResponse.data || [];
+        setSubcategories(newSubcategories);
+        
+        // Select the newly created subcategory
+        setFormData(prev => ({ ...prev, subcategory: String(newSubcategory.id) }));
+      } catch (error) {
+        console.error('Error reloading categories/subcategories:', error);
+      }
+    };
+    loadAllCategories();
+  };
+
+  const handleSupplierCreated = (newSupplier) => {
+    // Reload suppliers
+    const loadSuppliers = async () => {
+      try {
+        const response = await suppliersAPI.list({ is_active: 'true' });
+        const suppliersData = response.data.results || response.data || [];
+        const updatedSuppliers = Array.isArray(suppliersData) ? suppliersData : [];
+        setSuppliers(updatedSuppliers);
+        
+        // Select the newly created supplier
+        setFormData(prev => ({ 
+          ...prev, 
+          supplier: String(newSupplier.id),
+          supplier_name: newSupplier.name
+        }));
+      } catch (error) {
+        console.error('Error reloading suppliers:', error);
+      }
+    };
+    loadSuppliers();
   };
 
   const handleImageChange = (e) => {
@@ -280,33 +392,41 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
 
             <div className="form-group">
               <label>Category</label>
-              <select
-                name="category"
-                value={formData.category}
-                onChange={handleChange}
-              >
-                <option value="">No Category</option>
-                {Array.isArray(categories) && categories
-                  .filter(cat => !cat.parent) // Only show parent categories
-                  .map(cat => (
-                    <option key={cat.id} value={cat.id}>{cat.name}</option>
-                  ))}
-              </select>
+              <div className="select-with-add">
+                <SearchableSelect
+                  name="category"
+                  value={formData.category}
+                  onChange={handleChange}
+                  options={allCategories.filter(cat => !cat.parent).map(cat => ({
+                    id: cat.id,
+                    name: cat.name
+                  }))}
+                  placeholder="Select category..."
+                  searchable={true}
+                  onAddNew={() => setShowCategoryForm(true)}
+                  addNewLabel="+ Add New Category"
+                />
+              </div>
             </div>
 
             <div className="form-group">
               <label>Subcategory</label>
-              <select
-                name="subcategory"
-                value={formData.subcategory}
-                onChange={handleChange}
-                disabled={!formData.category}
-              >
-                <option value="">No Subcategory</option>
-                {subcategories.map(subcat => (
-                  <option key={subcat.id} value={subcat.id}>{subcat.name}</option>
-                ))}
-              </select>
+              <div className="select-with-add">
+                <SearchableSelect
+                  name="subcategory"
+                  value={formData.subcategory}
+                  onChange={handleChange}
+                  options={subcategories.map(subcat => ({
+                    id: subcat.id,
+                    name: subcat.name
+                  }))}
+                  placeholder={formData.category ? "Select subcategory..." : "Select a category first"}
+                  searchable={true}
+                  disabled={!formData.category}
+                  onAddNew={formData.category ? () => setShowSubcategoryForm(true) : undefined}
+                  addNewLabel="+ Add New Subcategory"
+                />
+              </div>
             </div>
           </div>
 
@@ -467,23 +587,45 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
 
           <div className="form-row">
             <div className="form-group">
-              <label>Supplier</label>
-              <input
-                type="text"
-                name="supplier"
-                value={formData.supplier}
-                onChange={handleChange}
-              />
+              <label>Supplier (Optional)</label>
+              <div className="select-with-add">
+                <SearchableSelect
+                  name="supplier"
+                  value={formData.supplier}
+                  onChange={handleChange}
+                  options={suppliers.map(sup => ({
+                    id: sup.id,
+                    name: sup.name
+                  }))}
+                  placeholder="Select supplier (optional)..."
+                  searchable={true}
+                  onAddNew={() => {
+                    setShowSupplierForm(true);
+                  }}
+                  addNewLabel="+ Add New Supplier"
+                />
+              </div>
+              {formData.supplier_name && !formData.supplier && (
+                <small className="form-text">Legacy supplier: {formData.supplier_name}</small>
+              )}
+              {suppliers.length === 0 && (
+                <small className="form-text">No suppliers available. Click "+ Add New Supplier" to create one.</small>
+              )}
             </div>
 
             <div className="form-group">
-              <label>Supplier Contact</label>
+              <label>Supplier Contact (Legacy - Optional)</label>
               <input
                 type="text"
                 name="supplier_contact"
                 value={formData.supplier_contact}
                 onChange={handleChange}
+                placeholder="Legacy field - use supplier dropdown above"
+                disabled={!!formData.supplier}
               />
+              {formData.supplier && (
+                <small className="form-text">Using selected supplier above</small>
+              )}
             </div>
           </div>
 
@@ -562,6 +704,32 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
           </button>
         </div>
       </div>
+
+      {/* Category Form - Nested Slide-in Panel */}
+      <CategoryForm
+        isOpen={showCategoryForm}
+        onClose={() => setShowCategoryForm(false)}
+        onSave={handleCategoryCreated}
+        categories={allCategories}
+      />
+
+      {/* Subcategory Form - Nested Slide-in Panel */}
+      <CategoryForm
+        isOpen={showSubcategoryForm}
+        onClose={() => setShowSubcategoryForm(false)}
+        onSave={handleSubcategoryCreated}
+        parentCategory={formData.category}
+        categories={allCategories}
+      />
+
+      {/* Supplier Form - Nested Slide-in Panel - Only show when explicitly requested */}
+      {showSupplierForm && (
+        <SupplierForm
+          supplier={null}
+          onClose={() => setShowSupplierForm(false)}
+          onSave={handleSupplierCreated}
+        />
+      )}
     </div>
   );
 };

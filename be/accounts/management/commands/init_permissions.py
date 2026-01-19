@@ -28,6 +28,14 @@ class Command(BaseCommand):
             ('categories', 'update', 'Update categories'),
             ('categories', 'delete', 'Delete categories'),
             
+            # Suppliers
+            ('suppliers', 'view', 'View suppliers'),
+            ('suppliers', 'create', 'Create suppliers'),
+            ('suppliers', 'update', 'Update suppliers'),
+            ('suppliers', 'delete', 'Delete suppliers'),
+            ('suppliers', 'export', 'Export suppliers'),
+            ('suppliers', 'manage', 'Manage suppliers'),
+            
             # Inventory
             ('inventory', 'view', 'View inventory'),
             ('inventory', 'create', 'Create inventory movements'),
@@ -179,7 +187,7 @@ class Command(BaseCommand):
         )
         if created:
             manager_permissions = Permission.objects.filter(
-                module__in=['products', 'categories', 'inventory', 'sales', 'pos', 
+                module__in=['products', 'categories', 'suppliers', 'inventory', 'sales', 'pos', 
                            'barcodes', 'reports', 'expenses', 'income']
             ).exclude(action='delete')
             manager_role.permissions.set(manager_permissions)

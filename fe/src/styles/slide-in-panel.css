@@ -16,6 +16,18 @@
   backdrop-filter: blur(2px);
 }
 
+/* Nested slide-in panel (for category form within product form) */
+.slide-in-overlay.nested {
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.slide-in-panel.nested {
+  z-index: 2001;
+  width: 50%;
+  max-width: 600px;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;

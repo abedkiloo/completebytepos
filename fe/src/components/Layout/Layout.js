@@ -20,6 +20,7 @@ const Layout = ({ children }) => {
     stock: false,
     sales: false,
     customers: false,
+    suppliers: false,
     invoicing: false,
     reports: false,
     accounting: false,
@@ -472,7 +473,47 @@ const Layout = ({ children }) => {
                 )}
               </div>
             )}
-
+            
+            {/* Suppliers Section */}
+            {isModuleEnabled('suppliers') && (
+              <div 
+                className="sidebar-section"
+                onMouseEnter={(e) => handleSectionHover('suppliers', e)}
+                onMouseLeave={handleSectionLeave}
+              >
+                <div className="section-header" onClick={() => toggleSection('suppliers')}>
+                  <span>Suppliers</span>
+                  <span className="section-arrow">{expandedSections.suppliers ? '▼' : '▶'}</span>
+                </div>
+                {expandedSections.suppliers && (
+                  <div className="section-items">
+                    <Link to="/suppliers" className={`sidebar-item ${isActive('/suppliers') ? 'active' : ''}`}>
+                      <span className="item-icon">🏭</span>
+                      <span>Suppliers</span>
+                    </Link>
+                  </div>
+                )}
+                {/* Hover Sub-menu */}
+                {hoveredSection === 'suppliers' && !isMobile && (
+                  <div 
+                    className="submenu-panel" 
+                    style={{ top: `${submenuPosition.top}px` }}
+                    onMouseEnter={() => setHoveredSection('suppliers')}
+                    onMouseLeave={handleSectionLeave}
+                  >
+                    <Link 
+                      to="/suppliers" 
+                      className={`submenu-item ${isActive('/suppliers') ? 'active' : ''}`}
+                      onClick={() => setHoveredSection(null)}
+                    >
+                      <span className="item-icon">🏭</span>
+                      <span>Suppliers</span>
+                    </Link>
+                  </div>
+                )}
+              </div>
+            )}
+            
             {/* Sales Section - Updated with Customers and Invoicing */}
             {isModuleEnabled('sales') && (
               <div 

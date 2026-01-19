@@ -90,6 +90,8 @@ class ProductSerializer(serializers.ModelSerializer):
     total_value = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     needs_reorder = serializers.BooleanField(read_only=True)
     image_url = serializers.SerializerMethodField()
+    supplier_name_display = serializers.SerializerMethodField()
+    supplier_detail = serializers.SerializerMethodField()
     
     class Meta:
         model = Product
@@ -100,12 +102,75 @@ class ProductSerializer(serializers.ModelSerializer):
             'has_variants', 'available_sizes', 'available_sizes_detail',
             'available_colors', 'available_colors_detail', 'variants',
             'price', 'cost', 'stock_quantity', 'low_stock_threshold', 'reorder_quantity',
-            'unit', 'image', 'image_url', 'description', 'supplier', 'supplier_contact',
+            'unit', 'image', 'image_url', 'description', 
+            'supplier', 'supplier_name', 'supplier_name_display', 'supplier_detail', 'supplier_contact',
             'tax_rate', 'is_taxable', 'track_stock', 'is_low_stock', 'needs_reorder',
             'profit_margin', 'profit_amount', 'total_value', 'is_active',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at', 'sku']
+    
+    def to_internal_value(self, data):
+        """Convert category/subcategory objects to IDs if needed"""
+        # Make a copy to avoid mutating the original
+        data = data.copy() if hasattr(data, 'copy') else dict(data)
+        
+        # Handle category field
+        if 'category' in data:
+            category = data['category']
+            if category is not None and category != '':
+                # Check if it's a Category object
+                from .models import Category
+                if isinstance(category, Category):
+                    data['category'] = category.id
+                elif hasattr(category, 'id'):  # It's an object with id attribute
+                    data['category'] = category.id
+                elif isinstance(category, dict) and 'id' in category:  # It's a dict with id
+                    data['category'] = category['id']
+                elif isinstance(category, str) and category.isdigit():  # It's a string number
+                    data['category'] = int(category)
+            else:
+                data['category'] = None
+        
+        # Handle subcategory field
+        if 'subcategory' in data:
+            subcategory = data['subcategory']
+            if subcategory is not None and subcategory != '':
+                # Check if it's a Category object
+                from .models import Category
+                if isinstance(subcategory, Category):
+                    data['subcategory'] = subcategory.id
+                elif hasattr(subcategory, 'id'):  # It's an object with id attribute
+                    data['subcategory'] = subcategory.id
+                elif isinstance(subcategory, dict) and 'id' in subcategory:  # It's a dict with id
+                    data['subcategory'] = subcategory['id']
+                elif isinstance(subcategory, str) and subcategory.isdigit():  # It's a string number
+                    data['subcategory'] = int(subcategory)
+            else:
+                data['subcategory'] = None
+        
+        # Handle supplier field
+        if 'supplier' in data:
+            supplier = data['supplier']
+            if supplier is not None and supplier != '':
+                # Check if it's a Supplier object
+                try:
+                    from suppliers.models import Supplier
+                    if isinstance(supplier, Supplier):
+                        data['supplier'] = supplier.id
+                    elif hasattr(supplier, 'id'):  # It's an object with id attribute
+                        data['supplier'] = supplier.id
+                    elif isinstance(supplier, dict) and 'id' in supplier:  # It's a dict with id
+                        data['supplier'] = supplier['id']
+                    elif isinstance(supplier, str) and supplier.isdigit():  # It's a string number
+                        data['supplier'] = int(supplier)
+                except ImportError:
+                    # Suppliers app might not be available
+                    pass
+            else:
+                data['supplier'] = None
+        
+        return super().to_internal_value(data)
     
     def get_category_name(self, obj):
         return obj.category.name if obj.category else None
@@ -121,6 +186,19 @@ class ProductSerializer(serializers.ModelSerializer):
     def get_subcategory_detail(self, obj):
         if obj.subcategory:
             return CategoryListSerializer(obj.subcategory).data
+        return None
+    
+    def get_supplier_name_display(self, obj):
+        """Get supplier name - from FK if available, otherwise from legacy field"""
+        if obj.supplier:
+            return obj.supplier.name
+        return obj.supplier_name or ''
+    
+    def get_supplier_detail(self, obj):
+        """Get full supplier details if supplier FK is set"""
+        if obj.supplier:
+            from suppliers.serializers import SupplierListSerializer
+            return SupplierListSerializer(obj.supplier, context=self.context).data
         return None
     
     def get_image_url(self, obj):
@@ -160,6 +238,16 @@ class ProductSerializer(serializers.ModelSerializer):
         category_id = data.get('category')
         subcategory_id = data.get('subcategory')
         
+        # Handle case where category/subcategory might be objects instead of IDs
+        from .models import Category
+        if category_id and isinstance(category_id, Category):
+            category_id = category_id.id
+            data['category'] = category_id
+        
+        if subcategory_id and isinstance(subcategory_id, Category):
+            subcategory_id = subcategory_id.id
+            data['subcategory'] = subcategory_id
+        
         # If updating, use instance values if not provided in data
         if self.instance:
             if category_id is None:
@@ -168,17 +256,24 @@ class ProductSerializer(serializers.ModelSerializer):
                 subcategory_id = self.instance.subcategory_id
         
         if subcategory_id and category_id:
-            # Fetch the actual Category objects to check parent relationship
-            from .models import Category
+            # Ensure both are integers
             try:
-                subcategory = Category.objects.get(id=subcategory_id)
-                if subcategory.parent_id != category_id:
-                    raise serializers.ValidationError({
-                        'subcategory': 'Subcategory must be a child of the main category.'
-                    })
-            except Category.DoesNotExist:
-                # Category doesn't exist, but this will be caught by field validation
+                category_id = int(category_id) if category_id else None
+                subcategory_id = int(subcategory_id) if subcategory_id else None
+            except (ValueError, TypeError):
                 pass
+            
+            if subcategory_id and category_id:
+                # Fetch the actual Category objects to check parent relationship
+                try:
+                    subcategory = Category.objects.get(id=subcategory_id)
+                    if subcategory.parent_id != category_id:
+                        raise serializers.ValidationError({
+                            'subcategory': 'Subcategory must be a child of the main category.'
+                        })
+                except Category.DoesNotExist:
+                    # Category doesn't exist, but this will be caught by field validation
+                    pass
         
         return data
     
@@ -187,6 +282,24 @@ class ProductSerializer(serializers.ModelSerializer):
         # Extract ManyToMany fields
         available_sizes = validated_data.pop('available_sizes', [])
         available_colors = validated_data.pop('available_colors', [])
+        
+        # Ensure category and subcategory are IDs, not objects
+        from .models import Category
+        if 'category' in validated_data and isinstance(validated_data['category'], Category):
+            validated_data['category'] = validated_data['category'].id
+        if 'subcategory' in validated_data and isinstance(validated_data['subcategory'], Category):
+            validated_data['subcategory'] = validated_data['subcategory'].id
+        
+        # Ensure supplier is ID, not object
+        if 'supplier' in validated_data:
+            supplier = validated_data['supplier']
+            if supplier and supplier != '':
+                if hasattr(supplier, 'id'):
+                    validated_data['supplier'] = supplier.id
+                elif isinstance(supplier, str) and supplier.isdigit():
+                    validated_data['supplier'] = int(supplier)
+            else:
+                validated_data['supplier'] = None
         
         # Create product instance with error handling
         try:
@@ -216,6 +329,7 @@ class ProductSerializer(serializers.ModelSerializer):
         available_colors = validated_data.pop('available_colors', None)
         
         # Ensure category and subcategory are IDs, not objects
+        from .models import Category
         if 'category' in validated_data:
             category = validated_data['category']
             if category and hasattr(category, 'id'):
@@ -229,6 +343,17 @@ class ProductSerializer(serializers.ModelSerializer):
                 validated_data['subcategory'] = subcategory.id
             elif subcategory == '' or subcategory is None:
                 validated_data['subcategory'] = None
+        
+        # Ensure supplier is ID, not object
+        if 'supplier' in validated_data:
+            supplier = validated_data['supplier']
+            if supplier and supplier != '':
+                if hasattr(supplier, 'id'):
+                    validated_data['supplier'] = supplier.id
+                elif isinstance(supplier, str) and supplier.isdigit():
+                    validated_data['supplier'] = int(supplier)
+            else:
+                validated_data['supplier'] = None
         
         # Update regular fields
         for attr, value in validated_data.items():

@@ -220,10 +220,11 @@ const ModuleSettings = () => {
       'bank_accounts': '🏦',
       'money_transfer': '🔄',
       'accounting': '📊',
-      'balance_sheet': '📊',
+      'balance_sheet': '📋',
       'trial_balance': '⚖️',
       'cash_flow': '💵',
       'account_statement': '📄',
+      'suppliers': '🏭',
       'barcodes': '🏷️',
       'reports': '📈',
       'settings': '⚙️',
@@ -340,9 +341,13 @@ const ModuleSettings = () => {
     if (['expenses', 'income', 'bank_accounts', 'money_transfer'].includes(moduleName)) {
       return 'Financial Management';
     }
-    // Accounting & Reporting
-    if (['accounting', 'balance_sheet', 'trial_balance', 'cash_flow', 'account_statement', 'reports'].includes(moduleName)) {
-      return 'Accounting & Reporting';
+    // Accounting - All accounting items in one column
+    if (['accounting', 'balance_sheet', 'trial_balance', 'cash_flow', 'account_statement'].includes(moduleName)) {
+      return 'Accounting';
+    }
+    // General Reporting
+    if (['reports'].includes(moduleName)) {
+      return 'Reporting';
     }
     // Tools & Utilities
     if (['barcodes'].includes(moduleName)) {
@@ -351,6 +356,10 @@ const ModuleSettings = () => {
     // System Administration
     if (['settings'].includes(moduleName)) {
       return 'System Administration';
+    }
+    // Suppliers
+    if (['suppliers'].includes(moduleName)) {
+      return 'Supplier Management';
     }
     return 'Other';
   };
@@ -363,6 +372,19 @@ const ModuleSettings = () => {
     acc[category].push(module);
     return acc;
   }, {});
+
+  // Sort accounting modules: accounting first, then reports in specific order
+  if (groupedModules['Accounting']) {
+    const accountingOrder = ['accounting', 'balance_sheet', 'trial_balance', 'cash_flow', 'account_statement'];
+    groupedModules['Accounting'].sort((a, b) => {
+      const aIndex = accountingOrder.indexOf(a.module_name);
+      const bIndex = accountingOrder.indexOf(b.module_name);
+      if (aIndex === -1 && bIndex === -1) return 0;
+      if (aIndex === -1) return 1;
+      if (bIndex === -1) return -1;
+      return aIndex - bIndex;
+    });
+  }
 
   const getEnabledFeaturesCount = (module) => {
     const features = Object.values(module.features || {});
@@ -485,7 +507,7 @@ const ModuleSettings = () => {
               const categoryStatus = getCategoryStatus(categoryModules);
               
               return (
-                <div key={category} className="module-category">
+                <div key={category} className="module-category" data-category={category}>
                   <div className="category-header">
                     <h2 className="category-title">{category}</h2>
                     <div className="category-actions">
@@ -543,30 +565,19 @@ const ModuleSettings = () => {
                                   </span>
                                 )}
                               </div>
-                              <div className="module-description-container">
-                                {module.description && (
-                                  <p className="module-description">
-                                    {module.description}
-                                  </p>
-                                )}
-                                <div className="module-tip" title="What this module does and when to use it">
-                                  <span className="tip-icon">💡</span>
-                                  <span className="tip-text">{getModuleTips(module.module_name)}</span>
+                              {isSettingsModule && module.is_enabled && (
+                                <div style={{ 
+                                  marginTop: '0.25rem', 
+                                  padding: '0.25rem 0.5rem',
+                                  background: '#fef3c7',
+                                  borderRadius: '3px',
+                                  fontSize: '0.6875rem', 
+                                  color: '#92400e',
+                                  border: '1px solid #fcd34d'
+                                }}>
+                                  ⚠️ Critical
                                 </div>
-                                {isSettingsModule && module.is_enabled && (
-                                  <div style={{ 
-                                    marginTop: '0.75rem', 
-                                    padding: '0.5rem 0.75rem',
-                                    background: '#fef3c7',
-                                    borderRadius: '6px',
-                                    fontSize: '0.8125rem', 
-                                    color: '#92400e',
-                                    border: '1px solid #fcd34d'
-                                  }}>
-                                    ⚠️ <strong>Warning:</strong> Disabling this module will prevent access to module settings
-                                  </div>
-                                )}
-                              </div>
+                              )}
                             </div>
                           </div>
                           

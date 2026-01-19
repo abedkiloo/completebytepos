@@ -36,6 +36,18 @@ class Command(BaseCommand):
                 ]
             },
             {
+                'module_name': 'suppliers',
+                'description': 'Supplier management module',
+                'is_enabled': True,
+                'features': [
+                    {'key': 'supplier_management', 'name': 'Supplier Management', 'description': 'Enable supplier CRUD operations', 'order': 1},
+                    {'key': 'supplier_products', 'name': 'Supplier Products', 'description': 'Enable viewing products by supplier', 'order': 2},
+                    {'key': 'supplier_reports', 'name': 'Supplier Reports', 'description': 'Enable supplier-related reports', 'order': 3},
+                    {'key': 'supplier_purchases', 'name': 'Supplier Purchase History', 'description': 'Enable supplier purchase history tracking', 'order': 4},
+                    {'key': 'credit_management', 'name': 'Credit Management', 'description': 'Enable supplier credit limit and balance tracking', 'order': 5},
+                ]
+            },
+            {
                 'module_name': 'sales',
                 'description': 'Sales management module',
                 'is_enabled': True,

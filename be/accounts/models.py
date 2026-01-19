@@ -17,6 +17,7 @@ class Permission(models.Model):
         ('bank_accounts', 'Bank Accounts'),
         ('money_transfer', 'Money Transfer'),
         ('accounting', 'Accounting'),
+        ('suppliers', 'Suppliers'),
         ('users', 'User Management'),
         ('roles', 'Role Management'),
         ('settings', 'System Settings'),
@@ -174,6 +175,14 @@ class UserProfile(models.Model):
             if module == 'sales' or module == 'pos':
                 return action in ['view', 'create']
             return action == 'view'
+        
+        # Check suppliers module access
+        if module == 'suppliers':
+            if self.role == 'admin':
+                return True
+            if self.role == 'manager':
+                return action in ['view', 'create', 'update', 'export']
+            return False
         
         return False
 

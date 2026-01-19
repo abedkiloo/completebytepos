@@ -160,7 +160,15 @@ class ProductViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(track_stock=track_stock.lower() == 'true')
         
         if supplier:
-            queryset = queryset.filter(supplier__icontains=supplier)
+            # Handle both legacy supplier name and new supplier FK
+            from suppliers.models import Supplier
+            try:
+                # Try to find supplier by ID first
+                supplier_obj = Supplier.objects.get(id=supplier)
+                queryset = queryset.filter(supplier=supplier_obj)
+            except (Supplier.DoesNotExist, ValueError):
+                # Fallback to legacy supplier name search
+                queryset = queryset.filter(supplier_name__icontains=supplier)
         
         return queryset
 
