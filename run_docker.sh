@@ -97,10 +97,43 @@ start_containers() {
     
     if docker ps | grep -q completebytepos_backend && docker ps | grep -q completebytepos_frontend; then
         print_success "Containers are running"
+        
+        # Ensure migrations are run (safety check)
+        run_migrations
     else
         print_error "Some containers failed to start!"
         print_info "Check logs with: $COMPOSE_CMD -f $COMPOSE_FILE logs"
         exit 1
+    fi
+}
+
+# Run migrations explicitly (safety check)
+run_migrations() {
+    print_info "Ensuring database migrations are up to date..."
+    
+    # Wait a bit for backend to be ready
+    sleep 3
+    
+    # Check if backend container is running
+    if ! docker ps | grep -q completebytepos_backend; then
+        print_warning "Backend container not running, skipping migration check"
+        return
+    fi
+    
+    # Run makemigrations (create new migrations if needed)
+    if docker exec completebytepos_backend python manage.py makemigrations --noinput 2>/dev/null; then
+        print_success "Migration files checked/created"
+    else
+        print_warning "makemigrations had issues (this is usually OK if no new migrations needed)"
+    fi
+    
+    # Run migrate (apply migrations)
+    if docker exec completebytepos_backend python manage.py migrate --noinput 2>/dev/null; then
+        print_success "Database migrations applied"
+    else
+        print_error "Failed to run migrations!"
+        print_info "Check backend logs: $COMPOSE_CMD -f docker-compose.dev.yml logs backend"
+        return 1
     fi
 }
 
@@ -135,6 +168,9 @@ show_status() {
     
     if curl -s http://localhost:8000/api/accounts/auth/me/ > /dev/null 2>&1; then
         print_success "Backend is responding"
+        
+        # Populate test data (only in Docker dev mode)
+        populate_test_data
     else
         print_warning "Backend may still be starting. Check logs if issues persist."
     fi
@@ -145,6 +181,46 @@ show_status() {
     else
         print_warning "Frontend dev server may still be starting (this can take 30-60 seconds)."
         print_info "Check logs with: $COMPOSE_CMD -f docker-compose.dev.yml logs -f frontend"
+    fi
+}
+
+# Populate test data (only in Docker dev mode)
+populate_test_data() {
+    print_info "Checking if test data should be populated..."
+    
+    # Wait a bit more for backend to be fully ready
+    sleep 3
+    
+    # Check if database is empty (no users exist except potential superuser)
+    # Use a more robust check that handles errors gracefully
+    USER_COUNT=0
+    if docker exec completebytepos_backend python manage.py shell -c "from django.contrib.auth.models import User; print(User.objects.count())" 2>/dev/null | grep -qE '^[0-9]+$'; then
+        USER_COUNT=$(docker exec completebytepos_backend python manage.py shell -c "from django.contrib.auth.models import User; print(User.objects.count())" 2>/dev/null | grep -E '^[0-9]+$' || echo "0")
+    fi
+    
+    # Convert to integer for comparison
+    USER_COUNT=${USER_COUNT:-0}
+    
+    # If database is empty or has very few users, populate test data
+    if [ "$USER_COUNT" -lt "5" ]; then
+        print_info "Database appears empty or has minimal data. Populating test data..."
+        print_info "This may take a few minutes..."
+        
+        # Run populate_test_data command with proper error handling
+        if docker exec completebytepos_backend python manage.py populate_test_data --users 20 --customers 100 --products 1000; then
+            print_success "Test data populated successfully!"
+            print_info "  • 20 users created"
+            print_info "  • 100 customers created"
+            print_info "  • 1000 products with variants created"
+            print_info "  • Sample sales, expenses, and inventory data created"
+        else
+            print_warning "Failed to populate test data. This is not critical - you can run it manually:"
+            print_info "  docker exec completebytepos_backend python manage.py populate_test_data"
+        fi
+    else
+        print_info "Database already has data (${USER_COUNT} users found). Skipping test data population."
+        print_info "To populate test data manually, run:"
+        print_info "  docker exec completebytepos_backend python manage.py populate_test_data"
     fi
 }
 

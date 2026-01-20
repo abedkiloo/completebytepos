@@ -68,6 +68,9 @@ run_docker() {
     print_info "Waiting for services to be ready..."
     sleep 10
     
+    # Ensure migrations are run (safety check)
+    run_migrations
+    
     print_success "Production containers started!"
     
     echo ""
@@ -85,6 +88,36 @@ run_docker() {
     echo -e "To view logs: ${YELLOW}$COMPOSE_CMD logs -f${NC}"
     echo -e "To stop: ${YELLOW}./stop_production.sh${NC} or ${YELLOW}$COMPOSE_CMD down${NC}"
     echo ""
+}
+
+# Run migrations explicitly (safety check)
+run_migrations() {
+    print_info "Ensuring database migrations are up to date..."
+    
+    # Wait a bit for backend to be ready
+    sleep 3
+    
+    # Check if backend container is running
+    if ! docker ps | grep -q completebytepos_backend; then
+        print_warning "Backend container not running, skipping migration check"
+        return
+    fi
+    
+    # Run makemigrations (create new migrations if needed)
+    if docker exec completebytepos_backend python manage.py makemigrations --noinput 2>/dev/null; then
+        print_success "Migration files checked/created"
+    else
+        print_warning "makemigrations had issues (this is usually OK if no new migrations needed)"
+    fi
+    
+    # Run migrate (apply migrations)
+    if docker exec completebytepos_backend python manage.py migrate --noinput 2>/dev/null; then
+        print_success "Database migrations applied"
+    else
+        print_error "Failed to run migrations!"
+        print_info "Check backend logs: $COMPOSE_CMD logs backend"
+        return 1
+    fi
 }
 
 # Main

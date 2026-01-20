@@ -1,6 +1,6 @@
-import React, { useState, useEffect, Fragment } from 'react';
+import React, { useState, useEffect } from 'react';
 import { productsAPI, categoriesAPI } from '../../services/api';
-import { formatCurrency, formatNumber } from '../../utils/formatters';
+import { formatCurrency } from '../../utils/formatters';
 import Layout from '../Layout/Layout';
 import ProductForm from './ProductForm';
 import ProductStatistics from './ProductStatistics';

@@ -31,8 +31,8 @@ const POS = () => {
   const [tax, setTax] = useState(0);
   const [discount, setDiscount] = useState(0);
   const [discountType, setDiscountType] = useState('percentage'); // 'flat' or 'percentage'
-  const [coupon, setCoupon] = useState(0);
-  const [roundoff, setRoundoff] = useState(false);
+  const [coupon] = useState(0); // Reserved for future coupon functionality
+  const [roundoff] = useState(false); // Reserved for future roundoff functionality
   const [featuredFilter, setFeaturedFilter] = useState(false);
   const [deliveryMethod, setDeliveryMethod] = useState('pickup'); // 'pickup', 'delivery', 'express'
   const [deliveryCost, setDeliveryCost] = useState(0);
@@ -414,37 +414,36 @@ const POS = () => {
     return cart.reduce((sum, item) => sum + item.quantity, 0);
   };
 
-  const isProductInCart = (productId, variantId = null) => {
-    return cart.some(item => {
-      if (item.id !== productId) return false;
-      // If variantId is provided, check for exact match
-      if (variantId !== null) {
-        return item.variant_id === variantId;
-      }
-      // If no variantId provided, check if product has any variant in cart
-      // This is for products without variants
-      return !item.variant_id;
-    });
-  };
+  // Reserved for future use
+  // const isProductInCart = (productId, variantId = null) => {
+  //   return cart.some(item => {
+  //     if (item.id !== productId) return false;
+  //     if (variantId !== null) {
+  //       return item.variant_id === variantId;
+  //     }
+  //     return !item.variant_id;
+  //   });
+  // };
 
-  const getProductQuantity = (productId, variantId = null) => {
-    const item = cart.find(item => {
-      if (item.id !== productId) return false;
-      if (variantId !== null) {
-        return item.variant_id === variantId;
-      }
-      return !item.variant_id;
-    });
-    return item ? item.quantity : 0;
-  };
+  // const getProductQuantity = (productId, variantId = null) => {
+  //   const item = cart.find(item => {
+  //     if (item.id !== productId) return false;
+  //     if (variantId !== null) {
+  //       return item.variant_id === variantId;
+  //     }
+  //     return !item.variant_id;
+  //   });
+  //   return item ? item.quantity : 0;
+  // };
 
-  const paymentMethods = [
-    { id: 'cash', label: 'Cash', icon: '💵', color: '#10b981' },
-    { id: 'deposit', label: 'Deposit', icon: '📦', color: '#f97316' },
-    { id: 'pay_later', label: 'Pay Later', icon: '📅', color: '#f97316' },
-    { id: 'external', label: 'External', icon: '🔗', color: '#a855f7' },
-    { id: 'mpesa', label: 'Mobile Money', icon: '📱', color: '#10b981' },
-  ];
+  // Reserved for future payment methods selection
+  // const paymentMethods = [
+  //   { id: 'cash', label: 'Cash', icon: '💵', color: '#10b981' },
+  //   { id: 'deposit', label: 'Deposit', icon: '📦', color: '#f97316' },
+  //   { id: 'pay_later', label: 'Pay Later', icon: '📅', color: '#f97316' },
+  //   { id: 'external', label: 'External', icon: '🔗', color: '#a855f7' },
+  //   { id: 'mpesa', label: 'Mobile Money', icon: '📱', color: '#10b981' },
+  // ];
 
   const formatTime = (date) => {
     return date.toLocaleTimeString('en-US', { 
@@ -637,20 +636,19 @@ const POS = () => {
                                     (product.available_colors && product.available_colors.length > 0);
                   const hasVariants = product.has_variants && (hasSizes || hasColors);
                   
-                  // For products with variants, we can't use simple inCart check
-                  // Instead, check if any variant of this product is in cart
+                  // For products with variants, we can't use simple base-product-only checks
+                  // Instead, check if ANY variant or base product with this id is in cart
                   const productVariantsInCart = cart.filter(item => item.id === product.id);
-                  const inCart = productVariantsInCart.length > 0;
-                  const totalQuantity = productVariantsInCart.reduce((sum, item) => sum + item.quantity, 0);
-                  
-                  // Get quantity for this specific product (base product, not variants)
+                  const isInCart = productVariantsInCart.length > 0;
+
+                  // For products without variants, track base product quantity for inline +/- controls
                   const baseProductQuantity = cart
                     .filter(item => item.id === product.id && !item.variant_id)
                     .reduce((sum, item) => sum + item.quantity, 0);
                   
                   return (
-                    <div key={product.id} className={`product-card ${baseProductQuantity > 0 ? 'in-cart' : ''}`}>
-                      {baseProductQuantity > 0 && (
+                    <div key={product.id} className={`product-card ${isInCart ? 'in-cart' : ''}`}>
+                      {isInCart && (
                         <div className="cart-checkmark">✓</div>
                       )}
                       {product.image_url && (

@@ -5,7 +5,7 @@ const isHttps = window.location.protocol === 'https:';
 const isNgrok = window.location.hostname.includes('ngrok');
 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 // Detect if running in Docker (nginx serves from /, and we check if API_BASE_URL contains 'backend')
-const isDocker = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL.includes('backend');
+// const isDocker = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL.includes('backend');
 
 // Determine API URL
 // Priority: 1. Environment variable (Docker/build-time), 2. Window config, 3. Auto-detect server, 4. Auto-detect ngrok, 5. Default localhost
@@ -36,8 +36,6 @@ if (!API_BASE_URL) {
     // Use same protocol and hostname, but port 8000 for backend
     const protocol = window.location.protocol;
     const hostname = window.location.hostname;
-    // Extract port if present, otherwise use default
-    const port = window.location.port ? `:${window.location.port}` : '';
     // For server deployments, backend is typically on port 8000
     // If frontend is on port 3000, backend should be on 8000
     API_BASE_URL = `${protocol}//${hostname}:8000/api`;
@@ -148,7 +146,7 @@ api.interceptors.response.use(
     return response;
   },
   async (error) => {
-    const originalRequest = error.config;
+    const originalRequest = error.config || {};
 
     // If 401 and not already retried, try to refresh token
     if (error.response?.status === 401 && !originalRequest._retry) {
@@ -185,8 +183,19 @@ api.interceptors.response.use(
       }
     }
 
-    // If still 401 after refresh attempt, redirect to login
+    // If still 401 after refresh attempt, handle according to request type
     if (error.response?.status === 401) {
+      const url = originalRequest.url || '';
+      const isLoginRequest =
+        url.includes('/accounts/auth/login') ||
+        url.includes('/auth/login');
+
+      // For login requests, DON'T redirect or clear tokens - let the UI show an error instead
+      if (isLoginRequest) {
+        return Promise.reject(error);
+      }
+
+      // For all other requests, clear auth state and redirect to login
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
       localStorage.removeItem('user');

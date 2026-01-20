@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { variantsAPI, sizesAPI, colorsAPI, productsAPI } from '../../services/api';
+import { variantsAPI, productsAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
 import './VariantSelector.css';
 

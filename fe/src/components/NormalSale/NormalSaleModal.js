@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { productsAPI, customersAPI, variantsAPI } from '../../services/api';
+import { productsAPI, customersAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
 import VariantSelector from '../POS/VariantSelector';
 import { toast } from '../../utils/toast';
