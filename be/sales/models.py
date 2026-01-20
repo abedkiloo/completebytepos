@@ -158,6 +158,30 @@ class Sale(models.Model):
         default=0,
         validators=[MinValueValidator(0)]
     )
+    delivery_method = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        help_text='Delivery method (pickup, delivery, etc.)'
+    )
+    delivery_cost = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+        validators=[MinValueValidator(0)],
+        help_text='Additional cost for delivery'
+    )
+    shipping_address = models.TextField(
+        blank=True,
+        null=True,
+        help_text='Shipping address for delivery'
+    )
+    shipping_location = models.CharField(
+        max_length=200,
+        blank=True,
+        null=True,
+        help_text='Shipping location/area'
+    )
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -15,6 +15,9 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
   const [orderTax, setOrderTax] = useState(0);
   const [discount, setDiscount] = useState(0);
   const [shipping, setShipping] = useState(0);
+  const [deliveryMethod, setDeliveryMethod] = useState('pickup');
+  const [shippingAddress, setShippingAddress] = useState('');
+  const [shippingLocation, setShippingLocation] = useState('');
   const [status, setStatus] = useState('pending');
   const [productRows, setProductRows] = useState([]);
   const [productSearch, setProductSearch] = useState('');
@@ -364,6 +367,10 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
       customer_address: selectedCustomer ? selectedCustomer.address : '',
       tax_amount: totals.totalTax,
       discount_amount: totals.totalDiscount,
+      delivery_method: deliveryMethod,
+      delivery_cost: parseFloat(shipping || 0),
+      shipping_address: shippingAddress || null,
+      shipping_location: shippingLocation || null,
       amount_paid: paymentType === 'pay_now' ? parseFloat(amountPaid) : 0,
       payment_method: paymentType === 'pay_now' ? paymentMethod : 'other',
       notes: notes,
@@ -474,6 +481,9 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
     setOrderTax(0);
     setDiscount(0);
     setShipping(0);
+    setDeliveryMethod('pickup');
+    setShippingAddress('');
+    setShippingLocation('');
     setStatus('pending');
     setDueDate('');
     setNotes('');
@@ -852,13 +862,31 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
             </div>
 
             <div className="normal-sale-form-group">
-              <label>Shipping</label>
+              <label>Delivery Method</label>
+              <select
+                value={deliveryMethod}
+                onChange={(e) => {
+                  setDeliveryMethod(e.target.value);
+                  if (e.target.value === 'pickup') {
+                    setShipping(0);
+                  }
+                }}
+              >
+                <option value="pickup">Pickup (No Charge)</option>
+                <option value="delivery">Standard Delivery</option>
+                <option value="express">Express Delivery</option>
+              </select>
+            </div>
+
+            <div className="normal-sale-form-group">
+              <label>Shipping Cost</label>
               <input
                 type="number"
                 min="0"
                 step="0.01"
                 value={shipping}
                 onChange={(e) => setShipping(parseFloat(e.target.value) || 0)}
+                disabled={deliveryMethod === 'pickup'}
               />
             </div>
 
@@ -874,6 +902,30 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
               </select>
             </div>
           </div>
+
+          {/* Shipping Information Section */}
+          {(deliveryMethod === 'delivery' || deliveryMethod === 'express') && (
+            <div className="normal-sale-form-row">
+              <div className="normal-sale-form-group" style={{ gridColumn: '1 / -1' }}>
+                <label>Shipping Address</label>
+                <textarea
+                  rows="3"
+                  value={shippingAddress}
+                  onChange={(e) => setShippingAddress(e.target.value)}
+                  placeholder="Enter full shipping address"
+                />
+              </div>
+              <div className="normal-sale-form-group">
+                <label>Location</label>
+                <input
+                  type="text"
+                  value={shippingLocation}
+                  onChange={(e) => setShippingLocation(e.target.value)}
+                  placeholder="Enter location/area"
+                />
+              </div>
+            </div>
+          )}
 
           {/* Payment Type Section */}
           <div className="normal-sale-payment-section">

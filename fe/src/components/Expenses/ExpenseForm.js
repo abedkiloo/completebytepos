@@ -327,16 +327,15 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
               />
             </div>
           </div>
-
+          <div className="slide-in-panel-footer">
+            <button type="button" onClick={onClose} disabled={loading} className="btn btn-secondary">
+              Cancel
+            </button>
+            <button type="submit" disabled={loading} className="btn btn-primary">
+              {loading ? 'Saving...' : expense ? 'Update' : 'Create'}
+            </button>
+          </div>
           </form>
-        </div>
-        <div className="slide-in-panel-footer">
-          <button type="button" onClick={onClose} disabled={loading} className="btn btn-secondary">
-            Cancel
-          </button>
-          <button type="submit" onClick={handleSubmit} disabled={loading} className="btn btn-primary">
-            {loading ? 'Saving...' : expense ? 'Update' : 'Create'}
-          </button>
         </div>
       </div>
     </div>

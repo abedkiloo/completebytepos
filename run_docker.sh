@@ -164,4 +164,4 @@ main() {
 }
 
 trap 'print_info "Script interrupted. Use ./stop_docker.sh to stop containers."' INT TERM
-main
+main "$@"

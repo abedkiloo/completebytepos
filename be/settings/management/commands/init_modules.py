@@ -48,6 +48,17 @@ class Command(BaseCommand):
                 ]
             },
             {
+                'module_name': 'employees',
+                'description': 'Employee management module',
+                'is_enabled': True,
+                'features': [
+                    {'key': 'employee_management', 'name': 'Employee Management', 'description': 'Enable employee CRUD operations', 'order': 1},
+                    {'key': 'employee_reports', 'name': 'Employee Reports', 'description': 'Enable employee-related reports', 'order': 2},
+                    {'key': 'attendance_tracking', 'name': 'Attendance Tracking', 'description': 'Enable employee attendance tracking', 'order': 3},
+                    {'key': 'payroll_management', 'name': 'Payroll Management', 'description': 'Enable payroll processing and management', 'order': 4},
+                ]
+            },
+            {
                 'module_name': 'sales',
                 'description': 'Sales management module',
                 'is_enabled': True,

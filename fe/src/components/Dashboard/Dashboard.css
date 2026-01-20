@@ -53,7 +53,7 @@
 /* Statistics Grid */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 1.5rem;
   margin-bottom: 2rem;
 }
@@ -64,6 +64,8 @@
   padding: 1.5rem;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   transition: transform 0.2s, box-shadow 0.2s;
+  min-width: 0; /* Prevents flex/grid items from overflowing */
+  overflow: visible; /* Ensures content is not clipped */
 }
 
 .stat-card:hover {
@@ -104,10 +106,15 @@
 }
 
 .stat-value {
-  font-size: 1.75rem;
+  font-size: clamp(1.25rem, 2.5vw, 1.75rem);
   font-weight: bold;
   color: #111827;
   margin-bottom: 0.5rem;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
+  line-height: 1.2;
+  min-height: 2.5rem;
 }
 
 .stat-footer {
@@ -214,6 +221,9 @@
   font-size: 1.5rem;
   font-weight: bold;
   color: #111827;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
 }
 
 .info-grid {
@@ -240,6 +250,9 @@
   font-size: 1.75rem;
   font-weight: bold;
   color: #111827;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
 }
 
 /* Products List */
@@ -440,5 +453,13 @@
 
   .info-grid {
     grid-template-columns: 1fr;
+  }
+
+  .stat-value {
+    font-size: 1.5rem;
+  }
+
+  .info-value {
+    font-size: 1.5rem;
   }
 }

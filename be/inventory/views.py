@@ -11,8 +11,10 @@ from .serializers import (
     StockPurchaseSerializer, StockTransferSerializer,
     BulkStockAdjustmentSerializer, InventoryReportSerializer
 )
+from .services import StockMovementService
 from products.models import Product, ProductVariant
 from settings.utils import get_current_branch, get_current_tenant, is_branch_support_enabled
+from django.core.exceptions import ValidationError
 import logging
 
 logger = logging.getLogger(__name__)
@@ -25,46 +27,27 @@ class StockMovementViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['product__name', 'product__sku', 'reference', 'notes']
     ordering_fields = ['created_at', 'quantity', 'movement_type']
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.stock_service = StockMovementService()
 
     def get_queryset(self):
-        queryset = StockMovement.objects.all().select_related('product', 'user', 'branch')
+        """Get queryset using service layer - all query logic moved to service"""
+        filters = {}
+        query_params = self.request.query_params
         
-        # Filter by branch only if branch support is enabled
-        if is_branch_support_enabled():
-            # Filter by branch if specified (skip if show_all is true)
-            show_all = self.request.query_params.get('show_all', 'false').lower() == 'true'
-            branch_id = self.request.query_params.get('branch_id', None)
-            
-            if not show_all:
-                if not branch_id:
-                    # Try to get from current branch
-                    current_branch = get_current_branch(self.request)
-                    if current_branch:
-                        branch_id = current_branch.id
-                
-                if branch_id:
-                    queryset = queryset.filter(branch_id=branch_id)
+        # Extract all filter parameters
+        for param in ['branch_id', 'show_all', 'product', 'movement_type', 'date_from', 'date_to']:
+            if param in query_params:
+                filters[param] = query_params.get(param)
         
-        product_id = self.request.query_params.get('product', None)
-        movement_type = self.request.query_params.get('movement_type', None)
-        date_from = self.request.query_params.get('date_from', None)
-        date_to = self.request.query_params.get('date_to', None)
-        
-        if product_id:
-            queryset = queryset.filter(product_id=product_id)
-        if movement_type:
-            queryset = queryset.filter(movement_type=movement_type)
-        if date_from:
-            queryset = queryset.filter(created_at__gte=date_from)
-        if date_to:
-            queryset = queryset.filter(created_at__lte=date_to)
-        
-        return queryset
+        return self.stock_service.build_queryset(filters, request=self.request)
 
     @transaction.atomic
     @action(detail=False, methods=['post'])
     def adjust(self, request):
-        """Adjust stock for a product or variant"""
+        """Adjust stock for a product or variant - thin view, business logic in service"""
         serializer = StockAdjustmentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
@@ -72,55 +55,32 @@ class StockMovementViewSet(viewsets.ModelViewSet):
         variant_id = serializer.validated_data.get('variant_id')
         quantity = serializer.validated_data['quantity']
         notes = serializer.validated_data.get('notes', '')
+        unit_cost = serializer.validated_data.get('unit_cost')
         
-        try:
-            product = Product.objects.get(id=product_id)
-        except Product.DoesNotExist:
-            return Response(
-                {'error': 'Product not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        variant = None
-        if variant_id:
-            try:
-                variant = ProductVariant.objects.get(id=variant_id, product=product)
-            except ProductVariant.DoesNotExist:
-                return Response(
-                    {'error': 'Variant not found'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-        
-        if not product.track_stock:
-            return Response(
-                {'error': 'Product does not track stock'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Get current branch
         current_branch = get_current_branch(request)
         
-        # Create stock movement (adjustment)
-        movement = StockMovement.objects.create(
-            branch=current_branch,
-            product=product,
-            variant=variant,
-            movement_type='adjustment',
-            quantity=quantity,  # Can be positive or negative
-            notes=notes,
-            user=request.user,
-            reference=f'ADJ-{variant.sku if variant else product.sku}'
-        )
-        
-        # Stock is updated automatically in StockMovement.save()
-        
-        response_serializer = self.get_serializer(movement)
-        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+        try:
+            movement = self.stock_service.adjust_stock(
+                product_id=product_id,
+                variant_id=variant_id,
+                quantity=quantity,
+                notes=notes,
+                user=request.user,
+                branch=current_branch,
+                unit_cost=unit_cost
+            )
+            response_serializer = self.get_serializer(movement)
+            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+        except ValidationError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     @transaction.atomic
     @action(detail=False, methods=['post'])
     def purchase(self, request):
-        """Record stock purchase for product or variant"""
+        """Record stock purchase - thin view, business logic in service"""
         serializer = StockPurchaseSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
@@ -131,55 +91,26 @@ class StockMovementViewSet(viewsets.ModelViewSet):
         reference = serializer.validated_data.get('reference', '')
         notes = serializer.validated_data.get('notes', '')
         
-        try:
-            product = Product.objects.get(id=product_id)
-        except Product.DoesNotExist:
-            return Response(
-                {'error': 'Product not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        variant = None
-        if variant_id:
-            try:
-                variant = ProductVariant.objects.get(id=variant_id, product=product)
-            except ProductVariant.DoesNotExist:
-                return Response(
-                    {'error': 'Variant not found'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-        
-        if not product.track_stock:
-            return Response(
-                {'error': 'Product does not track stock'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Determine unit cost
-        if not unit_cost:
-            if variant and variant.cost:
-                unit_cost = variant.cost
-            else:
-                unit_cost = product.cost
-        
-        # Get current branch
         current_branch = get_current_branch(request)
         
-        # Create stock movement (purchase)
-        movement = StockMovement.objects.create(
-            branch=current_branch,
-            product=product,
-            variant=variant,
-            movement_type='purchase',
-            quantity=quantity,
-            unit_cost=unit_cost,
-            notes=notes,
-            user=request.user,
-            reference=reference or f'PUR-{variant.sku if variant else product.sku}'
-        )
-        
-        response_serializer = self.get_serializer(movement)
-        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+        try:
+            movement = self.stock_service.purchase_stock(
+                product_id=product_id,
+                variant_id=variant_id,
+                quantity=quantity,
+                unit_cost=unit_cost,
+                notes=notes,
+                user=request.user,
+                branch=current_branch,
+                reference=reference
+            )
+            response_serializer = self.get_serializer(movement)
+            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+        except ValidationError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     @transaction.atomic
     @action(detail=False, methods=['post'])
@@ -327,37 +258,20 @@ class StockMovementViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def report(self, request):
-        """Get inventory report"""
-        today = timezone.now().date()
-        start_of_day = timezone.make_aware(datetime.combine(today, datetime.min.time()))
-        start_of_month = timezone.make_aware(datetime(today.year, today.month, 1))
+        """Get inventory report - thin view, business logic in service"""
+        current_branch = get_current_branch(request)
+        product_id = request.query_params.get('product_id')
+        if product_id:
+            try:
+                product_id = int(product_id)
+            except (ValueError, TypeError):
+                product_id = None
         
-        # Get all products
-        all_products = Product.objects.filter(is_active=True)
-        tracked_products = all_products.filter(track_stock=True)
-        
-        # Calculate statistics
-        stats = {
-            'total_products': all_products.count(),
-            'tracked_products': tracked_products.count(),
-            'low_stock_count': tracked_products.filter(
-                stock_quantity__lte=F('low_stock_threshold')
-            ).count(),
-            'out_of_stock_count': tracked_products.filter(stock_quantity=0).count(),
-            'total_inventory_value': float(
-                tracked_products.aggregate(
-                    total=Sum(F('stock_quantity') * F('cost'))
-                )['total'] or 0
-            ),
-            'total_movements_today': StockMovement.objects.filter(
-                created_at__gte=start_of_day
-            ).count(),
-            'total_movements_this_month': StockMovement.objects.filter(
-                created_at__gte=start_of_month
-            ).count(),
-        }
-        
-        serializer = InventoryReportSerializer(stats)
+        report = self.stock_service.get_inventory_report(
+            branch=current_branch,
+            product_id=product_id
+        )
+        serializer = InventoryReportSerializer(report)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])

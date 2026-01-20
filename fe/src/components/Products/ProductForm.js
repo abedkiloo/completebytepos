@@ -93,17 +93,30 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
   }, []);
 
   useEffect(() => {
-    // Load subcategories when category changes
+    // Load subcategories when category changes - filter by parent category
     const loadSubcategories = async () => {
       if (formData.category) {
         try {
-          const response = await categoriesAPI.list({ parent: formData.category, is_active: 'true' });
-          const newSubcategories = response.data.results || response.data || [];
-          setSubcategories(newSubcategories);
+          // Clear subcategories first to show loading state
+          setSubcategories([]);
           
-          // Clear subcategory if current one is not in the new list
+          // Ensure category ID is a number for the API call
+          const categoryId = parseInt(formData.category);
+          if (isNaN(categoryId)) {
+            console.error('Invalid category ID:', formData.category);
+            setSubcategories([]);
+            return;
+          }
+          
+          const response = await categoriesAPI.list({ parent: categoryId, is_active: 'true' });
+          const newSubcategories = response.data.results || response.data || [];
+          const validSubcategories = Array.isArray(newSubcategories) ? newSubcategories : [];
+          setSubcategories(validSubcategories);
+          
+          // Clear subcategory if current one is not in the new list (category changed)
           if (formData.subcategory) {
-            const subcategoryExists = newSubcategories.some(sub => sub.id === parseInt(formData.subcategory));
+            const subcategoryId = parseInt(formData.subcategory);
+            const subcategoryExists = validSubcategories.some(sub => sub.id === subcategoryId);
             if (!subcategoryExists) {
               setFormData(prev => ({ ...prev, subcategory: '' }));
             }
@@ -111,15 +124,41 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
         } catch (error) {
           console.error('Error loading subcategories:', error);
           setSubcategories([]);
-          setFormData(prev => ({ ...prev, subcategory: '' }));
+          // Only clear subcategory if category was actually changed (not on initial load)
+          if (formData.subcategory) {
+            setFormData(prev => ({ ...prev, subcategory: '' }));
+          }
         }
       } else {
-        setSubcategories([]);
-        setFormData(prev => ({ ...prev, subcategory: '' }));
+        // If no category selected, load all subcategories (for when user selects subcategory first)
+        try {
+          const response = await categoriesAPI.list({ is_active: 'true' });
+          const allCategoriesData = response.data.results || response.data || [];
+          const subcategoriesList = Array.isArray(allCategoriesData) 
+            ? allCategoriesData.filter(cat => cat.parent) 
+            : [];
+          setSubcategories(subcategoriesList);
+        } catch (error) {
+          console.error('Error loading subcategories:', error);
+          setSubcategories([]);
+        }
       }
     };
     loadSubcategories();
   }, [formData.category]);
+
+  // Auto-populate category when subcategory is selected (if category not set or doesn't match)
+  useEffect(() => {
+    if (formData.subcategory) {
+      const selectedSubcategory = allCategories.find(cat => cat.id === parseInt(formData.subcategory));
+      if (selectedSubcategory && selectedSubcategory.parent) {
+        // Auto-set category to subcategory's parent if not already set or doesn't match
+        if (!formData.category || formData.category !== String(selectedSubcategory.parent)) {
+          setFormData(prev => ({ ...prev, category: String(selectedSubcategory.parent) }));
+        }
+      }
+    }
+  }, [formData.subcategory, allCategories]);
 
   useEffect(() => {
     if (product) {
@@ -298,6 +337,10 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
       const submitData = new FormData();
       
       Object.keys(formData).forEach(key => {
+        // Skip SKU and Barcode - they are system-generated
+        if (key === 'sku' || key === 'barcode') {
+          return;
+        }
         if (key === 'available_sizes' || key === 'available_colors') {
           // Handle array fields
           formData[key].forEach(id => {
@@ -366,31 +409,6 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
             </div>
 
             <div className="form-group">
-              <label>SKU</label>
-              <input
-                type="text"
-                name="sku"
-                value={formData.sku}
-                onChange={handleChange}
-                placeholder="Auto-generated if empty"
-              />
-              {errors.sku && <span className="error">{errors.sku}</span>}
-            </div>
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label>Barcode</label>
-              <input
-                type="text"
-                name="barcode"
-                value={formData.barcode}
-                onChange={handleChange}
-              />
-              {errors.barcode && <span className="error">{errors.barcode}</span>}
-            </div>
-
-            <div className="form-group">
               <label>Category</label>
               <div className="select-with-add">
                 <SearchableSelect
@@ -413,6 +431,7 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
               <label>Subcategory</label>
               <div className="select-with-add">
                 <SearchableSelect
+                  key={`subcategory-${formData.category || 'none'}`}
                   name="subcategory"
                   value={formData.subcategory}
                   onChange={handleChange}
@@ -420,12 +439,30 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
                     id: subcat.id,
                     name: subcat.name
                   }))}
-                  placeholder={formData.category ? "Select subcategory..." : "Select a category first"}
+                  placeholder={
+                    formData.category 
+                      ? subcategories.length === 0 
+                        ? "Loading subcategories..." 
+                        : "Select subcategory..."
+                      : "Select a category first or select any subcategory"
+                  }
                   searchable={true}
-                  disabled={!formData.category}
-                  onAddNew={formData.category ? () => setShowSubcategoryForm(true) : undefined}
+                  disabled={false}
+                  onAddNew={formData.category ? () => setShowSubcategoryForm(true) : () => {
+                    toast.error('Please select a category first before creating a subcategory');
+                  }}
                   addNewLabel="+ Add New Subcategory"
                 />
+                {formData.subcategory && !formData.category && (
+                  <small className="form-text text-muted">
+                    Category will be automatically set to the subcategory's parent
+                  </small>
+                )}
+                {formData.category && subcategories.length === 0 && (
+                  <small className="form-text text-muted">
+                    No subcategories available for this category
+                  </small>
+                )}
               </div>
             </div>
           </div>

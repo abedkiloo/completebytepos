@@ -34,6 +34,13 @@ const POS = () => {
   const [coupon, setCoupon] = useState(0);
   const [roundoff, setRoundoff] = useState(false);
   const [featuredFilter, setFeaturedFilter] = useState(false);
+  const [deliveryMethod, setDeliveryMethod] = useState('pickup'); // 'pickup', 'delivery', 'express'
+  const [deliveryCost, setDeliveryCost] = useState(0);
+  const [shippingAddress, setShippingAddress] = useState('');
+  const [shippingLocation, setShippingLocation] = useState('');
+  const [hasExtraPayment, setHasExtraPayment] = useState(false);
+  const [extraPaymentAmount, setExtraPaymentAmount] = useState(0);
+  const [showShippingModal, setShowShippingModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
@@ -192,20 +199,23 @@ const POS = () => {
       return itemKey === cartKey;
     });
     
+    // Get quantity from product (if set by variant selector) or default to 1
+    const quantityToAdd = product.quantity || 1;
+    
     if (existingItem) {
       setCart(cart.map(item => {
         const itemKey = item.variant_id 
           ? `${item.id}-${item.variant_id}` 
           : `${item.id}`;
         if (itemKey === cartKey) {
-          return { ...item, quantity: item.quantity + 1 };
+          return { ...item, quantity: item.quantity + quantityToAdd };
         }
         return item;
       }));
     } else {
       setCart([...cart, {
         ...product,
-        quantity: 1,
+        quantity: quantityToAdd,
         price: parseFloat(product.price),
         sku: product.sku || product.variant?.sku || '',
         stock_quantity: product.stock_quantity !== undefined 
@@ -236,6 +246,27 @@ const POS = () => {
       }
       return item;
     }).filter(Boolean));
+  };
+
+  const setQuantityDirectly = (cartItem, newQuantity) => {
+    const quantity = Math.max(0, parseInt(newQuantity) || 0);
+    if (quantity === 0) {
+      removeFromCart(cartItem);
+      return;
+    }
+    setCart(cart.map(item => {
+      const itemKey = item.variant_id 
+        ? `${item.id}-${item.variant_id}` 
+        : `${item.id}`;
+      const cartKey = cartItem.variant_id 
+        ? `${cartItem.id}-${cartItem.variant_id}` 
+        : `${cartItem.id}`;
+      
+      if (itemKey === cartKey) {
+        return { ...item, quantity: quantity };
+      }
+      return item;
+    }));
   };
 
   const removeFromCart = (cartItem) => {
@@ -283,7 +314,7 @@ const POS = () => {
     const subtotal = calculateSubtotal();
     const discountAmount = calculateDiscountAmount();
     const taxAmount = calculateTaxAmount();
-    const totalBeforeRoundoff = subtotal - discountAmount - coupon + taxAmount + shipping;
+    const totalBeforeRoundoff = subtotal - discountAmount - coupon + taxAmount + shipping + deliveryCost;
     const rounded = Math.round(totalBeforeRoundoff);
     return rounded - totalBeforeRoundoff;
   };
@@ -293,7 +324,8 @@ const POS = () => {
     const discountAmount = calculateDiscountAmount();
     const taxAmount = calculateTaxAmount();
     const roundoffAmount = calculateRoundoff();
-    return subtotal - discountAmount - coupon + taxAmount + shipping + roundoffAmount;
+    const extraPayment = hasExtraPayment ? parseFloat(extraPaymentAmount) || 0 : 0;
+    return subtotal - discountAmount - coupon + taxAmount + shipping + deliveryCost + extraPayment + roundoffAmount;
   };
 
   const handlePayment = async () => {
@@ -305,16 +337,24 @@ const POS = () => {
     const total = calculateTotal();
     const received = parseFloat(receivedAmount) || 0;
     
-    if ((paymentMethod === 'cash' || paymentMethod === 'mpesa') && received < total) {
-      toast.warning('Received amount is less than total');
-      return;
+    // Validate payment for cash/mpesa
+    if (paymentMethod === 'cash' || paymentMethod === 'mpesa') {
+      if (!receivedAmount || received <= 0) {
+        toast.warning('Please enter received amount');
+        return;
+      }
+      if (received < total) {
+        toast.warning('Received amount is less than total');
+        return;
+      }
     }
 
     try {
       const subtotal = calculateSubtotal();
       const discountAmount = calculateDiscountAmount();
       const taxAmount = (subtotal - discountAmount) * (tax / 100);
-      const finalTotal = subtotal - discountAmount + taxAmount + shipping;
+      const extraPayment = hasExtraPayment ? parseFloat(extraPaymentAmount) || 0 : 0;
+      const finalTotal = subtotal - discountAmount + taxAmount + shipping + deliveryCost + extraPayment;
       
       const saleData = {
         items: cart.map(item => ({
@@ -325,9 +365,13 @@ const POS = () => {
         })),
         tax_amount: parseFloat(taxAmount.toFixed(2)),
         discount_amount: parseFloat(discountAmount.toFixed(2)),
+        delivery_method: deliveryMethod,
+        delivery_cost: parseFloat(deliveryCost.toFixed(2)),
+        shipping_address: shippingAddress || null,
+        shipping_location: shippingLocation || null,
         payment_method: paymentMethod,
         amount_paid: (paymentMethod === 'cash' || paymentMethod === 'mpesa') ? parseFloat(received.toFixed(2)) : parseFloat(finalTotal.toFixed(2)),
-        notes: '',
+        notes: hasExtraPayment ? `Extra Payment: ${formatCurrency(extraPayment)}` : '',
         customer_id: selectedCustomer?.id || null,
         sale_type: 'pos',
       };
@@ -340,17 +384,26 @@ const POS = () => {
       const saleWithChange = {
         ...response.data,
         change: (paymentMethod === 'cash' || paymentMethod === 'mpesa') 
-          ? Math.max(0, received - finalTotal) 
+          ? Math.max(0, received - total) 
           : 0
       };
       setLastSale(saleWithChange);
       setCart([]);
       setShowPaymentModal(false);
+      setShowShippingModal(false);
       setShowSuccessModal(true);
       setReceivedAmount('');
       setShipping(0);
       setTax(0);
+      setShippingAddress('');
+      setShippingLocation('');
+      setHasExtraPayment(false);
+      setExtraPaymentAmount(0);
+      setDeliveryCost(0);
+      setDeliveryMethod('pickup');
       setDiscount(0);
+      setDeliveryMethod('pickup');
+      setDeliveryCost(0);
       toast.success('Sale completed successfully');
     } catch (error) {
       toast.error('Failed to complete sale: ' + (error.response?.data?.error || error.message));
@@ -708,26 +761,53 @@ const POS = () => {
             </div>
 
             <div className="order-details-section">
-              <div className="order-details-header">
-                <h4>Order Details</h4>
-                <div className="order-details-header-right">
-                  <span className="items-count">Items: {getCartItemCount()}</span>
+              <div className="order-details-header" style={{ marginBottom: '1rem' }}>
+                <h4 style={{ fontSize: '1.2rem', fontWeight: '700', color: '#111827', margin: '0 0 0.5rem 0' }}>
+                  Order Items
+                </h4>
+                <div className="order-details-header-right" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span className="items-count" style={{ fontWeight: '600', color: '#667eea', fontSize: '1rem' }}>
+                    {getCartItemCount()} {getCartItemCount() === 1 ? 'Item' : 'Items'}
+                  </span>
                   {cart.length > 0 && (
                     <button className="clear-all-btn" onClick={clearCart}>Clear all</button>
                   )}
                 </div>
               </div>
 
-              <div className="cart-items-table">
+              <div className="cart-items-table" style={{ 
+                display: 'block',
+                minHeight: '300px',
+                maxHeight: '500px',
+                overflowY: 'auto',
+                overflowX: 'visible',
+                background: 'white',
+                borderRadius: '8px',
+                padding: '0.75rem',
+                border: '1px solid #e5e7eb'
+              }}>
                 {cart.length === 0 ? (
-                  <div className="empty-cart">Cart is empty</div>
+                  <div className="empty-cart" style={{ 
+                    textAlign: 'center', 
+                    padding: '3rem 2rem', 
+                    color: '#9ca3af',
+                    fontSize: '1.1rem',
+                    fontWeight: '500'
+                  }}>
+                    <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🛒</div>
+                    <div>Cart is empty</div>
+                    <div style={{ fontSize: '0.9rem', marginTop: '0.5rem', color: '#6b7280' }}>
+                      Add products to get started
+                    </div>
+                  </div>
                 ) : (
-                  <table className="order-items-table">
+                  <table className="order-items-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                     <thead>
-                      <tr>
-                        <th>Item</th>
-                        <th>QTY</th>
-                        <th>Cost</th>
+                      <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                        <th style={{ width: '45%', padding: '0.5rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: '600', color: '#6b7280' }}>Product</th>
+                        <th style={{ width: '20%', padding: '0.5rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: '600', color: '#6b7280' }}>QTY</th>
+                        <th style={{ width: '25%', padding: '0.5rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: '600', color: '#6b7280' }}>Price</th>
+                        <th style={{ width: '10%', padding: '0.5rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: '600', color: '#6b7280' }}></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -737,30 +817,122 @@ const POS = () => {
                           : `${item.id}-${index}`;
                         
                         const variantInfo = [];
-                        if (item.size) variantInfo.push(`Size: ${item.size}`);
-                        if (item.color) variantInfo.push(`Color: ${item.color}`);
-                        const variantStr = variantInfo.length > 0 ? ` (${variantInfo.join(', ')})` : '';
+                        if (item.size) variantInfo.push(item.size);
+                        if (item.color) variantInfo.push(item.color);
+                        const variantStr = variantInfo.length > 0 ? variantInfo.join(', ') : '';
+                        const hasVariants = item.variant_id || item.size || item.color;
                         
                         return (
-                          <tr key={cartKey}>
-                            <td className="item-name-cell">
-                              <div className="item-name-main">{item.name}{variantStr}</div>
-                              {item.sku && <div className="item-sku">SKU: {item.sku}</div>}
+                          <tr key={cartKey} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                            <td className="item-name-cell" style={{ padding: '0.5rem' }}>
+                              <div className="item-name-main" style={{ fontWeight: '600', fontSize: '0.85rem', marginBottom: '0.15rem', color: '#111827' }}>
+                                {item.name}
+                              </div>
+                              {hasVariants && (
+                                <div className="item-variant-info" style={{ fontSize: '0.7rem', color: '#6b7280', marginBottom: '0.1rem' }}>
+                                  {variantStr}
+                                </div>
+                              )}
+                              {item.stock_quantity !== undefined && (
+                                <div style={{ fontSize: '0.65rem', color: item.stock_quantity > 0 ? '#10b981' : '#ef4444' }}>
+                                  {item.stock_quantity}
+                                </div>
+                              )}
                             </td>
-                            <td className="item-qty-cell">
-                              <div className="qty-controls-table">
-                                <button onClick={() => updateQuantity(item, -1)} className="qty-btn-table">-</button>
-                                <span className="qty-value-table">{item.quantity}</span>
-                                <button onClick={() => updateQuantity(item, 1)} className="qty-btn-table">+</button>
+                            <td className="item-qty-cell" style={{ padding: '0.5rem' }}>
+                              <div className="qty-controls-table" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}>
+                                <button 
+                                  onClick={() => updateQuantity(item, -1)} 
+                                  className="qty-btn-table"
+                                  style={{ 
+                                    minWidth: '24px', 
+                                    height: '24px', 
+                                    border: '1px solid #d1d5db',
+                                    borderRadius: '3px',
+                                    background: 'white',
+                                    cursor: 'pointer',
+                                    fontSize: '0.75rem',
+                                    fontWeight: '600',
+                                    color: '#374151',
+                                    padding: '0'
+                                  }}
+                                >
+                                  -
+                                </button>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={item.quantity}
+                                  onChange={(e) => setQuantityDirectly(item, e.target.value)}
+                                  onBlur={(e) => {
+                                    const val = parseInt(e.target.value) || 1;
+                                    setQuantityDirectly(item, val);
+                                  }}
+                                  className="qty-input-table"
+                                  style={{
+                                    width: '45px',
+                                    textAlign: 'center',
+                                    padding: '0.25rem',
+                                    border: '1px solid #d1d5db',
+                                    borderRadius: '3px',
+                                    fontSize: '0.75rem',
+                                    fontWeight: '600'
+                                  }}
+                                />
+                                <button 
+                                  onClick={() => updateQuantity(item, 1)} 
+                                  className="qty-btn-table"
+                                  style={{ 
+                                    minWidth: '24px', 
+                                    height: '24px',
+                                    border: '1px solid #d1d5db',
+                                    borderRadius: '3px',
+                                    background: 'white',
+                                    cursor: 'pointer',
+                                    fontSize: '0.75rem',
+                                    fontWeight: '600',
+                                    color: '#374151',
+                                    padding: '0'
+                                  }}
+                                >
+                                  +
+                                </button>
                               </div>
                             </td>
-                            <td className="item-cost-cell">
-                              {formatCurrency(item.price * item.quantity)}
+                            <td className="item-cost-cell" style={{ padding: '0.5rem', textAlign: 'right' }}>
+                              <div style={{ fontWeight: '600', fontSize: '0.85rem', color: '#111827' }}>
+                                {formatCurrency(item.price * item.quantity)}
+                              </div>
+                            </td>
+                            <td className="item-actions-cell" style={{ padding: '0.5rem', textAlign: 'center' }}>
                               <button 
                                 className="remove-item-btn" 
                                 onClick={() => removeFromCart(item)}
                                 title="Remove"
-                              >×</button>
+                                style={{
+                                  background: 'transparent',
+                                  color: '#ef4444',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  padding: '0.35rem',
+                                  cursor: 'pointer',
+                                  fontSize: '1rem',
+                                  transition: 'background 0.2s',
+                                  width: '28px',
+                                  height: '28px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.target.style.background = '#fee2e2';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.target.style.background = 'transparent';
+                                }}
+                              >
+                                🗑️
+                              </button>
                             </td>
                           </tr>
                         );
@@ -792,68 +964,26 @@ const POS = () => {
                   </div>
                 )}
 
-                <div className="payment-summary-section">
-                  <div className="payment-summary-header">Payment Summary</div>
-                  <div className="payment-summary-content">
-                    <div className="summary-row">
-                      <span>Shipping:</span>
-                      <span>{formatCurrency(shipping)}</span>
-                    </div>
-                    <div className="summary-row">
-                      <span>Tax:</span>
-                      <span>{formatCurrency(calculateTaxAmount())}</span>
-                    </div>
-                    {coupon > 0 && (
-                      <div className="summary-row">
-                        <span>Coupon:</span>
-                        <span>-{formatCurrency(coupon)}</span>
-                      </div>
-                    )}
-                    {discount > 0 && (
-                      <div className="summary-row discount-row">
-                        <span>Discount:</span>
-                        <span>-{formatCurrency(calculateDiscountAmount())}</span>
-                      </div>
-                    )}
-                    <div className="summary-row roundoff-row">
-                      <span>Roundoff:</span>
-                      <div className="roundoff-control">
-                        <span>{formatCurrency(calculateRoundoff())}</span>
-                        <label className="roundoff-toggle">
-                          <input
-                            type="checkbox"
-                            checked={roundoff}
-                            onChange={(e) => setRoundoff(e.target.checked)}
-                          />
-                          <span className="toggle-slider"></span>
-                        </label>
-                      </div>
-                    </div>
-                    <div className="summary-row subtotal-row">
-                      <span>Sub Total:</span>
-                      <span>{formatCurrency(calculateSubtotal())}</span>
-                    </div>
-                    <div className="summary-row total-payable-row">
-                      <span>Total Payable:</span>
-                      <span className="total-payable-amount">{formatCurrency(calculateTotal())}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="payment-methods-section">
-                  <div className="payment-methods-label">Select Payment</div>
-                  <div className="payment-methods-grid">
-                    {paymentMethods.map(method => (
-                      <button
-                        key={method.id}
-                        className={`payment-method-btn ${paymentMethod === method.id ? 'active' : ''}`}
-                        onClick={() => setPaymentMethod(method.id)}
-                        style={paymentMethod === method.id && method.color ? { borderColor: method.color, backgroundColor: `${method.color}15` } : {}}
-                      >
-                        <span className="payment-icon" style={method.color ? { color: method.color } : {}}>{method.icon}</span>
-                        <span>{method.label}</span>
-                      </button>
-                    ))}
+                {/* Simple Total Display */}
+                <div style={{ 
+                  marginTop: '1rem', 
+                  padding: '1rem', 
+                  background: '#f9fafb', 
+                  borderRadius: '8px',
+                  border: '1px solid #e5e7eb'
+                }}>
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center',
+                    fontSize: '1.25rem',
+                    fontWeight: '700',
+                    color: '#111827'
+                  }}>
+                    <span>Total:</span>
+                    <span style={{ color: '#667eea', fontSize: '1.5rem' }}>
+                      {formatCurrency(calculateTotal())}
+                    </span>
                   </div>
                 </div>
 
@@ -873,11 +1003,8 @@ const POS = () => {
                   <button 
                     className="place-order-btn"
                     onClick={() => {
-                      if (paymentMethod === 'cash' || paymentMethod === 'mpesa') {
-                        setShowPaymentModal(true);
-                      } else {
-                        handlePayment();
-                      }
+                      // Show shipping address modal first
+                      setShowShippingModal(true);
                     }}
                   >
                     🛒 Place Order
@@ -889,25 +1016,198 @@ const POS = () => {
         </div>
       </div>
 
+      {/* Shipping Address Modal */}
+      {showShippingModal && (
+        <div className="modal-overlay" onClick={() => setShowShippingModal(false)}>
+          <div className="modal-content payment-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Shipping Information</h2>
+              <button onClick={() => setShowShippingModal(false)} className="close-btn">×</button>
+            </div>
+            <div className="payment-form">
+              <div className="form-group">
+                <label>Delivery Method *</label>
+                <select
+                  value={deliveryMethod}
+                  onChange={(e) => {
+                    setDeliveryMethod(e.target.value);
+                    if (e.target.value === 'pickup') {
+                      setDeliveryCost(0);
+                    }
+                  }}
+                >
+                  <option value="pickup">Pickup (No Charge)</option>
+                  <option value="delivery">Standard Delivery</option>
+                  <option value="express">Express Delivery</option>
+                </select>
+              </div>
+              {(deliveryMethod === 'delivery' || deliveryMethod === 'express') && (
+                <>
+                  <div className="form-group">
+                    <label>Shipping Address *</label>
+                    <textarea
+                      value={shippingAddress}
+                      onChange={(e) => setShippingAddress(e.target.value)}
+                      placeholder="Enter full shipping address"
+                      rows="3"
+                      style={{ width: '100%', padding: '0.75rem', border: '1px solid #ddd', borderRadius: '4px', fontSize: '0.95rem' }}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Location *</label>
+                    <input
+                      type="text"
+                      value={shippingLocation}
+                      onChange={(e) => setShippingLocation(e.target.value)}
+                      placeholder="Enter location/area"
+                      style={{ width: '100%', padding: '0.75rem', border: '1px solid #ddd', borderRadius: '4px', fontSize: '0.95rem' }}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Delivery Cost *</label>
+                    <input
+                      type="number"
+                      value={deliveryCost}
+                      onChange={(e) => setDeliveryCost(parseFloat(e.target.value) || 0)}
+                      placeholder="Enter delivery cost"
+                      step="0.01"
+                      min="0"
+                    />
+                    <small style={{ color: '#666', fontSize: '0.85rem', marginTop: '0.25rem', display: 'block' }}>
+                      Enter the delivery charge amount
+                    </small>
+                  </div>
+                  <div className="form-group">
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={hasExtraPayment}
+                        onChange={(e) => {
+                          setHasExtraPayment(e.target.checked);
+                          if (!e.target.checked) {
+                            setExtraPaymentAmount(0);
+                          }
+                        }}
+                        style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                      />
+                      <span>Add Extra Payment</span>
+                    </label>
+                    {hasExtraPayment && (
+                      <input
+                        type="number"
+                        value={extraPaymentAmount}
+                        onChange={(e) => setExtraPaymentAmount(parseFloat(e.target.value) || 0)}
+                        placeholder="Enter extra payment amount"
+                        step="0.01"
+                        min="0"
+                        style={{ marginTop: '0.5rem' }}
+                      />
+                    )}
+                    <small style={{ color: '#666', fontSize: '0.85rem', marginTop: '0.25rem', display: 'block' }}>
+                      {hasExtraPayment ? 'This amount will be added to the total' : 'Check to add an extra payment amount'}
+                    </small>
+                  </div>
+                </>
+              )}
+              <div className="form-group">
+                <label>Subtotal</label>
+                <input
+                  type="text"
+                  value={formatCurrency(calculateSubtotal())}
+                  disabled
+                />
+              </div>
+              {deliveryCost > 0 && (
+                <div className="form-group">
+                  <label>Delivery Cost</label>
+                  <input
+                    type="text"
+                    value={formatCurrency(deliveryCost)}
+                    disabled
+                  />
+                </div>
+              )}
+              {hasExtraPayment && extraPaymentAmount > 0 && (
+                <div className="form-group">
+                  <label>Extra Payment</label>
+                  <input
+                    type="text"
+                    value={formatCurrency(extraPaymentAmount)}
+                    disabled
+                    style={{ color: '#667eea', fontWeight: '600' }}
+                  />
+                </div>
+              )}
+              <div className="form-group">
+                <label>Total Amount</label>
+                <input
+                  type="text"
+                  value={formatCurrency(calculateTotal())}
+                  disabled
+                  style={{ fontWeight: 'bold', fontSize: '1.1rem' }}
+                />
+              </div>
+              <div className="modal-actions">
+                <button onClick={() => setShowShippingModal(false)} className="btn-cancel">Cancel</button>
+                <button 
+                  onClick={() => {
+                    if ((deliveryMethod === 'delivery' || deliveryMethod === 'express')) {
+                      if (!shippingAddress.trim()) {
+                        toast.warning('Please enter shipping address');
+                        return;
+                      }
+                      if (!shippingLocation.trim()) {
+                        toast.warning('Please enter location');
+                        return;
+                      }
+                      if (deliveryCost <= 0) {
+                        toast.warning('Please enter delivery cost');
+                        return;
+                      }
+                    }
+                    setShowShippingModal(false);
+                    // Always show payment modal after shipping details
+                    setShowPaymentModal(true);
+                  }} 
+                  className="btn-submit"
+                >
+                  Continue to Payment
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Payment Modal */}
       {showPaymentModal && (
         <div className="modal-overlay" onClick={() => setShowPaymentModal(false)}>
           <div className="modal-content payment-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>Finalize Sale</h2>
+              <h2>Complete Payment</h2>
               <button onClick={() => setShowPaymentModal(false)} className="close-btn">×</button>
             </div>
             <div className="payment-form">
               <div className="form-group">
-                <label>Payment Type *</label>
-                <select
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
-                >
-                  {paymentMethods.map(method => (
-                    <option key={method.id} value={method.id}>{method.label}</option>
-                  ))}
-                </select>
+                <label>Payment Method *</label>
+                <div className="payment-methods-grid" style={{ marginTop: '0.5rem' }}>
+                  <button
+                    className={`payment-method-btn ${paymentMethod === 'cash' ? 'active' : ''}`}
+                    onClick={() => setPaymentMethod('cash')}
+                    style={paymentMethod === 'cash' ? { borderColor: '#10b981', backgroundColor: '#10b98115' } : {}}
+                  >
+                    <span className="payment-icon" style={{ color: '#10b981' }}>💵</span>
+                    <span>Cash</span>
+                  </button>
+                  <button
+                    className={`payment-method-btn ${paymentMethod === 'mpesa' ? 'active' : ''}`}
+                    onClick={() => setPaymentMethod('mpesa')}
+                    style={paymentMethod === 'mpesa' ? { borderColor: '#10b981', backgroundColor: '#10b98115' } : {}}
+                  >
+                    <span className="payment-icon" style={{ color: '#10b981' }}>📱</span>
+                    <span>Mobile Money</span>
+                  </button>
+                </div>
               </div>
               {(paymentMethod === 'cash' || paymentMethod === 'mpesa') && (
                 <>
@@ -937,17 +1237,82 @@ const POS = () => {
                   )}
                 </>
               )}
+              {(deliveryMethod === 'delivery' || deliveryMethod === 'express') && (
+                <>
+                  {shippingAddress && (
+                    <div className="form-group">
+                      <label>Shipping Address</label>
+                      <input
+                        type="text"
+                        value={shippingAddress}
+                        disabled
+                        style={{ fontSize: '0.9rem', color: '#666' }}
+                      />
+                    </div>
+                  )}
+                  {shippingLocation && (
+                    <div className="form-group">
+                      <label>Location</label>
+                      <input
+                        type="text"
+                        value={shippingLocation}
+                        disabled
+                        style={{ fontSize: '0.9rem', color: '#666' }}
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+              <div className="form-group">
+                <label>Subtotal</label>
+                <input
+                  type="text"
+                  value={formatCurrency(calculateSubtotal())}
+                  disabled
+                />
+              </div>
+              {deliveryCost > 0 && (
+                <div className="form-group">
+                  <label>Delivery ({deliveryMethod === 'delivery' ? 'Standard' : 'Express'})</label>
+                  <input
+                    type="text"
+                    value={formatCurrency(deliveryCost)}
+                    disabled
+                  />
+                </div>
+              )}
+              {hasExtraPayment && extraPaymentAmount > 0 && (
+                <div className="form-group">
+                  <label>Extra Payment</label>
+                  <input
+                    type="text"
+                    value={formatCurrency(extraPaymentAmount)}
+                    disabled
+                    style={{ color: '#667eea', fontWeight: '600' }}
+                  />
+                </div>
+              )}
               <div className="form-group">
                 <label>Total Amount</label>
                 <input
                   type="text"
                   value={formatCurrency(calculateTotal())}
                   disabled
+                  style={{ fontWeight: 'bold', fontSize: '1.1rem' }}
                 />
               </div>
               <div className="modal-actions">
-                <button onClick={() => setShowPaymentModal(false)} className="btn-cancel">Cancel</button>
-                <button onClick={handlePayment} className="btn-submit">Complete Sale</button>
+                <button onClick={() => {
+                  setShowPaymentModal(false);
+                  setShowShippingModal(true);
+                }} className="btn-cancel">Back</button>
+                <button 
+                  onClick={handlePayment} 
+                  className="btn-submit"
+                  disabled={(paymentMethod === 'cash' || paymentMethod === 'mpesa') && (!receivedAmount || parseFloat(receivedAmount) < calculateTotal())}
+                >
+                  Complete Order
+                </button>
               </div>
             </div>
           </div>

@@ -14,6 +14,7 @@ from .serializers import (
     JournalEntrySerializer, TransactionSerializer,
     BalanceSheetSerializer, IncomeStatementSerializer, TrialBalanceSerializer
 )
+from .services import AccountTypeService, AccountService, JournalEntryService, TransactionService
 from expenses.models import Expense
 from sales.models import Sale
 
@@ -242,7 +243,7 @@ def create_sale_journal_entry(sale):
     # Determine sale type and payment amount
     sale_type = getattr(sale, 'sale_type', 'pos')  # Default to 'pos' for backward compatibility
     amount_paid = sale.amount_paid or Decimal('0')
-    total = sale.total
+    total = sale.total  # Total includes delivery_cost
     balance = total - amount_paid
     
     if sale_type == 'pos':
@@ -481,31 +482,43 @@ class AccountTypeViewSet(viewsets.ModelViewSet):
     queryset = AccountType.objects.all()
     serializer_class = AccountTypeSerializer
     ordering = ['name']
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.account_type_service = AccountTypeService()
+    
+    def get_queryset(self):
+        """Get queryset using service layer"""
+        return self.account_type_service.build_queryset()
 
 
 class AccountViewSet(viewsets.ModelViewSet):
     queryset = Account.objects.all().select_related('account_type', 'parent')
     serializer_class = AccountSerializer
     ordering = ['account_code']
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.account_service = AccountService()
 
     def get_queryset(self):
-        queryset = Account.objects.all().select_related('account_type', 'parent')
-        account_type = self.request.query_params.get('account_type', None)
-        is_active = self.request.query_params.get('is_active', None)
+        """Get queryset using service layer - all query logic moved to service"""
+        filters = {}
+        query_params = self.request.query_params
         
-        if account_type:
-            queryset = queryset.filter(account_type__name=account_type)
-        if is_active is not None:
-            queryset = queryset.filter(is_active=is_active.lower() == 'true')
+        # Extract all filter parameters
+        for param in ['account_type', 'is_active']:
+            if param in query_params:
+                filters[param] = query_params.get(param)
         
-        return queryset
+        return self.account_service.build_queryset(filters)
 
     @action(detail=True, methods=['post'])
     def update_balance(self, request, pk=None):
-        """Manually update account balance"""
+        """Manually update account balance - thin view, business logic in service"""
         account = self.get_object()
-        account.update_balance()
-        serializer = self.get_serializer(account)
+        updated_account = self.account_service.update_balance(account)
+        serializer = self.get_serializer(updated_account)
         return Response(serializer.data)
 
 
@@ -513,21 +526,22 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
     queryset = JournalEntry.objects.all().select_related('account', 'created_by')
     serializer_class = JournalEntrySerializer
     ordering = ['-entry_date', '-created_at']
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.journal_entry_service = JournalEntryService()
 
     def get_queryset(self):
-        queryset = JournalEntry.objects.all().select_related('account', 'created_by')
-        account = self.request.query_params.get('account', None)
-        date_from = self.request.query_params.get('date_from', None)
-        date_to = self.request.query_params.get('date_to', None)
+        """Get queryset using service layer - all query logic moved to service"""
+        filters = {}
+        query_params = self.request.query_params
         
-        if account:
-            queryset = queryset.filter(account_id=account)
-        if date_from:
-            queryset = queryset.filter(entry_date__gte=date_from)
-        if date_to:
-            queryset = queryset.filter(entry_date__lte=date_to)
+        # Extract all filter parameters
+        for param in ['account', 'date_from', 'date_to', 'entry_type']:
+            if param in query_params:
+                filters[param] = query_params.get(param)
         
-        return queryset
+        return self.journal_entry_service.build_queryset(filters)
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -537,18 +551,22 @@ class TransactionViewSet(viewsets.ModelViewSet):
     queryset = Transaction.objects.all().prefetch_related('journal_entries').select_related('created_by')
     serializer_class = TransactionSerializer
     ordering = ['-transaction_date', '-created_at']
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.transaction_service = TransactionService()
 
     def get_queryset(self):
-        queryset = Transaction.objects.all().prefetch_related('journal_entries').select_related('created_by')
-        date_from = self.request.query_params.get('date_from', None)
-        date_to = self.request.query_params.get('date_to', None)
+        """Get queryset using service layer - all query logic moved to service"""
+        filters = {}
+        query_params = self.request.query_params
         
-        if date_from:
-            queryset = queryset.filter(transaction_date__gte=date_from)
-        if date_to:
-            queryset = queryset.filter(transaction_date__lte=date_to)
+        # Extract all filter parameters
+        for param in ['date_from', 'date_to']:
+            if param in query_params:
+                filters[param] = query_params.get(param)
         
-        return queryset
+        return self.transaction_service.build_queryset(filters)
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -1013,7 +1031,7 @@ class AccountingReportViewSet(viewsets.ViewSet):
     
     @action(detail=False, methods=['get'])
     def account_statement(self, request):
-        """Generate account statement for a bank account"""
+        """Generate account statement for an accounting account (works like general ledger but formatted as statement)"""
         account_id = request.query_params.get('account_id', None)
         date_from = request.query_params.get('date_from', None)
         date_to = request.query_params.get('date_to', None)
@@ -1025,52 +1043,57 @@ class AccountingReportViewSet(viewsets.ViewSet):
             )
         
         try:
-            from bankaccounts.models import BankAccount
-            bank_account = BankAccount.objects.get(id=account_id)
-        except BankAccount.DoesNotExist:
+            account = Account.objects.get(id=account_id)
+        except Account.DoesNotExist:
             return Response(
-                {'error': 'Bank account not found'},
+                {'error': 'Account not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        transactions = bank_account.transactions.all()
+        entries = JournalEntry.objects.filter(account=account)
         
         if date_from:
-            transactions = transactions.filter(transaction_date__gte=date_from)
+            entries = entries.filter(entry_date__gte=date_from)
         if date_to:
-            transactions = transactions.filter(transaction_date__lte=date_to)
+            entries = entries.filter(entry_date__lte=date_to)
         
-        transactions = transactions.order_by('transaction_date', 'created_at')
+        entries = entries.order_by('entry_date', 'created_at')
         
-        running_balance = bank_account.opening_balance
+        running_balance = account.opening_balance
         statement_entries = []
         
-        for transaction in transactions:
-            if transaction.transaction_type in ['deposit', 'transfer_in', 'interest']:
-                running_balance += transaction.amount
-            elif transaction.transaction_type in ['withdrawal', 'transfer_out', 'fee']:
-                running_balance -= transaction.amount
+        for entry in entries:
+            if account.account_type.normal_balance == 'debit':
+                if entry.entry_type == 'debit':
+                    running_balance += entry.amount
+                else:
+                    running_balance -= entry.amount
+            else:  # credit normal balance
+                if entry.entry_type == 'credit':
+                    running_balance += entry.amount
+                else:
+                    running_balance -= entry.amount
             
             statement_entries.append({
-                'transaction_number': transaction.transaction_number,
-                'transaction_date': transaction.transaction_date.isoformat(),
-                'transaction_type': transaction.transaction_type,
-                'description': transaction.description,
-                'reference': transaction.reference,
-                'amount': float(transaction.amount),
+                'entry_number': entry.entry_number,
+                'entry_date': entry.entry_date.isoformat(),
+                'entry_type': entry.entry_type,
+                'description': entry.description,
+                'reference': entry.reference,
+                'amount': float(entry.amount),
                 'balance': float(running_balance),
             })
         
         return Response({
             'account': {
-                'id': bank_account.id,
-                'account_name': bank_account.account_name,
-                'account_number': bank_account.account_number,
-                'bank_name': bank_account.bank_name,
-                'opening_balance': float(bank_account.opening_balance),
-                'currency': bank_account.currency,
+                'id': account.id,
+                'account_code': account.account_code,
+                'account_name': account.name,
+                'account_type': account.account_type.name,
+                'opening_balance': float(account.opening_balance),
+                'currency': 'KES',  # Default currency
             },
-            'period_start': date_from or bank_account.created_at.date().isoformat(),
+            'period_start': date_from or account.created_at.date().isoformat(),
             'period_end': date_to or date.today().isoformat(),
             'entries': statement_entries,
             'closing_balance': float(running_balance),

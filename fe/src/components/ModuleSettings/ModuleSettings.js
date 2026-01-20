@@ -26,6 +26,8 @@ const ModuleSettings = () => {
       const modulesData = response.data || {};
       
       // Convert object to array for easier rendering
+      // NOTE: In module settings UI, we show ALL modules (even disabled ones) so admins can toggle them
+      // Other parts of the UI should filter out disabled modules
       const modulesArray = Object.keys(modulesData).map(key => ({
         id: modulesData[key].id,
         module_name: key,
@@ -373,13 +375,50 @@ const ModuleSettings = () => {
     return acc;
   }, {});
 
-  // Sort accounting modules: accounting first, then reports in specific order
+  // Sort accounting modules: 2-column grid layout
+  // Row 1: accounting | balance_sheet
+  // Row 2: trial_balance | cash_flow
+  // Row 3: account_statement | (empty if odd number)
+  // Additional modules will continue in this pattern
   if (groupedModules['Accounting']) {
     const accountingOrder = ['accounting', 'balance_sheet', 'trial_balance', 'cash_flow', 'account_statement'];
     groupedModules['Accounting'].sort((a, b) => {
       const aIndex = accountingOrder.indexOf(a.module_name);
       const bIndex = accountingOrder.indexOf(b.module_name);
       if (aIndex === -1 && bIndex === -1) return 0;
+      if (aIndex === -1) return 1;
+      if (bIndex === -1) return -1;
+      return aIndex - bIndex;
+    });
+  }
+
+  // Sort Core Business Operations: 2-column grid layout
+  // Row 1: products | customers
+  // Row 2: inventory | invoicing
+  // Row 3: sales | stock
+  // Additional modules will continue in this pattern
+  if (groupedModules['Core Business Operations']) {
+    const coreOrder = ['products', 'customers', 'inventory', 'invoicing', 'sales', 'stock'];
+    groupedModules['Core Business Operations'].sort((a, b) => {
+      const aIndex = coreOrder.indexOf(a.module_name);
+      const bIndex = coreOrder.indexOf(b.module_name);
+      if (aIndex === -1 && bIndex === -1) return a.module_name_display.localeCompare(b.module_name_display);
+      if (aIndex === -1) return 1;
+      if (bIndex === -1) return -1;
+      return aIndex - bIndex;
+    });
+  }
+
+  // Sort Financial Management: 2-column grid layout
+  // Row 1: expenses | income
+  // Row 2: bank_accounts | money_transfer
+  // Additional modules will continue in this pattern
+  if (groupedModules['Financial Management']) {
+    const financialOrder = ['expenses', 'income', 'bank_accounts', 'money_transfer'];
+    groupedModules['Financial Management'].sort((a, b) => {
+      const aIndex = financialOrder.indexOf(a.module_name);
+      const bIndex = financialOrder.indexOf(b.module_name);
+      if (aIndex === -1 && bIndex === -1) return a.module_name_display.localeCompare(b.module_name_display);
       if (aIndex === -1) return 1;
       if (bIndex === -1) return -1;
       return aIndex - bIndex;

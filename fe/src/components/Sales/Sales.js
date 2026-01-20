@@ -443,6 +443,32 @@ const Sales = () => {
                     </div>
                   )}
                 </div>
+                {/* Shipping Information */}
+                {(selectedSale.shipping_address || selectedSale.shipping_location) && (
+                  <div className="receipt-shipping" style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px dashed #e5e7eb' }}>
+                    <p style={{ fontWeight: 600, marginBottom: '0.5rem', fontSize: '0.9rem' }}>Shipping Information</p>
+                    {selectedSale.delivery_method && (
+                      <p style={{ fontSize: '0.85rem', margin: '0.25rem 0' }}>
+                        <strong>Method:</strong> {selectedSale.delivery_method.charAt(0).toUpperCase() + selectedSale.delivery_method.slice(1)}
+                      </p>
+                    )}
+                    {selectedSale.shipping_address && (
+                      <p style={{ fontSize: '0.85rem', margin: '0.25rem 0' }}>
+                        <strong>Address:</strong> {selectedSale.shipping_address}
+                      </p>
+                    )}
+                    {selectedSale.shipping_location && (
+                      <p style={{ fontSize: '0.85rem', margin: '0.25rem 0' }}>
+                        <strong>Location:</strong> {selectedSale.shipping_location}
+                      </p>
+                    )}
+                    {selectedSale.delivery_cost > 0 && (
+                      <p style={{ fontSize: '0.85rem', margin: '0.25rem 0' }}>
+                        <strong>Delivery Cost:</strong> {formatCurrency(selectedSale.delivery_cost)}
+                      </p>
+                    )}
+                  </div>
+                )}
                 {selectedSale.notes && (
                   <div className="receipt-notes">
                     <p><strong>Notes:</strong> {selectedSale.notes}</p>

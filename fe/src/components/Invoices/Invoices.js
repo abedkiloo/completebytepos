@@ -520,15 +520,15 @@ const Invoices = () => {
                     rows="3"
                   />
                 </div>
+                <div className="slide-in-panel-footer">
+                  <button type="button" onClick={() => setShowModal(false)} className="btn btn-secondary">
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn btn-primary">
+                    {selectedInvoice ? 'Update' : 'Create'}
+                  </button>
+                </div>
                 </form>
-              </div>
-              <div className="slide-in-panel-footer">
-                <button type="button" onClick={() => setShowModal(false)} className="btn btn-secondary">
-                  Cancel
-                </button>
-                <button type="submit" onClick={handleSubmit} className="btn btn-primary">
-                  {selectedInvoice ? 'Update' : 'Create'}
-                </button>
               </div>
             </div>
           </div>
@@ -604,15 +604,15 @@ const Invoices = () => {
                     rows="3"
                   />
                 </div>
+                <div className="slide-in-panel-footer">
+                  <button type="button" onClick={() => setShowPaymentModal(false)} className="btn btn-secondary">
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn btn-primary">
+                    Record Payment
+                  </button>
+                </div>
                 </form>
-              </div>
-              <div className="slide-in-panel-footer">
-                <button type="button" onClick={() => setShowPaymentModal(false)} className="btn btn-secondary">
-                  Cancel
-                </button>
-                <button type="submit" onClick={handlePaymentSubmit} className="btn btn-primary">
-                  Record Payment
-                </button>
               </div>
             </div>
           </div>

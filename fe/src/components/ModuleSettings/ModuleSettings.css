@@ -2,8 +2,8 @@
   padding: 0.75rem;
   background: #f5f7fa;
   min-height: 100vh;
-  max-width: 1600px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: 100%;
 }
 
 .module-settings-header {
@@ -33,22 +33,10 @@
 }
 
 .module-settings-content {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-  gap: 0.875rem;
-  align-items: start;
-}
-
-@media (min-width: 1400px) {
-  .module-settings-content {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (max-width: 900px) {
-  .module-settings-content {
-    grid-template-columns: 1fr;
-  }
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  align-items: stretch;
 }
 
 .module-category {
@@ -59,6 +47,7 @@
   transition: box-shadow 0.2s;
   border: 1px solid #e5e7eb;
   height: fit-content;
+  width: 100%;
 }
 
 .module-category:hover {
@@ -113,15 +102,43 @@
 }
 
 .modules-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.625rem;
-  align-items: stretch;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+  width: 100%;
 }
 
-/* Accounting category keeps vertical stacking */
-.module-category[data-category="Accounting"] {
-  grid-column: 1 / -1;
+/* All categories use 2-column grid for modules (2 modules per row) spanning full width */
+.module-category[data-category="Core Business Operations"] .modules-list,
+.module-category[data-category="Financial Management"] .modules-list,
+.module-category[data-category="Reporting"] .modules-list,
+.module-category[data-category="Tools & Utilities"] .modules-list,
+.module-category[data-category="Supplier Management"] .modules-list,
+.module-category[data-category="System Administration"] .modules-list,
+.module-category[data-category="Accounting"] .modules-list {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+  width: 100%;
+}
+
+/* Responsive: single column on small screens */
+@media (max-width: 900px) {
+  .modules-list {
+    grid-template-columns: 1fr;
+  }
+  
+  .module-category[data-category="Core Business Operations"] .modules-list,
+  .module-category[data-category="Financial Management"] .modules-list,
+  .module-category[data-category="Reporting"] .modules-list,
+  .module-category[data-category="Tools & Utilities"] .modules-list,
+  .module-category[data-category="Supplier Management"] .modules-list,
+  .module-category[data-category="System Administration"] .modules-list,
+  .module-category[data-category="Accounting"] .modules-list {
+    grid-template-columns: 1fr;
+  }
 }
 
 .module-card {

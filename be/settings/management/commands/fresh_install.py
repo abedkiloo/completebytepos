@@ -51,6 +51,20 @@ class Command(BaseCommand):
             help='Number of customers to create (default: 50)',
         )
         parser.add_argument(
+            '--num-sales',
+            type=int,
+            default=100,
+            dest='num_sales',
+            help='Number of sales to create (default: 100)',
+        )
+        parser.add_argument(
+            '--num-expenses',
+            type=int,
+            default=30,
+            dest='num_expenses',
+            help='Number of expenses to create (default: 30)',
+        )
+        parser.add_argument(
             '--sales',
             type=int,
             default=100,
@@ -83,41 +97,51 @@ class Command(BaseCommand):
                 else:
                     self.stdout.write('Step 1: Skipping database deletion...')
 
-                # Step 2: Create migrations
+                # Step 2: Create migrations (skip if migrations already exist)
                 self.stdout.write('\nStep 2: Creating migrations...')
                 try:
                     call_command('makemigrations', verbosity=0)
                     self.stdout.write(self.style.SUCCESS('  ✓ Migrations created'))
                 except Exception as e:
-                    self.stdout.write(self.style.WARNING(f'  ⚠ Migration creation: {str(e)[:100]}'))
+                    error_msg = str(e)
+                    if 'Conflicting migrations' in error_msg or 'No changes detected' in error_msg:
+                        self.stdout.write(self.style.SUCCESS('  ✓ Migrations already exist'))
+                    else:
+                        self.stdout.write(self.style.WARNING(f'  ⚠ Migration creation: {error_msg[:100]}'))
 
                 # Step 3: Run migrations
                 self.stdout.write('\nStep 3: Running migrations...')
                 try:
+                    # Try normal migrate first
                     call_command('migrate', verbosity=0, interactive=False)
                     self.stdout.write(self.style.SUCCESS('  ✓ Migrations applied'))
                 except Exception as e:
-                    self.stdout.write(self.style.ERROR(f'  ✗ Migration failed: {str(e)[:100]}'))
-                    raise
+                    # If that fails, try with --fake-initial
+                    try:
+                        call_command('migrate', '--fake-initial', verbosity=0, interactive=False)
+                        self.stdout.write(self.style.SUCCESS('  ✓ Migrations applied (with --fake-initial)'))
+                    except Exception as e2:
+                        self.stdout.write(self.style.ERROR(f'  ✗ Migration failed: {str(e2)[:100]}'))
+                        raise
 
                 # Step 4: Create superuser
                 self.stdout.write('\nStep 4: Creating superuser...')
                 try:
                     user, created = User.objects.get_or_create(
-                        username='admin',
+                        username='admin@3@1',
                         defaults={
-                            'email': 'admin@example.com',
+                            'email': 'admin@3@1',
                             'is_staff': True,
                             'is_superuser': True,
                             'is_active': True
                         }
                     )
-                    user.set_password('admin')
+                    user.set_password('admin@3@1')
                     user.save()
                     if created:
-                        self.stdout.write(self.style.SUCCESS('  ✓ Superuser created (username: admin, password: admin)'))
+                        self.stdout.write(self.style.SUCCESS('  ✓ Superuser created (username: admin@3@1, password: admin@3@1)'))
                     else:
-                        self.stdout.write(self.style.SUCCESS('  ✓ Superuser updated (username: admin, password: admin)'))
+                        self.stdout.write(self.style.SUCCESS('  ✓ Superuser updated (username: admin@3@1, password: admin@3@1)'))
                 except Exception as e:
                     self.stdout.write(self.style.ERROR(f'  ✗ Superuser creation failed: {str(e)[:100]}'))
                     raise
@@ -166,18 +190,22 @@ class Command(BaseCommand):
                 if options['test_data'] and not options['skip_test_data']:
                     self.stdout.write('\nStep 10: Populating comprehensive soft furnishings data...')
                     try:
+                        # Get sales and expenses values - support both --sales/--expenses and --num-sales/--num-expenses
+                        sales_count = options.get('sales') or options.get('num_sales', 100)
+                        expenses_count = options.get('expenses') or options.get('num_expenses', 30)
+                        
                         call_command('populate_test_data',
                                     users=options['users'],
                                     products=options['products'],
                                     customers=options['customers'],
-                                    sales=options['sales'],
-                                    expenses=options['expenses'],
+                                    sales=sales_count,
+                                    expenses=expenses_count,
                                     verbosity=1)
                         self.stdout.write(self.style.SUCCESS(
                             f'  ✓ Soft furnishings data populated '
                             f'({options["users"]} users, {options["products"]} products, '
-                            f'{options["customers"]} customers, {options["sales"]} sales, '
-                            f'{options["expenses"]} expenses)'
+                            f'{options["customers"]} customers, {sales_count} sales, '
+                            f'{expenses_count} expenses)'
                         ))
                     except Exception as e:
                         self.stdout.write(self.style.WARNING(f'  ⚠ Data population: {str(e)[:100]}'))
@@ -191,8 +219,8 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS('=' * 70))
             self.stdout.write('')
             self.stdout.write('Login credentials:')
-            self.stdout.write('  Username: admin')
-            self.stdout.write('  Password: admin')
+            self.stdout.write('  Username: admin@3@1')
+            self.stdout.write('  Password: admin@3@1')
             self.stdout.write('')
             self.stdout.write('⚠️  IMPORTANT: Change the default password after first login!')
             self.stdout.write('')

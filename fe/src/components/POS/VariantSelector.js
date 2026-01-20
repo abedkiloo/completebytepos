@@ -12,11 +12,20 @@ const VariantSelector = ({ product, onSelect, onClose }) => {
   const [selectedVariant, setSelectedVariant] = useState(null);
   const [availableSizes, setAvailableSizes] = useState([]);
   const [availableColors, setAvailableColors] = useState([]);
+  const [quantity, setQuantity] = useState(1);
+  const [quantityInput, setQuantityInput] = useState('1');
+  const [quantityError, setQuantityError] = useState(null);
 
   useEffect(() => {
     loadProductDetails();
     loadVariants();
   }, [product]);
+
+  // Sync quantityInput with quantity when quantity changes externally
+  useEffect(() => {
+    setQuantityInput(quantity.toString());
+    setQuantityError(null); // Clear any errors when quantity changes externally
+  }, [quantity]);
 
   const loadProductDetails = async () => {
     setLoadingDetails(true);
@@ -188,6 +197,7 @@ const VariantSelector = ({ product, onSelect, onClose }) => {
   }, [selectedSize, selectedColor, variants, availableSizes.length, availableColors.length]);
 
   const handleAddToCart = () => {
+    const qty = Math.max(1, parseInt(quantity) || 1);
     if (selectedVariant) {
       onSelect({
         ...product,
@@ -200,6 +210,7 @@ const VariantSelector = ({ product, onSelect, onClose }) => {
         price: parseFloat(selectedVariant.effective_price || selectedVariant.price || product.price),
         stock_quantity: selectedVariant.stock_quantity,
         sku: selectedVariant.sku || product.sku || '',
+        quantity: qty,
       });
     } else if (!product.has_variants) {
       // Product without variants - add directly
@@ -208,6 +219,7 @@ const VariantSelector = ({ product, onSelect, onClose }) => {
         price: parseFloat(product.price),
         sku: product.sku || '',
         stock_quantity: product.stock_quantity || 0,
+        quantity: qty,
       });
     }
   };
@@ -244,6 +256,54 @@ const VariantSelector = ({ product, onSelect, onClose }) => {
       return selectedVariant.effective_price || selectedVariant.price || product.price;
     }
     return product.price;
+  };
+
+  const validateAndSetQuantity = (inputValue) => {
+    // Clear previous error
+    setQuantityError(null);
+
+    // Handle empty or invalid input
+    if (inputValue === '' || inputValue === '-' || inputValue === null || inputValue === undefined) {
+      setQuantity(1);
+      setQuantityInput('1');
+      return;
+    }
+
+    // Parse the input value
+    const numValue = parseInt(inputValue);
+    
+    // Check if it's a valid number
+    if (isNaN(numValue)) {
+      setQuantityError('Please enter a valid number');
+      setQuantity(1);
+      setQuantityInput('1');
+      return;
+    }
+
+    const maxStock = getVariantStock();
+    const minValue = 1;
+
+    // Check lower bound
+    if (numValue < minValue) {
+      setQuantityError(`Minimum quantity is ${minValue}`);
+      const finalVal = minValue;
+      setQuantity(finalVal);
+      setQuantityInput(finalVal.toString());
+      return;
+    }
+
+    // Check upper bound (if stock is tracked)
+    if (maxStock > 0 && numValue > maxStock) {
+      setQuantityError(`Maximum quantity is ${maxStock} (stock available)`);
+      const finalVal = maxStock;
+      setQuantity(finalVal);
+      setQuantityInput(finalVal.toString());
+      return;
+    }
+
+    // Valid value - set it
+    setQuantity(numValue);
+    setQuantityInput(numValue.toString());
   };
 
   if (!product.has_variants && variants.length === 0) {
@@ -330,21 +390,13 @@ const VariantSelector = ({ product, onSelect, onClose }) => {
               {selectedVariant && (
                 <div className="variant-details">
                   <div className="variant-detail-row">
-                    <span>Price:</span>
                     <strong>{formatCurrency(getVariantPrice())}</strong>
                   </div>
                   <div className="variant-detail-row">
-                    <span>Stock:</span>
-                    <strong className={getVariantStock() === 0 ? 'out-of-stock' : ''}>
+                    <span className={getVariantStock() === 0 ? 'out-of-stock' : ''}>
                       {getVariantStock()} {product.unit || 'pcs'}
-                    </strong>
+                    </span>
                   </div>
-                  {selectedVariant.sku && (
-                    <div className="variant-detail-row">
-                      <span>SKU:</span>
-                      <span className="variant-sku">{selectedVariant.sku}</span>
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -364,6 +416,154 @@ const VariantSelector = ({ product, onSelect, onClose }) => {
                   )}
                 </div>
               )}
+
+              {/* Quantity Selection - Always show */}
+              <div className="variant-section" style={{ marginTop: '1rem' }}>
+                <label style={{ fontSize: '0.9rem', fontWeight: '600', marginBottom: '0.5rem', display: 'block' }}>
+                  Quantity
+                  {getVariantStock() > 0 && (
+                    <span style={{ fontSize: '0.8rem', color: '#6b7280', fontWeight: '400', marginLeft: '0.5rem' }}>
+                      (1 - {getVariantStock()})
+                    </span>
+                  )}
+                </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <button
+                      onClick={() => {
+                        const newQty = Math.max(1, quantity - 1);
+                        setQuantity(newQty);
+                        setQuantityInput(newQty.toString());
+                        setQuantityError(null);
+                      }}
+                      style={{
+                        minWidth: '36px',
+                        height: '36px',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '4px',
+                        background: 'white',
+                        cursor: 'pointer',
+                        fontSize: '1.1rem',
+                        fontWeight: '600',
+                        color: '#374151',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.target.style.borderColor = '#667eea';
+                        e.target.style.background = '#f0f4ff';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.borderColor = '#d1d5db';
+                        e.target.style.background = 'white';
+                      }}
+                    >
+                      -
+                    </button>
+                    <input
+                      type="number"
+                      min="1"
+                      max={getVariantStock() > 0 ? getVariantStock() : undefined}
+                      value={quantityInput}
+                      onChange={(e) => {
+                        // Allow free typing - store raw input value
+                        const inputValue = e.target.value;
+                        setQuantityInput(inputValue);
+                        // Clear error while typing
+                        setQuantityError(null);
+                      }}
+                      onFocus={(e) => {
+                        // Select all text on focus for easy replacement
+                        e.target.select();
+                        // Sync input with current quantity
+                        setQuantityInput(quantity.toString());
+                        setQuantityError(null);
+                      }}
+                      onBlur={(e) => {
+                        // Validate and clamp on blur
+                        validateAndSetQuantity(e.target.value.trim());
+                      }}
+                      onKeyDown={(e) => {
+                        // Allow Enter to blur and validate
+                        if (e.key === 'Enter') {
+                          e.target.blur();
+                        }
+                        // Allow Escape to cancel and reset
+                        if (e.key === 'Escape') {
+                          setQuantityInput(quantity.toString());
+                          setQuantityError(null);
+                          e.target.blur();
+                        }
+                      }}
+                      style={{
+                        width: '120px',
+                        textAlign: 'center',
+                        padding: '0.75rem',
+                        border: `2px solid ${quantityError ? '#ef4444' : '#667eea'}`,
+                        borderRadius: '4px',
+                        fontSize: '1.1rem',
+                        fontWeight: '700',
+                        color: quantityError ? '#ef4444' : '#111827',
+                        outline: 'none',
+                        backgroundColor: quantityError ? '#fef2f2' : '#f9fafb',
+                        transition: 'all 0.2s'
+                      }}
+                      autoFocus={false}
+                    />
+                    <button
+                      onClick={() => {
+                        const maxStock = getVariantStock();
+                        let newQty;
+                        if (maxStock > 0) {
+                          newQty = Math.min(quantity + 1, maxStock);
+                        } else {
+                          newQty = quantity + 1;
+                        }
+                        setQuantity(newQty);
+                        setQuantityInput(newQty.toString());
+                        setQuantityError(null);
+                      }}
+                      disabled={getVariantStock() > 0 && quantity >= getVariantStock()}
+                      style={{
+                        minWidth: '36px',
+                        height: '36px',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '4px',
+                        background: 'white',
+                        cursor: getVariantStock() > 0 && quantity >= getVariantStock() ? 'not-allowed' : 'pointer',
+                        fontSize: '1.1rem',
+                        fontWeight: '600',
+                        color: '#374151',
+                        opacity: getVariantStock() > 0 && quantity >= getVariantStock() ? 0.5 : 1,
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!(getVariantStock() > 0 && quantity >= getVariantStock())) {
+                          e.target.style.borderColor = '#667eea';
+                          e.target.style.background = '#f0f4ff';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.borderColor = '#d1d5db';
+                        e.target.style.background = 'white';
+                      }}
+                    >
+                      +
+                    </button>
+                  </div>
+                  {quantityError && (
+                    <div style={{
+                      fontSize: '0.8rem',
+                      color: '#ef4444',
+                      padding: '0.5rem',
+                      background: '#fef2f2',
+                      borderRadius: '4px',
+                      border: '1px solid #fecaca'
+                    }}>
+                      {quantityError}
+                    </div>
+                  )}
+                </div>
+              </div>
             </>
           )}
         </div>

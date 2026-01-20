@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from django.db.models import Sum, Count
 from .models import BankAccount, BankTransaction
 from .serializers import BankAccountSerializer, BankTransactionSerializer
+from .services import BankAccountService, BankTransactionService
 
 
 class BankAccountViewSet(viewsets.ModelViewSet):
@@ -13,25 +14,27 @@ class BankAccountViewSet(viewsets.ModelViewSet):
     search_fields = ['account_name', 'account_number', 'bank_name']
     ordering_fields = ['bank_name', 'account_name', 'created_at']
     ordering = ['bank_name', 'account_name']
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.account_service = BankAccountService()
 
     def get_queryset(self):
-        queryset = BankAccount.objects.annotate(
-            transaction_count=Count('transactions')
-        )
-        is_active = self.request.query_params.get('is_active', None)
-        if is_active is not None:
-            queryset = queryset.filter(is_active=is_active.lower() == 'true')
-        return queryset
+        """Get queryset using service layer"""
+        filters = {}
+        if 'is_active' in self.request.query_params:
+            filters['is_active'] = self.request.query_params.get('is_active')
+        return self.account_service.build_queryset(filters)
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
     @action(detail=True, methods=['post'])
     def update_balance(self, request, pk=None):
-        """Manually update account balance"""
+        """Manually update account balance - thin view, business logic in service"""
         account = self.get_object()
-        account.update_balance()
-        serializer = self.get_serializer(account)
+        updated_account = self.account_service.update_balance(account)
+        serializer = self.get_serializer(updated_account)
         return Response(serializer.data)
 
 
@@ -42,21 +45,22 @@ class BankTransactionViewSet(viewsets.ModelViewSet):
     search_fields = ['transaction_number', 'description', 'reference']
     ordering_fields = ['transaction_date', 'amount', 'created_at']
     ordering = ['-transaction_date', '-created_at']
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.transaction_service = BankTransactionService()
 
     def get_queryset(self):
-        queryset = BankTransaction.objects.all().select_related('bank_account', 'created_by')
-        account = self.request.query_params.get('account', None)
-        date_from = self.request.query_params.get('date_from', None)
-        date_to = self.request.query_params.get('date_to', None)
+        """Get queryset using service layer - all query logic moved to service"""
+        filters = {}
+        query_params = self.request.query_params
         
-        if account:
-            queryset = queryset.filter(bank_account_id=account)
-        if date_from:
-            queryset = queryset.filter(transaction_date__gte=date_from)
-        if date_to:
-            queryset = queryset.filter(transaction_date__lte=date_to)
+        # Extract all filter parameters
+        for param in ['account', 'date_from', 'date_to']:
+            if param in query_params:
+                filters[param] = query_params.get(param)
         
-        return queryset
+        return self.transaction_service.build_queryset(filters)
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)

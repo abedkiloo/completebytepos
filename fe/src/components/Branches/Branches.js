@@ -351,15 +351,15 @@ const Branches = () => {
                     </label>
                   </div>
                 </div>
+                <div className="slide-in-panel-footer">
+                  <button type="button" onClick={() => setShowModal(false)} className="btn btn-secondary">
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn btn-primary">
+                    {selectedBranch ? 'Update' : 'Create'}
+                  </button>
+                </div>
                 </form>
-              </div>
-              <div className="slide-in-panel-footer">
-                <button type="button" onClick={() => setShowModal(false)} className="btn btn-secondary">
-                  Cancel
-                </button>
-                <button type="submit" onClick={handleSubmit} className="btn btn-primary">
-                  {selectedBranch ? 'Update' : 'Create'}
-                </button>
               </div>
             </div>
           </div>

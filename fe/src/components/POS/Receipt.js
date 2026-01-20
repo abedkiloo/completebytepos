@@ -344,6 +344,33 @@ const Receipt = ({ sale, onClose }) => {
           )}
         </div>
 
+        {/* Shipping Information */}
+        {(sale.shipping_address || sale.shipping_location) && (
+          <div className="receipt-shipping" style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px dashed #e5e7eb' }}>
+            <p style={{ fontWeight: 600, marginBottom: '0.5rem', fontSize: '0.9rem' }}>Shipping Information</p>
+            {sale.delivery_method && (
+              <p style={{ fontSize: '0.85rem', margin: '0.25rem 0' }}>
+                <strong>Method:</strong> {sale.delivery_method.charAt(0).toUpperCase() + sale.delivery_method.slice(1)}
+              </p>
+            )}
+            {sale.shipping_address && (
+              <p style={{ fontSize: '0.85rem', margin: '0.25rem 0' }}>
+                <strong>Address:</strong> {sale.shipping_address}
+              </p>
+            )}
+            {sale.shipping_location && (
+              <p style={{ fontSize: '0.85rem', margin: '0.25rem 0' }}>
+                <strong>Location:</strong> {sale.shipping_location}
+              </p>
+            )}
+            {sale.delivery_cost > 0 && (
+              <p style={{ fontSize: '0.85rem', margin: '0.25rem 0' }}>
+                <strong>Delivery Cost:</strong> {formatCurrency(sale.delivery_cost)}
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Receipt Footer */}
         <div className="receipt-footer">
           {sale.cashier_name && (

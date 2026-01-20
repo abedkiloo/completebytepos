@@ -9,6 +9,7 @@ class ModuleSettings(models.Model):
         ('sales', 'Sales'),
         ('customers', 'Customer Management'),
         ('suppliers', 'Supplier Management'),
+        ('employees', 'Employee Management'),
         ('invoicing', 'Invoicing'),
         ('inventory', 'Inventory Management'),
         ('stock', 'Stock Management'),

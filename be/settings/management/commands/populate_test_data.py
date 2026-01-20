@@ -9,9 +9,13 @@ Note: Branches are NOT created by default - they should be added through module 
 from django.core.management.base import BaseCommand
 from django.contrib.auth.models import User
 from accounts.models import UserProfile, Role
-from sales.models import Customer
+from sales.models import Customer, Sale, SaleItem, Invoice, InvoiceItem, Payment, PaymentPlan
 from products.models import Category, Product, Size, Color, ProductVariant
 from settings.models import Tenant, Branch
+from suppliers.models import Supplier
+from expenses.models import Expense, ExpenseCategory
+from inventory.models import StockMovement
+from django.utils import timezone
 from decimal import Decimal
 import random
 import uuid
@@ -70,6 +74,28 @@ class Command(BaseCommand):
             action='store_true',
             help='Skip product creation',
         )
+        parser.add_argument(
+            '--sales',
+            type=int,
+            default=0,
+            help='Number of sales to create (default: 0)',
+        )
+        parser.add_argument(
+            '--expenses',
+            type=int,
+            default=0,
+            help='Number of expenses to create (default: 0)',
+        )
+        parser.add_argument(
+            '--skip-sales',
+            action='store_true',
+            help='Skip sales creation',
+        )
+        parser.add_argument(
+            '--skip-expenses',
+            action='store_true',
+            help='Skip expense creation',
+        )
 
     def handle(self, *args, **options):
         self.stdout.write(self.style.SUCCESS('=' * 70))
@@ -119,6 +145,47 @@ class Command(BaseCommand):
         if not options['skip_products']:
             self.create_products_and_categories(options['products'])
         
+        # 4. Create Sales, Invoices, Payments, and Stock Movements
+        created_sales_list = []
+        if not options['skip_sales'] and options['sales'] > 0:
+            products = list(Product.objects.filter(is_active=True))
+            customers = list(Customer.objects.all())
+            branch = Branch.objects.first()
+            if not branch:
+                # Create default branch if none exists
+                tenant = Tenant.objects.first()
+                if tenant:
+                    branch = Branch.objects.create(
+                        tenant=tenant,
+                        name='Headquarters',
+                        code='HQ',
+                        address='Nairobi, Kenya',
+                        phone='+254700000000',
+                        is_active=True
+                    )
+                    self.stdout.write('  Created default branch: Headquarters')
+            
+            if products and customers and branch:
+                created_sales_list = self.create_sales(options['sales'], products, customers, superuser, branch)
+            else:
+                missing = []
+                if not products:
+                    missing.append('products')
+                if not customers:
+                    missing.append('customers')
+                if not branch:
+                    missing.append('branch')
+                self.stdout.write(self.style.WARNING(f'  ⚠ Skipping sales: Missing {", ".join(missing)}'))
+        
+        # 5. Create Expenses (sofa-making related)
+        created_expenses = []
+        if not options['skip_expenses'] and options['expenses'] > 0:
+            created_expenses = self.create_expenses(options['expenses'], superuser)
+        
+        # 6. Create Accounting Journal Entries for sales and expenses
+        if created_sales_list or created_expenses:
+            self.create_accounting_entries(created_sales_list, created_expenses, superuser)
+        
         self.stdout.write(self.style.SUCCESS('\n' + '=' * 70))
         self.stdout.write(self.style.SUCCESS('DATA POPULATION COMPLETE!'))
         self.stdout.write(self.style.SUCCESS('=' * 70))
@@ -130,6 +197,14 @@ class Command(BaseCommand):
         self.stdout.write(f'  Categories: {Category.objects.count()}')
         self.stdout.write(f'  Products: {Product.objects.count()}')
         self.stdout.write(f'  Product Variants: {ProductVariant.objects.count()}')
+        self.stdout.write(f'  Sales: {Sale.objects.count()}')
+        self.stdout.write(f'  Invoices: {Invoice.objects.count()}')
+        self.stdout.write(f'  Payments: {Payment.objects.count()}')
+        self.stdout.write(f'  Stock Movements: {StockMovement.objects.count()}')
+        self.stdout.write(f'  Expenses: {Expense.objects.count()}')
+        from accounting.models import Transaction, JournalEntry
+        self.stdout.write(f'  Transactions: {Transaction.objects.count()}')
+        self.stdout.write(f'  Journal Entries: {JournalEntry.objects.count()}')
         logger.info("Data population completed successfully")
     
     def create_tenant(self, superuser):
@@ -287,8 +362,34 @@ class Command(BaseCommand):
         logger.info(f"Created {created} customers")
 
     def create_products_and_categories(self, count):
-        """Create products, categories, sizes, colors, and variants"""
-        self.stdout.write(f'\n3. Creating products, categories, and variants...')
+        """Create products, categories, sizes, colors, and variants - SOFA MAKING PRODUCTS ONLY"""
+        self.stdout.write(f'\n3. Creating sofa-making products, categories, and variants...')
+        
+        # First, get or create suppliers for products
+        suppliers = list(Supplier.objects.all())
+        if not suppliers:
+            # Create some default suppliers if none exist
+            self.stdout.write('  Creating default suppliers...')
+            supplier_names = [
+                'Fabric Suppliers Ltd', 'Foam & Cushioning Co', 'Hardware Supplies Inc',
+                'Textile Manufacturers', 'Upholstery Materials Co', 'Furniture Components Ltd'
+            ]
+            for name in supplier_names:
+                supplier, created = Supplier.objects.get_or_create(
+                    name=name,
+                    defaults={
+                        'email': f'{name.lower().replace(" ", ".")}@example.com',
+                        'phone': f'+2547{random.randint(10000000, 99999999)}',
+                        'address': 'Nairobi, Kenya',
+                        'created_by': User.objects.filter(is_superuser=True).first()
+                    }
+                )
+                if created:
+                    suppliers.append(supplier)
+            suppliers = list(Supplier.objects.all())
+        
+        if not suppliers:
+            self.stdout.write(self.style.WARNING('  ⚠ No suppliers available. Products will be created without suppliers.'))
         
         # Create sizes
         self.stdout.write('  Creating sizes...')
@@ -342,19 +443,16 @@ class Command(BaseCommand):
             )
             colors[color_data['name']] = color
         
-        # Create main categories
-        self.stdout.write('  Creating categories...')
+        # Create main categories - SOFA MAKING ONLY
+        self.stdout.write('  Creating sofa-making categories...')
         main_categories_data = [
-            {'name': 'Electronics', 'description': 'Electronic products and gadgets'},
-            {'name': 'Clothing & Apparel', 'description': 'Clothing, shoes, and accessories'},
-            {'name': 'Food & Beverages', 'description': 'Food items and drinks'},
-            {'name': 'Home & Kitchen', 'description': 'Home and kitchen products'},
-            {'name': 'Sports & Outdoors', 'description': 'Sports equipment and outdoor gear'},
-            {'name': 'Beauty & Personal Care', 'description': 'Beauty and personal care products'},
-            {'name': 'Books & Media', 'description': 'Books, movies, and media'},
-            {'name': 'Toys & Games', 'description': 'Toys and games for all ages'},
-            {'name': 'Automotive', 'description': 'Automotive parts and accessories'},
-            {'name': 'Health & Wellness', 'description': 'Health and wellness products'},
+            {'name': 'Sofas & Couches', 'description': 'Complete sofas and couches'},
+            {'name': 'Cushions & Pillows', 'description': 'Cushions, pillows, and padding'},
+            {'name': 'Curtains & Drapes', 'description': 'Window treatments and curtains'},
+            {'name': 'Cushion Covers', 'description': 'Cushion covers and fabric covers'},
+            {'name': 'Fabric & Upholstery', 'description': 'Fabric, upholstery materials, and textiles'},
+            {'name': 'Foam & Cushioning', 'description': 'Foam, cushioning materials, and padding'},
+            {'name': 'Furniture Hardware', 'description': 'Legs, springs, screws, and furniture hardware'},
         ]
         
         main_categories = {}
@@ -368,18 +466,15 @@ class Command(BaseCommand):
             )
             main_categories[cat_data['name']] = category
         
-        # Create subcategories for each main category
+        # Create subcategories for each main category - SOFA MAKING ONLY
         subcategories_data = {
-            'Electronics': ['Smartphones', 'Laptops', 'Tablets', 'Headphones', 'Speakers', 'Cameras', 'TVs', 'Gaming Consoles'],
-            'Clothing & Apparel': ['Men\'s Clothing', 'Women\'s Clothing', 'Kids\' Clothing', 'Shoes', 'Accessories', 'Bags', 'Jewelry'],
-            'Food & Beverages': ['Snacks', 'Beverages', 'Dairy', 'Meat', 'Fruits', 'Vegetables', 'Bakery', 'Frozen Foods'],
-            'Home & Kitchen': ['Furniture', 'Kitchenware', 'Bedding', 'Bath', 'Decor', 'Storage', 'Lighting', 'Appliances'],
-            'Sports & Outdoors': ['Fitness', 'Outdoor Gear', 'Sports Equipment', 'Camping', 'Cycling', 'Water Sports'],
-            'Beauty & Personal Care': ['Skincare', 'Haircare', 'Makeup', 'Fragrances', 'Personal Hygiene', 'Men\'s Grooming'],
-            'Books & Media': ['Fiction', 'Non-Fiction', 'Educational', 'Children\'s Books', 'Movies', 'Music'],
-            'Toys & Games': ['Action Figures', 'Board Games', 'Puzzles', 'Educational Toys', 'Outdoor Toys', 'Video Games'],
-            'Automotive': ['Car Parts', 'Accessories', 'Tools', 'Maintenance', 'Tires', 'Batteries'],
-            'Health & Wellness': ['Vitamins', 'Supplements', 'Medical Supplies', 'Fitness Equipment', 'Wellness Products'],
+            'Sofas & Couches': ['3-Seater Sofas', '2-Seater Sofas', 'Corner Sofas', 'Sofa Beds', 'Recliner Sofas', 'Modular Sofas', 'Chaise Lounges'],
+            'Cushions & Pillows': ['Throw Pillows', 'Back Cushions', 'Seat Cushions', 'Decorative Pillows', 'Bolster Pillows', 'Floor Cushions'],
+            'Curtains & Drapes': ['Ready-Made Curtains', 'Custom Curtains', 'Curtain Fabric', 'Curtain Rods', 'Curtain Rings', 'Valances'],
+            'Cushion Covers': ['Zipper Covers', 'Button Covers', 'Velcro Covers', 'Removable Covers', 'Decorative Covers'],
+            'Fabric & Upholstery': ['Upholstery Fabric', 'Leather', 'Suede', 'Velvet', 'Cotton Fabric', 'Linen Fabric', 'Polyester Fabric', 'Chenille'],
+            'Foam & Cushioning': ['High-Density Foam', 'Memory Foam', 'Polyurethane Foam', 'Feather Filling', 'Fiber Filling', 'Spring Units'],
+            'Furniture Hardware': ['Sofa Legs', 'Springs', 'Screws & Bolts', 'Corner Braces', 'Furniture Glides', 'Casters', 'Drawer Slides'],
         }
         
         all_subcategories = []
@@ -398,18 +493,15 @@ class Command(BaseCommand):
         
         self.stdout.write(f'  ✓ Created {len(main_categories)} main categories and {len(all_subcategories)} subcategories')
         
-        # Product name templates by category
+        # Product name templates by category - SOFA MAKING ONLY
         product_templates = {
-            'Electronics': ['Smartphone', 'Laptop', 'Tablet', 'Headphones', 'Speaker', 'Camera', 'TV', 'Gaming Console', 'Smart Watch', 'Earbuds'],
-            'Clothing & Apparel': ['T-Shirt', 'Jeans', 'Dress', 'Shirt', 'Jacket', 'Shoes', 'Hat', 'Bag', 'Belt', 'Watch'],
-            'Food & Beverages': ['Snack Pack', 'Soft Drink', 'Juice', 'Milk', 'Cheese', 'Bread', 'Cereal', 'Chips', 'Candy', 'Water'],
-            'Home & Kitchen': ['Chair', 'Table', 'Sofa', 'Bed', 'Lamp', 'Vase', 'Plate', 'Cup', 'Pan', 'Towel'],
-            'Sports & Outdoors': ['Dumbbell', 'Yoga Mat', 'Basketball', 'Tent', 'Backpack', 'Bicycle', 'Running Shoes', 'Swimming Goggles'],
-            'Beauty & Personal Care': ['Shampoo', 'Conditioner', 'Lotion', 'Perfume', 'Lipstick', 'Foundation', 'Soap', 'Toothpaste'],
-            'Books & Media': ['Novel', 'Textbook', 'Cookbook', 'DVD', 'CD', 'Magazine', 'Comic Book', 'Dictionary'],
-            'Toys & Games': ['Action Figure', 'Board Game', 'Puzzle', 'Doll', 'Car Toy', 'Building Blocks', 'Card Game'],
-            'Automotive': ['Car Battery', 'Tire', 'Oil Filter', 'Brake Pad', 'Headlight', 'Mirror', 'Wiper', 'Air Freshener'],
-            'Health & Wellness': ['Vitamin', 'Protein Powder', 'Bandage', 'Thermometer', 'First Aid Kit', 'Massage Oil'],
+            'Sofas & Couches': ['3-Seater Sofa', '2-Seater Sofa', 'Corner Sofa', 'Sofa Bed', 'Recliner Sofa', 'Modular Sofa', 'Chaise Lounge', 'Sectional Sofa'],
+            'Cushions & Pillows': ['Throw Pillow', 'Back Cushion', 'Seat Cushion', 'Decorative Pillow', 'Bolster Pillow', 'Floor Cushion', 'Lumbar Pillow'],
+            'Curtains & Drapes': ['Ready-Made Curtain', 'Custom Curtain', 'Curtain Fabric', 'Curtain Rod', 'Curtain Ring', 'Valance', 'Curtain Tieback'],
+            'Cushion Covers': ['Zipper Cover', 'Button Cover', 'Velcro Cover', 'Removable Cover', 'Decorative Cover', 'Washable Cover'],
+            'Fabric & Upholstery': ['Upholstery Fabric', 'Leather', 'Suede', 'Velvet', 'Cotton Fabric', 'Linen Fabric', 'Polyester Fabric', 'Chenille', 'Microfiber'],
+            'Foam & Cushioning': ['High-Density Foam', 'Memory Foam', 'Polyurethane Foam', 'Feather Filling', 'Fiber Filling', 'Spring Unit', 'Foam Sheet'],
+            'Furniture Hardware': ['Sofa Leg', 'Spring', 'Screw & Bolt', 'Corner Brace', 'Furniture Glide', 'Caster', 'Drawer Slide', 'Bracket'],
         }
         
         # Generate products
@@ -475,8 +567,8 @@ class Command(BaseCommand):
                         low_stock_threshold=low_stock_threshold,
                         reorder_quantity=random.randint(50, 200),
                         unit=random.choice(['piece', 'kg', 'box', 'pack', 'bottle']),
-                        description=f"{product_name} - High quality product in {subcat.name} category.",
-                        supplier=f"Supplier {random.randint(1, 20)}",
+                        description=f"{product_name} - High quality sofa-making product in {subcat.name} category.",
+                        supplier=random.choice(suppliers) if suppliers else None,
                         tax_rate=Decimal(str(round(random.uniform(0, 16), 2))),
                         is_taxable=random.choice([True, True, False]),
                         track_stock=True,
@@ -573,3 +665,323 @@ class Command(BaseCommand):
         
         self.stdout.write(self.style.SUCCESS(f'  ✓ Created {created_products} products'))
         self.stdout.write(self.style.SUCCESS(f'  ✓ Created {created_variants} product variants'))
+    
+    def create_sales(self, count, products, customers, superuser, branch):
+        """Create sales with invoices, payments, and stock movements - SOFA PRODUCTS ONLY"""
+        self.stdout.write(f'\n4. Creating {count} sales with invoices and stock movements...')
+        
+        if not products:
+            self.stdout.write(self.style.WARNING('  ⚠ No products available. Skipping sales creation.'))
+            return
+        
+        if not customers:
+            self.stdout.write(self.style.WARNING('  ⚠ No customers available. Skipping sales creation.'))
+            return
+        
+        created_sales = 0
+        created_invoices = 0
+        created_payments = 0
+        created_stock_movements = 0
+        created_sales_list = []
+        
+        # Filter to only sofa-making products
+        sofa_products = [p for p in products if p.category and any(
+            cat in p.category.name for cat in ['Sofa', 'Cushion', 'Curtain', 'Fabric', 'Foam', 'Hardware']
+        )]
+        if not sofa_products:
+            sofa_products = products  # Fallback to all products if no sofa categories found
+        
+        payment_statuses = ['fully_paid', 'partial', 'unpaid']
+        
+        for i in range(count):
+            try:
+                customer = random.choice(customers)
+                sale_type = random.choice(['pos', 'normal'])
+                payment_status = random.choice(payment_statuses)
+                
+                # Create sale items (1-4 items per sale)
+                num_items = random.randint(1, 4)
+                sale_items = []
+                subtotal = Decimal('0')
+                
+                for _ in range(num_items):
+                    product = random.choice(sofa_products)
+                    variant = None
+                    
+                    # Try to get a variant if product has variants
+                    if product.has_variants and product.variants.exists():
+                        variant = random.choice(list(product.variants.all()))
+                        unit_price = variant.effective_price
+                        available_stock = variant.stock_quantity
+                    else:
+                        unit_price = product.price
+                        available_stock = product.stock_quantity
+                    
+                    # Quantity should not exceed available stock
+                    max_quantity = min(5, available_stock) if available_stock > 0 else 1
+                    quantity = random.randint(1, max_quantity)
+                    item_subtotal = Decimal(quantity) * unit_price
+                    subtotal += item_subtotal
+                    
+                    sale_items.append({
+                        'product': product,
+                        'variant': variant,
+                        'quantity': quantity,
+                        'unit_price': unit_price,
+                        'subtotal': item_subtotal
+                    })
+                
+                # Calculate totals
+                tax_rate = Decimal('0.16')  # 16% VAT
+                tax_amount = subtotal * tax_rate
+                discount_amount = Decimal('0') if random.random() > 0.2 else subtotal * Decimal(str(random.uniform(0.05, 0.15)))
+                total = subtotal + tax_amount - discount_amount
+                
+                # Create sale (Sale model doesn't have customer field - customer is linked via Invoice)
+                sale = Sale.objects.create(
+                    sale_type=sale_type,
+                    branch=branch,
+                    cashier=superuser,
+                    subtotal=subtotal,
+                    tax_amount=tax_amount,
+                    discount_amount=discount_amount,
+                    total=total,
+                    payment_method=random.choice(['cash', 'mpesa', 'other']),
+                    amount_paid=Decimal('0'),  # Will be set based on payment status
+                    change=Decimal('0'),
+                    notes=f"Sofa-making sale {i+1} - {payment_status}"
+                )
+                
+                # Create sale items and stock movements
+                for item_data in sale_items:
+                    SaleItem.objects.create(
+                        sale=sale,
+                        product=item_data['product'],
+                        variant=item_data['variant'],
+                        quantity=item_data['quantity'],
+                        unit_price=item_data['unit_price'],
+                        subtotal=item_data['subtotal']
+                    )
+                    
+                    # Get unit cost for stock movement
+                    if item_data['variant']:
+                        unit_cost = item_data['variant'].effective_cost
+                    else:
+                        unit_cost = item_data['product'].cost
+                    
+                    # Create stock movement (sale - the save() method will handle stock update)
+                    StockMovement.objects.create(
+                        branch=branch,
+                        product=item_data['product'],
+                        variant=item_data['variant'],
+                        movement_type='sale',
+                        quantity=item_data['quantity'],  # Positive quantity - save() method handles the subtraction
+                        unit_cost=unit_cost,
+                        total_cost=item_data['quantity'] * unit_cost,
+                        reference=sale.sale_number,
+                        user=superuser,
+                        notes=f'Sale {sale.sale_number} - {item_data["product"].name}'
+                    )
+                    created_stock_movements += 1
+                
+                # Create invoice for normal sales
+                invoice = None
+                if sale_type == 'normal':
+                    invoice = Invoice.objects.create(
+                        sale=sale,
+                        branch=branch,
+                        customer=customer,
+                        customer_name=customer.name,
+                        customer_email=customer.email or '',
+                        customer_phone=customer.phone or '',
+                        subtotal=subtotal,
+                        tax_amount=tax_amount,
+                        discount_amount=discount_amount,
+                        total=total,
+                        amount_paid=Decimal('0'),
+                        balance=total,
+                        status='sent',
+                        due_date=timezone.now().date() + timedelta(days=random.randint(7, 90)),
+                        issued_date=timezone.now().date() - timedelta(days=random.randint(0, 30)),
+                        created_by=superuser
+                    )
+                    created_invoices += 1
+                    
+                    # Create invoice items
+                    for item_data in sale_items:
+                        InvoiceItem.objects.create(
+                            invoice=invoice,
+                            product=item_data['product'],
+                            variant=item_data['variant'],
+                            quantity=item_data['quantity'],
+                            unit_price=item_data['unit_price'],
+                            subtotal=item_data['subtotal']
+                        )
+                
+                # Handle payment status
+                if payment_status == 'fully_paid':
+                    if sale_type == 'pos':
+                        sale.amount_paid = total
+                        sale.save()
+                    elif invoice:
+                        # Full payment for invoice
+                        Payment.objects.create(
+                            invoice=invoice,
+                            amount=total,
+                            payment_method=random.choice(['cash', 'mpesa', 'bank_transfer']),
+                            payment_date=timezone.now().date() - timedelta(days=random.randint(0, 5)),
+                            recorded_by=superuser,
+                            notes='Full payment'
+                        )
+                        created_payments += 1
+                
+                elif payment_status == 'partial' and invoice:
+                    # Partial payment (30-70% of total)
+                    partial_amount = total * Decimal(str(random.uniform(0.3, 0.7)))
+                    Payment.objects.create(
+                        invoice=invoice,
+                        amount=partial_amount,
+                        payment_method=random.choice(['cash', 'mpesa', 'bank_transfer']),
+                        payment_date=timezone.now().date() - timedelta(days=random.randint(0, 10)),
+                        recorded_by=superuser,
+                        notes='Partial payment'
+                    )
+                    created_payments += 1
+                
+                created_sales += 1
+                created_sales_list.append(sale)
+                if (i + 1) % 20 == 0:
+                    self.stdout.write(f'    Created {i + 1}/{count} sales...')
+            
+            except Exception as e:
+                self.stdout.write(self.style.ERROR(f'    Error creating sale {i+1}: {str(e)[:100]}'))
+                logger.error(f"Error creating sale: {e}")
+        
+        self.stdout.write(self.style.SUCCESS(f'  ✓ Created {created_sales} sales'))
+        self.stdout.write(self.style.SUCCESS(f'  ✓ Created {created_invoices} invoices'))
+        self.stdout.write(self.style.SUCCESS(f'  ✓ Created {created_payments} payments'))
+        self.stdout.write(self.style.SUCCESS(f'  ✓ Created {created_stock_movements} stock movements'))
+        return created_sales_list
+    
+    def create_expenses(self, count, superuser):
+        """Create expenses - SOFA MAKING RELATED ONLY"""
+        self.stdout.write(f'\n5. Creating {count} sofa-making related expenses...')
+        
+        # Get expense categories (sofa-making related)
+        categories = ExpenseCategory.objects.filter(
+            name__icontains='raw material'
+        ) | ExpenseCategory.objects.filter(
+            name__icontains='equipment'
+        ) | ExpenseCategory.objects.filter(
+            name__icontains='fabric'
+        ) | ExpenseCategory.objects.filter(
+            name__icontains='foam'
+        ) | ExpenseCategory.objects.filter(
+            name__icontains='hardware'
+        ) | ExpenseCategory.objects.filter(
+            name__icontains='supplies'
+        )
+        
+        if not categories.exists():
+            # Use any available categories
+            categories = ExpenseCategory.objects.all()[:5]
+        
+        if not categories.exists():
+            self.stdout.write(self.style.WARNING('  ⚠ No expense categories available. Creating default categories...'))
+            # Create sofa-making expense categories
+            sofa_categories = [
+                'Fabric & Upholstery Materials',
+                'Foam & Cushioning Materials',
+                'Furniture Hardware',
+                'Tools & Equipment',
+                'Raw Materials',
+                'Packaging Materials',
+                'Transportation',
+                'Utilities'
+            ]
+            for cat_name in sofa_categories:
+                ExpenseCategory.objects.get_or_create(
+                    name=cat_name,
+                    defaults={'description': f'{cat_name} for sofa-making business'}
+                )
+            categories = ExpenseCategory.objects.all()
+        
+        created = 0
+        created_expenses = []
+        expense_types = ['fabric_purchase', 'foam_purchase', 'hardware_purchase', 'tool_purchase', 'transport', 'utilities']
+        expense_descriptions = {
+            'fabric_purchase': ['Upholstery fabric purchase', 'Leather material', 'Suede fabric', 'Velvet fabric', 'Cotton fabric'],
+            'foam_purchase': ['High-density foam', 'Memory foam sheets', 'Polyurethane foam', 'Feather filling', 'Fiber filling'],
+            'hardware_purchase': ['Sofa legs', 'Springs', 'Screws and bolts', 'Corner braces', 'Furniture glides'],
+            'tool_purchase': ['Sewing machine maintenance', 'Cutting tools', 'Stapling gun', 'Measuring tools'],
+            'transport': ['Fabric delivery', 'Material transportation', 'Customer delivery'],
+            'utilities': ['Electricity bill', 'Water bill', 'Workshop rent']
+        }
+        
+        for i in range(count):
+            try:
+                category = random.choice(list(categories))
+                expense_type = random.choice(expense_types)
+                descriptions = expense_descriptions.get(expense_type, ['Sofa-making expense'])
+                description = random.choice(descriptions)
+                
+                amount = Decimal(str(round(random.uniform(500, 50000), 2)))
+                expense_date = timezone.now().date() - timedelta(days=random.randint(0, 90))
+                
+                branch = Branch.objects.first()
+                expense = Expense.objects.create(
+                    branch=branch,
+                    category=category,
+                    amount=amount,
+                    description=description,
+                    expense_date=expense_date,
+                    payment_method=random.choice(['cash', 'mpesa', 'bank', 'card', 'other']),
+                    vendor=random.choice(['Fabric Suppliers Ltd', 'Foam & Cushioning Co', 'Hardware Supplies Inc', 'Local Vendor']),
+                    receipt_number=f'RCP-{str(i+1).zfill(6)}' if random.choice([True, False]) else '',
+                    notes=f'Sofa-making business expense - {description}',
+                    created_by=superuser,
+                    status=random.choice(['approved', 'pending', 'paid'])
+                )
+                
+                created += 1
+                created_expenses.append(expense)
+                if (i + 1) % 10 == 0:
+                    self.stdout.write(f'    Created {i + 1}/{count} expenses...')
+            
+            except Exception as e:
+                self.stdout.write(self.style.ERROR(f'    Error creating expense {i+1}: {str(e)[:100]}'))
+                logger.error(f"Error creating expense: {e}")
+        
+        self.stdout.write(self.style.SUCCESS(f'  ✓ Created {created} expenses'))
+        return created_expenses
+    
+    def create_accounting_entries(self, sales, expenses, superuser):
+        """Create journal entries for sales and expenses to match accounting data"""
+        self.stdout.write(f'\n6. Creating accounting journal entries for sales and expenses...')
+        
+        from accounting.views import create_sale_journal_entry, create_expense_journal_entry
+        from accounting.models import Transaction, JournalEntry
+        
+        created_transactions = 0
+        created_entries = 0
+        
+        # Create journal entries for sales
+        for sale in sales:
+            try:
+                txn = create_sale_journal_entry(sale)
+                created_transactions += 1
+                created_entries += txn.journal_entries.count()
+            except Exception as e:
+                self.stdout.write(self.style.WARNING(f'    Warning: Could not create journal entry for sale {sale.sale_number}: {str(e)[:50]}'))
+        
+        # Create journal entries for expenses
+        for expense in expenses:
+            try:
+                txn = create_expense_journal_entry(expense)
+                created_transactions += 1
+                created_entries += txn.journal_entries.count()
+            except Exception as e:
+                self.stdout.write(self.style.WARNING(f'    Warning: Could not create journal entry for expense {expense.expense_number}: {str(e)[:50]}'))
+        
+        self.stdout.write(self.style.SUCCESS(f'  ✓ Created {created_transactions} transactions'))
+        self.stdout.write(self.style.SUCCESS(f'  ✓ Created {created_entries} journal entries'))

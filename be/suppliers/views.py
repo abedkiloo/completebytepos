@@ -8,6 +8,7 @@ from decimal import Decimal
 
 from .models import Supplier
 from .serializers import SupplierSerializer, SupplierListSerializer
+from .services import SupplierService
 from accounts.permissions import IsSuperAdmin, IsAdmin, HasPermission, HasModuleAccess
 from settings.models import ModuleSettings
 
@@ -47,6 +48,10 @@ class SupplierViewSet(viewsets.ModelViewSet):
     ordering_fields = ['name', 'created_at', 'rating', 'account_balance']
     ordering = ['name']
     
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.supplier_service = SupplierService()
+    
     def get_permissions(self):
         """Set permissions based on action"""
         if self.action in ['list', 'retrieve']:
@@ -72,42 +77,30 @@ class SupplierViewSet(viewsets.ModelViewSet):
         return SupplierSerializer
     
     def get_queryset(self):
-        """Filter queryset based on query parameters"""
-        try:
-            queryset = Supplier.objects.all()
-            
-            # Check if suppliers module is enabled
-            if not ModuleSettings.is_module_enabled('suppliers'):
-                return queryset.none()
-            
-            # Filter by active status
-            is_active = self.request.query_params.get('is_active', None)
-            if is_active is not None:
-                queryset = queryset.filter(is_active=is_active.lower() == 'true')
-            
-            # Filter by supplier type
-            supplier_type = self.request.query_params.get('supplier_type', None)
-            if supplier_type:
-                queryset = queryset.filter(supplier_type=supplier_type)
-            
-            # Filter by preferred
-            is_preferred = self.request.query_params.get('is_preferred', None)
-            if is_preferred is not None:
-                queryset = queryset.filter(is_preferred=is_preferred.lower() == 'true')
-            
-            # Filter by rating
-            min_rating = self.request.query_params.get('min_rating', None)
-            if min_rating:
-                try:
-                    queryset = queryset.filter(rating__gte=int(min_rating))
-                except ValueError:
-                    pass  # Invalid min_rating, ignore it
-            
-            return queryset
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
+        """Get queryset using service layer - all query logic moved to service"""
+        # Check if suppliers module is enabled
+        if not ModuleSettings.is_module_enabled('suppliers'):
             return Supplier.objects.none()
+        
+        filters = {}
+        query_params = self.request.query_params
+        
+        # Extract all filter parameters
+        for param in ['is_active', 'supplier_type', 'is_preferred', 'search']:
+            if param in query_params:
+                filters[param] = query_params.get(param)
+        
+        queryset = self.supplier_service.build_queryset(filters)
+        
+        # Handle min_rating filter (not in build_queryset yet)
+        min_rating = query_params.get('min_rating')
+        if min_rating:
+            try:
+                queryset = queryset.filter(rating__gte=int(min_rating))
+            except ValueError:
+                pass  # Invalid min_rating, ignore it
+        
+        return queryset
     
     def perform_create(self, serializer):
         """Set created_by when creating supplier"""
@@ -115,38 +108,25 @@ class SupplierViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def statistics(self, request):
-        """Get supplier statistics"""
+        """Get supplier statistics - thin view, business logic in service"""
         try:
             if not ModuleSettings.is_module_enabled('suppliers'):
                 return Response({
                     'total_suppliers': 0,
-                    'active_suppliers': 0,
                     'preferred_suppliers': 0,
                     'total_account_balance': 0.0,
-                    'suppliers_by_type': [],
-                    'average_rating': 0.0
+                    'by_type': []
                 })
             
-            queryset = self.get_queryset()
+            stats = self.supplier_service.get_all_supplier_statistics()
             
-            # Get aggregation results with explicit output_field
-            balance_agg = queryset.aggregate(
-                total=Coalesce(Sum('account_balance'), Decimal('0.00'), output_field=DecimalField())
-            )
+            # Add average rating calculation
+            queryset = self.get_queryset()
             rating_agg = queryset.aggregate(
                 avg_rating=Coalesce(Avg('rating'), Decimal('0'), output_field=DecimalField())
             )
-            
-            stats = {
-                'total_suppliers': queryset.count(),
-                'active_suppliers': queryset.filter(is_active=True).count(),
-                'preferred_suppliers': queryset.filter(is_preferred=True, is_active=True).count(),
-                'total_account_balance': float(balance_agg['total'] or Decimal('0.00')),
-                'suppliers_by_type': list(queryset.values('supplier_type').annotate(
-                    count=Count('id')
-                )),
-                'average_rating': float(rating_agg['avg_rating'] or Decimal('0')),
-            }
+            stats['average_rating'] = float(rating_agg['avg_rating'] or Decimal('0'))
+            stats['active_suppliers'] = queryset.filter(is_active=True).count()
             
             return Response(stats)
         except Exception as e:
@@ -155,10 +135,9 @@ class SupplierViewSet(viewsets.ModelViewSet):
             return Response({
                 'error': str(e),
                 'total_suppliers': 0,
-                'active_suppliers': 0,
                 'preferred_suppliers': 0,
                 'total_account_balance': 0.0,
-                'suppliers_by_type': [],
+                'by_type': [],
                 'average_rating': 0.0
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     

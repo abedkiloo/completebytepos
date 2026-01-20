@@ -33,7 +33,7 @@ const Accounting = () => {
     } else if (activeTab === 'cash-flow') {
       loadCashFlow();
     } else if (activeTab === 'account-statement') {
-      loadBankAccounts();
+      loadAccounts();  // Use accounting accounts, not bank accounts
     } else if (activeTab === 'accounts') {
       loadAccounts();
     }
@@ -89,10 +89,10 @@ const Accounting = () => {
   };
 
   useEffect(() => {
-    if (activeTab === 'account-statement' && selectedBankAccount) {
-      loadAccountStatement(selectedBankAccount);
+    if (activeTab === 'account-statement' && selectedAccount) {
+      loadAccountStatement(selectedAccount);
     }
-  }, [activeTab, selectedBankAccount, filters.date_from, filters.date_to]);
+  }, [activeTab, selectedAccount, filters.date_from, filters.date_to]);
 
   const loadBalanceSheet = useCallback(async () => {
     setLoading(true);
@@ -300,15 +300,15 @@ const Accounting = () => {
             )}
             {activeTab === 'account-statement' && (
               <div className="filter-group">
-                <label>Bank Account</label>
+                <label>Account</label>
                 <select
-                  value={selectedBankAccount}
-                  onChange={(e) => setSelectedBankAccount(e.target.value)}
+                  value={selectedAccount}
+                  onChange={(e) => setSelectedAccount(e.target.value)}
                 >
-                  <option value="">Select Bank Account</option>
-                  {bankAccounts.map(account => (
+                  <option value="">Select Account</option>
+                  {accounts.map(account => (
                     <option key={account.id} value={account.id}>
-                      {account.bank_name} - {account.account_name} ({account.account_number})
+                      {account.account_code} - {account.name}
                     </option>
                   ))}
                 </select>
@@ -617,27 +617,27 @@ const Accounting = () => {
         {/* Account Statement */}
         {activeTab === 'account-statement' && (
           <div className="report-content">
-            {!selectedBankAccount ? (
-              <div className="empty-state">Please select a bank account to view statement</div>
+            {!selectedAccount ? (
+              <div className="empty-state">Please select an account to view statement</div>
             ) : loading ? (
               <div className="loading-state">Loading account statement...</div>
             ) : accountStatement ? (
               <>
                 <div className="report-header">
                   <h2>Account Statement</h2>
-                  <p>{accountStatement.account.bank_name} - {accountStatement.account.account_name}</p>
-                  <p>Account Number: {accountStatement.account.account_number}</p>
+                  <p>{accountStatement.account.account_code} - {accountStatement.account.account_name}</p>
+                  <p>Account Type: {accountStatement.account.account_type}</p>
                   <p>Period: {formatDate(accountStatement.period_start)} to {formatDate(accountStatement.period_end)}</p>
                 </div>
                 
                 <div className="ledger-info">
                   <div className="info-item">
                     <span>Opening Balance:</span>
-                    <span className="amount">{formatCurrency(accountStatement.account.opening_balance)} {accountStatement.account.currency}</span>
+                    <span className="amount">{formatCurrency(accountStatement.account.opening_balance)} {accountStatement.account.currency || 'KES'}</span>
                   </div>
                   <div className="info-item">
                     <span>Closing Balance:</span>
-                    <span className="amount">{formatCurrency(accountStatement.closing_balance)} {accountStatement.account.currency}</span>
+                    <span className="amount">{formatCurrency(accountStatement.closing_balance)} {accountStatement.account.currency || 'KES'}</span>
                   </div>
                 </div>
 
@@ -645,7 +645,7 @@ const Accounting = () => {
                   <thead>
                     <tr>
                       <th>Date</th>
-                      <th>Transaction #</th>
+                      <th>Entry #</th>
                       <th>Type</th>
                       <th>Description</th>
                       <th>Reference</th>
@@ -656,13 +656,13 @@ const Accounting = () => {
                   <tbody>
                     {accountStatement.entries.map((entry, idx) => (
                       <tr key={idx}>
-                        <td>{formatDate(entry.transaction_date)}</td>
-                        <td>{entry.transaction_number}</td>
-                        <td className="capitalize">{entry.transaction_type}</td>
+                        <td>{formatDate(entry.entry_date)}</td>
+                        <td>{entry.entry_number}</td>
+                        <td className="capitalize">{entry.entry_type}</td>
                         <td>{entry.description}</td>
                         <td>{entry.reference || '-'}</td>
-                        <td className={`amount ${['deposit', 'transfer_in', 'interest'].includes(entry.transaction_type) ? 'positive' : 'negative'}`}>
-                          {['deposit', 'transfer_in', 'interest'].includes(entry.transaction_type) ? '+' : '-'}{formatCurrency(entry.amount)}
+                        <td className={`amount ${entry.entry_type === 'debit' ? 'positive' : 'negative'}`}>
+                          {entry.entry_type === 'debit' ? '+' : '-'}{formatCurrency(entry.amount)}
                         </td>
                         <td className="amount">{formatCurrency(entry.balance)}</td>
                       </tr>

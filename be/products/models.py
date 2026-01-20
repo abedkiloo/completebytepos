@@ -197,7 +197,14 @@ class Product(models.Model):
             import uuid
             self.sku = f"SKU-{uuid.uuid4().hex[:8].upper()}"
         
-        # Validate subcategory is a child of category
+        # Auto-populate category from subcategory's parent if subcategory is set but category doesn't match
+        if self.subcategory:
+            if self.subcategory.parent:
+                # If category is not set or doesn't match subcategory's parent, auto-set it
+                if not self.category or self.category != self.subcategory.parent:
+                    self.category = self.subcategory.parent
+        
+        # Validate subcategory is a child of category (final check)
         if self.subcategory and self.category:
             if self.subcategory.parent != self.category:
                 raise ValueError("Subcategory must be a child of the main category")

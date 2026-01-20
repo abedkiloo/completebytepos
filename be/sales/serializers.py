@@ -66,6 +66,8 @@ class SaleSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'sale_number', 'sale_type', 'cashier', 'cashier_name',
             'subtotal', 'tax_amount', 'discount_amount', 'total',
+            'delivery_method', 'delivery_cost',
+            'shipping_address', 'shipping_location',
             'payment_method', 'amount_paid', 'change', 'notes',
             'items', 'item_count', 'created_at', 'updated_at'
         ]
@@ -95,6 +97,10 @@ class SaleCreateSerializer(serializers.Serializer):
     notes = serializers.CharField(required=False, allow_blank=True)
     tax_amount = serializers.DecimalField(max_digits=10, decimal_places=2, default=0, required=False)
     discount_amount = serializers.DecimalField(max_digits=10, decimal_places=2, default=0, required=False)
+    delivery_method = serializers.CharField(required=False, allow_blank=True, allow_null=True, help_text='Delivery method (pickup, delivery, etc.)')
+    delivery_cost = serializers.DecimalField(max_digits=10, decimal_places=2, default=0, required=False, help_text='Additional cost for delivery')
+    shipping_address = serializers.CharField(required=False, allow_blank=True, allow_null=True, help_text='Shipping address for delivery')
+    shipping_location = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=200, help_text='Shipping location/area')
     branch_id = serializers.IntegerField(required=False, allow_null=True, help_text='Branch ID (optional, uses current branch if not provided)')
     # For normal sales, invoice is always created
     customer_id = serializers.IntegerField(required=False, allow_null=True)

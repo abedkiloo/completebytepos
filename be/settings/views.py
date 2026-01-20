@@ -387,18 +387,18 @@ def fresh_install(request):
             steps.append({'step': 4, 'name': 'Creating superuser', 'status': 'running'})
             try:
                 user, created = User.objects.get_or_create(
-                    username='admin',
+                    username='admin@3@1',
                     defaults={
-                        'email': 'admin@example.com',
+                        'email': 'admin@3@1',
                         'is_staff': True,
                         'is_superuser': True,
                         'is_active': True
                     }
                 )
-                user.set_password('admin')
+                user.set_password('admin@3@1')
                 user.save()
                 steps[-1]['status'] = 'completed'
-                steps[-1]['message'] = 'Superuser created (username: admin, password: admin)'
+                steps[-1]['message'] = 'Superuser created (username: admin@3@1, password: admin@3@1)'
             except Exception as e:
                 steps[-1]['status'] = 'error'
                 steps[-1]['message'] = str(e)[:100]

@@ -118,34 +118,56 @@ class ProductSerializer(serializers.ModelSerializer):
         # Handle category field
         if 'category' in data:
             category = data['category']
-            if category is not None and category != '':
-                # Check if it's a Category object
-                from .models import Category
-                if isinstance(category, Category):
-                    data['category'] = category.id
-                elif hasattr(category, 'id'):  # It's an object with id attribute
-                    data['category'] = category.id
-                elif isinstance(category, dict) and 'id' in category:  # It's a dict with id
-                    data['category'] = category['id']
-                elif isinstance(category, str) and category.isdigit():  # It's a string number
-                    data['category'] = int(category)
+            if category is not None and category != '' and str(category).strip() != '':
+                try:
+                    # Check if it's a Category object
+                    from .models import Category
+                    if isinstance(category, Category):
+                        data['category'] = category.id
+                    elif hasattr(category, 'id'):  # It's an object with id attribute
+                        data['category'] = category.id
+                    elif isinstance(category, dict) and 'id' in category:  # It's a dict with id
+                        data['category'] = int(category['id'])
+                    elif isinstance(category, str) and category.isdigit():  # It's a string number
+                        data['category'] = int(category)
+                    elif isinstance(category, (int, float)):  # It's already a number
+                        data['category'] = int(category)
+                    else:
+                        # Try to convert to int if possible
+                        try:
+                            data['category'] = int(category)
+                        except (ValueError, TypeError):
+                            data['category'] = None
+                except (ValueError, TypeError, AttributeError):
+                    data['category'] = None
             else:
                 data['category'] = None
         
         # Handle subcategory field
         if 'subcategory' in data:
             subcategory = data['subcategory']
-            if subcategory is not None and subcategory != '':
-                # Check if it's a Category object
-                from .models import Category
-                if isinstance(subcategory, Category):
-                    data['subcategory'] = subcategory.id
-                elif hasattr(subcategory, 'id'):  # It's an object with id attribute
-                    data['subcategory'] = subcategory.id
-                elif isinstance(subcategory, dict) and 'id' in subcategory:  # It's a dict with id
-                    data['subcategory'] = subcategory['id']
-                elif isinstance(subcategory, str) and subcategory.isdigit():  # It's a string number
-                    data['subcategory'] = int(subcategory)
+            if subcategory is not None and subcategory != '' and str(subcategory).strip() != '':
+                try:
+                    # Check if it's a Category object
+                    from .models import Category
+                    if isinstance(subcategory, Category):
+                        data['subcategory'] = subcategory.id
+                    elif hasattr(subcategory, 'id'):  # It's an object with id attribute
+                        data['subcategory'] = subcategory.id
+                    elif isinstance(subcategory, dict) and 'id' in subcategory:  # It's a dict with id
+                        data['subcategory'] = int(subcategory['id'])
+                    elif isinstance(subcategory, str) and subcategory.isdigit():  # It's a string number
+                        data['subcategory'] = int(subcategory)
+                    elif isinstance(subcategory, (int, float)):  # It's already a number
+                        data['subcategory'] = int(subcategory)
+                    else:
+                        # Try to convert to int if possible
+                        try:
+                            data['subcategory'] = int(subcategory)
+                        except (ValueError, TypeError):
+                            data['subcategory'] = None
+                except (ValueError, TypeError, AttributeError):
+                    data['subcategory'] = None
             else:
                 data['subcategory'] = None
         
@@ -255,6 +277,27 @@ class ProductSerializer(serializers.ModelSerializer):
             if subcategory_id is None:
                 subcategory_id = self.instance.subcategory_id
         
+        # Auto-populate category from subcategory's parent if subcategory is provided but category doesn't match
+        if subcategory_id:
+            try:
+                subcategory_id = int(subcategory_id) if subcategory_id else None
+            except (ValueError, TypeError):
+                subcategory_id = None
+            
+            if subcategory_id:
+                try:
+                    subcategory = Category.objects.get(id=subcategory_id)
+                    # If subcategory has a parent, automatically set category to parent if not set or doesn't match
+                    if subcategory.parent_id:
+                        if not category_id or category_id != subcategory.parent_id:
+                            # Auto-populate category from subcategory's parent
+                            category_id = subcategory.parent_id
+                            data['category'] = category_id
+                except Category.DoesNotExist:
+                    # Category doesn't exist, but this will be caught by field validation
+                    pass
+        
+        # Validate that subcategory is a child of category (if both are set)
         if subcategory_id and category_id:
             # Ensure both are integers
             try:
@@ -283,27 +326,63 @@ class ProductSerializer(serializers.ModelSerializer):
         available_sizes = validated_data.pop('available_sizes', [])
         available_colors = validated_data.pop('available_colors', [])
         
-        # Ensure category and subcategory are IDs, not objects
+        # Handle category - ensure it's either a Category instance or None
         from .models import Category
-        if 'category' in validated_data and isinstance(validated_data['category'], Category):
-            validated_data['category'] = validated_data['category'].id
-        if 'subcategory' in validated_data and isinstance(validated_data['subcategory'], Category):
-            validated_data['subcategory'] = validated_data['subcategory'].id
+        category_id = validated_data.pop('category', None)
+        if category_id:
+            if isinstance(category_id, Category):
+                category = category_id
+            else:
+                try:
+                    category_id = int(category_id)
+                    category = Category.objects.get(id=category_id)
+                except (ValueError, TypeError, Category.DoesNotExist):
+                    category = None
+        else:
+            category = None
+        
+        # Handle subcategory - ensure it's either a Category instance or None
+        subcategory_id = validated_data.pop('subcategory', None)
+        if subcategory_id:
+            if isinstance(subcategory_id, Category):
+                subcategory = subcategory_id
+            else:
+                try:
+                    subcategory_id = int(subcategory_id)
+                    subcategory = Category.objects.get(id=subcategory_id)
+                    # Auto-populate category from subcategory's parent if category not set
+                    if not category and subcategory.parent:
+                        category = subcategory.parent
+                except (ValueError, TypeError, Category.DoesNotExist):
+                    subcategory = None
+        else:
+            subcategory = None
         
         # Ensure supplier is ID, not object
-        if 'supplier' in validated_data:
-            supplier = validated_data['supplier']
-            if supplier and supplier != '':
-                if hasattr(supplier, 'id'):
-                    validated_data['supplier'] = supplier.id
-                elif isinstance(supplier, str) and supplier.isdigit():
-                    validated_data['supplier'] = int(supplier)
-            else:
-                validated_data['supplier'] = None
+        supplier_id = validated_data.pop('supplier', None)
+        supplier = None
+        if supplier_id:
+            try:
+                from suppliers.models import Supplier
+                if isinstance(supplier_id, Supplier):
+                    supplier = supplier_id
+                elif hasattr(supplier_id, 'id'):
+                    supplier = Supplier.objects.get(id=supplier_id.id)
+                elif isinstance(supplier_id, str) and supplier_id.isdigit():
+                    supplier = Supplier.objects.get(id=int(supplier_id))
+                elif isinstance(supplier_id, (int, float)):
+                    supplier = Supplier.objects.get(id=int(supplier_id))
+            except (Supplier.DoesNotExist, ImportError, ValueError, TypeError):
+                supplier = None
         
         # Create product instance with error handling
         try:
-            product = Product.objects.create(**validated_data)
+            product = Product.objects.create(
+                category=category,
+                subcategory=subcategory,
+                supplier=supplier,
+                **validated_data
+            )
         except ValueError as e:
             # Convert model validation errors to serializer validation errors
             error_msg = str(e)
@@ -328,32 +407,61 @@ class ProductSerializer(serializers.ModelSerializer):
         available_sizes = validated_data.pop('available_sizes', None)
         available_colors = validated_data.pop('available_colors', None)
         
-        # Ensure category and subcategory are IDs, not objects
+        # Handle category - ensure it's either a Category instance or None
         from .models import Category
         if 'category' in validated_data:
-            category = validated_data['category']
-            if category and hasattr(category, 'id'):
-                validated_data['category'] = category.id
-            elif category == '' or category is None:
-                validated_data['category'] = None
-        
-        if 'subcategory' in validated_data:
-            subcategory = validated_data['subcategory']
-            if subcategory and hasattr(subcategory, 'id'):
-                validated_data['subcategory'] = subcategory.id
-            elif subcategory == '' or subcategory is None:
-                validated_data['subcategory'] = None
-        
-        # Ensure supplier is ID, not object
-        if 'supplier' in validated_data:
-            supplier = validated_data['supplier']
-            if supplier and supplier != '':
-                if hasattr(supplier, 'id'):
-                    validated_data['supplier'] = supplier.id
-                elif isinstance(supplier, str) and supplier.isdigit():
-                    validated_data['supplier'] = int(supplier)
+            category_id = validated_data.pop('category')
+            if category_id:
+                if isinstance(category_id, Category):
+                    instance.category = category_id
+                else:
+                    try:
+                        category_id = int(category_id)
+                        instance.category = Category.objects.get(id=category_id)
+                    except (ValueError, TypeError, Category.DoesNotExist):
+                        instance.category = None
             else:
-                validated_data['supplier'] = None
+                instance.category = None
+        
+        # Handle subcategory - ensure it's either a Category instance or None
+        if 'subcategory' in validated_data:
+            subcategory_id = validated_data.pop('subcategory')
+            if subcategory_id:
+                if isinstance(subcategory_id, Category):
+                    instance.subcategory = subcategory_id
+                else:
+                    try:
+                        subcategory_id = int(subcategory_id)
+                        subcategory = Category.objects.get(id=subcategory_id)
+                        instance.subcategory = subcategory
+                        # Auto-populate category from subcategory's parent if category not set
+                        if not instance.category and subcategory.parent:
+                            instance.category = subcategory.parent
+                    except (ValueError, TypeError, Category.DoesNotExist):
+                        instance.subcategory = None
+            else:
+                instance.subcategory = None
+        
+        # Handle supplier
+        if 'supplier' in validated_data:
+            supplier_id = validated_data.pop('supplier')
+            if supplier_id:
+                try:
+                    from suppliers.models import Supplier
+                    if isinstance(supplier_id, Supplier):
+                        instance.supplier = supplier_id
+                    elif hasattr(supplier_id, 'id'):
+                        instance.supplier = Supplier.objects.get(id=supplier_id.id)
+                    elif isinstance(supplier_id, str) and supplier_id.isdigit():
+                        instance.supplier = Supplier.objects.get(id=int(supplier_id))
+                    elif isinstance(supplier_id, (int, float)):
+                        instance.supplier = Supplier.objects.get(id=int(supplier_id))
+                    else:
+                        instance.supplier = None
+                except (Supplier.DoesNotExist, ImportError, ValueError, TypeError):
+                    instance.supplier = None
+            else:
+                instance.supplier = None
         
         # Update regular fields
         for attr, value in validated_data.items():

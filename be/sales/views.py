@@ -16,6 +16,7 @@ from .serializers import (
 from products.models import Product, ProductVariant
 from inventory.models import StockMovement
 from settings.utils import get_current_branch, get_current_tenant, is_branch_support_enabled
+from .services import SaleService, InvoiceService, PaymentService, CustomerService
 import logging
 
 logger = logging.getLogger(__name__)
@@ -25,47 +26,23 @@ class SaleViewSet(viewsets.ModelViewSet):
     queryset = Sale.objects.all().select_related('cashier').prefetch_related('items__product')
     serializer_class = SaleSerializer
     ordering = ['-created_at']
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.sale_service = SaleService()
+        self.invoice_service = InvoiceService()
 
     def get_queryset(self):
-        queryset = Sale.objects.all().select_related('cashier', 'branch').prefetch_related(
-            'items__product', 'items__variant', 'items__size', 'items__color'
-        )
+        """Get queryset using service layer - all query logic moved to service"""
+        filters = {}
+        query_params = self.request.query_params
         
-        # Filter by branch only if branch support is enabled
-        if is_branch_support_enabled():
-            # Filter by branch if specified (skip if show_all is true)
-            show_all = self.request.query_params.get('show_all', 'false').lower() == 'true'
-            branch_id = self.request.query_params.get('branch_id', None)
-            
-            if not show_all:
-                if not branch_id:
-                    # Try to get from current branch
-                    current_branch = get_current_branch(self.request)
-                    if current_branch:
-                        branch_id = current_branch.id
-                
-                if branch_id:
-                    queryset = queryset.filter(branch_id=branch_id)
+        # Extract all filter parameters
+        for param in ['branch_id', 'show_all', 'date_from', 'date_to', 'payment_method', 'search']:
+            if param in query_params:
+                filters[param] = query_params.get(param)
         
-        date_from = self.request.query_params.get('date_from', None)
-        date_to = self.request.query_params.get('date_to', None)
-        payment_method = self.request.query_params.get('payment_method', None)
-        search = self.request.query_params.get('search', None)
-        
-        if date_from:
-            queryset = queryset.filter(created_at__gte=date_from)
-        if date_to:
-            queryset = queryset.filter(created_at__lte=date_to)
-        if payment_method:
-            queryset = queryset.filter(payment_method=payment_method)
-        if search:
-            queryset = queryset.filter(
-                Q(sale_number__icontains=search) |
-                Q(cashier__username__icontains=search) |
-                Q(notes__icontains=search)
-            )
-        
-        return queryset
+        return self.sale_service.build_queryset(filters, request=self.request)
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -80,6 +57,8 @@ class SaleViewSet(viewsets.ModelViewSet):
         notes = serializer.validated_data.get('notes', '')
         tax_amount = Decimal(str(serializer.validated_data.get('tax_amount', 0)))
         discount_amount = Decimal(str(serializer.validated_data.get('discount_amount', 0)))
+        delivery_method = serializer.validated_data.get('delivery_method', '') or None
+        delivery_cost = Decimal(str(serializer.validated_data.get('delivery_cost', 0)))
         
         # Calculate totals
         subtotal = Decimal('0')
@@ -145,13 +124,13 @@ class SaleViewSet(viewsets.ModelViewSet):
                 'subtotal': item_subtotal
             })
         
-        # Calculate total
-        total = subtotal + tax_amount - discount_amount
+        # Calculate total (including delivery cost)
+        total = subtotal + tax_amount - discount_amount + delivery_cost
         
         # Get sale type (default to 'pos' for backward compatibility)
         sale_type = serializer.validated_data.get('sale_type', 'pos')
         
-        # Handle wallet usage if customer is selected
+        # Handle wallet usage if customer is selected (before creating sale)
         customer_id = serializer.validated_data.get('customer_id', None)
         customer = None
         wallet_amount_used = Decimal('0')
@@ -166,6 +145,10 @@ class SaleViewSet(viewsets.ModelViewSet):
         # Check if wallet should be used
         use_wallet = serializer.validated_data.get('use_wallet', False)
         wallet_amount_requested = serializer.validated_data.get('wallet_amount', 0) or Decimal('0')
+        
+        # Calculate totals first (needed for wallet calculations)
+        subtotal = sum(item['subtotal'] for item in sale_items)
+        total = subtotal + tax_amount - discount_amount + delivery_cost
         
         if customer and use_wallet and customer.wallet_balance > 0:
             # Determine how much to use from wallet
@@ -193,16 +176,8 @@ class SaleViewSet(viewsets.ModelViewSet):
             
             logger.info(f"Used {wallet_amount_used} from customer {customer.id} wallet. Remaining balance: {customer.wallet_balance}")
         
-        # Adjust amount_paid to account for wallet usage
-        # If wallet was used, reduce the amount needed from other payment methods
-        amount_paid_after_wallet = amount_paid
-        if wallet_amount_used > 0:
-            # The amount_paid should be the remaining amount after wallet
-            # But we keep amount_paid as is and track wallet separately
-            # The effective payment is amount_paid + wallet_amount_used
-            pass
-        
-        # For POS sales, validate payment amount. Normal sales can have partial/no payment (invoice created)
+        # For POS sales, validate payment amount and handle overpayment
+        change = Decimal('0')
         if sale_type == 'pos':
             # Total payment = amount_paid + wallet_amount_used
             total_payment = amount_paid + wallet_amount_used
@@ -220,7 +195,7 @@ class SaleViewSet(viewsets.ModelViewSet):
                 customer.save()
                 wallet_credit_added = change
                 
-                # Create wallet transaction record for credit (sale will be updated later)
+                # Create wallet transaction record for credit
                 CustomerWalletTransaction.objects.create(
                     customer=customer,
                     transaction_type='credit',
@@ -233,14 +208,9 @@ class SaleViewSet(viewsets.ModelViewSet):
                 )
                 
                 logger.info(f"Added {change} to customer {customer.id} wallet from overpayment. New balance: {customer.wallet_balance}")
-                # Set change to 0 since it's now in wallet
-                change = Decimal('0')
-        else:
-            # For normal sales, change is 0 (no immediate payment)
-            change = Decimal('0')
+                change = Decimal('0')  # Set change to 0 since it's now in wallet
         
-        # Get current branch (will be filtered by tenant automatically)
-        # Only require branch if branch support is enabled
+        # Get current branch
         branch = None
         if is_branch_support_enabled():
             current_branch = get_current_branch(request)
@@ -256,10 +226,8 @@ class SaleViewSet(viewsets.ModelViewSet):
                 from settings.models import Branch
                 try:
                     branch = Branch.objects.get(id=branch_id, is_active=True)
-                    # Verify branch belongs to current tenant
                     tenant = get_current_tenant(request)
                     if tenant and branch.tenant != tenant:
-                        logger.warning(f"Branch {branch_id} does not belong to tenant {tenant.id}")
                         return Response(
                             {'error': 'Branch does not belong to current tenant'},
                             status=status.HTTP_400_BAD_REQUEST
@@ -268,27 +236,34 @@ class SaleViewSet(viewsets.ModelViewSet):
                     branch = current_branch
             else:
                 branch = current_branch
-            
-            logger.info(f"Creating sale in branch: {branch.name} by user: {request.user.username}")
-        else:
-            logger.info(f"Creating sale without branch (branch support disabled) by user: {request.user.username}")
         
-        # Create sale
-        sale = Sale.objects.create(
-            cashier=request.user,
-            branch=branch,
-            sale_type=sale_type,
-            subtotal=subtotal,
-            tax_amount=tax_amount,
-            discount_amount=discount_amount,
-            total=total,
-            payment_method=payment_method,
-            amount_paid=amount_paid + wallet_amount_used,  # Include wallet amount in amount_paid
-            change=max(change, 0),  # Change can't be negative for normal sales
-            notes=notes
-        )
+        # Prepare sale data for service
+        sale_data = {
+            'sale_type': sale_type,
+            'payment_method': payment_method,
+            'amount_paid': amount_paid,
+            'notes': notes,
+            'tax_amount': tax_amount,
+            'discount_amount': discount_amount,
+            'delivery_method': delivery_method,
+            'delivery_cost': delivery_cost,
+        }
         
-        # Update wallet transaction sale references (created before sale existed)
+        # Use service to create sale (handles items, stock, journal entries)
+        try:
+            sale = self.sale_service.create_sale(
+                sale_data,
+                items_data,
+                request.user,
+                branch
+            )
+        except ValidationError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Handle wallet transactions (update sale references)
         if customer and wallet_amount_used > 0:
             wallet_debit = CustomerWalletTransaction.objects.filter(
                 customer=customer,
@@ -312,47 +287,10 @@ class SaleViewSet(viewsets.ModelViewSet):
                 wallet_credit.reference = sale.sale_number
                 wallet_credit.save()
         
-        # Create sale items and update stock
-        for item_data in sale_items:
-            SaleItem.objects.create(
-                sale=sale,
-                product=item_data['product'],
-                variant=item_data.get('variant'),
-                quantity=item_data['quantity'],
-                unit_price=item_data['unit_price'],
-                subtotal=item_data['subtotal']
-            )
-            
-            # Update stock - variant stock if variant exists, otherwise product stock
-            if item_data.get('variant'):
-                variant = item_data['variant']
-                variant.stock_quantity -= item_data['quantity']
-                variant.save()
-            else:
-                product = item_data['product']
-                product.stock_quantity -= item_data['quantity']
-                product.save()
-            
-            # Create stock movement (this will automatically update product/variant stock)
-            StockMovement.objects.create(
-                branch=branch,  # Use same branch as sale
-                product=item_data['product'],
-                variant=item_data.get('variant'),
-                movement_type='sale',
-                quantity=item_data['quantity'],
-                reference=sale.sale_number,
-                user=request.user,
-                unit_cost=item_data['unit_cost'],
-                total_cost=item_data['quantity'] * item_data['unit_cost']
-            )
-        
-        # Create journal entry for sale
-        try:
-            from accounting.views import create_sale_journal_entry
-            create_sale_journal_entry(sale)
-        except Exception as e:
-            # Log error but don't fail the sale creation
-            logger.error(f"Error creating journal entry for sale: {e}")
+        # Update sale with wallet amounts and change
+        sale.amount_paid = amount_paid + wallet_amount_used
+        sale.change = max(change, 0)
+        sale.save()
         
         # Create invoice for normal sales (always), optionally for POS sales
         invoice = None
@@ -360,8 +298,8 @@ class SaleViewSet(viewsets.ModelViewSet):
         # Normal sales always create invoice
         if sale_type == 'normal' or create_invoice:
             customer_id = serializer.validated_data.get('customer_id', None)
-            customer = None
-            if customer_id:
+            # Use customer from wallet handling above if available, otherwise fetch
+            if not customer and customer_id:
                 try:
                     customer = Customer.objects.get(id=customer_id, is_active=True)
                 except Customer.DoesNotExist:

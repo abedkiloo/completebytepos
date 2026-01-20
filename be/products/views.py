@@ -5,12 +5,16 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db.models import Q, F, Sum, Count, Avg
 from django.db import transaction
 from django.http import HttpResponse
+from django.core.exceptions import ValidationError
 from .models import Category, Product, Size, Color, ProductVariant
 from .serializers import (
     CategorySerializer, CategoryListSerializer,
     ProductSerializer, ProductListSerializer, ProductSearchSerializer,
     BulkProductUpdateSerializer, ProductStatisticsSerializer,
     SizeSerializer, ColorSerializer, ProductVariantSerializer
+)
+from .services import (
+    ProductService, CategoryService, SizeService, ColorService, ProductVariantService
 )
 import csv
 import json
@@ -25,12 +29,16 @@ class SizeViewSet(viewsets.ModelViewSet):
     ordering_fields = ['display_order', 'name']
     ordering = ['display_order', 'name']
     
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.size_service = SizeService()
+    
     def get_queryset(self):
-        queryset = Size.objects.all()
-        is_active = self.request.query_params.get('is_active', None)
-        if is_active is not None:
-            queryset = queryset.filter(is_active=is_active.lower() == 'true')
-        return queryset
+        """Get queryset using service layer"""
+        filters = {}
+        if 'is_active' in self.request.query_params:
+            filters['is_active'] = self.request.query_params.get('is_active')
+        return self.size_service.build_queryset(filters)
 
 
 class ColorViewSet(viewsets.ModelViewSet):
@@ -42,12 +50,16 @@ class ColorViewSet(viewsets.ModelViewSet):
     ordering_fields = ['name']
     ordering = ['name']
     
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.color_service = ColorService()
+    
     def get_queryset(self):
-        queryset = Color.objects.all()
-        is_active = self.request.query_params.get('is_active', None)
-        if is_active is not None:
-            queryset = queryset.filter(is_active=is_active.lower() == 'true')
-        return queryset
+        """Get queryset using service layer"""
+        filters = {}
+        if 'is_active' in self.request.query_params:
+            filters['is_active'] = self.request.query_params.get('is_active')
+        return self.color_service.build_queryset(filters)
 
 
 class ProductVariantViewSet(viewsets.ModelViewSet):
@@ -59,17 +71,18 @@ class ProductVariantViewSet(viewsets.ModelViewSet):
     ordering_fields = ['product', 'size', 'color', 'sku']
     ordering = ['product', 'size', 'color']
     
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.variant_service = ProductVariantService()
+    
     def get_queryset(self):
-        queryset = ProductVariant.objects.select_related('product', 'size', 'color').all()
-        product_id = self.request.query_params.get('product', None)
-        is_active = self.request.query_params.get('is_active', None)
-        
-        if product_id:
-            queryset = queryset.filter(product_id=product_id)
-        if is_active is not None:
-            queryset = queryset.filter(is_active=is_active.lower() == 'true')
-        
-        return queryset
+        """Get queryset using service layer"""
+        filters = {}
+        if 'product' in self.request.query_params:
+            filters['product'] = self.request.query_params.get('product')
+        if 'is_active' in self.request.query_params:
+            filters['is_active'] = self.request.query_params.get('is_active')
+        return self.variant_service.build_queryset(filters)
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -80,34 +93,29 @@ class CategoryViewSet(viewsets.ModelViewSet):
     ordering_fields = ['name', 'created_at']
     ordering = ['name']
     
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.category_service = CategoryService()
+    
     def get_queryset(self):
-        queryset = Category.objects.all().prefetch_related('products', 'children')
-        is_active = self.request.query_params.get('is_active', None)
-        
-        if is_active is not None:
-            queryset = queryset.filter(is_active=is_active.lower() == 'true')
-        
-        return queryset
+        """Get queryset using service layer"""
+        filters = {}
+        if 'is_active' in self.request.query_params:
+            filters['is_active'] = self.request.query_params.get('is_active')
+        if 'parent' in self.request.query_params:
+            filters['parent'] = self.request.query_params.get('parent')
+        return self.category_service.build_queryset(filters)
 
     def get_serializer_class(self):
         if self.action == 'list':
             return CategoryListSerializer
         return CategorySerializer
 
-    def get_queryset(self):
-        queryset = Category.objects.all()
-        is_active = self.request.query_params.get('is_active', None)
-        
-        if is_active is not None:
-            queryset = queryset.filter(is_active=is_active.lower() == 'true')
-        
-        return queryset
-
     @action(detail=True, methods=['get'])
     def products(self, request, pk=None):
         """Get all products in a category"""
         category = self.get_object()
-        products = category.products.filter(is_active=True)
+        products = self.category_service.get_category_products(category.id, active_only=True)
         serializer = ProductListSerializer(products, many=True, context={'request': request})
         return Response(serializer.data)
 
@@ -120,6 +128,10 @@ class ProductViewSet(viewsets.ModelViewSet):
     search_fields = ['name', 'sku', 'barcode', 'description', 'supplier']
     ordering_fields = ['name', 'price', 'cost', 'created_at', 'stock_quantity', 'updated_at']
     ordering = ['name']
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.product_service = ProductService()
 
     def get_serializer_class(self):
         if self.action == 'list':
@@ -127,50 +139,62 @@ class ProductViewSet(viewsets.ModelViewSet):
         return ProductSerializer
 
     def get_queryset(self):
-        queryset = Product.objects.select_related('category', 'subcategory').prefetch_related(
-            'available_sizes', 'available_colors', 'variants'
-        )
-        is_active = self.request.query_params.get('is_active', None)
-        category = self.request.query_params.get('category', None)
-        low_stock = self.request.query_params.get('low_stock', None)
-        out_of_stock = self.request.query_params.get('out_of_stock', None)
-        track_stock = self.request.query_params.get('track_stock', None)
-        supplier = self.request.query_params.get('supplier', None)
+        """Get queryset using service layer - all query logic moved to service"""
+        filters = {}
+        query_params = self.request.query_params
         
-        if is_active is not None:
-            queryset = queryset.filter(is_active=is_active.lower() == 'true')
+        # Extract all filter parameters
+        for param in ['is_active', 'category', 'subcategory', 'low_stock', 
+                     'out_of_stock', 'track_stock', 'supplier']:
+            if param in query_params:
+                filters[param] = query_params.get(param)
         
-        if category:
-            queryset = queryset.filter(category_id=category)
+        return self.product_service.build_queryset(filters)
+    
+    def perform_create(self, serializer):
+        """Create product - thin view, business logic in service"""
+        try:
+            # Let serializer create the product (handles ManyToMany fields)
+            product = serializer.save()
+            
+            # Use service to create variants if needed
+            if product.has_variants:
+                sizes = product.available_sizes.all()
+                colors = product.available_colors.all()
+                if sizes.exists() or colors.exists():
+                    self.product_service.variant_service.create_variants_for_product(
+                        product,
+                        sizes=[s.id for s in sizes] if sizes.exists() else None,
+                        colors=[c.id for c in colors] if colors.exists() else None
+                    )
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error creating product: {e}", exc_info=True)
+            # Re-raise to let DRF handle it properly
+            raise
+    
+    def perform_update(self, serializer):
+        """Update product - serializer handles update, service handles variant changes"""
+        # Let serializer update the product
+        product = serializer.save()
         
-        subcategory = self.request.query_params.get('subcategory', None)
-        if subcategory:
-            queryset = queryset.filter(subcategory_id=subcategory)
+        # Handle variant updates if variant settings changed
+        # Check if variants need to be recreated
+        sizes = product.available_sizes.all()
+        colors = product.available_colors.all()
         
-        if low_stock is not None and low_stock.lower() == 'true':
-            queryset = queryset.filter(
-                stock_quantity__lte=F('low_stock_threshold'),
-                track_stock=True
+        if product.has_variants and (sizes.exists() or colors.exists()):
+            # Delete existing variants and recreate
+            ProductVariant.objects.filter(product=product).delete()
+            self.product_service.variant_service.create_variants_for_product(
+                product,
+                sizes=[s.id for s in sizes] if sizes.exists() else None,
+                colors=[c.id for c in colors] if colors.exists() else None
             )
-        
-        if out_of_stock is not None and out_of_stock.lower() == 'true':
-            queryset = queryset.filter(stock_quantity=0, track_stock=True)
-        
-        if track_stock is not None:
-            queryset = queryset.filter(track_stock=track_stock.lower() == 'true')
-        
-        if supplier:
-            # Handle both legacy supplier name and new supplier FK
-            from suppliers.models import Supplier
-            try:
-                # Try to find supplier by ID first
-                supplier_obj = Supplier.objects.get(id=supplier)
-                queryset = queryset.filter(supplier=supplier_obj)
-            except (Supplier.DoesNotExist, ValueError):
-                # Fallback to legacy supplier name search
-                queryset = queryset.filter(supplier_name__icontains=supplier)
-        
-        return queryset
+        elif not product.has_variants:
+            # Delete variants if has_variants is False
+            ProductVariant.objects.filter(product=product).delete()
 
     @action(detail=False, methods=['get'])
     def search(self, request):
@@ -178,38 +202,21 @@ class ProductViewSet(viewsets.ModelViewSet):
         query = request.query_params.get('q', '').strip()
         limit = int(request.query_params.get('limit', 20))
         
-        if not query:
-            return Response([])
-        
-        products = Product.objects.filter(
-            Q(name__icontains=query) |
-            Q(sku__icontains=query) |
-            Q(barcode__icontains=query),
-            is_active=True
-        )[:limit]
-        
+        products = self.product_service.search_products(query, limit)
         serializer = ProductSearchSerializer(products, many=True)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def low_stock(self, request):
         """Get products with low stock"""
-        products = Product.objects.filter(
-            stock_quantity__lte=F('low_stock_threshold'),
-            is_active=True,
-            track_stock=True
-        )
+        products = self.product_service.get_low_stock_products()
         serializer = self.get_serializer(products, many=True)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def out_of_stock(self, request):
         """Get products that are out of stock"""
-        products = Product.objects.filter(
-            stock_quantity=0,
-            is_active=True,
-            track_stock=True
-        )
+        products = self.product_service.get_out_of_stock_products()
         serializer = self.get_serializer(products, many=True)
         return Response(serializer.data)
 
@@ -222,12 +229,17 @@ class ProductViewSet(viewsets.ModelViewSet):
         product_ids = serializer.validated_data['product_ids']
         update_data = serializer.validated_data['update_data']
         
-        updated_count = Product.objects.filter(id__in=product_ids).update(**update_data)
-        
-        return Response({
-            'message': f'{updated_count} products updated successfully',
-            'updated_count': updated_count
-        })
+        try:
+            updated_count = self.product_service.bulk_update_products(product_ids, update_data)
+            return Response({
+                'message': f'{updated_count} products updated successfully',
+                'updated_count': updated_count
+            })
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     @action(detail=False, methods=['post'])
     def bulk_delete(self, request):
@@ -240,12 +252,17 @@ class ProductViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        deleted_count = Product.objects.filter(id__in=product_ids).delete()[0]
-        
-        return Response({
-            'message': f'{deleted_count} products deleted successfully',
-            'deleted_count': deleted_count
-        })
+        try:
+            deleted_count = self.product_service.bulk_delete_products(product_ids)
+            return Response({
+                'message': f'{deleted_count} products deleted successfully',
+                'deleted_count': deleted_count
+            })
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     @action(detail=False, methods=['post'])
     def bulk_activate(self, request):
@@ -258,12 +275,17 @@ class ProductViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        updated_count = Product.objects.filter(id__in=product_ids).update(is_active=True)
-        
-        return Response({
-            'message': f'{updated_count} products activated successfully',
-            'updated_count': updated_count
-        })
+        try:
+            updated_count = self.product_service.bulk_activate_products(product_ids)
+            return Response({
+                'message': f'{updated_count} products activated successfully',
+                'updated_count': updated_count
+            })
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     @action(detail=False, methods=['post'])
     def bulk_deactivate(self, request):
@@ -276,112 +298,48 @@ class ProductViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        updated_count = Product.objects.filter(id__in=product_ids).update(is_active=False)
-        
-        return Response({
-            'message': f'{updated_count} products deactivated successfully',
-            'updated_count': updated_count
-        })
+        try:
+            updated_count = self.product_service.bulk_deactivate_products(product_ids)
+            return Response({
+                'message': f'{updated_count} products deactivated successfully',
+                'updated_count': updated_count
+            })
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     @action(detail=False, methods=['get'])
     def statistics(self, request):
         """Get product statistics"""
-        stats = {
-            'total_products': Product.objects.count(),
-            'active_products': Product.objects.filter(is_active=True).count(),
-            'low_stock_products': Product.objects.filter(
-                stock_quantity__lte=F('low_stock_threshold'),
-                track_stock=True,
-                is_active=True
-            ).count(),
-            'out_of_stock_products': Product.objects.filter(
-                stock_quantity=0,
-                track_stock=True,
-                is_active=True
-            ).count(),
-        }
-        
-        # Calculate total inventory value
-        inventory_value = Product.objects.filter(track_stock=True).aggregate(
-            total=Sum(F('stock_quantity') * F('cost'))
-        )['total'] or 0
-        
-        # Calculate total products value (at selling price)
-        products_value = Product.objects.filter(track_stock=True).aggregate(
-            total=Sum(F('stock_quantity') * F('price'))
-        )['total'] or 0
-        
-        stats['total_inventory_value'] = float(inventory_value)
-        stats['total_products_value'] = float(products_value)
-        
-        serializer = ProductStatisticsSerializer(stats)
-        return Response(serializer.data)
+        try:
+            stats = self.product_service.get_product_statistics()
+            serializer = ProductStatisticsSerializer(stats)
+            return Response(serializer.data)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error getting product statistics: {e}", exc_info=True)
+            return Response(
+                {'error': f'Error calculating statistics: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @action(detail=False, methods=['get'])
     def export(self, request):
         """Export products to CSV with all fields matching the template format"""
         products = self.get_queryset()
         
+        csv_data = self.product_service.export_products_to_csv(products)
+        
+        # Create response with BOM first for Excel compatibility, then CSV data
         response = HttpResponse(content_type='text/csv; charset=utf-8')
         response['Content-Disposition'] = 'attachment; filename="products_export.csv"'
-        
-        # Write BOM for Excel compatibility
+        # Write BOM for Excel compatibility (must be first)
         response.write('\ufeff')
-        
-        writer = csv.writer(response)
-        # Headers matching the template format
-        writer.writerow([
-            'name',
-            'sku',
-            'barcode',
-            'category',
-            'subcategory',
-            'price',
-            'cost',
-            'stock_quantity',
-            'low_stock_threshold',
-            'reorder_quantity',
-            'unit',
-            'description',
-            'supplier',
-            'supplier_contact',
-            'tax_rate',
-            'is_taxable',
-            'track_stock',
-            'is_active',
-            'has_variants',
-            'available_sizes',
-            'available_colors'
-        ])
-        
-        for product in products:
-            # Get sizes and colors as comma-separated values
-            sizes = ','.join([size.name for size in product.available_sizes.all()])
-            colors = ','.join([color.name for color in product.available_colors.all()])
-            
-            writer.writerow([
-                product.name or '',
-                product.sku or '',
-                product.barcode or '',
-                product.category.name if product.category else '',
-                product.subcategory.name if product.subcategory else '',
-                str(product.price) if product.price else '0.00',
-                str(product.cost) if product.cost else '0.00',
-                str(product.stock_quantity) if product.stock_quantity else '0',
-                str(product.low_stock_threshold) if product.low_stock_threshold else '10',
-                str(product.reorder_quantity) if product.reorder_quantity else '50',
-                product.unit or 'piece',
-                product.description or '',
-                product.supplier or '',
-                product.supplier_contact or '',
-                str(product.tax_rate) if product.tax_rate else '0',
-                'true' if product.is_taxable else 'false',
-                'true' if product.track_stock else 'false',
-                'true' if product.is_active else 'false',
-                'true' if product.has_variants else 'false',
-                sizes,
-                colors
-            ])
+        # Write CSV data
+        response.write(csv_data)
         
         return response
 
@@ -396,159 +354,17 @@ class ProductViewSet(viewsets.ModelViewSet):
         
         file = request.FILES['file']
         try:
-            # Try to decode with UTF-8, fallback to latin-1
-            try:
-                decoded_file = file.read().decode('utf-8-sig')  # Handle BOM
-            except UnicodeDecodeError:
-                file.seek(0)
-                decoded_file = file.read().decode('latin-1')
+            results = self.product_service.import_products_from_csv(file)
             
-            # Skip comment lines (lines starting with #)
-            lines = [line for line in decoded_file.splitlines() if line.strip() and not line.strip().startswith('#')]
-            
-            if not lines:
-                return Response(
-                    {'error': 'CSV file is empty or contains only comments'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            csv_reader = csv.DictReader(lines)
-            
-            created_count = 0
-            updated_count = 0
-            errors = []
-            
-            for row_num, row in enumerate(csv_reader, start=2):
-                try:
-                    # Support both template format (lowercase) and old format (title case)
-                    sku = row.get('sku', row.get('SKU', '')).strip()
-                    if not sku:
-                        errors.append(f"Row {row_num}: SKU is required")
-                        continue
-                    
-                    # Get values with fallback to old format
-                    name = row.get('name', row.get('Name', '')).strip()
-                    if not name:
-                        errors.append(f"Row {row_num}: Name is required")
-                        continue
-                    
-                    # Parse boolean fields
-                    def parse_bool(value, default=False):
-                        if isinstance(value, bool):
-                            return value
-                        if isinstance(value, str):
-                            return value.strip().lower() in ('true', 'yes', '1', 'y')
-                        return default
-                    
-                    # Parse numeric fields
-                    def parse_decimal(value, default=0):
-                        try:
-                            return float(value) if value else default
-                        except (ValueError, TypeError):
-                            return default
-                    
-                    def parse_int(value, default=0):
-                        try:
-                            return int(float(value)) if value else default
-                        except (ValueError, TypeError):
-                            return default
-                    
-                    # Get all fields
-                    price = parse_decimal(row.get('price', row.get('Price', 0)))
-                    cost = parse_decimal(row.get('cost', row.get('Cost', 0)))
-                    stock_quantity = parse_int(row.get('stock_quantity', row.get('Stock Quantity', 0)))
-                    low_stock_threshold = parse_int(row.get('low_stock_threshold', row.get('Low Stock Threshold', 10)))
-                    reorder_quantity = parse_int(row.get('reorder_quantity', row.get('Reorder Quantity', 50)))
-                    tax_rate = parse_decimal(row.get('tax_rate', row.get('Tax Rate', 0)))
-                    
-                    product, created = Product.objects.update_or_create(
-                        sku=sku,
-                        defaults={
-                            'name': name,
-                            'barcode': row.get('barcode', row.get('Barcode', '')).strip() or None,
-                            'price': price,
-                            'cost': cost,
-                            'stock_quantity': stock_quantity,
-                            'low_stock_threshold': low_stock_threshold,
-                            'reorder_quantity': reorder_quantity,
-                            'unit': row.get('unit', row.get('Unit', 'piece')).strip() or 'piece',
-                            'description': row.get('description', row.get('Description', '')).strip(),
-                            'supplier': row.get('supplier', row.get('Supplier', '')).strip(),
-                            'supplier_contact': row.get('supplier_contact', row.get('Supplier Contact', '')).strip(),
-                            'tax_rate': tax_rate,
-                            'is_taxable': parse_bool(row.get('is_taxable', row.get('Is Taxable', True))),
-                            'track_stock': parse_bool(row.get('track_stock', row.get('Track Stock', True))),
-                            'is_active': parse_bool(row.get('is_active', row.get('Is Active', True))),
-                            'has_variants': parse_bool(row.get('has_variants', row.get('Has Variants', False))),
-                        }
-                    )
-                    
-                    # Handle category
-                    category_name = row.get('category', row.get('Category', '')).strip()
-                    if category_name:
-                        category, _ = Category.objects.get_or_create(
-                            name=category_name,
-                            defaults={'is_active': True}
-                        )
-                        product.category = category
-                    
-                    # Handle subcategory
-                    subcategory_name = row.get('subcategory', row.get('Subcategory', '')).strip()
-                    if subcategory_name:
-                        # Subcategory must be a child of the main category
-                        parent_category = product.category if product.category else None
-                        if parent_category:
-                            subcategory, _ = Category.objects.get_or_create(
-                                name=subcategory_name,
-                                parent=parent_category,
-                                defaults={'is_active': True}
-                            )
-                            product.subcategory = subcategory
-                    
-                    # Handle sizes and colors (comma-separated)
-                    sizes_str = row.get('available_sizes', row.get('Available Sizes', '')).strip()
-                    if sizes_str:
-                        size_names = [s.strip() for s in sizes_str.split(',') if s.strip()]
-                        sizes = []
-                        for size_name in size_names:
-                            size, _ = Size.objects.get_or_create(
-                                name=size_name,
-                                defaults={'is_active': True}
-                            )
-                            sizes.append(size)
-                        product.available_sizes.set(sizes)
-                    
-                    colors_str = row.get('available_colors', row.get('Available Colors', '')).strip()
-                    if colors_str:
-                        color_names = [c.strip() for c in colors_str.split(',') if c.strip()]
-                        colors = []
-                        for color_name in color_names:
-                            color, _ = Color.objects.get_or_create(
-                                name=color_name,
-                                defaults={'is_active': True}
-                            )
-                            colors.append(color)
-                        product.available_colors.set(colors)
-                    
-                    product.save()
-                    
-                    if created:
-                        created_count += 1
-                    else:
-                        updated_count += 1
-                        
-                except Exception as e:
-                    errors.append(f"Row {row_num}: {str(e)}")
-            
-            message = f'Import completed: {created_count} created, {updated_count} updated'
-            if errors:
-                message += f'. {len(errors)} errors occurred.'
+            message = f'Import completed: {results["created"]} created, {results["updated"]} updated'
+            if results['errors']:
+                message += f'. {len(results["errors"])} errors occurred.'
             
             return Response({
                 'message': message,
-                'created_count': created_count,
-                'updated_count': updated_count,
-                'errors': errors[:10]  # Limit errors to first 10
+                'created_count': results['created'],
+                'updated_count': results['updated'],
+                'errors': results['errors'][:10]  # Limit errors to first 10
             })
             
         except Exception as e:

@@ -8,6 +8,7 @@ from .models import ExpenseCategory, Expense
 from .serializers import (
     ExpenseCategorySerializer, ExpenseSerializer, ExpenseListSerializer
 )
+from .services import ExpenseCategoryService, ExpenseService
 from settings.utils import get_current_branch, get_current_tenant, is_branch_support_enabled
 import logging
 
@@ -21,15 +22,17 @@ class ExpenseCategoryViewSet(viewsets.ModelViewSet):
     search_fields = ['name', 'description']
     ordering_fields = ['name', 'created_at']
     ordering = ['name']
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.category_service = ExpenseCategoryService()
 
     def get_queryset(self):
-        queryset = ExpenseCategory.objects.annotate(
-            expense_count=Count('expenses')
-        )
-        is_active = self.request.query_params.get('is_active', None)
-        if is_active is not None:
-            queryset = queryset.filter(is_active=is_active.lower() == 'true')
-        return queryset
+        """Get queryset using service layer"""
+        filters = {}
+        if 'is_active' in self.request.query_params:
+            filters['is_active'] = self.request.query_params.get('is_active')
+        return self.category_service.build_queryset(filters)
 
 
 class ExpenseViewSet(viewsets.ModelViewSet):
@@ -39,43 +42,22 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     search_fields = ['expense_number', 'description', 'vendor', 'receipt_number']
     ordering_fields = ['expense_date', 'amount', 'created_at']
     ordering = ['-expense_date', '-created_at']
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.expense_service = ExpenseService()
 
     def get_queryset(self):
-        queryset = Expense.objects.all().select_related('category', 'created_by', 'approved_by', 'branch')
+        """Get queryset using service layer - all query logic moved to service"""
+        filters = {}
+        query_params = self.request.query_params
         
-        # Filter by branch if specified (skip if show_all is true)
-        show_all = self.request.query_params.get('show_all', 'false').lower() == 'true'
-        branch_id = self.request.query_params.get('branch_id', None)
+        # Extract all filter parameters
+        for param in ['branch_id', 'show_all', 'category', 'status', 'date_from', 'date_to', 'payment_method']:
+            if param in query_params:
+                filters[param] = query_params.get(param)
         
-        if not show_all:
-            if not branch_id:
-                # Try to get from current branch
-                current_branch = get_current_branch(self.request)
-                if current_branch:
-                    branch_id = current_branch.id
-            
-            if branch_id:
-                queryset = queryset.filter(branch_id=branch_id)
-        
-        # Filters
-        category = self.request.query_params.get('category', None)
-        status_filter = self.request.query_params.get('status', None)
-        date_from = self.request.query_params.get('date_from', None)
-        date_to = self.request.query_params.get('date_to', None)
-        payment_method = self.request.query_params.get('payment_method', None)
-        
-        if category:
-            queryset = queryset.filter(category_id=category)
-        if status_filter:
-            queryset = queryset.filter(status=status_filter)
-        if date_from:
-            queryset = queryset.filter(expense_date__gte=date_from)
-        if date_to:
-            queryset = queryset.filter(expense_date__lte=date_to)
-        if payment_method:
-            queryset = queryset.filter(payment_method=payment_method)
-        
-        return queryset
+        return self.expense_service.build_queryset(filters, request=self.request)
 
     def perform_create(self, serializer):
         # Get current branch only if branch support is enabled
@@ -86,66 +68,21 @@ class ExpenseViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
-        """Approve an expense"""
+        """Approve an expense - thin view, business logic in service"""
         expense = self.get_object()
-        if expense.status == 'approved':
+        try:
+            approved_expense = self.expense_service.approve_expense(expense, request.user)
+            serializer = self.get_serializer(approved_expense)
+            return Response(serializer.data)
+        except ValidationError as e:
             return Response(
-                {'error': 'Expense is already approved'},
+                {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        expense.status = 'approved'
-        expense.approved_by = request.user
-        expense.save()
-        
-        # Create journal entry for expense
-        try:
-            from accounting.views import create_expense_journal_entry
-            create_expense_journal_entry(expense)
-        except Exception as e:
-            # Log error but don't fail the approval
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"Error creating journal entry for expense: {e}")
-        
-        serializer = self.get_serializer(expense)
-        return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def statistics(self, request):
-        """Get expense statistics"""
-        today = timezone.now().date()
-        start_of_month = timezone.make_aware(datetime(today.year, today.month, 1))
-        
-        # Filter by branch if specified
+        """Get expense statistics - thin view, business logic in service"""
         current_branch = get_current_branch(request)
-        expense_queryset = Expense.objects.all()
-        if current_branch:
-            expense_queryset = expense_queryset.filter(branch=current_branch)
-        
-        total_expenses = expense_queryset.filter(status='approved').aggregate(
-            total=Sum('amount')
-        )['total'] or 0
-        
-        month_expenses = expense_queryset.filter(
-            status='approved',
-            expense_date__gte=start_of_month.date()
-        ).aggregate(total=Sum('amount'))['total'] or 0
-        
-        by_category = expense_queryset.filter(status='approved').values(
-            'category__name'
-        ).annotate(
-            total=Sum('amount'),
-            count=Count('id')
-        )
-        
-        by_status = expense_queryset.values('status').annotate(
-            total=Sum('amount'),
-            count=Count('id')
-        )
-        
-        return Response({
-            'total_expenses': float(total_expenses),
-            'month_expenses': float(month_expenses),
-            'by_category': list(by_category),
-            'by_status': list(by_status),
-        })
+        stats = self.expense_service.get_expense_statistics(branch=current_branch)
+        return Response(stats)
