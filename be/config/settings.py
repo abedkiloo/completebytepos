@@ -304,6 +304,7 @@ CORS_ALLOWED_ORIGINS = [
     'http://frontend',
     'http://216.158.230.163:3000',
     'http://216.158.230.163:8000',
+    'http://127.0.0.1:3000',  # Also allow 127.0.0.1
 ]
 
 # Allow all headers (including preflight request headers)

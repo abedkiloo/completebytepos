@@ -418,10 +418,22 @@ class AuthViewSet(viewsets.ViewSet):
         else:
             logger.warning(f"Login failed - Invalid credentials for user: {username}")
             logger.info("=" * 80)
-            return Response(
+            response = Response(
                 {'error': 'Invalid credentials'},
                 status=status.HTTP_401_UNAUTHORIZED
             )
+            # Ensure CORS headers are added to error response
+            # The CORS middleware should handle this, but we ensure it here
+            origin = request.META.get('HTTP_ORIGIN')
+            if origin:
+                from django.conf import settings
+                if getattr(settings, 'CORS_ALLOW_ALL_ORIGINS', False):
+                    response['Access-Control-Allow-Origin'] = origin
+                elif origin in getattr(settings, 'CORS_ALLOWED_ORIGINS', []):
+                    response['Access-Control-Allow-Origin'] = origin
+                if getattr(settings, 'CORS_ALLOW_CREDENTIALS', False):
+                    response['Access-Control-Allow-Credentials'] = 'true'
+            return response
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def logout(self, request):
