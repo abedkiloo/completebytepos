@@ -236,7 +236,7 @@ class SaleService(BaseService):
         
         # Create journal entry
         try:
-            from accounting.views import create_sale_journal_entry
+            from accounting.services import create_sale_journal_entry
             create_sale_journal_entry(sale)
         except Exception as e:
             # Log but don't fail sale creation

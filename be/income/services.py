@@ -136,7 +136,7 @@ class IncomeService(BaseService):
         
         # Create journal entry for income
         try:
-            from accounting.views import create_income_journal_entry
+            from accounting.services import create_income_journal_entry
             create_income_journal_entry(income)
         except Exception as e:
             # Log error but don't fail the approval

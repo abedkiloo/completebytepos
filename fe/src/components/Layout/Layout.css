@@ -370,7 +370,7 @@
   flex: 1;
   overflow-y: auto;
   background: #f5f7fa;
-  padding: 2rem;
+  padding: 1rem;
   position: relative;
   z-index: 1; /* Ensure content is below submenu */
 }

@@ -959,7 +959,7 @@ class Command(BaseCommand):
         """Create journal entries for sales and expenses to match accounting data"""
         self.stdout.write(f'\n6. Creating accounting journal entries for sales and expenses...')
         
-        from accounting.views import create_sale_journal_entry, create_expense_journal_entry
+        from accounting.services import create_sale_journal_entry, create_expense_journal_entry
         from accounting.models import Transaction, JournalEntry
         
         created_transactions = 0

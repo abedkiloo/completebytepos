@@ -145,26 +145,318 @@ class TransactionService(BaseService):
         return queryset.order_by('-transaction_date', '-created_at')
 
 
-# Helper functions for creating journal entries (kept in service for now, can be moved to service methods later)
+# Helper functions for creating journal entries
 def create_expense_journal_entry(expense):
-    """Create journal entries for an expense - moved from views"""
-    from expenses.models import Expense as ExpenseModel
-    # This function is imported by expenses service, so we keep it here
-    # Implementation remains the same as in views
-    pass  # Implementation kept in views for now to avoid circular imports
+    """Create journal entries for an expense"""
+    # Get or create expense account
+    expense_account, _ = Account.objects.get_or_create(
+        account_code='6000',
+        defaults={
+            'name': 'Operating Expenses',
+            'account_type': AccountType.objects.get_or_create(
+                name='expense',
+                defaults={'normal_balance': 'debit'}
+            )[0],
+            'description': 'General operating expenses'
+        }
+    )
+    
+    # Get or create cash/bank account based on payment method
+    if expense.payment_method == 'cash':
+        cash_account, _ = Account.objects.get_or_create(
+            account_code='1000',
+            defaults={
+                'name': 'Cash',
+                'account_type': AccountType.objects.get_or_create(
+                    name='asset',
+                    defaults={'normal_balance': 'debit'}
+                )[0],
+                'description': 'Cash on hand'
+            }
+        )
+        credit_account = cash_account
+    else:
+        bank_account, _ = Account.objects.get_or_create(
+            account_code='1100',
+            defaults={
+                'name': 'Bank Account',
+                'account_type': AccountType.objects.get_or_create(
+                    name='asset',
+                    defaults={'normal_balance': 'debit'}
+                )[0],
+                'description': 'Bank account'
+            }
+        )
+        credit_account = bank_account
+    
+    # Create journal entries
+    txn = Transaction.objects.create(
+        transaction_date=expense.expense_date,
+        description=f"Expense: {expense.description}",
+        reference=expense.expense_number,
+        reference_type='expense',
+        reference_id=expense.id,
+        created_by=expense.created_by
+    )
+    
+    # Debit expense account
+    debit_entry = JournalEntry.objects.create(
+        entry_date=expense.expense_date,
+        account=expense_account,
+        entry_type='debit',
+        amount=expense.amount,
+        description=f"Expense: {expense.description}",
+        reference=expense.expense_number,
+        reference_type='expense',
+        reference_id=expense.id,
+        created_by=expense.created_by
+    )
+    
+    # Credit cash/bank account
+    credit_entry = JournalEntry.objects.create(
+        entry_date=expense.expense_date,
+        account=credit_account,
+        entry_type='credit',
+        amount=expense.amount,
+        description=f"Payment for expense: {expense.description}",
+        reference=expense.expense_number,
+        reference_type='expense',
+        reference_id=expense.id,
+        created_by=expense.created_by
+    )
+    
+    txn.journal_entries.add(debit_entry, credit_entry)
+    return txn
 
 
 def create_income_journal_entry(income):
-    """Create journal entries for an income - moved from views"""
-    from income.models import Income as IncomeModel
-    # This function is imported by income service, so we keep it here
-    # Implementation remains the same as in views
-    pass  # Implementation kept in views for now to avoid circular imports
+    """Create journal entries for an income"""
+    # Get or create income account
+    income_account, _ = Account.objects.get_or_create(
+        account_code='4100',
+        defaults={
+            'name': 'Other Income',
+            'account_type': AccountType.objects.get_or_create(
+                name='revenue',
+                defaults={'normal_balance': 'credit'}
+            )[0],
+            'description': 'Other sources of income'
+        }
+    )
+    
+    # Get or create cash/bank account based on payment method
+    if income.payment_method == 'cash':
+        cash_account, _ = Account.objects.get_or_create(
+            account_code='1000',
+            defaults={
+                'name': 'Cash',
+                'account_type': AccountType.objects.get_or_create(
+                    name='asset',
+                    defaults={'normal_balance': 'debit'}
+                )[0],
+                'description': 'Cash on hand'
+            }
+        )
+        debit_account = cash_account
+    else:
+        bank_account, _ = Account.objects.get_or_create(
+            account_code='1100',
+            defaults={
+                'name': 'Bank Account',
+                'account_type': AccountType.objects.get_or_create(
+                    name='asset',
+                    defaults={'normal_balance': 'debit'}
+                )[0],
+                'description': 'Bank account'
+            }
+        )
+        debit_account = bank_account
+    
+    # Create transaction
+    txn = Transaction.objects.create(
+        transaction_date=income.income_date,
+        description=f"Income: {income.description}",
+        reference=income.income_number,
+        reference_type='income',
+        reference_id=income.id,
+        created_by=income.created_by
+    )
+    
+    # Debit cash/bank account
+    debit_entry = JournalEntry.objects.create(
+        entry_date=income.income_date,
+        account=debit_account,
+        entry_type='debit',
+        amount=income.amount,
+        description=f"Income: {income.description}",
+        reference=income.income_number,
+        reference_type='income',
+        reference_id=income.id,
+        created_by=income.created_by
+    )
+    
+    # Credit income account
+    credit_entry = JournalEntry.objects.create(
+        entry_date=income.income_date,
+        account=income_account,
+        entry_type='credit',
+        amount=income.amount,
+        description=f"Income: {income.description}",
+        reference=income.income_number,
+        reference_type='income',
+        reference_id=income.id,
+        created_by=income.created_by
+    )
+    
+    txn.journal_entries.add(debit_entry, credit_entry)
+    return txn
 
 
 def create_sale_journal_entry(sale):
-    """Create journal entries for a sale - moved from views"""
-    from sales.models import Sale as SaleModel
-    # This function is imported by sales service, so we keep it here
-    # Implementation remains the same as in views
-    pass  # Implementation kept in views for now to avoid circular imports
+    """Create journal entries for a sale
+    
+    For POS sales: Debit Cash, Credit Sales Revenue
+    For Normal sales: Debit Accounts Receivable (or Cash if paid), Credit Sales Revenue
+    """
+    # Get or create accounts
+    sales_revenue_account, _ = Account.objects.get_or_create(
+        account_code='4000',
+        defaults={
+            'name': 'Sales Revenue',
+            'account_type': AccountType.objects.get_or_create(
+                name='revenue',
+                defaults={'normal_balance': 'credit'}
+            )[0],
+            'description': 'Sales revenue'
+        }
+    )
+    
+    cash_account, _ = Account.objects.get_or_create(
+        account_code='1000',
+        defaults={
+            'name': 'Cash',
+            'account_type': AccountType.objects.get_or_create(
+                name='asset',
+                defaults={'normal_balance': 'debit'}
+            )[0],
+            'description': 'Cash on hand'
+        }
+    )
+    
+    accounts_receivable_account, _ = Account.objects.get_or_create(
+        account_code='1200',
+        defaults={
+            'name': 'Accounts Receivable',
+            'account_type': AccountType.objects.get_or_create(
+                name='asset',
+                defaults={'normal_balance': 'debit'}
+            )[0],
+            'description': 'Accounts receivable from customers'
+        }
+    )
+    
+    # Get or create customer prepaid/wallet account (liability - we owe customers this money)
+    customer_prepaid_account, _ = Account.objects.get_or_create(
+        account_code='2100',
+        defaults={
+            'name': 'Customer Prepaid/Wallet',
+            'account_type': AccountType.objects.get_or_create(
+                name='liability',
+                defaults={'normal_balance': 'credit'}
+            )[0],
+            'description': 'Customer wallet balances and prepaid amounts'
+        }
+    )
+    
+    # Create transaction
+    txn = Transaction.objects.create(
+        transaction_date=sale.created_at.date(),
+        description=f"Sale: {sale.sale_number}",
+        reference=sale.sale_number,
+        reference_type='sale',
+        reference_id=sale.id,
+        created_by=sale.cashier
+    )
+    
+    entries = []
+    
+    # Determine sale type and payment amount
+    sale_type = getattr(sale, 'sale_type', 'pos')  # Default to 'pos' for backward compatibility
+    amount_paid = sale.amount_paid or Decimal('0')
+    total = sale.total  # Total includes delivery_cost
+    balance = total - amount_paid
+    overpayment = amount_paid - total if amount_paid > total else Decimal('0')
+    
+    # Validate: amount_paid should not exceed total by an unreasonable amount
+    # (allowing small rounding differences)
+    if overpayment > Decimal('1000'):
+        raise ValueError(
+            f"Overpayment amount ({overpayment}) exceeds reasonable limit. "
+            f"Amount paid: {amount_paid}, Total: {total}"
+        )
+    
+    # Handle payment entries for both POS and normal sales
+    # POS sales can also have partial payments (e.g., customer paid 600 on 1000 sale)
+    if amount_paid > 0:
+        # Debit Cash for amount paid
+        cash_entry = JournalEntry.objects.create(
+            entry_date=sale.created_at.date(),
+            account=cash_account,
+            entry_type='debit',
+            amount=amount_paid,
+            description=f"{'POS Sale' if sale_type == 'pos' else 'Sale'} payment: {sale.sale_number}",
+            reference=sale.sale_number,
+            reference_type='sale',
+            reference_id=sale.id,
+            created_by=sale.cashier
+        )
+        entries.append(cash_entry)
+    
+    if balance > 0:
+        # Debit Accounts Receivable for unpaid balance
+        # This applies to both POS sales with partial payment and normal sales on credit
+        ar_entry = JournalEntry.objects.create(
+            entry_date=sale.created_at.date(),
+            account=accounts_receivable_account,
+            entry_type='debit',
+            amount=balance,
+            description=f"{'POS Sale' if sale_type == 'pos' else 'Sale'} on credit: {sale.sale_number}",
+            reference=sale.sale_number,
+            reference_type='sale',
+            reference_id=sale.id,
+            created_by=sale.cashier
+        )
+        entries.append(ar_entry)
+    
+    # Credit sales revenue (always)
+    credit_entry = JournalEntry.objects.create(
+        entry_date=sale.created_at.date(),
+        account=sales_revenue_account,
+        entry_type='credit',
+        amount=total,
+        description=f"Sale: {sale.sale_number}",
+        reference=sale.sale_number,
+        reference_type='sale',
+        reference_id=sale.id,
+        created_by=sale.cashier
+    )
+    entries.append(credit_entry)
+    
+    if overpayment > 0:
+        # Credit Customer Prepaid/Wallet for overpayment
+        # This represents money we owe the customer (added to their wallet)
+        prepaid_entry = JournalEntry.objects.create(
+            entry_date=sale.created_at.date(),
+            account=customer_prepaid_account,
+            entry_type='credit',
+            amount=overpayment,
+            description=f"Overpayment from sale added to wallet: {sale.sale_number}",
+            reference=sale.sale_number,
+            reference_type='sale',
+            reference_id=sale.id,
+            created_by=sale.cashier
+        )
+        entries.append(prepaid_entry)
+    
+    txn.journal_entries.add(*entries)
+    return txn

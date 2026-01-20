@@ -136,7 +136,7 @@ class ExpenseService(BaseService):
         
         # Create journal entry for expense
         try:
-            from accounting.views import create_expense_journal_entry
+            from accounting.services import create_expense_journal_entry
             create_expense_journal_entry(expense)
         except Exception as e:
             # Log error but don't fail the approval
