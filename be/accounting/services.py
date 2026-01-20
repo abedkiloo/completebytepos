@@ -384,27 +384,119 @@ def create_sale_journal_entry(sale):
     sale_type = getattr(sale, 'sale_type', 'pos')  # Default to 'pos' for backward compatibility
     amount_paid = sale.amount_paid or Decimal('0')
     total = sale.total  # Total includes delivery_cost
-    balance = total - amount_paid
-    overpayment = amount_paid - total if amount_paid > total else Decimal('0')
     
-    # Validate: amount_paid should not exceed total by an unreasonable amount
+    # Get wallet amount used from wallet transactions
+    # Wallet transactions with transaction_type='debit' and source_type='payment' represent wallet usage
+    wallet_amount_used = Decimal('0')
+    try:
+        from sales.models import CustomerWalletTransaction
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        # First, try to find wallet transactions by sale reference (preferred method)
+        wallet_debits = CustomerWalletTransaction.objects.filter(
+            sale=sale,
+            transaction_type='debit',
+            source_type='payment'
+        ).aggregate(total=Sum('amount'))['total']
+        
+        # If no wallet transactions found by sale reference, try to find by customer, cashier and time window
+        # This handles the case where wallet transactions are created before the sale reference is set
+        # We match by: same customer, same cashier, same time window, debit type, payment source, no sale reference yet
+        if not wallet_debits and sale.cashier:
+            # First, try to get customer from sale's invoice (if invoice exists)
+            customer = None
+            try:
+                # Check if sale has an invoice with a customer
+                invoice = sale.invoices.first()  # Get first invoice if any
+                if invoice and invoice.customer:
+                    customer = invoice.customer
+            except Exception:
+                pass
+            
+            # If we couldn't get customer from invoice, try to infer from wallet transactions
+            # Look for wallet transactions created within 5 minutes before and 1 minute after sale creation
+            # that were created by the same user (cashier) and match the transaction characteristics
+            time_window_start = sale.created_at - timedelta(minutes=5)
+            time_window_end = sale.created_at + timedelta(minutes=1)
+            
+            # Find all potential wallet transactions matching cashier and time window
+            potential_wallet_txns = CustomerWalletTransaction.objects.filter(
+                sale__isnull=True,  # Not yet linked to a sale
+                transaction_type='debit',
+                source_type='payment',
+                created_by=sale.cashier,  # Same cashier
+                created_at__gte=time_window_start,
+                created_at__lte=time_window_end
+            )
+            
+            # If we have a customer from invoice, filter by that customer
+            if customer:
+                matching_wallet_txns = potential_wallet_txns.filter(customer=customer)
+            else:
+                # If no customer from invoice, check if all potential transactions belong to the same customer
+                # This prevents mixing transactions from different customers
+                distinct_customers = potential_wallet_txns.values_list('customer', flat=True).distinct()
+                
+                if len(distinct_customers) == 1:
+                    # All transactions belong to the same customer - safe to use
+                    customer_id = distinct_customers[0]
+                    if customer_id:  # customer_id could be None, skip if so
+                        matching_wallet_txns = potential_wallet_txns.filter(customer_id=customer_id)
+                    else:
+                        # No customer on transactions - can't safely match
+                        matching_wallet_txns = CustomerWalletTransaction.objects.none()
+                elif len(distinct_customers) > 1:
+                    # Multiple customers in time window - too ambiguous, don't match
+                    # This prevents incorrect matching when multiple sales happen rapidly
+                    matching_wallet_txns = CustomerWalletTransaction.objects.none()
+                else:
+                    # No transactions found
+                    matching_wallet_txns = CustomerWalletTransaction.objects.none()
+            
+            # If we find matching transactions, use them
+            if matching_wallet_txns.exists():
+                # Sum all matching transactions (in case there are multiple for the same customer)
+                wallet_debits = matching_wallet_txns.aggregate(total=Sum('amount'))['total']
+                
+                # If we found wallet transactions, link them to this sale for future reference
+                # This ensures the sale reference is set even if views.py doesn't do it
+                if wallet_debits:
+                    matching_wallet_txns.update(sale=sale)
+        
+        wallet_amount_used = wallet_debits or Decimal('0')
+    except Exception as e:
+        # If wallet transactions can't be accessed, assume 0
+        # Log the error for debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Error retrieving wallet transactions for sale {sale.sale_number}: {e}")
+        wallet_amount_used = Decimal('0')
+    
+    # Calculate total payment (cash + wallet)
+    total_payment = amount_paid + wallet_amount_used
+    
+    # Calculate balance (unpaid amount after cash and wallet)
+    balance = total - total_payment
+    overpayment = total_payment - total if total_payment > total else Decimal('0')
+    
+    # Validate: total_payment should not exceed total by an unreasonable amount
     # (allowing small rounding differences)
     if overpayment > Decimal('1000'):
         raise ValueError(
             f"Overpayment amount ({overpayment}) exceeds reasonable limit. "
-            f"Amount paid: {amount_paid}, Total: {total}"
+            f"Amount paid: {amount_paid}, Wallet used: {wallet_amount_used}, Total: {total}"
         )
     
     # Handle payment entries for both POS and normal sales
-    # POS sales can also have partial payments (e.g., customer paid 600 on 1000 sale)
+    # Debit Cash for cash/mpesa payment
     if amount_paid > 0:
-        # Debit Cash for amount paid
         cash_entry = JournalEntry.objects.create(
             entry_date=sale.created_at.date(),
             account=cash_account,
             entry_type='debit',
             amount=amount_paid,
-            description=f"{'POS Sale' if sale_type == 'pos' else 'Sale'} payment: {sale.sale_number}",
+            description=f"{'POS Sale' if sale_type == 'pos' else 'Sale'} payment (cash/mpesa): {sale.sale_number}",
             reference=sale.sale_number,
             reference_type='sale',
             reference_id=sale.id,
@@ -412,9 +504,25 @@ def create_sale_journal_entry(sale):
         )
         entries.append(cash_entry)
     
+    # Debit Customer Prepaid/Wallet for wallet amount used
+    # Since Customer Prepaid/Wallet is a liability (credit normal balance),
+    # debiting it reduces the liability (customer's wallet balance decreases)
+    if wallet_amount_used > 0:
+        wallet_entry = JournalEntry.objects.create(
+            entry_date=sale.created_at.date(),
+            account=customer_prepaid_account,
+            entry_type='debit',
+            amount=wallet_amount_used,
+            description=f"{'POS Sale' if sale_type == 'pos' else 'Sale'} payment (wallet): {sale.sale_number}",
+            reference=sale.sale_number,
+            reference_type='sale',
+            reference_id=sale.id,
+            created_by=sale.cashier
+        )
+        entries.append(wallet_entry)
+    
+    # Debit Accounts Receivable for unpaid balance (only if there's an actual unpaid amount)
     if balance > 0:
-        # Debit Accounts Receivable for unpaid balance
-        # This applies to both POS sales with partial payment and normal sales on credit
         ar_entry = JournalEntry.objects.create(
             entry_date=sale.created_at.date(),
             account=accounts_receivable_account,
