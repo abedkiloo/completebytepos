@@ -4,6 +4,7 @@ import { formatCurrency } from '../../utils/formatters';
 import Layout from '../Layout/Layout';
 import { toast } from '../../utils/toast';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
+import SearchableSelect from '../Shared/SearchableSelect';
 import '../../styles/shared.css';
 import '../../styles/slide-in-panel.css';
 import './Invoices.css';
@@ -230,7 +231,8 @@ const Invoices = () => {
     }
   };
 
-  const handleCustomerChange = (customerId) => {
+  const handleCustomerChange = (e) => {
+    const customerId = e.target.value;
     const customer = customers.find(c => c.id === parseInt(customerId));
     if (customer) {
       setFormData({
@@ -241,8 +243,24 @@ const Invoices = () => {
         customer_phone: customer.phone || '',
         customer_address: customer.address || '',
       });
+    } else {
+      // Clear customer data if no customer selected
+      setFormData({
+        ...formData,
+        customer_id: '',
+        customer_name: '',
+        customer_email: '',
+        customer_phone: '',
+        customer_address: '',
+      });
     }
   };
+
+  // Transform customers for SearchableSelect component
+  const customerOptions = customers.map(customer => ({
+    id: customer.id,
+    name: `${customer.name}${customer.customer_code ? ` (${customer.customer_code})` : ''}`,
+  }));
 
   const getStatusColor = (status) => {
     const colors = {
@@ -402,17 +420,13 @@ const Invoices = () => {
                 <form onSubmit={handleSubmit}>
                 <div className="form-group">
                   <label>Customer</label>
-                  <select
-                    value={formData.customer_id}
-                    onChange={(e) => handleCustomerChange(e.target.value)}
-                  >
-                    <option value="">Select Customer</option>
-                    {customers.map(customer => (
-                      <option key={customer.id} value={customer.id}>
-                        {customer.name} ({customer.customer_code})
-                      </option>
-                    ))}
-                  </select>
+                  <SearchableSelect
+                    value={formData.customer_id || ''}
+                    onChange={handleCustomerChange}
+                    options={customerOptions}
+                    placeholder="Select Customer"
+                    name="customer_id"
+                  />
                 </div>
                 <div className="form-row">
                   <div className="form-group">
