@@ -292,7 +292,7 @@ const Invoices = () => {
   // Calculate subtotal from items
   const calculateSubtotalFromItems = (items) => {
     return items.reduce((sum, item) => {
-      const quantity = parseFloat(item.quantity) || 0;
+      const quantity = parseInt(item.quantity) || 0;
       const unitPrice = parseFloat(item.unit_price) || 0;
       return sum + (quantity * unitPrice);
     }, 0);
@@ -345,14 +345,36 @@ const Invoices = () => {
   const handleItemChange = (index, field, value) => {
     setFormData(prev => {
       const newItems = [...prev.items];
-      newItems[index] = {
-        ...newItems[index],
-        [field]: value,
-      };
+      
+      // Normalize quantity to integer if it's the quantity field
+      if (field === 'quantity') {
+        const qtyValue = value.toString().trim();
+        let normalizedQty;
+        
+        if (qtyValue === '' || qtyValue === '-') {
+          normalizedQty = ''; // Allow empty during typing
+        } else if (qtyValue.includes('.')) {
+          // Remove decimal part - round down to nearest integer
+          normalizedQty = Math.floor(parseFloat(qtyValue)) || 1;
+        } else {
+          normalizedQty = parseInt(qtyValue) || (qtyValue === '' ? '' : 1);
+        }
+        
+        newItems[index] = {
+          ...newItems[index],
+          [field]: normalizedQty,
+        };
+      } else {
+        newItems[index] = {
+          ...newItems[index],
+          [field]: value,
+        };
+      }
       
       // Auto-calculate subtotal for this item
       if (field === 'quantity' || field === 'unit_price') {
-        const quantity = parseFloat(newItems[index].quantity) || 0;
+        // Use parseInt for quantity (whole numbers only) and parseFloat for unit_price
+        const quantity = parseInt(newItems[index].quantity) || 0;
         const unitPrice = parseFloat(newItems[index].unit_price) || 0;
         newItems[index].subtotal = quantity * unitPrice;
       }
@@ -634,15 +656,6 @@ const Invoices = () => {
                     />
                   </div>
                 </div>
-                <div className="form-group">
-                  <label>Address</label>
-                  <textarea
-                    value={formData.customer_address}
-                    onChange={(e) => setFormData({ ...formData, customer_address: e.target.value })}
-                    rows="2"
-                  />
-                </div>
-
                 {/* Invoice Items Management - Editable when creating/editing */}
                 <div className="form-group">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
@@ -693,6 +706,13 @@ const Invoices = () => {
                                     step="1"
                                     value={item.quantity || ''}
                                     onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
+                                    onBlur={(e) => {
+                                      // Ensure minimum value of 1 on blur
+                                      const value = parseInt(e.target.value) || 1;
+                                      if (value < 1 || isNaN(value)) {
+                                        handleItemChange(idx, 'quantity', '1');
+                                      }
+                                    }}
                                     style={{ width: '80px', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '4px' }}
                                   />
                                 </td>
@@ -836,6 +856,19 @@ const Invoices = () => {
                     placeholder="Select Status"
                   />
                 </div>
+                
+                {/* Address - Smaller field below invoice items, above notes */}
+                <div className="form-group">
+                  <label>Address</label>
+                  <input
+                    type="text"
+                    value={formData.customer_address}
+                    onChange={(e) => setFormData({ ...formData, customer_address: e.target.value })}
+                    placeholder="Customer address"
+                    style={{ fontSize: '0.875rem', padding: '0.5rem' }}
+                  />
+                </div>
+                
                 <div className="form-group">
                   <label>Notes</label>
                   <textarea
