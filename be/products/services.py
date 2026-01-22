@@ -333,29 +333,52 @@ class ProductService(BaseService):
         
         is_active = filters.get('is_active')
         if is_active is not None:
+            # Handle "undefined", "null", and empty strings as no filter
             if isinstance(is_active, str):
-                is_active = is_active.lower() == 'true'
-            queryset = queryset.filter(is_active=is_active)
+                is_active_lower = is_active.lower().strip()
+                if is_active_lower in ['undefined', 'null', '']:
+                    is_active = None
+                else:
+                    is_active = is_active_lower == 'true'
+            if is_active is not None:
+                queryset = queryset.filter(is_active=is_active)
         
         category = filters.get('category')
         if category:
-            try:
-                queryset = queryset.filter(category_id=int(category))
-            except (ValueError, TypeError):
-                queryset = queryset.none()
+            # Handle "undefined", "null", and empty strings as no filter
+            if isinstance(category, str):
+                category = category.strip()
+                if category.lower() in ['undefined', 'null', '']:
+                    category = None
+            if category:
+                try:
+                    queryset = queryset.filter(category_id=int(category))
+                except (ValueError, TypeError):
+                    queryset = queryset.none()
         
         subcategory = filters.get('subcategory')
         if subcategory:
-            try:
-                queryset = queryset.filter(subcategory_id=int(subcategory))
-            except (ValueError, TypeError):
-                queryset = queryset.none()
+            # Handle "undefined", "null", and empty strings as no filter
+            if isinstance(subcategory, str):
+                subcategory = subcategory.strip()
+                if subcategory.lower() in ['undefined', 'null', '']:
+                    subcategory = None
+            if subcategory:
+                try:
+                    queryset = queryset.filter(subcategory_id=int(subcategory))
+                except (ValueError, TypeError):
+                    queryset = queryset.none()
         
         low_stock = filters.get('low_stock')
         if low_stock is not None:
+            # Handle "undefined", "null", and empty strings as no filter
             if isinstance(low_stock, str):
-                low_stock = low_stock.lower() == 'true'
-            if low_stock:
+                low_stock_lower = low_stock.lower().strip()
+                if low_stock_lower in ['undefined', 'null', '']:
+                    low_stock = None
+                else:
+                    low_stock = low_stock_lower == 'true'
+            if low_stock is not None and low_stock:
                 queryset = queryset.filter(
                     stock_quantity__lte=F('low_stock_threshold'),
                     track_stock=True
@@ -363,26 +386,43 @@ class ProductService(BaseService):
         
         out_of_stock = filters.get('out_of_stock')
         if out_of_stock is not None:
+            # Handle "undefined", "null", and empty strings as no filter
             if isinstance(out_of_stock, str):
-                out_of_stock = out_of_stock.lower() == 'true'
-            if out_of_stock:
+                out_of_stock_lower = out_of_stock.lower().strip()
+                if out_of_stock_lower in ['undefined', 'null', '']:
+                    out_of_stock = None
+                else:
+                    out_of_stock = out_of_stock_lower == 'true'
+            if out_of_stock is not None and out_of_stock:
                 queryset = queryset.filter(stock_quantity=0, track_stock=True)
         
         track_stock = filters.get('track_stock')
         if track_stock is not None:
+            # Handle "undefined", "null", and empty strings as no filter
             if isinstance(track_stock, str):
-                track_stock = track_stock.lower() == 'true'
-            queryset = queryset.filter(track_stock=track_stock)
+                track_stock_lower = track_stock.lower().strip()
+                if track_stock_lower in ['undefined', 'null', '']:
+                    track_stock = None
+                else:
+                    track_stock = track_stock_lower == 'true'
+            if track_stock is not None:
+                queryset = queryset.filter(track_stock=track_stock)
         
         supplier = filters.get('supplier')
         if supplier:
-            try:
-                # Try to find supplier by ID first
-                supplier_obj = Supplier.objects.get(id=int(supplier))
-                queryset = queryset.filter(supplier=supplier_obj)
-            except (Supplier.DoesNotExist, ValueError, TypeError):
-                # Fallback to legacy supplier name search
-                queryset = queryset.filter(supplier_name__icontains=str(supplier))
+            # Handle "undefined", "null", and empty strings as no filter
+            if isinstance(supplier, str):
+                supplier = supplier.strip()
+                if supplier.lower() in ['undefined', 'null', '']:
+                    supplier = None
+            if supplier:
+                try:
+                    # Try to find supplier by ID first
+                    supplier_obj = Supplier.objects.get(id=int(supplier))
+                    queryset = queryset.filter(supplier=supplier_obj)
+                except (Supplier.DoesNotExist, ValueError, TypeError):
+                    # Fallback to legacy supplier name search
+                    queryset = queryset.filter(supplier_name__icontains=str(supplier))
         
         return queryset
     

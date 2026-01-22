@@ -143,11 +143,14 @@ class ProductViewSet(viewsets.ModelViewSet):
         filters = {}
         query_params = self.request.query_params
         
-        # Extract all filter parameters
+        # Extract all filter parameters, ignoring "undefined" values from frontend
         for param in ['is_active', 'category', 'subcategory', 'low_stock', 
                      'out_of_stock', 'track_stock', 'supplier']:
             if param in query_params:
-                filters[param] = query_params.get(param)
+                value = query_params.get(param)
+                # Skip "undefined", "null", empty strings, and None values
+                if value and value.lower() not in ['undefined', 'null', '']:
+                    filters[param] = value
         
         return self.product_service.build_queryset(filters)
     

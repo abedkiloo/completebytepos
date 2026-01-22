@@ -30,19 +30,43 @@ const Products = () => {
   const [showInstructions, setShowInstructions] = useState(false);
   const [showCSVSection, setShowCSVSection] = useState(false);
 
+  // Load categories and statistics only once on mount
   useEffect(() => {
-    loadProducts();
     loadCategories();
     loadStatistics();
+  }, []);
+
+  // Reload products whenever filters change - triggers immediate UI update
+  useEffect(() => {
+    loadProducts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
   const loadProducts = async () => {
     setLoading(true);
     try {
       const params = { page_size: 1000 }; // Request more items to avoid pagination issues
-      if (filters.search) params.search = filters.search;
-      if (filters.category) params.category = filters.category;
-      if (filters.is_active !== '') params.is_active = filters.is_active;
+      
+      // Add search if provided
+      if (filters.search && filters.search.trim()) {
+        params.search = filters.search.trim();
+      }
+      
+      // Handle category - send "undefined" if empty string to match backend expectations
+      if (filters.category && filters.category.trim()) {
+        params.category = filters.category;
+      } else {
+        params.category = 'undefined'; // Send "undefined" to get all categories
+      }
+      
+      // Handle is_active - send "undefined" if empty string to match backend expectations
+      if (filters.is_active && filters.is_active.trim()) {
+        params.is_active = filters.is_active;
+      } else {
+        params.is_active = 'undefined'; // Send "undefined" to get all statuses
+      }
+      
+      // Add boolean filters
       if (filters.low_stock) params.low_stock = 'true';
       if (filters.out_of_stock) params.out_of_stock = 'true';
 
@@ -50,7 +74,7 @@ const Products = () => {
       // Handle paginated or direct array response
       const productsData = response.data.results || response.data || [];
       const productsArray = Array.isArray(productsData) ? productsData : [];
-      console.log(`Loaded ${productsArray.length} products with filters:`, filters);
+      console.log(`Loaded ${productsArray.length} products with filters:`, filters, 'params:', params);
       setProducts(productsArray);
     } catch (error) {
       console.error('Error loading products:', error);
