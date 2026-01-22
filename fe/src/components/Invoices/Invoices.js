@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { invoicesAPI, paymentsAPI, customersAPI, salesAPI } from '../../services/api';
+import { invoicesAPI, paymentsAPI, customersAPI, salesAPI, productsAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
 import Layout from '../Layout/Layout';
 import { toast } from '../../utils/toast';
@@ -20,6 +20,7 @@ const Invoices = () => {
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [customers, setCustomers] = useState([]);
   const [sales, setSales] = useState([]);
+  const [products, setProducts] = useState([]);
   const [formData, setFormData] = useState({
     customer_id: '',
     customer_name: '',
@@ -33,6 +34,7 @@ const Invoices = () => {
     due_date: '',
     notes: '',
     status: 'draft',
+    items: [],
   });
   const [paymentData, setPaymentData] = useState({
     amount: '',
@@ -46,6 +48,7 @@ const Invoices = () => {
     loadInvoices();
     loadCustomers();
     loadSales();
+    loadProducts();
   }, [searchQuery, statusFilter]);
 
   // Reload customers when modal opens to ensure we have the latest customers
@@ -122,6 +125,16 @@ const Invoices = () => {
     }
   };
 
+  const loadProducts = async () => {
+    try {
+      const response = await productsAPI.list({ is_active: 'true', page_size: 1000 });
+      const productsData = response.data.results || response.data || [];
+      setProducts(Array.isArray(productsData) ? productsData : []);
+    } catch (error) {
+      console.error('Error loading products:', error);
+    }
+  };
+
   const handleCreate = async () => {
     setSelectedInvoice(null);
     setFormData({
@@ -137,6 +150,7 @@ const Invoices = () => {
       due_date: '',
       notes: '',
       status: 'draft',
+      items: [],
     });
     // Reload customers to include any newly created ones
     await loadCustomers();
@@ -144,34 +158,54 @@ const Invoices = () => {
   };
 
   const handleEdit = async (invoice) => {
-    setSelectedInvoice(invoice);
-    
-    // Format due_date to YYYY-MM-DD format if it exists
-    let formattedDueDate = '';
-    if (invoice.due_date) {
-      const date = new Date(invoice.due_date);
-      if (!isNaN(date.getTime())) {
-        formattedDueDate = date.toISOString().split('T')[0];
+    try {
+      // Fetch full invoice details including items
+      const fullInvoice = await invoicesAPI.get(invoice.id);
+      const invoiceData = fullInvoice.data;
+      
+      setSelectedInvoice(invoiceData);
+      
+      // Format due_date to YYYY-MM-DD format if it exists
+      let formattedDueDate = '';
+      if (invoiceData.due_date) {
+        const date = new Date(invoiceData.due_date);
+        if (!isNaN(date.getTime())) {
+          formattedDueDate = date.toISOString().split('T')[0];
+        }
       }
+      
+      // Format items for editing - convert backend format to form format
+      const formattedItems = (invoiceData.items || []).map(item => ({
+        product_id: item.product || item.product_id,
+        product: item.product || item.product_id,
+        quantity: item.quantity || 1,
+        unit_price: parseFloat(item.unit_price) || 0,
+        subtotal: parseFloat(item.subtotal) || 0,
+        description: item.description || '',
+      }));
+      
+      setFormData({
+        customer_id: invoiceData.customer || '',
+        customer_name: invoiceData.customer_name || '',
+        customer_email: invoiceData.customer_email || '',
+        customer_phone: invoiceData.customer_phone || '',
+        customer_address: invoiceData.customer_address || '',
+        subtotal: invoiceData.subtotal || 0,
+        tax_amount: invoiceData.tax_amount || 0,
+        discount_amount: invoiceData.discount_amount || 0,
+        total: invoiceData.total || 0,
+        due_date: formattedDueDate,
+        notes: invoiceData.notes || '',
+        status: invoiceData.status || 'draft',
+        items: formattedItems,
+      });
+      // Reload customers to include any newly created ones
+      await loadCustomers();
+      setShowModal(true);
+    } catch (error) {
+      console.error('Error loading invoice details:', error);
+      toast.error('Failed to load invoice details');
     }
-    
-    setFormData({
-      customer_id: invoice.customer || '',
-      customer_name: invoice.customer_name || '',
-      customer_email: invoice.customer_email || '',
-      customer_phone: invoice.customer_phone || '',
-      customer_address: invoice.customer_address || '',
-      subtotal: invoice.subtotal || 0,
-      tax_amount: invoice.tax_amount || 0,
-      discount_amount: invoice.discount_amount || 0,
-      total: invoice.total || 0,
-      due_date: formattedDueDate,
-      notes: invoice.notes || '',
-      status: invoice.status || 'draft',
-    });
-    // Reload customers to include any newly created ones
-    await loadCustomers();
-    setShowModal(true);
   };
 
   const handleAddPayment = (invoice) => {
@@ -209,6 +243,16 @@ const Invoices = () => {
     e.preventDefault();
     
     try {
+      // Format items for API - only include items with product_id
+      const formattedItems = (formData.items || [])
+        .filter(item => item.product_id)
+        .map(item => ({
+          product: item.product_id || item.product,
+          quantity: parseInt(item.quantity) || 1,
+          unit_price: parseFloat(item.unit_price) || 0,
+          description: item.description || '',
+        }));
+      
       const invoiceData = {
         ...formData,
         subtotal: parseFloat(formData.subtotal) || 0,
@@ -218,13 +262,13 @@ const Invoices = () => {
         customer_id: formData.customer_id || null,
         due_date: formData.due_date || null,
         // Items should be provided when creating manually, or sale_id when creating from sale
-        items: formData.items || [],
+        items: formattedItems,
         sale_id: formData.sale_id || null,
       };
       
       // Validate that invoice has items when creating manually (not from sale)
       if (!selectedInvoice && !invoiceData.sale_id) {
-        if (!invoiceData.items || invoiceData.items.length === 0) {
+        if (!formattedItems || formattedItems.length === 0) {
           toast.error('An invoice must have at least one item. Please add items to the invoice or create from a sale.');
           return;
         }
@@ -242,6 +286,91 @@ const Invoices = () => {
       setSelectedInvoice(null);
     } catch (error) {
       toast.error('Failed to save invoice: ' + (error.response?.data?.error || error.message));
+    }
+  };
+
+  // Calculate subtotal from items
+  const calculateSubtotalFromItems = (items) => {
+    return items.reduce((sum, item) => {
+      const quantity = parseFloat(item.quantity) || 0;
+      const unitPrice = parseFloat(item.unit_price) || 0;
+      return sum + (quantity * unitPrice);
+    }, 0);
+  };
+
+  // Update total when items, tax, or discount change
+  useEffect(() => {
+    const itemsSubtotal = calculateSubtotalFromItems(formData.items || []);
+    const tax = parseFloat(formData.tax_amount) || 0;
+    const discount = parseFloat(formData.discount_amount) || 0;
+    const total = itemsSubtotal + tax - discount;
+    
+    setFormData(prev => {
+      // Only update if values have actually changed
+      if (Math.abs(prev.subtotal - itemsSubtotal) < 0.01 && Math.abs(prev.total - total) < 0.01) {
+        return prev; // No change needed
+      }
+      return {
+        ...prev,
+        subtotal: itemsSubtotal,
+        total: Math.max(0, total),
+      };
+    });
+  }, [formData.items, formData.tax_amount, formData.discount_amount]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Add item to invoice
+  const handleAddItem = () => {
+    setFormData(prev => ({
+      ...prev,
+      items: [...(prev.items || []), {
+        product: null,
+        product_id: '',
+        quantity: 1,
+        unit_price: 0,
+        subtotal: 0,
+        description: '',
+      }],
+    }));
+  };
+
+  // Remove item from invoice
+  const handleRemoveItem = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      items: prev.items.filter((_, i) => i !== index),
+    }));
+  };
+
+  // Update item field
+  const handleItemChange = (index, field, value) => {
+    setFormData(prev => {
+      const newItems = [...prev.items];
+      newItems[index] = {
+        ...newItems[index],
+        [field]: value,
+      };
+      
+      // Auto-calculate subtotal for this item
+      if (field === 'quantity' || field === 'unit_price') {
+        const quantity = parseFloat(newItems[index].quantity) || 0;
+        const unitPrice = parseFloat(newItems[index].unit_price) || 0;
+        newItems[index].subtotal = quantity * unitPrice;
+      }
+      
+      return {
+        ...prev,
+        items: newItems,
+      };
+    });
+  };
+
+  // Handle product selection for item
+  const handleItemProductChange = (index, productId) => {
+    const product = products.find(p => p.id === parseInt(productId));
+    if (product) {
+      handleItemChange(index, 'product_id', product.id);
+      handleItemChange(index, 'product', product.id);
+      handleItemChange(index, 'unit_price', product.selling_price || product.price || 0);
     }
   };
 
@@ -513,6 +642,141 @@ const Invoices = () => {
                     rows="2"
                   />
                 </div>
+
+                {/* Invoice Items Management - Editable when creating/editing */}
+                <div className="form-group">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <label>Invoice Items</label>
+                    <button
+                      type="button"
+                      onClick={handleAddItem}
+                      className="btn btn-primary"
+                      style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+                    >
+                      + Add Item
+                    </button>
+                  </div>
+                  
+                  {formData.items && formData.items.length > 0 ? (
+                    <div className="invoice-items-table">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Product</th>
+                            <th>Qty</th>
+                            <th>Unit Price</th>
+                            <th>Subtotal</th>
+                            <th>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {formData.items.map((item, idx) => {
+                            const productOptions = products.map(p => ({
+                              id: p.id,
+                              name: `${p.name}${p.sku ? ` (${p.sku})` : ''}`,
+                            }));
+                            
+                            return (
+                              <tr key={idx}>
+                                <td>
+                                  <SearchableSelect
+                                    value={item.product_id || ''}
+                                    onChange={(e) => handleItemProductChange(idx, e.target.value)}
+                                    options={productOptions}
+                                    placeholder="Select Product"
+                                  />
+                                </td>
+                                <td>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    step="1"
+                                    value={item.quantity || ''}
+                                    onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
+                                    style={{ width: '80px', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '4px' }}
+                                  />
+                                </td>
+                                <td>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={item.unit_price || ''}
+                                    onChange={(e) => handleItemChange(idx, 'unit_price', e.target.value)}
+                                    style={{ width: '100px', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '4px' }}
+                                  />
+                                </td>
+                                <td className="item-subtotal">
+                                  {formatCurrency(item.subtotal || 0)}
+                                </td>
+                                <td>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveItem(idx)}
+                                    className="btn-delete"
+                                    style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+                                  >
+                                    Remove
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div style={{ padding: '1rem', textAlign: 'center', color: '#6b7280', background: '#f9fafb', borderRadius: '8px', border: '1px dashed #d1d5db' }}>
+                      No items added. Click "Add Item" to add products to this invoice.
+                    </div>
+                  )}
+                </div>
+
+                {/* Invoice Items Display - Read-only when viewing existing invoice */}
+                {selectedInvoice && selectedInvoice.items && selectedInvoice.items.length > 0 && (
+                  <div className="form-group">
+                    <label>Invoice Items</label>
+                    <div className="invoice-items-table">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Item</th>
+                            <th>Qty</th>
+                            <th>Unit Price</th>
+                            <th>Subtotal</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedInvoice.items.map((item, idx) => {
+                            const variantInfo = [];
+                            if (item.size_name) variantInfo.push(`Size: ${item.size_name}`);
+                            if (item.color_name) variantInfo.push(`Color: ${item.color_name}`);
+                            const variantStr = variantInfo.length > 0 ? ` (${variantInfo.join(', ')})` : '';
+                            const displayName = `${item.product_name || 'N/A'}${variantStr}`;
+                            
+                            return (
+                              <tr key={item.id || idx}>
+                                <td>
+                                  <div className="item-name">{displayName}</div>
+                                  {item.product_sku && (
+                                    <div className="item-sku">SKU: {item.product_sku}</div>
+                                  )}
+                                  {item.description && (
+                                    <div className="item-description">{item.description}</div>
+                                  )}
+                                </td>
+                                <td>{item.quantity}</td>
+                                <td>{formatCurrency(item.unit_price)}</td>
+                                <td className="item-subtotal">{formatCurrency(item.subtotal)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
                 <div className="form-row">
                   <div className="form-group">
                     <label>Subtotal</label>
@@ -521,6 +785,9 @@ const Invoices = () => {
                       step="0.01"
                       value={formData.subtotal}
                       onChange={(e) => setFormData({ ...formData, subtotal: e.target.value })}
+                      readOnly
+                      className="readonly"
+                      title="Subtotal is calculated from items"
                     />
                   </div>
                   <div className="form-group">

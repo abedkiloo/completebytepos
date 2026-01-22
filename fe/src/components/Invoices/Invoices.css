@@ -4,6 +4,86 @@
   min-height: 100vh;
 }
 
+/* Invoice Items Table in Modal */
+.invoice-items-table {
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  overflow: hidden;
+  margin-top: 0.5rem;
+}
+
+.invoice-items-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.invoice-items-table thead {
+  background: #f9fafb;
+}
+
+.invoice-items-table th {
+  padding: 0.75rem;
+  text-align: left;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.invoice-items-table th:last-child,
+.invoice-items-table td:last-child {
+  text-align: right;
+}
+
+.invoice-items-table th:nth-child(2),
+.invoice-items-table th:nth-child(3),
+.invoice-items-table td:nth-child(2),
+.invoice-items-table td:nth-child(3) {
+  text-align: right;
+}
+
+.invoice-items-table tbody tr {
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.invoice-items-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.invoice-items-table tbody tr:hover {
+  background: #f9fafb;
+}
+
+.invoice-items-table td {
+  padding: 0.75rem;
+  font-size: 0.875rem;
+  color: #111827;
+}
+
+.invoice-items-table .item-name {
+  font-weight: 500;
+  color: #111827;
+}
+
+.invoice-items-table .item-sku {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
+}
+
+.invoice-items-table .item-description {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
+  font-style: italic;
+}
+
+.invoice-items-table .item-subtotal {
+  font-weight: 600;
+  color: #111827;
+}
+
 .invoices-header {
   display: flex;
   justify-content: space-between;
