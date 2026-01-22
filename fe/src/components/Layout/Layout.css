@@ -2,21 +2,23 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: #f5f7fa;
+  background: #f8f9fa;
   overflow: hidden;
 }
 
-/* Header */
+/* Header - Modern ERP Style */
 .app-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 1.5rem;
-  background: #2c3e50;
-  color: white;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 0 1.5rem;
+  background: #ffffff;
+  color: #1a1a1a;
+  border-bottom: 1px solid #e5e7eb;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   z-index: 1000;
-  height: 60px;
+  height: 64px;
+  min-height: 64px;
 }
 
 .header-left {
@@ -28,24 +30,31 @@
 .menu-toggle {
   background: none;
   border: none;
-  color: white;
+  color: #4b5563;
   font-size: 1.5rem;
   cursor: pointer;
   padding: 0.5rem;
-  border-radius: 4px;
-  transition: background 0.3s;
+  border-radius: 6px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
 }
 
 .menu-toggle:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: #f3f4f6;
+  color: #10b981;
 }
 
 .logo {
   display: flex;
   align-items: center;
   font-size: 1.25rem;
-  font-weight: bold;
-  color: white;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin-left: 0.5rem;
 }
 
 .logo-img {
@@ -65,13 +74,20 @@
   font-size: 1.25rem;
   cursor: pointer;
   padding: 0.5rem;
-  border-radius: 4px;
-  transition: background 0.3s;
+  border-radius: 6px;
+  transition: all 0.2s;
   position: relative;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
 }
 
 .header-icon:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: #f3f4f6;
+  color: #10b981;
 }
 
 .user-profile {
@@ -79,14 +95,16 @@
   align-items: center;
   gap: 0.75rem;
   cursor: pointer;
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  transition: background 0.3s;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  transition: all 0.2s;
   position: relative;
+  color: #374151;
+  font-weight: 500;
 }
 
 .user-profile:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: #f3f4f6;
 }
 
 .user-menu {
@@ -121,16 +139,18 @@
 }
 
 .user-avatar {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  background: #667eea;
+  background: #10b981;
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
-  font-weight: bold;
+  font-weight: 600;
   font-size: 0.875rem;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .dropdown-arrow {
@@ -145,15 +165,15 @@
   overflow: hidden;
 }
 
-/* Sidebar */
+/* Sidebar - Modern ERP Style */
 .sidebar {
-  width: 260px;
+  width: 280px;
   background: #ffffff;
   border-right: 1px solid #e5e7eb;
   overflow-y: auto;
   overflow-x: visible; /* Allow submenu to overflow */
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s;
-  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.05);
+  box-shadow: 1px 0 3px rgba(0, 0, 0, 0.05);
   -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
   position: relative; /* Ensure submenu positioning works */
 }
@@ -166,7 +186,7 @@
 /* Sidebar Overlay for Mobile/Tablet */
 .sidebar-overlay {
   position: fixed;
-  top: 60px;
+  top: 64px;
   left: 0;
   right: 0;
   bottom: 0;
@@ -188,7 +208,7 @@
 }
 
 .sidebar-section {
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.25rem;
   position: relative;
   z-index: 1;
 }
@@ -201,14 +221,14 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.75rem 1.5rem;
+  padding: 0.625rem 1.25rem;
   font-weight: 600;
   color: #6b7280;
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.08em;
   cursor: pointer;
-  transition: background 0.3s;
+  transition: all 0.2s;
   text-align: left;
 }
 
@@ -218,41 +238,50 @@
 
 .section-header:hover {
   background: #f9fafb;
+  color: #10b981;
 }
 
 .section-arrow {
   font-size: 0.75rem;
   color: #9ca3af;
+  transition: transform 0.2s;
+}
+
+.section-header:hover .section-arrow {
+  color: #10b981;
 }
 
 .section-items {
   display: flex;
   flex-direction: column;
+  padding: 0.25rem 0;
 }
 
 .sidebar-item {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.75rem 1.5rem 0.75rem 2.5rem;
-  color: #374151;
+  padding: 0.625rem 1.25rem 0.625rem 2.25rem;
+  color: #4b5563;
   text-decoration: none;
-  transition: all 0.3s;
+  transition: all 0.2s;
   border-left: 3px solid transparent;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   text-align: left;
   justify-content: flex-start;
+  font-weight: 500;
 }
 
 .sidebar-item:hover {
   background: #f9fafb;
-  color: #111827;
+  color: #10b981;
+  border-left-color: #10b981;
 }
 
 .sidebar-item.active {
-  background: #fef3c7;
-  color: #92400e;
-  border-left-color: #f59e0b;
+  background: #ecfdf5;
+  color: #047857;
+  border-left-color: #10b981;
   font-weight: 600;
 }
 
@@ -265,18 +294,18 @@
 /* Submenu Panel - Hover Effect */
 .submenu-panel {
   position: fixed;
-  left: 260px; /* Position to the right of sidebar (sidebar width) */
-  background: #f0fdf4; /* Light green background like reference image */
-  border: 1px solid #d1fae5;
-  border-left: none;
+  left: 280px; /* Position to the right of sidebar (sidebar width) */
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-left: 2px solid #10b981;
   border-radius: 0 8px 8px 0;
-  box-shadow: 4px 0 12px rgba(0, 0, 0, 0.1);
-  min-width: 220px;
-  max-width: 280px;
+  box-shadow: 4px 0 12px rgba(0, 0, 0, 0.08);
+  min-width: 240px;
+  max-width: 300px;
   padding: 0.5rem 0;
   z-index: 1001;
   animation: slideInFromLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  max-height: calc(100vh - 60px);
+  max-height: calc(100vh - 64px);
   overflow-y: auto;
   overflow-x: hidden;
   margin-left: 2px; /* Small gap from sidebar */
@@ -314,33 +343,37 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.75rem 1.5rem;
-  color: #374151;
+  padding: 0.625rem 1.25rem;
+  color: #4b5563;
   text-decoration: none;
   transition: all 0.2s ease;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   border-left: 3px solid transparent;
   position: relative;
-}
-
-.submenu-item:hover {
-  background: #dcfce7;
-  color: #059669;
-  border-left-color: #10b981;
   font-weight: 500;
 }
 
+.submenu-item:hover {
+  background: #f0fdf4;
+  color: #059669;
+  border-left-color: #10b981;
+  font-weight: 600;
+}
+
 .submenu-item.active {
-  background: #bbf7d0;
+  background: #ecfdf5;
   color: #047857;
   border-left-color: #10b981;
   font-weight: 600;
 }
 
 .submenu-item .item-icon {
-  font-size: 1.1rem;
-  width: 20px;
+  font-size: 1.125rem;
+  width: 22px;
   text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Adjust submenu position based on section position */
@@ -354,8 +387,8 @@
 }
 
 .section-header:hover {
-  background: #f0f9ff;
-  color: #667eea;
+  background: #f9fafb;
+  color: #10b981;
 }
 
 /* Responsive: Hide submenu on mobile/tablet */
@@ -369,8 +402,8 @@
 .main-content {
   flex: 1;
   overflow-y: auto;
-  background: #f5f7fa;
-  padding: 0.5rem;
+  background: #f8f9fa;
+  padding: 1.5rem;
   position: relative;
   z-index: 1; /* Ensure content is below submenu */
 }
@@ -380,8 +413,8 @@
   .sidebar {
     position: fixed;
     left: 0;
-    top: 60px;
-    height: calc(100vh - 60px);
+    top: 64px;
+    height: calc(100vh - 64px);
     z-index: 999;
     transform: translateX(-100%);
   }
@@ -397,6 +430,10 @@
   .submenu-panel {
     display: none !important;
   }
+  
+  .main-content {
+    padding: 1rem;
+  }
 }
 
 /* Ensure submenu doesn't overflow on smaller desktop screens */
@@ -404,6 +441,7 @@
   .submenu-panel {
     max-width: 240px;
     min-width: 200px;
+    left: 280px;
   }
 }
 
