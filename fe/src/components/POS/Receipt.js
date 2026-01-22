@@ -189,7 +189,7 @@ const Receipt = ({ sale, onClose }) => {
               }
               .summary-row.total {
                 font-weight: 600;
-                font-size: 0.5rem;
+                font-size: 0.9rem;
                 margin-top: 0.3rem;
                 padding-top: 0.3rem;
                 border-top: 1px solid #e5e7eb;
