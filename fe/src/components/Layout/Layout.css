@@ -393,7 +393,7 @@
 .sidebar-item.active {
   background: #ecfdf5;
   color: #047857;
-  border-left-color: #10b981;
+  /* border-left-color removed - using ::before pseudo-element for indicator instead */
   font-weight: 600;
   transform: translateX(0);
 }
@@ -517,7 +517,7 @@
 .submenu-item.active {
   background: #ecfdf5;
   color: #047857;
-  border-left-color: #10b981;
+  /* border-left-color removed - using ::before pseudo-element for indicator instead */
   font-weight: 600;
   transform: translateX(0);
 }

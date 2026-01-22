@@ -1,7 +1,7 @@
 .customers-container {
   padding: 0;
-  background: transparent;
-  min-height: auto;
+  background: #f5f7fa;
+  /* min-height removed - container is nested inside .main-content which already handles full available space */
 }
 
 /* Use shared .page-header styles from shared.css */
