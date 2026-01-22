@@ -59,8 +59,8 @@
 
 .search-input:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
 }
 
 .filter-buttons {
@@ -84,9 +84,9 @@
 }
 
 .filter-buttons button.active {
-  background: #667eea;
+  background: #10b981;
   color: white;
-  border-color: #667eea;
+  border-color: #10b981;
 }
 
 .categories-grid {
@@ -201,12 +201,12 @@
 }
 
 .btn-edit {
-  background: #667eea;
+  background: #10b981;
   color: white;
 }
 
 .btn-edit:hover {
-  background: #5568d3;
+  background: #059669;
 }
 
 .btn-activate {
@@ -347,8 +347,8 @@
 .form-group textarea:focus,
 .form-group select:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
 }
 
 .form-group textarea {
@@ -412,12 +412,12 @@
 }
 
 .form-actions button[type="submit"] {
-  background: #667eea;
+  background: #10b981;
   color: white;
 }
 
 .form-actions button[type="submit"]:hover:not(:disabled) {
-  background: #5568d3;
+  background: #059669;
 }
 
 .form-actions button:disabled {

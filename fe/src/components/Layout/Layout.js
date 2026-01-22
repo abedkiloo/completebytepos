@@ -269,7 +269,7 @@ const Layout = ({ children }) => {
         <aside className={`sidebar ${sidebarOpen ? 'open' : ''} ${!isMobile && !sidebarOpen ? 'closed' : ''}`}>
           <div className="sidebar-content">
             {/* Main Section */}
-            <div className="sidebar-section">
+            <div className="sidebar-section" data-expanded={expandedSections.main}>
               <div className="section-header" onClick={() => toggleSection('main')}>
                 <span>Main</span>
                 <span className="section-arrow">{expandedSections.main ? '▼' : '▶'}</span>
@@ -288,6 +288,7 @@ const Layout = ({ children }) => {
             {isModuleEnabled('products') && (
               <div 
                 className="sidebar-section"
+                data-expanded={expandedSections.inventory}
                 onMouseEnter={(e) => handleSectionHover('inventory', e)}
                 onMouseLeave={handleSectionLeave}
               >
@@ -375,6 +376,7 @@ const Layout = ({ children }) => {
             {isModuleEnabled('stock') && (
               <div 
                 className="sidebar-section"
+                data-expanded={expandedSections.stock}
                 onMouseEnter={(e) => handleSectionHover('stock', e)}
                 onMouseLeave={handleSectionLeave}
               >
@@ -478,6 +480,7 @@ const Layout = ({ children }) => {
             {isModuleEnabled('suppliers') && (
               <div 
                 className="sidebar-section"
+                data-expanded={expandedSections.suppliers}
                 onMouseEnter={(e) => handleSectionHover('suppliers', e)}
                 onMouseLeave={handleSectionLeave}
               >
@@ -518,6 +521,7 @@ const Layout = ({ children }) => {
             {isModuleEnabled('sales') && (
               <div 
                 className="sidebar-section"
+                data-expanded={expandedSections.sales}
                 onMouseEnter={(e) => handleSectionHover('sales', e)}
                 onMouseLeave={handleSectionLeave}
               >
@@ -594,6 +598,7 @@ const Layout = ({ children }) => {
             {isModuleEnabled('customers') && (
               <div 
                 className="sidebar-section"
+                data-expanded={expandedSections.customers}
                 onMouseEnter={(e) => handleSectionHover('customers', e)}
                 onMouseLeave={handleSectionLeave}
               >
@@ -634,6 +639,7 @@ const Layout = ({ children }) => {
             {isModuleEnabled('invoicing') && (
               <div 
                 className="sidebar-section"
+                data-expanded={expandedSections.invoicing}
                 onMouseEnter={(e) => handleSectionHover('invoicing', e)}
                 onMouseLeave={handleSectionLeave}
               >
@@ -674,6 +680,7 @@ const Layout = ({ children }) => {
             {isModuleEnabled('reports') && (
               <div 
                 className="sidebar-section"
+                data-expanded={expandedSections.reports}
                 onMouseEnter={(e) => handleSectionHover('reports', e)}
                 onMouseLeave={handleSectionLeave}
               >
@@ -777,6 +784,7 @@ const Layout = ({ children }) => {
             {isModuleEnabled('accounting') && (
               <div 
                 className="sidebar-section"
+                data-expanded={expandedSections.accounting}
                 onMouseEnter={(e) => handleSectionHover('accounting', e)}
                 onMouseLeave={handleSectionLeave}
               >
@@ -849,6 +857,7 @@ const Layout = ({ children }) => {
             {isModuleEnabled('settings') && (
               <div 
                 className="sidebar-section"
+                data-expanded={expandedSections.settings}
                 onMouseEnter={(e) => handleSectionHover('settings', e)}
                 onMouseLeave={handleSectionLeave}
               >

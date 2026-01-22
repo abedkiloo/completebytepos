@@ -139,12 +139,12 @@ table tr:hover {
 }
 
 .btn-primary {
-  background: #667eea;
+  background: #10b981;
   color: white;
 }
 
 .btn-primary:hover {
-  background: #5568d3;
+  background: #059669;
 }
 
 .btn-secondary {
@@ -162,12 +162,12 @@ table tr:hover {
 }
 
 .btn-info {
-  background: #3b82f6;
+  background: #10b981;
   color: white;
 }
 
 .btn-info:hover {
-  background: #2563eb;
+  background: #059669;
 }
 
 .btn-danger {

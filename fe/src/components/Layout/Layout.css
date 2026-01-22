@@ -176,6 +176,25 @@
   box-shadow: 1px 0 3px rgba(0, 0, 0, 0.05);
   -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
   position: relative; /* Ensure submenu positioning works */
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db #ffffff;
+}
+
+.sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar::-webkit-scrollbar-track {
+  background: #ffffff;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.sidebar::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
 }
 
 .sidebar.closed {
@@ -205,6 +224,7 @@
 .sidebar-content {
   padding: 1rem 0;
   text-align: left;
+  min-height: 100%;
 }
 
 .sidebar-section {
@@ -228,8 +248,12 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   text-align: left;
+  border-radius: 6px;
+  margin: 0.125rem 0.5rem;
+  position: relative;
+  user-select: none;
 }
 
 .section-header span:first-child {
@@ -239,22 +263,83 @@
 .section-header:hover {
   background: #f9fafb;
   color: #10b981;
+  transform: translateX(2px);
 }
 
 .section-arrow {
   font-size: 0.75rem;
   color: #9ca3af;
-  transition: transform 0.2s;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+  z-index: 1;
+  transform-origin: center;
 }
 
+/* Base hover state for section arrow (collapsed sections only) */
 .section-header:hover .section-arrow {
   color: #10b981;
 }
 
+/* Expanded state - base arrow rotation (when section is expanded but not hovered) */
+.sidebar-section[data-expanded="true"] .section-arrow {
+  transform: rotate(90deg);
+  color: #10b981;
+}
+
+.sidebar-section[data-expanded="true"] .section-header {
+  color: #10b981;
+}
+
+/* Expanded + Hover state - Higher specificity ensures this overrides expanded state
+   Specificity calculation:
+   - Expanded: .sidebar-section[data-expanded] .section-arrow = 0,2,1 (2 classes + 1 attribute)
+   - Hover: .sidebar-section[data-expanded] .section-header:hover .section-arrow = 0,3,1 (3 classes + 1 attribute + 1 pseudo-class)
+   This selector MUST come after the expanded state selector to ensure proper cascade */
+.sidebar-section[data-expanded="true"] .section-header:hover .section-arrow {
+  transform: rotate(90deg) translateX(2px);
+  color: #059669;
+}
+
+/* Enhanced hover effects for sidebar items */
+.sidebar-item span:not(.item-icon) {
+  transition: color 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+/* Smooth icon transitions */
+.sidebar-item .item-icon {
+  will-change: transform, color;
+}
+
+.submenu-item .item-icon {
+  will-change: transform, color;
+}
+
+/* Add subtle background on section hover for better visual feedback */
+.sidebar-section:hover .section-header {
+  background: #f9fafb;
+}
+
+/* Section items with smooth expansion animation */
 .section-items {
   display: flex;
   flex-direction: column;
   padding: 0.25rem 0;
+  overflow: hidden;
+  animation: fadeInDown 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .sidebar-item {
@@ -264,18 +349,45 @@
   padding: 0.625rem 1.25rem 0.625rem 2.25rem;
   color: #4b5563;
   text-decoration: none;
-  transition: all 0.2s;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   border-left: 3px solid transparent;
   font-size: 0.875rem;
   text-align: left;
   justify-content: flex-start;
   font-weight: 500;
+  position: relative;
+  margin: 0.125rem 0.5rem;
+  border-radius: 6px;
+  will-change: transform, background-color;
+}
+
+.sidebar-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: #10b981;
+  transform: scaleY(0);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 0 3px 3px 0;
+  transform-origin: center;
 }
 
 .sidebar-item:hover {
   background: #f9fafb;
   color: #10b981;
-  border-left-color: #10b981;
+  transform: translateX(2px);
+}
+
+.sidebar-item:hover::before {
+  transform: scaleY(1);
+}
+
+.sidebar-item:hover .item-icon {
+  transform: scale(1.1);
+  color: #10b981;
 }
 
 .sidebar-item.active {
@@ -283,12 +395,27 @@
   color: #047857;
   border-left-color: #10b981;
   font-weight: 600;
+  transform: translateX(0);
+}
+
+.sidebar-item.active::before {
+  transform: scaleY(1);
+}
+
+.sidebar-item.active .item-icon {
+  color: #10b981;
+  transform: scale(1.05);
 }
 
 .item-icon {
   font-size: 1.1rem;
   width: 20px;
   text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  color: #6b7280;
 }
 
 /* Submenu Panel - Hover Effect */
@@ -297,9 +424,9 @@
   left: 280px; /* Position to the right of sidebar (sidebar width) */
   background: #ffffff;
   border: 1px solid #e5e7eb;
-  border-left: 2px solid #10b981;
+  border-left: 3px solid #10b981;
   border-radius: 0 8px 8px 0;
-  box-shadow: 4px 0 12px rgba(0, 0, 0, 0.08);
+  box-shadow: 4px 0 16px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05);
   min-width: 240px;
   max-width: 300px;
   padding: 0.5rem 0;
@@ -310,16 +437,17 @@
   overflow-x: hidden;
   margin-left: 2px; /* Small gap from sidebar */
   pointer-events: all;
+  backdrop-filter: blur(8px);
 }
 
 @keyframes slideInFromLeft {
   from {
     opacity: 0;
-    transform: translateX(-15px);
+    transform: translateX(-20px) scale(0.98);
   }
   to {
     opacity: 1;
-    transform: translateX(0);
+    transform: translateX(0) scale(1);
   }
 }
 
@@ -331,11 +459,11 @@
 @keyframes slideOutToLeft {
   from {
     opacity: 1;
-    transform: translateX(0);
+    transform: translateX(0) scale(1);
   }
   to {
     opacity: 0;
-    transform: translateX(-15px);
+    transform: translateX(-20px) scale(0.98);
   }
 }
 
@@ -346,18 +474,44 @@
   padding: 0.625rem 1.25rem;
   color: #4b5563;
   text-decoration: none;
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   font-size: 0.875rem;
   border-left: 3px solid transparent;
   position: relative;
   font-weight: 500;
+  margin: 0.125rem 0.5rem;
+  border-radius: 6px;
+  will-change: transform, background-color;
+}
+
+.submenu-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: #10b981;
+  transform: scaleY(0);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 0 3px 3px 0;
+  transform-origin: center;
 }
 
 .submenu-item:hover {
   background: #f0fdf4;
   color: #059669;
-  border-left-color: #10b981;
+  transform: translateX(2px);
   font-weight: 600;
+}
+
+.submenu-item:hover::before {
+  transform: scaleY(1);
+}
+
+.submenu-item:hover .item-icon {
+  transform: scale(1.1);
+  color: #10b981;
 }
 
 .submenu-item.active {
@@ -365,6 +519,16 @@
   color: #047857;
   border-left-color: #10b981;
   font-weight: 600;
+  transform: translateX(0);
+}
+
+.submenu-item.active::before {
+  transform: scaleY(1);
+}
+
+.submenu-item.active .item-icon {
+  color: #10b981;
+  transform: scale(1.05);
 }
 
 .submenu-item .item-icon {
@@ -382,14 +546,7 @@
 }
 
 /* Smooth transition for section header on hover */
-.section-header {
-  position: relative;
-}
-
-.section-header:hover {
-  background: #f9fafb;
-  color: #10b981;
-}
+/* Note: .section-header:hover is already defined above, this section removed to avoid duplication */
 
 /* Responsive: Hide submenu on mobile/tablet */
 @media (max-width: 1023px) {

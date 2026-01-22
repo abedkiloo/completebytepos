@@ -155,13 +155,14 @@
 }
 
 .view-all-link {
-  color: #667eea;
+  color: #10b981;
   text-decoration: none;
   font-size: 0.875rem;
   font-weight: 500;
 }
 
 .view-all-link:hover {
+  color: #059669;
   text-decoration: underline;
 }
 
@@ -187,9 +188,9 @@
 }
 
 .filter-btn.active {
-  background: #667eea;
+  background: #10b981;
   color: white;
-  border-color: #667eea;
+  border-color: #10b981;
 }
 
 .chart-placeholder {

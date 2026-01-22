@@ -61,8 +61,8 @@
 
 .filter-group input:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
 }
 
 /* Report Content - Compact */
@@ -101,7 +101,7 @@
   padding: 0.875rem 1rem;
   background: #f9fafb;
   border-radius: 6px;
-  border-left: 3px solid #667eea;
+  border-left: 3px solid #10b981;
   min-width: 140px;
   flex: 1 1 auto;
   white-space: nowrap;

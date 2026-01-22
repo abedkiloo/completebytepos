@@ -1,7 +1,7 @@
 .customers-container {
   padding: 0;
-  background: #f5f7fa;
-  min-height: 100vh;
+  background: transparent;
+  min-height: auto;
 }
 
 /* Use shared .page-header styles from shared.css */
@@ -275,8 +275,8 @@
 .form-group select:focus,
 .form-group textarea:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
 }
 
 .form-group input.error,
@@ -328,12 +328,12 @@
 }
 
 .btn-submit {
-  background: #667eea;
+  background: #10b981;
   color: white;
 }
 
 .btn-submit:hover {
-  background: #5568d3;
+  background: #059669;
 }
 
 .loading {

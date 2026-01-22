@@ -79,9 +79,9 @@
 }
 
 .report-menu .menu-item.active {
-  background: #eff6ff;
-  color: #667eea;
-  border-left-color: #667eea;
+  background: #ecfdf5;
+  color: #047857;
+  border-left-color: #10b981;
   font-weight: 600;
 }
 
@@ -127,8 +127,8 @@
 .filter-group input:focus,
 .filter-group select:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
 }
 
 /* Report Content */
@@ -252,8 +252,8 @@
 }
 
 .summary-item.net-income {
-  background: #eff6ff;
-  border: 2px solid #3b82f6;
+  background: #ecfdf5;
+  border: 2px solid #10b981;
 }
 
 .summary-item .amount.positive {
@@ -566,7 +566,7 @@
 
   .report-menu .menu-item.active {
     border-left: none;
-    border-bottom-color: #667eea;
+    border-bottom-color: #10b981;
   }
 
   .accounting-content {

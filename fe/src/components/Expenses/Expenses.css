@@ -42,8 +42,8 @@
 .filter-group input:focus,
 .filter-group select:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
 }
 
 /* Expenses Table */
@@ -84,7 +84,7 @@
 
 .expense-number {
   font-weight: 600;
-  color: #667eea;
+  color: #10b981;
 }
 
 .description-cell {
@@ -165,12 +165,12 @@
 }
 
 .btn-edit {
-  background: #667eea;
+  background: #10b981;
   color: white;
 }
 
 .btn-edit:hover {
-  background: #5568d3;
+  background: #059669;
 }
 
 .btn-add-category {
@@ -298,8 +298,8 @@
 .form-group select:focus,
 .form-group textarea:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
 }
 
 .form-group input.error,
@@ -340,12 +340,12 @@
 }
 
 .modal-footer button[type="submit"] {
-  background: #667eea;
+  background: #10b981;
   color: white;
 }
 
 .modal-footer button[type="submit"]:hover {
-  background: #5568d3;
+  background: #059669;
 }
 
 .modal-footer button:disabled {
@@ -380,7 +380,7 @@
 
 .pagination button:hover:not(:disabled) {
   background: #f9fafb;
-  border-color: #667eea;
+  border-color: #10b981;
 }
 
 .pagination button:disabled {

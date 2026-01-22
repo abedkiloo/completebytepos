@@ -44,12 +44,12 @@
 }
 
 .btn-primary {
-  background: #667eea;
+  background: #10b981;
   color: white;
 }
 
 .btn-primary:hover {
-  background: #5568d3;
+  background: #059669;
 }
 
 .branches-toolbar {
@@ -284,8 +284,8 @@
 .form-group textarea:focus,
 .form-group select:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
 }
 
 .form-row {
@@ -336,12 +336,12 @@
 }
 
 .btn-submit {
-  background: #667eea;
+  background: #10b981;
   color: white;
 }
 
 .btn-submit:hover {
-  background: #5568d3;
+  background: #059669;
 }
 
 .loading {
