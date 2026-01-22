@@ -3,6 +3,7 @@ import { barcodesAPI, productsAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
 import Layout from '../Layout/Layout';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
+import SearchableSelect from '../Shared/SearchableSelect';
 import { toast } from '../../utils/toast';
 import '../../styles/shared.css';
 import './Barcodes.css';
@@ -291,16 +292,18 @@ const Barcodes = () => {
               <span>📱 QR Code</span>
             </label>
           </div>
-          <select
+          <SearchableSelect
             value={barcodeFormat}
             onChange={(e) => setBarcodeFormat(e.target.value)}
             className="format-select-mobile"
-          >
-            <option value="code128">Code 128</option>
-            <option value="ean13">EAN-13</option>
-            <option value="ean8">EAN-8</option>
-            <option value="qrcode">📱 QR Code</option>
-          </select>
+            options={[
+              { id: 'code128', name: 'Code 128' },
+              { id: 'ean13', name: 'EAN-13' },
+              { id: 'ean8', name: 'EAN-8' },
+              { id: 'qrcode', name: '📱 QR Code' }
+            ]}
+            placeholder="Select Format"
+          />
         </div>
 
         <div className="controls-section">
@@ -345,15 +348,17 @@ const Barcodes = () => {
           onChange={(e) => setFilters({ ...filters, search: e.target.value })}
           className="search-input"
         />
-        <select
+        <SearchableSelect
           value={filters.has_barcode}
           onChange={(e) => setFilters({ ...filters, has_barcode: e.target.value })}
           className="filter-select"
-        >
-          <option value="all">All Products</option>
-          <option value="yes">With Barcode</option>
-          <option value="no">Without Barcode</option>
-        </select>
+          options={[
+            { id: 'all', name: 'All Products' },
+            { id: 'yes', name: 'With Barcode' },
+            { id: 'no', name: 'Without Barcode' }
+          ]}
+          placeholder="All Products"
+        />
       </div>
 
       <div className="barcodes-actions">

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { categoriesAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
+import SearchableSelect from '../Shared/SearchableSelect';
 import '../../styles/slide-in-panel.css';
 import './Products.css';
 
@@ -138,16 +139,17 @@ const CategoryForm = ({
             {!parentCategory && (
               <div className="form-group">
                 <label>Parent Category (optional)</label>
-                <select
+                <SearchableSelect
                   name="parent"
-                  value={formData.parent}
+                  value={formData.parent || ''}
                   onChange={handleChange}
-                >
-                  <option value="">None (Top-level category)</option>
-                  {parentCategories.map(cat => (
-                    <option key={cat.id} value={cat.id}>{cat.name}</option>
-                  ))}
-                </select>
+                  options={[
+                    { id: '', name: 'None (Top-level category)' },
+                    ...parentCategories.map(cat => ({ id: cat.id, name: cat.name }))
+                  ]}
+                  placeholder="Search and select parent category..."
+                  searchable={true}
+                />
                 <small className="form-text text-muted">
                   Leave empty to create a top-level category, or select a parent to create a subcategory
                 </small>

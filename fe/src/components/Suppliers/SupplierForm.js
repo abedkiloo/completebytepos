@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { suppliersAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
+import SearchableSelect from '../Shared/SearchableSelect';
 import '../../styles/slide-in-panel.css';
 import './Suppliers.css';
 
@@ -168,18 +169,19 @@ const SupplierForm = ({ supplier, onClose, onSave }) => {
                 </div>
                 <div className="form-group">
                   <label>Supplier Type *</label>
-                  <select
+                  <SearchableSelect
                     name="supplier_type"
                     value={formData.supplier_type}
                     onChange={handleChange}
-                    required
-                  >
-                    <option value="individual">Individual</option>
-                    <option value="business">Business</option>
-                    <option value="manufacturer">Manufacturer</option>
-                    <option value="distributor">Distributor</option>
-                    <option value="wholesaler">Wholesaler</option>
-                  </select>
+                    options={[
+                      { id: 'individual', name: 'Individual' },
+                      { id: 'business', name: 'Business' },
+                      { id: 'manufacturer', name: 'Manufacturer' },
+                      { id: 'distributor', name: 'Distributor' },
+                      { id: 'wholesaler', name: 'Wholesaler' }
+                    ]}
+                    placeholder="Select Supplier Type"
+                  />
                 </div>
               </div>
             </div>
@@ -321,19 +323,21 @@ const SupplierForm = ({ supplier, onClose, onSave }) => {
               <div className="form-row">
                 <div className="form-group">
                   <label>Payment Terms</label>
-                  <select
+                  <SearchableSelect
                     name="payment_terms"
                     value={formData.payment_terms}
                     onChange={handleChange}
-                  >
-                    <option value="net_15">Net 15</option>
-                    <option value="net_30">Net 30</option>
-                    <option value="net_45">Net 45</option>
-                    <option value="net_60">Net 60</option>
-                    <option value="cod">Cash on Delivery</option>
-                    <option value="prepaid">Prepaid</option>
-                    <option value="custom">Custom Terms</option>
-                  </select>
+                    options={[
+                      { id: 'net_15', name: 'Net 15' },
+                      { id: 'net_30', name: 'Net 30' },
+                      { id: 'net_45', name: 'Net 45' },
+                      { id: 'net_60', name: 'Net 60' },
+                      { id: 'cod', name: 'Cash on Delivery' },
+                      { id: 'prepaid', name: 'Prepaid' },
+                      { id: 'custom', name: 'Custom Terms' }
+                    ]}
+                    placeholder="Select Payment Terms"
+                  />
                 </div>
                 <div className="form-group">
                   <label>Credit Limit (KES)</label>
@@ -379,17 +383,19 @@ const SupplierForm = ({ supplier, onClose, onSave }) => {
               <div className="form-row">
                 <div className="form-group">
                   <label>Rating (1-5)</label>
-                  <select
+                  <SearchableSelect
                     name="rating"
                     value={formData.rating}
                     onChange={handleChange}
-                  >
-                    <option value="1">1 - Poor</option>
-                    <option value="2">2 - Fair</option>
-                    <option value="3">3 - Good</option>
-                    <option value="4">4 - Very Good</option>
-                    <option value="5">5 - Excellent</option>
-                  </select>
+                    options={[
+                      { id: '1', name: '1 - Poor' },
+                      { id: '2', name: '2 - Fair' },
+                      { id: '3', name: '3 - Good' },
+                      { id: '4', name: '4 - Very Good' },
+                      { id: '5', name: '5 - Excellent' }
+                    ]}
+                    placeholder="Select Rating"
+                  />
                 </div>
               </div>
             </div>

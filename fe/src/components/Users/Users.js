@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { usersAPI, rolesAPI } from '../../services/api';
 import Layout from '../Layout/Layout';
 import UserForm from './UserForm';
+import SearchableSelect from '../Shared/SearchableSelect';
 import { toast } from '../../utils/toast';
 import './Users.css';
 
@@ -152,32 +153,32 @@ const Users = () => {
           </div>
           <div className="filter-group">
             <label htmlFor="filterRole">Role</label>
-            <select
-              id="filterRole"
+            <SearchableSelect
               value={filterRole}
               onChange={(e) => setFilterRole(e.target.value)}
-            >
-              <option value="all">All Roles</option>
-              <option value="super_admin">Super Admin</option>
-              <option value="admin">Admin</option>
-              <option value="manager">Manager</option>
-              <option value="cashier">Cashier</option>
-              {roles.map(role => (
-                <option key={role.id} value={role.id}>{role.name}</option>
-              ))}
-            </select>
+              options={[
+                { id: 'all', name: 'All Roles' },
+                { id: 'super_admin', name: 'Super Admin' },
+                { id: 'admin', name: 'Admin' },
+                { id: 'manager', name: 'Manager' },
+                { id: 'cashier', name: 'Cashier' },
+                ...roles.map(role => ({ id: role.id, name: role.name }))
+              ]}
+              placeholder="All Roles"
+            />
           </div>
           <div className="filter-group">
             <label htmlFor="filterStatus">Status</label>
-            <select
-              id="filterStatus"
+            <SearchableSelect
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-            >
-              <option value="all">All Status</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
+              options={[
+                { id: 'all', name: 'All Status' },
+                { id: 'active', name: 'Active' },
+                { id: 'inactive', name: 'Inactive' }
+              ]}
+              placeholder="All Status"
+            />
           </div>
         </div>
 
@@ -207,7 +208,7 @@ const Users = () => {
                     <td>{user.first_name} {user.last_name}</td>
                     <td>{user.email || 'N/A'}</td>
                     <td>
-                      <select
+                      <SearchableSelect
                         value={user.profile?.custom_role?.id || user.profile?.role || ''}
                         onChange={(e) => {
                           const roleId = e.target.value;
@@ -216,15 +217,15 @@ const Users = () => {
                           }
                         }}
                         className="role-select"
-                      >
-                        <option value="super_admin">Super Admin</option>
-                        <option value="admin">Admin</option>
-                        <option value="manager">Manager</option>
-                        <option value="cashier">Cashier</option>
-                        {roles.map(role => (
-                          <option key={role.id} value={role.id}>{role.name}</option>
-                        ))}
-                      </select>
+                        options={[
+                          { id: 'super_admin', name: 'Super Admin' },
+                          { id: 'admin', name: 'Admin' },
+                          { id: 'manager', name: 'Manager' },
+                          { id: 'cashier', name: 'Cashier' },
+                          ...roles.map(role => ({ id: role.id, name: role.name }))
+                        ]}
+                        placeholder="Select Role"
+                      />
                     </td>
                     <td>
                       <span className={`status-badge ${user.is_active && user.profile?.is_active ? 'active' : 'inactive'}`}>

@@ -4,6 +4,7 @@ import { inventoryAPI, productsAPI } from '../../services/api';
 import { formatCurrency, formatNumber, formatDateTime } from '../../utils/formatters';
 import { isFeatureEnabled, isFeatureEnabledInAny } from '../../utils/moduleSettings';
 import Layout from '../Layout/Layout';
+import SearchableSelect from '../Shared/SearchableSelect';
 import StockAdjustmentModal from './StockAdjustmentModal';
 import StockPurchaseModal from './StockPurchaseModal';
 import StockHistoryModal from './StockHistoryModal';
@@ -224,21 +225,25 @@ const Inventory = () => {
       {activeTab === 'movements' && (
         <div className="inventory-content">
           <div className="filters-section">
-            <select
-              value={filters.movement_type}
+            <SearchableSelect
+              value={filters.movement_type || ''}
               onChange={(e) => setFilters({ ...filters, movement_type: e.target.value })}
+              options={[
+                { id: '', name: 'All Types' },
+                { id: 'sale', name: 'Sale' },
+                { id: 'purchase', name: 'Purchase' },
+                { id: 'adjustment', name: 'Adjustment' },
+                { id: 'return', name: 'Return' },
+                { id: 'damage', name: 'Damage' },
+                { id: 'transfer', name: 'Transfer' },
+                { id: 'waste', name: 'Waste' },
+                { id: 'expired', name: 'Expired' },
+              ]}
+              placeholder="Filter by movement type..."
+              name="movement_type"
+              searchable={true}
               className="filter-select"
-            >
-              <option value="">All Types</option>
-              <option value="sale">Sale</option>
-              <option value="purchase">Purchase</option>
-              <option value="adjustment">Adjustment</option>
-              <option value="return">Return</option>
-              <option value="damage">Damage</option>
-              <option value="transfer">Transfer</option>
-              <option value="waste">Waste</option>
-              <option value="expired">Expired</option>
-            </select>
+            />
             <input
               type="date"
               value={filters.date_from}

@@ -20,6 +20,34 @@ class CustomerSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at'
         ]
         read_only_fields = ['customer_code', 'total_invoices', 'total_outstanding', 'wallet_balance', 'created_at', 'updated_at']
+    
+    def validate_name(self, value):
+        """Validate customer name"""
+        if not value or not value.strip():
+            raise serializers.ValidationError('Customer name is required')
+        if len(value.strip()) < 2:
+            raise serializers.ValidationError('Customer name must be at least 2 characters')
+        return value.strip()
+    
+    def validate_email(self, value):
+        """Validate email format if provided"""
+        if value and value.strip():
+            from django.core.validators import validate_email
+            from django.core.exceptions import ValidationError
+            try:
+                validate_email(value.strip())
+            except ValidationError:
+                raise serializers.ValidationError('Please enter a valid email address')
+            return value.strip()
+        return value
+    
+    def validate(self, attrs):
+        """Additional validation"""
+        # Ensure name is provided
+        if not attrs.get('name') or not attrs.get('name').strip():
+            raise serializers.ValidationError({'name': 'Customer name is required'})
+        
+        return attrs
 
 
 class CustomerListSerializer(serializers.ModelSerializer):
@@ -159,6 +187,17 @@ class SaleCreateSerializer(serializers.Serializer):
         default=0,
         help_text='Amount to use from wallet (0 = use all available)'
     )
+    allow_partial_payment = serializers.BooleanField(
+        default=False,
+        required=False,
+        help_text='Allow customer to pay less than total and add balance to negative wallet (debt)'
+    )
+    excess_payment_choice = serializers.ChoiceField(
+        choices=[('change', 'Give Change'), ('wallet', 'Add to Wallet')],
+        required=False,
+        default='change',
+        help_text='How to handle excess payment: "change" to return change, "wallet" to add to customer wallet'
+    )
     
     def validate(self, attrs):
         """Validate payment based on sale type and payment plan"""
@@ -171,12 +210,25 @@ class SaleCreateSerializer(serializers.Serializer):
         number_of_installments = attrs.get('number_of_installments', None)
         payment_plan_start_date = attrs.get('payment_plan_start_date', None)
         
-        # For POS sales, amount_paid is required
+        # For POS sales, amount_paid validation
+        allow_partial = attrs.get('allow_partial_payment', False)
         if sale_type == 'pos':
-            if amount_paid is None or amount_paid <= 0:
-                raise serializers.ValidationError({
-                    'amount_paid': 'Amount paid is required for POS sales'
-                })
+            # If partial payment is not allowed, amount_paid must be greater than 0
+            if not allow_partial:
+                if amount_paid is None or amount_paid <= 0:
+                    raise serializers.ValidationError({
+                        'amount_paid': 'Amount paid must be greater than 0 for POS sales. To allow partial payment, enable "allow_partial_payment" and select a customer.'
+                    })
+            else:
+                # If partial payment is allowed, amount_paid can be 0 or more, but customer must be selected
+                if amount_paid is None or amount_paid < 0:
+                    raise serializers.ValidationError({
+                        'amount_paid': 'Amount paid cannot be negative'
+                    })
+                if not customer_id:
+                    raise serializers.ValidationError({
+                        'customer_id': 'Customer must be selected to allow partial payment'
+                    })
         
         # For normal sales with cash payment (pay_now), amount_paid should be provided
         # For installments, amount_paid can be 0 or null

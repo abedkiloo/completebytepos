@@ -4,6 +4,7 @@ import { formatCurrency, formatDate } from '../../utils/formatters';
 import Layout from '../Layout/Layout';
 import IncomeForm from './IncomeForm';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
+import SearchableSelect from '../Shared/SearchableSelect';
 import { toast } from '../../utils/toast';
 import '../../styles/shared.css';
 import './Income.css';
@@ -169,30 +170,32 @@ const Income = () => {
         <div className="income-filters">
           <div className="filter-group">
             <label>Category</label>
-            <select
+            <SearchableSelect
               name="category"
               value={filters.category}
               onChange={handleFilterChange}
-            >
-              <option value="">All Categories</option>
-              {categories.map(cat => (
-                <option key={cat.id} value={cat.id}>{cat.name}</option>
-              ))}
-            </select>
+              options={[
+                { id: '', name: 'All Categories' },
+                ...categories.map(cat => ({ id: cat.id, name: cat.name }))
+              ]}
+              placeholder="All Categories"
+            />
           </div>
           <div className="filter-group">
             <label>Status</label>
-            <select
+            <SearchableSelect
               name="status"
               value={filters.status}
               onChange={handleFilterChange}
-            >
-              <option value="">All Status</option>
-              <option value="pending">Pending</option>
-              <option value="approved">Approved</option>
-              <option value="rejected">Rejected</option>
-              <option value="received">Received</option>
-            </select>
+              options={[
+                { id: '', name: 'All Status' },
+                { id: 'pending', name: 'Pending' },
+                { id: 'approved', name: 'Approved' },
+                { id: 'rejected', name: 'Rejected' },
+                { id: 'received', name: 'Received' }
+              ]}
+              placeholder="All Status"
+            />
           </div>
           <div className="filter-group">
             <label>From Date</label>
@@ -214,18 +217,20 @@ const Income = () => {
           </div>
           <div className="filter-group">
             <label>Payment Method</label>
-            <select
+            <SearchableSelect
               name="payment_method"
               value={filters.payment_method}
               onChange={handleFilterChange}
-            >
-              <option value="">All Methods</option>
-              <option value="cash">Cash</option>
-              <option value="mpesa">M-PESA</option>
-              <option value="bank">Bank Transfer</option>
-              <option value="card">Card</option>
-              <option value="other">Other</option>
-            </select>
+              options={[
+                { id: '', name: 'All Methods' },
+                { id: 'cash', name: 'Cash' },
+                { id: 'mpesa', name: 'M-PESA' },
+                { id: 'bank', name: 'Bank Transfer' },
+                { id: 'card', name: 'Card' },
+                { id: 'other', name: 'Other' }
+              ]}
+              placeholder="All Methods"
+            />
           </div>
           <div className="filter-group">
             <label>Search</label>

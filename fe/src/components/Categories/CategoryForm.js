@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { categoriesAPI } from '../../services/api';
+import SearchableSelect from '../Shared/SearchableSelect';
 import './Categories.css';
 
 const CategoryForm = ({ category, onClose, onSave, categories = [] }) => {
@@ -116,20 +117,18 @@ const CategoryForm = ({ category, onClose, onSave, categories = [] }) => {
 
           <div className="form-group">
             <label>Parent Category</label>
-            <select
+            <SearchableSelect
               name="parent"
               value={formData.parent}
               onChange={handleChange}
-            >
-              <option value="">No Parent (Top Level)</option>
-              {parentOptions
-                .filter(cat => cat.is_active !== false)
-                .map(cat => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.name}
-                  </option>
-                ))}
-            </select>
+              options={[
+                { id: '', name: 'No Parent (Top Level)' },
+                ...parentOptions
+                  .filter(cat => cat.is_active !== false)
+                  .map(cat => ({ id: cat.id, name: cat.name }))
+              ]}
+              placeholder="No Parent (Top Level)"
+            />
             <small>Select a parent category to create a subcategory</small>
           </div>
 

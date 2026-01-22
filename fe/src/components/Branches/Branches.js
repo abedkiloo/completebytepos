@@ -3,6 +3,7 @@ import { branchesAPI, usersAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import Layout from '../Layout/Layout';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
+import SearchableSelect from '../Shared/SearchableSelect';
 import '../../styles/slide-in-panel.css';
 import './Branches.css';
 
@@ -317,17 +318,15 @@ const Branches = () => {
                 </div>
                 <div className="form-group">
                   <label>Manager</label>
-                  <select
+                  <SearchableSelect
                     value={formData.manager}
                     onChange={(e) => setFormData({ ...formData, manager: e.target.value })}
-                  >
-                    <option value="">Select Manager</option>
-                    {users.map(user => (
-                      <option key={user.id} value={user.id}>
-                        {user.username} {user.first_name && `(${user.first_name} ${user.last_name || ''})`}
-                      </option>
-                    ))}
-                  </select>
+                    options={users.map(user => ({
+                      id: user.id,
+                      name: `${user.username}${user.first_name ? ` (${user.first_name} ${user.last_name || ''})` : ''}`
+                    }))}
+                    placeholder="Select Manager"
+                  />
                 </div>
                 <div className="form-row">
                   <div className="form-group">

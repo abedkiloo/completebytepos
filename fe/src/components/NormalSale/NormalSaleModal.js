@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { productsAPI, customersAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
 import VariantSelector from '../POS/VariantSelector';
+import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
+import SearchableSelect from '../Shared/SearchableSelect';
+import CustomerFormModal from '../Customers/CustomerFormModal';
 import { toast } from '../../utils/toast';
 import './NormalSaleModal.css';
 
@@ -39,6 +42,11 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
     frequency: 'monthly',
     start_date: '',
   });
+  const [showPartialPaymentConfirm, setShowPartialPaymentConfirm] = useState(false);
+  const [showExcessPaymentConfirm, setShowExcessPaymentConfirm] = useState(false);
+  const [pendingSaleData, setPendingSaleData] = useState(null);
+  const [excessPaymentChoice, setExcessPaymentChoice] = useState('change'); // 'change' or 'wallet'
+  const [showCustomerFormModal, setShowCustomerFormModal] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -54,6 +62,30 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
       setUseWallet(false);
       setWalletAmount(0);
     }
+  }, [isOpen]);
+
+  // Refresh customers when window regains focus (in case user added a customer in another tab)
+  useEffect(() => {
+    if (!isOpen) return;
+    
+    const handleFocus = () => {
+      loadCustomers();
+    };
+    
+    // Also refresh on visibility change (when tab becomes visible)
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        loadCustomers();
+      }
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [isOpen]);
 
   useEffect(() => {
@@ -94,11 +126,13 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
 
   const loadCustomers = async () => {
     try {
-      const response = await customersAPI.list({ is_active: true });
+      // Fetch all customers with large page size to ensure newly added customers are included
+      const response = await customersAPI.list({ is_active: true, page_size: 1000 });
       const customersData = response.data.results || response.data || [];
       setCustomers(Array.isArray(customersData) ? customersData : []);
     } catch (error) {
       console.error('Error loading customers:', error);
+      setCustomers([]);
     }
   };
 
@@ -304,6 +338,157 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
     };
   };
 
+  const processSale = async (allowPartial = false, excessChoice = 'change') => {
+    // Filter out empty rows
+    const validRows = productRows.filter(row => row.product_id);
+    
+    if (validRows.length === 0) {
+      toast.error('Please add at least one product by searching and selecting', 8000);
+      return;
+    }
+
+    const totals = calculateTotals();
+    
+    // Format amount_paid to ensure it fits within max_digits=10, decimal_places=2 constraint
+    // Max value: 99,999,999.99 (8 digits before decimal + 2 after = 10 total)
+    const formatAmountPaid = (amount) => {
+      // Round to 2 decimal places
+      let formatted = Math.round(amount * 100) / 100;
+      // Ensure it doesn't exceed max value
+      const maxValue = 99999999.99;
+      if (formatted > maxValue) {
+        formatted = maxValue;
+      }
+      // Return as number (not string) to avoid precision issues
+      return parseFloat(formatted.toFixed(2));
+    };
+    
+    // Use confirmed amount from pendingSaleData if available (when called from confirmation dialog)
+    // This ensures the amount sent matches what the user confirmed, even if state changed
+    // pendingSaleData.paid includes wallet usage, so we need to extract just the cash amount
+    const confirmedPaid = pendingSaleData?.paid;
+    let amountPaidValue = 0;
+    
+    if (paymentType === 'pay_now') {
+      if (confirmedPaid !== undefined) {
+        // If confirmed, use the confirmed paid amount minus wallet usage
+        // pendingSaleData.paid = cash + wallet, so we subtract wallet to get cash amount
+        const walletUsed = pendingSaleData.walletToUse || 0;
+        const cashAmount = confirmedPaid - walletUsed;
+        amountPaidValue = formatAmountPaid(cashAmount);
+      } else {
+        // Not from confirmation, use current state
+        amountPaidValue = formatAmountPaid(parseFloat(amountPaid) || 0);
+      }
+    }
+    
+    const saleData = {
+      sale_type: 'normal',
+      items: validRows.map(row => ({
+        product_id: row.product_id,
+        variant_id: row.variant_id,
+        quantity: row.quantity,
+        unit_price: row.unit_price,
+      })),
+      customer_id: selectedCustomer ? selectedCustomer.id : null,
+      customer_name: selectedCustomer ? selectedCustomer.name : (paymentMethod === 'cash' ? 'Cash Customer' : ''),
+      customer_email: selectedCustomer ? selectedCustomer.email : '',
+      customer_phone: selectedCustomer ? selectedCustomer.phone : '',
+      customer_address: selectedCustomer ? selectedCustomer.address : '',
+      tax_amount: totals.totalTax,
+      discount_amount: totals.totalDiscount,
+      delivery_method: deliveryMethod,
+      delivery_cost: parseFloat(shipping || 0),
+      shipping_address: shippingAddress || null,
+      shipping_location: shippingLocation || null,
+      amount_paid: amountPaidValue,
+      payment_method: paymentType === 'pay_now' ? paymentMethod : 'other',
+      notes: notes,
+      due_date: dueDate || null,
+      create_payment_plan: paymentType === 'installments',
+      use_wallet: paymentType === 'pay_now' && useWallet && selectedCustomer ? true : false,
+      wallet_amount: paymentType === 'pay_now' && useWallet && selectedCustomer 
+        ? (pendingSaleData?.walletToUse !== undefined ? pendingSaleData.walletToUse : (parseFloat(walletAmount) || 0))
+        : 0,
+      allow_partial_payment: allowPartial,
+      excess_payment_choice: excessChoice, // 'change' or 'wallet'
+      // Only include payment plan fields if creating a payment plan
+      ...(paymentType === 'installments' ? {
+        number_of_installments: paymentPlanData.number_of_installments,
+        installment_frequency: paymentPlanData.frequency,
+        payment_plan_start_date: paymentPlanData.start_date,
+      } : {
+        // Explicitly set to null for pay_now to avoid validation errors
+        number_of_installments: null,
+        installment_frequency: null,
+        payment_plan_start_date: null,
+      }),
+    };
+
+    try {
+      const response = await onSave(saleData);
+      
+      // Show wallet credit message if overpayment was added to wallet
+      if (response?.data?.wallet_credit_added) {
+        toast.success(
+          `Sale completed! ${formatCurrency(response.data.wallet_credit_added)} added to customer wallet.`,
+          8000
+        );
+      } else if (response?.data?.wallet_amount_used > 0) {
+        toast.success(
+          `Sale completed! Used ${formatCurrency(response.data.wallet_amount_used)} from customer wallet.`,
+          5000
+        );
+      } else if (allowPartial && pendingSaleData && pendingSaleData.balance > 0) {
+        toast.success(
+          `Sale completed! Unpaid balance of ${formatCurrency(pendingSaleData.balance)} added to ${selectedCustomer?.name || 'customer'}'s account as debt. They can pay this later.`,
+          8000
+        );
+      } else if (pendingSaleData && pendingSaleData.excess > 0 && excessChoice === 'wallet') {
+        toast.success(
+          `Sale completed! Excess payment of ${formatCurrency(pendingSaleData.excess)} added to ${selectedCustomer?.name || 'customer'}'s wallet.`,
+          8000
+        );
+      }
+      
+      setShowPartialPaymentConfirm(false);
+      setShowExcessPaymentConfirm(false);
+      setPendingSaleData(null);
+      handleClose();
+    } catch (error) {
+      setShowPartialPaymentConfirm(false);
+      setShowExcessPaymentConfirm(false);
+      setPendingSaleData(null);
+      // Improved error handling to show detailed validation errors
+      let errorMessage = 'Failed to create sale';
+      
+      if (error.response?.data) {
+        const errorData = error.response.data;
+        
+        // Handle field-level validation errors (DRF format)
+        if (typeof errorData === 'object' && !errorData.error) {
+          const fieldErrors = [];
+          for (const [field, messages] of Object.entries(errorData)) {
+            if (Array.isArray(messages)) {
+              fieldErrors.push(`${field}: ${messages.join(', ')}`);
+            } else {
+              fieldErrors.push(`${field}: ${messages}`);
+            }
+          }
+          errorMessage = fieldErrors.join('; ');
+        } else if (errorData.error) {
+          errorMessage = errorData.error;
+        } else if (typeof errorData === 'string') {
+          errorMessage = errorData;
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      toast.error(errorMessage, 8000);
+    }
+  };
+
   const handleSubmit = async () => {
     // For installments, customer is recommended but not strictly required
     // For pay_now with cash, customer can be optional
@@ -334,7 +519,42 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
         toast.error('Please enter the amount paid', 8000);
         return;
       }
-      // Allow partial payment - no need to check if paid > grandTotal as change is calculated
+      
+      const totalPayment = paid + totals.walletToUse;
+      
+      // Check if partial payment (paid < grandTotal)
+      if (totalPayment < totals.grandTotal) {
+        // Customer must be selected for partial payment
+        if (!selectedCustomer) {
+          toast.error('Please select a customer to allow partial payment. The unpaid amount will be added to their account as debt.', 8000);
+          return;
+        }
+        
+        // Show confirmation dialog
+        const balance = totals.grandTotal - totalPayment;
+        setPendingSaleData({ 
+          total: totals.grandTotal, 
+          paid: totalPayment, 
+          balance,
+          walletToUse: totals.walletToUse
+        });
+        setShowPartialPaymentConfirm(true);
+        return;
+      }
+      
+      // Check if excess payment (paid > grandTotal)
+      if (totalPayment > totals.grandTotal && selectedCustomer) {
+        const excess = totalPayment - totals.grandTotal;
+        setPendingSaleData({ 
+          total: totals.grandTotal, 
+          paid: totalPayment, 
+          excess,
+          walletToUse: totals.walletToUse
+        });
+        setExcessPaymentChoice('change'); // Default to change
+        setShowExcessPaymentConfirm(true);
+        return;
+      }
     } else if (paymentType === 'installments') {
       if (!paymentPlanData.start_date) {
         toast.error('Please select a start date for the payment plan', 8000);
@@ -352,123 +572,10 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
       return;
     }
     
-    const saleData = {
-      sale_type: 'normal',
-      items: validRows.map(row => ({
-        product_id: row.product_id,
-        variant_id: row.variant_id,
-        quantity: row.quantity,
-        unit_price: row.unit_price,
-      })),
-      customer_id: selectedCustomer ? selectedCustomer.id : null,
-      customer_name: selectedCustomer ? selectedCustomer.name : (paymentMethod === 'cash' ? 'Cash Customer' : ''),
-      customer_email: selectedCustomer ? selectedCustomer.email : '',
-      customer_phone: selectedCustomer ? selectedCustomer.phone : '',
-      customer_address: selectedCustomer ? selectedCustomer.address : '',
-      tax_amount: totals.totalTax,
-      discount_amount: totals.totalDiscount,
-      delivery_method: deliveryMethod,
-      delivery_cost: parseFloat(shipping || 0),
-      shipping_address: shippingAddress || null,
-      shipping_location: shippingLocation || null,
-      amount_paid: paymentType === 'pay_now' ? parseFloat(amountPaid) : 0,
-      payment_method: paymentType === 'pay_now' ? paymentMethod : 'other',
-      notes: notes,
-      due_date: dueDate || null,
-      create_payment_plan: paymentType === 'installments',
-      use_wallet: paymentType === 'pay_now' && useWallet && selectedCustomer ? true : false,
-      wallet_amount: paymentType === 'pay_now' && useWallet && selectedCustomer ? (parseFloat(walletAmount) || 0) : 0,
-      // Only include payment plan fields if creating a payment plan
-      ...(paymentType === 'installments' ? {
-        number_of_installments: paymentPlanData.number_of_installments,
-        installment_frequency: paymentPlanData.frequency,
-        payment_plan_start_date: paymentPlanData.start_date,
-      } : {
-        // Explicitly set to null for pay_now to avoid validation errors
-        number_of_installments: null,
-        installment_frequency: null,
-        payment_plan_start_date: null,
-      }),
-    };
-
-    try {
-      const response = await onSave(saleData);
-      
-      // Show wallet credit message if overpayment was added to wallet
-      if (response?.data?.wallet_credit_added) {
-        toast.success(
-          `Sale completed! ${formatCurrency(response.data.wallet_credit_added)} added to customer wallet.`,
-          8000
-        );
-      } else if (response?.data?.wallet_amount_used > 0) {
-        toast.success(
-          `Sale completed! Used ${formatCurrency(response.data.wallet_amount_used)} from customer wallet.`,
-          5000
-        );
-      }
-      
-      handleClose();
-    } catch (error) {
-      // Improved error handling to show detailed validation errors
-      let errorMessage = 'Failed to create sale';
-      
-      if (error.response?.data) {
-        const errorData = error.response.data;
-        
-        // Handle field-level validation errors (DRF format)
-        if (typeof errorData === 'object' && !errorData.error) {
-          const fieldErrors = [];
-          for (const [field, messages] of Object.entries(errorData)) {
-            if (Array.isArray(messages)) {
-              fieldErrors.push(`${field}: ${messages.join(', ')}`);
-            } else if (typeof messages === 'string') {
-              fieldErrors.push(`${field}: ${messages}`);
-            } else {
-              fieldErrors.push(`${field}: ${JSON.stringify(messages)}`);
-            }
-          }
-          if (fieldErrors.length > 0) {
-            // Format error message for better readability
-            // Show first error in toast, log all errors to console
-            errorMessage = fieldErrors[0];
-            if (fieldErrors.length > 1) {
-              console.error('Multiple validation errors:', fieldErrors);
-              errorMessage += ` (and ${fieldErrors.length - 1} more - see console)`;
-            }
-          } else {
-            errorMessage = errorData.error || errorData.detail || JSON.stringify(errorData);
-          }
-        } else if (errorData.error) {
-          errorMessage = errorData.error;
-        } else if (errorData.detail) {
-          errorMessage = errorData.detail;
-        } else {
-          errorMessage = JSON.stringify(errorData);
-        }
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      
-      // Show error with longer duration (10 seconds) and log to console
-      toast.error(errorMessage, 10000);
-      console.error('Sale creation error:', error.response?.data || error);
-      
-      // Also log all field errors if there are multiple
-      if (error.response?.data && typeof error.response.data === 'object' && !error.response.data.error) {
-        const fieldErrors = [];
-        for (const [field, messages] of Object.entries(error.response.data)) {
-          if (Array.isArray(messages)) {
-            fieldErrors.push(`${field}: ${messages.join(', ')}`);
-          } else if (typeof messages === 'string') {
-            fieldErrors.push(`${field}: ${messages}`);
-          }
-        }
-        if (fieldErrors.length > 1) {
-          console.error('All validation errors:', fieldErrors);
-        }
-      }
-    }
+    // If we get here, proceed with normal sale (full payment or installments)
+    await processSale(false);
   };
+
 
   const handleClose = () => {
     setProductRows([]);
@@ -531,6 +638,8 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                       }
                     }}
                     onFocus={() => {
+                      // Refresh customers when input is focused to get newly added customers
+                      loadCustomers();
                       // Show dropdown when focused if there are customers or search text
                       if (filteredCustomers.length > 0 || customerSearch) {
                         setShowCustomerSearch(true);
@@ -590,7 +699,7 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                 <button
                   type="button"
                   className="normal-sale-add-button"
-                  onClick={() => window.open('/customers', '_blank')}
+                  onClick={() => setShowCustomerFormModal(true)}
                   title="Add New Customer"
                 >
                   +
@@ -763,6 +872,7 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                       )}
                     </td>
                     <td>
+                      {/* Quantity input - always editable for products with or without variants (only disabled when no product selected) */}
                       <input
                         type="number"
                         min="1"
@@ -863,7 +973,7 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
 
             <div className="normal-sale-form-group">
               <label>Delivery Method</label>
-              <select
+              <SearchableSelect
                 value={deliveryMethod}
                 onChange={(e) => {
                   setDeliveryMethod(e.target.value);
@@ -871,11 +981,13 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                     setShipping(0);
                   }
                 }}
-              >
-                <option value="pickup">Pickup (No Charge)</option>
-                <option value="delivery">Standard Delivery</option>
-                <option value="express">Express Delivery</option>
-              </select>
+                options={[
+                  { id: 'pickup', name: 'Pickup (No Charge)' },
+                  { id: 'delivery', name: 'Standard Delivery' },
+                  { id: 'express', name: 'Express Delivery' }
+                ]}
+                placeholder="Select Delivery Method"
+              />
             </div>
 
             <div className="normal-sale-form-group">
@@ -892,14 +1004,16 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
 
             <div className="normal-sale-form-group">
               <label>Status</label>
-              <select
+              <SearchableSelect
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
-              >
-                <option value="pending">Pending</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
+                options={[
+                  { id: 'pending', name: 'Pending' },
+                  { id: 'completed', name: 'Completed' },
+                  { id: 'cancelled', name: 'Cancelled' }
+                ]}
+                placeholder="Select Status"
+              />
             </div>
           </div>
 
@@ -1015,15 +1129,16 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
 
                 <div className="normal-sale-form-group">
                   <label>Payment Method *</label>
-                  <select
+                  <SearchableSelect
                     value={paymentMethod}
                     onChange={(e) => setPaymentMethod(e.target.value)}
-                    required
-                  >
-                    <option value="cash">Cash</option>
-                    <option value="mpesa">M-PESA</option>
-                    <option value="other">Other</option>
-                  </select>
+                    options={[
+                      { id: 'cash', name: 'Cash' },
+                      { id: 'mpesa', name: 'M-PESA' },
+                      { id: 'other', name: 'Other' }
+                    ]}
+                    placeholder="Select Payment Method"
+                  />
                 </div>
 
                 <div className="normal-sale-form-group">
@@ -1098,20 +1213,21 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
 
                 <div className="normal-sale-form-group">
                   <label>Frequency *</label>
-                  <select
+                  <SearchableSelect
                     value={paymentPlanData.frequency}
                     onChange={(e) => setPaymentPlanData({
                       ...paymentPlanData,
                       frequency: e.target.value
                     })}
-                    required
-                  >
-                    <option value="daily">Daily</option>
-                    <option value="weekly">Weekly</option>
-                    <option value="biweekly">Bi-Weekly</option>
-                    <option value="monthly">Monthly</option>
-                    <option value="quarterly">Quarterly</option>
-                  </select>
+                    options={[
+                      { id: 'daily', name: 'Daily' },
+                      { id: 'weekly', name: 'Weekly' },
+                      { id: 'biweekly', name: 'Bi-Weekly' },
+                      { id: 'monthly', name: 'Monthly' },
+                      { id: 'quarterly', name: 'Quarterly' }
+                    ]}
+                    placeholder="Select Frequency"
+                  />
                 </div>
 
                 <div className="normal-sale-form-group">
@@ -1206,6 +1322,111 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
           }}
         />
       )}
+
+      {/* Partial Payment Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showPartialPaymentConfirm}
+        title="Allow Customer to Pay Later?"
+        message={
+          pendingSaleData && selectedCustomer
+            ? `Total: ${formatCurrency(pendingSaleData.total)}\nAmount Paid: ${formatCurrency(pendingSaleData.paid)}${pendingSaleData.walletToUse > 0 ? ` (including ${formatCurrency(pendingSaleData.walletToUse)} from wallet)` : ''}\nUnpaid Balance: ${formatCurrency(pendingSaleData.balance)}\n\nDo you want to proceed with this transaction? The unpaid balance of ${formatCurrency(pendingSaleData.balance)} will be added to ${selectedCustomer.name}'s account as debt. They can pay this amount later in installments.`
+            : pendingSaleData
+            ? `Total: ${formatCurrency(pendingSaleData.total)}\nAmount Paid: ${formatCurrency(pendingSaleData.paid)}\nUnpaid Balance: ${formatCurrency(pendingSaleData.balance)}\n\nDo you want to proceed with this transaction? The unpaid balance will be added to the customer's account as debt.`
+            : ''
+        }
+        onConfirm={() => {
+          // Proceed with the sale with partial payment allowed
+          processSale(true);
+        }}
+        onCancel={() => {
+          setShowPartialPaymentConfirm(false);
+          setPendingSaleData(null);
+        }}
+        confirmText="Yes, Proceed"
+        cancelText="Cancel"
+        type="primary"
+      />
+      
+      {/* Excess Payment Confirmation Dialog */}
+      {showExcessPaymentConfirm && pendingSaleData && (
+        <div className="modal-overlay" onClick={() => setShowExcessPaymentConfirm(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <div className="modal-header">
+              <h2>Excess Payment</h2>
+              <button onClick={() => setShowExcessPaymentConfirm(false)} className="close-btn">×</button>
+            </div>
+            <div className="modal-body" style={{ padding: '1.5rem' }}>
+              <p style={{ marginBottom: '1rem' }}>
+                <strong>Total:</strong> {formatCurrency(pendingSaleData.total)}<br />
+                <strong>Paid:</strong> {formatCurrency(pendingSaleData.paid)}{pendingSaleData.walletToUse > 0 ? ` (including ${formatCurrency(pendingSaleData.walletToUse)} from wallet)` : ''}<br />
+                <strong>Excess:</strong> {formatCurrency(pendingSaleData.excess)}
+              </p>
+              <p style={{ marginBottom: '1.5rem', color: '#666' }}>
+                How would you like to handle the excess payment?
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', padding: '0.75rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', backgroundColor: excessPaymentChoice === 'change' ? '#f0f9ff' : 'white' }}>
+                  <input
+                    type="radio"
+                    name="excessPayment"
+                    value="change"
+                    checked={excessPaymentChoice === 'change'}
+                    onChange={(e) => setExcessPaymentChoice(e.target.value)}
+                    style={{ marginRight: '0.75rem' }}
+                  />
+                  <div>
+                    <strong>Give Change</strong>
+                    <div style={{ fontSize: '0.875rem', color: '#666', marginTop: '0.25rem' }}>
+                      Return {formatCurrency(pendingSaleData.excess)} to the customer
+                    </div>
+                  </div>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', padding: '0.75rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', backgroundColor: excessPaymentChoice === 'wallet' ? '#f0f9ff' : 'white' }}>
+                  <input
+                    type="radio"
+                    name="excessPayment"
+                    value="wallet"
+                    checked={excessPaymentChoice === 'wallet'}
+                    onChange={(e) => setExcessPaymentChoice(e.target.value)}
+                    style={{ marginRight: '0.75rem' }}
+                  />
+                  <div>
+                    <strong>Add to Wallet</strong>
+                    <div style={{ fontSize: '0.875rem', color: '#666', marginTop: '0.25rem' }}>
+                      Add {formatCurrency(pendingSaleData.excess)} to {selectedCustomer?.name || 'customer'}'s wallet for future use
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button onClick={() => setShowExcessPaymentConfirm(false)} className="btn-cancel">Cancel</button>
+              <button 
+                onClick={() => {
+                  processSale(false, excessPaymentChoice);
+                }} 
+                className="btn-submit"
+              >
+                Complete Sale
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Customer Form Modal */}
+      <CustomerFormModal
+        isOpen={showCustomerFormModal}
+        onClose={() => setShowCustomerFormModal(false)}
+        onCustomerCreated={(newCustomer) => {
+          // Reload customers list
+          loadCustomers();
+          // Auto-select the newly created customer
+          setSelectedCustomer(newCustomer);
+          setCustomerSearch(newCustomer.name);
+          setShowCustomerFormModal(false);
+        }}
+      />
     </div>
   );
 };

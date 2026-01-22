@@ -3,6 +3,7 @@ import { suppliersAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
 import Layout from '../Layout/Layout';
 import SupplierForm from './SupplierForm';
+import SearchableSelect from '../Shared/SearchableSelect';
 import { toast } from '../../utils/toast';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import '../../styles/shared.css';
@@ -175,32 +176,38 @@ const Suppliers = () => {
             />
           </div>
           <div className="filter-controls">
-            <select
+            <SearchableSelect
               value={filters.is_active}
               onChange={(e) => setFilters({ ...filters, is_active: e.target.value })}
-            >
-              <option value="">All Status</option>
-              <option value="true">Active</option>
-              <option value="false">Inactive</option>
-            </select>
-            <select
+              options={[
+                { id: '', name: 'All Status' },
+                { id: 'true', name: 'Active' },
+                { id: 'false', name: 'Inactive' }
+              ]}
+              placeholder="All Status"
+            />
+            <SearchableSelect
               value={filters.supplier_type}
               onChange={(e) => setFilters({ ...filters, supplier_type: e.target.value })}
-            >
-              <option value="">All Types</option>
-              <option value="individual">Individual</option>
-              <option value="business">Business</option>
-              <option value="manufacturer">Manufacturer</option>
-              <option value="distributor">Distributor</option>
-              <option value="wholesaler">Wholesaler</option>
-            </select>
-            <select
+              options={[
+                { id: '', name: 'All Types' },
+                { id: 'individual', name: 'Individual' },
+                { id: 'business', name: 'Business' },
+                { id: 'manufacturer', name: 'Manufacturer' },
+                { id: 'distributor', name: 'Distributor' },
+                { id: 'wholesaler', name: 'Wholesaler' }
+              ]}
+              placeholder="All Types"
+            />
+            <SearchableSelect
               value={filters.is_preferred}
               onChange={(e) => setFilters({ ...filters, is_preferred: e.target.value })}
-            >
-              <option value="">All Suppliers</option>
-              <option value="true">Preferred Only</option>
-            </select>
+              options={[
+                { id: '', name: 'All Suppliers' },
+                { id: 'true', name: 'Preferred Only' }
+              ]}
+              placeholder="All Suppliers"
+            />
           </div>
         </div>
 

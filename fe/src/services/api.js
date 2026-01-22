@@ -342,6 +342,7 @@ export const inventoryAPI = {
   adjust: (data) => api.post('/inventory/adjust/', data),
   purchase: (data) => api.post('/inventory/purchase/', data),
   transfer: (data) => api.post('/inventory/transfer/', data),
+  undo: (id) => api.post(`/inventory/${id}/undo/`),
   bulkAdjust: (data) => api.post('/inventory/bulk_adjust/', data),
   lowStock: () => api.get('/inventory/low_stock/'),
   outOfStock: () => api.get('/inventory/out_of_stock/'),

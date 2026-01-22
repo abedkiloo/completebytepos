@@ -1,6 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
-from django.core.validators import MinValueValidator, EmailValidator
+from django.core.validators import MinValueValidator, MaxValueValidator, EmailValidator
 from products.models import Product, ProductVariant
 from decimal import Decimal
 import uuid
@@ -36,8 +36,11 @@ class Customer(models.Model):
         max_digits=10,
         decimal_places=2,
         default=Decimal('0.00'),
-        validators=[MinValueValidator(Decimal('0.00'))],
-        help_text='Customer wallet balance (credit available for future purchases)'
+        validators=[
+            MinValueValidator(Decimal('-99999999.99')),  # Allow negative for debt, but limit to reasonable range (8 digits + 2 decimals = 10 total)
+            MaxValueValidator(Decimal('99999999.99'))   # Enforce upper bound to match max_digits=10 constraint (8 digits + 2 decimals = 10 total)
+        ],
+        help_text='Customer wallet balance (positive = credit, negative = debt/amount owed). Range: -99,999,999.99 to 99,999,999.99'
     )
     created_by = models.ForeignKey(
         User,

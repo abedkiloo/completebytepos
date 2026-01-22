@@ -67,6 +67,8 @@
   border: 1px solid #d1d5db;
   border-radius: 0.5rem;
   font-size: 0.875rem;
+  position: relative;
+  z-index: 2;
 }
 
 .search-icon {
@@ -75,6 +77,8 @@
   top: 50%;
   transform: translateY(-50%);
   color: #6b7280;
+  pointer-events: none;
+  z-index: 1;
 }
 
 .status-filter {

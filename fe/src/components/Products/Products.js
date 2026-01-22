@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { productsAPI, categoriesAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
 import Layout from '../Layout/Layout';
+import SearchableSelect from '../Shared/SearchableSelect';
 import ProductForm from './ProductForm';
 import ProductStatistics from './ProductStatistics';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
@@ -496,25 +497,31 @@ const Products = () => {
           onChange={(e) => setFilters({ ...filters, search: e.target.value })}
           className="filter-input"
         />
-        <select
-          value={filters.category}
+        <SearchableSelect
+          value={filters.category || ''}
           onChange={(e) => setFilters({ ...filters, category: e.target.value })}
+          options={[
+            { id: '', name: 'All Categories' },
+            ...(Array.isArray(categories) ? categories.map(cat => ({ id: cat.id, name: cat.name })) : [])
+          ]}
+          placeholder="Filter by category..."
+          name="category"
+          searchable={true}
           className="filter-select"
-        >
-          <option value="">All Categories</option>
-          {Array.isArray(categories) && categories.map(cat => (
-            <option key={cat.id} value={cat.id}>{cat.name}</option>
-          ))}
-        </select>
-        <select
-          value={filters.is_active}
+        />
+        <SearchableSelect
+          value={filters.is_active || ''}
           onChange={(e) => setFilters({ ...filters, is_active: e.target.value })}
+          options={[
+            { id: '', name: 'All Status' },
+            { id: 'true', name: 'Active' },
+            { id: 'false', name: 'Inactive' },
+          ]}
+          placeholder="Filter by status..."
+          name="is_active"
+          searchable={true}
           className="filter-select"
-        >
-          <option value="">All Status</option>
-          <option value="true">Active</option>
-          <option value="false">Inactive</option>
-        </select>
+        />
         <label className="filter-checkbox">
           <input
             type="checkbox"

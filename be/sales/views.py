@@ -1,4 +1,4 @@
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db import transaction
@@ -176,39 +176,73 @@ class SaleViewSet(viewsets.ModelViewSet):
             
             logger.info(f"Used {wallet_amount_used} from customer {customer.id} wallet. Remaining balance: {customer.wallet_balance}")
         
-        # For POS sales, validate payment amount and handle overpayment
+        # For POS and normal sales, validate payment amount and handle overpayment/underpayment
         change = Decimal('0')
-        if sale_type == 'pos':
+        allow_partial = serializer.validated_data.get('allow_partial_payment', False)
+        pending_debt_transaction = None  # Will be set if partial payment creates debt
+        
+        if sale_type in ['pos', 'normal']:
             # Total payment = amount_paid + wallet_amount_used
             total_payment = amount_paid + wallet_amount_used
             change = total_payment - total
             
+            # If underpayment (change < 0), handle based on allow_partial_payment flag
             if change < 0:
-                return Response(
-                    {'error': f'Total payment ({total_payment}) is less than total ({total}). Amount paid: {amount_paid}, Wallet used: {wallet_amount_used}'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # If customer overpays (change > 0), add excess to wallet
-            if customer and change > 0:
-                customer.wallet_balance += change
+                if not allow_partial:
+                    return Response(
+                        {'error': f'Total payment ({total_payment}) is less than total ({total}). Amount paid: {amount_paid}, Wallet used: {wallet_amount_used}. Please select a customer and allow partial payment to proceed.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # Customer must be selected for partial payment
+                if not customer:
+                    return Response(
+                        {'error': 'Customer must be selected to allow partial payment'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # Add the unpaid amount (debt) to customer's negative wallet balance
+                debt_amount = abs(change)  # Make it positive for clarity
+                customer.wallet_balance -= debt_amount  # Subtract to make it negative
                 customer.save()
-                wallet_credit_added = change
                 
-                # Create wallet transaction record for credit
-                CustomerWalletTransaction.objects.create(
-                    customer=customer,
-                    transaction_type='credit',
-                    source_type='overpayment',
-                    amount=change,
-                    balance_after=customer.wallet_balance,
-                    reference='Sale pending',
-                    notes=f"Overpayment from sale added to wallet",
-                    created_by=request.user
-                )
+                # Note: Wallet transaction will be created after sale is created (see below)
+                # Store debt info for later wallet transaction creation
+                pending_debt_transaction = {
+                    'customer': customer,
+                    'transaction_type': 'debit',
+                    'source_type': 'debt',
+                    'amount': debt_amount,
+                    'balance_after': customer.wallet_balance,
+                    'notes': f"Unpaid balance from sale added to customer debt (wallet balance: {customer.wallet_balance})",
+                }
                 
-                logger.info(f"Added {change} to customer {customer.id} wallet from overpayment. New balance: {customer.wallet_balance}")
-                change = Decimal('0')  # Set change to 0 since it's now in wallet
+                logger.info(f"Added {debt_amount} debt to customer {customer.id} wallet. New balance: {customer.wallet_balance}")
+                change = Decimal('0')  # No change when underpaying
+            elif change > 0:
+                # If customer overpays (change > 0), handle based on excess_payment_choice
+                excess_choice = serializer.validated_data.get('excess_payment_choice', 'change')
+                if excess_choice == 'wallet' and customer:
+                    # Add excess to wallet
+                    customer.wallet_balance += change
+                    customer.save()
+                    wallet_credit_added = change
+                    
+                    # Create wallet transaction record for credit
+                    CustomerWalletTransaction.objects.create(
+                        customer=customer,
+                        transaction_type='credit',
+                        source_type='overpayment',
+                        amount=change,
+                        balance_after=customer.wallet_balance,
+                        reference='Sale pending',
+                        notes=f"Overpayment from sale added to wallet",
+                        created_by=request.user
+                    )
+                    
+                    logger.info(f"Added {change} to customer {customer.id} wallet from overpayment. New balance: {customer.wallet_balance}")
+                    change = Decimal('0')  # Set change to 0 since it's now in wallet
+                # If excess_choice == 'change', keep the change value (will be returned to customer)
         
         # Get current branch
         branch = None
@@ -263,6 +297,21 @@ class SaleViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # Create wallet transaction for debt (if partial payment was used)
+        # This must be done after sale is created so we can reference it
+        if pending_debt_transaction:
+            CustomerWalletTransaction.objects.create(
+                customer=pending_debt_transaction['customer'],
+                transaction_type=pending_debt_transaction['transaction_type'],
+                source_type=pending_debt_transaction['source_type'],
+                amount=pending_debt_transaction['amount'],
+                balance_after=pending_debt_transaction['balance_after'],
+                sale=sale,
+                reference=sale.sale_number,
+                notes=pending_debt_transaction['notes'],
+                created_by=request.user
+            )
+        
         # Handle wallet transactions (update sale references)
         if customer and wallet_amount_used > 0:
             wallet_debit = CustomerWalletTransaction.objects.filter(
@@ -291,6 +340,10 @@ class SaleViewSet(viewsets.ModelViewSet):
         sale.amount_paid = amount_paid + wallet_amount_used
         sale.change = max(change, 0)
         sale.save()
+        
+        # Note: Partial payment debt handling is already done above (lines 189-221) for both POS and normal sales
+        # The debt is subtracted from wallet balance and the transaction is created after sale creation
+        # No need to duplicate this logic here for normal sales
         
         # Create invoice for normal sales (always), optionally for POS sales
         invoice = None
@@ -462,6 +515,51 @@ class CustomerViewSet(viewsets.ModelViewSet):
         if self.action == 'list':
             return CustomerListSerializer
         return CustomerSerializer
+    
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        """Create a customer with proper error handling"""
+        try:
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            
+            # Set created_by if user is authenticated
+            customer = serializer.save()
+            if request.user and request.user.is_authenticated:
+                customer.created_by = request.user
+                customer.save()
+            
+            headers = self.get_success_headers(serializer.data)
+            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        except serializers.ValidationError:
+            # Re-raise validation errors so DRF can handle them properly
+            raise
+        except Exception as e:
+            logger.error(f"Error creating customer: {e}", exc_info=True)
+            return Response(
+                {'error': f'Failed to create customer: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        """Update a customer with proper error handling"""
+        try:
+            partial = kwargs.pop('partial', False)
+            instance = self.get_object()
+            serializer = self.get_serializer(instance, data=request.data, partial=partial)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data)
+        except serializers.ValidationError:
+            # Re-raise validation errors so DRF can handle them properly
+            raise
+        except Exception as e:
+            logger.error(f"Error updating customer: {e}", exc_info=True)
+            return Response(
+                {'error': f'Failed to update customer: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
     
     def get_queryset(self):
         queryset = Customer.objects.all().select_related('branch')

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { accountingAPI, bankAccountsAPI } from '../../services/api';
 import { formatCurrency, formatDate } from '../../utils/formatters';
+import SearchableSelect from '../Shared/SearchableSelect';
 import Layout from '../Layout/Layout';
 import './Accounting.css';
 
@@ -285,33 +286,29 @@ const Accounting = () => {
             {activeTab === 'general-ledger' && (
               <div className="filter-group">
                 <label>Account</label>
-                <select
+                <SearchableSelect
                   value={selectedAccount}
                   onChange={(e) => setSelectedAccount(e.target.value)}
-                >
-                  <option value="">Select Account</option>
-                  {accounts.map(account => (
-                    <option key={account.id} value={account.id}>
-                      {account.account_code} - {account.name}
-                    </option>
-                  ))}
-                </select>
+                  options={accounts.map(account => ({
+                    id: account.id,
+                    name: `${account.account_code} - ${account.name}`
+                  }))}
+                  placeholder="Select Account"
+                />
               </div>
             )}
             {activeTab === 'account-statement' && (
               <div className="filter-group">
                 <label>Account</label>
-                <select
+                <SearchableSelect
                   value={selectedAccount}
                   onChange={(e) => setSelectedAccount(e.target.value)}
-                >
-                  <option value="">Select Account</option>
-                  {accounts.map(account => (
-                    <option key={account.id} value={account.id}>
-                      {account.account_code} - {account.name}
-                    </option>
-                  ))}
-                </select>
+                  options={accounts.map(account => ({
+                    id: account.id,
+                    name: `${account.account_code} - ${account.name}`
+                  }))}
+                  placeholder="Select Account"
+                />
               </div>
             )}
           </div>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { inventoryAPI, productsAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
+import SearchableSelect from '../Shared/SearchableSelect';
 import '../../styles/slide-in-panel.css';
 import './Inventory.css';
 
@@ -31,12 +32,26 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
 
   const loadProducts = async () => {
     try {
-      const response = await productsAPI.list({ track_stock: 'true', is_active: 'true' });
+      const response = await productsAPI.list({ track_stock: 'true', is_active: 'true', page_size: 1000 });
       const productsData = response.data.results || response.data || [];
-      setProducts(productsData);
+      setProducts(Array.isArray(productsData) ? productsData : []);
     } catch (error) {
       console.error('Error loading products:', error);
     }
+  };
+
+  // Transform products for SearchableSelect component
+  const productOptions = products.map(prod => ({
+    id: prod.id,
+    name: `${prod.name}${prod.sku ? ` (${prod.sku})` : ''} - Current: ${prod.stock_quantity || 0}`,
+  }));
+
+  const handleProductChange = (e) => {
+    const productId = e.target.value;
+    setFormData(prev => ({
+      ...prev,
+      product_id: productId ? parseInt(productId) : ''
+    }));
   };
 
   const handleChange = (e) => {
@@ -83,19 +98,14 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
           {!product && (
             <div className="form-group">
               <label>Product *</label>
-              <select
+              <SearchableSelect
+                value={formData.product_id || ''}
+                onChange={handleProductChange}
+                options={productOptions}
+                placeholder="Search and select product..."
                 name="product_id"
-                value={formData.product_id}
-                onChange={handleChange}
-                required
-              >
-                <option value="">Select Product</option>
-                {products.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.sku}) - Current: {p.stock_quantity}
-                  </option>
-                ))}
-              </select>
+                searchable={true}
+              />
             </div>
           )}
 

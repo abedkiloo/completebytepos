@@ -48,6 +48,37 @@ const Invoices = () => {
     loadSales();
   }, [searchQuery, statusFilter]);
 
+  // Reload customers when modal opens to ensure we have the latest customers
+  useEffect(() => {
+    if (showModal) {
+      loadCustomers();
+    }
+  }, [showModal]);
+
+  // Refresh customers when window regains focus (in case user added a customer in another tab)
+  useEffect(() => {
+    if (!showModal) return;
+
+    const handleFocus = () => {
+      loadCustomers();
+    };
+
+    // Also refresh on visibility change (when tab becomes visible)
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        loadCustomers();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [showModal]);
+
   const loadInvoices = async () => {
     setLoading(true);
     try {
@@ -71,10 +102,14 @@ const Invoices = () => {
 
   const loadCustomers = async () => {
     try {
-      const response = await customersAPI.list({ is_active: 'true' });
-      setCustomers(response.data.results || response.data || []);
+      // Load all active customers - request a large page size to get all customers
+      // The API is paginated with PAGE_SIZE: 20, so we need to request more
+      const response = await customersAPI.list({ is_active: 'true', page_size: 1000 });
+      const customersData = response.data.results || response.data || [];
+      setCustomers(Array.isArray(customersData) ? customersData : []);
     } catch (error) {
       console.error('Error loading customers:', error);
+      toast.error('Failed to load customers');
     }
   };
 
@@ -87,7 +122,7 @@ const Invoices = () => {
     }
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     setSelectedInvoice(null);
     setFormData({
       customer_id: '',
@@ -103,10 +138,12 @@ const Invoices = () => {
       notes: '',
       status: 'draft',
     });
+    // Reload customers to include any newly created ones
+    await loadCustomers();
     setShowModal(true);
   };
 
-  const handleEdit = (invoice) => {
+  const handleEdit = async (invoice) => {
     setSelectedInvoice(invoice);
     
     // Format due_date to YYYY-MM-DD format if it exists
@@ -132,6 +169,8 @@ const Invoices = () => {
       notes: invoice.notes || '',
       status: invoice.status || 'draft',
     });
+    // Reload customers to include any newly created ones
+    await loadCustomers();
     setShowModal(true);
   };
 
@@ -312,19 +351,21 @@ const Invoices = () => {
             />
             <span className="search-icon">🔍</span>
           </div>
-          <select
+          <SearchableSelect
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             className="status-filter"
-          >
-            <option value="all">All Status</option>
-            <option value="draft">Draft</option>
-            <option value="sent">Sent</option>
-            <option value="partial">Partially Paid</option>
-            <option value="paid">Paid</option>
-            <option value="overdue">Overdue</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
+            options={[
+              { id: 'all', name: 'All Status' },
+              { id: 'draft', name: 'Draft' },
+              { id: 'sent', name: 'Sent' },
+              { id: 'partial', name: 'Partially Paid' },
+              { id: 'paid', name: 'Paid' },
+              { id: 'overdue', name: 'Overdue' },
+              { id: 'cancelled', name: 'Cancelled' }
+            ]}
+            placeholder="All Status"
+          />
         </div>
 
         {loading ? (
@@ -515,16 +556,18 @@ const Invoices = () => {
                 </div>
                 <div className="form-group">
                   <label>Status</label>
-                  <select
+                  <SearchableSelect
                     value={formData.status}
                     onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                  >
-                    <option value="draft">Draft</option>
-                    <option value="sent">Sent</option>
-                    <option value="partial">Partially Paid</option>
-                    <option value="paid">Paid</option>
-                    <option value="cancelled">Cancelled</option>
-                  </select>
+                    options={[
+                      { id: 'draft', name: 'Draft' },
+                      { id: 'sent', name: 'Sent' },
+                      { id: 'partial', name: 'Partially Paid' },
+                      { id: 'paid', name: 'Paid' },
+                      { id: 'cancelled', name: 'Cancelled' }
+                    ]}
+                    placeholder="Select Status"
+                  />
                 </div>
                 <div className="form-group">
                   <label>Notes</label>
@@ -578,18 +621,19 @@ const Invoices = () => {
                 <div className="form-row">
                   <div className="form-group">
                     <label>Payment Method *</label>
-                    <select
+                    <SearchableSelect
                       value={paymentData.payment_method}
                       onChange={(e) => setPaymentData({ ...paymentData, payment_method: e.target.value })}
-                      required
-                    >
-                      <option value="cash">Cash</option>
-                      <option value="mpesa">M-PESA</option>
-                      <option value="bank_transfer">Bank Transfer</option>
-                      <option value="cheque">Cheque</option>
-                      <option value="card">Card</option>
-                      <option value="other">Other</option>
-                    </select>
+                      options={[
+                        { id: 'cash', name: 'Cash' },
+                        { id: 'mpesa', name: 'M-PESA' },
+                        { id: 'bank_transfer', name: 'Bank Transfer' },
+                        { id: 'cheque', name: 'Cheque' },
+                        { id: 'card', name: 'Card' },
+                        { id: 'other', name: 'Other' }
+                      ]}
+                      placeholder="Select Payment Method"
+                    />
                   </div>
                   <div className="form-group">
                     <label>Payment Date *</label>

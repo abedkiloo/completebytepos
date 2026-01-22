@@ -81,7 +81,16 @@ class StockMovement(models.Model):
         if self.unit_cost and not self.total_cost:
             self.total_cost = abs(self.quantity) * self.unit_cost
         
+        # Check if we're only updating specific fields (e.g., notes, reference) to avoid stock recalculation
+        update_fields = kwargs.get('update_fields')
+        # Skip stock update if only updating non-stock-affecting fields
+        skip_stock_update = update_fields and len(update_fields) == 1 and update_fields[0] in ['notes', 'reference']
+        
         super().save(*args, **kwargs)
+        
+        # Skip stock update if we're only updating notes or reference (e.g., when marking as undone or updating reference)
+        if skip_stock_update:
+            return
         
         # Update stock - variant stock if variant exists, otherwise product stock
         if self.variant:
@@ -94,6 +103,9 @@ class StockMovement(models.Model):
             elif self.movement_type in ['purchase', 'return']:
                 self.variant.stock_quantity += abs(self.quantity)
             elif self.movement_type == 'adjustment':
+                self.variant.stock_quantity = max(0, self.variant.stock_quantity + self.quantity)
+            elif self.movement_type == 'transfer':
+                # For transfers, use the quantity directly (positive adds, negative subtracts)
                 self.variant.stock_quantity = max(0, self.variant.stock_quantity + self.quantity)
             else:
                 self.variant.stock_quantity = max(0, self.variant.stock_quantity - abs(self.quantity))
@@ -117,6 +129,9 @@ class StockMovement(models.Model):
             elif self.movement_type in ['purchase', 'return']:
                 self.product.stock_quantity += abs(self.quantity)
             elif self.movement_type == 'adjustment':
+                self.product.stock_quantity = max(0, self.product.stock_quantity + self.quantity)
+            elif self.movement_type == 'transfer':
+                # For transfers, use the quantity directly (positive adds, negative subtracts)
                 self.product.stock_quantity = max(0, self.product.stock_quantity + self.quantity)
             else:
                 self.product.stock_quantity = max(0, self.product.stock_quantity - abs(self.quantity))

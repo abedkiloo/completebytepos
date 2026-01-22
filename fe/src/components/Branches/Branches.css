@@ -73,6 +73,8 @@
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   font-size: 0.9rem;
+  position: relative;
+  z-index: 2;
 }
 
 .search-icon {
@@ -81,6 +83,8 @@
   top: 50%;
   transform: translateY(-50%);
   color: #6b7280;
+  pointer-events: none;
+  z-index: 1;
 }
 
 .branches-table-container {

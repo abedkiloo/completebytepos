@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { expensesAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
+import SearchableSelect from '../Shared/SearchableSelect';
 import './Expenses.css';
 
 const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }) => {
@@ -147,29 +148,18 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
             <div className="form-group">
               <label>Category *</label>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
-                <select
-                  name="category"
-                  value={formData.category}
-                  onChange={handleChange}
-                  className={errors.category ? 'error' : ''}
-                  style={{ flex: 1 }}
-                >
-                  <option value="">Select Category</option>
-                  {categories.map(cat => (
-                    <option key={cat.id} value={cat.id}>{cat.name}</option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setShowCategoryForm(!showCategoryForm);
-                  }}
-                  className="btn-add-category"
-                  title="Add New Category"
-                >
-                  + Add
-                </button>
+                <div style={{ flex: 1 }}>
+                  <SearchableSelect
+                    name="category"
+                    value={formData.category}
+                    onChange={handleChange}
+                    options={categories.map(cat => ({ id: cat.id, name: cat.name }))}
+                    placeholder="Select Category"
+                    className={errors.category ? 'error' : ''}
+                    onAddNew={() => setShowCategoryForm(!showCategoryForm)}
+                    addNewLabel="+ Add Category"
+                  />
+                </div>
               </div>
               {errors.category && <span className="error-text">{errors.category}</span>}
               {categories.length === 0 && (
@@ -251,18 +241,19 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
 
             <div className="form-group">
               <label>Payment Method *</label>
-              <select
+              <SearchableSelect
                 name="payment_method"
                 value={formData.payment_method}
                 onChange={handleChange}
-                required
-              >
-                <option value="cash">Cash</option>
-                <option value="mpesa">M-PESA</option>
-                <option value="bank">Bank Transfer</option>
-                <option value="card">Card</option>
-                <option value="other">Other</option>
-              </select>
+                options={[
+                  { id: 'cash', name: 'Cash' },
+                  { id: 'mpesa', name: 'M-PESA' },
+                  { id: 'bank', name: 'Bank Transfer' },
+                  { id: 'card', name: 'Card' },
+                  { id: 'other', name: 'Other' }
+                ]}
+                placeholder="Select Payment Method"
+              />
             </div>
 
             <div className="form-group full-width">
@@ -303,16 +294,18 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
             {expense && (
               <div className="form-group">
                 <label>Status</label>
-                <select
+                <SearchableSelect
                   name="status"
                   value={formData.status}
                   onChange={handleChange}
-                >
-                  <option value="pending">Pending</option>
-                  <option value="approved">Approved</option>
-                  <option value="rejected">Rejected</option>
-                  <option value="paid">Paid</option>
-                </select>
+                  options={[
+                    { id: 'pending', name: 'Pending' },
+                    { id: 'approved', name: 'Approved' },
+                    { id: 'rejected', name: 'Rejected' },
+                    { id: 'paid', name: 'Paid' }
+                  ]}
+                  placeholder="Select Status"
+                />
               </div>
             )}
 

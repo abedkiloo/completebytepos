@@ -1,6 +1,7 @@
 """
 Inventory service layer - handles all inventory/stock movement business logic
 """
+import uuid
 from typing import Optional, List, Dict, Any
 from decimal import Decimal
 from django.db import transaction
@@ -238,6 +239,11 @@ class StockMovementService(BaseService):
         unit_cost = variant.cost if variant and variant.cost else product.cost
         total_cost = unit_cost * quantity if unit_cost else None
         
+        # Generate unique transfer ID to pair the two movements
+        # This allows undo logic to find paired movements even with custom notes
+        transfer_id = uuid.uuid4().hex[:8].upper()
+        shared_reference = f'TRF-{transfer_id}'
+        
         # Create outbound movement (from source)
         outbound = StockMovement.objects.create(
             branch=from_branch,
@@ -247,7 +253,7 @@ class StockMovementService(BaseService):
             quantity=-quantity,
             unit_cost=unit_cost,
             total_cost=total_cost,
-            reference=f'TRF-OUT-{product.sku}',
+            reference=f'{shared_reference}-OUT',
             notes=notes or f'Transfer out to {to_branch.name}',
             user=user
         )
@@ -261,19 +267,14 @@ class StockMovementService(BaseService):
             quantity=quantity,
             unit_cost=unit_cost,
             total_cost=total_cost,
-            reference=f'TRF-IN-{product.sku}',
+            reference=f'{shared_reference}-IN',
             notes=notes or f'Transfer in from {from_branch.name}',
             user=user
         )
         
-        # Update stock quantities (global stock, not branch-specific in current model)
-        # Note: If branch-specific stock tracking is needed, this would need to be updated
-        if variant:
-            variant.stock_quantity -= quantity  # Net effect is 0, but we record both movements
-            variant.save()
-        else:
-            product.stock_quantity -= quantity
-            product.save()
+        # Note: Stock quantities are updated automatically by the StockMovement.save() method
+        # The outbound movement (negative quantity) reduces stock, and inbound (positive) increases it
+        # Net effect is 0 for global stock, but both movements are recorded for branch tracking
         
         return [outbound, inbound]
     

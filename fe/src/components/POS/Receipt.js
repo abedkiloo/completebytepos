@@ -33,10 +33,10 @@ const Receipt = ({ sale, onClose }) => {
             <style>
               @page {
                 size: auto;
-                margin: 10mm;
+                margin: 3mm;
               }
               body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+                font-family: 'Courier New', Courier, monospace;
                 margin: 0;
                 padding: 0;
                 background: white;
@@ -45,188 +45,169 @@ const Receipt = ({ sale, onClose }) => {
                 justify-content: center;
                 align-items: flex-start;
                 min-height: 100vh;
+                font-size: 0.75rem;
+                line-height: 1.2;
               }
               .receipt-wrapper {
                 width: 400px;
                 max-width: 400px;
-                padding: 1.5rem;
+                padding: 0.5rem;
                 margin: 0 auto;
+                line-height: 1.2;
               }
-              .receipt-header {
+              .receipt-cut-line {
                 text-align: center;
-                border-bottom: 2px dashed #e5e7eb;
-                padding-bottom: 1rem;
-                margin-bottom: 1rem;
-              }
-              .receipt-logo {
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                margin-bottom: 0.75rem;
-              }
-              .receipt-logo-img {
-                max-width: 180px;
-                height: auto;
-                max-height: 50px;
-              }
-              .receipt-title {
-                font-size: 1.5rem;
-                font-weight: bold;
-                color: #111827;
-                margin: 0 0 0.25rem 0;
-                text-transform: uppercase;
-              }
-              .receipt-subtitle {
-                font-size: 0.875rem;
-                color: #6b7280;
-                margin: 0 0 1rem 0;
-              }
-              .receipt-info {
-                text-align: left;
-                font-size: 0.75rem;
-                color: #374151;
-              }
-              .receipt-info p {
-                margin: 0.25rem 0;
-              }
-              .receipt-info strong {
-                color: #111827;
-              }
-              .receipt-items {
-                margin: 1rem 0;
-              }
-              .receipt-table {
-                width: 100%;
-                border-collapse: collapse;
-                font-size: 0.85rem;
-                table-layout: fixed;
-              }
-              .receipt-table thead {
-                border-bottom: 2px solid #e5e7eb;
-              }
-              .receipt-table th {
-                padding: 0.6rem 0.5rem;
-                text-align: left;
-                font-weight: 700;
-                color: #111827;
-                font-size: 0.75rem;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-              }
-              .receipt-table th:first-child {
-                width: 45%;
-                padding-left: 0;
-              }
-              .receipt-table th:nth-child(2) {
-                width: 12%;
-                text-align: center;
-              }
-              .receipt-table th:nth-child(3),
-              .receipt-table th:nth-child(4) {
-                width: 21.5%;
-                text-align: right;
-                padding-right: 0;
-              }
-              .receipt-table td {
-                padding: 0.6rem 0.5rem;
-                color: #374151;
-                border-bottom: 1px dotted #e5e7eb;
-                vertical-align: top;
-                word-wrap: break-word;
-                overflow-wrap: break-word;
-              }
-              .receipt-table td:first-child {
-                padding-left: 0;
-              }
-              .receipt-table td:nth-child(2) {
-                text-align: center;
-              }
-              .receipt-table td:nth-child(3),
-              .receipt-table td:nth-child(4) {
-                text-align: right;
-                padding-right: 0;
-              }
-              .item-name {
-                font-weight: 500;
-                color: #111827;
-                font-size: 0.85rem;
-                line-height: 1.4;
-              }
-              .item-sku {
                 font-size: 0.7rem;
                 color: #6b7280;
-                font-weight: normal;
-                display: block;
-                margin-top: 0.2rem;
+                margin-bottom: 0.3rem;
+                padding-top: 0.2rem;
+              }
+              .receipt-company-name {
+                text-align: center;
+                font-size: 0.9rem;
+                font-weight: bold;
+                color: #111827;
+                margin-bottom: 0.3rem;
+              }
+              .receipt-separator {
+                text-align: center;
+                font-size: 0.7rem;
+                color: #111827;
+                margin: 0.2rem 0;
+                letter-spacing: 0.5px;
+              }
+              .receipt-transaction-details {
+                margin: 0.3rem 0;
+                font-size: 0.75rem;
+              }
+              .receipt-detail-row {
+                display: flex;
+                justify-content: space-between;
+                margin: 0.15rem 0;
+                color: #111827;
+              }
+              .receipt-detail-right {
+                margin-left: auto;
+              }
+              .receipt-items-header {
+                display: flex;
+                justify-content: space-between;
+                font-size: 0.75rem;
+                font-weight: bold;
+                margin: 0.2rem 0;
+                color: #111827;
+              }
+              .receipt-items-header-left {
+                text-align: left;
+              }
+              .receipt-items-header-right {
+                text-align: right;
+              }
+              .receipt-items {
+                margin: 0.2rem 0;
+              }
+              .receipt-item-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin: 0.15rem 0;
+                font-size: 0.75rem;
+                color: #111827;
+                white-space: nowrap;
+                overflow: hidden;
+              }
+              .receipt-item-name {
+                text-align: left;
+                flex: 1;
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                margin-right: 0.5rem;
+              }
+              .receipt-item-amount {
+                text-align: right;
+                flex-shrink: 0;
+                white-space: nowrap;
               }
               .receipt-summary {
-                margin-top: 1.25rem;
-                padding-top: 1rem;
-                border-top: 2px dashed #e5e7eb;
-                font-size: 0.9rem;
+                margin-top: 0.3rem;
+                padding-top: 0.2rem;
+                font-size: 0.75rem;
+                border-top: none;
               }
               .summary-row {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                padding: 0.55rem 0;
-                color: #374151;
-                line-height: 1.5;
-              }
-              .summary-row span:first-child {
-                font-weight: 500;
-              }
-              .summary-row span:last-child {
-                font-weight: 600;
-                text-align: right;
-                min-width: 120px;
-              }
-              .summary-row.discount {
-                color: #10b981;
+                padding: 0.15rem 0;
+                color: #111827;
+                line-height: 1.2;
+                font-size: 0.75rem;
               }
               .summary-row.total {
-                border-top: 2px solid #e5e7eb;
-                margin-top: 0.75rem;
-                padding-top: 0.85rem;
-                font-size: 1.05rem;
+                font-size: 0.75rem;
                 color: #111827;
+                padding-top: 0.2rem;
+                border-top: none;
+                margin-top: 0.2rem;
+                font-weight: bold;
               }
               .summary-row.total span {
-                font-weight: 700;
-                font-size: 1.1rem;
+                font-weight: bold;
+                font-size: 0.75rem;
               }
-              .summary-row.change {
-                color: #667eea;
-                font-weight: 600;
-                font-size: 1rem;
-                margin-top: 0.5rem;
+              .summary-row.discount {
+                color: #111827;
+                font-weight: normal;
               }
-              .summary-row.balance-due {
-                color: #ef4444;
-                font-weight: 600;
+              .receipt-vat-header {
+                display: flex;
+                justify-content: space-between;
+                font-size: 0.7rem;
+                font-weight: bold;
+                margin: 0.2rem 0;
+                color: #111827;
+                padding: 0.1rem 0;
               }
-              .payment-method {
-                text-transform: uppercase;
-                font-weight: 600;
-                color: #667eea;
-                letter-spacing: 0.5px;
+              .receipt-vat-row {
+                display: flex;
+                justify-content: space-between;
+                font-size: 0.7rem;
+                color: #111827;
+                margin: 0.15rem 0;
+              }
+              .vat-col {
+                flex: 1;
+                text-align: left;
+              }
+              .vat-col:first-child {
+                flex: 0.5;
               }
               .receipt-footer {
-                text-align: center;
-                margin-top: 1.5rem;
-                padding-top: 1rem;
-                border-top: 2px dashed #e5e7eb;
+                text-align: left;
+                margin-top: 0.3rem;
+                padding-top: 0.2rem;
+                font-size: 0.75rem;
+                color: #111827;
+                border-top: none;
               }
               .thank-you {
-                font-size: 1rem;
-                font-weight: 600;
+                font-size: 0.75rem;
+                font-weight: normal;
                 color: #111827;
-                margin: 0.5rem 0;
+                margin: 0.3rem 0;
+                text-align: left;
               }
-              .footer-text {
-                font-size: 0.875rem;
-                color: #6b7280;
-                margin: 0.25rem 0;
+              .receipt-identifiers {
+                text-align: center;
+                margin-top: 0.3rem;
+                font-size: 0.7rem;
+                color: #111827;
+              }
+              .receipt-id-line {
+                margin: 0.1rem 0;
+                font-family: 'Courier New', Courier, monospace;
               }
             </style>
           </head>
@@ -263,124 +244,132 @@ const Receipt = ({ sale, onClose }) => {
       </div>
       
       <div className="receipt-content" id="receipt-content">
-        {/* Receipt Header */}
-        <div className="receipt-header">
-          <div className="receipt-logo">
-            <img src="/logo.svg" alt="CompleteByte POS" className="receipt-logo-img" />
-          </div>
-          <p className="receipt-location">HQ</p>
-          <p className="receipt-address">Nairobi, Kenya</p>
+        {/* Cut Line Indicator */}
+        <div className="receipt-cut-line">---- CUT (100%) ----</div>
+        
+        {/* Company Name */}
+        <div className="receipt-company-name">
+          {sale.branch?.tenant?.name || sale.branch?.name || 'CompleteByte POS'}
         </div>
-
+        
+        {/* Dashed Separator */}
+        <div className="receipt-separator">------------</div>
+        
+        {/* Transaction Details */}
+        <div className="receipt-transaction-details">
+          <div className="receipt-detail-row">
+            <span>Slip: {sale.sale_number || 'N/A'}</span>
+          </div>
+          <div className="receipt-detail-row">
+            <span>Staff: {sale.cashier_name || 'N/A'}</span>
+            <span className="receipt-detail-right">Trans: {sale.id || (sale.sale_number ? sale.sale_number.split('-').pop() : 'N/A')}</span>
+          </div>
+          <div className="receipt-detail-row">
+            <span>Date: {(() => {
+              const d = new Date(sale.created_at);
+              const day = String(d.getDate()).padStart(2, '0');
+              const month = String(d.getMonth() + 1).padStart(2, '0');
+              const year = String(d.getFullYear()).slice(-2);
+              const hours = d.getHours();
+              const minutes = String(d.getMinutes()).padStart(2, '0');
+              return `${day}/${month}/${year} ${hours}:${minutes}`;
+            })()}</span>
+          </div>
+        </div>
+        
+        {/* Dashed Separator */}
+        <div className="receipt-separator">------------</div>
+        
+        {/* Itemized List Header */}
+        <div className="receipt-items-header">
+          <span className="receipt-items-header-left">Description</span>
+          <span className="receipt-items-header-right">Amount</span>
+        </div>
+        
+        {/* Dashed Separator */}
+        <div className="receipt-separator">------------</div>
+        
         {/* Receipt Items */}
         <div className="receipt-items">
-          <table className="receipt-table">
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th className="text-right">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sale.items && sale.items.map((item, index) => {
-                // Format item name with quantity and price: "Product Name (Qty@Price)"
-                const itemName = item.product_name || item.product?.name || 'N/A';
-                const variantInfo = [];
-                if (item.size_name) variantInfo.push(item.size_name);
-                if (item.color_name) variantInfo.push(item.color_name);
-                const variantStr = variantInfo.length > 0 ? ` ${variantInfo.join('/')}` : '';
-                const itemDisplay = `${itemName}${variantStr} (${item.quantity}@${parseFloat(item.unit_price).toFixed(2)})`;
-                
-                return (
-                  <tr key={item.id || index}>
-                    <td className="item-name">{itemDisplay}</td>
-                    <td className="text-right">{parseFloat(item.subtotal).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          {sale.items && sale.items.map((item, index) => {
+            const itemName = item.product_name || item.product?.name || 'N/A';
+            const variantInfo = [];
+            if (item.size_name) variantInfo.push(item.size_name);
+            if (item.color_name) variantInfo.push(item.color_name);
+            const variantStr = variantInfo.length > 0 ? ` ${variantInfo.join(' ')}` : '';
+            const itemDisplay = `${itemName}${variantStr} pcs`;
+            const amount = parseFloat(item.subtotal).toFixed(2);
+            
+            return (
+              <div key={item.id || index} className="receipt-item-row">
+                <span className="receipt-item-name">{itemDisplay}</span>
+                <span className="receipt-item-amount">{amount} C</span>
+              </div>
+            );
+          })}
         </div>
-
+        
+        {/* Dashed Separator */}
+        <div className="receipt-separator">------------</div>
+        
         {/* Receipt Summary */}
         <div className="receipt-summary">
           <div className="summary-row">
-            <span>Subtotal</span>
-            <span>{parseFloat(sale.subtotal).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span>Subtotal LCY</span>
+            <span>{parseFloat(sale.subtotal).toFixed(2)}</span>
           </div>
           {sale.discount_amount > 0 && (
             <div className="summary-row discount">
-              <span>Discount</span>
-              <span>-{parseFloat(sale.discount_amount).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            </div>
-          )}
-          {sale.tax_amount > 0 && (
-            <div className="summary-row">
-              <span>Tax</span>
-              <span>{parseFloat(sale.tax_amount).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <span>Discount - {sale.discount_amount > 0 && sale.subtotal > 0 ? Math.round((sale.discount_amount / sale.subtotal) * 100) : 0}%</span>
+              <span>-{parseFloat(sale.discount_amount).toFixed(2)}</span>
             </div>
           )}
           <div className="summary-row total">
-            <span>Total</span>
-            <span>Ksh{formatCurrency(sale.total).replace('KES', '').trim()}</span>
+            <span>Total LCY</span>
+            <span>{parseFloat(sale.total).toFixed(2)}</span>
           </div>
           {sale.amount_paid > 0 && (
             <div className="summary-row">
-              <span>Amount Paid</span>
-              <span>Ksh{parseFloat(sale.amount_paid).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            </div>
-          )}
-          {sale.change > 0 && (
-            <div className="summary-row change">
-              <span>Change</span>
-              <span>Ksh{parseFloat(sale.change).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            </div>
-          )}
-          {(!sale.change || sale.change === 0) && sale.amount_paid < sale.total && (
-            <div className="summary-row balance-due">
-              <span>Balance Due</span>
-              <span>Ksh{parseFloat(sale.total - (sale.amount_paid || 0)).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <span>Cash</span>
+              <span>-{parseFloat(sale.amount_paid).toFixed(2)}</span>
             </div>
           )}
         </div>
-
-        {/* Shipping Information */}
-        {(sale.shipping_address || sale.shipping_location) && (
-          <div className="receipt-shipping" style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px dashed #e5e7eb' }}>
-            <p style={{ fontWeight: 600, marginBottom: '0.5rem', fontSize: '0.9rem' }}>Shipping Information</p>
-            {sale.delivery_method && (
-              <p style={{ fontSize: '0.85rem', margin: '0.25rem 0' }}>
-                <strong>Method:</strong> {sale.delivery_method.charAt(0).toUpperCase() + sale.delivery_method.slice(1)}
-              </p>
-            )}
-            {sale.shipping_address && (
-              <p style={{ fontSize: '0.85rem', margin: '0.25rem 0' }}>
-                <strong>Address:</strong> {sale.shipping_address}
-              </p>
-            )}
-            {sale.shipping_location && (
-              <p style={{ fontSize: '0.85rem', margin: '0.25rem 0' }}>
-                <strong>Location:</strong> {sale.shipping_location}
-              </p>
-            )}
-            {sale.delivery_cost > 0 && (
-              <p style={{ fontSize: '0.85rem', margin: '0.25rem 0' }}>
-                <strong>Delivery Cost:</strong> {formatCurrency(sale.delivery_cost)}
-              </p>
-            )}
-          </div>
+        
+        {/* Dashed Separator */}
+        <div className="receipt-separator">------------</div>
+        
+        {/* VAT Breakdown */}
+        {sale.tax_amount > 0 && (
+          <>
+            <div className="receipt-vat-header">
+              <span className="vat-col">VAT%</span>
+              <span className="vat-col">Net.Amt</span>
+              <span className="vat-col">VAT</span>
+              <span className="vat-col">Amount</span>
+            </div>
+            <div className="receipt-vat-row">
+              <span className="vat-col">C</span>
+              <span className="vat-col">{(() => {
+                const netAmount = parseFloat(sale.total) - parseFloat(sale.tax_amount);
+                const taxRate = netAmount > 0 ? Math.round((parseFloat(sale.tax_amount) / netAmount) * 100) : 0;
+                return taxRate;
+              })()}</span>
+              <span className="vat-col">{(parseFloat(sale.total) - parseFloat(sale.tax_amount)).toFixed(2)}</span>
+              <span className="vat-col">{parseFloat(sale.tax_amount).toFixed(2)}</span>
+              <span className="vat-col">{parseFloat(sale.total).toFixed(2)}</span>
+            </div>
+            <div className="receipt-separator">------------</div>
+          </>
         )}
 
         {/* Receipt Footer */}
         <div className="receipt-footer">
-          {sale.cashier_name && (
-            <p className="footer-info">Served by: {sale.cashier_name}</p>
-          )}
-          <p className="footer-info">Sale#: {sale.sale_number}</p>
-          <p className="footer-info">Date: {formatDateTime(sale.created_at)}</p>
-          <p className="thank-you">Thanks! See you soon.</p>
-          <p className="footer-powered">Powered by CompleteByte POS</p>
-          <p className="footer-contact">Contact us: +254 700 000 000</p>
+          <p className="thank-you">Welcome again</p>
+          <div className="receipt-identifiers">
+            <div className="receipt-id-line">#{sale.id || sale.sale_number?.replace(/[^0-9]/g, '') || 'N/A'}</div>
+            <div className="receipt-id-line">{`{${sale.sale_number || 'N/A'}`}</div>
+          </div>
         </div>
       </div>
     </div>

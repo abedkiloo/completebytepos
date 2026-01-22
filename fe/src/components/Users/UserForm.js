@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { usersAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
+import SearchableSelect from '../Shared/SearchableSelect';
 import '../../styles/slide-in-panel.css';
 
 const UserForm = ({ user, roles, onClose }) => {
@@ -173,32 +174,32 @@ const UserForm = ({ user, roles, onClose }) => {
           <div className="form-row">
             <div className="form-group">
               <label htmlFor="role">Default Role</label>
-              <select
-                id="role"
+              <SearchableSelect
                 name="role"
                 value={formData.role}
                 onChange={handleChange}
-              >
-                <option value="cashier">Cashier</option>
-                <option value="manager">Manager</option>
-                <option value="admin">Admin</option>
-                <option value="super_admin">Super Admin</option>
-              </select>
+                options={[
+                  { id: 'cashier', name: 'Cashier' },
+                  { id: 'manager', name: 'Manager' },
+                  { id: 'admin', name: 'Admin' },
+                  { id: 'super_admin', name: 'Super Admin' }
+                ]}
+                placeholder="Select Default Role"
+              />
             </div>
 
             <div className="form-group">
               <label htmlFor="custom_role_id">Custom Role</label>
-              <select
-                id="custom_role_id"
+              <SearchableSelect
                 name="custom_role_id"
                 value={formData.custom_role_id || ''}
                 onChange={handleChange}
-              >
-                <option value="">None</option>
-                {roles.map(role => (
-                  <option key={role.id} value={role.id}>{role.name}</option>
-                ))}
-              </select>
+                options={[
+                  { id: '', name: 'None' },
+                  ...roles.map(role => ({ id: role.id, name: role.name }))
+                ]}
+                placeholder="None"
+              />
             </div>
           </div>
 

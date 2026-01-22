@@ -44,6 +44,8 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
   const [showSupplierForm, setShowSupplierForm] = useState(false);
   const [allCategories, setAllCategories] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [sizeSearch, setSizeSearch] = useState('');
+  const [colorSearch, setColorSearch] = useState('');
 
   useEffect(() => {
     // Load sizes and colors
@@ -485,6 +487,13 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
             <div className="form-row">
               <div className="form-group">
                 <label>Available Sizes</label>
+                <input
+                  type="text"
+                  placeholder="Search sizes..."
+                  value={sizeSearch}
+                  onChange={(e) => setSizeSearch(e.target.value)}
+                  style={{ marginBottom: '0.5rem', padding: '0.5rem', width: '100%', border: '1px solid #e5e7eb', borderRadius: '4px' }}
+                />
                 <select
                   name="available_sizes"
                   multiple
@@ -493,11 +502,17 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
                     const selected = Array.from(e.target.selectedOptions, option => parseInt(option.value));
                     setFormData(prev => ({ ...prev, available_sizes: selected }));
                   }}
-                  style={{ minHeight: '100px' }}
+                  style={{ minHeight: '100px', width: '100%' }}
                 >
-                  {sizes.map(size => (
-                    <option key={size.id} value={String(size.id)}>{size.name} ({size.code})</option>
-                  ))}
+                  {sizes
+                    .filter(size => 
+                      !sizeSearch || 
+                      size.name.toLowerCase().includes(sizeSearch.toLowerCase()) ||
+                      size.code.toLowerCase().includes(sizeSearch.toLowerCase())
+                    )
+                    .map(size => (
+                      <option key={size.id} value={String(size.id)}>{size.name} ({size.code})</option>
+                    ))}
                 </select>
                 <small>
                   {Array.isArray(formData.available_sizes) && formData.available_sizes.length > 0 
@@ -511,6 +526,13 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
 
               <div className="form-group">
                 <label>Available Colors</label>
+                <input
+                  type="text"
+                  placeholder="Search colors..."
+                  value={colorSearch}
+                  onChange={(e) => setColorSearch(e.target.value)}
+                  style={{ marginBottom: '0.5rem', padding: '0.5rem', width: '100%', border: '1px solid #e5e7eb', borderRadius: '4px' }}
+                />
                 <select
                   name="available_colors"
                   multiple
@@ -519,13 +541,19 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
                     const selected = Array.from(e.target.selectedOptions, option => parseInt(option.value));
                     setFormData(prev => ({ ...prev, available_colors: selected }));
                   }}
-                  style={{ minHeight: '100px' }}
+                  style={{ minHeight: '100px', width: '100%' }}
                 >
-                  {colors.map(color => (
-                    <option key={color.id} value={String(color.id)}>
-                      {color.name}{color.hex_code ? ` (${color.hex_code})` : ''}
-                    </option>
-                  ))}
+                  {colors
+                    .filter(color => 
+                      !colorSearch || 
+                      color.name.toLowerCase().includes(colorSearch.toLowerCase()) ||
+                      (color.hex_code && color.hex_code.toLowerCase().includes(colorSearch.toLowerCase()))
+                    )
+                    .map(color => (
+                      <option key={color.id} value={String(color.id)}>
+                        {color.name}{color.hex_code ? ` (${color.hex_code})` : ''}
+                      </option>
+                    ))}
                 </select>
                 <small>
                   {Array.isArray(formData.available_colors) && formData.available_colors.length > 0 
@@ -604,21 +632,24 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
 
             <div className="form-group">
               <label>Unit</label>
-              <select
+              <SearchableSelect
                 name="unit"
                 value={formData.unit}
                 onChange={handleChange}
-              >
-                <option value="piece">Piece</option>
-                <option value="kg">Kilogram</option>
-                <option value="g">Gram</option>
-                <option value="l">Liter</option>
-                <option value="ml">Milliliter</option>
-                <option value="box">Box</option>
-                <option value="pack">Pack</option>
-                <option value="bottle">Bottle</option>
-                <option value="can">Can</option>
-              </select>
+                options={[
+                  { id: 'piece', name: 'Piece' },
+                  { id: 'kg', name: 'Kilogram' },
+                  { id: 'g', name: 'Gram' },
+                  { id: 'l', name: 'Liter' },
+                  { id: 'ml', name: 'Milliliter' },
+                  { id: 'box', name: 'Box' },
+                  { id: 'pack', name: 'Pack' },
+                  { id: 'bottle', name: 'Bottle' },
+                  { id: 'can', name: 'Can' },
+                ]}
+                placeholder="Select unit..."
+                searchable={true}
+              />
             </div>
           </div>
 

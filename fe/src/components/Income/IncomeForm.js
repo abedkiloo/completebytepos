@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { incomeAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
+import SearchableSelect from '../Shared/SearchableSelect';
 import '../../styles/slide-in-panel.css';
 import './Income.css';
 
@@ -107,17 +108,14 @@ const IncomeForm = ({ income, categories, onClose, onSave }) => {
           <div className="form-grid">
             <div className="form-group">
               <label>Category *</label>
-              <select
+              <SearchableSelect
                 name="category"
                 value={formData.category}
                 onChange={handleChange}
+                options={categories.map(cat => ({ id: cat.id, name: cat.name }))}
+                placeholder="Select Category"
                 className={errors.category ? 'error' : ''}
-              >
-                <option value="">Select Category</option>
-                {categories.map(cat => (
-                  <option key={cat.id} value={cat.id}>{cat.name}</option>
-                ))}
-              </select>
+              />
               {errors.category && <span className="error-text">{errors.category}</span>}
             </div>
 
@@ -151,18 +149,19 @@ const IncomeForm = ({ income, categories, onClose, onSave }) => {
 
             <div className="form-group">
               <label>Payment Method *</label>
-              <select
+              <SearchableSelect
                 name="payment_method"
                 value={formData.payment_method}
                 onChange={handleChange}
-                required
-              >
-                <option value="cash">Cash</option>
-                <option value="mpesa">M-PESA</option>
-                <option value="bank">Bank Transfer</option>
-                <option value="card">Card</option>
-                <option value="other">Other</option>
-              </select>
+                options={[
+                  { id: 'cash', name: 'Cash' },
+                  { id: 'mpesa', name: 'M-PESA' },
+                  { id: 'bank', name: 'Bank Transfer' },
+                  { id: 'card', name: 'Card' },
+                  { id: 'other', name: 'Other' }
+                ]}
+                placeholder="Select Payment Method"
+              />
             </div>
 
             <div className="form-group full-width">
@@ -203,16 +202,18 @@ const IncomeForm = ({ income, categories, onClose, onSave }) => {
             {income && (
               <div className="form-group">
                 <label>Status</label>
-                <select
+                <SearchableSelect
                   name="status"
                   value={formData.status}
                   onChange={handleChange}
-                >
-                  <option value="pending">Pending</option>
-                  <option value="approved">Approved</option>
-                  <option value="rejected">Rejected</option>
-                  <option value="received">Received</option>
-                </select>
+                  options={[
+                    { id: 'pending', name: 'Pending' },
+                    { id: 'approved', name: 'Approved' },
+                    { id: 'rejected', name: 'Rejected' },
+                    { id: 'received', name: 'Received' }
+                  ]}
+                  placeholder="Select Status"
+                />
               </div>
             )}
 

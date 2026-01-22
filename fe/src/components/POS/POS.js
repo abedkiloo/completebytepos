@@ -6,6 +6,8 @@ import Receipt from './Receipt';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import VariantSelector from './VariantSelector';
 import BranchSelector from '../BranchSelector/BranchSelector';
+import SearchableSelect from '../Shared/SearchableSelect';
+import CustomerFormModal from '../Customers/CustomerFormModal';
 import { toast } from '../../utils/toast';
 import './POS.css';
 
@@ -48,6 +50,11 @@ const POS = () => {
   const [showConfirmClear, setShowConfirmClear] = useState(false);
   const [showVariantSelector, setShowVariantSelector] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [showCustomerFormModal, setShowCustomerFormModal] = useState(false);
+  const [showPartialPaymentConfirm, setShowPartialPaymentConfirm] = useState(false);
+  const [showExcessPaymentConfirm, setShowExcessPaymentConfirm] = useState(false);
+  const [pendingSaleData, setPendingSaleData] = useState(null);
+  const [excessPaymentChoice, setExcessPaymentChoice] = useState('change'); // 'change' or 'wallet'
 
   useEffect(() => {
     loadCategories();
@@ -88,11 +95,46 @@ const POS = () => {
 
   const loadCustomers = async () => {
     try {
-      const response = await customersAPI.list({ is_active: true });
+      const response = await customersAPI.list({ is_active: true, page_size: 1000 });
       const customersData = response.data.results || response.data || [];
-      setCustomers(Array.isArray(customersData) ? customersData : []);
+      const customersList = Array.isArray(customersData) ? customersData : [];
+      setCustomers(customersList);
+      
+      // Set default customer to "Walk-in" if not already set
+      if (!selectedCustomer) {
+        // Try to find a walk-in customer (case-insensitive search)
+        const walkInCustomer = customersList.find(c => 
+          c.name && (c.name.toLowerCase().includes('walk-in') || c.name.toLowerCase().includes('walkin'))
+        );
+        
+        if (walkInCustomer) {
+          setSelectedCustomer(walkInCustomer);
+        } else {
+          // Create a virtual walk-in customer object
+          const virtualWalkIn = {
+            id: 'walk-in',
+            name: 'Walk-in',
+            customer_code: 'WALK-IN',
+            is_active: true
+          };
+          // Add to customers list for display
+          setCustomers([virtualWalkIn, ...customersList]);
+          setSelectedCustomer(virtualWalkIn);
+        }
+      }
     } catch (error) {
       console.error('Error loading customers:', error);
+      // Set walk-in as default even on error
+      if (!selectedCustomer) {
+        const virtualWalkIn = {
+          id: 'walk-in',
+          name: 'Walk-in',
+          customer_code: 'WALK-IN',
+          is_active: true
+        };
+        setCustomers([virtualWalkIn]);
+        setSelectedCustomer(virtualWalkIn);
+      }
     }
   };
 
@@ -328,33 +370,42 @@ const POS = () => {
     return subtotal - discountAmount - coupon + taxAmount + shipping + deliveryCost + extraPayment + roundoffAmount;
   };
 
-  const handlePayment = async () => {
-    if (cart.length === 0) {
-      toast.warning('Cart is empty');
-      return;
-    }
-
-    const total = calculateTotal();
-    const received = parseFloat(receivedAmount) || 0;
-    
-    // Validate payment for cash/mpesa
-    if (paymentMethod === 'cash' || paymentMethod === 'mpesa') {
-      if (!receivedAmount || received <= 0) {
-        toast.warning('Please enter received amount');
-        return;
-      }
-      if (received < total) {
-        toast.warning('Received amount is less than total');
-        return;
-      }
-    }
-
+  const processSale = async (allowPartial = false, excessChoice = 'change') => {
     try {
       const subtotal = calculateSubtotal();
       const discountAmount = calculateDiscountAmount();
       const taxAmount = (subtotal - discountAmount) * (tax / 100);
       const extraPayment = hasExtraPayment ? parseFloat(extraPaymentAmount) || 0 : 0;
-      const finalTotal = subtotal - discountAmount + taxAmount + shipping + deliveryCost + extraPayment;
+      // finalTotal must match backend calculation: subtotal - discount + tax + delivery_cost
+      // Note: extraPayment is NOT included in backend total, so exclude it from finalTotal
+      // Backend formula: total = subtotal + tax_amount - discount_amount + delivery_cost
+      const finalTotal = subtotal - discountAmount + taxAmount + shipping + deliveryCost;
+      const total = calculateTotal();
+      
+      // Use confirmed amount from pendingSaleData if available (when called from confirmation dialog)
+      // This ensures the amount sent matches what the user confirmed, even if state changed
+      const confirmedReceived = pendingSaleData?.received;
+      const received = confirmedReceived !== undefined 
+        ? confirmedReceived 
+        : parseFloat(receivedAmount) || 0;
+      
+      // Format amount_paid to ensure it fits within max_digits=10, decimal_places=2 constraint
+      // Max value: 99,999,999.99 (8 digits before decimal + 2 after = 10 total)
+      const formatAmountPaid = (amount) => {
+        // Round to 2 decimal places
+        let formatted = Math.round(amount * 100) / 100;
+        // Ensure it doesn't exceed max value
+        const maxValue = 99999999.99;
+        if (formatted > maxValue) {
+          formatted = maxValue;
+        }
+        // Return as number (not string) to avoid precision issues
+        return parseFloat(formatted.toFixed(2));
+      };
+      
+      const amountPaidValue = (paymentMethod === 'cash' || paymentMethod === 'mpesa') 
+        ? formatAmountPaid(received) 
+        : formatAmountPaid(finalTotal);
       
       const saleData = {
         items: cart.map(item => ({
@@ -370,10 +421,12 @@ const POS = () => {
         shipping_address: shippingAddress || null,
         shipping_location: shippingLocation || null,
         payment_method: paymentMethod,
-        amount_paid: (paymentMethod === 'cash' || paymentMethod === 'mpesa') ? parseFloat(received.toFixed(2)) : parseFloat(finalTotal.toFixed(2)),
+        amount_paid: amountPaidValue,
         notes: hasExtraPayment ? `Extra Payment: ${formatCurrency(extraPayment)}` : '',
-        customer_id: selectedCustomer?.id || null,
+        customer_id: selectedCustomer?.id && selectedCustomer.id !== 'walk-in' ? selectedCustomer.id : null,
         sale_type: 'pos',
+        allow_partial_payment: allowPartial,
+        excess_payment_choice: excessChoice, // 'change' or 'wallet'
       };
       
       // Generate new order number for next order
@@ -381,11 +434,16 @@ const POS = () => {
 
       const response = await salesAPI.create(saleData);
       // Add change to the sale data for receipt display
+      // Use the backend's calculated total (response.data.total) instead of frontend total
+      // The frontend total includes coupon and roundoff which aren't sent to backend
+      // If excess was added to wallet, change should be 0
+      const backendTotal = parseFloat(response.data.total) || 0;
+      const calculatedChange = (paymentMethod === 'cash' || paymentMethod === 'mpesa') 
+        ? (excessChoice === 'wallet' ? 0 : Math.max(0, received - backendTotal))
+        : 0;
       const saleWithChange = {
         ...response.data,
-        change: (paymentMethod === 'cash' || paymentMethod === 'mpesa') 
-          ? Math.max(0, received - total) 
-          : 0
+        change: calculatedChange
       };
       setLastSale(saleWithChange);
       setCart([]);
@@ -404,10 +462,81 @@ const POS = () => {
       setDiscount(0);
       setDeliveryMethod('pickup');
       setDeliveryCost(0);
-      toast.success('Sale completed successfully');
+      setShowPartialPaymentConfirm(false);
+      setShowExcessPaymentConfirm(false);
+      setPendingSaleData(null);
+      
+      // Show appropriate success message
+      if (allowPartial && pendingSaleData && pendingSaleData.balance > 0) {
+        toast.success(`Sale completed! Unpaid balance of ${formatCurrency(pendingSaleData.balance)} added to ${selectedCustomer?.name || 'customer'}'s account as debt. They can pay this later.`);
+      } else if (pendingSaleData && pendingSaleData.excess > 0 && excessChoice === 'wallet') {
+        toast.success(`Sale completed! Excess payment of ${formatCurrency(pendingSaleData.excess)} added to ${selectedCustomer?.name || 'customer'}'s wallet.`);
+      } else {
+        toast.success('Sale completed successfully');
+      }
     } catch (error) {
       toast.error('Failed to complete sale: ' + (error.response?.data?.error || error.message));
+      setShowPartialPaymentConfirm(false);
+      setShowExcessPaymentConfirm(false);
+      setPendingSaleData(null);
     }
+  };
+
+  const handlePayment = async () => {
+    if (cart.length === 0) {
+      toast.warning('Cart is empty');
+      return;
+    }
+
+    // Calculate totals - use finalTotal (without coupon/roundoff/extraPayment) to match backend calculation
+    // Backend formula: total = subtotal + tax_amount - discount_amount + delivery_cost
+    // Note: extraPayment is sent in notes but NOT included in backend total calculation
+    const subtotal = calculateSubtotal();
+    const discountAmount = calculateDiscountAmount();
+    const taxAmount = (subtotal - discountAmount) * (tax / 100);
+    const extraPayment = hasExtraPayment ? parseFloat(extraPaymentAmount) || 0 : 0;
+    // finalTotal must match backend: exclude coupon, roundoff, and extraPayment
+    const finalTotal = subtotal - discountAmount + taxAmount + shipping + deliveryCost;
+    const displayTotal = calculateTotal(); // For UI display only (includes coupon/roundoff/extraPayment)
+    const received = parseFloat(receivedAmount) || 0;
+    
+    // Validate payment for cash/mpesa
+    if (paymentMethod === 'cash' || paymentMethod === 'mpesa') {
+      if (!receivedAmount || received <= 0) {
+        toast.warning('Please enter received amount');
+        return;
+      }
+      
+      // If received < finalTotal, check if we can allow partial payment
+      // Use finalTotal (backend total) for balance calculation to match what will be recorded as debt
+      if (received < finalTotal) {
+        // Customer must be selected for partial payment
+        if (!selectedCustomer) {
+          toast.warning('Please select a customer to allow partial payment. The unpaid amount will be added to their account as debt.');
+          return;
+        }
+        
+        // Show confirmation dialog
+        // Calculate balance using finalTotal (backend total) to match what will be recorded as debt
+        const balance = finalTotal - received;
+        setPendingSaleData({ total: finalTotal, received, balance });
+        setShowPartialPaymentConfirm(true);
+        return;
+      }
+      
+      // If received > finalTotal, show excess payment dialog
+      // Use finalTotal for excess calculation to match backend
+      if (received > finalTotal && selectedCustomer) {
+        const excess = received - finalTotal;
+        setPendingSaleData({ total: finalTotal, received, excess });
+        setExcessPaymentChoice('change'); // Default to change
+        setShowExcessPaymentConfirm(true);
+        return;
+      }
+    }
+
+    // If we get here, proceed with normal payment (full payment, exact payment, or card)
+    await processSale(false);
   };
 
   const getCartItemCount = () => {
@@ -735,22 +864,52 @@ const POS = () => {
             </div>
 
             <div className="customer-section">
-              <select 
-                className="customer-select"
-                value={selectedCustomer?.id || ''}
-                onChange={(e) => {
-                  const customerId = parseInt(e.target.value);
-                  const customer = customers.find(c => c.id === customerId);
-                  setSelectedCustomer(customer || null);
-                }}
-              >
-                <option value="">Walk in Customer</option>
-                {customers.map(customer => (
-                  <option key={customer.id} value={customer.id}>
-                    {customer.name}
-                  </option>
-                ))}
-              </select>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                <div style={{ flex: 1 }}>
+                  <SearchableSelect
+                    className="customer-select"
+                    value={selectedCustomer?.id || ''}
+                    onChange={(e) => {
+                      const customerId = e.target.value;
+                      // Handle both string 'walk-in' and numeric IDs
+                      const customer = customers.find(c => 
+                        c.id === customerId || 
+                        (typeof customerId === 'string' && customerId === 'walk-in' && c.id === 'walk-in') ||
+                        (typeof customerId === 'number' && c.id === customerId)
+                      );
+                      setSelectedCustomer(customer || null);
+                    }}
+                    options={customers.map(customer => ({
+                      id: customer.id,
+                      name: customer.name
+                    }))}
+                    placeholder="Walk in Customer"
+                  />
+                </div>
+                <button
+                  onClick={() => setShowCustomerFormModal(true)}
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    background: '#667eea',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '0.75rem',
+                    fontWeight: '500',
+                    whiteSpace: 'nowrap',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'background 0.2s'
+                  }}
+                  title="Add New Customer"
+                  onMouseEnter={(e) => e.target.style.background = '#5568d3'}
+                  onMouseLeave={(e) => e.target.style.background = '#667eea'}
+                >
+                  Add customer
+                </button>
+              </div>
               {selectedCustomer && (
                 <div className="customer-info">
                   <div className="customer-name">{selectedCustomer.name}</div>
@@ -857,6 +1016,7 @@ const POS = () => {
                                 >
                                   -
                                 </button>
+                                {/* Quantity input - always editable for items with or without variants */}
                                 <input
                                   type="number"
                                   min="1"
@@ -1025,7 +1185,7 @@ const POS = () => {
             <div className="payment-form">
               <div className="form-group">
                 <label>Delivery Method *</label>
-                <select
+                <SearchableSelect
                   value={deliveryMethod}
                   onChange={(e) => {
                     setDeliveryMethod(e.target.value);
@@ -1033,11 +1193,13 @@ const POS = () => {
                       setDeliveryCost(0);
                     }
                   }}
-                >
-                  <option value="pickup">Pickup (No Charge)</option>
-                  <option value="delivery">Standard Delivery</option>
-                  <option value="express">Express Delivery</option>
-                </select>
+                  options={[
+                    { id: 'pickup', name: 'Pickup (No Charge)' },
+                    { id: 'delivery', name: 'Standard Delivery' },
+                    { id: 'express', name: 'Express Delivery' }
+                  ]}
+                  placeholder="Select Delivery Method"
+                />
               </div>
               {(deliveryMethod === 'delivery' || deliveryMethod === 'express') && (
                 <>
@@ -1378,6 +1540,134 @@ const POS = () => {
         confirmText="Clear"
         cancelText="Cancel"
         type="danger"
+      />
+
+      {/* Partial Payment Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showPartialPaymentConfirm}
+        title="Allow Customer to Pay Later?"
+        message={
+          pendingSaleData && selectedCustomer
+            ? `Total: ${formatCurrency(pendingSaleData.total)}\nAmount Paid: ${formatCurrency(pendingSaleData.received)}\nUnpaid Balance: ${formatCurrency(pendingSaleData.balance)}\n\nDo you want to proceed with this transaction? The unpaid balance of ${formatCurrency(pendingSaleData.balance)} will be added to ${selectedCustomer.name}'s account as debt. They can pay this amount later in installments.`
+            : pendingSaleData
+            ? `Total: ${formatCurrency(pendingSaleData.total)}\nAmount Paid: ${formatCurrency(pendingSaleData.received)}\nUnpaid Balance: ${formatCurrency(pendingSaleData.balance)}\n\nDo you want to proceed with this transaction? The unpaid balance will be added to the customer's account as debt.`
+            : ''
+        }
+        onConfirm={() => {
+          processSale(true);
+        }}
+        onCancel={() => {
+          setShowPartialPaymentConfirm(false);
+          setPendingSaleData(null);
+        }}
+        confirmText="Yes, Proceed"
+        cancelText="Cancel"
+        type="primary"
+      />
+      
+      {/* Excess Payment Confirmation Dialog */}
+      {showExcessPaymentConfirm && pendingSaleData && (
+        <div className="modal-overlay" onClick={() => setShowExcessPaymentConfirm(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <div className="modal-header">
+              <h2>Excess Payment</h2>
+              <button onClick={() => setShowExcessPaymentConfirm(false)} className="close-btn">×</button>
+            </div>
+            <div className="modal-body" style={{ padding: '1.5rem' }}>
+              <p style={{ marginBottom: '1rem' }}>
+                <strong>Total:</strong> {formatCurrency(pendingSaleData.total)}<br />
+                <strong>Received:</strong> {formatCurrency(pendingSaleData.received)}<br />
+                <strong>Excess:</strong> {formatCurrency(pendingSaleData.excess)}
+              </p>
+              <p style={{ marginBottom: '1.5rem', color: '#666' }}>
+                How would you like to handle the excess payment?
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', padding: '0.75rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', backgroundColor: excessPaymentChoice === 'change' ? '#f0f9ff' : 'white' }}>
+                  <input
+                    type="radio"
+                    name="excessPayment"
+                    value="change"
+                    checked={excessPaymentChoice === 'change'}
+                    onChange={(e) => setExcessPaymentChoice(e.target.value)}
+                    style={{ marginRight: '0.75rem' }}
+                  />
+                  <div>
+                    <strong>Give Change</strong>
+                    <div style={{ fontSize: '0.875rem', color: '#666', marginTop: '0.25rem' }}>
+                      Return {formatCurrency(pendingSaleData.excess)} to the customer
+                    </div>
+                  </div>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', padding: '0.75rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', backgroundColor: excessPaymentChoice === 'wallet' ? '#f0f9ff' : 'white' }}>
+                  <input
+                    type="radio"
+                    name="excessPayment"
+                    value="wallet"
+                    checked={excessPaymentChoice === 'wallet'}
+                    onChange={(e) => setExcessPaymentChoice(e.target.value)}
+                    style={{ marginRight: '0.75rem' }}
+                  />
+                  <div>
+                    <strong>Add to Wallet</strong>
+                    <div style={{ fontSize: '0.875rem', color: '#666', marginTop: '0.25rem' }}>
+                      Add {formatCurrency(pendingSaleData.excess)} to {selectedCustomer?.name || 'customer'}'s wallet for future use
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button onClick={() => setShowExcessPaymentConfirm(false)} className="btn-cancel">Cancel</button>
+              <button 
+                onClick={() => {
+                  processSale(false, excessPaymentChoice);
+                }} 
+                className="btn-submit"
+              >
+                Complete Sale
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Customer Form Modal */}
+      <CustomerFormModal
+        isOpen={showCustomerFormModal}
+        onClose={() => setShowCustomerFormModal(false)}
+        onCustomerCreated={async (newCustomer) => {
+          setShowCustomerFormModal(false);
+          // Reload customers to get the full list
+          try {
+            const response = await customersAPI.list({ is_active: true, page_size: 1000 });
+            const customersData = response.data.results || response.data || [];
+            const customersList = Array.isArray(customersData) ? customersData : [];
+            
+            // Add walk-in back if it was removed
+            const hasWalkIn = customersList.some(c => 
+              c.name && (c.name.toLowerCase().includes('walk-in') || c.name.toLowerCase().includes('walkin'))
+            );
+            if (!hasWalkIn) {
+              const virtualWalkIn = {
+                id: 'walk-in',
+                name: 'Walk-in',
+                customer_code: 'WALK-IN',
+                is_active: true
+              };
+              setCustomers([virtualWalkIn, ...customersList]);
+            } else {
+              setCustomers(customersList);
+            }
+            
+            // Select the newly created customer
+            setSelectedCustomer(newCustomer);
+          } catch (error) {
+            console.error('Error reloading customers:', error);
+            // Still select the new customer even if reload fails
+            setSelectedCustomer(newCustomer);
+          }
+        }}
       />
     </div>
   );

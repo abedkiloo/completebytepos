@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { salesAPI } from '../../services/api';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import Layout from '../Layout/Layout';
+import SearchableSelect from '../Shared/SearchableSelect';
 import { toast } from '../../utils/toast';
 import './Sales.css';
 
@@ -239,17 +240,19 @@ const Sales = () => {
           </div>
           <div className="filter-group">
             <label>Payment Method</label>
-            <select
+            <SearchableSelect
               name="payment_method"
               value={filters.payment_method}
               onChange={handleFilterChange}
-            >
-              <option value="">All Methods</option>
-              <option value="cash">Cash</option>
-              <option value="mpesa">M-PESA</option>
-              <option value="card">Card</option>
-              <option value="other">Other</option>
-            </select>
+              options={[
+                { id: '', name: 'All Methods' },
+                { id: 'cash', name: 'Cash' },
+                { id: 'mpesa', name: 'M-PESA' },
+                { id: 'card', name: 'Card' },
+                { id: 'other', name: 'Other' }
+              ]}
+              placeholder="All Methods"
+            />
           </div>
           <div className="filter-group">
             <label>Search</label>
@@ -392,11 +395,6 @@ const Sales = () => {
                           <tr key={idx}>
                             <td>
                               <div>{displayName}</div>
-                              {item.variant_sku && (
-                                <div style={{ fontSize: '0.85rem', color: '#6b7280', marginTop: '0.25rem' }}>
-                                  SKU: {item.variant_sku}
-                                </div>
-                              )}
                             </td>
                             <td>{item.quantity}</td>
                             <td>{formatCurrency(item.unit_price)}</td>

@@ -76,9 +76,10 @@ class StockPurchaseSerializer(serializers.Serializer):
 
 
 class StockTransferSerializer(serializers.Serializer):
-    """Serializer for stock transfers (future: between branches)"""
+    """Serializer for stock transfers between branches"""
     product_id = serializers.IntegerField()
     quantity = serializers.IntegerField(min_value=1)
+    to_branch_id = serializers.IntegerField(required=True)
     reference = serializers.CharField(required=False, allow_blank=True)
     notes = serializers.CharField(required=False, allow_blank=True)
 
