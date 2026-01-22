@@ -125,7 +125,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     serializer_class = ProductSerializer
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['name', 'sku', 'barcode', 'description', 'supplier']
+    search_fields = ['name', 'sku', 'barcode', 'description', 'supplier__name']
     ordering_fields = ['name', 'price', 'cost', 'created_at', 'stock_quantity', 'updated_at']
     ordering = ['name']
     
