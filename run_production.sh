@@ -44,6 +44,14 @@ check_docker() {
     print_success "Docker is ready"
 }
 
+# Clear Docker caches
+clear_docker_cache() {
+    print_info "Clearing Docker build cache and Buildx cache..."
+    docker builder prune -af 2>/dev/null || true
+    docker buildx prune -af 2>/dev/null || true
+    print_success "Docker cache cleared"
+}
+
 # Run with Docker
 run_docker() {
     print_info "Building and starting Docker containers in production mode..."
@@ -57,9 +65,21 @@ run_docker() {
     print_info "Stopping existing containers..."
     $COMPOSE_CMD down 2>/dev/null || true
     
+    # Clear Docker caches to fix "file already closed" BuildKit errors
+    if [[ "$*" == *"--clear-cache"* ]] || [[ "$*" == *"-c"* ]]; then
+        clear_docker_cache
+    else
+        print_info "Clearing Docker Buildx cache..."
+        docker buildx prune -f 2>/dev/null || true
+    fi
+    
     # Build and start
     print_info "Building Docker images..."
-    $COMPOSE_CMD build --no-cache
+    # Try with BuildKit first, fallback to legacy builder if it fails
+    if ! DOCKER_BUILDKIT=1 $COMPOSE_CMD build --no-cache --progress=plain; then
+        print_warning "Build with BuildKit failed, trying without BuildKit..."
+        DOCKER_BUILDKIT=0 $COMPOSE_CMD build --no-cache
+    fi
     
     print_info "Starting containers..."
     $COMPOSE_CMD up -d
@@ -122,13 +142,23 @@ run_migrations() {
 
 # Main
 main() {
-    if [[ "$*" == *"--no-docker"* ]]; then
+    if [[ "$*" == *"--help"* ]] || [[ "$*" == *"-h"* ]]; then
+        echo "Usage: ./run_production.sh [OPTIONS]"
+        echo ""
+        echo "Options:"
+        echo "  --clear-cache, -c    Clear all Docker caches before building"
+        echo "  --help, -h           Show this help message"
+        echo ""
+        echo "Example:"
+        echo "  ./run_production.sh --clear-cache"
+        exit 0
+    elif [[ "$*" == *"--no-docker"* ]]; then
         print_warning "Non-Docker production mode is not recommended"
         print_info "Please use Docker for production: ./run_production.sh"
         exit 1
     else
         check_docker
-        run_docker
+        run_docker "$@"
     fi
 }
 

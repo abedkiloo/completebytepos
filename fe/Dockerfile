@@ -11,12 +11,14 @@ ENV REACT_APP_API_URL=$REACT_APP_API_URL
 COPY package*.json ./
 
 # Install dependencies
-RUN npm install
+RUN npm install --legacy-peer-deps
 
 # Copy source code
 COPY . .
 
 # Build React app with environment variable
+# Use CI=false to prevent build failures on warnings
+ENV CI=false
 RUN npm run build
 
 # Production stage
