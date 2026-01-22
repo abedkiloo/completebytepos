@@ -510,9 +510,11 @@ const POS = () => {
       // If received < finalTotal, check if we can allow partial payment
       // Use finalTotal (backend total) for balance calculation to match what will be recorded as debt
       if (received < finalTotal) {
-        // Customer must be selected for partial payment
-        if (!selectedCustomer) {
-          toast.warning('Please select a customer to allow partial payment. The unpaid amount will be added to their account as debt.');
+        // Customer must be selected for partial payment (and cannot be Walk-in)
+        // Walk-in customers are filtered out before sending to backend (line 426), so partial payment
+        // would fail backend validation. Prevent this upfront.
+        if (!selectedCustomer || selectedCustomer.id === 'walk-in') {
+          toast.warning('Please select a registered customer to allow partial payment. The unpaid amount will be added to their account as debt.');
           return;
         }
         

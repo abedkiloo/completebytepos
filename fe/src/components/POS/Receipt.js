@@ -35,6 +35,23 @@ const Receipt = ({ sale, onClose }) => {
                 size: auto;
                 margin: 3mm;
               }
+              @media print {
+                @page {
+                  size: auto;
+                  margin: 3mm;
+                }
+                body {
+                  width: 400px;
+                  margin: 0 auto;
+                }
+                .receipt-wrapper {
+                  width: 400px;
+                  max-width: 400px;
+                }
+              }
+              * {
+                box-sizing: border-box;
+              }
               body {
                 font-family: 'Courier New', Courier, monospace;
                 margin: 0;
@@ -45,15 +62,16 @@ const Receipt = ({ sale, onClose }) => {
                 justify-content: center;
                 align-items: flex-start;
                 min-height: 100vh;
-                font-size: 0.75rem;
-                line-height: 1.2;
+                font-size: 0.55rem;
+                line-height: 1;
               }
               .receipt-wrapper {
                 width: 400px;
                 max-width: 400px;
                 padding: 0.5rem;
                 margin: 0 auto;
-                line-height: 1.2;
+                line-height: 1;
+                font-size: 0.55rem;
               }
               .receipt-cut-line {
                 text-align: center;
@@ -61,6 +79,11 @@ const Receipt = ({ sale, onClose }) => {
                 color: #6b7280;
                 margin-bottom: 0.3rem;
                 padding-top: 0.2rem;
+              }
+              .receipt-header h3 {
+                margin: 0 0 0.5rem 0;
+                font-size: 1.0rem;
+                color: #111827;
               }
               .receipt-company-name {
                 text-align: center;
@@ -75,6 +98,14 @@ const Receipt = ({ sale, onClose }) => {
                 color: #111827;
                 margin: 0.2rem 0;
                 letter-spacing: 0.5px;
+              }
+              .receipt-info {
+                margin-bottom: 0.5rem;
+              }
+              .receipt-info p {
+                margin: 0.5rem 0;
+                font-size: 0.7rem;
+                color: #374151;
               }
               .receipt-transaction-details {
                 margin: 0.3rem 0;
@@ -106,6 +137,18 @@ const Receipt = ({ sale, onClose }) => {
               .receipt-items {
                 margin: 0.2rem 0;
               }
+              .receipt-items th,
+              .receipt-items td {
+                padding: 0.2rem;
+                text-align: left;
+                border-bottom: 0.3px solid #e5e7eb;
+              }
+              .receipt-items th {
+                background: #f9fafb;
+                font-weight: 600;
+                font-size: 1rem;
+                color: #374151;
+              }
               .receipt-item-row {
                 display: flex;
                 justify-content: space-between;
@@ -131,31 +174,30 @@ const Receipt = ({ sale, onClose }) => {
                 white-space: nowrap;
               }
               .receipt-summary {
-                margin-top: 0.3rem;
+                border-top: 1px solid #e5e7eb;
                 padding-top: 0.2rem;
-                font-size: 0.75rem;
-                border-top: none;
+                margin-bottom: 0.2rem;
               }
               .summary-row {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                padding: 0.15rem 0;
-                color: #111827;
-                line-height: 1.2;
-                font-size: 0.75rem;
+                padding: 0.1rem 0;
+                margin-bottom: 0.1rem;
+                color: #374151;
+                font-size: 0.9rem;
               }
               .summary-row.total {
-                font-size: 0.75rem;
+                font-weight: 600;
+                font-size: 0.5rem;
+                margin-top: 0.3rem;
+                padding-top: 0.3rem;
+                border-top: 1px solid #e5e7eb;
                 color: #111827;
-                padding-top: 0.2rem;
-                border-top: none;
-                margin-top: 0.2rem;
-                font-weight: bold;
               }
               .summary-row.total span {
-                font-weight: bold;
-                font-size: 0.75rem;
+                font-weight: 700;
+                font-size: 0.9rem;
               }
               .summary-row.discount {
                 color: #111827;

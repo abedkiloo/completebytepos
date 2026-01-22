@@ -84,7 +84,13 @@ class StockMovement(models.Model):
         # Check if we're only updating specific fields (e.g., notes, reference) to avoid stock recalculation
         update_fields = kwargs.get('update_fields')
         # Skip stock update if only updating non-stock-affecting fields
-        skip_stock_update = update_fields and len(update_fields) == 1 and update_fields[0] in ['notes', 'reference']
+        # Safely access first element - update_fields can be frozenset, tuple, list, etc.
+        skip_stock_update = False
+        if update_fields and len(update_fields) == 1:
+            # Convert to list to safely access first element (handles frozenset, tuple, etc.)
+            fields_list = list(update_fields)
+            if fields_list and fields_list[0] in ['notes', 'reference']:
+                skip_stock_update = True
         
         super().save(*args, **kwargs)
         
