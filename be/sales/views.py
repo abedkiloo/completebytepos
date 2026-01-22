@@ -476,17 +476,28 @@ class CustomerViewSet(viewsets.ModelViewSet):
         search = self.request.query_params.get('search', None)
         
         if is_active is not None:
-            queryset = queryset.filter(is_active=is_active.lower() == 'true')
+            try:
+                queryset = queryset.filter(is_active=is_active.lower() == 'true')
+            except (AttributeError, ValueError):
+                pass  # Ignore invalid is_active value
+        
         if customer_type:
             queryset = queryset.filter(customer_type=customer_type)
+        
         if search:
-            queryset = queryset.filter(
-                Q(name__icontains=search) |
-                Q(customer_code__icontains=search) |
-                Q(email__icontains=search) |
-                Q(phone__icontains=search) |
-                Q(tax_id__icontains=search)
-            )
+            search = search.strip()
+            if search:  # Only search if not empty after stripping
+                try:
+                    queryset = queryset.filter(
+                        Q(name__icontains=search) |
+                        Q(customer_code__icontains=search) |
+                        Q(email__icontains=search) |
+                        Q(phone__icontains=search) |
+                        Q(tax_id__icontains=search)
+                    )
+                except Exception:
+                    # If search fails, return empty queryset rather than crashing
+                    queryset = queryset.none()
         
         return queryset
 

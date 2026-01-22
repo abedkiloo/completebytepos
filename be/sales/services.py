@@ -627,12 +627,18 @@ class CustomerService(BaseService):
         
         search = filters.get('search')
         if search:
-            queryset = queryset.filter(
-                Q(name__icontains=search) |
-                Q(email__icontains=search) |
-                Q(phone__icontains=search) |
-                Q(customer_code__icontains=search)
-            )
+            search = str(search).strip()
+            if search:  # Only search if not empty after stripping
+                try:
+                    queryset = queryset.filter(
+                        Q(name__icontains=search) |
+                        Q(email__icontains=search) |
+                        Q(phone__icontains=search) |
+                        Q(customer_code__icontains=search)
+                    )
+                except Exception:
+                    # If search fails, return empty queryset rather than crashing
+                    queryset = queryset.none()
         
         customer_type = filters.get('customer_type')
         if customer_type:
@@ -642,17 +648,29 @@ class CustomerService(BaseService):
     
     def search_customers(self, query: str, limit: int = 50) -> List[Customer]:
         """Search customers by name, email, phone, or customer code"""
-        if not query or not query.strip():
-            return []
-        
-        queryset = self.model.objects.filter(
-            Q(name__icontains=query) |
-            Q(email__icontains=query) |
-            Q(phone__icontains=query) |
-            Q(customer_code__icontains=query)
-        ).filter(is_active=True)[:limit]
-        
-        return list(queryset)
+        try:
+            if not query or not query.strip():
+                return []
+            
+            # Validate and sanitize limit
+            if limit < 1:
+                limit = 50
+            elif limit > 1000:
+                limit = 1000
+            
+            queryset = self.model.objects.filter(
+                Q(name__icontains=query) |
+                Q(email__icontains=query) |
+                Q(phone__icontains=query) |
+                Q(customer_code__icontains=query)
+            ).filter(is_active=True)[:limit]
+            
+            return list(queryset)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error in search_customers: {e}", exc_info=True)
+            return []  # Return empty list on error rather than raising
     
     @transaction.atomic
     def update_wallet_balance(self, customer: Customer, amount: Decimal,

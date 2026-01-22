@@ -265,16 +265,28 @@ class ProductService(BaseService):
     
     def search_products(self, query: str, limit: int = 50) -> List[Product]:
         """Search products by name, SKU, or barcode"""
-        if not query or not query.strip():
-            return []
-        
-        queryset = self.model.objects.filter(
-            Q(name__icontains=query) |
-            Q(sku__icontains=query) |
-            Q(barcode__icontains=query)
-        ).filter(is_active=True)[:limit]
-        
-        return list(queryset)
+        try:
+            if not query or not query.strip():
+                return []
+            
+            # Validate and sanitize limit
+            if limit < 1:
+                limit = 50
+            elif limit > 1000:
+                limit = 1000
+            
+            queryset = self.model.objects.filter(
+                Q(name__icontains=query) |
+                Q(sku__icontains=query) |
+                Q(barcode__icontains=query)
+            ).filter(is_active=True)[:limit]
+            
+            return list(queryset)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error in search_products: {e}", exc_info=True)
+            return []  # Return empty list on error rather than raising
     
     def get_low_stock_products(self) -> List[Product]:
         """Get products with stock below threshold"""

@@ -199,12 +199,34 @@ class ProductViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def search(self, request):
         """Quick search endpoint for POS"""
-        query = request.query_params.get('q', '').strip()
-        limit = int(request.query_params.get('limit', 20))
-        
-        products = self.product_service.search_products(query, limit)
-        serializer = ProductSearchSerializer(products, many=True)
-        return Response(serializer.data)
+        try:
+            query = request.query_params.get('q', '').strip()
+            if not query:
+                return Response([])
+            
+            # Safely parse limit parameter with validation
+            limit_param = request.query_params.get('limit', '20')
+            try:
+                limit = int(limit_param)
+                # Validate limit is reasonable (between 1 and 1000)
+                if limit < 1:
+                    limit = 20
+                elif limit > 1000:
+                    limit = 1000
+            except (ValueError, TypeError):
+                limit = 20
+            
+            products = self.product_service.search_products(query, limit)
+            serializer = ProductSearchSerializer(products, many=True)
+            return Response(serializer.data)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error in product search: {e}", exc_info=True)
+            return Response(
+                {'error': 'An error occurred while searching products'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @action(detail=False, methods=['get'])
     def low_stock(self, request):
