@@ -125,7 +125,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     serializer_class = ProductSerializer
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['name', 'sku', 'barcode', 'description', 'supplier__name']
+    search_fields = ['name', 'sku', 'barcode', 'description', 'supplier__name', 'category__name']
     ordering_fields = ['name', 'price', 'cost', 'created_at', 'stock_quantity', 'updated_at']
     ordering = ['name']
     
@@ -145,7 +145,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         
         # Extract all filter parameters, ignoring "undefined" values from frontend
         for param in ['is_active', 'category', 'subcategory', 'low_stock', 
-                     'out_of_stock', 'track_stock', 'supplier']:
+                     'out_of_stock', 'track_stock', 'supplier', 'needs_restock']:
             if param in query_params:
                 value = query_params.get(param)
                 # Skip "undefined", "null", empty strings, and None values

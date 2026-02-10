@@ -245,10 +245,10 @@ const Invoices = () => {
     try {
       // Format items for API - only include items with product_id
       const formattedItems = (formData.items || [])
-        .filter(item => item.product_id)
+        .filter(item => item.product_id && (parseInt(item.quantity, 10) || 0) > 0)
         .map(item => ({
           product: item.product_id || item.product,
-          quantity: parseInt(item.quantity) || 1,
+          quantity: Math.max(1, parseInt(item.quantity, 10) || 0),
           unit_price: parseFloat(item.unit_price) || 0,
           description: item.description || '',
         }));
@@ -346,7 +346,7 @@ const Invoices = () => {
     setFormData(prev => {
       const newItems = [...prev.items];
       
-      // Normalize quantity to integer if it's the quantity field
+      // Normalize quantity to integer if it's the quantity field (allow 0 to remove/zero line)
       if (field === 'quantity') {
         const qtyValue = value.toString().trim();
         let normalizedQty;
@@ -354,10 +354,11 @@ const Invoices = () => {
         if (qtyValue === '' || qtyValue === '-') {
           normalizedQty = ''; // Allow empty during typing
         } else if (qtyValue.includes('.')) {
-          // Remove decimal part - round down to nearest integer
-          normalizedQty = Math.floor(parseFloat(qtyValue)) || 1;
+          const parsed = Math.floor(parseFloat(qtyValue));
+          normalizedQty = isNaN(parsed) ? '' : Math.max(0, parsed);
         } else {
-          normalizedQty = parseInt(qtyValue) || (qtyValue === '' ? '' : 1);
+          const parsed = parseInt(qtyValue, 10);
+          normalizedQty = (qtyValue === '' || isNaN(parsed)) ? '' : Math.max(0, parsed);
         }
         
         newItems[index] = {
@@ -702,15 +703,14 @@ const Invoices = () => {
                                 <td>
                                   <input
                                     type="number"
-                                    min="1"
+                                    min="0"
                                     step="1"
-                                    value={item.quantity || ''}
+                                    value={item.quantity ?? ''}
                                     onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
                                     onBlur={(e) => {
-                                      // Ensure minimum value of 1 on blur
-                                      const value = parseInt(e.target.value) || 1;
-                                      if (value < 1 || isNaN(value)) {
-                                        handleItemChange(idx, 'quantity', '1');
+                                      const value = parseInt(e.target.value, 10);
+                                      if (isNaN(value) || value < 0) {
+                                        handleItemChange(idx, 'quantity', '0');
                                       }
                                     }}
                                     style={{ width: '80px', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '4px' }}

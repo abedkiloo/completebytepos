@@ -316,6 +316,7 @@ class ProductService(BaseService):
                 - subcategory: int (subcategory ID)
                 - low_stock: bool or str ('true'/'false')
                 - out_of_stock: bool or str ('true'/'false')
+                - needs_restock: bool or str ('true'/'false') - products at or below low_stock_threshold
                 - track_stock: bool or str ('true'/'false')
                 - supplier: int or str (supplier ID or name for legacy search)
         
@@ -395,6 +396,21 @@ class ProductService(BaseService):
                     out_of_stock = out_of_stock_lower == 'true'
             if out_of_stock is not None and out_of_stock:
                 queryset = queryset.filter(stock_quantity=0, track_stock=True)
+        
+        needs_restock = filters.get('needs_restock')
+        if needs_restock is not None:
+            if isinstance(needs_restock, str):
+                needs_restock_lower = needs_restock.lower().strip()
+                if needs_restock_lower in ['undefined', 'null', '']:
+                    needs_restock = None
+                else:
+                    needs_restock = needs_restock_lower == 'true'
+            if needs_restock is not None and needs_restock:
+                # Products that need restock: stock at or below threshold (includes out of stock)
+                queryset = queryset.filter(
+                    track_stock=True,
+                    stock_quantity__lte=F('low_stock_threshold')
+                )
         
         track_stock = filters.get('track_stock')
         if track_stock is not None:

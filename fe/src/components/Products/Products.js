@@ -47,23 +47,19 @@ const Products = () => {
     try {
       const params = { page_size: 1000 }; // Request more items to avoid pagination issues
       
-      // Add search if provided
+      // Add search if provided (backend SearchFilter uses ?search=)
       if (filters.search && filters.search.trim()) {
         params.search = filters.search.trim();
       }
       
-      // Handle category - send "undefined" if empty string to match backend expectations
+      // Only send category when a specific category is selected (omit param for "all")
       if (filters.category && filters.category.trim()) {
-        params.category = filters.category;
-      } else {
-        params.category = 'undefined'; // Send "undefined" to get all categories
+        params.category = filters.category.trim();
       }
       
-      // Handle is_active - send "undefined" if empty string to match backend expectations
+      // Only send is_active when a specific status is selected (omit param for "all")
       if (filters.is_active && filters.is_active.trim()) {
-        params.is_active = filters.is_active;
-      } else {
-        params.is_active = 'undefined'; // Send "undefined" to get all statuses
+        params.is_active = filters.is_active.trim();
       }
       
       // Add boolean filters

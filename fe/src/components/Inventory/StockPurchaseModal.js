@@ -32,7 +32,13 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
 
   const loadProducts = async () => {
     try {
-      const response = await productsAPI.list({ track_stock: 'true', is_active: 'true', page_size: 1000 });
+      const params = {
+        track_stock: 'true',
+        is_active: 'true',
+        page_size: 1000,
+        needs_restock: 'true', // Only products that need restock (low or out of stock)
+      };
+      const response = await productsAPI.list(params);
       const productsData = response.data.results || response.data || [];
       setProducts(Array.isArray(productsData) ? productsData : []);
     } catch (error) {
@@ -40,10 +46,10 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
     }
   };
 
-  // Transform products for SearchableSelect component
+  // Transform products for SearchableSelect (option labels include stock for clarity)
   const productOptions = products.map(prod => ({
     id: prod.id,
-    name: `${prod.name}${prod.sku ? ` (${prod.sku})` : ''} - Current: ${prod.stock_quantity || 0}`,
+    name: `${prod.name}${prod.sku ? ` (${prod.sku})` : ''} - Stock: ${prod.stock_quantity ?? 0}${prod.low_stock_threshold != null ? ` / threshold ${prod.low_stock_threshold}` : ''}`,
   }));
 
   const handleProductChange = (e) => {
@@ -69,13 +75,16 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    if (!formData.quantity || formData.quantity < 1) {
+      setError('Quantity must be at least 1 to record a purchase.');
+      return;
+    }
     setLoading(true);
-
     try {
       await inventoryAPI.purchase(formData);
       onSave();
-    } catch (error) {
-      setError(error.response?.data?.error || 'Failed to record purchase');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to record purchase');
     } finally {
       setLoading(false);
     }
@@ -125,8 +134,9 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
                 value={formData.quantity}
                 onChange={handleChange}
                 required
-                min="1"
+                min="0"
               />
+              <small>Enter 0 to clear; must be at least 1 to record.</small>
             </div>
 
             <div className="form-group">
