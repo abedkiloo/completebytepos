@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { Receipt, ShoppingCart } from 'lucide-react';
 import { salesAPI } from '../../services/api';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
-import Layout from '../Layout/Layout';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { toast } from '../../utils/toast';
 import { Button } from '../ui/button';
@@ -233,15 +232,12 @@ const Sales = () => {
 
   if (loading && sales.length === 0) {
     return (
-      <Layout>
-        <PageLoading rows={8} />
-      </Layout>
+      <PageLoading rows={8} />
     );
   }
 
   return (
-    <Layout>
-      <PageShell>
+    <PageShell>
         <PageHeader
           title="Sales history"
           description="Review completed transactions and reprint receipts."
@@ -522,7 +518,6 @@ const Sales = () => {
           </DialogContent>
         </Dialog>
       </PageShell>
-    </Layout>
   );
 };
 

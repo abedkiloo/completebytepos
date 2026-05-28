@@ -13,7 +13,6 @@ import {
 } from 'lucide-react';
 import { reportsAPI, productsAPI, salesAPI, authAPI } from '../../services/api';
 import { formatCurrency, formatNumber } from '../../utils/formatters';
-import Layout from '../Layout/Layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -144,8 +143,7 @@ const Dashboard = () => {
 
   if (loading) {
     return (
-      <Layout>
-        <PageShell>
+      <PageShell>
           <Skeleton className="h-10 w-64" />
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[1, 2, 3, 4].map((i) => (
@@ -153,13 +151,11 @@ const Dashboard = () => {
             ))}
           </div>
         </PageShell>
-      </Layout>
     );
   }
 
   return (
-    <Layout>
-      <PageShell>
+    <PageShell>
         <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-sm font-medium text-muted-foreground">Welcome back</p>
@@ -337,7 +333,6 @@ const Dashboard = () => {
           )}
         </div>
       </PageShell>
-    </Layout>
   );
 };
 

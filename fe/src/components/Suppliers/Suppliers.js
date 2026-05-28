@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Factory, Plus } from 'lucide-react';
 import { suppliersAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
-import Layout from '../Layout/Layout';
 import SupplierForm from './SupplierForm';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { toast } from '../../utils/toast';
@@ -141,15 +140,12 @@ const Suppliers = () => {
 
   if (loading && suppliers.length === 0) {
     return (
-      <Layout>
-        <PageLoading rows={6} showStats />
-      </Layout>
+      <PageLoading rows={6} showStats />
     );
   }
 
   return (
-    <Layout>
-      <PageShell>
+    <PageShell>
         <PageHeader title="Suppliers" description="Vendors you buy stock from.">
           <Button onClick={handleCreate}>
             <Plus className="h-4 w-4" />
@@ -309,7 +305,6 @@ const Suppliers = () => {
           type="danger"
         />
       </PageShell>
-    </Layout>
   );
 };
 

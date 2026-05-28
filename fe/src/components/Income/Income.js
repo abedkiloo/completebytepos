@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Check, Pencil, Plus, Trash2, TrendingUp } from 'lucide-react';
 import { incomeAPI } from '../../services/api';
 import { formatCurrency, formatDate } from '../../utils/formatters';
-import Layout from '../Layout/Layout';
 import IncomeForm from './IncomeForm';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import SearchableSelect from '../Shared/SearchableSelect';
@@ -160,15 +159,12 @@ const Income = () => {
 
   if (loading && incomes.length === 0) {
     return (
-      <Layout>
-        <PageLoading rows={8} />
-      </Layout>
+      <PageLoading rows={8} />
     );
   }
 
   return (
-    <Layout>
-      <PageShell>
+    <PageShell>
         <PageHeader title="Income" description="Track non-sales revenue and receipts.">
           <Button onClick={handleAdd}>
             <Plus className="h-4 w-4" />
@@ -348,7 +344,6 @@ const Income = () => {
         type="danger"
       />
       </PageShell>
-    </Layout>
   );
 };
 

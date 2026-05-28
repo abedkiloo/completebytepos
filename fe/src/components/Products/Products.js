@@ -19,7 +19,6 @@ import {
 
 import { productsAPI, categoriesAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
-import Layout from '../Layout/Layout';
 import ProductForm from './ProductForm';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import { toast } from '../../utils/toast';
@@ -387,8 +386,7 @@ const Products = () => {
   // ------------------------------------------------------------------
 
   return (
-    <Layout>
-      <PageShell>
+    <PageShell>
         <PageHeader
           title="Products"
           description="Add, edit, and bulk-manage your catalog."
@@ -584,7 +582,6 @@ const Products = () => {
         onCancel={() => (busy ? null : setConfirmBulkDelete(false))}
       />
       </PageShell>
-    </Layout>
   );
 };
 

@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { reportsAPI } from '../../services/api';
 import { formatCurrency, formatNumber, formatDateTime, formatCompactCurrency } from '../../utils/formatters';
-import Layout from '../Layout/Layout';
 import ReportsList from './ReportsList';
 import ReportsHub from './ReportsHub';
 import { PageShell, PageHeader, FilterBar, FilterField, PageLoading, EmptyState } from '../page';
@@ -94,22 +93,18 @@ const Reports = () => {
   // during the transition, but the hub is now the default.
   if (!reportParam) {
     return (
-      <Layout>
-        <PageShell>
+      <PageShell>
           <PageHeader
             title="Reports"
             description="Sales, inventory, and financial insights at a glance."
           />
           <ReportsHub />
         </PageShell>
-      </Layout>
     );
   }
   if (reportParam === '__legacy__') {
     return (
-      <Layout>
-        <ReportsList />
-      </Layout>
+      <ReportsList />
     );
   }
 
@@ -835,8 +830,7 @@ const Reports = () => {
   const needsYearFilter = reportParam === 'annual';
 
   return (
-    <Layout>
-      <PageShell>
+    <PageShell>
         <PageHeader
           title={getReportTitle()}
           description={`Analytics for ${getReportTitle().toLowerCase()}.`}
@@ -885,7 +879,6 @@ const Reports = () => {
 
         <div className="report-content">{renderReport()}</div>
       </PageShell>
-    </Layout>
   );
 };
 

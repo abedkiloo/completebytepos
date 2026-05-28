@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Pencil, Shield, Trash2 } from 'lucide-react';
 import { rolesAPI, permissionsAPI } from '../../services/api';
-import Layout from '../Layout/Layout';
 import RoleForm from './RoleForm';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import { toast } from '../../utils/toast';
@@ -99,15 +98,12 @@ const Roles = () => {
 
   if (loading) {
     return (
-      <Layout>
-        <PageLoading rows={6} />
-      </Layout>
+      <PageLoading rows={6} />
     );
   }
 
   return (
-    <Layout>
-      <PageShell>
+    <PageShell>
         <PageHeader
           title="Roles"
           description="Group permissions for managers, sales staff, and custom jobs."
@@ -209,7 +205,6 @@ const Roles = () => {
           type="danger"
         />
       </PageShell>
-    </Layout>
   );
 };
 

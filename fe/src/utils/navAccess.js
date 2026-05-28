@@ -78,10 +78,6 @@ export function canSeeNavItem(item, sectionId, ctx) {
 
   if (item.requireSuperAdmin && !isSuperAdmin) return false;
 
-  if (isSuperAdmin) {
-    return true;
-  }
-
   if (persona === PERSONA.SALES) {
     const path = item.to.split('?')[0];
     if (sectionId === 'sales' && !SALES_ONLY_PATHS.has(path)) return false;
@@ -120,16 +116,13 @@ export function buildNavContext(moduleSettings, loadingModules) {
   const modules = normalizeModuleSettings(moduleSettings);
 
   const isModuleEnabled = (moduleName) =>
-    isSuperAdmin ||
     isModuleEnabledInSettings(modules, moduleName, { loading: loadingModules });
 
-  const isFeatureEnabled = (moduleName, featureKey) => {
-    if (isSuperAdmin) return true;
-    return isFeatureEnabledInSettings(modules, moduleName, featureKey, {
+  const isFeatureEnabled = (moduleName, featureKey) =>
+    isFeatureEnabledInSettings(modules, moduleName, featureKey, {
       loading: loadingModules,
       defaultWhenMissing: true,
     });
-  };
 
   return {
     persona,

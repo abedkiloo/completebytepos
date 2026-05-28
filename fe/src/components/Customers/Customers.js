@@ -14,7 +14,6 @@ import {
 
 import { customersAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
-import Layout from '../Layout/Layout';
 import { toast } from '../../utils/toast';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 
@@ -234,8 +233,7 @@ const Customers = () => {
   };
 
   return (
-    <Layout>
-      <PageShell>
+    <PageShell>
         <PageHeader
           title="Customers"
           description="Manage shoppers, their contact details, and outstanding balances."
@@ -364,7 +362,6 @@ const Customers = () => {
         onCancel={() => (deleting ? null : setPendingDelete(null))}
       />
       </PageShell>
-    </Layout>
   );
 };
 

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { salesAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
-import Layout from '../Layout/Layout';
 import NormalSaleModal from './NormalSaleModal';
 import '../../styles/shared.css';
 import './NormalSale.css';
@@ -32,8 +31,7 @@ const NormalSale = () => {
   };
 
   return (
-    <Layout>
-      <div className="normal-sale-page">
+    <div className="normal-sale-page">
         <div className="page-header">
           <div>
             <h1>Normal Sale</h1>
@@ -76,7 +74,6 @@ const NormalSale = () => {
           />
         )}
       </div>
-    </Layout>
   );
 };
 

@@ -10,7 +10,6 @@ import {
 import { inventoryAPI } from '../../services/api';
 import { formatCurrency, formatNumber, formatDateTime } from '../../utils/formatters';
 import { isFeatureEnabledInAny } from '../../utils/moduleSettings';
-import Layout from '../Layout/Layout';
 import SearchableSelect from '../Shared/SearchableSelect';
 import StockAdjustmentModal from './StockAdjustmentModal';
 import StockPurchaseModal from './StockPurchaseModal';
@@ -194,15 +193,12 @@ const Inventory = () => {
 
   if (loading && activeTab === 'movements' && movements.length === 0) {
     return (
-      <Layout>
-        <PageLoading rows={8} showStats />
-      </Layout>
+      <PageLoading rows={8} showStats />
     );
   }
 
   return (
-    <Layout>
-      <PageShell>
+    <PageShell>
         <PageHeader
           title="Inventory"
           description="Track stock movements, low stock alerts, and valuation."
@@ -510,7 +506,6 @@ const Inventory = () => {
         />
       )}
       </PageShell>
-    </Layout>
   );
 };
 

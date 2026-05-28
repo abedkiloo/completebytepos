@@ -5,7 +5,6 @@ import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { toast } from '../../utils/toast';
 import { formatCurrency, formatDate } from '../../utils/formatters';
-import Layout from '../Layout/Layout';
 import ExpenseForm from './ExpenseForm';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -165,15 +164,12 @@ const Expenses = () => {
 
   if (loading && expenses.length === 0) {
     return (
-      <Layout>
-        <PageLoading rows={8} />
-      </Layout>
+      <PageLoading rows={8} />
     );
   }
 
   return (
-    <Layout>
-      <PageShell>
+    <PageShell>
         <PageHeader
           title="Expenses"
           description="Track spending, approvals, and payments."
@@ -399,7 +395,6 @@ const Expenses = () => {
         type="danger"
       />
       </PageShell>
-    </Layout>
   );
 };
 

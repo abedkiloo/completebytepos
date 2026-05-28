@@ -85,6 +85,34 @@ describe('navAccess', () => {
     ).toBe(true);
   });
 
+  test('super admin respects disabled module and feature flags in nav', () => {
+    const admin = ctx(PERSONA.SUPER_ADMIN, {
+      isModuleEnabled: (mod) => mod !== 'barcodes' && mod !== 'reports',
+      isFeatureEnabled: (mod, feat) => !(mod === 'sales' && feat === 'pos'),
+    });
+    expect(
+      canSeeNavItem(
+        { to: '/pos', label: 'POS', feature: ['sales', 'pos'] },
+        'sales',
+        admin
+      )
+    ).toBe(false);
+    expect(
+      canSeeNavItem(
+        { to: '/barcodes', label: 'Print Barcode', module: 'barcodes' },
+        'inventory',
+        admin
+      )
+    ).toBe(false);
+    expect(
+      canSeeNavItem(
+        { to: '/pos/billing', label: 'Billing', feature: ['sales', 'billing_pos'] },
+        'sales',
+        admin
+      )
+    ).toBe(true);
+  });
+
   test('feature flag can hide nav item', () => {
     const mgr = ctx(PERSONA.MANAGER, {
       isFeatureEnabled: (mod, feat) => !(mod === 'sales' && feat === 'pos'),

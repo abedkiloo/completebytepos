@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { accountingAPI, bankAccountsAPI } from '../../services/api';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import SearchableSelect from '../Shared/SearchableSelect';
-import Layout from '../Layout/Layout';
 import { PageShell, PageHeader, PageLoading } from '../page';
 import { cn } from '../../lib/cn';
 import './Accounting.css';
@@ -187,8 +186,7 @@ const Accounting = () => {
   };
 
   return (
-    <Layout>
-      <PageShell>
+    <PageShell>
         <PageHeader
           title="Accounting"
           description="Financial statements, ledger, and account activity."
@@ -805,7 +803,6 @@ const Accounting = () => {
           </div>
         </div>
       </PageShell>
-    </Layout>
   );
 };
 

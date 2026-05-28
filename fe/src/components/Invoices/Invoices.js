@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { invoicesAPI, paymentsAPI, customersAPI, salesAPI, productsAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
-import Layout from '../Layout/Layout';
 import { toast } from '../../utils/toast';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import SearchableSelect from '../Shared/SearchableSelect';
@@ -490,8 +489,7 @@ const Invoices = () => {
   ];
 
   return (
-    <Layout>
-      <PageShell>
+    <PageShell>
         <PageHeader title="Invoices" description="Create invoices and track payments.">
           <Button onClick={handleCreate}>
             <Plus className="h-4 w-4" />
@@ -993,7 +991,6 @@ const Invoices = () => {
           type="danger"
         />
       </PageShell>
-    </Layout>
   );
 };
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, Outlet } from 'react-router-dom';
 import ToastContainer from './components/Toast/ToastContainer';
 import { subscribeToToasts } from './utils/toast';
 import { PageLoading } from './components/page';
@@ -8,6 +8,7 @@ import { authAPI } from './services/api';
 import { canAccessRoute, persistMeResponse } from './utils/roleAccess';
 import { normalizeModuleSettings, readCachedModules } from './utils/moduleCache';
 import SetupGate from './components/Installation/SetupGate';
+import AppLayout from './components/Layout/AppLayout';
 import { fetchSetupStatus } from './utils/setupStatus';
 import './App.css';
 import './styles/responsive.css';
@@ -37,7 +38,7 @@ const Invoices = lazy(() => import('./components/Invoices/Invoices'));
 const Branches = lazy(() => import('./components/Branches/Branches'));
 const Installation = lazy(() => import('./components/Installation/Installation'));
 
-const ProtectedRoute = ({ children }) => {
+const ProtectedRoute = () => {
   const location = useLocation();
   const accessToken = localStorage.getItem('access_token');
   const isAuthenticated = accessToken && localStorage.getItem('isAuthenticated') === 'true';
@@ -85,7 +86,7 @@ const ProtectedRoute = ({ children }) => {
     return <Navigate to="/" replace />;
   }
 
-  return children;
+  return <Outlet />;
 };
 
 function AuthBootstrap({ children }) {
@@ -134,166 +135,31 @@ function App() {
           <Routes>
             <Route path="/install" element={<Installation />} />
             <Route path="/login" element={<Login />} />
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <Dashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/pos"
-              element={
-                <ProtectedRoute>
-                  <POS />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/pos/billing"
-              element={
-                <ProtectedRoute>
-                  <BillingPOS />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/products"
-              element={
-                <ProtectedRoute>
-                  <Products />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/categories"
-              element={
-                <ProtectedRoute>
-                  <Categories />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/sales"
-              element={
-                <ProtectedRoute>
-                  <Sales />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/inventory"
-              element={
-                <ProtectedRoute>
-                  <Inventory />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/barcodes"
-              element={
-                <ProtectedRoute>
-                  <Barcodes />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/reports"
-              element={
-                <ProtectedRoute>
-                  <Reports />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/expenses"
-              element={
-                <ProtectedRoute>
-                  <Expenses />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/accounting"
-              element={
-                <ProtectedRoute>
-                  <Accounting />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/income"
-              element={
-                <ProtectedRoute>
-                  <Income />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/users"
-              element={
-                <ProtectedRoute>
-                  <Users />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/roles"
-              element={
-                <ProtectedRoute>
-                  <Roles />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/customers"
-              element={
-                <ProtectedRoute>
-                  <Customers />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/suppliers"
-              element={
-                <ProtectedRoute>
-                  <Suppliers />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/normal-sale"
-              element={
-                <ProtectedRoute>
-                  <NormalSale />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/module-settings"
-              element={
-                <ProtectedRoute>
-                  <ModuleSettings />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/invoices"
-              element={
-                <ProtectedRoute>
-                  <Invoices />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/branches"
-              element={
-                <ProtectedRoute>
-                  <Branches />
-                </ProtectedRoute>
-              }
-            />
+            <Route element={<ProtectedRoute />}>
+              {/* Full-screen POS — no sidebar shell */}
+              <Route path="/pos" element={<POS />} />
+              <Route element={<AppLayout />}>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/pos/billing" element={<BillingPOS />} />
+                <Route path="/products" element={<Products />} />
+                <Route path="/categories" element={<Categories />} />
+                <Route path="/sales" element={<Sales />} />
+                <Route path="/inventory" element={<Inventory />} />
+                <Route path="/barcodes" element={<Barcodes />} />
+                <Route path="/reports" element={<Reports />} />
+                <Route path="/expenses" element={<Expenses />} />
+                <Route path="/accounting" element={<Accounting />} />
+                <Route path="/income" element={<Income />} />
+                <Route path="/users" element={<Users />} />
+                <Route path="/roles" element={<Roles />} />
+                <Route path="/customers" element={<Customers />} />
+                <Route path="/suppliers" element={<Suppliers />} />
+                <Route path="/normal-sale" element={<NormalSale />} />
+                <Route path="/module-settings" element={<ModuleSettings />} />
+                <Route path="/invoices" element={<Invoices />} />
+                <Route path="/branches" element={<Branches />} />
+              </Route>
+            </Route>
           </Routes>
         </Suspense>
         </SetupGate>

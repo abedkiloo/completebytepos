@@ -8,7 +8,6 @@ import {
   Layers,
 } from 'lucide-react';
 import { modulesAPI, moduleFeaturesAPI } from '../../services/api';
-import Layout from '../Layout/Layout';
 import { toast } from '../../utils/toast';
 import { isSuperAdminFromStorage } from '../../utils/navAccess';
 import { PageShell, PageHeader, PageLoading } from '../page';
@@ -285,15 +284,12 @@ const ModuleSettings = () => {
 
   if (loading) {
     return (
-      <Layout>
-        <PageLoading rows={10} />
-      </Layout>
+      <PageLoading rows={10} />
     );
   }
 
   return (
-    <Layout>
-      <PageShell>
+    <PageShell>
         <PageHeader
           title="App modules"
           description="Organize capabilities by business area. Toggles update the menu, APIs, and roles together."
@@ -363,7 +359,6 @@ const ModuleSettings = () => {
           ))}
         </div>
       </PageShell>
-    </Layout>
   );
 };
 

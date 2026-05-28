@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { FolderTree, Pencil, Plus, Trash2 } from 'lucide-react';
 import { categoriesAPI } from '../../services/api';
 import { formatNumber } from '../../utils/formatters';
-import Layout from '../Layout/Layout';
 import CategoryForm from './CategoryForm';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import { toast } from '../../utils/toast';
@@ -124,15 +123,12 @@ const Categories = () => {
 
   if (loading) {
     return (
-      <Layout>
-        <PageLoading rows={8} />
-      </Layout>
+      <PageLoading rows={8} />
     );
   }
 
   return (
-    <Layout>
-      <PageShell>
+    <PageShell>
         <PageHeader
           title="Categories"
           description="Organize products into groups and subcategories."
@@ -260,7 +256,6 @@ const Categories = () => {
           type="danger"
         />
       </PageShell>
-    </Layout>
   );
 };
 

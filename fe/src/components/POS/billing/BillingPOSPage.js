@@ -11,7 +11,6 @@ import {
   Plus,
   Loader2,
 } from 'lucide-react';
-import Layout from '../../Layout/Layout';
 import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
 import { Label } from '../../ui/label';
@@ -38,18 +37,16 @@ export default function BillingPOSPage() {
 
   if (state.loadingHolding) {
     return (
-      <Layout>
-        <div className="flex h-[70vh] items-center justify-center text-muted-foreground">
+      <div className="flex h-[70vh] items-center justify-center text-muted-foreground">
           <Loader2 className="mr-2 h-6 w-6 animate-spin text-primary" />
           Loading register…
         </div>
-      </Layout>
     );
   }
 
   return (
-    <Layout>
-      <div className="flex min-h-[calc(100vh-3.5rem)] flex-col bg-slate-50">
+    <>
+    <div className="flex min-h-[calc(100vh-3.5rem)] flex-col bg-slate-50">
         {/* Top bar */}
         <div className="flex items-center justify-between border-b bg-white px-4 py-3">
           <div>
@@ -510,6 +507,6 @@ export default function BillingPOSPage() {
         onOpenChange={state.setShowReceipt}
         autoPrint={false}
       />
-    </Layout>
+    </>
   );
 }

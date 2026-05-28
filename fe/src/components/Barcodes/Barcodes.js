@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { barcodesAPI, productsAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
-import Layout from '../Layout/Layout';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { toast } from '../../utils/toast';
@@ -230,8 +229,7 @@ const Barcodes = () => {
   const productsWithoutBarcode = products.filter(p => !p.barcode).length;
 
   return (
-    <Layout>
-      <div className="barcodes-page">
+    <div className="barcodes-page">
       <div className="page-header">
         <div className="page-header-content">
           <h1>Barcode Management & Printing</h1>
@@ -574,7 +572,6 @@ const Barcodes = () => {
           type="primary"
         />
       </div>
-    </Layout>
   );
 };
 

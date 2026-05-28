@@ -47,9 +47,16 @@ export function readCachedModules() {
 
 export function isModuleEnabledInSettings(moduleSettings, moduleName, { loading = false } = {}) {
   if (!moduleName) return true;
-  if (loading) return true;
-  if (!moduleSettings || Object.keys(moduleSettings).length === 0) return true;
-  const mod = moduleSettings[moduleName];
+  let settings = moduleSettings;
+  if (loading && (!settings || Object.keys(settings).length === 0)) {
+    settings = readCachedModules();
+    if (Object.keys(settings).length === 0) return true;
+  } else if (loading) {
+    // Refresh in background — keep using current settings, do not show everything.
+    settings = moduleSettings;
+  }
+  if (!settings || Object.keys(settings).length === 0) return true;
+  const mod = settings[moduleName];
   if (mod == null) return true;
   return Boolean(mod.is_enabled);
 }
@@ -60,8 +67,12 @@ export function isFeatureEnabledInSettings(
   featureKey,
   { loading = false, defaultWhenMissing = false } = {}
 ) {
-  if (loading) return true;
-  const mod = moduleSettings[moduleName];
+  let settings = moduleSettings;
+  if (loading && (!settings || Object.keys(settings).length === 0)) {
+    settings = readCachedModules();
+    if (Object.keys(settings).length === 0) return true;
+  }
+  const mod = settings[moduleName];
   if (!mod || !mod.is_enabled) return false;
   const feature = (mod.features || {})[featureKey];
   if (feature == null) return defaultWhenMissing;

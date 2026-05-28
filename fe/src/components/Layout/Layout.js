@@ -47,7 +47,7 @@ import {
 } from '../ui/dropdown-menu';
 import { cn } from '../../lib/cn';
 import { canSeeNavItem, buildNavContext } from '../../utils/navAccess';
-import { normalizeModuleSettings } from '../../utils/moduleCache';
+import { normalizeModuleSettings, readCachedModules } from '../../utils/moduleCache';
 
 /**
  * Navigation tree.
@@ -173,8 +173,10 @@ const Layout = ({ children }) => {
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== 'undefined' && window.innerWidth < 1024
   );
-  const [moduleSettings, setModuleSettings] = useState({});
-  const [loadingModules, setLoadingModules] = useState(true);
+  const [moduleSettings, setModuleSettings] = useState(() => readCachedModules());
+  const [loadingModules, setLoadingModules] = useState(
+    () => Object.keys(readCachedModules()).length === 0
+  );
   // Initially everything collapsed except the most-used section to reduce
   // visual noise. Cashiers can pop sections open as they need them.
   const [expanded, setExpanded] = useState({ sales: true, inventory: true });
@@ -206,11 +208,11 @@ const Layout = ({ children }) => {
       const flat = normalizeModuleSettings(response.data || {});
       setModuleSettings(flat);
       localStorage.setItem('enabled_modules', JSON.stringify(flat));
-    } catch (error) {
-      const cached = normalizeModuleSettings(
-        JSON.parse(localStorage.getItem('enabled_modules') || '{}')
-      );
-      setModuleSettings(cached);
+    } catch {
+      const cached = readCachedModules();
+      if (Object.keys(cached).length > 0) {
+        setModuleSettings(cached);
+      }
     } finally {
       setLoadingModules(false);
     }
@@ -241,36 +243,6 @@ const Layout = ({ children }) => {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
-
-  const normalizedModules = useMemo(
-    () => normalizeModuleSettings(moduleSettings),
-    [moduleSettings]
-  );
-
-  const isModuleEnabled = useCallback(
-    (moduleName) => {
-      if (isSuperAdmin) return true;
-      if (!moduleName) return true;
-      if (loadingModules) return true;
-      if (!normalizedModules || Object.keys(normalizedModules).length === 0) return true;
-      const module = normalizedModules[moduleName];
-      if (module == null) return true;
-      return Boolean(module.is_enabled);
-    },
-    [loadingModules, normalizedModules, isSuperAdmin]
-  );
-
-  const isFeatureEnabled = useCallback(
-    (moduleName, featureKey) => {
-      if (isSuperAdmin) return true;
-      if (loadingModules) return true;
-      const module = normalizedModules[moduleName];
-      if (!module || !module.is_enabled) return false;
-      const feature = (module.features || {})[featureKey];
-      return feature ? Boolean(feature.is_enabled) : true;
-    },
-    [loadingModules, normalizedModules, isSuperAdmin]
-  );
 
   const navCtx = useMemo(
     () => buildNavContext(moduleSettings, loadingModules),
@@ -327,10 +299,10 @@ const Layout = ({ children }) => {
       }))
         .filter(
           (section) =>
-            (!section.module || isModuleEnabled(section.module)) &&
+            (!section.module || navCtx.isModuleEnabled(section.module)) &&
             section.visibleItems.length > 0
         ),
-    [itemVisible, isModuleEnabled]
+    [itemVisible, navCtx]
   );
 
   return (

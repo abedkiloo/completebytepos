@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { branchesAPI, usersAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
-import Layout from '../Layout/Layout';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import SearchableSelect from '../Shared/SearchableSelect';
 import '../../styles/slide-in-panel.css';
@@ -146,8 +145,7 @@ const Branches = () => {
   });
 
   return (
-    <Layout>
-      <div className="branches-container">
+    <div className="branches-container">
         <div className="page-header">
           <div className="page-header-content">
             <h1>Branch Management</h1>
@@ -379,7 +377,6 @@ const Branches = () => {
           type="danger"
         />
       </div>
-    </Layout>
   );
 };
 

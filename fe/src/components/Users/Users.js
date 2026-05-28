@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Pencil, Plus, Trash2, Users as UsersIcon } from 'lucide-react';
 import { usersAPI, rolesAPI } from '../../services/api';
-import Layout from '../Layout/Layout';
 import UserForm from './UserForm';
 import SearchableSelect from '../Shared/SearchableSelect';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
@@ -143,15 +142,12 @@ const Users = () => {
 
   if (loading) {
     return (
-      <Layout>
-        <PageLoading rows={6} showStats />
-      </Layout>
+      <PageLoading rows={6} showStats />
     );
   }
 
   return (
-    <Layout>
-      <PageShell>
+    <PageShell>
         <PageHeader
           title="Users"
           description="Manage who can sign in and what they can do in the store."
@@ -313,7 +309,6 @@ const Users = () => {
           onCancel={() => (deleting ? null : setPendingDelete(null))}
         />
       </PageShell>
-    </Layout>
   );
 };
 
