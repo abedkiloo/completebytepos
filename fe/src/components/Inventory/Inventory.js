@@ -1,16 +1,42 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { inventoryAPI, productsAPI } from '../../services/api';
+import {
+  ArrowLeftRight,
+  Package,
+  Plus,
+  Scale,
+  History,
+} from 'lucide-react';
+import { inventoryAPI } from '../../services/api';
 import { formatCurrency, formatNumber, formatDateTime } from '../../utils/formatters';
-import { isFeatureEnabled, isFeatureEnabledInAny } from '../../utils/moduleSettings';
+import { isFeatureEnabledInAny } from '../../utils/moduleSettings';
 import Layout from '../Layout/Layout';
 import SearchableSelect from '../Shared/SearchableSelect';
 import StockAdjustmentModal from './StockAdjustmentModal';
 import StockPurchaseModal from './StockPurchaseModal';
 import StockHistoryModal from './StockHistoryModal';
 import StockTransferModal from './StockTransferModal';
-import '../../styles/shared.css';
-import './Inventory.css';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Badge } from '../ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import {
+  PageShell,
+  PageHeader,
+  PageLoading,
+  EmptyState,
+  FilterBar,
+  FilterField,
+  DataTable,
+  DataTableHeader,
+  DataTableHead,
+  DataTableBody,
+  DataTableRow,
+  DataTableCell,
+  SummaryCard,
+} from '../page';
+import { cn } from '../../lib/cn';
 
 const Inventory = () => {
   const location = useLocation();
@@ -156,329 +182,278 @@ const Inventory = () => {
     setShowHistoryModal(true);
   };
 
-  const getMovementTypeColor = (type) => {
-    const colors = {
-      'sale': '#ef4444',
-      'purchase': '#10b981',
-      'adjustment': '#f59e0b',
-      'return': '#3b82f6',
-      'damage': '#dc2626',
-      'transfer': '#8b5cf6',
-      'waste': '#f97316',
-      'expired': '#6b7280',
+  const movementBadgeVariant = (type) => {
+    const map = {
+      sale: 'destructive',
+      purchase: 'success',
+      adjustment: 'warning',
+      transfer: 'secondary',
     };
-    return colors[type] || '#6b7280';
+    return map[type] || 'outline';
   };
+
+  if (loading && activeTab === 'movements' && movements.length === 0) {
+    return (
+      <Layout>
+        <PageLoading rows={8} showStats />
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
-      <div className="inventory-page">
-      <div className="page-header">
-        <div className="page-header-content">
-          <h1>Inventory Management</h1>
-        </div>
-        <div className="page-header-actions" style={{ display: 'flex', flexWrap: 'nowrap', gap: '0.75rem', alignItems: 'center' }}>
-          <button onClick={handlePurchase} className="btn btn-primary">
-            <span>+</span>
-            <span>Record Purchase</span>
-          </button>
+      <PageShell>
+        <PageHeader
+          title="Inventory"
+          description="Track stock movements, low stock alerts, and valuation."
+        >
+          <Button onClick={handlePurchase}>
+            <Plus className="h-4 w-4" />
+            Record purchase
+          </Button>
           {isFeatureEnabledInAny(['inventory', 'stock'], 'stock_adjustments') && (
-            <button onClick={handleAdjustment} className="btn btn-secondary">
-              Adjust Stock
-            </button>
+            <Button variant="outline" onClick={handleAdjustment}>
+              <Scale className="h-4 w-4" />
+              Adjust
+            </Button>
           )}
           {isFeatureEnabledInAny(['inventory', 'stock'], 'stock_transfers') && (
-            <button onClick={handleTransfer} className="btn btn-secondary">
-              Transfer Stock
-            </button>
+            <Button variant="outline" onClick={handleTransfer}>
+              <ArrowLeftRight className="h-4 w-4" />
+              Transfer
+            </Button>
           )}
-        </div>
-      </div>
+        </PageHeader>
 
-      <div className="inventory-tabs">
-        <button
-          className={activeTab === 'movements' ? 'active' : ''}
-          onClick={() => setActiveTab('movements')}
-        >
-          Stock Movements
-        </button>
-        <button
-          className={activeTab === 'low_stock' ? 'active' : ''}
-          onClick={() => setActiveTab('low_stock')}
-        >
-          Low Stock ({lowStockProducts.length})
-        </button>
-        <button
-          className={activeTab === 'out_of_stock' ? 'active' : ''}
-          onClick={() => setActiveTab('out_of_stock')}
-        >
-          Out of Stock ({outOfStockProducts.length})
-        </button>
-        <button
-          className={activeTab === 'report' ? 'active' : ''}
-          onClick={() => setActiveTab('report')}
-        >
-          Report
-        </button>
-      </div>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1">
+            <TabsTrigger value="movements">Movements</TabsTrigger>
+            <TabsTrigger value="low_stock">
+              Low stock ({lowStockProducts.length})
+            </TabsTrigger>
+            <TabsTrigger value="out_of_stock">
+              Out of stock ({outOfStockProducts.length})
+            </TabsTrigger>
+            <TabsTrigger value="report">Overview</TabsTrigger>
+          </TabsList>
 
-      {activeTab === 'movements' && (
-        <div className="inventory-content">
-          <div className="filters-section">
-            <SearchableSelect
-              value={filters.movement_type || ''}
-              onChange={(e) => setFilters({ ...filters, movement_type: e.target.value })}
-              options={[
-                { id: '', name: 'All Types' },
-                { id: 'sale', name: 'Sale' },
-                { id: 'purchase', name: 'Purchase' },
-                { id: 'adjustment', name: 'Adjustment' },
-                { id: 'return', name: 'Return' },
-                { id: 'damage', name: 'Damage' },
-                { id: 'transfer', name: 'Transfer' },
-                { id: 'waste', name: 'Waste' },
-                { id: 'expired', name: 'Expired' },
-              ]}
-              placeholder="Filter by movement type..."
-              name="movement_type"
-              searchable={true}
-              className="filter-select"
-            />
-            <input
-              type="date"
-              value={filters.date_from}
-              onChange={(e) => setFilters({ ...filters, date_from: e.target.value })}
-              className="filter-input"
-              placeholder="From Date"
-            />
-            <input
-              type="date"
-              value={filters.date_to}
-              onChange={(e) => setFilters({ ...filters, date_to: e.target.value })}
-              className="filter-input"
-              placeholder="To Date"
-            />
-          </div>
+          <TabsContent value="movements" className="mt-4 space-y-4">
+            <FilterBar>
+              <FilterField label="Type" className="min-w-[160px]">
+                <SearchableSelect
+                  value={filters.movement_type || ''}
+                  onChange={(e) =>
+                    setFilters({ ...filters, movement_type: e.target.value })
+                  }
+                  options={[
+                    { id: '', name: 'All types' },
+                    { id: 'sale', name: 'Sale' },
+                    { id: 'purchase', name: 'Purchase' },
+                    { id: 'adjustment', name: 'Adjustment' },
+                    { id: 'return', name: 'Return' },
+                    { id: 'damage', name: 'Damage' },
+                    { id: 'transfer', name: 'Transfer' },
+                    { id: 'waste', name: 'Waste' },
+                    { id: 'expired', name: 'Expired' },
+                  ]}
+                  placeholder="All types"
+                  name="movement_type"
+                />
+              </FilterField>
+              <FilterField label="From">
+                <Input
+                  type="date"
+                  value={filters.date_from}
+                  onChange={(e) =>
+                    setFilters({ ...filters, date_from: e.target.value })
+                  }
+                />
+              </FilterField>
+              <FilterField label="To">
+                <Input
+                  type="date"
+                  value={filters.date_to}
+                  onChange={(e) =>
+                    setFilters({ ...filters, date_to: e.target.value })
+                  }
+                />
+              </FilterField>
+            </FilterBar>
 
-          {loading ? (
-            <div className="loading">Loading movements...</div>
-          ) : (
-            <div className="movements-table-container">
-              <table className="movements-table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Product</th>
-                    <th>Type</th>
-                    <th>Quantity</th>
-                    <th>Unit Cost</th>
-                    <th>Total Cost</th>
-                    <th>Stock Before</th>
-                    <th>Stock After</th>
-                    <th>User</th>
-                    <th>Reference</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {movements.length === 0 ? (
-                    <tr>
-                      <td colSpan="11" className="empty-state">
-                        No stock movements found
-                      </td>
-                    </tr>
-                  ) : (
-                    movements.map(movement => (
-                      <tr key={movement.id}>
-                        <td>{formatDateTime(movement.created_at)}</td>
-                        <td>
-                          <div className="product-info">
-                            <div className="product-name">{movement.product_name}</div>
-                            <div className="product-sku">{movement.product_sku}</div>
-                          </div>
-                        </td>
-                        <td>
-                          <span
-                            className="movement-type-badge"
-                            style={{ backgroundColor: getMovementTypeColor(movement.movement_type) }}
-                          >
-                            {movement.movement_type}
-                          </span>
-                        </td>
-                        <td className={movement.quantity > 0 ? 'positive' : 'negative'}>
-                          {movement.quantity > 0 ? '+' : ''}{formatNumber(movement.quantity)}
-                        </td>
-                        <td>{movement.unit_cost ? formatCurrency(movement.unit_cost) : '-'}</td>
-                        <td>{movement.total_cost ? formatCurrency(movement.total_cost) : '-'}</td>
-                        <td>{formatNumber(movement.stock_before || 0)}</td>
-                        <td>{formatNumber(movement.stock_after || 0)}</td>
-                        <td>{movement.user_name || '-'}</td>
-                        <td>{movement.reference || '-'}</td>
-                        <td>
-                          <button
-                            onClick={() => handleViewHistory(
+            {loading ? (
+              <PageLoading rows={6} />
+            ) : movements.length === 0 ? (
+              <EmptyState
+                icon={Package}
+                title="No movements yet"
+                description="Record a purchase or complete a sale to see stock activity."
+                actionLabel="Record purchase"
+                onAction={handlePurchase}
+              />
+            ) : (
+              <DataTable>
+                <DataTableHeader>
+                  <DataTableHead>Date</DataTableHead>
+                  <DataTableHead>Product</DataTableHead>
+                  <DataTableHead>Type</DataTableHead>
+                  <DataTableHead align="right">Qty</DataTableHead>
+                  <DataTableHead align="right">After</DataTableHead>
+                  <DataTableHead>User</DataTableHead>
+                  <DataTableHead align="right">Actions</DataTableHead>
+                </DataTableHeader>
+                <DataTableBody>
+                  {movements.map((movement) => (
+                    <DataTableRow key={movement.id}>
+                      <DataTableCell className="whitespace-nowrap text-muted-foreground">
+                        {formatDateTime(movement.created_at)}
+                      </DataTableCell>
+                      <DataTableCell>
+                        <p className="font-medium">{movement.product_name}</p>
+                        <p className="text-xs text-muted-foreground">{movement.product_sku}</p>
+                      </DataTableCell>
+                      <DataTableCell>
+                        <Badge
+                          variant={movementBadgeVariant(movement.movement_type)}
+                          className="capitalize"
+                        >
+                          {movement.movement_type}
+                        </Badge>
+                      </DataTableCell>
+                      <DataTableCell
+                        align="right"
+                        className={cn(
+                          'font-semibold tabular-nums',
+                          movement.quantity > 0 ? 'text-success' : 'text-destructive'
+                        )}
+                      >
+                        {movement.quantity > 0 ? '+' : ''}
+                        {formatNumber(movement.quantity)}
+                      </DataTableCell>
+                      <DataTableCell align="right" className="tabular-nums">
+                        {formatNumber(movement.stock_after || 0)}
+                      </DataTableCell>
+                      <DataTableCell className="text-muted-foreground">
+                        {movement.user_name || '—'}
+                      </DataTableCell>
+                      <DataTableCell align="right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            handleViewHistory(
                               movement.product_detail || {
                                 id: movement.product,
                                 name: movement.product_name,
-                                sku: movement.product_sku
+                                sku: movement.product_sku,
                               }
-                            )}
-                            className="btn-link"
-                          >
-                            History
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
+                            )
+                          }
+                        >
+                          <History className="h-4 w-4" />
+                        </Button>
+                      </DataTableCell>
+                    </DataTableRow>
+                  ))}
+                </DataTableBody>
+              </DataTable>
+            )}
+          </TabsContent>
 
-      {activeTab === 'low_stock' && (
-        <div className="inventory-content">
-          {loading ? (
-            <div className="loading">Loading...</div>
-          ) : (
-            <div className="products-grid">
-              {lowStockProducts.length === 0 ? (
-                <div className="empty-state">No products with low stock</div>
-              ) : (
-                lowStockProducts.map(product => (
-                  <div key={product.id} className="product-card">
-                    <div className="product-header">
-                      <h3>{product.name}</h3>
-                      <span className="low-stock-badge">Low Stock</span>
-                    </div>
-                    <div className="product-details">
-                      <p><strong>SKU:</strong> {product.sku}</p>
-                      {product.has_variants && (
-                        <p><strong>Variants:</strong> 
-                          {(product.available_sizes_detail?.length || 0) > 0 && (
-                            <span>{product.available_sizes_detail.length} sizes</span>
-                          )}
-                          {(product.available_sizes_detail?.length || 0) > 0 && (product.available_colors_detail?.length || 0) > 0 && ' • '}
-                          {(product.available_colors_detail?.length || 0) > 0 && (
-                            <span>{product.available_colors_detail.length} colors</span>
-                          )}
-                        </p>
-                      )}
-                      {product.subcategory_name && (
-                        <p><strong>Subcategory:</strong> {product.subcategory_name}</p>
-                      )}
-                      <p><strong>Current Stock:</strong> {formatNumber(product.stock_quantity)}</p>
-                      <p><strong>Low Stock Threshold:</strong> {formatNumber(product.low_stock_threshold)}</p>
-                      <p><strong>Reorder Quantity:</strong> {formatNumber(product.reorder_quantity || 0)}</p>
-                      <p><strong>Unit:</strong> {product.unit}</p>
-                    </div>
-                    <div className="product-actions">
-                      <button
-                        onClick={() => {
-                          setSelectedProduct(product);
-                          setShowPurchaseModal(true);
-                        }}
-                        className="btn-primary"
-                      >
-                        Reorder
-                      </button>
-                      <button
-                        onClick={() => handleViewHistory(product)}
-                        className="btn-secondary"
-                      >
-                        View History
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-        </div>
-      )}
+          <TabsContent value="low_stock" className="mt-4">
+            {loading ? (
+              <PageLoading rows={4} />
+            ) : lowStockProducts.length === 0 ? (
+              <EmptyState
+                icon={Package}
+                title="No low-stock items"
+                description="Products above their threshold appear healthy."
+              />
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {lowStockProducts.map((product) => (
+                  <StockProductCard
+                    key={product.id}
+                    product={product}
+                    tone="warning"
+                    label="Low stock"
+                    onReorder={() => {
+                      setSelectedProduct(product);
+                      setShowPurchaseModal(true);
+                    }}
+                    onHistory={() => handleViewHistory(product)}
+                  />
+                ))}
+              </div>
+            )}
+          </TabsContent>
 
-      {activeTab === 'out_of_stock' && (
-        <div className="inventory-content">
-          {loading ? (
-            <div className="loading">Loading...</div>
-          ) : (
-            <div className="products-grid">
-              {outOfStockProducts.length === 0 ? (
-                <div className="empty-state">No products out of stock</div>
-              ) : (
-                outOfStockProducts.map(product => (
-                  <div key={product.id} className="product-card danger">
-                    <div className="product-header">
-                      <h3>{product.name}</h3>
-                      <span className="out-of-stock-badge">Out of Stock</span>
-                    </div>
-                    <div className="product-details">
-                      <p><strong>SKU:</strong> {product.sku}</p>
-                      <p><strong>Current Stock:</strong> 0</p>
-                      <p><strong>Reorder Quantity:</strong> {formatNumber(product.reorder_quantity || 0)}</p>
-                      <p><strong>Unit:</strong> {product.unit}</p>
-                    </div>
-                    <div className="product-actions">
-                      <button
-                        onClick={() => {
-                          setSelectedProduct(product);
-                          setShowPurchaseModal(true);
-                        }}
-                        className="btn-primary"
-                      >
-                        Restock
-                      </button>
-                      <button
-                        onClick={() => handleViewHistory(product)}
-                        className="btn-secondary"
-                      >
-                        View History
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-        </div>
-      )}
+          <TabsContent value="out_of_stock" className="mt-4">
+            {loading ? (
+              <PageLoading rows={4} />
+            ) : outOfStockProducts.length === 0 ? (
+              <EmptyState
+                icon={Package}
+                title="Nothing out of stock"
+                description="All tracked products have quantity on hand."
+              />
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {outOfStockProducts.map((product) => (
+                  <StockProductCard
+                    key={product.id}
+                    product={product}
+                    tone="destructive"
+                    label="Out of stock"
+                    onReorder={() => {
+                      setSelectedProduct(product);
+                      setShowPurchaseModal(true);
+                    }}
+                    onHistory={() => handleViewHistory(product)}
+                  />
+                ))}
+              </div>
+            )}
+          </TabsContent>
 
-      {activeTab === 'report' && report && (
-        <div className="inventory-content">
-          <div className="report-grid">
-            <div className="report-card">
-              <h3>Total Products</h3>
-              <p className="stat-value">{report.total_products}</p>
-            </div>
-            <div className="report-card">
-              <h3>Tracked Products</h3>
-              <p className="stat-value">{report.tracked_products}</p>
-            </div>
-            <div className="report-card warning">
-              <h3>Low Stock</h3>
-              <p className="stat-value">{report.low_stock_count}</p>
-            </div>
-            <div className="report-card danger">
-              <h3>Out of Stock</h3>
-              <p className="stat-value">{report.out_of_stock_count}</p>
-            </div>
-            <div className="report-card success">
-              <h3>Total Inventory Value</h3>
-              <p className="stat-value">{formatCurrency(report.total_inventory_value)}</p>
-            </div>
-            <div className="report-card">
-              <h3>Movements Today</h3>
-              <p className="stat-value">{report.total_movements_today}</p>
-            </div>
-            <div className="report-card">
-              <h3>Movements This Month</h3>
-              <p className="stat-value">{report.total_movements_this_month}</p>
-            </div>
-          </div>
-        </div>
-      )}
+          <TabsContent value="report" className="mt-4">
+            {loading || !report ? (
+              <PageLoading rows={4} showStats />
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <SummaryCard icon={Package} label="Total products" value={report.total_products} />
+                <SummaryCard icon={Package} label="Tracked" value={report.tracked_products} />
+                <SummaryCard
+                  icon={Package}
+                  label="Low stock"
+                  value={report.low_stock_count}
+                  tone="warning"
+                />
+                <SummaryCard
+                  icon={Package}
+                  label="Out of stock"
+                  value={report.out_of_stock_count}
+                  tone="destructive"
+                />
+                <SummaryCard
+                  icon={Package}
+                  label="Inventory value"
+                  value={formatCurrency(report.total_inventory_value)}
+                  tone="success"
+                />
+                <SummaryCard
+                  icon={Package}
+                  label="Movements today"
+                  value={report.total_movements_today}
+                />
+                <SummaryCard
+                  icon={Package}
+                  label="Movements this month"
+                  value={report.total_movements_this_month}
+                />
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
 
       {showAdjustmentModal && isFeatureEnabledInAny(['inventory', 'stock'], 'stock_adjustments') && (
         <StockAdjustmentModal
@@ -534,9 +509,38 @@ const Inventory = () => {
           }}
         />
       )}
-      </div>
+      </PageShell>
     </Layout>
   );
 };
+
+function StockProductCard({ product, tone, label, onReorder, onHistory }) {
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+        <CardTitle className="text-base leading-snug">{product.name}</CardTitle>
+        <Badge variant={tone === 'destructive' ? 'destructive' : 'warning'}>{label}</Badge>
+      </CardHeader>
+      <CardContent className="space-y-2 text-sm text-muted-foreground">
+        <p>SKU {product.sku}</p>
+        <p>
+          Stock:{' '}
+          <span className="font-semibold text-foreground">
+            {formatNumber(product.stock_quantity ?? 0)}
+          </span>
+        </p>
+        <p>Threshold: {formatNumber(product.low_stock_threshold)}</p>
+        <div className="flex gap-2 pt-2">
+          <Button size="sm" onClick={onReorder}>
+            Reorder
+          </Button>
+          <Button size="sm" variant="outline" onClick={onHistory}>
+            History
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default Inventory;

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Check, Pencil, Plus, RefreshCw, Trash2, TrendingDown } from 'lucide-react';
 import { expensesAPI } from '../../services/api';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import SearchableSelect from '../Shared/SearchableSelect';
@@ -6,8 +7,23 @@ import { toast } from '../../utils/toast';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import Layout from '../Layout/Layout';
 import ExpenseForm from './ExpenseForm';
-import '../../styles/shared.css';
-import './Expenses.css';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import {
+  PageShell,
+  PageHeader,
+  PageLoading,
+  EmptyState,
+  FilterBar,
+  FilterField,
+  DataTable,
+  DataTableHeader,
+  DataTableHead,
+  DataTableBody,
+  DataTableRow,
+  DataTableCell,
+  StatusBadge,
+} from '../page';
 
 const Expenses = () => {
   const [expenses, setExpenses] = useState([]);
@@ -145,46 +161,47 @@ const Expenses = () => {
     loadCategories();
   };
 
-  const getStatusBadgeClass = (status) => {
-    const classes = {
-      'pending': 'pending',
-      'approved': 'approved',
-      'rejected': 'rejected',
-      'paid': 'paid',
-    };
-    return classes[status] || 'pending';
-  };
+  const totalPages = Math.ceil(pagination.count / pagination.page_size) || 1;
+
+  if (loading && expenses.length === 0) {
+    return (
+      <Layout>
+        <PageLoading rows={8} />
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
-      <div className="expenses-page">
-        <div className="page-header">
-          <div className="page-header-content">
-            <h1>Expenses Management</h1>
-            <p>Track and manage business expenses</p>
-            {categories.length === 0 && (
-              <div className="warning-banner" style={{ marginTop: '0.5rem', padding: '0.75rem', background: '#fef3c7', border: '1px solid #fbbf24', borderRadius: '4px', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span>⚠️</span>
-                <span>No expense categories available. Click "Add Expense" to create your first category, or run: <code style={{ background: '#f3f4f6', padding: '0.2rem 0.4rem', borderRadius: '3px' }}>python manage.py init_expense_categories</code></span>
-              </div>
-            )}
-          </div>
-          <div className="page-header-actions">
-            <button className="btn btn-secondary" onClick={() => loadCategories()} title="Refresh Categories">
-              <span>🔄</span>
-              <span>Categories</span>
-            </button>
-            <button className="btn btn-primary" onClick={handleAdd}>
-              <span>+</span>
-              <span>Add Expense</span>
-            </button>
-          </div>
-        </div>
+      <PageShell>
+        <PageHeader
+          title="Expenses"
+          description="Track spending, approvals, and payments."
+        >
+          <Button variant="outline" onClick={() => loadCategories()}>
+            <RefreshCw className="h-4 w-4" />
+            Refresh categories
+          </Button>
+          <Button onClick={handleAdd}>
+            <Plus className="h-4 w-4" />
+            Add expense
+          </Button>
+        </PageHeader>
 
-        {/* Filters */}
-        <div className="expenses-filters">
-          <div className="filter-group">
-            <label>Category</label>
+        {categories.length === 0 && (
+          <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-foreground">
+            <TrendingDown className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+            <p>
+              No expense categories yet. Add an expense to create one, or run{' '}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">
+                python manage.py init_expense_categories
+              </code>
+            </p>
+          </div>
+        )}
+
+        <FilterBar>
+          <FilterField label="Category">
             <SearchableSelect
               name="category"
               value={filters.category}
@@ -193,11 +210,10 @@ const Expenses = () => {
                 { id: '', name: 'All Categories' },
                 ...categories.map(cat => ({ id: cat.id, name: cat.name }))
               ]}
-              placeholder="All Categories"
+              placeholder="All categories"
             />
-          </div>
-          <div className="filter-group">
-            <label>Status</label>
+          </FilterField>
+          <FilterField label="Status">
             <SearchableSelect
               name="status"
               value={filters.status}
@@ -209,29 +225,26 @@ const Expenses = () => {
                 { id: 'rejected', name: 'Rejected' },
                 { id: 'paid', name: 'Paid' }
               ]}
-              placeholder="All Status"
+              placeholder="All status"
             />
-          </div>
-          <div className="filter-group">
-            <label>From Date</label>
-            <input
+          </FilterField>
+          <FilterField label="From">
+            <Input
               type="date"
               name="date_from"
               value={filters.date_from}
               onChange={handleFilterChange}
             />
-          </div>
-          <div className="filter-group">
-            <label>To Date</label>
-            <input
+          </FilterField>
+          <FilterField label="To">
+            <Input
               type="date"
               name="date_to"
               value={filters.date_to}
               onChange={handleFilterChange}
             />
-          </div>
-          <div className="filter-group">
-            <label>Payment Method</label>
+          </FilterField>
+          <FilterField label="Payment">
             <SearchableSelect
               name="payment_method"
               value={filters.payment_method}
@@ -244,117 +257,124 @@ const Expenses = () => {
                 { id: 'card', name: 'Card' },
                 { id: 'other', name: 'Other' }
               ]}
-              placeholder="All Methods"
+              placeholder="All methods"
             />
-          </div>
-          <div className="filter-group">
-            <label>Search</label>
-            <input
-              type="text"
+          </FilterField>
+          <FilterField label="Search" className="min-w-[180px] flex-[2]">
+            <Input
+              type="search"
               name="search"
-              placeholder="Search expenses..."
+              placeholder="Search expenses…"
               value={filters.search}
               onChange={handleFilterChange}
             />
-          </div>
-        </div>
+          </FilterField>
+        </FilterBar>
 
-        {/* Expenses Table */}
-        <div className="expenses-table-container">
-          {loading ? (
-            <div className="loading-state">Loading expenses...</div>
-          ) : expenses.length === 0 ? (
-            <div className="empty-state">No expenses found</div>
-          ) : (
-            <>
-              <table className="expenses-table">
-                <thead>
-                  <tr>
-                    <th>Expense #</th>
-                    <th>Date</th>
-                    <th>Category</th>
-                    <th>Description</th>
-                    <th>Vendor</th>
-                    <th>Amount</th>
-                    <th>Payment</th>
-                    <th>Status</th>
-                    <th>Created By</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {expenses.map(expense => (
-                    <tr key={expense.id}>
-                      <td className="expense-number">{expense.expense_number}</td>
-                      <td>{formatDate(expense.expense_date)}</td>
-                      <td>{expense.category_name || 'N/A'}</td>
-                      <td className="description-cell">{expense.description}</td>
-                      <td>{expense.vendor || 'N/A'}</td>
-                      <td className="amount-cell">{formatCurrency(expense.amount)}</td>
-                      <td>
-                        <span className="payment-badge">{expense.payment_method}</span>
-                      </td>
-                      <td>
-                        <span className={`status-badge ${getStatusBadgeClass(expense.status)}`}>
-                          {expense.status}
-                        </span>
-                      </td>
-                      <td>{expense.created_by_name || 'N/A'}</td>
-                      <td>
-                        <div className="action-buttons">
-                          {expense.status === 'pending' && (
-                            <button
-                              className="btn-approve"
-                              onClick={() => handleApprove(expense.id)}
-                              title="Approve"
-                            >
-                              ✓
-                            </button>
-                          )}
-                          <button
-                            className="btn-edit"
-                            onClick={() => handleEdit(expense)}
-                            title="Edit"
+        {expenses.length === 0 ? (
+          <EmptyState
+            icon={TrendingDown}
+            title="No expenses found"
+            description="Adjust filters or record your first expense."
+            actionLabel="Add expense"
+            onAction={handleAdd}
+          />
+        ) : (
+          <>
+            <DataTable>
+              <DataTableHeader>
+                <DataTableHead>#</DataTableHead>
+                <DataTableHead>Date</DataTableHead>
+                <DataTableHead>Category</DataTableHead>
+                <DataTableHead>Description</DataTableHead>
+                <DataTableHead align="right">Amount</DataTableHead>
+                <DataTableHead>Status</DataTableHead>
+                <DataTableHead align="right">Actions</DataTableHead>
+              </DataTableHeader>
+              <DataTableBody>
+                {expenses.map((expense) => (
+                  <DataTableRow key={expense.id}>
+                    <DataTableCell className="font-medium">
+                      {expense.expense_number}
+                    </DataTableCell>
+                    <DataTableCell className="text-muted-foreground whitespace-nowrap">
+                      {formatDate(expense.expense_date)}
+                    </DataTableCell>
+                    <DataTableCell>{expense.category_name || '—'}</DataTableCell>
+                    <DataTableCell className="max-w-[200px] truncate">
+                      {expense.description}
+                    </DataTableCell>
+                    <DataTableCell align="right" className="font-semibold">
+                      {formatCurrency(expense.amount)}
+                    </DataTableCell>
+                    <DataTableCell>
+                      <StatusBadge status={expense.status} />
+                    </DataTableCell>
+                    <DataTableCell align="right">
+                      <div className="flex justify-end gap-1">
+                        {expense.status === 'pending' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleApprove(expense.id)}
+                            title="Approve"
                           >
-                            ✎
-                          </button>
-                          <button
-                            className="btn-delete"
-                            onClick={() => handleDelete(expense.id)}
-                            title="Delete"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                            <Check className="h-4 w-4 text-success" />
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEdit(expense)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive"
+                          onClick={() => handleDelete(expense.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </DataTableCell>
+                  </DataTableRow>
+                ))}
+              </DataTableBody>
+            </DataTable>
 
-              {/* Pagination */}
-              {pagination.count > pagination.page_size && (
-                <div className="pagination">
-                  <button
+            {pagination.count > pagination.page_size && (
+              <div className="flex items-center justify-between gap-4 rounded-lg border bg-card px-4 py-3 text-sm">
+                <span className="text-muted-foreground">
+                  Page {pagination.page} of {totalPages}
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
                     disabled={pagination.page === 1}
-                    onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+                    onClick={() =>
+                      setPagination((prev) => ({ ...prev, page: prev.page - 1 }))
+                    }
                   >
                     Previous
-                  </button>
-                  <span>
-                    Page {pagination.page} of {Math.ceil(pagination.count / pagination.page_size)}
-                  </span>
-                  <button
-                    disabled={pagination.page >= Math.ceil(pagination.count / pagination.page_size)}
-                    onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={pagination.page >= totalPages}
+                    onClick={() =>
+                      setPagination((prev) => ({ ...prev, page: prev.page + 1 }))
+                    }
                   >
                     Next
-                  </button>
+                  </Button>
                 </div>
-              )}
-            </>
-          )}
-        </div>
+              </div>
+            )}
+          </>
+        )}
 
         {/* Expense Form Modal */}
         {showForm && (
@@ -378,7 +398,7 @@ const Expenses = () => {
         cancelText="Cancel"
         type="danger"
       />
-      </div>
+      </PageShell>
     </Layout>
   );
 };

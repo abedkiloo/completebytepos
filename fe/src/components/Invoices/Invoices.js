@@ -5,7 +5,9 @@ import Layout from '../Layout/Layout';
 import { toast } from '../../utils/toast';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import SearchableSelect from '../Shared/SearchableSelect';
-import '../../styles/shared.css';
+import { PageShell, PageHeader, PageLoading, EmptyState, FilterBar, SearchField, FilterPills } from '../page';
+import { Button } from '../ui/button';
+import { Plus, FileText } from 'lucide-react';
 import '../../styles/slide-in-panel.css';
 import './Invoices.css';
 
@@ -477,51 +479,51 @@ const Invoices = () => {
     setFormData(prev => ({ ...prev, total }));
   }, [formData.subtotal, formData.tax_amount, formData.discount_amount]);
 
+  const statusOptions = [
+    { value: 'all', label: 'All' },
+    { value: 'draft', label: 'Draft' },
+    { value: 'sent', label: 'Sent' },
+    { value: 'partial', label: 'Partial' },
+    { value: 'paid', label: 'Paid' },
+    { value: 'overdue', label: 'Overdue' },
+    { value: 'cancelled', label: 'Cancelled' },
+  ];
+
   return (
     <Layout>
-      <div className="invoices-container">
-        <div className="page-header">
-          <div className="page-header-content">
-            <h1>Invoices</h1>
-            <p>Manage invoices and track payments</p>
-          </div>
-          <div className="page-header-actions">
-            <button className="btn btn-primary" onClick={handleCreate}>
-              <span>+</span>
-              <span>Create Invoice</span>
-            </button>
-          </div>
-        </div>
+      <PageShell>
+        <PageHeader title="Invoices" description="Create invoices and track payments.">
+          <Button onClick={handleCreate}>
+            <Plus className="h-4 w-4" />
+            Create invoice
+          </Button>
+        </PageHeader>
 
-        <div className="invoices-toolbar">
-          <div className="search-box">
-            <input
-              type="text"
-              placeholder="Search invoices..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            <span className="search-icon">🔍</span>
-          </div>
+        <FilterBar>
+          <SearchField
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search invoices…"
+            className="min-w-[200px] flex-[2]"
+          />
           <SearchableSelect
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="status-filter"
-            options={[
-              { id: 'all', name: 'All Status' },
-              { id: 'draft', name: 'Draft' },
-              { id: 'sent', name: 'Sent' },
-              { id: 'partial', name: 'Partially Paid' },
-              { id: 'paid', name: 'Paid' },
-              { id: 'overdue', name: 'Overdue' },
-              { id: 'cancelled', name: 'Cancelled' }
-            ]}
-            placeholder="All Status"
+            options={statusOptions.map((o) => ({ id: o.value, name: o.label }))}
+            placeholder="Status"
           />
-        </div>
+        </FilterBar>
 
         {loading ? (
-          <div className="loading">Loading invoices...</div>
+          <PageLoading rows={6} />
+        ) : invoices.length === 0 ? (
+          <EmptyState
+            icon={FileText}
+            title="No invoices"
+            description="Create an invoice from a sale or manually."
+            actionLabel="Create invoice"
+            onAction={handleCreate}
+          />
         ) : (
           <div className="invoices-table-container">
             <table className="invoices-table">
@@ -990,7 +992,7 @@ const Invoices = () => {
           cancelText="Cancel"
           type="danger"
         />
-      </div>
+      </PageShell>
     </Layout>
   );
 };

@@ -1,10 +1,36 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
+import { Receipt, ShoppingCart } from 'lucide-react';
 import { salesAPI } from '../../services/api';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import Layout from '../Layout/Layout';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { toast } from '../../utils/toast';
-import './Sales.css';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Badge } from '../ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
+import {
+  PageShell,
+  PageHeader,
+  PageLoading,
+  EmptyState,
+  FilterBar,
+  FilterField,
+  DataTable,
+  DataTableHeader,
+  DataTableHead,
+  DataTableBody,
+  DataTableRow,
+  DataTableCell,
+  StatusBadge,
+} from '../page';
 
 const Sales = () => {
   const [sales, setSales] = useState([]);
@@ -203,166 +229,176 @@ const Sales = () => {
     }
   };
 
-  const getStatusBadgeClass = (sale) => {
-    // Status can be determined by payment method or other criteria
-    return 'completed'; // Default status
-  };
+  const totalPages = Math.ceil(pagination.count / pagination.page_size) || 1;
+
+  if (loading && sales.length === 0) {
+    return (
+      <Layout>
+        <PageLoading rows={8} />
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
-      <div className="sales-page">
-        <div className="page-header">
-          <div>
-            <h1>Sales History</h1>
-            <p>Manage and view all sales transactions</p>
-          </div>
-        </div>
+      <PageShell>
+        <PageHeader
+          title="Sales history"
+          description="Review completed transactions and reprint receipts."
+        >
+          <Button asChild>
+            <Link to="/pos">
+              <ShoppingCart className="h-4 w-4" />
+              Open POS
+            </Link>
+          </Button>
+        </PageHeader>
 
-        {/* Filters */}
-        <div className="sales-filters">
-          <div className="filter-group">
-            <label>From Date</label>
-            <input
+        <FilterBar>
+          <FilterField label="From">
+            <Input
               type="date"
               name="date_from"
               value={filters.date_from}
               onChange={handleFilterChange}
             />
-          </div>
-          <div className="filter-group">
-            <label>To Date</label>
-            <input
+          </FilterField>
+          <FilterField label="To">
+            <Input
               type="date"
               name="date_to"
               value={filters.date_to}
               onChange={handleFilterChange}
             />
-          </div>
-          <div className="filter-group">
-            <label>Payment Method</label>
+          </FilterField>
+          <FilterField label="Payment">
             <SearchableSelect
               name="payment_method"
               value={filters.payment_method}
               onChange={handleFilterChange}
               options={[
-                { id: '', name: 'All Methods' },
+                { id: '', name: 'All methods' },
                 { id: 'cash', name: 'Cash' },
                 { id: 'mpesa', name: 'M-PESA' },
                 { id: 'card', name: 'Card' },
-                { id: 'other', name: 'Other' }
+                { id: 'other', name: 'Other' },
               ]}
-              placeholder="All Methods"
+              placeholder="All methods"
             />
-          </div>
-          <div className="filter-group">
-            <label>Search</label>
-            <input
-              type="text"
+          </FilterField>
+          <FilterField label="Search" className="min-w-[200px] flex-[2]">
+            <Input
+              type="search"
               name="search"
-              placeholder="Search by sale number..."
+              placeholder="Sale number…"
               value={filters.search}
               onChange={handleFilterChange}
             />
-          </div>
-        </div>
+          </FilterField>
+        </FilterBar>
 
-        {/* Sales Table */}
-        <div className="sales-table-container">
-          {loading ? (
-            <div className="loading-state">Loading sales...</div>
-          ) : sales.length === 0 ? (
-            <div className="empty-state">No sales found</div>
-          ) : (
-            <>
-              <table className="sales-table">
-                <thead>
-                  <tr>
-                    <th>Sale Number</th>
-                    <th>Date</th>
-                    <th>Cashier</th>
-                    <th>Items</th>
-                    <th>Subtotal</th>
-                    <th>Tax</th>
-                    <th>Discount</th>
-                    <th>Total</th>
-                    <th>Payment</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sales.map(sale => (
-                    <tr key={sale.id}>
-                      <td>
-                        <button
-                          className="sale-number-link"
-                          onClick={() => handleViewReceipt(sale)}
-                          title="Click to view sale details"
-                        >
-                          {sale.sale_number}
-                        </button>
-                      </td>
-                      <td>{formatDateTime(sale.created_at)}</td>
-                      <td>{sale.cashier_name || 'N/A'}</td>
-                      <td>{sale.item_count || 0}</td>
-                      <td>{formatCurrency(sale.subtotal)}</td>
-                      <td>{formatCurrency(sale.tax_amount)}</td>
-                      <td>{formatCurrency(sale.discount_amount)}</td>
-                      <td className="total-amount">{formatCurrency(sale.total)}</td>
-                      <td>
-                        <span className="payment-badge">{sale.payment_method}</span>
-                      </td>
-                      <td>
-                        <span className={`status-badge ${getStatusBadgeClass(sale)}`}>
-                          Completed
-                        </span>
-                      </td>
-                      <td>
-                        <button
-                          className="btn-view"
-                          onClick={() => handleViewReceipt(sale)}
-                        >
-                          View Receipt
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        {sales.length === 0 ? (
+          <EmptyState
+            icon={Receipt}
+            title="No sales in this range"
+            description="Try different dates or start selling from POS."
+            actionLabel="Open POS"
+            onAction={() => window.location.assign('/pos')}
+          />
+        ) : (
+          <>
+            <DataTable>
+              <DataTableHeader>
+                <DataTableHead>Sale #</DataTableHead>
+                <DataTableHead>Date</DataTableHead>
+                <DataTableHead>Cashier</DataTableHead>
+                <DataTableHead align="right">Items</DataTableHead>
+                <DataTableHead align="right">Total</DataTableHead>
+                <DataTableHead>Payment</DataTableHead>
+                <DataTableHead>Status</DataTableHead>
+                <DataTableHead align="right">Actions</DataTableHead>
+              </DataTableHeader>
+              <DataTableBody>
+                {sales.map((sale) => (
+                  <DataTableRow key={sale.id}>
+                    <DataTableCell>
+                      <button
+                        type="button"
+                        className="font-medium text-primary hover:underline"
+                        onClick={() => handleViewReceipt(sale)}
+                      >
+                        {sale.sale_number}
+                      </button>
+                    </DataTableCell>
+                    <DataTableCell className="text-muted-foreground whitespace-nowrap">
+                      {formatDateTime(sale.created_at)}
+                    </DataTableCell>
+                    <DataTableCell>{sale.cashier_name || '—'}</DataTableCell>
+                    <DataTableCell align="right">{sale.item_count || 0}</DataTableCell>
+                    <DataTableCell align="right" className="font-semibold">
+                      {formatCurrency(sale.total)}
+                    </DataTableCell>
+                    <DataTableCell>
+                      <Badge variant="outline" className="capitalize">
+                        {sale.payment_method}
+                      </Badge>
+                    </DataTableCell>
+                    <DataTableCell>
+                      <StatusBadge status={sale.status || 'completed'} />
+                    </DataTableCell>
+                    <DataTableCell align="right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleViewReceipt(sale)}
+                      >
+                        Receipt
+                      </Button>
+                    </DataTableCell>
+                  </DataTableRow>
+                ))}
+              </DataTableBody>
+            </DataTable>
 
-              {/* Pagination */}
-              {pagination.count > pagination.page_size && (
-                <div className="pagination">
-                  <button
+            {pagination.count > pagination.page_size && (
+              <div className="flex items-center justify-between gap-4 rounded-lg border bg-card px-4 py-3 text-sm">
+                <span className="text-muted-foreground">
+                  Page {pagination.page} of {totalPages} · {pagination.count} sales
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
                     disabled={pagination.page === 1}
-                    onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+                    onClick={() =>
+                      setPagination((prev) => ({ ...prev, page: prev.page - 1 }))
+                    }
                   >
                     Previous
-                  </button>
-                  <span>
-                    Page {pagination.page} of {Math.ceil(pagination.count / pagination.page_size)}
-                  </span>
-                  <button
-                    disabled={pagination.page >= Math.ceil(pagination.count / pagination.page_size)}
-                    onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={pagination.page >= totalPages}
+                    onClick={() =>
+                      setPagination((prev) => ({ ...prev, page: prev.page + 1 }))
+                    }
                   >
                     Next
-                  </button>
+                  </Button>
                 </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Receipt Modal */}
-        {showReceiptModal && selectedSale && (
-          <div className="modal-overlay" onClick={() => setShowReceiptModal(false)}>
-            <div className="modal-content receipt-modal" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-header">
-                <h2>Receipt - {selectedSale.sale_number}</h2>
-                <button className="modal-close" onClick={() => setShowReceiptModal(false)}>×</button>
               </div>
-              <div className="receipt-content">
+            )}
+          </>
+        )}
+
+        <Dialog open={showReceiptModal} onOpenChange={setShowReceiptModal}>
+          <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Receipt — {selectedSale?.sale_number}</DialogTitle>
+            </DialogHeader>
+            {selectedSale && (
+              <div className="receipt-content space-y-4 text-sm">
                 <div className="receipt-header">
                   <h3>CompleteByte POS</h3>
                   <p>Sale Receipt</p>
@@ -476,14 +512,16 @@ const Sales = () => {
                   <p>Thank you for your business!</p>
                 </div>
               </div>
-              <div className="modal-footer">
-                <button onClick={handlePrintReceipt}>Print Receipt</button>
-                <button onClick={() => setShowReceiptModal(false)}>Close</button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowReceiptModal(false)}>
+                Close
+              </Button>
+              <Button onClick={handlePrintReceipt}>Print receipt</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </PageShell>
     </Layout>
   );
 };

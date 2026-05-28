@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { productsAPI, categoriesAPI, sizesAPI, colorsAPI, suppliersAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
+import { useProductVariantsEnabled } from '../../hooks/useProductVariantsEnabled';
 import SearchableSelect from '../Shared/SearchableSelect';
 import CategoryForm from './CategoryForm';
 import SupplierForm from '../Suppliers/SupplierForm';
@@ -8,6 +9,7 @@ import '../../styles/slide-in-panel.css';
 import './Products.css';
 
 const ProductForm = ({ product, categories = [], onClose, onSave }) => {
+  const variantsEnabled = useProductVariantsEnabled();
   const [formData, setFormData] = useState({
     name: '',
     sku: '',
@@ -17,7 +19,8 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
     has_variants: false,
     available_sizes: [],
     available_colors: [],
-    price: '',
+    mrp: '',
+    selling_price: '',
     cost: '',
     stock_quantity: 0,
     low_stock_threshold: 10,
@@ -183,7 +186,8 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
         has_variants: product.has_variants || false,
         available_sizes: sizeIds,
         available_colors: colorIds,
-        price: product.price || '',
+        mrp: product.mrp ?? product.price ?? '',
+        selling_price: product.selling_price ?? product.price ?? '',
         cost: product.cost || '',
         stock_quantity: product.stock_quantity || 0,
         low_stock_threshold: product.low_stock_threshold || 10,
@@ -311,16 +315,28 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
       newErrors.name = 'Product name is required';
     }
     
-    if (!formData.price || parseFloat(formData.price) < 0) {
-      newErrors.price = 'Valid price is required';
+    if (!formData.selling_price || parseFloat(formData.selling_price) < 0) {
+      newErrors.selling_price = 'Selling price is required';
+    }
+
+    if (formData.mrp && parseFloat(formData.mrp) < 0) {
+      newErrors.mrp = 'MRP must be zero or positive';
+    }
+
+    if (
+      formData.mrp &&
+      formData.selling_price &&
+      parseFloat(formData.mrp) < parseFloat(formData.selling_price)
+    ) {
+      newErrors.mrp = 'MRP should be at least the selling price';
     }
     
     if (formData.cost && parseFloat(formData.cost) < 0) {
       newErrors.cost = 'Cost must be positive';
     }
     
-    if (parseFloat(formData.price) < parseFloat(formData.cost || 0)) {
-      newErrors.price = 'Price should be greater than or equal to cost';
+    if (parseFloat(formData.selling_price) < parseFloat(formData.cost || 0)) {
+      newErrors.selling_price = 'Selling price should be greater than or equal to cost';
     }
     
     setErrors(newErrors);
@@ -336,20 +352,27 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
 
     setLoading(true);
     try {
+      const payload = { ...formData };
+      if (!variantsEnabled) {
+        payload.has_variants = false;
+        payload.available_sizes = [];
+        payload.available_colors = [];
+      }
+
       const submitData = new FormData();
       
-      Object.keys(formData).forEach(key => {
+      Object.keys(payload).forEach(key => {
         // Skip SKU and Barcode - they are system-generated
         if (key === 'sku' || key === 'barcode') {
           return;
         }
         if (key === 'available_sizes' || key === 'available_colors') {
           // Handle array fields
-          formData[key].forEach(id => {
+          payload[key].forEach(id => {
             submitData.append(key, id);
           });
-        } else if (formData[key] !== '' && formData[key] !== null && formData[key] !== undefined) {
-          submitData.append(key, formData[key]);
+        } else if (payload[key] !== '' && payload[key] !== null && payload[key] !== undefined) {
+          submitData.append(key, payload[key]);
         }
       });
       
@@ -469,6 +492,7 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
             </div>
           </div>
 
+          {variantsEnabled ? (
           <div className="form-row">
             <div className="form-group">
               <label>
@@ -482,8 +506,14 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
               </label>
             </div>
           </div>
+          ) : (
+            <p className="text-sm text-muted-foreground" style={{ marginBottom: '1rem' }}>
+              Size/color variants are turned off. Enable{' '}
+              <strong>Products → Product Variants</strong> in Module Settings if you need them.
+            </p>
+          )}
 
-          {formData.has_variants && (
+          {variantsEnabled && formData.has_variants && (
             <div className="form-row">
               <div className="form-group">
                 <label>Available Sizes</label>
@@ -569,19 +599,37 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
 
           <div className="form-row">
             <div className="form-group">
-              <label>Price (KES) *</label>
+              <label>MRP (KES)</label>
               <input
                 type="number"
-                name="price"
-                value={formData.price}
+                name="mrp"
+                value={formData.mrp}
+                onChange={handleChange}
+                step="0.01"
+                min="0"
+                placeholder="List / sticker price"
+              />
+              {errors.mrp && <span className="error">{errors.mrp}</span>}
+              <small className="text-muted">Maximum retail price for display</small>
+            </div>
+
+            <div className="form-group">
+              <label>Selling price (KES) *</label>
+              <input
+                type="number"
+                name="selling_price"
+                value={formData.selling_price}
                 onChange={handleChange}
                 step="0.01"
                 min="0"
                 required
               />
-              {errors.price && <span className="error">{errors.price}</span>}
+              {errors.selling_price && <span className="error">{errors.selling_price}</span>}
+              <small className="text-muted">Used at POS, on invoices, and in all reports</small>
             </div>
+          </div>
 
+          <div className="form-row">
             <div className="form-group">
               <label>Cost (KES)</label>
               <input

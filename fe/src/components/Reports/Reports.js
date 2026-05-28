@@ -4,8 +4,11 @@ import { reportsAPI } from '../../services/api';
 import { formatCurrency, formatNumber, formatDateTime, formatCompactCurrency } from '../../utils/formatters';
 import Layout from '../Layout/Layout';
 import ReportsList from './ReportsList';
-import '../../styles/shared.css';
-import './Reports.css';
+import ReportsHub from './ReportsHub';
+import { PageShell, PageHeader, FilterBar, FilterField, PageLoading, EmptyState } from '../page';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { ArrowLeft, BarChart3 } from 'lucide-react';
 
 const Reports = () => {
   const [searchParams] = useSearchParams();
@@ -86,8 +89,23 @@ const Reports = () => {
     }
   }, [loadReport, reportParam]);
 
-  // If no report param, show list (after all hooks are declared)
+  // If no report param, show the new operational Reports hub. The legacy
+  // ReportsList page is still reachable at ?report=__legacy__ for parity
+  // during the transition, but the hub is now the default.
   if (!reportParam) {
+    return (
+      <Layout>
+        <PageShell>
+          <PageHeader
+            title="Reports"
+            description="Sales, inventory, and financial insights at a glance."
+          />
+          <ReportsHub />
+        </PageShell>
+      </Layout>
+    );
+  }
+  if (reportParam === '__legacy__') {
     return (
       <Layout>
         <ReportsList />
@@ -105,11 +123,17 @@ const Reports = () => {
 
   const renderReport = () => {
     if (loading) {
-      return <div className="loading-state">Loading report...</div>;
+      return <PageLoading rows={8} showStats />;
     }
 
     if (!reportData) {
-      return <div className="empty-state">No data available</div>;
+      return (
+        <EmptyState
+          icon={BarChart3}
+          title="No data for this period"
+          description="Try widening your date range or check that sales exist."
+        />
+      );
     }
 
     switch (reportParam) {
@@ -812,66 +836,55 @@ const Reports = () => {
 
   return (
     <Layout>
-      <div className="reports-page">
-        <div className="page-header">
-          <div>
-            <button 
-              className="btn-back"
-              onClick={() => navigate('/reports')}
-            >
-              ← Back to Reports
-            </button>
-            <h1>{getReportTitle()}</h1>
-            <p>Comprehensive {getReportTitle().toLowerCase()} analytics</p>
-          </div>
-        </div>
+      <PageShell>
+        <PageHeader
+          title={getReportTitle()}
+          description={`Analytics for ${getReportTitle().toLowerCase()}.`}
+        >
+          <Button variant="outline" onClick={() => navigate('/reports')}>
+            <ArrowLeft className="h-4 w-4" />
+            All reports
+          </Button>
+        </PageHeader>
 
-        <div className="reports-main-content">
-          {/* Date Filters */}
-          {needsDateFilter && (
-            <div className="report-filters">
-              <div className="filter-group">
-                <label>From Date</label>
-                <input
-                  type="date"
-                  name="date_from"
-                  value={filters.date_from}
-                  onChange={handleFilterChange}
-                />
-              </div>
-              <div className="filter-group">
-                <label>To Date</label>
-                <input
-                  type="date"
-                  name="date_to"
-                  value={filters.date_to}
-                  onChange={handleFilterChange}
-                />
-              </div>
-            </div>
-          )}
+        {needsDateFilter && (
+          <FilterBar>
+            <FilterField label="From">
+              <Input
+                type="date"
+                name="date_from"
+                value={filters.date_from}
+                onChange={handleFilterChange}
+              />
+            </FilterField>
+            <FilterField label="To">
+              <Input
+                type="date"
+                name="date_to"
+                value={filters.date_to}
+                onChange={handleFilterChange}
+              />
+            </FilterField>
+          </FilterBar>
+        )}
 
-          {needsYearFilter && (
-            <div className="report-filters">
-              <div className="filter-group">
-                <label>Year</label>
-                <input
-                  type="number"
-                  name="year"
-                  value={filters.year}
-                  onChange={handleFilterChange}
-                  min="2020"
-                  max={new Date().getFullYear() + 1}
-                />
-              </div>
-            </div>
-          )}
+        {needsYearFilter && (
+          <FilterBar>
+            <FilterField label="Year">
+              <Input
+                type="number"
+                name="year"
+                value={filters.year}
+                onChange={handleFilterChange}
+                min="2020"
+                max={new Date().getFullYear() + 1}
+              />
+            </FilterField>
+          </FilterBar>
+        )}
 
-          <div className="report-content">
-            {renderReport()}
-          </div>
-        </div>
-      </div>
+        <div className="report-content">{renderReport()}</div>
+      </PageShell>
     </Layout>
   );
 };

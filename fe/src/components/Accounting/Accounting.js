@@ -3,6 +3,8 @@ import { accountingAPI, bankAccountsAPI } from '../../services/api';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import SearchableSelect from '../Shared/SearchableSelect';
 import Layout from '../Layout/Layout';
+import { PageShell, PageHeader, PageLoading } from '../page';
+import { cn } from '../../lib/cn';
 import './Accounting.css';
 
 const Accounting = () => {
@@ -186,68 +188,95 @@ const Accounting = () => {
 
   return (
     <Layout>
-      <div className="accounting-page">
-        <div className="page-header">
-          <div>
-            <h1>Accounting & Financial Reports</h1>
-            <p>View comprehensive accounting reports and manage financial records</p>
-          </div>
-        </div>
+      <PageShell>
+        <PageHeader
+          title="Accounting"
+          description="Financial statements, ledger, and account activity."
+        />
 
-        <div className="accounting-layout">
-          {/* Left Sidebar - Report Selection */}
-          <div className="accounting-sidebar">
-            <div className="sidebar-header">
-              <h3>Reports</h3>
-            </div>
-            <nav className="report-menu">
+        <div className="flex flex-col gap-6 lg:flex-row">
+          <nav className="flex shrink-0 flex-row flex-wrap gap-1 lg:w-52 lg:flex-col lg:border-r lg:pr-4">
               <button
-                className={`menu-item ${activeTab === 'balance-sheet' ? 'active' : ''}`}
+                type="button"
+                className={cn(
+                  'rounded-md px-3 py-2 text-left text-sm font-medium transition',
+                  activeTab === 'balance-sheet'
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-muted'
+                )}
                 onClick={() => setActiveTab('balance-sheet')}
               >
                 Balance Sheet
               </button>
               <button
-                className={`menu-item ${activeTab === 'income-statement' ? 'active' : ''}`}
+                className={cn(
+                  'rounded-md px-3 py-2 text-left text-sm font-medium transition',
+                  activeTab === 'income-statement'
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-muted'
+                )}
                 onClick={() => setActiveTab('income-statement')}
               >
                 Income Statement
               </button>
               <button
-                className={`menu-item ${activeTab === 'trial-balance' ? 'active' : ''}`}
+                className={cn(
+                  'rounded-md px-3 py-2 text-left text-sm font-medium transition',
+                  activeTab === 'trial-balance'
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-muted'
+                )}
                 onClick={() => setActiveTab('trial-balance')}
               >
                 Trial Balance
               </button>
               <button
-                className={`menu-item ${activeTab === 'cash-flow' ? 'active' : ''}`}
+                className={cn(
+                  'rounded-md px-3 py-2 text-left text-sm font-medium transition',
+                  activeTab === 'cash-flow'
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-muted'
+                )}
                 onClick={() => setActiveTab('cash-flow')}
               >
                 Cash Flow
               </button>
               <button
-                className={`menu-item ${activeTab === 'account-statement' ? 'active' : ''}`}
+                className={cn(
+                  'rounded-md px-3 py-2 text-left text-sm font-medium transition',
+                  activeTab === 'account-statement'
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-muted'
+                )}
                 onClick={() => setActiveTab('account-statement')}
               >
                 Account Statement
               </button>
               <button
-                className={`menu-item ${activeTab === 'general-ledger' ? 'active' : ''}`}
+                className={cn(
+                  'rounded-md px-3 py-2 text-left text-sm font-medium transition',
+                  activeTab === 'general-ledger'
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-muted'
+                )}
                 onClick={() => setActiveTab('general-ledger')}
               >
                 General Ledger
               </button>
               <button
-                className={`menu-item ${activeTab === 'accounts' ? 'active' : ''}`}
+                className={cn(
+                  'rounded-md px-3 py-2 text-left text-sm font-medium transition',
+                  activeTab === 'accounts'
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-muted'
+                )}
                 onClick={() => setActiveTab('accounts')}
               >
                 Chart of Accounts
               </button>
             </nav>
-          </div>
 
-          {/* Right Content Area */}
-          <div className="accounting-content">
+          <div className="min-w-0 flex-1 accounting-content">
             {/* Date Filters */}
         {(activeTab === 'balance-sheet' || activeTab === 'trial-balance') && (
           <div className="report-filters">
@@ -775,7 +804,7 @@ const Accounting = () => {
         )}
           </div>
         </div>
-      </div>
+      </PageShell>
     </Layout>
   );
 };

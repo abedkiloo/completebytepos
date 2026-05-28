@@ -1,77 +1,112 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Plus,
+  Search,
+  Filter,
+  Pencil,
+  Trash2,
+  Package,
+  AlertCircle,
+  XCircle,
+  Download,
+  Upload,
+  FileText,
+  ImageIcon,
+  X,
+  Loader2,
+  MoreHorizontal,
+} from 'lucide-react';
+
 import { productsAPI, categoriesAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
 import Layout from '../Layout/Layout';
-import SearchableSelect from '../Shared/SearchableSelect';
 import ProductForm from './ProductForm';
-import ProductStatistics from './ProductStatistics';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import { toast } from '../../utils/toast';
-import '../../styles/shared.css';
-import './Products.css';
+
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Badge } from '../ui/badge';
+import { Skeleton } from '../ui/skeleton';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '../ui/dropdown-menu';
+import { cn } from '../../lib/cn';
+import { PageShell, PageHeader } from '../page';
+
+const EMPTY_FILTERS = {
+  search: '',
+  category: '',
+  is_active: '',
+  low_stock: false,
+  out_of_stock: false,
+};
 
 const Products = () => {
+  // --- Data ---
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [statistics, setStatistics] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // --- Filters ---
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+
+  // --- Editor + selection ---
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
-  const [selectedProducts, setSelectedProducts] = useState([]);
-  const [filters, setFilters] = useState({
-    search: '',
-    category: '',
-    is_active: '',
-    low_stock: false,
-    out_of_stock: false,
-  });
-  const [statistics, setStatistics] = useState(null);
-  const [confirmDelete, setConfirmDelete] = useState(null);
-  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
-  const [showInstructions, setShowInstructions] = useState(false);
-  const [showCSVSection, setShowCSVSection] = useState(false);
+  const [selectedProductIds, setSelectedProductIds] = useState([]);
 
-  // Load categories and statistics only once on mount
-  useEffect(() => {
-    loadCategories();
-    loadStatistics();
+  // --- Confirms ---
+  const [confirmDelete, setConfirmDelete] = useState(null); // product id
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  // --- CSV import file input ---
+  const fileInputRef = useRef(null);
+
+  // ------------------------------------------------------------------
+  // Data loaders
+  // ------------------------------------------------------------------
+
+  const loadCategories = useCallback(async () => {
+    try {
+      const response = await categoriesAPI.list();
+      const data = response.data.results || response.data || [];
+      setCategories(Array.isArray(data) ? data : []);
+    } catch (error) {
+      // Categories are best-effort; the filter just won't have them.
+      console.error('Error loading categories:', error);
+    }
   }, []);
 
-  // Reload products whenever filters change - triggers immediate UI update
-  useEffect(() => {
-    loadProducts();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters]);
+  const loadStatistics = useCallback(async () => {
+    try {
+      const response = await productsAPI.statistics();
+      setStatistics(response.data);
+    } catch (error) {
+      console.error('Error loading statistics:', error);
+    }
+  }, []);
 
-  const loadProducts = async () => {
+  const loadProducts = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { page_size: 1000 }; // Request more items to avoid pagination issues
-      
-      // Add search if provided (backend SearchFilter uses ?search=)
-      if (filters.search && filters.search.trim()) {
-        params.search = filters.search.trim();
-      }
-      
-      // Only send category when a specific category is selected (omit param for "all")
-      if (filters.category && filters.category.trim()) {
-        params.category = filters.category.trim();
-      }
-      
-      // Only send is_active when a specific status is selected (omit param for "all")
-      if (filters.is_active && filters.is_active.trim()) {
-        params.is_active = filters.is_active.trim();
-      }
-      
-      // Add boolean filters
+      const params = { page_size: 1000 };
+      if (filters.search.trim()) params.search = filters.search.trim();
+      if (filters.category) params.category = filters.category;
+      if (filters.is_active) params.is_active = filters.is_active;
       if (filters.low_stock) params.low_stock = 'true';
       if (filters.out_of_stock) params.out_of_stock = 'true';
 
       const response = await productsAPI.list(params);
-      // Handle paginated or direct array response
-      const productsData = response.data.results || response.data || [];
-      const productsArray = Array.isArray(productsData) ? productsData : [];
-      console.log(`Loaded ${productsArray.length} products with filters:`, filters, 'params:', params);
-      setProducts(productsArray);
+      const data = response.data.results || response.data || [];
+      setProducts(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error loading products:', error);
       toast.error('Failed to load products');
@@ -79,110 +114,143 @@ const Products = () => {
     } finally {
       setLoading(false);
     }
+  }, [filters]);
+
+  useEffect(() => {
+    loadCategories();
+    loadStatistics();
+  }, [loadCategories, loadStatistics]);
+
+  // Debounced reload so typing in the search box doesn't hammer the API.
+  useEffect(() => {
+    const t = setTimeout(loadProducts, 200);
+    return () => clearTimeout(t);
+  }, [loadProducts]);
+
+  // ------------------------------------------------------------------
+  // Derived
+  // ------------------------------------------------------------------
+
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (filters.category) count += 1;
+    if (filters.is_active) count += 1;
+    if (filters.low_stock) count += 1;
+    if (filters.out_of_stock) count += 1;
+    return count;
+  }, [filters]);
+
+  const allSelected =
+    products.length > 0 && selectedProductIds.length === products.length;
+  const someSelected =
+    selectedProductIds.length > 0 && selectedProductIds.length < products.length;
+
+  // ------------------------------------------------------------------
+  // Handlers
+  // ------------------------------------------------------------------
+
+  const openCreate = () => {
+    setEditingProduct(null);
+    setShowForm(true);
   };
 
-  const loadCategories = async () => {
+  const openEdit = async (product) => {
     try {
-      const response = await categoriesAPI.list();
-      // Handle paginated or direct array response
-      const categoriesData = response.data.results || response.data || [];
-      setCategories(Array.isArray(categoriesData) ? categoriesData : []);
+      const full = await productsAPI.get(product.id);
+      setEditingProduct(full.data);
+      setShowForm(true);
     } catch (error) {
-      console.error('Error loading categories:', error);
-      setCategories([]);
+      console.error('Error loading product details:', error);
+      toast.error('Failed to load product details');
     }
   };
 
-  const loadStatistics = async () => {
-    try {
-      const response = await productsAPI.statistics();
-      setStatistics(response.data);
-    } catch (error) {
-      console.error('Error loading statistics:', error);
-    }
-  };
-
-  const handleDelete = (id) => {
-    setConfirmDelete(id);
+  const handleFormSaved = () => {
+    setShowForm(false);
+    setEditingProduct(null);
+    setFilters(EMPTY_FILTERS);
+    setTimeout(() => {
+      loadProducts();
+      loadStatistics();
+    }, 200);
   };
 
   const confirmDeleteAction = async () => {
     if (!confirmDelete) return;
-
+    setBusy(true);
     try {
       await productsAPI.delete(confirmDelete);
+      toast.success('Product deleted');
       loadProducts();
       loadStatistics();
-      toast.success('Product deleted successfully');
     } catch (error) {
       toast.error('Failed to delete product');
     } finally {
+      setBusy(false);
       setConfirmDelete(null);
     }
   };
 
-  const handleBulkDelete = () => {
-    if (selectedProducts.length === 0) {
-      toast.warning('Please select products to delete');
-      return;
-    }
-    setConfirmBulkDelete(true);
-  };
-
   const confirmBulkDeleteAction = async () => {
+    setBusy(true);
     try {
-      await productsAPI.bulkDelete({ product_ids: selectedProducts });
-      setSelectedProducts([]);
+      await productsAPI.bulkDelete({ product_ids: selectedProductIds });
+      toast.success(`Deleted ${selectedProductIds.length} product(s)`);
+      setSelectedProductIds([]);
       loadProducts();
       loadStatistics();
-      toast.success('Products deleted successfully');
     } catch (error) {
       toast.error('Failed to delete products');
     } finally {
+      setBusy(false);
       setConfirmBulkDelete(false);
     }
   };
 
   const handleBulkActivate = async () => {
-    if (selectedProducts.length === 0) {
-      toast.warning('Please select products to activate');
-      return;
-    }
-
+    if (selectedProductIds.length === 0) return;
     try {
-      await productsAPI.bulkActivate({ product_ids: selectedProducts });
-      setSelectedProducts([]);
+      await productsAPI.bulkActivate({ product_ids: selectedProductIds });
+      toast.success(`Activated ${selectedProductIds.length} product(s)`);
+      setSelectedProductIds([]);
       loadProducts();
-      toast.success('Products activated successfully');
     } catch (error) {
       toast.error('Failed to activate products');
     }
   };
 
   const handleBulkDeactivate = async () => {
-    if (selectedProducts.length === 0) {
-      toast.warning('Please select products to deactivate');
-      return;
-    }
-
+    if (selectedProductIds.length === 0) return;
     try {
-      await productsAPI.bulkDeactivate({ product_ids: selectedProducts });
-      setSelectedProducts([]);
+      await productsAPI.bulkDeactivate({ product_ids: selectedProductIds });
+      toast.success(`Deactivated ${selectedProductIds.length} product(s)`);
+      setSelectedProductIds([]);
       loadProducts();
-      toast.success('Products deactivated successfully');
     } catch (error) {
       toast.error('Failed to deactivate products');
     }
   };
 
+  const toggleProductSelection = (id) => {
+    setSelectedProductIds((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedProductIds(allSelected ? [] : products.map((p) => p.id));
+  };
+
+  // --- CSV ---
+
   const handleExport = async () => {
     try {
-      toast.info('Exporting products...', 2000);
+      toast.info('Exporting products…');
       const response = await productsAPI.export();
-      // Handle blob response
-      const blob = response.data instanceof Blob 
-        ? response.data 
-        : new Blob([response.data], { type: 'text/csv;charset=utf-8' });
+      const blob =
+        response.data instanceof Blob
+          ? response.data
+          : new Blob([response.data], { type: 'text/csv;charset=utf-8' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -191,22 +259,24 @@ const Products = () => {
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
-      toast.success('Products exported successfully! File downloaded.');
+      toast.success('Products exported');
     } catch (error) {
       console.error('Export error:', error);
-      toast.error('Failed to export products: ' + (error.response?.data?.error || error.message));
+      toast.error(
+        'Failed to export products: ' + (error.response?.data?.error || error.message)
+      );
     }
   };
 
   const handleDownloadTemplate = () => {
-    // CSV template with all required and optional fields matching export format
     const csvHeaders = [
       'name',
       'sku',
       'barcode',
       'category',
       'subcategory',
-      'price',
+      'mrp',
+      'selling_price',
       'cost',
       'stock_quantity',
       'low_stock_threshold',
@@ -221,15 +291,11 @@ const Products = () => {
       'is_active',
       'has_variants',
       'available_sizes',
-      'available_colors'
+      'available_colors',
     ];
-
-    // Create CSV content with headers, instructions, and example rows
     const csvContent = [
-      // BOM for Excel compatibility
       '\ufeff',
       csvHeaders.join(','),
-      // Example row 1
       [
         'Sample Product',
         'SKU-001',
@@ -251,9 +317,8 @@ const Products = () => {
         'true',
         'false',
         '',
-        ''
+        '',
       ].join(','),
-      // Example row 2 with variants
       [
         'Product with Variants',
         'SKU-002',
@@ -275,57 +340,10 @@ const Products = () => {
         'true',
         'true',
         'Small,Medium,Large',
-        'Red,Blue,Green'
+        'Red,Blue,Green',
       ].join(','),
-      '', // Empty row
-      '# ==========================================',
-      '# CSV IMPORT TEMPLATE - PRODUCTS',
-      '# ==========================================',
-      '#',
-      '# INSTRUCTIONS:',
-      '# 1. Fill in product details in the rows above (remove example rows if needed)',
-      '# 2. REQUIRED FIELDS: name, sku, price, cost',
-      '# 3. OPTIONAL FIELDS: All other fields can be left empty',
-      '#',
-      '# FIELD DESCRIPTIONS:',
-      '# - name: Product name (required)',
-      '# - sku: Stock Keeping Unit - must be unique (required)',
-      '# - barcode: Product barcode (optional)',
-      '# - category: Main category name (optional, will be created if not exists)',
-      '# - subcategory: Subcategory name (optional, must be child of category)',
-      '# - price: Selling price (required, numbers only, no currency symbols)',
-      '# - cost: Cost price (required, numbers only)',
-      '# - stock_quantity: Current stock level (default: 0)',
-      '# - low_stock_threshold: Alert when stock falls below this (default: 10)',
-      '# - reorder_quantity: Quantity to order when restocking (default: 50)',
-      '# - unit: Unit of measurement - piece, kg, g, l, ml, box, pack, bottle, can (default: piece)',
-      '# - description: Product description (optional)',
-      '# - supplier: Supplier name (optional)',
-      '# - supplier_contact: Supplier contact info (optional)',
-      '# - tax_rate: Tax rate percentage (default: 0)',
-      '# - is_taxable: true or false (default: true)',
-      '# - track_stock: true or false (default: true)',
-      '# - is_active: true or false (default: true)',
-      '# - has_variants: true or false (default: false)',
-      '# - available_sizes: Comma-separated size names (e.g., "Small,Medium,Large")',
-      '# - available_colors: Comma-separated color names (e.g., "Red,Blue,Green")',
-      '#',
-      '# IMPORTANT NOTES:',
-      '# - Boolean fields: Use "true" or "false" (lowercase)',
-      '# - Numeric fields: Use numbers only, no currency symbols or commas',
-      '# - Categories: Will be created automatically if they don\'t exist',
-      '# - SKU: Must be unique. If SKU exists, product will be updated',
-      '# - Save this file as CSV format before importing',
-      '#',
-      '# After filling the template:',
-      '# 1. Save as CSV file',
-      '# 2. Click "Import CSV" button',
-      '# 3. Select your CSV file',
-      '# 4. Wait for import to complete',
-      '# =========================================='
     ].join('\n');
 
-    // Create blob and download
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -335,353 +353,200 @@ const Products = () => {
     a.click();
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
-    toast.success('CSV template downloaded! Fill it with your product data and import it.');
+    toast.success('Template downloaded — fill it in and re-import.');
   };
 
   const handleImport = async (file) => {
+    if (!file) return;
     try {
-      if (!file) {
-        toast.error('Please select a CSV file');
-        return;
-      }
-      
-      toast.info('Importing products...', 3000);
+      toast.info('Importing products…');
       const formData = new FormData();
       formData.append('file', file);
       const response = await productsAPI.importCSV(formData);
-      
+
       loadProducts();
       loadStatistics();
-      
-      const data = response.data;
-      let message = data.message || 'Products imported successfully';
-      
+
+      const data = response.data || {};
+      let message = data.message || 'Products imported';
       if (data.errors && data.errors.length > 0) {
-        const errorCount = data.errors.length;
-        message += ` (${errorCount} error${errorCount > 1 ? 's' : ''} - see console for details)`;
+        message += ` · ${data.errors.length} error(s) — see console.`;
         console.warn('Import errors:', data.errors);
       }
-      
       toast.success(message, 8000);
     } catch (error) {
-      let errorMessage = 'Failed to import products';
-      if (error.response?.data?.error) {
-        errorMessage += ': ' + error.response.data.error;
-      } else if (error.message) {
-        errorMessage += ': ' + error.message;
-      }
-      toast.error(errorMessage, 8000);
+      const msg =
+        error.response?.data?.error || error.message || 'Failed to import products';
+      toast.error(`Failed to import products: ${msg}`, 8000);
       console.error('Import error:', error.response?.data || error);
     }
   };
 
-  const toggleProductSelection = (id) => {
-    setSelectedProducts(prev =>
-      prev.includes(id)
-        ? prev.filter(p => p !== id)
-        : [...prev, id]
-    );
-  };
-
-  const toggleSelectAll = () => {
-    if (selectedProducts.length === products.length) {
-      setSelectedProducts([]);
-    } else {
-      setSelectedProducts(products.map(p => p.id));
-    }
-  };
+  // ------------------------------------------------------------------
+  // Render
+  // ------------------------------------------------------------------
 
   return (
     <Layout>
-      <div className="products-page">
-      <div className="page-header">
-        <div className="page-header-content">
-          <h1>Product Management</h1>
-        </div>
-        <div className="page-header-actions">
-          <button onClick={() => { setEditingProduct(null); setShowForm(true); }} className="btn btn-primary btn-add-product">
-            <span>+</span>
-            <span>Add Product</span>
-          </button>
-        </div>
-      </div>
-
-      {/* CSV Operations Section - Collapsible */}
-      <div className={`csv-operations-section ${showCSVSection ? 'expanded' : ''}`}>
-        <div 
-          className="csv-operations-header-clickable" 
-          onClick={() => setShowCSVSection(!showCSVSection)}
-          title={showCSVSection ? "Click to collapse" : "Click to expand CSV operations"}
+      <PageShell>
+        <PageHeader
+          title="Products"
+          description="Add, edit, and bulk-manage your catalog."
         >
-          <div className="csv-operations-header-content">
-            <h2>📊 CSV Import & Export</h2>
-            <p className="csv-operations-subtitle">Bulk manage your products using CSV files</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <FileText className="h-4 w-4" />
+                  CSV
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>Bulk operations</DropdownMenuLabel>
+                <DropdownMenuItem onClick={handleDownloadTemplate}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Download template
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExport}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Export products
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+                  <Upload className="mr-2 h-4 w-4" />
+                  Import from CSV
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleImport(file);
+                // reset so re-uploading the same file fires onChange again
+                e.target.value = '';
+              }}
+            />
+            <Button onClick={openCreate}>
+              <Plus className="h-4 w-4" />
+              Add product
+            </Button>
           </div>
-          <div className="csv-operations-toggle">
-            <span className="csv-toggle-icon">{showCSVSection ? '▼' : '▶'}</span>
-            <span className="csv-toggle-text">{showCSVSection ? 'Collapse' : 'Expand'}</span>
-          </div>
-        </div>
-        {showCSVSection && (
-          <div className="csv-operations-content">
-            <div className="csv-operations-buttons">
-              <button onClick={handleDownloadTemplate} className="btn btn-csv-template">
-                <span className="btn-icon">📥</span>
-                <div className="btn-content">
-                  <span className="btn-label">Download Template</span>
-                  <span className="btn-hint">Get CSV format with all fields</span>
-                </div>
+        </PageHeader>
+
+        {/* --- Summary stats --- */}
+        <SummaryStats statistics={statistics} />
+
+        {/* --- Filter toolbar --- */}
+        <FilterBar
+          filters={filters}
+          setFilters={setFilters}
+          categories={categories}
+          activeCount={activeFilterCount}
+        />
+
+        {/* --- Bulk action bar --- */}
+        {selectedProductIds.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/40 bg-primary/5 px-4 py-2.5">
+            <div className="flex items-center gap-3 text-sm">
+              <Badge variant="default">{selectedProductIds.length} selected</Badge>
+              <button
+                type="button"
+                onClick={() => setSelectedProductIds([])}
+                className="text-sm text-muted-foreground hover:text-foreground"
+              >
+                Clear selection
               </button>
-              <button onClick={handleExport} className="btn btn-csv-export">
-                <span className="btn-icon">📤</span>
-                <div className="btn-content">
-                  <span className="btn-label">Export Products</span>
-                  <span className="btn-hint">Download all products as CSV</span>
-                </div>
-              </button>
-              <label className="btn btn-csv-import">
-                <span className="btn-icon">📥</span>
-                <div className="btn-content">
-                  <span className="btn-label">Import Products</span>
-                  <span className="btn-hint">Upload CSV file to add/update</span>
-                </div>
-                <input
-                  type="file"
-                  accept=".csv"
-                  onChange={(e) => e.target.files[0] && handleImport(e.target.files[0])}
-                  style={{ display: 'none' }}
-                />
-              </label>
             </div>
-            <div className="csv-operations-info">
-              <p><strong>Quick Guide:</strong> Download template → Fill with product data → Import to add/update products. Existing SKUs will be updated, new SKUs will be created.</p>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={handleBulkActivate}>
+                Activate
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleBulkDeactivate}>
+                Deactivate
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setConfirmBulkDelete(true)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete
+              </Button>
             </div>
           </div>
         )}
-      </div>
 
-      {/* Page Description and Instructions - Collapsible */}
-      <div className={`products-page-description ${showInstructions ? 'expanded' : ''}`}>
-        <div 
-          className="page-description-header" 
-          onClick={() => setShowInstructions(!showInstructions)}
-          title={showInstructions ? "Click to collapse" : "Click to expand guide"}
-        >
-          <h2>Product Management Guide</h2>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span className="toggle-icon">{showInstructions ? '▼' : '▶'}</span>
-            <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 500 }}>
-              {showInstructions ? 'Collapse' : 'Expand'}
-            </span>
-          </div>
-        </div>
-        {showInstructions && (
-          <div className="page-description-content">
-            <div className="instructions-grid">
-              <div className="instruction-section">
-                <h3>📝 Adding Products</h3>
-                <ol>
-                  <li>Click <strong>"Add Product"</strong> button (green button) to create a new product</li>
-                  <li>Fill in product details (name, SKU, price, cost, etc.)</li>
-                  <li>Select category and optionally subcategory</li>
-                  <li>Set stock quantity and thresholds</li>
-                  <li>Click <strong>"Save"</strong> to add the product</li>
-                </ol>
-              </div>
-              <div className="instruction-section">
-                <h3>📊 CSV Operations</h3>
-                <p>Use the <strong>"CSV Import & Export"</strong> section above for bulk product management. All CSV operations are available there with clear buttons and instructions.</p>
-              </div>
-              <div className="instruction-section">
-                <h3>🔍 Managing Products</h3>
-                <ul>
-                  <li>Use search bar to find products by name, SKU, or barcode</li>
-                  <li>Filter by category, status, or stock level</li>
-                  <li>Click <strong>"Edit"</strong> to modify product details</li>
-                  <li>Click <strong>"Delete"</strong> to remove products</li>
-                  <li>Use checkboxes for bulk operations (activate/deactivate/delete)</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {statistics && <ProductStatistics statistics={statistics} />}
-
-      <div className="products-filters">
-        <input
-          type="text"
-          placeholder="Search products..."
-          value={filters.search}
-          onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-          className="filter-input"
-        />
-        <SearchableSelect
-          value={filters.category || ''}
-          onChange={(e) => setFilters({ ...filters, category: e.target.value })}
-          options={[
-            { id: '', name: 'All Categories' },
-            ...(Array.isArray(categories) ? categories.map(cat => ({ id: cat.id, name: cat.name })) : [])
-          ]}
-          placeholder="Filter by category..."
-          name="category"
-          searchable={true}
-          className="filter-select"
-        />
-        <SearchableSelect
-          value={filters.is_active || ''}
-          onChange={(e) => setFilters({ ...filters, is_active: e.target.value })}
-          options={[
-            { id: '', name: 'All Status' },
-            { id: 'true', name: 'Active' },
-            { id: 'false', name: 'Inactive' },
-          ]}
-          placeholder="Filter by status..."
-          name="is_active"
-          searchable={true}
-          className="filter-select"
-        />
-        <label className="filter-checkbox">
-          <input
-            type="checkbox"
-            checked={filters.low_stock}
-            onChange={(e) => setFilters({ ...filters, low_stock: e.target.checked })}
-          />
-          Low Stock
-        </label>
-        <label className="filter-checkbox">
-          <input
-            type="checkbox"
-            checked={filters.out_of_stock}
-            onChange={(e) => setFilters({ ...filters, out_of_stock: e.target.checked })}
-          />
-          Out of Stock
-        </label>
-      </div>
-
-      {selectedProducts.length > 0 && (
-        <div className="bulk-actions">
-          <span>{selectedProducts.length} selected</span>
-          <button onClick={handleBulkActivate}>Activate</button>
-          <button onClick={handleBulkDeactivate}>Deactivate</button>
-          <button onClick={handleBulkDelete} className="danger">Delete</button>
-        </div>
-      )}
-
-      {loading ? (
-        <div className="loading">Loading products...</div>
-      ) : (
-        <div className="products-table-container">
-          <table className="products-table">
-            <thead>
-              <tr>
-                <th>
-                  <input
-                    type="checkbox"
-                    checked={selectedProducts.length === products.length && products.length > 0}
-                    onChange={toggleSelectAll}
-                  />
-                </th>
-                <th>Image</th>
-                <th>Product</th>
-                <th>Category</th>
-                <th>SKU</th>
-                <th>Price</th>
-                <th>Cost</th>
-                <th>Unit</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {products.length === 0 ? (
+        {/* --- Table --- */}
+        <div className="overflow-hidden rounded-lg border bg-background">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-border text-sm">
+              <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <td colSpan="10" className="empty-state" style={{ padding: '3rem', textAlign: 'center' }}>
-                    No products found
-                  </td>
+                  <th className="px-4 py-2.5">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all"
+                      checked={allSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = someSelected;
+                      }}
+                      onChange={toggleSelectAll}
+                      className="h-4 w-4 rounded border-input text-primary focus:ring-1 focus:ring-ring"
+                    />
+                  </th>
+                  <th className="px-4 py-2.5 text-left font-medium">Product</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Category</th>
+                  <th className="px-4 py-2.5 text-left font-medium">SKU</th>
+                  <th className="px-4 py-2.5 text-right font-medium">MRP</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Selling</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Cost</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Stock</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Status</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Actions</th>
                 </tr>
-              ) : (
-                products.map(product => (
-                  <tr key={product.id} className={`product-row ${!product.is_active ? 'inactive' : ''}`}>
-                    <td className="checkbox-cell">
-                      <input
-                        type="checkbox"
-                        checked={selectedProducts.includes(product.id)}
-                        onChange={() => toggleProductSelection(product.id)}
+              </thead>
+              <tbody className="divide-y divide-border">
+                {loading && products.length === 0 ? (
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <tr key={i}>
+                      {Array.from({ length: 9 }).map((__, j) => (
+                        <td key={j} className="px-4 py-3">
+                          <Skeleton className="h-4 w-full" />
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                ) : products.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="px-4 py-12">
+                      <EmptyProducts
+                        onCreate={openCreate}
+                        hasFilters={!!filters.search || activeFilterCount > 0}
                       />
                     </td>
-                    <td className="product-image-cell">
-                      {product.image_url ? (
-                        <img src={product.image_url} alt={product.name} className="product-thumb" />
-                      ) : (
-                        <div className="product-thumb-placeholder">No Image</div>
-                      )}
-                    </td>
-                    <td className="product-name-cell-compact">
-                      <div className="product-name-compact">{product.name}</div>
-                      {product.has_variants && (
-                        <span className="variant-badge-compact">
-                          {(product.available_sizes_detail?.length || 0) + (product.available_colors_detail?.length || 0)} variants
-                        </span>
-                      )}
-                      {product.is_low_stock && (
-                        <span className="low-stock-badge-compact">Low Stock</span>
-                      )}
-                    </td>
-                    <td className="product-category-cell-compact">
-                      <div className="category-main">{product.category_name || '-'}</div>
-                      {product.subcategory_name && (
-                        <div className="category-sub">→ {product.subcategory_name}</div>
-                      )}
-                    </td>
-                    <td className="product-sku-cell-compact">
-                      <span className="sku-value-compact">{product.sku || 'N/A'}</span>
-                    </td>
-                    <td className="product-price-cell-compact">{formatCurrency(product.price)}</td>
-                    <td className="product-cost-cell-compact">{formatCurrency(product.cost)}</td>
-                    <td className="product-unit-cell-compact">{product.unit}</td>
-                    <td className="product-status-cell-compact">
-                      <span className={`status-badge-compact ${product.is_active ? 'active' : 'inactive'}`}>
-                        {product.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td className="product-actions-cell-compact">
-                      <div className="action-buttons-compact">
-                        <button
-                          onClick={async () => {
-                            try {
-                              // Fetch full product details for editing
-                              const fullProduct = await productsAPI.get(product.id);
-                              setEditingProduct(fullProduct.data);
-                              setShowForm(true);
-                            } catch (error) {
-                              console.error('Error loading product details:', error);
-                              toast.error('Failed to load product details');
-                            }
-                          }}
-                          className="btn-edit-compact"
-                          title="Edit product"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDelete(product.id)}
-                          className="btn-delete-compact"
-                          title="Delete product"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  products.map((product) => (
+                    <ProductRow
+                      key={product.id}
+                      product={product}
+                      selected={selectedProductIds.includes(product.id)}
+                      onToggle={() => toggleProductSelection(product.id)}
+                      onEdit={() => openEdit(product)}
+                      onDelete={() => setConfirmDelete(product.id)}
+                    />
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      )}
 
+      {/* --- Form modal (legacy, untouched) --- */}
       {showForm && (
         <ProductForm
           product={editingProduct}
@@ -690,51 +555,400 @@ const Products = () => {
             setShowForm(false);
             setEditingProduct(null);
           }}
-          onSave={() => {
-            setShowForm(false);
-            setEditingProduct(null);
-            // Clear filters to ensure new product is visible
-            setFilters({
-              search: '',
-              category: '',
-              is_active: '',
-              low_stock: false,
-              out_of_stock: false,
-            });
-            // Reload after a short delay to ensure backend has processed
-            setTimeout(() => {
-              loadProducts();
-              loadStatistics();
-            }, 200);
-          }}
+          onSave={handleFormSaved}
         />
       )}
 
-      {/* Confirm Delete Dialogs */}
+      {/* --- Confirms --- */}
       <ConfirmDialog
         isOpen={!!confirmDelete}
-        title="Delete Product"
-        message="Are you sure you want to delete this product?"
-        onConfirm={confirmDeleteAction}
-        onCancel={() => setConfirmDelete(null)}
-        confirmText="Delete"
+        title="Delete product"
+        message="Are you sure you want to delete this product? This action cannot be undone."
+        confirmText="Delete product"
         cancelText="Cancel"
         type="danger"
+        busy={busy}
+        onConfirm={confirmDeleteAction}
+        onCancel={() => (busy ? null : setConfirmDelete(null))}
       />
 
       <ConfirmDialog
         isOpen={confirmBulkDelete}
-        title="Delete Products"
-        message={`Are you sure you want to delete ${selectedProducts.length} product(s)?`}
-        onConfirm={confirmBulkDeleteAction}
-        onCancel={() => setConfirmBulkDelete(false)}
-        confirmText="Delete"
+        title="Delete selected products?"
+        message={`This will permanently remove ${selectedProductIds.length} product(s). Their sales history will be preserved.`}
+        confirmText={`Delete ${selectedProductIds.length} product(s)`}
         cancelText="Cancel"
         type="danger"
+        busy={busy}
+        onConfirm={confirmBulkDeleteAction}
+        onCancel={() => (busy ? null : setConfirmBulkDelete(false))}
       />
-      </div>
+      </PageShell>
     </Layout>
   );
 };
+
+function SummaryStats({ statistics }) {
+  if (!statistics) {
+    return (
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-20 rounded-lg" />
+        ))}
+      </div>
+    );
+  }
+
+  const items = [
+    {
+      label: 'Total products',
+      value: statistics.total_products ?? '-',
+      icon: Package,
+      tone: 'default',
+    },
+    {
+      label: 'Active',
+      value: statistics.active_products ?? '-',
+      icon: Package,
+      tone: 'success',
+    },
+    {
+      label: 'Low stock',
+      value: statistics.low_stock_count ?? '-',
+      icon: AlertCircle,
+      tone: 'warning',
+    },
+    {
+      label: 'Out of stock',
+      value: statistics.out_of_stock_count ?? '-',
+      icon: XCircle,
+      tone: 'destructive',
+    },
+  ];
+
+  const toneClasses = {
+    default: 'text-foreground',
+    success: 'text-success',
+    warning: 'text-warning',
+    destructive: 'text-destructive',
+  };
+
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {items.map(({ label, value, icon: Icon, tone }) => (
+        <div
+          key={label}
+          className="flex items-center gap-3 rounded-lg border bg-background px-4 py-3"
+        >
+          <div className={cn('flex h-9 w-9 items-center justify-center rounded-md bg-muted', toneClasses[tone])}>
+            <Icon className="h-4 w-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {label}
+            </div>
+            <div className={cn('text-lg font-semibold tabular-nums', toneClasses[tone])}>
+              {value}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FilterBar({ filters, setFilters, categories, activeCount }) {
+  const update = (patch) => setFilters((prev) => ({ ...prev, ...patch }));
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[260px] flex-1 max-w-md">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            value={filters.search}
+            onChange={(e) => update({ search: e.target.value })}
+            placeholder="Search by name, SKU, or barcode…"
+            className="h-10 pl-9"
+          />
+          {filters.search && (
+            <button
+              type="button"
+              onClick={() => update({ search: '' })}
+              className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+              aria-label="Clear search"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline">
+              <Filter className="h-4 w-4" />
+              Filters
+              {activeCount > 0 && (
+                <Badge variant="secondary" className="ml-1">
+                  {activeCount}
+                </Badge>
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuLabel>Status</DropdownMenuLabel>
+            <DropdownMenuItem onSelect={() => update({ is_active: '' })}>
+              <span className={cn(filters.is_active === '' && 'font-semibold')}>
+                All statuses
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => update({ is_active: 'true' })}>
+              <span className={cn(filters.is_active === 'true' && 'font-semibold')}>
+                Active only
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => update({ is_active: 'false' })}>
+              <span className={cn(filters.is_active === 'false' && 'font-semibold')}>
+                Inactive only
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Stock</DropdownMenuLabel>
+            <DropdownMenuItem
+              onSelect={(e) => {
+                e.preventDefault();
+                update({ low_stock: !filters.low_stock });
+              }}
+            >
+              <input
+                type="checkbox"
+                readOnly
+                checked={filters.low_stock}
+                className="mr-2 h-3.5 w-3.5 rounded border-input"
+              />
+              Low stock only
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={(e) => {
+                e.preventDefault();
+                update({ out_of_stock: !filters.out_of_stock });
+              }}
+            >
+              <input
+                type="checkbox"
+                readOnly
+                checked={filters.out_of_stock}
+                className="mr-2 h-3.5 w-3.5 rounded border-input"
+              />
+              Out of stock only
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={() => setFilters({ ...EMPTY_FILTERS, search: filters.search })}
+              className="text-destructive focus:text-destructive"
+            >
+              Reset all filters
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      {/* Category chips — keeps the most common filter one tap away */}
+      {categories.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <CategoryChip
+            label="All categories"
+            active={!filters.category}
+            onClick={() => update({ category: '' })}
+          />
+          {categories.slice(0, 12).map((cat) => (
+            <CategoryChip
+              key={cat.id}
+              label={cat.name}
+              active={String(filters.category) === String(cat.id)}
+              onClick={() => update({ category: cat.id })}
+            />
+          ))}
+          {categories.length > 12 && (
+            <span className="ml-1 text-xs text-muted-foreground">
+              +{categories.length - 12} more
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CategoryChip({ label, active, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+        active
+          ? 'border-primary bg-primary text-primary-foreground'
+          : 'border-border bg-background text-foreground hover:bg-accent'
+      )}
+    >
+      {label}
+    </button>
+  );
+}
+
+function ProductRow({ product, selected, onToggle, onEdit, onDelete }) {
+  return (
+    <tr
+      className={cn(
+        'transition-colors hover:bg-muted/40',
+        selected && 'bg-primary/5',
+        !product.is_active && 'opacity-60'
+      )}
+    >
+      <td className="px-4 py-3">
+        <input
+          type="checkbox"
+          aria-label={`Select ${product.name}`}
+          checked={selected}
+          onChange={onToggle}
+          className="h-4 w-4 rounded border-input text-primary focus:ring-1 focus:ring-ring"
+        />
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-3">
+          <ProductThumb product={product} />
+          <div className="min-w-0">
+            <div className="line-clamp-1 font-medium text-foreground">
+              {product.name}
+            </div>
+            <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+              {product.has_variants && (
+                <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                  {(product.available_sizes_detail?.length || 0) +
+                    (product.available_colors_detail?.length || 0)}{' '}
+                  variants
+                </Badge>
+              )}
+              {product.is_low_stock && (
+                <Badge variant="warning" className="px-1.5 py-0 text-[10px]">
+                  Low stock
+                </Badge>
+              )}
+            </div>
+          </div>
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <div className="text-sm text-foreground">{product.category_name || '—'}</div>
+        {product.subcategory_name && (
+          <div className="text-xs text-muted-foreground">→ {product.subcategory_name}</div>
+        )}
+      </td>
+      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+        {product.sku || '—'}
+      </td>
+      <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
+        {formatCurrency(product.mrp ?? product.price)}
+      </td>
+      <td className="px-4 py-3 text-right tabular-nums font-medium">
+        {formatCurrency(product.selling_price ?? product.price)}
+      </td>
+      <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
+        {formatCurrency(product.cost)}
+      </td>
+      <td className="px-4 py-3 text-right">
+        <StockCell product={product} />
+      </td>
+      <td className="px-4 py-3">
+        <Badge variant={product.is_active ? 'success' : 'outline'}>
+          {product.is_active ? 'Active' : 'Inactive'}
+        </Badge>
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex items-center justify-end gap-1">
+          <Button variant="ghost" size="sm" onClick={onEdit} aria-label="Edit product">
+            <Pencil className="h-3.5 w-3.5" />
+            <span className="sr-only sm:not-sr-only sm:ml-1">Edit</span>
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" aria-label="More actions">
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={onDelete}
+                className="text-destructive focus:text-destructive"
+              >
+                <Trash2 className="mr-2 h-3.5 w-3.5" />
+                Delete product
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function ProductThumb({ product }) {
+  if (product.image_url) {
+    return (
+      <img
+        src={product.image_url}
+        alt={product.name}
+        className="h-10 w-10 shrink-0 rounded-md border bg-muted object-cover"
+        loading="lazy"
+      />
+    );
+  }
+  return (
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border bg-muted text-muted-foreground">
+      <ImageIcon className="h-4 w-4" />
+    </div>
+  );
+}
+
+function StockCell({ product }) {
+  if (!product.track_stock) {
+    return <span className="text-xs text-muted-foreground">Not tracked</span>;
+  }
+  const qty = parseInt(product.stock_quantity, 10) || 0;
+  const lowThreshold = parseInt(product.low_stock_threshold, 10) || 0;
+  const tone =
+    qty <= 0
+      ? 'text-destructive'
+      : lowThreshold > 0 && qty <= lowThreshold
+      ? 'text-warning'
+      : 'text-foreground';
+  return <span className={cn('font-semibold tabular-nums', tone)}>{qty}</span>;
+}
+
+function EmptyProducts({ onCreate, hasFilters }) {
+  if (hasFilters) {
+    return (
+      <div className="flex flex-col items-center gap-2 text-muted-foreground">
+        <Package className="h-8 w-8 opacity-50" />
+        <p className="font-medium text-foreground">No products match these filters</p>
+        <p className="text-sm">Try clearing some filters or adjust your search.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col items-center gap-3 text-muted-foreground">
+      <Package className="h-10 w-10 opacity-40" />
+      <div>
+        <p className="font-medium text-foreground">No products yet</p>
+        <p className="text-sm">Add your first product to start selling.</p>
+      </div>
+      <Button onClick={onCreate} size="sm">
+        <Plus className="h-4 w-4" />
+        Add your first product
+      </Button>
+    </div>
+  );
+}
 
 export default Products;

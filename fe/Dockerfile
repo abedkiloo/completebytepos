@@ -1,30 +1,32 @@
-FROM node:20-alpine as build
+# Production image: Create React App → optimized static build → nginx
+# See https://create-react-app.dev/docs/production-build/
+FROM node:20-alpine AS build
 
-# Set working directory
 WORKDIR /app
 
-# Accept build argument for API URL
-ARG REACT_APP_API_URL=http://backend:8000/api
+# API URL is embedded at build time (REACT_APP_*). Use /api when nginx proxies to backend.
+ARG REACT_APP_API_URL=/api
 ENV REACT_APP_API_URL=$REACT_APP_API_URL
 
-# Copy package files
 COPY package*.json ./
+RUN npm ci --legacy-peer-deps
 
-# Install dependencies
-RUN npm install --legacy-peer-deps
-
-# Copy source code
 COPY . .
 
-# Build React app with environment variable
-# Use CI=false to prevent build failures on warnings
-ENV CI=false
+ENV NODE_ENV=production \
+    CI=false \
+    GENERATE_SOURCEMAP=false
+
 RUN npm run build
 
-# Production stage
+# Fail the image build if the production bundle is missing
+RUN test -f /app/build/index.html
+
+# Production stage — serve static build only (no Node dev server)
 FROM nginx:alpine
 
-# Copy built files from build stage
+RUN apk add --no-cache curl
+
 COPY --from=build /app/build /usr/share/nginx/html
 
 # Copy nginx configuration

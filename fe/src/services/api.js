@@ -91,6 +91,8 @@ api.interceptors.request.use(
       config.url.includes('/settings/module-features') ||
       config.url.includes('/settings/branches') ||
       config.url.includes('/settings/tenants') ||
+      config.url.includes('/settings/setup-status') ||
+      config.url.includes('/settings/fresh-install') ||
       config.url.includes('/token/')
     );
     
@@ -281,6 +283,11 @@ export const salesAPI = {
   get: (id) => api.get(`/sales/${id}/`),
   create: (data) => api.post('/sales/', data),
   receipt: (id) => api.get(`/sales/${id}/receipt/`),
+  /** Register draft invoice (holding) — synced as items are added */
+  activeHolding: () => api.get('/sales/active-holding/'),
+  saveHolding: (data) => api.post('/sales/holding/', data),
+  checkout: (id, data) => api.post(`/sales/${id}/checkout/`, data),
+  cancelHolding: (id) => api.post(`/sales/${id}/cancel-holding/`),
 };
 
 export const customersAPI = {
@@ -373,6 +380,19 @@ export const reportsAPI = {
   tax: (params) => api.get('/reports/tax/', { params }),
   profitLoss: (params) => api.get('/reports/profit_loss/', { params }),
   annual: (params) => api.get('/reports/annual/', { params }),
+  // New operational tiles for the redesigned Reports hub. Each accepts a
+  // ?period=today|week|month query param.
+  salesOverview: (params) => api.get('/reports/sales_overview/', { params }),
+  topProducts: (params) => api.get('/reports/top_products/', { params }),
+  cashAndPayments: (params) => api.get('/reports/cash_and_payments/', { params }),
+  inventoryHealth: (params) => api.get('/reports/inventory_health/', { params }),
+  customerOutstanding: (params) => api.get('/reports/customer_outstanding/', { params }),
+};
+
+// Audit log — super-admin only on the backend (IsSuperAdmin).
+export const auditLogAPI = {
+  list: (params) => api.get('/accounts/audit-logs/', { params }),
+  get: (id) => api.get(`/accounts/audit-logs/${id}/`),
 };
 
 export const barcodesAPI = {
@@ -568,11 +588,18 @@ export const transfersAPI = {
   statistics: () => api.get('/transfers/statistics/'),
 };
 
+export const installAPI = {
+  status: () => api.get('/settings/setup-status/'),
+  freshInstall: (data) => api.post('/settings/fresh-install/', data),
+};
+
 export const modulesAPI = {
   list: () => api.get('/settings/modules/'),
   get: (id) => api.get(`/settings/modules/${id}/`),
   update: (id, data) => api.put(`/settings/modules/${id}/`, data),
   patch: (id, data) => api.patch(`/settings/modules/${id}/`, data),
+  applyPreset: (presetId) =>
+    api.post('/settings/modules/apply-preset/', { preset_id: presetId }),
 };
 
 export const tenantsAPI = {
@@ -630,6 +657,7 @@ export const permissionsAPI = {
   list: (params) => api.get('/accounts/permissions/', { params }),
   get: (id) => api.get(`/accounts/permissions/${id}/`),
   byModule: () => api.get('/accounts/permissions/by_module/'),
+  byDomain: () => api.get('/accounts/permissions/by_domain/'),
 };
 
 export default api;

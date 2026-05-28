@@ -1,0 +1,611 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  productsAPI,
+  categoriesAPI,
+  customersAPI,
+  salesAPI,
+  authAPI,
+} from '../../../services/api';
+import { toast } from '../../../utils/toast';
+import { isProductVariantsEnabled, normalizeProductForSale } from '../../../utils/moduleFeatures';
+import { isProductOutOfStock } from '../../../utils/productStock';
+
+/**
+ * Cart-item identity.
+ *
+ * Two SaleItems for the same product but different variants are distinct
+ * lines. Use this everywhere we look an item up or compare.
+ */
+export const cartItemKey = (item) =>
+  item.variant_id ? `${item.id}-${item.variant_id}` : `${item.id}`;
+
+/**
+ * Resolve the *effective* stock cap for a cart line.
+ *
+ * Returns `null` when the item is not stock-tracked (e.g. a service product
+ * with no quantity) — in that case the UI should not impose any cap.
+ */
+export const getLineStockCap = (item) => {
+  if (item == null) return null;
+  const raw = item.stock_quantity;
+  if (raw === undefined || raw === null || raw === '') return null;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) ? n : null;
+};
+
+/**
+ * usePOSState
+ *
+ * Owns every piece of POS state and the business logic that mutates it.
+ * Returned as a flat bag so child components can pick what they need without
+ * prop-drilling 35 props through 4 layers.
+ *
+ * What lives here:
+ *  - data loads (products / categories / customers / user)
+ *  - search + filter state with debounce
+ *  - cart mutations (add / qty change / remove / clear)
+ *  - totals (subtotal, discount, tax, delivery, total)
+ *  - checkout: cash-tendered, payment method, partial/excess flows
+ *  - sale submission with in-flight guard (double-submit protection)
+ *
+ * What does NOT live here:
+ *  - UI/layout — that's POSPage and its children
+ *  - one-off device tricks (fullscreen, system calculator) — those are
+ *    component-local
+ */
+export function usePOSState() {
+  // --- Data ---
+  const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  // --- Filter / search ---
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedSubcategory, setSelectedSubcategory] = useState(null);
+
+  // --- Cart ---
+  const [cart, setCart] = useState([]);
+
+  // --- Customer ---
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+
+  // --- Totals knobs ---
+  const [taxPct, setTaxPct] = useState(0);          // VAT / sales-tax %
+  const [discount, setDiscount] = useState(0);
+  const [discountType, setDiscountType] = useState('percentage'); // 'percentage' | 'flat'
+  const [deliveryEnabled, setDeliveryEnabled] = useState(false);
+  const [deliveryMethod, setDeliveryMethod] = useState('pickup');
+  const [deliveryCost, setDeliveryCost] = useState(0);
+  const [shippingAddress, setShippingAddress] = useState('');
+
+  // --- Checkout ---
+  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [receivedAmount, setReceivedAmount] = useState('');
+  const [submitting, setSubmitting] = useState(false);     // double-submit guard
+
+  // --- Pending confirmation state (lifted so dialogs can read it) ---
+  const [pendingSaleData, setPendingSaleData] = useState(null);
+  const [showPartialPaymentConfirm, setShowPartialPaymentConfirm] = useState(false);
+  const [showExcessPaymentConfirm, setShowExcessPaymentConfirm] = useState(false);
+
+  // --- Receipt / success after sale ---
+  const [lastSale, setLastSale] = useState(null);
+  const [showReceipt, setShowReceipt] = useState(false);
+
+  // --- Variant picker ---
+  const [variantPickerProduct, setVariantPickerProduct] = useState(null);
+
+  // --- Bookkeeping ---
+  const [orderNumber, setOrderNumber] = useState(
+    () => `#ORD${Date.now().toString().slice(-6)}`
+  );
+
+  // Track the most-recent search/category state so a stale fetch can't
+  // overwrite results from a fresher query.
+  const requestSeqRef = useRef(0);
+
+  // ------------------------------------------------------------------
+  // Data loaders
+  // ------------------------------------------------------------------
+
+  const loadCategories = useCallback(async () => {
+    try {
+      const res = await categoriesAPI.list({ is_active: 'true' });
+      const data = res.data.results || res.data || [];
+      const organised = data
+        .map((cat) => ({ ...cat, children: data.filter((c) => c.parent === cat.id) }))
+        .filter((cat) => !cat.parent);
+      setCategories(organised);
+    } catch (e) {
+      // Categories are non-fatal; the All tab still shows everything.
+    }
+  }, []);
+
+  const loadProducts = useCallback(async () => {
+    const seq = ++requestSeqRef.current;
+    setLoading(true);
+    try {
+      const params = { is_active: 'true' };
+      if (selectedCategory !== 'all') params.category = selectedCategory;
+      if (selectedSubcategory) params.subcategory = selectedSubcategory;
+      if (searchQuery.trim()) params.search = searchQuery.trim();
+      const res = await productsAPI.list(params);
+      if (seq !== requestSeqRef.current) return;       // stale, ignore
+      const data = res.data.results || res.data || [];
+      const rows = Array.isArray(data) ? data : [];
+      setProducts(rows.map((p) => normalizeProductForSale(p)));
+    } catch (e) {
+      if (seq === requestSeqRef.current) setProducts([]);
+    } finally {
+      if (seq === requestSeqRef.current) setLoading(false);
+    }
+  }, [selectedCategory, selectedSubcategory, searchQuery]);
+
+  const loadCustomers = useCallback(async () => {
+    try {
+      const res = await customersAPI.list({ is_active: true, page_size: 1000 });
+      const data = res.data.results || res.data || [];
+      const list = Array.isArray(data) ? data : [];
+      // A virtual walk-in customer keeps the UX simple (one customer field,
+      // always populated) without polluting the customers table with a
+      // synthetic row. Sale processing turns id==='walk-in' into null.
+      const walkIn = { id: 'walk-in', name: 'Walk-in customer', customer_code: 'WALK-IN', is_active: true };
+      const merged = list.some((c) => c.id === 'walk-in') ? list : [walkIn, ...list];
+      setCustomers(merged);
+      setSelectedCustomer((prev) => prev || walkIn);
+    } catch (e) {
+      const walkIn = { id: 'walk-in', name: 'Walk-in customer', customer_code: 'WALK-IN', is_active: true };
+      setCustomers([walkIn]);
+      setSelectedCustomer((prev) => prev || walkIn);
+    }
+  }, []);
+
+  const loadUser = useCallback(async () => {
+    try {
+      const stored = localStorage.getItem('user');
+      if (stored) {
+        setUser(JSON.parse(stored));
+        return;
+      }
+      const res = await authAPI.me();
+      setUser(res.data?.user || res.data);
+    } catch (e) {
+      setUser({ username: 'Admin' });
+    }
+  }, []);
+
+  useEffect(() => {
+    loadCategories();
+    loadCustomers();
+    loadUser();
+  }, [loadCategories, loadCustomers, loadUser]);
+
+  // Debounced product reload on filter/search changes. 200 ms is the sweet
+  // spot for a cashier typing — fast enough to feel live, slow enough to
+  // not hammer the API on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      loadProducts();
+    }, 200);
+    return () => clearTimeout(t);
+  }, [loadProducts]);
+
+  // ------------------------------------------------------------------
+  // Cart mutations
+  // ------------------------------------------------------------------
+
+  const addProductToCart = useCallback((product) => {
+    const key = cartItemKey(product);
+    const qtyToAdd = product.quantity || 1;
+    setCart((prev) => {
+      const existing = prev.find((item) => cartItemKey(item) === key);
+      if (existing) {
+        const cap = getLineStockCap(existing);
+        const requested = existing.quantity + qtyToAdd;
+        const next = cap !== null ? Math.min(requested, cap) : requested;
+        if (cap !== null && requested > cap) {
+          toast.warning(
+            `Only ${cap} ${existing.name} in stock — capped at the available quantity.`
+          );
+        }
+        if (next === existing.quantity) return prev;
+        return prev.map((item) =>
+          cartItemKey(item) === key ? { ...item, quantity: next } : item
+        );
+      }
+      const stock =
+        product.stock_quantity !== undefined
+          ? product.stock_quantity
+          : product.variant?.stock_quantity ?? null;
+      const newItem = {
+        ...product,
+        quantity: qtyToAdd,
+        price: parseFloat(product.price),
+        sku: product.sku || product.variant?.sku || '',
+        stock_quantity: stock,
+      };
+      const cap = getLineStockCap(newItem);
+      if (cap !== null && qtyToAdd > cap) {
+        toast.warning(
+          `Only ${cap} ${product.name} in stock — capped at the available quantity.`
+        );
+        newItem.quantity = Math.max(0, cap);
+        if (newItem.quantity === 0) {
+          toast.error(`${product.name} is out of stock.`);
+          return prev;
+        }
+      }
+      return [...prev, newItem];
+    });
+  }, []);
+
+  const tryAddToCart = useCallback(
+    (product) => {
+      if (isProductOutOfStock(product)) {
+        toast.warning(`${product.name} is out of stock`);
+        return;
+      }
+      const hasSizes =
+        (product.available_sizes_detail?.length || 0) > 0 ||
+        (product.available_sizes?.length || 0) > 0;
+      const hasColors =
+        (product.available_colors_detail?.length || 0) > 0 ||
+        (product.available_colors?.length || 0) > 0;
+      if (
+        isProductVariantsEnabled() &&
+        product.has_variants &&
+        (hasSizes || hasColors)
+      ) {
+        setVariantPickerProduct(product);
+        return;
+      }
+      addProductToCart(normalizeProductForSale(product));
+    },
+    [addProductToCart]
+  );
+
+  const setItemQuantity = useCallback((item, newQty) => {
+    const requested = Math.max(0, parseInt(newQty, 10) || 0);
+    if (requested === 0) {
+      setCart((prev) => prev.filter((i) => cartItemKey(i) !== cartItemKey(item)));
+      return;
+    }
+    setCart((prev) =>
+      prev.map((i) => {
+        if (cartItemKey(i) !== cartItemKey(item)) return i;
+        const cap = getLineStockCap(i);
+        const next = cap !== null ? Math.min(requested, cap) : requested;
+        if (cap !== null && requested > cap) {
+          toast.warning(`Only ${cap} in stock for ${i.name}.`);
+        }
+        return { ...i, quantity: next };
+      })
+    );
+  }, []);
+
+  const adjustItemQuantity = useCallback((item, delta) => {
+    setCart((prev) => {
+      const next = prev
+        .map((i) => {
+          if (cartItemKey(i) !== cartItemKey(item)) return i;
+          const cap = getLineStockCap(i);
+          const requested = i.quantity + delta;
+          if (delta > 0 && cap !== null && requested > cap) {
+            toast.warning(`Only ${cap} in stock for ${i.name}.`);
+            return { ...i, quantity: cap };
+          }
+          return { ...i, quantity: Math.max(0, requested) };
+        })
+        .filter((i) => i.quantity > 0);
+      return next;
+    });
+  }, []);
+
+  const removeFromCart = useCallback((item) => {
+    setCart((prev) => prev.filter((i) => cartItemKey(i) !== cartItemKey(item)));
+  }, []);
+
+  const clearCart = useCallback(() => setCart([]), []);
+
+  // ------------------------------------------------------------------
+  // Totals
+  // ------------------------------------------------------------------
+
+  const subtotal = useMemo(
+    () => cart.reduce((sum, item) => sum + item.price * item.quantity, 0),
+    [cart]
+  );
+
+  const discountAmount = useMemo(() => {
+    if (discountType === 'percentage') return (subtotal * discount) / 100;
+    return Math.min(discount, subtotal);
+  }, [subtotal, discount, discountType]);
+
+  const taxAmount = useMemo(
+    () => (subtotal - discountAmount) * (taxPct / 100),
+    [subtotal, discountAmount, taxPct]
+  );
+
+  const total = useMemo(
+    () => subtotal - discountAmount + taxAmount + (deliveryEnabled ? deliveryCost : 0),
+    [subtotal, discountAmount, taxAmount, deliveryEnabled, deliveryCost]
+  );
+
+  const change = useMemo(() => {
+    if (!['cash', 'mpesa'].includes(paymentMethod)) return 0;
+    if (!receivedAmount) return 0;
+    return Math.max(0, parseFloat(receivedAmount) - total);
+  }, [paymentMethod, receivedAmount, total]);
+
+  const cartItemCount = useMemo(
+    () => cart.reduce((sum, item) => sum + item.quantity, 0),
+    [cart]
+  );
+
+  /**
+   * Any cart line whose qty exceeds its stock cap. With clamping in
+   * setItemQuantity/adjustItemQuantity this should normally be empty, but
+   * we still compute it as a defence-in-depth signal — e.g. if stock was
+   * decremented in another tab while items were sitting in the cart, the
+   * latest products payload (used by ProductGrid) will refresh and any
+   * subsequent re-add will reveal the new cap.
+   */
+  const hasOversell = useMemo(
+    () =>
+      cart.some((item) => {
+        const cap = getLineStockCap(item);
+        return cap !== null && item.quantity > cap;
+      }),
+    [cart]
+  );
+
+  // ------------------------------------------------------------------
+  // Submit
+  // ------------------------------------------------------------------
+
+  const resetAfterSale = useCallback(() => {
+    setCart([]);
+    setReceivedAmount('');
+    setDiscount(0);
+    setTaxPct(0);
+    setDeliveryEnabled(false);
+    setDeliveryMethod('pickup');
+    setDeliveryCost(0);
+    setShippingAddress('');
+    setPendingSaleData(null);
+    setShowPartialPaymentConfirm(false);
+    setShowExcessPaymentConfirm(false);
+    setOrderNumber(`#ORD${Date.now().toString().slice(-6)}`);
+  }, []);
+
+  const buildSalePayload = useCallback(
+    ({ confirmedReceived, allowPartial, excessChoice }) => {
+      const received =
+        confirmedReceived !== undefined
+          ? confirmedReceived
+          : parseFloat(receivedAmount) || 0;
+
+      const isTendered = paymentMethod === 'cash' || paymentMethod === 'mpesa';
+
+      const formatAmountPaid = (amount) => {
+        let v = Math.round(amount * 100) / 100;
+        const max = 99999999.99;
+        if (v > max) v = max;
+        return parseFloat(v.toFixed(2));
+      };
+
+      return {
+        items: cart.map((item) => ({
+          product_id: item.id,
+          variant_id: item.variant_id || null,
+          quantity: item.quantity,
+          unit_price: parseFloat(item.price),
+        })),
+        tax_amount: parseFloat(taxAmount.toFixed(2)),
+        discount_amount: parseFloat(discountAmount.toFixed(2)),
+        delivery_method: deliveryEnabled ? deliveryMethod : 'pickup',
+        delivery_cost: parseFloat((deliveryEnabled ? deliveryCost : 0).toFixed(2)),
+        shipping_address: deliveryEnabled && shippingAddress ? shippingAddress : null,
+        payment_method: paymentMethod,
+        amount_paid: isTendered ? formatAmountPaid(received) : formatAmountPaid(total),
+        customer_id:
+          selectedCustomer?.id && selectedCustomer.id !== 'walk-in'
+            ? selectedCustomer.id
+            : null,
+        sale_type: 'pos',
+        allow_partial_payment: !!allowPartial,
+        excess_payment_choice: excessChoice || 'change',
+      };
+    },
+    [
+      cart,
+      taxAmount,
+      discountAmount,
+      deliveryEnabled,
+      deliveryMethod,
+      deliveryCost,
+      shippingAddress,
+      paymentMethod,
+      receivedAmount,
+      selectedCustomer,
+      total,
+    ]
+  );
+
+  const submitSale = useCallback(
+    async ({ allowPartial = false, excessChoice = 'change' } = {}) => {
+      if (submitting) return;
+      setSubmitting(true);
+      try {
+        const payload = buildSalePayload({
+          confirmedReceived: pendingSaleData?.received,
+          allowPartial,
+          excessChoice,
+        });
+        const res = await salesAPI.create(payload);
+        const backendTotal = parseFloat(res.data.total) || 0;
+        const received =
+          pendingSaleData?.received !== undefined
+            ? pendingSaleData.received
+            : parseFloat(receivedAmount) || 0;
+        const calcChange =
+          payload.payment_method === 'cash' || payload.payment_method === 'mpesa'
+            ? excessChoice === 'wallet'
+              ? 0
+              : Math.max(0, received - backendTotal)
+            : 0;
+
+        const sale = { ...res.data, change: calcChange };
+        setLastSale(sale);
+        setShowReceipt(true);
+        resetAfterSale();
+
+        if (allowPartial && pendingSaleData?.balance > 0) {
+          toast.success('Sale completed. Balance added to customer account.');
+        } else if (excessChoice === 'wallet' && pendingSaleData?.excess > 0) {
+          toast.success("Sale completed. Excess credited to customer's wallet.");
+        } else {
+          toast.success('Sale completed');
+        }
+      } catch (err) {
+        toast.error(
+          'Sale failed: ' + (err.response?.data?.error || err.message || 'unknown error')
+        );
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [submitting, buildSalePayload, pendingSaleData, receivedAmount, resetAfterSale]
+  );
+
+  /**
+   * Click handler for the Pay button. Routes through the partial-payment /
+   * excess-payment confirmations when needed, otherwise submits directly.
+   *
+   * Pre-flight validation is intentionally permissive — the backend's
+   * `validate_sale_items` is authoritative. Frontend just blocks the most
+   * common cashier mistakes.
+   */
+  const requestPayment = useCallback(() => {
+    if (submitting) return;
+    if (cart.length === 0) {
+      toast.warning('Cart is empty');
+      return;
+    }
+    if (hasOversell) {
+      toast.error(
+        'One or more items exceed available stock. Adjust quantities before completing the sale.'
+      );
+      return;
+    }
+
+    const isTendered = paymentMethod === 'cash' || paymentMethod === 'mpesa';
+    const received = parseFloat(receivedAmount) || 0;
+
+    if (isTendered) {
+      if (!receivedAmount || received <= 0) {
+        toast.warning('Enter the amount received from the customer.');
+        return;
+      }
+
+      if (received < total) {
+        if (!selectedCustomer || selectedCustomer.id === 'walk-in') {
+          toast.warning(
+            'Pick a registered customer before allowing a partial payment — the balance is recorded against their account.'
+          );
+          return;
+        }
+        setPendingSaleData({ total, received, balance: total - received });
+        setShowPartialPaymentConfirm(true);
+        return;
+      }
+
+      if (received > total && selectedCustomer && selectedCustomer.id !== 'walk-in') {
+        setPendingSaleData({ total, received, excess: received - total });
+        setShowExcessPaymentConfirm(true);
+        return;
+      }
+    }
+
+    submitSale({ allowPartial: false, excessChoice: 'change' });
+  }, [
+    submitting,
+    cart.length,
+    hasOversell,
+    paymentMethod,
+    receivedAmount,
+    total,
+    selectedCustomer,
+    submitSale,
+  ]);
+
+  return {
+    // data
+    products,
+    categories,
+    customers,
+    user,
+    loading,
+    orderNumber,
+
+    // filters
+    searchQuery, setSearchQuery,
+    selectedCategory, setSelectedCategory,
+    selectedSubcategory, setSelectedSubcategory,
+
+    // cart
+    cart,
+    cartItemCount,
+    hasOversell,
+    tryAddToCart,
+    addProductToCart,
+    setItemQuantity,
+    adjustItemQuantity,
+    removeFromCart,
+    clearCart,
+
+    // customer
+    selectedCustomer, setSelectedCustomer,
+    setCustomers,
+
+    // totals & knobs
+    taxPct, setTaxPct,
+    discount, setDiscount,
+    discountType, setDiscountType,
+    deliveryEnabled, setDeliveryEnabled,
+    deliveryMethod, setDeliveryMethod,
+    deliveryCost, setDeliveryCost,
+    shippingAddress, setShippingAddress,
+    subtotal,
+    discountAmount,
+    taxAmount,
+    total,
+    change,
+
+    // checkout
+    paymentMethod, setPaymentMethod,
+    receivedAmount, setReceivedAmount,
+    submitting,
+    requestPayment,
+    submitSale,
+
+    // confirmation flow
+    pendingSaleData,
+    showPartialPaymentConfirm, setShowPartialPaymentConfirm,
+    showExcessPaymentConfirm, setShowExcessPaymentConfirm,
+
+    // receipt
+    lastSale,
+    showReceipt, setShowReceipt,
+
+    // variant picker
+    variantPickerProduct, setVariantPickerProduct,
+
+    // reloads
+    reloadProducts: loadProducts,
+    reloadCustomers: loadCustomers,
+  };
+}

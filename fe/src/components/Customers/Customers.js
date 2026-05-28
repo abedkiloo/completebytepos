@@ -1,77 +1,121 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Plus,
+  Search,
+  Users as UsersIcon,
+  Mail,
+  Phone,
+  MapPin,
+  Loader2,
+  Pencil,
+  Trash2,
+  X,
+} from 'lucide-react';
+
 import { customersAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
 import Layout from '../Layout/Layout';
 import { toast } from '../../utils/toast';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
-import SearchableSelect from '../Shared/SearchableSelect';
-import '../../styles/shared.css';
-import '../../styles/slide-in-panel.css';
-import './Customers.css';
+
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Badge } from '../ui/badge';
+import { Skeleton } from '../ui/skeleton';
+import { ScrollArea } from '../ui/scroll-area';
+import { cn } from '../../lib/cn';
+import { PageShell, PageHeader } from '../page';
+
+const EMPTY_FORM = {
+  name: '',
+  customer_type: 'individual',
+  email: '',
+  phone: '',
+  address: '',
+  city: '',
+  country: 'Kenya',
+  tax_id: '',
+  notes: '',
+  is_active: true,
+};
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const Customers = () => {
+  // --- Data ---
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // --- Editor / delete confirm state ---
   const [showModal, setShowModal] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [selectedCustomer, setSelectedCustomer] = useState(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    customer_type: 'individual',
-    email: '',
-    phone: '',
-    address: '',
-    city: '',
-    country: 'Kenya',
-    tax_id: '',
-    notes: '',
-    is_active: true,
-  });
+  const [editingCustomer, setEditingCustomer] = useState(null);
+  const [formData, setFormData] = useState(EMPTY_FORM);
   const [formErrors, setFormErrors] = useState({});
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    loadCustomers();
-  }, [searchQuery]);
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
-  const loadCustomers = async () => {
+  // --- Data loading (debounced search) ---
+  const loadCustomers = useCallback(async (signal) => {
     setLoading(true);
     try {
       const params = { is_active: 'true' };
-      if (searchQuery) {
-        params.search = searchQuery;
-      }
+      if (searchQuery.trim()) params.search = searchQuery.trim();
       const response = await customersAPI.list(params);
-      const customersData = response.data.results || response.data || [];
-      setCustomers(Array.isArray(customersData) ? customersData : []);
+      if (signal?.aborted) return;
+      const data = response.data.results || response.data || [];
+      setCustomers(Array.isArray(data) ? data : []);
     } catch (error) {
+      if (signal?.aborted) return;
       console.error('Error loading customers:', error);
       toast.error('Failed to load customers');
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
-  };
+  }, [searchQuery]);
 
-  const handleCreate = () => {
-    setSelectedCustomer(null);
-    setFormData({
-      name: '',
-      customer_type: 'individual',
-      email: '',
-      phone: '',
-      address: '',
-      city: '',
-      country: 'Kenya',
-      tax_id: '',
-      notes: '',
-      is_active: true,
-    });
+  useEffect(() => {
+    const controller = new AbortController();
+    const t = setTimeout(() => loadCustomers(controller.signal), 200);
+    return () => {
+      controller.abort();
+      clearTimeout(t);
+    };
+  }, [loadCustomers]);
+
+  // --- Derived ---
+  const totals = useMemo(
+    () => ({
+      count: customers.length,
+      withDebt: customers.filter((c) => (c.total_outstanding || 0) > 0).length,
+      totalOwed: customers.reduce(
+        (sum, c) => sum + parseFloat(c.total_outstanding || 0),
+        0
+      ),
+    }),
+    [customers]
+  );
+
+  // --- Editor handlers ---
+  const openCreate = () => {
+    setEditingCustomer(null);
+    setFormData(EMPTY_FORM);
     setFormErrors({});
     setShowModal(true);
   };
 
-  const handleEdit = (customer) => {
-    setSelectedCustomer(customer);
+  const openEdit = (customer) => {
+    setEditingCustomer(customer);
     setFormData({
       name: customer.name || '',
       customer_type: customer.customer_type || 'individual',
@@ -88,358 +132,581 @@ const Customers = () => {
     setShowModal(true);
   };
 
-  const handleDelete = (customer) => {
-    setSelectedCustomer(customer);
-    setShowDeleteConfirm(true);
+  const closeModal = () => {
+    if (saving) return;
+    setShowModal(false);
+    setEditingCustomer(null);
+    setFormErrors({});
   };
 
-  const confirmDelete = async () => {
-    if (!selectedCustomer) return;
-    
-    try {
-      await customersAPI.delete(selectedCustomer.id);
-      toast.success('Customer deleted successfully');
-      loadCustomers();
-      setShowDeleteConfirm(false);
-      setSelectedCustomer(null);
-    } catch (error) {
-      toast.error('Failed to delete customer: ' + (error.response?.data?.error || error.message));
+  const updateField = (key, value) => {
+    setFormData((prev) => ({ ...prev, [key]: value }));
+    if (formErrors[key]) {
+      setFormErrors((prev) => ({ ...prev, [key]: '' }));
     }
+  };
+
+  const validate = () => {
+    const errors = {};
+    const name = formData.name?.trim() || '';
+    if (!name) errors.name = 'Customer name is required';
+    else if (name.length < 2) errors.name = 'Name must be at least 2 characters';
+
+    const email = formData.email?.trim() || '';
+    if (email && !EMAIL_RE.test(email)) {
+      errors.email = 'Please enter a valid email address';
+    }
+    return errors;
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    // Clear previous errors
-    setFormErrors({});
-    
-    // Client-side validation
-    const errors = {};
-    
-    if (!formData.name || !formData.name.trim()) {
-      errors.name = 'Customer name is required';
-    } else if (formData.name.trim().length < 2) {
-      errors.name = 'Customer name must be at least 2 characters';
-    }
-    
-    // Validate email format if provided
-    if (formData.email && formData.email.trim()) {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(formData.email.trim())) {
-        errors.email = 'Please enter a valid email address';
-      }
-    }
-    
-    // If there are client-side errors, show them and return
+    e?.preventDefault?.();
+    const errors = validate();
+    setFormErrors(errors);
     if (Object.keys(errors).length > 0) {
-      setFormErrors(errors);
-      toast.error(Object.values(errors)[0], 5000);
+      toast.error(Object.values(errors)[0]);
       return;
     }
-    
-    // Prepare clean data
-    const cleanData = {
+
+    const payload = {
       name: formData.name.trim(),
       customer_type: formData.customer_type,
-      email: formData.email.trim() || '',
-      phone: formData.phone.trim() || '',
-      address: formData.address.trim() || '',
-      city: formData.city.trim() || '',
+      email: formData.email.trim(),
+      phone: formData.phone.trim(),
+      address: formData.address.trim(),
+      city: formData.city.trim(),
       country: formData.country.trim() || 'Kenya',
-      tax_id: formData.tax_id.trim() || '',
-      notes: formData.notes.trim() || '',
+      tax_id: formData.tax_id.trim(),
+      notes: formData.notes.trim(),
       is_active: formData.is_active,
     };
-    
+
+    setSaving(true);
     try {
-      if (selectedCustomer) {
-        await customersAPI.update(selectedCustomer.id, cleanData);
-        toast.success('Customer updated successfully');
+      if (editingCustomer) {
+        await customersAPI.update(editingCustomer.id, payload);
+        toast.success('Customer updated');
       } else {
-        await customersAPI.create(cleanData);
-        toast.success('Customer created successfully');
+        await customersAPI.create(payload);
+        toast.success('Customer created');
       }
       setShowModal(false);
-      setFormErrors({});
+      setEditingCustomer(null);
       loadCustomers();
-      setSelectedCustomer(null);
     } catch (error) {
-      // Handle validation errors from backend
-      const backendErrors = {};
-      let errorMessage = 'Failed to save customer';
-      
-      if (error.response?.data) {
-        const errorData = error.response.data;
-        
-        // Handle field-level validation errors (DRF format)
-        if (typeof errorData === 'object' && !errorData.error) {
-          for (const [field, messages] of Object.entries(errorData)) {
-            if (Array.isArray(messages)) {
-              backendErrors[field] = messages.join(', ');
-            } else if (typeof messages === 'string') {
-              backendErrors[field] = messages;
-            } else {
-              backendErrors[field] = JSON.stringify(messages);
-            }
-          }
-          if (Object.keys(backendErrors).length > 0) {
-            setFormErrors(backendErrors);
-            errorMessage = Object.values(backendErrors)[0];
-            toast.error(errorMessage, 8000);
-            return; // Don't close modal on validation error
-          }
-        } else if (errorData.error) {
-          errorMessage = errorData.error;
-        } else if (typeof errorData === 'string') {
-          errorMessage = errorData;
-        } else if (errorData.detail) {
-          errorMessage = errorData.detail;
+      // Field-level DRF errors → inline; otherwise toast.
+      const data = error.response?.data;
+      if (data && typeof data === 'object' && !data.error && !data.detail) {
+        const backendErrors = {};
+        for (const [field, messages] of Object.entries(data)) {
+          backendErrors[field] = Array.isArray(messages)
+            ? messages.join(', ')
+            : String(messages);
         }
-      } else if (error.message) {
-        errorMessage = error.message;
+        setFormErrors(backendErrors);
+        toast.error(Object.values(backendErrors)[0] || 'Failed to save customer');
+      } else {
+        const msg =
+          data?.error || data?.detail || error.message || 'Failed to save customer';
+        toast.error(msg);
       }
-      
-      toast.error(errorMessage, 8000);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    try {
+      await customersAPI.delete(pendingDelete.id);
+      toast.success('Customer deleted');
+      setPendingDelete(null);
+      loadCustomers();
+    } catch (error) {
+      toast.error(
+        'Failed to delete customer: ' +
+          (error.response?.data?.error || error.message)
+      );
+    } finally {
+      setDeleting(false);
     }
   };
 
   return (
     <Layout>
-      <div className="customers-container">
-        <div className="page-header">
-          <div className="page-header-content">
-            <h1>Customers</h1>
-            <p>Manage your customer database</p>
-          </div>
-          <div className="page-header-actions">
-            <button className="btn btn-primary" onClick={handleCreate}>
-              <span>+</span>
-              <span>Add Customer</span>
+      <PageShell>
+        <PageHeader
+          title="Customers"
+          description="Manage shoppers, their contact details, and outstanding balances."
+        >
+          <Button onClick={openCreate}>
+            <Plus className="h-4 w-4" />
+            Add customer
+          </Button>
+        </PageHeader>
+
+        {/* --- Summary chips --- */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <SummaryCard
+            icon={UsersIcon}
+            label="Total customers"
+            value={totals.count.toLocaleString()}
+          />
+          <SummaryCard
+            icon={UsersIcon}
+            label="With balance owing"
+            value={totals.withDebt.toLocaleString()}
+            tone={totals.withDebt > 0 ? 'warning' : 'default'}
+          />
+          <SummaryCard
+            icon={UsersIcon}
+            label="Total outstanding"
+            value={formatCurrency(totals.totalOwed)}
+            tone={totals.totalOwed > 0 ? 'destructive' : 'default'}
+          />
+        </div>
+
+        {/* --- Search toolbar --- */}
+        <div className="relative max-w-md">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by name, phone, email or code…"
+            className="h-10 pl-9"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+              aria-label="Clear search"
+            >
+              <X className="h-4 w-4" />
             </button>
-          </div>
+          )}
         </div>
 
-        <div className="customers-toolbar">
-          <div className="search-box">
-            <input
-              type="text"
-              placeholder="Search customers..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            <span className="search-icon">🔍</span>
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="loading">Loading customers...</div>
-        ) : (
-          <div className="customers-table-container">
-            <table className="customers-table">
-              <thead>
+        {/* --- Table --- */}
+        <div className="overflow-hidden rounded-lg border bg-background">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-border text-sm">
+              <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <th>Code</th>
-                  <th>Name</th>
-                  <th>Type</th>
-                  <th>Email</th>
-                  <th>Phone</th>
-                  <th>City</th>
-                  <th>Outstanding</th>
-                  <th>Status</th>
-                  <th>Actions</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Customer</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Contact</th>
+                  <th className="px-4 py-2.5 text-left font-medium">City</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Outstanding</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Status</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Actions</th>
                 </tr>
               </thead>
-              <tbody>
-                {customers.length === 0 ? (
+              <tbody className="divide-y divide-border">
+                {loading && customers.length === 0 ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <tr key={i}>
+                      {Array.from({ length: 6 }).map((__, j) => (
+                        <td key={j} className="px-4 py-3">
+                          <Skeleton className="h-4 w-full" />
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                ) : customers.length === 0 ? (
                   <tr>
-                    <td colSpan="9" className="empty-state">
-                      No customers found
+                    <td colSpan={6} className="px-4 py-12 text-center">
+                      <EmptyState onCreate={openCreate} searchQuery={searchQuery} />
                     </td>
                   </tr>
                 ) : (
-                  customers.map(customer => (
-                    <tr key={customer.id} className={!customer.is_active ? 'inactive' : ''}>
-                      <td>{customer.customer_code}</td>
-                      <td>
-                        <div className="customer-name">{customer.name}</div>
-                      </td>
-                      <td>
-                        <span className={`type-badge ${customer.customer_type}`}>
-                          {customer.customer_type === 'business' ? 'Business' : 'Individual'}
-                        </span>
-                      </td>
-                      <td>{customer.email || '-'}</td>
-                      <td>{customer.phone || '-'}</td>
-                      <td>{customer.city || '-'}</td>
-                      <td>
-                        <span className={customer.total_outstanding > 0 ? 'outstanding' : 'paid'}>
-                          {formatCurrency(customer.total_outstanding || 0)}
-                        </span>
-                      </td>
-                      <td>
-                        <span className={`status-badge ${customer.is_active ? 'active' : 'inactive'}`}>
-                          {customer.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td>
-                        <div className="action-buttons">
-                          <button onClick={() => handleEdit(customer)} className="btn-edit">Edit</button>
-                          <button onClick={() => handleDelete(customer)} className="btn-delete">Delete</button>
-                        </div>
-                      </td>
-                    </tr>
+                  customers.map((customer) => (
+                    <CustomerRow
+                      key={customer.id}
+                      customer={customer}
+                      onEdit={() => openEdit(customer)}
+                      onDelete={() => setPendingDelete(customer)}
+                    />
                   ))
                 )}
               </tbody>
             </table>
           </div>
-        )}
+        </div>
 
-        {/* Customer Modal */}
-        {showModal && (
-          <div className="modal-overlay" onClick={() => setShowModal(false)}>
-            <div className="modal-content customer-modal" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-header">
-                <h2>{selectedCustomer ? 'Edit Customer' : 'Add Customer'}</h2>
-                <button onClick={() => setShowModal(false)} className="close-btn">×</button>
-              </div>
-              <div className="modal-body">
-                <form onSubmit={handleSubmit}>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Name *</label>
-                    <input
-                      type="text"
-                      value={formData.name}
-                      onChange={(e) => {
-                        setFormData({ ...formData, name: e.target.value });
-                        if (formErrors.name) setFormErrors({ ...formErrors, name: '' });
-                      }}
-                      className={formErrors.name ? 'error' : ''}
-                      required
-                    />
-                    {formErrors.name && <span className="error-text">{formErrors.name}</span>}
-                  </div>
-                  <div className="form-group">
-                    <label>Type *</label>
-                    <SearchableSelect
-                      value={formData.customer_type}
-                      onChange={(e) => setFormData({ ...formData, customer_type: e.target.value })}
-                      options={[
-                        { id: 'individual', name: 'Individual' },
-                        { id: 'business', name: 'Business' }
-                      ]}
-                      placeholder="Select Type"
-                    />
-                  </div>
-                </div>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Email</label>
-                    <input
-                      type="email"
-                      value={formData.email}
-                      onChange={(e) => {
-                        setFormData({ ...formData, email: e.target.value });
-                        if (formErrors.email) setFormErrors({ ...formErrors, email: '' });
-                      }}
-                      className={formErrors.email ? 'error' : ''}
-                    />
-                    {formErrors.email && <span className="error-text">{formErrors.email}</span>}
-                  </div>
-                  <div className="form-group">
-                    <label>Phone</label>
-                    <input
-                      type="text"
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    />
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label>Address</label>
-                  <textarea
-                    value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    rows="2"
-                  />
-                </div>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>City</label>
-                    <input
-                      type="text"
-                      value={formData.city}
-                      onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Country</label>
-                    <input
-                      type="text"
-                      value={formData.country}
-                      onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                    />
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label>Tax ID / VAT Number</label>
-                  <input
-                    type="text"
-                    value={formData.tax_id}
-                    onChange={(e) => setFormData({ ...formData, tax_id: e.target.value })}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Notes</label>
-                  <textarea
-                    value={formData.notes}
-                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    rows="3"
-                  />
-                </div>
-                <div className="form-group">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={formData.is_active}
-                      onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                    />
-                    Active
-                  </label>
-                </div>
-                </form>
-              </div>
-              <div className="modal-footer">
-                <button type="button" onClick={() => setShowModal(false)} className="btn btn-secondary">
-                  Cancel
-                </button>
-                <button type="submit" onClick={handleSubmit} className="btn btn-primary">
-                  {selectedCustomer ? 'Update' : 'Create'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+      {/* --- Editor dialog --- */}
+      <CustomerFormDialog
+        open={showModal}
+        onOpenChange={(next) => (next ? setShowModal(true) : closeModal())}
+        editing={editingCustomer}
+        formData={formData}
+        formErrors={formErrors}
+        onChange={updateField}
+        onSubmit={handleSubmit}
+        saving={saving}
+      />
 
-        {/* Delete Confirm Dialog */}
-        <ConfirmDialog
-          isOpen={showDeleteConfirm}
-          title="Delete Customer"
-          message={`Are you sure you want to delete ${selectedCustomer?.name}? This action cannot be undone.`}
-          onConfirm={confirmDelete}
-          onCancel={() => {
-            setShowDeleteConfirm(false);
-            setSelectedCustomer(null);
-          }}
-          confirmText="Delete"
-          cancelText="Cancel"
-          type="danger"
-        />
-      </div>
+      {/* --- Delete confirm --- */}
+      <ConfirmDialog
+        isOpen={!!pendingDelete}
+        title="Delete customer"
+        message={
+          pendingDelete
+            ? `Delete ${pendingDelete.name}? Their sales history will be preserved but they will no longer appear in customer pickers.`
+            : ''
+        }
+        confirmText="Delete customer"
+        cancelText="Keep"
+        type="danger"
+        busy={deleting}
+        onConfirm={confirmDelete}
+        onCancel={() => (deleting ? null : setPendingDelete(null))}
+      />
+      </PageShell>
     </Layout>
   );
 };
 
-export default Customers;
+function SummaryCard({ icon: Icon, label, value, tone = 'default' }) {
+  const toneClasses = {
+    default: 'text-foreground',
+    warning: 'text-warning',
+    destructive: 'text-destructive',
+  };
+  return (
+    <div className="flex items-center gap-3 rounded-lg border bg-background px-4 py-3">
+      <div className="flex h-9 w-9 items-center justify-center rounded-md bg-muted">
+        <Icon className="h-4 w-4 text-muted-foreground" />
+      </div>
+      <div className="min-w-0">
+        <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {label}
+        </div>
+        <div className={cn('text-lg font-semibold tabular-nums', toneClasses[tone])}>
+          {value}
+        </div>
+      </div>
+    </div>
+  );
+}
 
+function CustomerRow({ customer, onEdit, onDelete }) {
+  const outstanding = parseFloat(customer.total_outstanding || 0);
+  return (
+    <tr
+      className={cn(
+        'transition-colors hover:bg-muted/40',
+        !customer.is_active && 'opacity-60'
+      )}
+    >
+      <td className="px-4 py-3">
+        <div className="flex flex-col">
+          <span className="font-medium text-foreground">{customer.name}</span>
+          {customer.customer_code && (
+            <span className="font-mono text-xs text-muted-foreground">
+              {customer.customer_code}
+            </span>
+          )}
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex flex-col gap-0.5 text-xs">
+          {customer.email && (
+            <span className="inline-flex items-center gap-1 text-muted-foreground">
+              <Mail className="h-3 w-3" />
+              <span className="truncate">{customer.email}</span>
+            </span>
+          )}
+          {customer.phone && (
+            <span className="inline-flex items-center gap-1 text-muted-foreground">
+              <Phone className="h-3 w-3" />
+              <span>{customer.phone}</span>
+            </span>
+          )}
+          {!customer.email && !customer.phone && (
+            <span className="text-muted-foreground">—</span>
+          )}
+        </div>
+      </td>
+      <td className="px-4 py-3 text-muted-foreground">
+        {customer.city ? (
+          <span className="inline-flex items-center gap-1">
+            <MapPin className="h-3 w-3 text-muted-foreground" />
+            {customer.city}
+          </span>
+        ) : (
+          '—'
+        )}
+      </td>
+      <td className="px-4 py-3 text-right">
+        <span
+          className={cn(
+            'font-semibold tabular-nums',
+            outstanding > 0 ? 'text-destructive' : 'text-muted-foreground'
+          )}
+        >
+          {formatCurrency(outstanding)}
+        </span>
+      </td>
+      <td className="px-4 py-3">
+        <Badge variant={customer.is_active ? 'success' : 'outline'}>
+          {customer.is_active ? 'Active' : 'Inactive'}
+        </Badge>
+        {customer.customer_type === 'business' && (
+          <Badge variant="secondary" className="ml-1.5">
+            Business
+          </Badge>
+        )}
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex items-center justify-end gap-1">
+          <Button variant="ghost" size="sm" onClick={onEdit} aria-label="Edit customer">
+            <Pencil className="h-3.5 w-3.5" />
+            <span className="sr-only sm:not-sr-only sm:ml-1">Edit</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onDelete}
+            aria-label="Delete customer"
+            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            <span className="sr-only sm:not-sr-only sm:ml-1">Delete</span>
+          </Button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function EmptyState({ onCreate, searchQuery }) {
+  if (searchQuery) {
+    return (
+      <div className="flex flex-col items-center gap-2 text-muted-foreground">
+        <UsersIcon className="h-8 w-8 opacity-50" />
+        <p className="font-medium text-foreground">No customers match “{searchQuery}”</p>
+        <p className="text-sm">Try a different name, phone, or email.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col items-center gap-3 text-muted-foreground">
+      <UsersIcon className="h-10 w-10 opacity-40" />
+      <div>
+        <p className="font-medium text-foreground">No customers yet</p>
+        <p className="text-sm">
+          Add a customer to start tracking purchases, balances and wallet credit.
+        </p>
+      </div>
+      <Button onClick={onCreate} variant="default" size="sm">
+        <Plus className="h-4 w-4" />
+        Add your first customer
+      </Button>
+    </div>
+  );
+}
+
+function CustomerFormDialog({
+  open,
+  onOpenChange,
+  editing,
+  formData,
+  formErrors,
+  onChange,
+  onSubmit,
+  saving,
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="sm:max-w-2xl"
+        description={
+          editing
+            ? 'Update this customer\u2019s contact details, credit limit, and notes.'
+            : 'Create a new customer profile to track sales, wallet balance, and credit.'
+        }
+      >
+        <DialogHeader>
+          <DialogTitle>{editing ? 'Edit customer' : 'Add customer'}</DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={onSubmit} className="space-y-4">
+          <ScrollArea className="max-h-[60vh] pr-3">
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="Name" htmlFor="cust-name" required error={formErrors.name}>
+                  <Input
+                    id="cust-name"
+                    value={formData.name}
+                    onChange={(e) => onChange('name', e.target.value)}
+                    placeholder="Jane Doe"
+                    autoFocus
+                  />
+                </Field>
+                <Field label="Type" htmlFor="cust-type">
+                  <SegmentedControl
+                    value={formData.customer_type}
+                    onChange={(v) => onChange('customer_type', v)}
+                    options={[
+                      { value: 'individual', label: 'Individual' },
+                      { value: 'business', label: 'Business' },
+                    ]}
+                  />
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="Email" htmlFor="cust-email" error={formErrors.email}>
+                  <Input
+                    id="cust-email"
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => onChange('email', e.target.value)}
+                    placeholder="jane@example.com"
+                  />
+                </Field>
+                <Field label="Phone" htmlFor="cust-phone" error={formErrors.phone}>
+                  <Input
+                    id="cust-phone"
+                    type="tel"
+                    inputMode="tel"
+                    value={formData.phone}
+                    onChange={(e) => onChange('phone', e.target.value)}
+                    placeholder="+254…"
+                  />
+                </Field>
+              </div>
+
+              <Field label="Address" htmlFor="cust-address">
+                <textarea
+                  id="cust-address"
+                  value={formData.address}
+                  onChange={(e) => onChange('address', e.target.value)}
+                  rows={2}
+                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  placeholder="Street, building, area…"
+                />
+              </Field>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="City" htmlFor="cust-city">
+                  <Input
+                    id="cust-city"
+                    value={formData.city}
+                    onChange={(e) => onChange('city', e.target.value)}
+                  />
+                </Field>
+                <Field label="Country" htmlFor="cust-country">
+                  <Input
+                    id="cust-country"
+                    value={formData.country}
+                    onChange={(e) => onChange('country', e.target.value)}
+                  />
+                </Field>
+              </div>
+
+              <Field
+                label="Tax ID / VAT number"
+                htmlFor="cust-tax"
+                hint="Leave blank if not applicable."
+              >
+                <Input
+                  id="cust-tax"
+                  value={formData.tax_id}
+                  onChange={(e) => onChange('tax_id', e.target.value)}
+                />
+              </Field>
+
+              <Field label="Notes" htmlFor="cust-notes">
+                <textarea
+                  id="cust-notes"
+                  value={formData.notes}
+                  onChange={(e) => onChange('notes', e.target.value)}
+                  rows={3}
+                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  placeholder="Internal notes (preferences, delivery instructions…)"
+                />
+              </Field>
+
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={formData.is_active}
+                  onChange={(e) => onChange('is_active', e.target.checked)}
+                  className="h-4 w-4 rounded border-input text-primary focus:ring-1 focus:ring-ring"
+                />
+                <span>Active — appears in customer pickers</span>
+              </label>
+            </div>
+          </ScrollArea>
+
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Saving…
+                </>
+              ) : editing ? (
+                'Save changes'
+              ) : (
+                'Create customer'
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function Field({ label, htmlFor, required = false, error, hint, children }) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={htmlFor} className="flex items-center gap-1">
+        <span>{label}</span>
+        {required && <span className="text-destructive">*</span>}
+      </Label>
+      {children}
+      {error ? (
+        <p className="text-xs text-destructive">{error}</p>
+      ) : hint ? (
+        <p className="text-xs text-muted-foreground">{hint}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function SegmentedControl({ value, onChange, options }) {
+  return (
+    <div className="inline-flex rounded-md border bg-background">
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          className={cn(
+            'h-10 px-4 text-sm font-medium transition-colors first:rounded-l-md last:rounded-r-md',
+            value === opt.value
+              ? 'bg-primary text-primary-foreground'
+              : 'text-foreground hover:bg-accent'
+          )}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export default Customers;

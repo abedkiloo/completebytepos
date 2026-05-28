@@ -1,52 +1,121 @@
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background: #f8f9fa;
-  color: #1a1a1a;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Design tokens.
+ *
+ * Values are HSL triplets (no `hsl(...)` wrapper) so Tailwind colours can
+ * compose them as `hsl(var(--token) / <alpha>)`. Keep this list small and
+ * vocabulary-driven; do not introduce one-off hex codes inside components.
+ *
+ * The palette targets a retail POS:
+ *  - background: a near-white neutral that doesn't fatigue cashiers over an 8h shift
+ *  - primary: confident, trustworthy action colour (indigo-600)
+ *  - destructive: unambiguous red for void/refund/remove
+ *  - success: green for "paid" / receipts / in-stock chips
+ *  - warning: amber for low-stock / pending payment plans
+ */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    --primary: 238 80% 56%;            /* indigo-600 */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+
+    --accent: 220 14% 96%;
+    --accent-foreground: 222 47% 11%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 238 80% 56%;
+
+    --radius: 0.5rem;
+  }
+
+  /* Reset + base typography. Replaces the manual * reset in App.css. */
+  *,
+  *::before,
+  *::after {
+    @apply border-border;
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+      'Helvetica Neue', Arial, sans-serif;
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+  }
+
+  /* Subtle depth on scrollable app pages (matches Dashboard) */
+  .app-surface {
+    @apply min-h-full bg-gradient-to-b from-background via-background to-secondary/40;
+  }
+
+  code {
+    font-family: 'SF Mono', Menlo, Monaco, Consolas, 'Courier New', monospace;
+  }
+
+  /* Touch targets — POS rule: nothing smaller than 44x44 px in the cashier UI. */
+  .pos-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
-}
-
-/* Global Print Styles - Hide everything by default */
+/*
+ * Print styles.
+ *
+ * The new POS receipt prints from an isolated iframe (see
+ * components/POS/v2/printReceipt.js) so the host page does not need to hide
+ * itself anymore — there is nothing else in the iframe to hide.
+ *
+ * The rules here are now narrow on purpose: in the unusual case where a
+ * cashier triggers the OS print shortcut while looking at the on-screen
+ * receipt preview, we surface that single element instead of dumping the
+ * whole dashboard onto paper. The same applies to the legacy `.receipt-*`
+ * classes still rendered by the old POS, NormalSale, and Invoice screens
+ * until they migrate.
+ */
 @media print {
   body * {
-    visibility: hidden;
-  }
-
-  /* Only show receipt content when printing */
-  .receipt-content,
-  .receipt-content *,
-  .receipt-container .receipt-content,
-  .receipt-container .receipt-content *,
-  .modal-overlay .receipt-content,
-  .modal-overlay .receipt-content * {
-    visibility: visible;
-  }
-
-  /* Hide all buttons, headers, and UI elements ONLY when printing */
-  button:not(.receipt-content button),
-  .btn-print,
-  .btn-close,
-  .receipt-actions,
-  .modal-header,
-  .modal-close,
-  .modal-footer,
-  .checkout-actions,
-  .pos-topbar,
-  .pos-sidebar-left,
-  .pos-sidebar-right,
-  .pos-main,
-  .success-modal,
-  .success-content,
-  .success-actions {
-    display: none !important;
     visibility: hidden !important;
+  }
+
+  .receipt-thermal,
+  .receipt-thermal *,
+  .receipt-content,
+  .receipt-content * {
+    visibility: visible !important;
+  }
+
+  .receipt-thermal {
+    position: absolute;
+    inset: 0;
+    margin: 0;
   }
 }

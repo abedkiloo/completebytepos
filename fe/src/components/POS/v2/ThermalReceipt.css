@@ -1,0 +1,124 @@
+/*
+ * Mirror of THERMAL_RECEIPT_CSS in ThermalReceipt.js, kept in a separate file
+ * so the on-screen receipt preview gets the same styles without us shipping
+ * a <style> tag inside the React tree.
+ *
+ * If you change one, change the other. The string in the .js file is the one
+ * that gets embedded into the print iframe.
+ */
+.receipt-thermal {
+  width: 80mm;
+  max-width: 80mm;
+  padding: 4mm 4mm 6mm;
+  margin: 0 auto;
+  background: #ffffff;
+  color: #000000;
+  font-family: 'SF Mono', Menlo, Consolas, 'Courier New', monospace;
+  font-size: 11pt;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+.receipt-thermal__header {
+  text-align: center;
+  margin-bottom: 2mm;
+}
+.receipt-thermal__store {
+  font-size: 14pt;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.receipt-thermal__branch {
+  font-size: 10pt;
+  font-weight: 600;
+}
+.receipt-thermal__line-thin {
+  font-size: 9.5pt;
+  margin-top: 0.5mm;
+}
+.receipt-thermal__rule {
+  margin: 1.5mm 0;
+  border-top: 1px dashed #000;
+}
+.receipt-thermal__rule--double {
+  border-top: 1px solid #000;
+  border-bottom: 1px solid #000;
+  height: 0;
+  padding: 0;
+}
+.receipt-thermal__meta,
+.receipt-thermal__items,
+.receipt-thermal__totals,
+.receipt-thermal__payment {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5mm;
+}
+.receipt-thermal__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 4mm;
+}
+.receipt-thermal__row-left {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+.receipt-thermal__row-right {
+  flex-shrink: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.receipt-thermal__row--bold .receipt-thermal__row-left,
+.receipt-thermal__row--bold .receipt-thermal__row-right {
+  font-weight: 700;
+}
+.receipt-thermal__row--emphasised {
+  font-size: 13pt;
+  padding: 0.5mm 0;
+}
+.receipt-thermal__item {
+  padding: 0.5mm 0;
+}
+.receipt-thermal__item-name {
+  font-weight: 600;
+  word-break: break-word;
+}
+.receipt-thermal__item-variant {
+  font-weight: 400;
+  font-size: 10pt;
+  opacity: 0.75;
+}
+.receipt-thermal__note {
+  font-size: 9.5pt;
+  font-style: italic;
+  text-align: center;
+  margin-top: 1mm;
+}
+.receipt-thermal__footer {
+  text-align: center;
+  margin-top: 2mm;
+}
+.receipt-thermal__thanks {
+  margin: 0 0 1mm;
+  font-weight: 600;
+}
+.receipt-thermal__sale-no {
+  margin: 0;
+  font-size: 9.5pt;
+  letter-spacing: 1px;
+}
+
+.receipt-thermal--58mm {
+  width: 58mm;
+  max-width: 58mm;
+  padding: 3mm;
+  font-size: 9.5pt;
+}
+.receipt-thermal--58mm .receipt-thermal__store {
+  font-size: 12pt;
+}
+.receipt-thermal--58mm .receipt-thermal__row--emphasised {
+  font-size: 11pt;
+}

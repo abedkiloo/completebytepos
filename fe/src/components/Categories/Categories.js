@@ -1,12 +1,34 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { FolderTree, Pencil, Plus, Trash2 } from 'lucide-react';
 import { categoriesAPI } from '../../services/api';
 import { formatNumber } from '../../utils/formatters';
 import Layout from '../Layout/Layout';
 import CategoryForm from './CategoryForm';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import { toast } from '../../utils/toast';
-import '../../styles/shared.css';
-import './Categories.css';
+import { Button } from '../ui/button';
+import {
+  PageShell,
+  PageHeader,
+  PageLoading,
+  EmptyState,
+  FilterBar,
+  SearchField,
+  FilterPills,
+  DataTable,
+  DataTableHeader,
+  DataTableHead,
+  DataTableBody,
+  DataTableRow,
+  DataTableCell,
+  ActiveStatusBadge,
+} from '../page';
+
+const FILTER_OPTIONS = [
+  { value: 'all', label: 'All' },
+  { value: 'active', label: 'Active' },
+  { value: 'inactive', label: 'Inactive' },
+];
 
 const Categories = () => {
   const [categories, setCategories] = useState([]);
@@ -14,7 +36,7 @@ const Categories = () => {
   const [showForm, setShowForm] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterActive, setFilterActive] = useState('all'); // all, active, inactive
+  const [filterActive, setFilterActive] = useState('all');
   const [confirmDelete, setConfirmDelete] = useState(null);
 
   useEffect(() => {
@@ -28,7 +50,6 @@ const Categories = () => {
       if (filterActive !== 'all') {
         params.is_active = filterActive === 'active';
       }
-      
       const response = await categoriesAPI.list(params);
       const categoriesData = response.data.results || response.data || [];
       setCategories(Array.isArray(categoriesData) ? categoriesData : []);
@@ -40,20 +61,20 @@ const Categories = () => {
     }
   };
 
-  const handleDelete = (id) => {
-    setConfirmDelete(id);
-  };
+  const handleDelete = (id) => setConfirmDelete(id);
 
   const confirmDeleteAction = async () => {
     if (!confirmDelete) return;
-
     try {
       await categoriesAPI.delete(confirmDelete);
       loadCategories();
       toast.success('Category deleted successfully');
     } catch (error) {
-      const errorMsg = error.response?.data?.error || error.response?.data?.detail || 'Failed to delete category';
-      toast.error(errorMsg);
+      toast.error(
+        error.response?.data?.error ||
+          error.response?.data?.detail ||
+          'Failed to delete category'
+      );
     } finally {
       setConfirmDelete(null);
     }
@@ -63,172 +84,184 @@ const Categories = () => {
     try {
       await categoriesAPI.update(category.id, {
         ...category,
-        is_active: !category.is_active
+        is_active: !category.is_active,
       });
       loadCategories();
-      toast.success(`Category ${!category.is_active ? 'activated' : 'deactivated'} successfully`);
-    } catch (error) {
+      toast.success(
+        `Category ${!category.is_active ? 'activated' : 'deactivated'} successfully`
+      );
+    } catch {
       toast.error('Failed to update category');
     }
   };
 
-  const filteredCategories = categories.filter(cat => {
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      return cat.name.toLowerCase().includes(query) ||
-             (cat.description && cat.description.toLowerCase().includes(query));
-    }
-    return true;
+  const categoryNameById = useMemo(() => {
+    const map = {};
+    categories.forEach((c) => {
+      map[c.id] = c.name;
+    });
+    return map;
+  }, [categories]);
+
+  const filteredCategories = categories.filter((cat) => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      cat.name.toLowerCase().includes(query) ||
+      (cat.description && cat.description.toLowerCase().includes(query))
+    );
   });
+
+  const openCreate = () => {
+    setEditingCategory(null);
+    setShowForm(true);
+  };
+
+  const openEdit = (category) => {
+    setEditingCategory(category);
+    setShowForm(true);
+  };
+
+  if (loading) {
+    return (
+      <Layout>
+        <PageLoading rows={8} />
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
-      <div className="categories-page">
-      <div className="page-header">
-        <div className="page-header-content">
-          <h1>Category Management</h1>
-        </div>
-        <div className="page-header-actions">
-          <button
-            onClick={() => {
-              setEditingCategory(null);
-              setShowForm(true);
-            }}
-            className="btn btn-primary"
-          >
-            <span>+</span>
-            <span>Add Category</span>
-          </button>
-        </div>
-      </div>
+      <PageShell>
+        <PageHeader
+          title="Categories"
+          description="Organize products into groups and subcategories."
+        >
+          <Button onClick={openCreate}>
+            <Plus className="h-4 w-4" />
+            Add category
+          </Button>
+        </PageHeader>
 
-      <div className="categories-filters">
-        <input
-          type="text"
-          placeholder="Search categories..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="search-input"
-        />
-        <div className="filter-buttons">
-          <button
-            className={filterActive === 'all' ? 'active' : ''}
-            onClick={() => setFilterActive('all')}
-          >
-            All
-          </button>
-          <button
-            className={filterActive === 'active' ? 'active' : ''}
-            onClick={() => setFilterActive('active')}
-          >
-            Active
-          </button>
-          <button
-            className={filterActive === 'inactive' ? 'active' : ''}
-            onClick={() => setFilterActive('inactive')}
-          >
-            Inactive
-          </button>
-        </div>
-      </div>
+        <FilterBar>
+          <SearchField
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search categories…"
+            className="max-w-md"
+          />
+          <FilterPills
+            options={FILTER_OPTIONS}
+            value={filterActive}
+            onChange={setFilterActive}
+          />
+        </FilterBar>
 
-      {loading ? (
-        <div className="loading">Loading categories...</div>
-      ) : (
-        <div className="categories-grid">
-          {filteredCategories.length === 0 ? (
-            <div className="empty-state">
-              {searchQuery ? 'No categories found matching your search' : 'No categories found'}
-            </div>
-          ) : (
-            filteredCategories.map(category => (
-              <div key={category.id} className={`category-card ${!category.is_active ? 'inactive' : ''}`}>
-                <div className="category-header">
-                  <h3>{category.name}</h3>
-                  <span className={`status-badge ${category.is_active ? 'active' : 'inactive'}`}>
-                    {category.is_active ? 'Active' : 'Inactive'}
-                  </span>
-                </div>
-                
-                {category.description && (
-                  <div className="category-description">
-                    <p>{category.description}</p>
-                  </div>
-                )}
-
-                <div className="category-stats">
-                  <div className="stat-item">
-                    <span className="stat-label">Products:</span>
-                    <span className="stat-value">{formatNumber(category.product_count || 0)}</span>
-                  </div>
-                  {category.children_count > 0 && (
-                    <div className="stat-item">
-                      <span className="stat-label">Subcategories:</span>
-                      <span className="stat-value">{formatNumber(category.children_count || 0)}</span>
+        {filteredCategories.length === 0 ? (
+          <EmptyState
+            icon={FolderTree}
+            title={searchQuery ? 'No matches' : 'No categories yet'}
+            description={
+              searchQuery
+                ? 'Try a different search term.'
+                : 'Create your first category to group products.'
+            }
+            actionLabel={!searchQuery ? 'Add category' : undefined}
+            onAction={!searchQuery ? openCreate : undefined}
+          />
+        ) : (
+          <DataTable>
+            <DataTableHeader>
+              <DataTableHead>Name</DataTableHead>
+              <DataTableHead>Parent</DataTableHead>
+              <DataTableHead>Description</DataTableHead>
+              <DataTableHead align="right">Products</DataTableHead>
+              <DataTableHead align="right">Subcats</DataTableHead>
+              <DataTableHead>Status</DataTableHead>
+              <DataTableHead align="right">Actions</DataTableHead>
+            </DataTableHeader>
+            <DataTableBody>
+              {filteredCategories.map((category) => (
+                <DataTableRow key={category.id} inactive={!category.is_active}>
+                  <DataTableCell className="font-medium">{category.name}</DataTableCell>
+                  <DataTableCell className="text-muted-foreground">
+                    {category.parent
+                      ? categoryNameById[category.parent] || '—'
+                      : '—'}
+                  </DataTableCell>
+                  <DataTableCell className="max-w-[200px] truncate text-muted-foreground">
+                    {category.description || '—'}
+                  </DataTableCell>
+                  <DataTableCell align="right">
+                    {formatNumber(category.product_count || 0)}
+                  </DataTableCell>
+                  <DataTableCell align="right">
+                    {formatNumber(category.children_count || 0)}
+                  </DataTableCell>
+                  <DataTableCell>
+                    <ActiveStatusBadge active={category.is_active} />
+                  </DataTableCell>
+                  <DataTableCell align="right">
+                    <div className="flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openEdit(category)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleToggleActive(category)}
+                      >
+                        {category.is_active ? 'Off' : 'On'}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => handleDelete(category.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
-                  )}
-                </div>
+                  </DataTableCell>
+                </DataTableRow>
+              ))}
+            </DataTableBody>
+          </DataTable>
+        )}
 
-                <div className="category-actions">
-                  <button
-                    onClick={() => {
-                      setEditingCategory(category);
-                      setShowForm(true);
-                    }}
-                    className="btn-edit"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleToggleActive(category)}
-                    className={category.is_active ? 'btn-deactivate' : 'btn-activate'}
-                  >
-                    {category.is_active ? 'Deactivate' : 'Activate'}
-                  </button>
-                  <button
-                    onClick={() => handleDelete(category.id)}
-                    className="btn-delete"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      )}
+        {showForm && (
+          <CategoryForm
+            category={editingCategory}
+            onClose={() => {
+              setShowForm(false);
+              setEditingCategory(null);
+            }}
+            onSave={() => {
+              setShowForm(false);
+              setEditingCategory(null);
+              loadCategories();
+            }}
+            categories={categories}
+          />
+        )}
 
-      {showForm && (
-        <CategoryForm
-          category={editingCategory}
-          onClose={() => {
-            setShowForm(false);
-            setEditingCategory(null);
-          }}
-          onSave={() => {
-            setShowForm(false);
-            setEditingCategory(null);
-            loadCategories();
-          }}
-          categories={categories}
+        <ConfirmDialog
+          isOpen={!!confirmDelete}
+          title="Delete category"
+          message="Products in this category will have their category cleared. This cannot be undone."
+          onConfirm={confirmDeleteAction}
+          onCancel={() => setConfirmDelete(null)}
+          confirmText="Delete"
+          cancelText="Cancel"
+          type="danger"
         />
-      )}
-
-      {/* Confirm Delete Dialog */}
-      <ConfirmDialog
-        isOpen={!!confirmDelete}
-        title="Delete Category"
-        message="Are you sure you want to delete this category? Products in this category will have their category set to null."
-        onConfirm={confirmDeleteAction}
-        onCancel={() => setConfirmDelete(null)}
-        confirmText="Delete"
-        cancelText="Cancel"
-        type="danger"
-      />
-      </div>
+      </PageShell>
     </Layout>
   );
 };
 
 export default Categories;
-

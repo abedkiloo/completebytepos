@@ -1,12 +1,21 @@
 import React, { useState, useEffect } from 'react';
+import { Building2, Check, ChevronDown, Globe, Loader2 } from 'lucide-react';
 import { branchesAPI, modulesAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
-import './BranchSelector.css';
+import { Button } from '../ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '../ui/dropdown-menu';
+import { cn } from '../../lib/cn';
 
 const BranchSelector = ({ onBranchChange, showAllOption = false }) => {
   const [branches, setBranches] = useState([]);
   const [selectedBranch, setSelectedBranch] = useState(null);
-  const [showDropdown, setShowDropdown] = useState(false);
   const [loading, setLoading] = useState(true);
   const [branchSupportEnabled, setBranchSupportEnabled] = useState(false);
 
@@ -15,11 +24,9 @@ const BranchSelector = ({ onBranchChange, showAllOption = false }) => {
   }, []);
 
   useEffect(() => {
-    // Only load branches if branch support is enabled
     if (branchSupportEnabled) {
       loadBranches();
     } else {
-      // Branch support disabled - don't load branches
       setBranches([]);
       setLoading(false);
     }
@@ -31,15 +38,8 @@ const BranchSelector = ({ onBranchChange, showAllOption = false }) => {
       const modulesData = response.data || {};
       const settingsModule = modulesData['settings'];
       const multiBranchFeature = settingsModule?.features?.multi_branch_support;
-      const enabled = multiBranchFeature?.is_enabled || false;
-      setBranchSupportEnabled(enabled);
-      
-      if (!enabled) {
-        console.info('Multi-branch support is disabled in module settings');
-      }
-    } catch (error) {
-      console.error('Error checking branch support:', error);
-      // Default to disabled if check fails
+      setBranchSupportEnabled(multiBranchFeature?.is_enabled || false);
+    } catch {
       setBranchSupportEnabled(false);
     }
   };
@@ -51,29 +51,19 @@ const BranchSelector = ({ onBranchChange, showAllOption = false }) => {
   }, [branches]);
 
   const loadBranches = async () => {
-    // Don't load branches if branch support is disabled
     if (!branchSupportEnabled) {
       setBranches([]);
       setLoading(false);
       return;
     }
-    
     try {
       const response = await branchesAPI.active();
-      const branchesData = response.data || [];
-      setBranches(branchesData);
-      
-      // If no branches, show helpful message
-      if (branchesData.length === 0) {
-        console.info('No branches found - add branches through module settings');
-      }
+      setBranches(response.data || []);
     } catch (error) {
-      console.error('Error loading branches:', error);
-      // Don't show error if it's just that there are no branches or CORS issue
       if (error.response?.status !== 404 && error.code !== 'ERR_NETWORK') {
         toast.error('Failed to load branches');
       }
-      setBranches([]); // Set empty array on error
+      setBranches([]);
     } finally {
       setLoading(false);
     }
@@ -84,177 +74,126 @@ const BranchSelector = ({ onBranchChange, showAllOption = false }) => {
     if (storedBranch) {
       try {
         const branch = JSON.parse(storedBranch);
-        // Verify branch still exists and is active
-        const branchExists = branches.find(b => b.id === branch.id);
-        if (branchExists) {
+        if (branches.find((b) => b.id === branch.id)) {
           setSelectedBranch(branch);
-          if (onBranchChange) {
-            onBranchChange(branch);
-          }
+          onBranchChange?.(branch);
           return;
         }
-      } catch (e) {
-        console.error('Error parsing stored branch:', e);
+      } catch {
+        /* ignore */
       }
     }
-    
-    // Try to get headquarters
     try {
       const hqResponse = await branchesAPI.headquarters();
       if (hqResponse.data) {
         setSelectedBranch(hqResponse.data);
         localStorage.setItem('current_branch', JSON.stringify(hqResponse.data));
-        if (onBranchChange) {
-          onBranchChange(hqResponse.data);
-        }
+        onBranchChange?.(hqResponse.data);
+        return;
       }
     } catch {
-      // No headquarters, use first branch
-      if (branches.length > 0) {
-        const firstBranch = branches[0];
-        setSelectedBranch(firstBranch);
-        localStorage.setItem('current_branch', JSON.stringify(firstBranch));
-        if (onBranchChange) {
-          onBranchChange(firstBranch);
-        }
-      }
+      /* no HQ */
+    }
+    if (branches.length > 0) {
+      const firstBranch = branches[0];
+      setSelectedBranch(firstBranch);
+      localStorage.setItem('current_branch', JSON.stringify(firstBranch));
+      onBranchChange?.(firstBranch);
     }
   };
 
-  const handleBranchSelect = async (branch) => {
+  const applyBranch = async (branch, clear = false) => {
     try {
-      // Set branch in backend session
-      await branchesAPI.setCurrent(branch.id);
-      setSelectedBranch(branch);
-      localStorage.setItem('current_branch', JSON.stringify(branch));
-      setShowDropdown(false);
-      if (onBranchChange) {
-        onBranchChange(branch);
+      if (clear) {
+        await branchesAPI.clearCurrent();
+        setSelectedBranch(null);
+        localStorage.removeItem('current_branch');
+        onBranchChange?.(null);
+        toast.success('Showing all branches');
+      } else {
+        await branchesAPI.setCurrent(branch.id);
+        setSelectedBranch(branch);
+        localStorage.setItem('current_branch', JSON.stringify(branch));
+        onBranchChange?.(branch);
+        toast.success(`Switched to ${branch.name}`);
       }
-      toast.success(`Switched to ${branch.name}`);
-      // Reload page to apply branch filter to all views
-      setTimeout(() => {
-        window.location.reload();
-      }, 500);
-    } catch (error) {
-      console.error('Error setting current branch:', error);
-      // Still update locally even if backend call fails
-      setSelectedBranch(branch);
-      localStorage.setItem('current_branch', JSON.stringify(branch));
-      setShowDropdown(false);
-      toast.success(`Switched to ${branch.name}`);
-      setTimeout(() => {
-        window.location.reload();
-      }, 500);
+    } catch {
+      if (clear) {
+        setSelectedBranch(null);
+        localStorage.removeItem('current_branch');
+      } else {
+        setSelectedBranch(branch);
+        localStorage.setItem('current_branch', JSON.stringify(branch));
+      }
+      toast.success(clear ? 'Showing all branches' : `Switched to ${branch.name}`);
     }
+    setTimeout(() => window.location.reload(), 400);
   };
 
-  const handleShowAll = async () => {
-    try {
-      // Clear branch in backend session
-      await branchesAPI.clearCurrent();
-      setSelectedBranch(null);
-      localStorage.removeItem('current_branch');
-      setShowDropdown(false);
-      if (onBranchChange) {
-        onBranchChange(null);
-      }
-      toast.success('Showing all branches');
-      // Reload page to show all branches
-      setTimeout(() => {
-        window.location.reload();
-      }, 500);
-    } catch (error) {
-      console.error('Error clearing current branch:', error);
-      // Still update locally
-      setSelectedBranch(null);
-      localStorage.removeItem('current_branch');
-      setShowDropdown(false);
-      toast.success('Showing all branches');
-      setTimeout(() => {
-        window.location.reload();
-      }, 500);
-    }
-  };
-
-  // Don't render if branch support is disabled
-  if (!branchSupportEnabled) {
-    return null;
-  }
+  if (!branchSupportEnabled) return null;
 
   if (loading) {
-    return <div className="branch-selector-loading">Loading...</div>;
+    return (
+      <Button variant="outline" size="sm" disabled className="h-9 gap-2">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        <span className="hidden sm:inline">Branch</span>
+      </Button>
+    );
   }
 
-  const displayName = selectedBranch 
-    ? selectedBranch.name 
+  const displayName = selectedBranch
+    ? selectedBranch.name
     : branches.length === 0
-      ? 'No Branches'
-      : showAllOption 
-        ? 'All Branches' 
-        : 'Select Branch';
+      ? 'No branches'
+      : showAllOption
+        ? 'All branches'
+        : 'Select branch';
 
   return (
-    <div className="branch-selector">
-      <div 
-        className="branch-selector-trigger"
-        onClick={() => setShowDropdown(!showDropdown)}
-      >
-        <span className="branch-icon">🏢</span>
-        <span className="branch-name">{displayName}</span>
-        <span className="dropdown-arrow">▼</span>
-      </div>
-      {showDropdown && (
-        <>
-          <div 
-            className="branch-selector-overlay"
-            onClick={() => setShowDropdown(false)}
-          />
-          <div className="branch-selector-dropdown">
-            {showAllOption && (
-              <div 
-                className={`branch-option ${!selectedBranch ? 'active' : ''}`}
-                onClick={handleShowAll}
-              >
-                <span className="branch-option-icon">🌐</span>
-                <span className="branch-option-name">All Branches</span>
-                {!selectedBranch && <span className="check-icon">✓</span>}
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" className="h-9 max-w-[180px] gap-2">
+          <Building2 className="h-4 w-4 shrink-0 text-primary" />
+          <span className="truncate">{displayName}</span>
+          <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel>Store location</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {showAllOption && (
+          <DropdownMenuItem onClick={() => applyBranch(null, true)}>
+            <Globe className="h-4 w-4" />
+            <span className="flex-1">All branches</span>
+            {!selectedBranch && <Check className="h-4 w-4 text-primary" />}
+          </DropdownMenuItem>
+        )}
+        {branches.length === 0 ? (
+          <DropdownMenuItem disabled className="text-muted-foreground">
+            No branches — add in settings
+          </DropdownMenuItem>
+        ) : (
+          branches.map((branch) => (
+            <DropdownMenuItem
+              key={branch.id}
+              onClick={() => applyBranch(branch)}
+              className={cn(selectedBranch?.id === branch.id && 'bg-primary/5')}
+            >
+              <Building2 className="h-4 w-4" />
+              <div className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate font-medium">{branch.name}</span>
+                {branch.city && (
+                  <span className="text-xs text-muted-foreground">{branch.city}</span>
+                )}
               </div>
-            )}
-            {branches.length === 0 ? (
-              <div className="branch-option no-branches">
-                <span className="branch-option-icon">ℹ️</span>
-                <div className="branch-option-details">
-                  <span className="branch-option-name">No branches available</span>
-                  <span className="branch-option-location">Add branches through module settings</span>
-                </div>
-              </div>
-            ) : (
-              branches.map(branch => (
-                <div
-                  key={branch.id}
-                  className={`branch-option ${selectedBranch?.id === branch.id ? 'active' : ''}`}
-                  onClick={() => handleBranchSelect(branch)}
-                >
-                  <span className="branch-option-icon">
-                    {branch.is_headquarters ? '🏛️' : '🏢'}
-                  </span>
-                  <div className="branch-option-details">
-                    <span className="branch-option-name">{branch.name}</span>
-                    {branch.city && (
-                      <span className="branch-option-location">{branch.city}</span>
-                    )}
-                  </div>
-                  {selectedBranch?.id === branch.id && (
-                    <span className="check-icon">✓</span>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        </>
-      )}
-    </div>
+              {selectedBranch?.id === branch.id && (
+                <Check className="h-4 w-4 text-primary" />
+              )}
+            </DropdownMenuItem>
+          ))
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 };
 

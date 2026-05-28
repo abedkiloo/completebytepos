@@ -6,9 +6,12 @@ import '../../styles/slide-in-panel.css';
 import './Inventory.css';
 
 const StockPurchaseModal = ({ product, onClose, onSave }) => {
+  const defaultQuantity = (product?.reorder_quantity != null && product.reorder_quantity > 0)
+    ? product.reorder_quantity
+    : 1;
   const [formData, setFormData] = useState({
     product_id: product?.id || '',
-    quantity: product?.reorder_quantity || 0,
+    quantity: defaultQuantity,
     unit_cost: product?.cost || '',
     reference: '',
     notes: '',
@@ -21,10 +24,13 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
     if (!product) {
       loadProducts();
     } else {
+      const qty = (product.reorder_quantity != null && product.reorder_quantity > 0)
+        ? product.reorder_quantity
+        : 1;
       setFormData(prev => ({
         ...prev,
         product_id: product.id,
-        quantity: product.reorder_quantity || 0,
+        quantity: qty,
         unit_cost: product.cost || '',
       }));
     }
@@ -64,24 +70,27 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: name === 'quantity' || name === 'product_id' 
-        ? parseInt(value) || 0 
+      [name]: name === 'quantity'
+        ? (value === '' ? '' : (parseInt(value, 10) || 0))
+        : name === 'product_id'
+        ? (value ? parseInt(value, 10) : '')
         : name === 'unit_cost'
-        ? parseFloat(value) || 0
+        ? (parseFloat(value) || 0)
         : value
     }));
   };
 
+  const quantityNum = Number(formData.quantity);
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!formData.quantity || formData.quantity < 1) {
+    if (formData.quantity === '' || formData.quantity === undefined || quantityNum < 1) {
       setError('Quantity must be at least 1 to record a purchase.');
       return;
     }
     setLoading(true);
     try {
-      await inventoryAPI.purchase(formData);
+      await inventoryAPI.purchase({ ...formData, quantity: quantityNum });
       onSave();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to record purchase');
@@ -90,7 +99,7 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
     }
   };
 
-  const totalCost = formData.quantity * (formData.unit_cost || 0);
+  const totalCost = (quantityNum >= 0 ? quantityNum : 0) * (formData.unit_cost || 0);
 
   return (
     <div className="slide-in-overlay" onClick={onClose}>
@@ -134,9 +143,9 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
                 value={formData.quantity}
                 onChange={handleChange}
                 required
-                min="0"
+                min="1"
               />
-              <small>Enter 0 to clear; must be at least 1 to record.</small>
+              <small>Must be at least 1 to record a purchase.</small>
             </div>
 
             <div className="form-group">

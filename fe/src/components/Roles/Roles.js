@@ -1,10 +1,28 @@
 import React, { useState, useEffect } from 'react';
+import { Plus, Pencil, Shield, Trash2 } from 'lucide-react';
 import { rolesAPI, permissionsAPI } from '../../services/api';
 import Layout from '../Layout/Layout';
 import RoleForm from './RoleForm';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import { toast } from '../../utils/toast';
-import './Roles.css';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Badge } from '../ui/badge';
+import {
+  PageShell,
+  PageHeader,
+  PageLoading,
+  EmptyState,
+  FilterBar,
+  SearchField,
+  DataTable,
+  DataTableHeader,
+  DataTableHead,
+  DataTableBody,
+  DataTableRow,
+  DataTableCell,
+  ActiveStatusBadge,
+} from '../page';
 
 const Roles = () => {
   const [roles, setRoles] = useState([]);
@@ -26,8 +44,7 @@ const Roles = () => {
       const response = await rolesAPI.list();
       setRoles(response.data.results || response.data || []);
     } catch (error) {
-      console.error('Error loading roles:', error);
-      toast.error('Failed to load roles: ' + (error.response?.data?.error || error.message));
+      toast.error('Failed to load roles');
     } finally {
       setLoading(false);
     }
@@ -38,7 +55,7 @@ const Roles = () => {
       const response = await permissionsAPI.list();
       setPermissions(response.data.results || response.data || []);
     } catch (error) {
-      console.error('Error loading permissions:', error);
+      console.error(error);
     }
   };
 
@@ -62,143 +79,138 @@ const Roles = () => {
 
   const confirmDeleteAction = async () => {
     if (!confirmDelete) return;
-    
     try {
       await rolesAPI.delete(confirmDelete.id);
-      toast.success('Role deleted successfully');
+      toast.success('Role deleted');
       loadRoles();
     } catch (error) {
-      toast.error('Failed to delete role: ' + (error.response?.data?.error || error.message));
+      toast.error('Failed to delete role');
     } finally {
       setConfirmDelete(null);
     }
   };
 
-  const handleFormClose = () => {
-    setShowForm(false);
-    setEditingRole(null);
-    loadRoles();
-  };
-
-  const filteredRoles = roles.filter(role =>
-    !searchQuery ||
-    role.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    role.description?.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredRoles = roles.filter(
+    (role) =>
+      !searchQuery ||
+      role.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      role.description?.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  if (loading) {
+    return (
+      <Layout>
+        <PageLoading rows={6} />
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
-      <div className="roles-page">
-        <div className="page-header">
-          <h2>Role Management</h2>
-          <button className="btn btn-primary" onClick={handleCreate}>
-            <i className="fas fa-plus"></i> Add New Role
-          </button>
-        </div>
+      <PageShell>
+        <PageHeader
+          title="Roles"
+          description="Group permissions for managers, sales staff, and custom jobs."
+        >
+          <Button onClick={handleCreate}>
+            <Plus className="h-4 w-4" />
+            Add role
+          </Button>
+        </PageHeader>
 
-        {/* Search */}
-        <div className="filters-card">
-          <div className="filter-group">
-            <label htmlFor="search">Search</label>
-            <input
-              type="text"
-              id="search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search roles..."
-            />
-          </div>
-        </div>
+        <FilterBar>
+          <SearchField
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search roles…"
+            className="max-w-md"
+          />
+        </FilterBar>
 
-        {/* Roles Table */}
-        <div className="table-container">
-          {loading ? (
-            <div className="loading-state">Loading roles...</div>
-          ) : filteredRoles.length === 0 ? (
-            <div className="empty-state">No roles found.</div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Description</th>
-                  <th>Permissions</th>
-                  <th>Users</th>
-                  <th>Type</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRoles.map(role => (
-                  <tr key={role.id}>
-                    <td>
-                      <strong>{role.name}</strong>
-                      {role.is_system_role && (
-                        <span className="system-badge">System</span>
-                      )}
-                    </td>
-                    <td>{role.description || 'N/A'}</td>
-                    <td>{role.permissions_count || 0}</td>
-                    <td>{role.users_count || 0}</td>
-                    <td>
-                      {role.is_system_role ? (
-                        <span className="type-badge system">System Role</span>
-                      ) : (
-                        <span className="type-badge custom">Custom Role</span>
-                      )}
-                    </td>
-                    <td>
-                      <span className={`status-badge ${role.is_active ? 'active' : 'inactive'}`}>
-                        {role.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td className="action-buttons">
-                      <button
-                        className="btn btn-sm btn-info"
-                        onClick={() => handleEdit(role)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="btn btn-sm btn-danger"
-                        onClick={() => handleDelete(role)}
+        {filteredRoles.length === 0 ? (
+          <EmptyState
+            icon={Shield}
+            title="No roles"
+            description="Create a role to bundle permissions for your team."
+            actionLabel="Add role"
+            onAction={handleCreate}
+          />
+        ) : (
+          <DataTable>
+            <DataTableHeader>
+              <DataTableHead>Name</DataTableHead>
+              <DataTableHead>Description</DataTableHead>
+              <DataTableHead align="right">Permissions</DataTableHead>
+              <DataTableHead align="right">Users</DataTableHead>
+              <DataTableHead>Status</DataTableHead>
+              <DataTableHead align="right">Actions</DataTableHead>
+            </DataTableHeader>
+            <DataTableBody>
+              {filteredRoles.map((role) => (
+                <DataTableRow key={role.id}>
+                  <DataTableCell className="font-medium">
+                    {role.name}
+                    {role.is_system_role && (
+                      <Badge variant="secondary" className="ml-2 text-xs">
+                        System
+                      </Badge>
+                    )}
+                  </DataTableCell>
+                  <DataTableCell className="max-w-xs truncate text-muted-foreground">
+                    {role.description || '—'}
+                  </DataTableCell>
+                  <DataTableCell align="right">{role.permissions_count || 0}</DataTableCell>
+                  <DataTableCell align="right">{role.users_count || 0}</DataTableCell>
+                  <DataTableCell>
+                    <ActiveStatusBadge active={role.is_active} />
+                  </DataTableCell>
+                  <DataTableCell align="right">
+                    <div className="flex justify-end gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => handleEdit(role)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive"
                         disabled={role.is_system_role}
+                        onClick={() => handleDelete(role)}
                       >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </DataTableCell>
+                </DataTableRow>
+              ))}
+            </DataTableBody>
+          </DataTable>
+        )}
 
-        {/* Role Form Modal */}
         {showForm && (
           <RoleForm
             role={editingRole}
             permissions={permissions}
-            onClose={handleFormClose}
+            onClose={() => {
+              setShowForm(false);
+              setEditingRole(null);
+              loadRoles();
+            }}
           />
         )}
 
-        {/* Confirm Delete Dialog */}
         <ConfirmDialog
           isOpen={!!confirmDelete}
-          title="Delete Role"
-          message={`Are you sure you want to delete role "${confirmDelete?.name}"?`}
+          title="Delete role"
+          message={`Delete "${confirmDelete?.name}"? Users must be reassigned first.`}
           onConfirm={confirmDeleteAction}
           onCancel={() => setConfirmDelete(null)}
           confirmText="Delete"
           cancelText="Cancel"
           type="danger"
         />
-      </div>
+      </PageShell>
     </Layout>
   );
 };
 
 export default Roles;
-

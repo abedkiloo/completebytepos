@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Check, Pencil, Plus, Trash2, TrendingUp } from 'lucide-react';
 import { incomeAPI } from '../../services/api';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import Layout from '../Layout/Layout';
@@ -6,8 +7,23 @@ import IncomeForm from './IncomeForm';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { toast } from '../../utils/toast';
-import '../../styles/shared.css';
-import './Income.css';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import {
+  PageShell,
+  PageHeader,
+  PageLoading,
+  EmptyState,
+  FilterBar,
+  FilterField,
+  DataTable,
+  DataTableHeader,
+  DataTableHead,
+  DataTableBody,
+  DataTableRow,
+  DataTableCell,
+  StatusBadge,
+} from '../page';
 
 const Income = () => {
   const [incomes, setIncomes] = useState([]);
@@ -140,36 +156,28 @@ const Income = () => {
     loadIncomes();
   };
 
-  const getStatusBadgeClass = (status) => {
-    const classes = {
-      'pending': 'pending',
-      'approved': 'approved',
-      'rejected': 'rejected',
-      'received': 'received',
-    };
-    return classes[status] || 'pending';
-  };
+  const totalPages = Math.ceil(pagination.count / pagination.page_size) || 1;
+
+  if (loading && incomes.length === 0) {
+    return (
+      <Layout>
+        <PageLoading rows={8} />
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
-      <div className="income-page">
-        <div className="page-header">
-          <div className="page-header-content">
-            <h1>Income Management</h1>
-            <p>Track and manage business income</p>
-          </div>
-          <div className="page-header-actions">
-            <button className="btn btn-primary" onClick={handleAdd}>
-              <span>+</span>
-              <span>Add Income</span>
-            </button>
-          </div>
-        </div>
+      <PageShell>
+        <PageHeader title="Income" description="Track non-sales revenue and receipts.">
+          <Button onClick={handleAdd}>
+            <Plus className="h-4 w-4" />
+            Add income
+          </Button>
+        </PageHeader>
 
-        {/* Filters */}
-        <div className="income-filters">
-          <div className="filter-group">
-            <label>Category</label>
+        <FilterBar>
+          <FilterField label="Category">
             <SearchableSelect
               name="category"
               value={filters.category}
@@ -178,11 +186,10 @@ const Income = () => {
                 { id: '', name: 'All Categories' },
                 ...categories.map(cat => ({ id: cat.id, name: cat.name }))
               ]}
-              placeholder="All Categories"
+              placeholder="All categories"
             />
-          </div>
-          <div className="filter-group">
-            <label>Status</label>
+          </FilterField>
+          <FilterField label="Status">
             <SearchableSelect
               name="status"
               value={filters.status}
@@ -194,29 +201,16 @@ const Income = () => {
                 { id: 'rejected', name: 'Rejected' },
                 { id: 'received', name: 'Received' }
               ]}
-              placeholder="All Status"
+              placeholder="All status"
             />
-          </div>
-          <div className="filter-group">
-            <label>From Date</label>
-            <input
-              type="date"
-              name="date_from"
-              value={filters.date_from}
-              onChange={handleFilterChange}
-            />
-          </div>
-          <div className="filter-group">
-            <label>To Date</label>
-            <input
-              type="date"
-              name="date_to"
-              value={filters.date_to}
-              onChange={handleFilterChange}
-            />
-          </div>
-          <div className="filter-group">
-            <label>Payment Method</label>
+          </FilterField>
+          <FilterField label="From">
+            <Input type="date" name="date_from" value={filters.date_from} onChange={handleFilterChange} />
+          </FilterField>
+          <FilterField label="To">
+            <Input type="date" name="date_to" value={filters.date_to} onChange={handleFilterChange} />
+          </FilterField>
+          <FilterField label="Payment">
             <SearchableSelect
               name="payment_method"
               value={filters.payment_method}
@@ -229,117 +223,108 @@ const Income = () => {
                 { id: 'card', name: 'Card' },
                 { id: 'other', name: 'Other' }
               ]}
-              placeholder="All Methods"
+              placeholder="All methods"
             />
-          </div>
-          <div className="filter-group">
-            <label>Search</label>
-            <input
-              type="text"
+          </FilterField>
+          <FilterField label="Search" className="min-w-[180px] flex-[2]">
+            <Input
+              type="search"
               name="search"
-              placeholder="Search incomes..."
+              placeholder="Search income…"
               value={filters.search}
               onChange={handleFilterChange}
             />
-          </div>
-        </div>
+          </FilterField>
+        </FilterBar>
 
-        {/* Incomes Table */}
-        <div className="income-table-container">
-          {loading ? (
-            <div className="loading-state">Loading incomes...</div>
-          ) : incomes.length === 0 ? (
-            <div className="empty-state">No incomes found</div>
-          ) : (
-            <>
-              <table className="income-table">
-                <thead>
-                  <tr>
-                    <th>Income #</th>
-                    <th>Date</th>
-                    <th>Category</th>
-                    <th>Description</th>
-                    <th>Payer</th>
-                    <th>Amount</th>
-                    <th>Payment</th>
-                    <th>Status</th>
-                    <th>Created By</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {incomes.map(income => (
-                    <tr key={income.id}>
-                      <td className="income-number">{income.income_number}</td>
-                      <td>{formatDate(income.income_date)}</td>
-                      <td>{income.category_name || 'N/A'}</td>
-                      <td className="description-cell">{income.description}</td>
-                      <td>{income.payer || 'N/A'}</td>
-                      <td className="amount-cell">{formatCurrency(income.amount)}</td>
-                      <td>
-                        <span className="payment-badge">{income.payment_method}</span>
-                      </td>
-                      <td>
-                        <span className={`status-badge ${getStatusBadgeClass(income.status)}`}>
-                          {income.status}
-                        </span>
-                      </td>
-                      <td>{income.created_by_name || 'N/A'}</td>
-                      <td>
-                        <div className="action-buttons">
-                          {income.status === 'pending' && (
-                            <button
-                              className="btn-approve"
-                              onClick={() => handleApprove(income.id)}
-                              title="Approve"
-                            >
-                              ✓
-                            </button>
-                          )}
-                          <button
-                            className="btn-edit"
-                            onClick={() => handleEdit(income)}
-                            title="Edit"
-                          >
-                            ✎
-                          </button>
-                          <button
-                            className="btn-delete"
-                            onClick={() => handleDelete(income.id)}
-                            title="Delete"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              {/* Pagination */}
-              {pagination.count > pagination.page_size && (
-                <div className="pagination">
-                  <button
+        {incomes.length === 0 ? (
+          <EmptyState
+            icon={TrendingUp}
+            title="No income records"
+            description="Add income to track money coming in outside of POS sales."
+            actionLabel="Add income"
+            onAction={handleAdd}
+          />
+        ) : (
+          <>
+            <DataTable>
+              <DataTableHeader>
+                <DataTableHead>#</DataTableHead>
+                <DataTableHead>Date</DataTableHead>
+                <DataTableHead>Category</DataTableHead>
+                <DataTableHead>Description</DataTableHead>
+                <DataTableHead align="right">Amount</DataTableHead>
+                <DataTableHead>Status</DataTableHead>
+                <DataTableHead align="right">Actions</DataTableHead>
+              </DataTableHeader>
+              <DataTableBody>
+                {incomes.map((income) => (
+                  <DataTableRow key={income.id}>
+                    <DataTableCell className="font-medium">{income.income_number}</DataTableCell>
+                    <DataTableCell className="text-muted-foreground whitespace-nowrap">
+                      {formatDate(income.income_date)}
+                    </DataTableCell>
+                    <DataTableCell>{income.category_name || '—'}</DataTableCell>
+                    <DataTableCell className="max-w-[200px] truncate">
+                      {income.description}
+                    </DataTableCell>
+                    <DataTableCell align="right" className="font-semibold">
+                      {formatCurrency(income.amount)}
+                    </DataTableCell>
+                    <DataTableCell>
+                      <StatusBadge status={income.status} />
+                    </DataTableCell>
+                    <DataTableCell align="right">
+                      <div className="flex justify-end gap-1">
+                        {income.status === 'pending' && (
+                          <Button variant="ghost" size="sm" onClick={() => handleApprove(income.id)}>
+                            <Check className="h-4 w-4 text-success" />
+                          </Button>
+                        )}
+                        <Button variant="ghost" size="sm" onClick={() => handleEdit(income)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive"
+                          onClick={() => handleDelete(income.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </DataTableCell>
+                  </DataTableRow>
+                ))}
+              </DataTableBody>
+            </DataTable>
+            {pagination.count > pagination.page_size && (
+              <div className="flex items-center justify-between gap-4 rounded-lg border bg-card px-4 py-3 text-sm">
+                <span className="text-muted-foreground">
+                  Page {pagination.page} of {totalPages}
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
                     disabled={pagination.page === 1}
-                    onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+                    onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}
                   >
                     Previous
-                  </button>
-                  <span>
-                    Page {pagination.page} of {Math.ceil(pagination.count / pagination.page_size)}
-                  </span>
-                  <button
-                    disabled={pagination.page >= Math.ceil(pagination.count / pagination.page_size)}
-                    onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={pagination.page >= totalPages}
+                    onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}
                   >
                     Next
-                  </button>
+                  </Button>
                 </div>
-              )}
-            </>
-          )}
-        </div>
+              </div>
+            )}
+          </>
+        )}
 
         {/* Income Form Modal */}
         {showForm && (
@@ -362,7 +347,7 @@ const Income = () => {
         cancelText="Cancel"
         type="danger"
       />
-      </div>
+      </PageShell>
     </Layout>
   );
 };

@@ -11,6 +11,8 @@ const StockTransferModal = ({ isOpen, onClose, onSuccess, product }) => {
   const [loading, setLoading] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [transferResult, setTransferResult] = useState(null);
+  const [pendingUndoId, setPendingUndoId] = useState(null);
+  const [undoing, setUndoing] = useState(false);
   const [formData, setFormData] = useState({
     product_id: product?.id || '',
     to_branch_id: '',
@@ -103,15 +105,18 @@ const StockTransferModal = ({ isOpen, onClose, onSuccess, product }) => {
     }
   };
 
-  const handleUndo = async (movementId) => {
-    if (!window.confirm('Are you sure you want to undo this transfer? This action cannot be undone.')) {
-      return;
-    }
+  const handleUndo = (movementId) => {
+    setPendingUndoId(movementId);
+  };
 
+  const confirmUndo = async () => {
+    if (!pendingUndoId) return;
+    setUndoing(true);
     try {
-      await inventoryAPI.undo(movementId);
+      await inventoryAPI.undo(pendingUndoId);
       toast.success('Transfer undone successfully');
       setTransferResult(null);
+      setPendingUndoId(null);
       onSuccess();
       onClose();
       // Reset form
@@ -124,6 +129,8 @@ const StockTransferModal = ({ isOpen, onClose, onSuccess, product }) => {
       });
     } catch (error) {
       toast.error('Failed to undo transfer: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setUndoing(false);
     }
   };
 
@@ -304,7 +311,19 @@ const StockTransferModal = ({ isOpen, onClose, onSuccess, product }) => {
         onCancel={() => setShowConfirm(false)}
         confirmText="Yes, Transfer"
         cancelText="Cancel"
-        type="primary"
+        type="info"
+      />
+
+      <ConfirmDialog
+        isOpen={!!pendingUndoId}
+        title="Undo stock transfer?"
+        message="This will reverse the stock movement on both branches. This action cannot be undone."
+        onConfirm={confirmUndo}
+        onCancel={() => (undoing ? null : setPendingUndoId(null))}
+        confirmText="Undo transfer"
+        cancelText="Keep transfer"
+        type="danger"
+        busy={undoing}
       />
     </div>
   );

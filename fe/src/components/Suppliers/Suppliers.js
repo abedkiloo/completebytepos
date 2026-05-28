@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Factory, Plus } from 'lucide-react';
 import { suppliersAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
 import Layout from '../Layout/Layout';
@@ -6,9 +7,19 @@ import SupplierForm from './SupplierForm';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { toast } from '../../utils/toast';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
-import '../../styles/shared.css';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import {
+  PageShell,
+  PageHeader,
+  PageLoading,
+  EmptyState,
+  FilterBar,
+  SearchField,
+  FilterField,
+  SummaryCard,
+} from '../page';
 import '../../styles/slide-in-panel.css';
-import './Suppliers.css';
 
 const Suppliers = () => {
   const [suppliers, setSuppliers] = useState([]);
@@ -128,102 +139,84 @@ const Suppliers = () => {
     return termsMap[terms] || terms;
   };
 
+  if (loading && suppliers.length === 0) {
+    return (
+      <Layout>
+        <PageLoading rows={6} showStats />
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
-      <div className="suppliers-container">
-        <div className="page-header">
-          <div className="page-header-content">
-            <h1>Suppliers</h1>
-            <p>Manage your supplier database</p>
-          </div>
-          <div className="page-header-actions">
-            <button className="btn btn-primary" onClick={handleCreate}>
-              + Add Supplier
-            </button>
-          </div>
-        </div>
+      <PageShell>
+        <PageHeader title="Suppliers" description="Vendors you buy stock from.">
+          <Button onClick={handleCreate}>
+            <Plus className="h-4 w-4" />
+            Add supplier
+          </Button>
+        </PageHeader>
 
-        {/* Statistics Cards */}
         {statistics && (
-          <div className="statistics-grid">
-            <div className="stat-card">
-              <div className="stat-label">Total Suppliers</div>
-              <div className="stat-value">{statistics.total_suppliers || 0}</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-label">Active Suppliers</div>
-              <div className="stat-value">{statistics.active_suppliers || 0}</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-label">Preferred Suppliers</div>
-              <div className="stat-value">{statistics.preferred_suppliers || 0}</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-label">Total Account Balance</div>
-              <div className="stat-value">{formatCurrency(statistics.total_account_balance || 0)}</div>
-            </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <SummaryCard icon={Factory} label="Total" value={statistics.total_suppliers || 0} />
+            <SummaryCard icon={Factory} label="Active" value={statistics.active_suppliers || 0} tone="success" />
+            <SummaryCard icon={Factory} label="Preferred" value={statistics.preferred_suppliers || 0} />
+            <SummaryCard
+              icon={Factory}
+              label="Account balance"
+              value={formatCurrency(statistics.total_account_balance || 0)}
+            />
           </div>
         )}
 
-        {/* Filters */}
-        <div className="filters-section">
-          <div className="search-box">
-            <input
-              type="text"
-              placeholder="Search suppliers..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          <div className="filter-controls">
+        <FilterBar>
+          <SearchField
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search suppliers…"
+            className="min-w-[200px] flex-[2]"
+          />
+          <FilterField label="Status">
             <SearchableSelect
               value={filters.is_active}
               onChange={(e) => setFilters({ ...filters, is_active: e.target.value })}
               options={[
-                { id: '', name: 'All Status' },
+                { id: '', name: 'All status' },
                 { id: 'true', name: 'Active' },
-                { id: 'false', name: 'Inactive' }
+                { id: 'false', name: 'Inactive' },
               ]}
-              placeholder="All Status"
+              placeholder="All status"
             />
+          </FilterField>
+          <FilterField label="Type">
             <SearchableSelect
               value={filters.supplier_type}
               onChange={(e) => setFilters({ ...filters, supplier_type: e.target.value })}
               options={[
-                { id: '', name: 'All Types' },
+                { id: '', name: 'All types' },
                 { id: 'individual', name: 'Individual' },
                 { id: 'business', name: 'Business' },
                 { id: 'manufacturer', name: 'Manufacturer' },
                 { id: 'distributor', name: 'Distributor' },
-                { id: 'wholesaler', name: 'Wholesaler' }
+                { id: 'wholesaler', name: 'Wholesaler' },
               ]}
-              placeholder="All Types"
+              placeholder="All types"
             />
-            <SearchableSelect
-              value={filters.is_preferred}
-              onChange={(e) => setFilters({ ...filters, is_preferred: e.target.value })}
-              options={[
-                { id: '', name: 'All Suppliers' },
-                { id: 'true', name: 'Preferred Only' }
-              ]}
-              placeholder="All Suppliers"
-            />
-          </div>
-        </div>
+          </FilterField>
+        </FilterBar>
 
-        {/* Suppliers Table */}
-        {loading ? (
-          <div className="loading">Loading suppliers...</div>
-        ) : suppliers.length === 0 ? (
-          <div className="empty-state">
-            <p>No suppliers found</p>
-            <button className="btn btn-primary" onClick={handleCreate}>
-              Add First Supplier
-            </button>
-          </div>
+        {suppliers.length === 0 ? (
+          <EmptyState
+            icon={Factory}
+            title="No suppliers"
+            description="Add vendors you purchase inventory from."
+            actionLabel="Add supplier"
+            onAction={handleCreate}
+          />
         ) : (
-          <div className="table-container">
-            <table className="data-table">
+          <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
+            <table className="w-full text-sm">
               <thead>
                 <tr>
                   <th>Code</th>
@@ -315,7 +308,7 @@ const Suppliers = () => {
           cancelText="Cancel"
           type="danger"
         />
-      </div>
+      </PageShell>
     </Layout>
   );
 };
