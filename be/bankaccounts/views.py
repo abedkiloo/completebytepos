@@ -1,15 +1,31 @@
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 from django.db.models import Sum, Count
 from .models import BankAccount, BankTransaction
 from .serializers import BankAccountSerializer, BankTransactionSerializer
 from .services import BankAccountService, BankTransactionService
+from accounts.permissions import RequirePermPerAction
+from utils.audit_mixin import AuditedModelViewSetMixin
 
 
-class BankAccountViewSet(viewsets.ModelViewSet):
+BANK_ACCOUNTS_PERMS = RequirePermPerAction('bank_accounts', {
+    'list': 'view',
+    'retrieve': 'view',
+    'create': 'create',
+    'update': 'update',
+    'partial_update': 'update',
+    'destroy': 'delete',
+    'update_balance': 'update',
+})
+
+
+class BankAccountViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = BankAccount.objects.all().select_related('created_by')
     serializer_class = BankAccountSerializer
+    permission_classes = [IsAuthenticated, BANK_ACCOUNTS_PERMS]
+    audit_module = 'bank_accounts'
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['account_name', 'account_number', 'bank_name']
     ordering_fields = ['bank_name', 'account_name', 'created_at']
@@ -38,9 +54,13 @@ class BankAccountViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class BankTransactionViewSet(viewsets.ModelViewSet):
+class BankTransactionViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = BankTransaction.objects.all().select_related('bank_account', 'created_by')
     serializer_class = BankTransactionSerializer
+    permission_classes = [IsAuthenticated, BANK_ACCOUNTS_PERMS]
+    audit_module = 'bank_accounts'
+    # Bank transactions are part of the audit trail - immutable via API.
+    http_method_names = ['get', 'post', 'head', 'options']
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['transaction_number', 'description', 'reference']
     ordering_fields = ['transaction_date', 'amount', 'created_at']

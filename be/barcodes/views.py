@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.http import HttpResponse
 from django.db.models import Q
 from products.models import Product
+from accounts.permissions import RequirePerm
 import barcode
 from barcode.writer import ImageWriter
 from barcode import Code128, EAN13, EAN8
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, RequirePerm('barcodes', 'view')])
 def generate_barcode(request):
     """Generate barcode image for a product"""
     product_id = request.query_params.get('product_id', None)
@@ -87,7 +88,7 @@ def generate_barcode(request):
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, RequirePerm('barcodes', 'view')])
 def get_barcode_image(request):
     """Get barcode as image file (for direct printing)"""
     product_id = request.query_params.get('product_id', None)
@@ -138,7 +139,7 @@ def get_barcode_image(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, RequirePerm('barcodes', 'create')])
 def generate_missing_barcodes(request):
     """Auto-generate barcodes for products that don't have them"""
     product_ids = request.data.get('product_ids', [])
@@ -195,7 +196,7 @@ def generate_missing_barcodes(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, RequirePerm('barcodes', 'export')])
 def print_barcode_labels(request):
     """Generate printable barcode labels for multiple products"""
     product_ids = request.data.get('product_ids', [])

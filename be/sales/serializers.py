@@ -87,12 +87,14 @@ class SaleItemSerializer(serializers.ModelSerializer):
 class SaleSerializer(serializers.ModelSerializer):
     items = SaleItemSerializer(many=True, read_only=True)
     cashier_name = serializers.CharField(source='cashier.username', read_only=True)
+    customer_name = serializers.CharField(source='customer.name', read_only=True)
     item_count = serializers.SerializerMethodField()
     
     class Meta:
         model = Sale
         fields = [
-            'id', 'sale_number', 'sale_type', 'cashier', 'cashier_name',
+            'id', 'sale_number', 'sale_type', 'status', 'cashier', 'cashier_name',
+            'customer', 'customer_name',
             'subtotal', 'tax_amount', 'discount_amount', 'total',
             'delivery_method', 'delivery_cost',
             'shipping_address', 'shipping_location',
@@ -100,10 +102,34 @@ class SaleSerializer(serializers.ModelSerializer):
             'items', 'item_count', 'created_at', 'updated_at'
         ]
         read_only_fields = ['sale_number', 'created_at', 'updated_at']
-    
+
     def get_item_count(self, obj):
-        """Get total number of items in sale"""
         return obj.item_count
+
+
+class HoldingSaleSerializer(serializers.Serializer):
+    """Upsert a holding (draft) invoice — no stock movement until checkout."""
+    items = serializers.ListField(child=serializers.DictField(), allow_empty=True)
+    customer_id = serializers.IntegerField(required=False, allow_null=True)
+    tax_amount = serializers.DecimalField(max_digits=10, decimal_places=2, default=0, required=False)
+    discount_amount = serializers.DecimalField(max_digits=10, decimal_places=2, default=0, required=False)
+    notes = serializers.CharField(required=False, allow_blank=True, default='')
+    holding_id = serializers.IntegerField(required=False, allow_null=True)
+    branch_id = serializers.IntegerField(required=False, allow_null=True)
+
+
+class CheckoutHoldingSerializer(serializers.Serializer):
+    """Complete a holding sale and print receipt."""
+    payment_method = serializers.ChoiceField(choices=Sale.PAYMENT_METHODS, default='cash')
+    amount_paid = serializers.DecimalField(max_digits=10, decimal_places=2, default=0)
+    allow_partial_payment = serializers.BooleanField(default=False)
+    excess_payment_choice = serializers.ChoiceField(
+        choices=[('change', 'Change'), ('wallet', 'Wallet')],
+        default='change',
+        required=False,
+    )
+    use_wallet = serializers.BooleanField(default=False)
+    wallet_amount = serializers.DecimalField(max_digits=10, decimal_places=2, default=0, required=False)
 
 
 class SaleCreateSerializer(serializers.Serializer):

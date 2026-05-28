@@ -17,6 +17,7 @@ qrcode[pil]>=7.4.0
 # Development tools
 ipython>=8.0.0
 django-extensions>=3.2.0
+coverage>=7.0.0
 
 # Production server
 gunicorn>=21.2.0

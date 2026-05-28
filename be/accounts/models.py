@@ -230,3 +230,73 @@ class UserProfile(models.Model):
 # Module settings models moved to settings app
 # Import for backward compatibility - allows existing code to continue working
 from settings.models import ModuleSettings, ModuleFeature
+
+
+class AuditLog(models.Model):
+    """
+    Append-only ledger of every state-changing request made through the API.
+
+    Wired in via DRF's auditing layer (``utils.audit.log_audit``) and from
+    inside ``ModelViewSet.perform_create / perform_update / perform_destroy``
+    where we want to capture the *before* state. The log is intentionally
+    minimal — schema changes are cheap once the table exists.
+
+    Designed to answer:
+      * Who voided this invoice?
+      * Who increased the stock on product 1234 last Tuesday?
+      * Has anyone ever logged in as the owner account from outside the LAN?
+    """
+
+    # Common action verbs. Free-form (CharField, not choices) so service code
+    # can record domain-specific verbs without a migration ("void", "refund",
+    # "approve", "reject", "login", "logout", "permission_denied", ...).
+    ACTION_CREATE = 'create'
+    ACTION_UPDATE = 'update'
+    ACTION_DELETE = 'delete'
+    ACTION_LOGIN = 'login'
+    ACTION_LOGOUT = 'logout'
+    ACTION_LOGIN_FAILED = 'login_failed'
+    ACTION_PERMISSION_DENIED = 'permission_denied'
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='audit_entries',
+        help_text='Acting user; null for anonymous events (e.g. failed login).',
+    )
+    username_snapshot = models.CharField(
+        max_length=150, blank=True,
+        help_text='User.username at time of event, kept even if user is later deleted.',
+    )
+    action = models.CharField(max_length=32, db_index=True)
+    module = models.CharField(max_length=32, blank=True, db_index=True,
+                              help_text="Matches accounts.Permission.module values.")
+    object_type = models.CharField(
+        max_length=64, blank=True, db_index=True,
+        help_text="e.g. 'sales.Sale' or 'products.Product'.",
+    )
+    object_id = models.CharField(max_length=64, blank=True, db_index=True)
+    object_repr = models.CharField(max_length=255, blank=True)
+    changes = models.JSONField(
+        default=dict, blank=True,
+        help_text="Optional diff or snapshot. Caller decides what to put here.",
+    )
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=255, blank=True)
+    path = models.CharField(max_length=255, blank=True,
+                            help_text='request.path at time of event.')
+    method = models.CharField(max_length=8, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'created_at']),
+            models.Index(fields=['module', 'action', 'created_at']),
+            models.Index(fields=['object_type', 'object_id']),
+        ]
+
+    def __str__(self):
+        who = self.username_snapshot or 'anonymous'
+        return f"[{self.created_at:%Y-%m-%d %H:%M:%S}] {who} {self.action} {self.object_type or self.module or '-'}"

@@ -651,6 +651,9 @@ IMPORT-001,Imported Product,Test Category,100.00,50.00,10,true"""
     
     def test_create_product_with_variants(self):
         """Test creating product with variants"""
+        from settings.test_utils import enable_product_variants
+        enable_product_variants()
+
         token = self.get_auth_token(self.superuser)
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
         

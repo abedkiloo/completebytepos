@@ -101,3 +101,5 @@ class InventoryReportSerializer(serializers.Serializer):
     total_inventory_value = serializers.DecimalField(max_digits=12, decimal_places=2)
     total_movements_today = serializers.IntegerField()
     total_movements_this_month = serializers.IntegerField()
+    by_movement_type = serializers.ListField(required=False)
+    recent_movements = serializers.ListField(required=False)

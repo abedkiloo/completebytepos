@@ -5,15 +5,16 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth.models import User
 from django.db.models import Q
-from .models import UserProfile, Permission, Role
+from .models import UserProfile, Permission, Role, AuditLog
 from .serializers import (
     UserSerializer, UserProfileSerializer, LoginSerializer,
     PermissionSerializer, RoleSerializer,
-    RoleListSerializer, UserCreateSerializer
+    RoleListSerializer, UserCreateSerializer, AuditLogSerializer
 )
 from .permissions import IsSuperAdmin, IsAdmin, HasPermission
 # Module settings moved to settings app
 from settings.models import ModuleSettings, ModuleFeature
+from settings.module_catalog import get_enabled_modules_flat
 
 
 class PermissionViewSet(viewsets.ReadOnlyModelViewSet):
@@ -82,6 +83,67 @@ class PermissionViewSet(viewsets.ReadOnlyModelViewSet):
             modules[module].append(PermissionSerializer(permission).data)
         
         return Response(modules)
+
+    @action(detail=False, methods=['get'])
+    def by_domain(self, request):
+        """Permissions grouped by catalog domain, then catalog module."""
+        try:
+            user = request.user
+            if not (user and (user.is_staff or (hasattr(user, 'profile') and user.profile and user.profile.is_admin))):
+                return Response(
+                    {'error': 'Permission denied'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        except Exception:
+            return Response(
+                {'error': 'Permission denied'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        from settings.module_registry import DOMAINS, get_permission_domain_info
+
+        domain_order = {d['id']: d['sort_order'] for d in DOMAINS}
+        tree: dict[str, dict] = {}
+
+        for permission in Permission.objects.all().order_by('module', 'action'):
+            info = get_permission_domain_info(permission.module)
+            domain_id = info['domain']
+            if domain_id not in tree:
+                tree[domain_id] = {
+                    'id': domain_id,
+                    'label': info['domain_label'],
+                    'sort_order': domain_order.get(domain_id, 999),
+                    'modules': {},
+                }
+            mod_key = info['catalog_module']
+            mod_label = info['catalog_module_label']
+            if mod_key not in tree[domain_id]['modules']:
+                tree[domain_id]['modules'][mod_key] = {
+                    'id': mod_key,
+                    'label': mod_label,
+                    'permissions': [],
+                }
+            tree[domain_id]['modules'][mod_key]['permissions'].append(
+                PermissionSerializer(permission).data
+            )
+
+        catalog = []
+        for domain_id in sorted(tree.keys(), key=lambda k: tree[k]['sort_order']):
+            entry = tree[domain_id]
+            modules_list = [
+                entry['modules'][k]
+                for k in sorted(entry['modules'].keys(), key=lambda m: entry['modules'][m]['label'])
+            ]
+            catalog.append(
+                {
+                    'id': entry['id'],
+                    'label': entry['label'],
+                    'sort_order': entry['sort_order'],
+                    'modules': modules_list,
+                }
+            )
+
+        return Response({'catalog': catalog})
 
 
 class RoleViewSet(viewsets.ModelViewSet):
@@ -209,11 +271,29 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
     def get_permissions(self):
-        """Check permissions based on action"""
+        """
+        Per-action permission map.
+
+        Self-service actions (``update``, ``partial_update``, ``change_password``)
+        must be reachable by *any* authenticated user because the view body
+        differentiates "I'm editing me" (allowed) from "I'm editing someone
+        else" (admin-only). Gating these at ``IsAdmin`` would short-circuit
+        that logic and 403 every cashier who tried to change their own
+        password or email.
+
+        Administrative actions (``create``, ``destroy``, ``assign_role``) stay
+        behind ``IsAdmin`` - ``destroy`` further restricts itself to super-admins
+        inside the action body for safety.
+        """
         action = getattr(self, 'action', None)
-        if action in ['list', 'retrieve']:
+        if action in (
+            'list', 'retrieve',
+            'update', 'partial_update',
+            'change_password',
+            'search',
+        ):
             return [IsAuthenticated()]
-        # For create, update, delete - need admin or super admin
+        # create, destroy, assign_role, and anything else default to admin.
         return [IsAdmin()]
     
     def create(self, request, *args, **kwargs):
@@ -367,36 +447,38 @@ class UserViewSet(viewsets.ModelViewSet):
 class AuthViewSet(viewsets.ViewSet):
     permission_classes = [AllowAny]
     
-    @action(detail=False, methods=['post'], permission_classes=[AllowAny])
+    @action(
+        detail=False, methods=['post'],
+        permission_classes=[AllowAny],
+        # Login is the front door — throttle aggressively. See
+        # config/settings.py:REST_FRAMEWORK for the actual rate string.
+        throttle_classes=[__import__('rest_framework.throttling', fromlist=['ScopedRateThrottle']).ScopedRateThrottle],
+    )
     def login(self, request):
-        """User login - returns JWT tokens"""
+        """User login - returns JWT tokens.
+
+        Rate limit: configured via ``DEFAULT_THROTTLE_RATES['login']`` (currently
+        10/min per IP). Both successes and failures are recorded in the
+        ``AuditLog`` so we can detect credential-stuffing attempts.
+        """
         import logging
+        from utils.audit import log_audit
+        from accounts.models import AuditLog as _AuditLog
         logger = logging.getLogger(__name__)
-        
-        # Use print to ensure it shows up immediately
-        import sys
-        print("=" * 80, file=sys.stdout)
-        print("[LOGIN VIEW] LOGIN REQUEST RECEIVED", file=sys.stdout)
-        print(f"Method: {request.method}", file=sys.stdout)
-        print(f"Path: {request.path}", file=sys.stdout)
-        print(f"Origin: {request.META.get('HTTP_ORIGIN', 'No Origin')}", file=sys.stdout)
-        print(f"Content-Type: {request.META.get('CONTENT_TYPE', 'No Content-Type')}", file=sys.stdout)
-        print(f"User Agent: {request.META.get('HTTP_USER_AGENT', 'N/A')[:100]}", file=sys.stdout)
-        print(f"Request Data: {request.data if hasattr(request, 'data') else 'No data'}", file=sys.stdout)
-        print("=" * 80, file=sys.stdout)
-        sys.stdout.flush()
-        
-        # Also use logger
-        logger.info("=" * 80)
-        logger.info("LOGIN REQUEST RECEIVED")
-        logger.info(f"Method: {request.method}")
-        logger.info(f"Path: {request.path}")
-        logger.info(f"Origin: {request.META.get('HTTP_ORIGIN', 'No Origin')}")
-        logger.info(f"Content-Type: {request.META.get('CONTENT_TYPE', 'No Content-Type')}")
-        logger.info(f"User Agent: {request.META.get('HTTP_USER_AGENT', 'N/A')[:100]}")
-        logger.info(f"Request Data: {request.data if hasattr(request, 'data') else 'No data'}")
-        logger.info("=" * 80)
-        
+
+        # The throttle scope must match a key in DEFAULT_THROTTLE_RATES.
+        self.throttle_scope = 'login'
+
+        # SECURITY: never log request.data here - it contains the cleartext
+        # password. Log only the non-sensitive metadata needed to debug login
+        # issues (origin, attempted username).
+        attempted_username = request.data.get('username') if hasattr(request, 'data') else None
+        logger.info(
+            "Login attempt: user=%s origin=%s",
+            attempted_username or '<missing>',
+            request.META.get('HTTP_ORIGIN', '-'),
+        )
+
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
@@ -423,11 +505,8 @@ class AuthViewSet(viewsets.ViewSet):
                 logger = logging.getLogger(__name__)
                 logger.error(f"Error getting profile/permissions for user {user.id}: {e}")
             
-            # Get enabled modules
-            enabled_modules = {}
-            for module in ModuleSettings.objects.all():
-                enabled_modules[module.module_name] = module.is_enabled
-            
+            enabled_modules = get_enabled_modules_flat()
+
             response_data = {
                 'message': 'Login successful',
                 'user': user_serializer.data,
@@ -437,12 +516,19 @@ class AuthViewSet(viewsets.ViewSet):
                 'access': str(refresh.access_token),
                 'refresh': str(refresh),
             }
-            logger.info(f"Login successful for user: {username}")
-            logger.info("=" * 80)
+            logger.info("Login successful for user: %s", username)
+            # Audit success - one row per login.
+            log_audit(request, _AuditLog.ACTION_LOGIN, user, module='users')
             return Response(response_data)
         else:
-            logger.warning(f"Login failed - Invalid credentials for user: {username}")
-            logger.info("=" * 80)
+            logger.warning("Login failed - invalid credentials for user: %s", username)
+            # Audit failure WITHOUT the password (the helper only sees the
+            # request metadata, never the body). Pass username via changes.
+            log_audit(
+                request, _AuditLog.ACTION_LOGIN_FAILED, None,
+                module='users',
+                changes={'attempted_username': username},
+            )
             response = Response(
                 {'error': 'Invalid credentials'},
                 status=status.HTTP_401_UNAUTHORIZED
@@ -495,11 +581,8 @@ class AuthViewSet(viewsets.ViewSet):
             logger = logging.getLogger(__name__)
             logger.error(f"Error getting profile/permissions for user {request.user.id}: {e}")
         
-        # Get enabled modules
-        enabled_modules = {}
-        for module in ModuleSettings.objects.all():
-            enabled_modules[module.module_name] = module.is_enabled
-        
+        enabled_modules = get_enabled_modules_flat()
+
         return Response({
             'user': user_serializer.data,
             'profile': profile,
@@ -508,6 +591,52 @@ class AuthViewSet(viewsets.ViewSet):
             'is_super_admin': request.user.is_superuser or (hasattr(request.user, 'profile') and request.user.profile and request.user.profile.is_super_admin),
             'is_admin': request.user.is_staff or (hasattr(request.user, 'profile') and request.user.profile and request.user.profile.is_admin),
         })
+
+
+class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Read-only view onto the append-only audit log. Gated to super-admins
+    only - we don't want regular admins to see who looked at what (that's a
+    privacy + power concentration issue).
+
+    Supports filtering via query params:
+      * ``user``        - user id
+      * ``action``      - exact match ('create', 'update', 'login', etc.)
+      * ``module``      - exact match ('sales', 'products', ...)
+      * ``object_type`` - exact match ('sales.Sale', ...)
+      * ``date_from``   - YYYY-MM-DD inclusive
+      * ``date_to``     - YYYY-MM-DD inclusive
+      * ``q``           - free-text search over username / object_repr / path
+    """
+    queryset = AuditLog.objects.all().select_related('user')
+    serializer_class = AuditLogSerializer
+    permission_classes = [IsAuthenticated, IsSuperAdmin]
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        if params.get('user'):
+            qs = qs.filter(user_id=params['user'])
+        if params.get('action'):
+            qs = qs.filter(action=params['action'])
+        if params.get('module'):
+            qs = qs.filter(module=params['module'])
+        if params.get('object_type'):
+            qs = qs.filter(object_type=params['object_type'])
+        if params.get('date_from'):
+            qs = qs.filter(created_at__date__gte=params['date_from'])
+        if params.get('date_to'):
+            qs = qs.filter(created_at__date__lte=params['date_to'])
+        if params.get('q'):
+            term = params['q']
+            qs = qs.filter(
+                Q(username_snapshot__icontains=term) |
+                Q(object_repr__icontains=term) |
+                Q(path__icontains=term)
+            )
+        return qs
 
 
 # Module settings ViewSets moved to settings app

@@ -204,6 +204,7 @@ class ProductVariantService(BaseService):
         
         # Calculate variant price (can be customized)
         variant_price = product.price
+        variant_mrp = product.mrp or product.price
         variant_cost = product.cost
         
         return ProductVariant.objects.create(
@@ -212,6 +213,7 @@ class ProductVariantService(BaseService):
             color=color,
             sku=variant_sku,
             price=variant_price,
+            mrp=variant_mrp,
             cost=variant_cost,
             stock_quantity=0,
             low_stock_threshold=product.low_stock_threshold,
@@ -522,6 +524,10 @@ class ProductService(BaseService):
                       sizes: Optional[List[int]] = None,
                       colors: Optional[List[int]] = None) -> Product:
         """Update a product and handle variant changes"""
+        # Snapshot the previous ``has_variants`` flag before mutating the
+        # instance so we can detect a flip below.
+        previous_has_variants = product.has_variants
+
         # Handle variant updates
         has_variants = data.pop('has_variants', product.has_variants)
         available_sizes = data.pop('available_sizes', sizes)
@@ -530,16 +536,33 @@ class ProductService(BaseService):
         # Update product fields
         for key, value in data.items():
             setattr(product, key, value)
-        
+
+        # ``has_variants`` was popped out of ``data`` above so the loop never
+        # touches it. We must apply it explicitly, otherwise the flag is
+        # silently lost and the product never advertises that it has variants
+        # (breaking downstream UI and the variant-creation branch below).
+        product.has_variants = has_variants
+
         product.save()
         
         # Update variants if variant settings changed
-        if has_variants != product.has_variants or available_sizes or available_colors:
+        if previous_has_variants != has_variants or available_sizes or available_colors:
             # Delete existing variants
             ProductVariant.objects.filter(product=product).delete()
             
             # Create new variants
             if has_variants and (available_sizes or available_colors):
+                # Persist the size/color picks on the M2M so subsequent
+                # reads (and variant regeneration on next update) reflect
+                # the latest selection.
+                if available_sizes:
+                    product.available_sizes.set(
+                        Size.objects.filter(id__in=available_sizes)
+                    )
+                if available_colors:
+                    product.available_colors.set(
+                        Color.objects.filter(id__in=available_colors)
+                    )
                 self.variant_service.create_variants_for_product(
                     product, available_sizes, available_colors
                 )
@@ -600,11 +623,19 @@ class ProductService(BaseService):
             low_stock_list = self.get_low_stock_products()
             out_of_stock_list = self.get_out_of_stock_products()
             
+            low_stock_count = len(low_stock_list) if low_stock_list else 0
+            out_of_stock_count = len(out_of_stock_list) if out_of_stock_list else 0
             stats = {
                 'total_products': queryset.count(),
                 'active_products': queryset.filter(is_active=True).count(),
-                'low_stock_products': len(low_stock_list) if low_stock_list else 0,
-                'out_of_stock_products': len(out_of_stock_list) if out_of_stock_list else 0,
+                # Keep the original (slightly misleadingly-named) keys for
+                # backwards compatibility with any FE callers still on them.
+                'low_stock_products': low_stock_count,
+                'out_of_stock_products': out_of_stock_count,
+                # Canonical, consistent ``_count`` aliases - matches the
+                # naming used in the Reports hub and dashboard endpoints.
+                'low_stock_count': low_stock_count,
+                'out_of_stock_count': out_of_stock_count,
                 'total_inventory_value': float(total_inventory_value),
                 'total_products_value': float(total_products_value),
             }
@@ -620,6 +651,8 @@ class ProductService(BaseService):
                 'active_products': 0,
                 'low_stock_products': 0,
                 'out_of_stock_products': 0,
+                'low_stock_count': 0,
+                'out_of_stock_count': 0,
                 'total_inventory_value': 0.0,
                 'total_products_value': 0.0,
             }
@@ -638,7 +671,7 @@ class ProductService(BaseService):
         # Write header
         writer.writerow([
             'SKU', 'Name', 'Barcode', 'Category', 'Subcategory',
-            'Price', 'Cost', 'Stock Quantity', 'Low Stock Threshold',
+            'MRP', 'Selling Price', 'Cost', 'Stock Quantity', 'Low Stock Threshold',
             'Unit', 'Has Variants', 'Track Stock', 'Is Taxable', 'Is Active',
             'Description', 'Supplier'
         ])
@@ -651,6 +684,7 @@ class ProductService(BaseService):
                 product.barcode or '',
                 product.category.name if product.category else '',
                 product.subcategory.name if product.subcategory else '',
+                product.mrp,
                 product.price,
                 product.cost,
                 product.stock_quantity,
@@ -839,7 +873,10 @@ class ProductService(BaseService):
             'barcode': get_field('Barcode') or None,
             'category': category,
             'subcategory': subcategory,
-            'price': parse_decimal(get_field('Price')),
+            'mrp': parse_decimal(get_field('MRP')),
+            'price': parse_decimal(
+                get_field('Selling Price') or get_field('Price')
+            ),
             'cost': parse_decimal(get_field('Cost')),
             'stock_quantity': parse_int(get_field('Stock Quantity')),
             'low_stock_threshold': parse_int(get_field('Low Stock Threshold'), 10),
@@ -855,6 +892,8 @@ class ProductService(BaseService):
             'supplier_contact': get_field('Supplier Contact'),  # Legacy support
             'tax_rate': parse_decimal(get_field('Tax Rate'), 0),
         }
+        if not data.get('mrp') and data.get('price') is not None:
+            data['mrp'] = data['price']
         
         # Store sizes and colors strings for later processing
         data['_sizes_str'] = sizes_str

@@ -1,186 +1,48 @@
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 from django.db.models import Sum, Count, F, Q
+from django.db.models.functions import TruncDate
 from django.utils import timezone
 from datetime import datetime, timedelta
-from sales.models import Sale, SaleItem, Invoice, Customer
+from sales.models import Sale, SaleItem, Invoice, Customer, Payment
 from products.models import Product
 from inventory.models import StockMovement
 from expenses.models import Expense
 from income.models import Income
+from accounts.permissions import RequirePermPerAction
+from .services import ReportDashboardService, resolve_period
+
+
+REPORTS_PERMS = RequirePermPerAction('reports', {
+    'dashboard': 'view',
+    'sales': 'view',
+    'products': 'view',
+    'inventory': 'view',
+    'purchase': 'view',
+    'invoice': 'view',
+    'supplier': 'view',
+    'customer': 'view',
+    'expense': 'view',
+    'income': 'view',
+    'tax': 'view',
+    'profit_loss': 'view',
+    'annual': 'view',
+    'sales_overview': 'view',
+    'top_products': 'view',
+    'cash_and_payments': 'view',
+    'inventory_health': 'view',
+    'customer_outstanding': 'view',
+})
 
 
 class ReportViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated, REPORTS_PERMS]
     @action(detail=False, methods=['get'])
     def dashboard(self, request):
         """Dashboard summary data with all metrics"""
-        today = timezone.now().date()
-        start_of_day = timezone.make_aware(datetime.combine(today, datetime.min.time()))
-        start_of_month = timezone.make_aware(datetime(today.year, today.month, 1))
-        start_of_last_month = timezone.make_aware(datetime(today.year, today.month - 1 if today.month > 1 else 12, 1))
-        end_of_last_month = start_of_month - timedelta(days=1)
-        
-        # Today's sales
-        today_sales = Sale.objects.filter(created_at__gte=start_of_day)
-        today_total = today_sales.aggregate(total=Sum('total'))['total'] or 0
-        today_count = today_sales.count()
-        
-        # This month's sales
-        month_sales = Sale.objects.filter(created_at__gte=start_of_month)
-        month_total = month_sales.aggregate(total=Sum('total'))['total'] or 0
-        
-        # Last month's sales for comparison
-        last_month_sales = Sale.objects.filter(
-            created_at__gte=start_of_last_month,
-            created_at__lt=start_of_month
-        )
-        last_month_total = last_month_sales.aggregate(total=Sum('total'))['total'] or 0
-        
-        # Calculate sales growth percentage
-        sales_growth = 0
-        if last_month_total > 0:
-            sales_growth = ((month_total - last_month_total) / last_month_total) * 100
-        
-        # Total sales (all time)
-        total_sales_all = Sale.objects.aggregate(total=Sum('total'))['total'] or 0
-        
-        # Sales returns (sales with negative total or discount > subtotal)
-        sales_returns = Sale.objects.filter(
-            Q(total__lt=0) | Q(discount_amount__gt=F('subtotal'))
-        )
-        sales_returns_total = sales_returns.aggregate(total=Sum('total'))['total'] or 0
-        sales_returns_count = sales_returns.count()
-        
-        # Last month sales returns for comparison
-        last_month_returns = sales_returns.filter(
-            created_at__gte=start_of_last_month,
-            created_at__lt=start_of_month
-        )
-        last_month_returns_total = last_month_returns.aggregate(total=Sum('total'))['total'] or 0
-        returns_growth = 0
-        if last_month_returns_total != 0:
-            returns_growth = ((sales_returns_total - last_month_returns_total) / abs(last_month_returns_total)) * 100 if last_month_returns_total != 0 else 0
-        
-        # Purchases (stock movements of type 'purchase')
-        purchases = StockMovement.objects.filter(movement_type='purchase', created_at__gte=start_of_month)
-        total_purchase = purchases.aggregate(total=Sum('total_cost'))['total'] or 0
-        
-        last_month_purchases = StockMovement.objects.filter(
-            movement_type='purchase',
-            created_at__gte=start_of_last_month,
-            created_at__lt=start_of_month
-        )
-        last_month_purchase_total = last_month_purchases.aggregate(total=Sum('total_cost'))['total'] or 0
-        purchase_growth = 0
-        if last_month_purchase_total > 0:
-            purchase_growth = ((total_purchase - last_month_purchase_total) / last_month_purchase_total) * 100
-        
-        # Purchase returns (stock movements of type 'return' that are returns)
-        purchase_returns = StockMovement.objects.filter(
-            movement_type='return',
-            created_at__gte=start_of_month
-        )
-        purchase_returns_total = purchase_returns.aggregate(total=Sum('total_cost'))['total'] or 0
-        
-        # Expenses (from expenses model)
-        expenses_this_month = Expense.objects.filter(
-            status='approved',
-            expense_date__gte=start_of_month.date()
-        )
-        total_expenses = expenses_this_month.aggregate(total=Sum('amount'))['total'] or 0
-        
-        expenses_last_month = Expense.objects.filter(
-            status='approved',
-            expense_date__gte=start_of_last_month.date(),
-            expense_date__lt=start_of_month.date()
-        )
-        last_month_expenses = expenses_last_month.aggregate(total=Sum('amount'))['total'] or 0
-        expenses_growth = 0
-        if last_month_expenses > 0:
-            expenses_growth = ((total_expenses - last_month_expenses) / last_month_expenses) * 100
-        
-        # Profit calculation
-        profit = month_total - total_purchase - total_expenses
-        last_month_profit = last_month_total - last_month_purchase_total - last_month_expenses
-        profit_growth = 0
-        if last_month_profit != 0:
-            profit_growth = ((profit - last_month_profit) / abs(last_month_profit)) * 100 if last_month_profit != 0 else 0
-        
-        # Invoice due (for now, sales with payment_method other than cash that might be pending)
-        # This is a simplified version - in a real system, you'd track invoices separately
-        invoice_due = Sale.objects.filter(
-            payment_method__in=['mpesa', 'card', 'other'],
-            created_at__gte=start_of_month
-        ).aggregate(total=Sum('total'))['total'] or 0
-        
-        # Payment returns (negative sales or refunds)
-        payment_returns = abs(sales_returns_total)
-        last_month_payment_returns = abs(last_month_returns_total)
-        payment_returns_growth = 0
-        if last_month_payment_returns > 0:
-            payment_returns_growth = ((payment_returns - last_month_payment_returns) / last_month_payment_returns) * 100
-        
-        # Low stock products
-        low_stock_count = Product.objects.filter(
-            stock_quantity__lte=F('low_stock_threshold'),
-            is_active=True,
-            track_stock=True
-        ).count()
-        
-        # Top selling products (this month)
-        top_products = SaleItem.objects.filter(
-            sale__created_at__gte=start_of_month
-        ).values(
-            'product__id',
-            'product__name', 
-            'product__sku'
-        ).annotate(
-            total_quantity=Sum('quantity'),
-            total_revenue=Sum('subtotal')
-        ).order_by('-total_revenue')[:5]
-        
-        # Overall information
-        suppliers_count = 0  # TODO: Add suppliers model if needed
-        customers_count = 0  # TODO: Add customers model if needed
-        
-        return Response({
-            'today': {
-                'sales_count': today_count,
-                'total': float(today_total),
-            },
-            'month': {
-                'total': float(month_total),
-            },
-            'low_stock_count': low_stock_count,
-            'top_products': list(top_products),
-            'total_sales': float(total_sales_all),
-            'total_purchase': float(total_purchase),
-            'total_expenses': float(total_expenses),
-            'profit': float(profit),
-            'sales_returns': {
-                'total': float(abs(sales_returns_total)),
-                'count': sales_returns_count,
-            },
-            'purchase_returns': {
-                'total': float(purchase_returns_total),
-            },
-            'invoice_due': float(invoice_due),
-            'payment_returns': float(payment_returns),
-            'growth': {
-                'sales': round(sales_growth, 1),
-                'returns': round(returns_growth, 1),
-                'purchase': round(purchase_growth, 1),
-                'profit': round(profit_growth, 1),
-                'expenses': round(expenses_growth, 1),
-                'payment_returns': round(payment_returns_growth, 1),
-            },
-            'overall': {
-                'suppliers': suppliers_count,
-                'customers': customers_count,
-                'orders': today_count,
-            },
-        })
+        return Response(ReportDashboardService.get_dashboard_summary())
 
     @action(detail=False, methods=['get'])
     def sales(self, request):
@@ -210,18 +72,28 @@ class ReportViewSet(viewsets.ViewSet):
             total=Sum('total')
         )
         
-        # Daily sales breakdown
-        daily_sales = queryset.extra(
-            select={'day': 'date(created_at)'}
-        ).values('day').annotate(
-            count=Count('id'),
-            total=Sum('total')
-        ).order_by('-day')
-        
+        # Daily sales breakdown - use TruncDate so this works on SQLite,
+        # Postgres and MySQL alike (the previous .extra() with a literal
+        # date(...) call was SQLite-only).
+        daily_sales = list(
+            queryset.annotate(day=TruncDate('created_at'))
+            .values('day')
+            .annotate(count=Count('id'), total=Sum('total'))
+            .order_by('-day')
+        )
+        daily_sales = [
+            {
+                'day': row['day'].isoformat() if row['day'] else None,
+                'count': row['count'],
+                'total': float(row['total'] or 0),
+            }
+            for row in daily_sales
+        ]
+
         return Response({
             'summary': summary,
             'by_payment_method': list(by_payment),
-            'daily_breakdown': list(daily_sales),
+            'daily_breakdown': daily_sales,
         })
 
     @action(detail=False, methods=['get'])
@@ -419,42 +291,62 @@ class ReportViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['get'])
     def customer(self, request):
-        """Customer report"""
-        date_from = request.query_params.get('date_from', None)
-        date_to = request.query_params.get('date_to', None)
-        
-        # Get sales for customers
-        sales_queryset = Sale.objects.filter(sale_type='normal')
-        
+        """
+        Customer report.
+
+        Note: the ``Sale`` model has no direct ``customer`` FK - customer
+        linkage flows through ``Invoice``. We aggregate via the Invoice table
+        so this report actually returns real data (the previous
+        ``sales.values('customer__id')`` query silently returned all-NULL
+        groups).
+        """
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
+
+        invoices_qs = Invoice.objects.exclude(customer__isnull=True)
         if date_from:
-            sales_queryset = sales_queryset.filter(created_at__gte=date_from)
+            invoices_qs = invoices_qs.filter(created_at__gte=date_from)
         if date_to:
-            sales_queryset = sales_queryset.filter(created_at__lte=date_to)
-        
-        # Group by customer
-        customer_sales = sales_queryset.values('customer__id', 'customer__name').annotate(
-            total_purchases=Sum('total'),
-            order_count=Count('id'),
-        ).order_by('-total_purchases')
-        
+            invoices_qs = invoices_qs.filter(created_at__lte=date_to)
+
+        rows = list(
+            invoices_qs.values('customer__id', 'customer__name')
+            .annotate(
+                total_purchases=Sum('total'),
+                outstanding=Sum('balance'),
+                order_count=Count('id'),
+            )
+            .order_by('-total_purchases')
+        )
+
         customers = []
-        for item in customer_sales:
-            last_sale = sales_queryset.filter(customer__id=item['customer__id']).order_by('-created_at').first()
+        for item in rows:
+            last_invoice = (
+                invoices_qs.filter(customer_id=item['customer__id'])
+                .order_by('-created_at').first()
+            )
+            count = item['order_count'] or 0
+            total = float(item['total_purchases'] or 0)
             customers.append({
                 'id': item['customer__id'],
                 'name': item['customer__name'] or 'Unknown',
-                'total_purchases': float(item['total_purchases'] or 0),
-                'order_count': item['order_count'],
-                'avg_order_value': float(item['total_purchases'] or 0) / item['order_count'] if item['order_count'] > 0 else 0,
-                'last_purchase': last_sale.created_at.isoformat() if last_sale else None,
+                'total_purchases': total,
+                'outstanding': float(item['outstanding'] or 0),
+                'order_count': count,
+                'avg_order_value': (total / count) if count else 0,
+                'last_purchase': last_invoice.created_at.isoformat() if last_invoice else None,
             })
-        
+
         summary = {
             'total_customers': len(customers),
             'total_sales': sum(c['total_purchases'] for c in customers),
-            'avg_order_value': sum(c['total_purchases'] for c in customers) / len(customers) if customers else 0,
+            'total_outstanding': sum(c['outstanding'] for c in customers),
+            'avg_order_value': (
+                sum(c['total_purchases'] for c in customers) / len(customers)
+                if customers else 0
+            ),
         }
-        
+
         return Response({
             'summary': summary,
             'customers': customers,
@@ -691,4 +583,308 @@ class ReportViewSet(viewsets.ViewSet):
         return Response({
             'summary': summary,
             'monthly_data': monthly_data,
+        })
+
+    # ------------------------------------------------------------------
+    # New operational reports (Today / Week / Month aware, chart-ready).
+    # These supersede the older 13 endpoints for the redesigned Reports
+    # screen, but the originals remain for back-compat with existing
+    # callers.
+    # ------------------------------------------------------------------
+
+    @action(detail=False, methods=['get'])
+    def sales_overview(self, request):
+        """
+        Top-line sales metrics + per-day trend, gated by ?period=today|week|month.
+
+        Returns:
+          summary:   { sales_count, gross_revenue, items_sold, avg_ticket, tax, discount }
+          by_payment_method: [{ method, count, total }]
+          trend:     [{ date: 'YYYY-MM-DD', revenue, sales_count }]
+        """
+        start, end, label = resolve_period(request)
+        qs = Sale.objects.all()
+        if start:
+            qs = qs.filter(created_at__gte=start)
+        if end:
+            qs = qs.filter(created_at__lte=end)
+
+        agg = qs.aggregate(
+            sales_count=Count('id'),
+            gross_revenue=Sum('total'),
+            items_sold=Sum('items__quantity'),
+            tax=Sum('tax_amount'),
+            discount=Sum('discount_amount'),
+        )
+
+        gross = float(agg['gross_revenue'] or 0)
+        count = agg['sales_count'] or 0
+        avg_ticket = (gross / count) if count else 0.0
+
+        by_pm = list(
+            qs.values('payment_method')
+            .annotate(count=Count('id'), total=Sum('total'))
+            .order_by('-total')
+        )
+        for row in by_pm:
+            row['method'] = row.pop('payment_method') or 'unknown'
+            row['total'] = float(row['total'] or 0)
+
+        # Daily trend via TruncDate so it works on SQLite, Postgres and MySQL.
+        trend = list(
+            qs.annotate(day=TruncDate('created_at'))
+            .values('day')
+            .annotate(revenue=Sum('total'), sales_count=Count('id'))
+            .order_by('day')
+        )
+        trend = [
+            {
+                'date': row['day'].isoformat() if row['day'] else None,
+                'revenue': float(row['revenue'] or 0),
+                'sales_count': row['sales_count'] or 0,
+            }
+            for row in trend
+        ]
+
+        return Response({
+            'period': label,
+            'summary': {
+                'sales_count': count,
+                'gross_revenue': gross,
+                'items_sold': int(agg['items_sold'] or 0),
+                'avg_ticket': round(avg_ticket, 2),
+                'tax': float(agg['tax'] or 0),
+                'discount': float(agg['discount'] or 0),
+            },
+            'by_payment_method': by_pm,
+            'trend': trend,
+        })
+
+    @action(detail=False, methods=['get'])
+    def top_products(self, request):
+        """Best-selling products in the chosen period.
+
+        Returns top 10 by quantity + total revenue contribution, ready for a
+        horizontal bar chart.
+        """
+        start, end, label = resolve_period(request)
+        qs = SaleItem.objects.select_related('product', 'product__category')
+        if start:
+            qs = qs.filter(sale__created_at__gte=start)
+        if end:
+            qs = qs.filter(sale__created_at__lte=end)
+
+        rows = list(
+            qs.values('product__id', 'product__name', 'product__sku', 'product__category__name')
+            .annotate(
+                quantity_sold=Sum('quantity'),
+                revenue=Sum('subtotal'),
+                line_count=Count('id'),
+            )
+            .order_by('-quantity_sold')[:10]
+        )
+
+        items = [
+            {
+                'product_id': r['product__id'],
+                'name': r['product__name'] or '(unnamed product)',
+                'sku': r['product__sku'] or '',
+                'category': r['product__category__name'] or 'Uncategorised',
+                'quantity_sold': int(r['quantity_sold'] or 0),
+                'revenue': float(r['revenue'] or 0),
+                'line_count': r['line_count'] or 0,
+            }
+            for r in rows
+        ]
+
+        return Response({
+            'period': label,
+            'items': items,
+        })
+
+    @action(detail=False, methods=['get'])
+    def cash_and_payments(self, request):
+        """Money-in breakdown: sales tender + invoice payments, by method.
+
+        Drives the cash-reconciliation tile (cash drawer expected, M-Pesa
+        expected, etc).
+        """
+        start, end, label = resolve_period(request)
+
+        sales = Sale.objects.all()
+        payments = Payment.objects.all()
+        if start:
+            sales = sales.filter(created_at__gte=start)
+            payments = payments.filter(payment_date__gte=start)
+        if end:
+            sales = sales.filter(created_at__lte=end)
+            payments = payments.filter(payment_date__lte=end)
+
+        sales_by_method = {
+            (row['payment_method'] or 'unknown'): float(row['total'] or 0)
+            for row in sales.values('payment_method').annotate(total=Sum('total'))
+        }
+        payments_by_method = {
+            (row['payment_method'] or 'unknown'): float(row['total'] or 0)
+            for row in payments.values('payment_method').annotate(total=Sum('amount'))
+        }
+
+        all_methods = sorted(set(sales_by_method) | set(payments_by_method))
+        rows = []
+        total_in = 0.0
+        for m in all_methods:
+            sales_total = sales_by_method.get(m, 0.0)
+            payments_total = payments_by_method.get(m, 0.0)
+            method_total = sales_total + payments_total
+            total_in += method_total
+            rows.append({
+                'method': m,
+                'sales_total': sales_total,
+                'payments_total': payments_total,
+                'total': method_total,
+            })
+
+        return Response({
+            'period': label,
+            'summary': {
+                'total_in': total_in,
+                'sales_total': float(sales.aggregate(t=Sum('total'))['t'] or 0),
+                'payments_total': float(payments.aggregate(t=Sum('amount'))['t'] or 0),
+            },
+            'by_method': rows,
+        })
+
+    @action(detail=False, methods=['get'])
+    def inventory_health(self, request):
+        """Stock health snapshot: low / out / value / recent movements.
+
+        Period-aware only in the "recent movements" trend (the absolute stock
+        levels are always current — that's how a snapshot works).
+        """
+        start, end, label = resolve_period(request)
+
+        products = Product.objects.filter(is_active=True)
+
+        low_stock_count = products.filter(
+            track_stock=True,
+            stock_quantity__gt=0,
+            stock_quantity__lte=F('low_stock_threshold'),
+        ).count()
+        out_of_stock_count = products.filter(track_stock=True, stock_quantity=0).count()
+
+        inventory_value = products.aggregate(
+            value=Sum(F('stock_quantity') * F('cost')),
+        )['value'] or 0
+
+        movements = StockMovement.objects.all()
+        if start:
+            movements = movements.filter(created_at__gte=start)
+        if end:
+            movements = movements.filter(created_at__lte=end)
+
+        by_type = list(
+            movements.values('movement_type')
+            .annotate(count=Count('id'), units=Sum('quantity'))
+            .order_by('-count')
+        )
+        for row in by_type:
+            row['type'] = row.pop('movement_type') or 'unknown'
+            row['units'] = int(row['units'] or 0)
+
+        # Top 10 products at risk: lowest stock among those that track stock.
+        at_risk = list(
+            products.filter(track_stock=True)
+            .order_by('stock_quantity', 'name')
+            .values('id', 'name', 'sku', 'stock_quantity', 'low_stock_threshold')[:10]
+        )
+        for r in at_risk:
+            r['low_stock_threshold'] = r['low_stock_threshold'] or 0
+
+        return Response({
+            'period': label,
+            'summary': {
+                'low_stock_count': low_stock_count,
+                'out_of_stock_count': out_of_stock_count,
+                'inventory_value': float(inventory_value),
+                'active_products': products.count(),
+            },
+            'movements_by_type': by_type,
+            'at_risk': at_risk,
+        })
+
+    @action(detail=False, methods=['get'])
+    def customer_outstanding(self, request):
+        """Money customers owe us, plus AR aging.
+
+        For period-awareness we filter the per-invoice list by invoice
+        ``created_at``, but the totals reflect all currently-outstanding
+        invoices (you want to see the full debt, not just this month's).
+        """
+        start, end, label = resolve_period(request)
+
+        # All currently-outstanding invoices (balance > 0, not cancelled).
+        outstanding = Invoice.objects.filter(balance__gt=0).exclude(status='cancelled')
+
+        # Aging buckets: 0-30, 31-60, 61-90, 90+.
+        today = timezone.now().date()
+
+        def days_overdue(due):
+            if not due:
+                return 0
+            return max(0, (today - due).days)
+
+        invoices = outstanding.select_related('customer').values(
+            'id', 'invoice_number', 'customer__name', 'customer_name', 'balance',
+            'total', 'amount_paid', 'due_date', 'status', 'created_at',
+        )
+        invoices_list = []
+        buckets = {'0_30': 0.0, '31_60': 0.0, '61_90': 0.0, '90_plus': 0.0}
+        for inv in invoices:
+            balance = float(inv['balance'] or 0)
+            overdue = days_overdue(inv['due_date'])
+            bucket = (
+                '0_30' if overdue <= 30 else
+                '31_60' if overdue <= 60 else
+                '61_90' if overdue <= 90 else
+                '90_plus'
+            )
+            buckets[bucket] += balance
+            invoices_list.append({
+                'id': inv['id'],
+                'invoice_number': inv['invoice_number'],
+                'customer': inv['customer__name'] or inv['customer_name'] or '(walk-in)',
+                'balance': balance,
+                'total': float(inv['total'] or 0),
+                'amount_paid': float(inv['amount_paid'] or 0),
+                'due_date': inv['due_date'].isoformat() if inv['due_date'] else None,
+                'days_overdue': overdue,
+                'status': inv['status'],
+                'created_at': inv['created_at'].isoformat() if inv['created_at'] else None,
+            })
+
+        # Period-scoped count (new invoices opened in this period).
+        new_invoices = Invoice.objects.all()
+        if start:
+            new_invoices = new_invoices.filter(created_at__gte=start)
+        if end:
+            new_invoices = new_invoices.filter(created_at__lte=end)
+
+        # Sort: oldest overdue first.
+        invoices_list.sort(key=lambda r: r['days_overdue'], reverse=True)
+
+        return Response({
+            'period': label,
+            'summary': {
+                'total_outstanding': sum(buckets.values()),
+                'invoice_count': len(invoices_list),
+                'overdue_count': sum(1 for r in invoices_list if r['days_overdue'] > 0),
+                'new_invoices_in_period': new_invoices.count(),
+            },
+            'aging': [
+                {'bucket': '0-30 days', 'amount': buckets['0_30']},
+                {'bucket': '31-60 days', 'amount': buckets['31_60']},
+                {'bucket': '61-90 days', 'amount': buckets['61_90']},
+                {'bucket': '90+ days', 'amount': buckets['90_plus']},
+            ],
+            'invoices': invoices_list[:20],
         })

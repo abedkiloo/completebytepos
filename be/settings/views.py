@@ -14,6 +14,9 @@ from .serializers import (
 )
 from accounts.permissions import IsSuperAdmin
 from .utils import get_current_tenant, get_current_branch, set_current_tenant, set_current_branch, is_branch_support_enabled
+from .module_catalog import apply_module_preset, build_modules_response
+from .setup_status import get_setup_status
+from accounts.role_definitions import BOOTSTRAP_USERS
 import logging
 import os
 import sys
@@ -36,35 +39,19 @@ class ModuleSettingsViewSet(viewsets.ModelViewSet):
         return [IsSuperAdmin()]
     
     def list(self, request, *args, **kwargs):
-        """List all module settings with features"""
-        modules = ModuleSettings.objects.prefetch_related('features').all()
-        data = {}
-        for module in modules:
-            # Get all features for this module
-            features = {}
-            for feature in module.features.all():
-                features[feature.feature_key] = {
-                    'id': feature.id,
-                    'feature_key': feature.feature_key,
-                    'feature_name': feature.feature_name,
-                    'is_enabled': feature.is_enabled,
-                    'description': feature.description,
-                    'display_order': feature.display_order,
-                }
-            
-            data[module.module_name] = {
-                'id': module.id,
-                'is_enabled': module.is_enabled,
-                'description': module.description,
-                'module_name_display': module.get_module_name_display(),
-                'features': features,
-            }
-        
-        # Add branch support status for convenience
-        data['_meta'] = {
-            'branch_support_enabled': is_branch_support_enabled(),
-        }
-        
+        """List modules (flat map) + grouped catalog + install presets."""
+        return Response(build_modules_response())
+
+    @action(detail=False, methods=['post'], url_path='apply-preset')
+    def apply_preset(self, request):
+        """Apply an install preset (super admin only). Body: { \"preset_id\": \"retail_starter\" }"""
+        preset_id = request.data.get('preset_id')
+        if not preset_id:
+            return Response({'error': 'preset_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            data = apply_module_preset(preset_id, user=request.user)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(data)
     
     def update(self, request, *args, **kwargs):
@@ -331,6 +318,32 @@ class BranchViewSet(viewsets.ModelViewSet):
         return Response({'message': 'Current branch cleared. Showing all branches.'})
 
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def setup_status(request):
+    """Whether first-time installation is required (no auth)."""
+    return Response(get_setup_status())
+
+
+def _bootstrap_credentials_payload():
+    primary = BOOTSTRAP_USERS[0]
+    return {
+        'primary': {
+            'username': primary['username'],
+            'password': primary['password'],
+            'label': primary['label'],
+        },
+        'users': [
+            {
+                'username': spec['username'],
+                'password': spec['password'],
+                'label': spec['label'],
+            }
+            for spec in BOOTSTRAP_USERS
+        ],
+    }
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])  # Allow installation without authentication
 def fresh_install(request):
@@ -383,22 +396,15 @@ def fresh_install(request):
                 steps[-1]['message'] = str(e)[:100]
                 raise
             
-            # Step 4: Create superuser
-            steps.append({'step': 4, 'name': 'Creating superuser', 'status': 'running'})
+            # Step 4: Bootstrap users (admin, manager, sales)
+            steps.append({'step': 4, 'name': 'Creating bootstrap users', 'status': 'running'})
             try:
-                user, created = User.objects.get_or_create(
-                    username='admin@3@1',
-                    defaults={
-                        'email': 'admin@3@1',
-                        'is_staff': True,
-                        'is_superuser': True,
-                        'is_active': True
-                    }
-                )
-                user.set_password('admin@3@1')
-                user.save()
+                call_command('create_users', verbosity=0)
+                admin = BOOTSTRAP_USERS[0]
                 steps[-1]['status'] = 'completed'
-                steps[-1]['message'] = 'Superuser created (username: admin@3@1, password: admin@3@1)'
+                steps[-1]['message'] = (
+                    f'Users ready — sign in as {admin["username"]} / {admin["password"]}'
+                )
             except Exception as e:
                 steps[-1]['status'] = 'error'
                 steps[-1]['message'] = str(e)[:100]
@@ -418,8 +424,11 @@ def fresh_install(request):
             steps.append({'step': 6, 'name': 'Initializing modules and features', 'status': 'running'})
             try:
                 call_command('init_modules', verbosity=0)
+                preset_id = request.data.get('module_preset', 'retail_starter')
+                admin_user = User.objects.filter(username=BOOTSTRAP_USERS[0]['username']).first()
+                apply_module_preset(preset_id, user=admin_user)
                 steps[-1]['status'] = 'completed'
-                steps[-1]['message'] = 'Modules and features initialized'
+                steps[-1]['message'] = f'Modules initialized (preset: {preset_id})'
             except Exception as e:
                 steps[-1]['status'] = 'warning'
                 steps[-1]['message'] = str(e)[:100]
@@ -479,14 +488,15 @@ def fresh_install(request):
         finally:
             sys.stdout = old_stdout
         
+        creds = _bootstrap_credentials_payload()
         return Response({
             'success': True,
             'message': 'Installation completed successfully',
             'steps': steps,
-            'credentials': {
-                'username': 'admin',
-                'password': 'admin'
-            }
+            'credentials': creds,
+            # Legacy flat shape for older clients
+            'username': creds['primary']['username'],
+            'password': creds['primary']['password'],
         }, status=status.HTTP_200_OK)
         
     except Exception as e:

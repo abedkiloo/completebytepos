@@ -17,7 +17,13 @@ class Command(BaseCommand):
                 'features': [
                     {'key': 'qr_printing', 'name': 'QR Code Printing', 'description': 'Enable QR code generation and printing', 'order': 1},
                     {'key': 'barcode_printing', 'name': 'Barcode Printing', 'description': 'Enable barcode generation and printing', 'order': 2},
-                    {'key': 'product_variants', 'name': 'Product Variants (Sizes/Colors)', 'description': 'Enable product variants with sizes and colors', 'order': 3},
+                    {
+                        'key': 'product_variants',
+                        'name': 'Product Variants (Sizes/Colors)',
+                        'description': 'Enable size/color variants on products and variant picker at POS',
+                        'order': 3,
+                        'enabled_by_default': False,
+                    },
                     {'key': 'product_images', 'name': 'Product Images', 'description': 'Enable product image uploads', 'order': 4},
                     {'key': 'bulk_operations', 'name': 'Bulk Operations', 'description': 'Enable bulk product operations', 'order': 5},
                     {'key': 'csv_import_export', 'name': 'CSV Import/Export', 'description': 'Enable CSV import and export', 'order': 6},
@@ -41,9 +47,10 @@ class Command(BaseCommand):
                 'is_enabled': True,
                 'features': [
                     {'key': 'pos', 'name': 'Point of Sale (POS)', 'description': 'Enable POS system for quick sales', 'order': 1},
-                    {'key': 'normal_sale', 'name': 'Normal Sale', 'description': 'Enable normal sales processing', 'order': 2},
-                    {'key': 'sales_history', 'name': 'Sales History', 'description': 'Enable sales history tracking', 'order': 3},
-                    {'key': 'receipt_printing', 'name': 'Receipt Printing', 'description': 'Enable receipt printing', 'order': 4},
+                    {'key': 'billing_pos', 'name': 'Billing POS (Retail Desk)', 'description': 'Invoice-style POS with holding drafts until checkout', 'order': 2},
+                    {'key': 'normal_sale', 'name': 'Normal Sale', 'description': 'Enable normal sales processing', 'order': 3},
+                    {'key': 'sales_history', 'name': 'Sales History', 'description': 'Enable sales history tracking', 'order': 4},
+                    {'key': 'receipt_printing', 'name': 'Receipt Printing', 'description': 'Enable receipt printing', 'order': 5},
                 ]
             },
             {
@@ -199,13 +206,14 @@ class Command(BaseCommand):
             # Create features for this module
             features = module_config.get('features', [])
             for feature_config in features:
+                default_enabled = feature_config.get('enabled_by_default', True)
                 feature, feature_created = ModuleFeature.objects.get_or_create(
                     module=module,
                     feature_key=feature_config['key'],
                     defaults={
                         'feature_name': feature_config['name'],
                         'description': feature_config.get('description', ''),
-                        'is_enabled': True,
+                        'is_enabled': default_enabled,
                         'display_order': feature_config.get('order', 0),
                     }
                 )

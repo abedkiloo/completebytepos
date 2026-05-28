@@ -564,6 +564,10 @@ class ProductVariantServiceBuildQuerysetTestCase(TestCase):
     
     def test_build_queryset_is_active_filter(self):
         """Test build_queryset with is_active filter"""
+        # ProductVariant has a UNIQUE constraint on (product, size, color),
+        # so the two variants must differ on at least one of those FKs -
+        # use a second color for the inactive one.
+        other_color = Color.objects.create(name='Blue', is_active=True)
         ProductVariant.objects.create(
             product=self.product1,
             size=self.size,
@@ -575,7 +579,7 @@ class ProductVariantServiceBuildQuerysetTestCase(TestCase):
         ProductVariant.objects.create(
             product=self.product1,
             size=self.size,
-            color=self.color,
+            color=other_color,
             sku='VAR-002',
             price=Decimal('100.00'),
             is_active=False

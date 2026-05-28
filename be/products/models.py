@@ -1,5 +1,6 @@
-from django.db import models
 from django.core.validators import MinValueValidator
+from django.db import models
+from django.db.models import CheckConstraint, Q
 
 
 class Size(models.Model):
@@ -111,11 +112,18 @@ class Product(models.Model):
         related_name='products',
         help_text='Available colors for this product'
     )
+    mrp = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+        validators=[MinValueValidator(0)],
+        help_text='Maximum retail price (MRP) — list/sticker price for display',
+    )
     price = models.DecimalField(
-        max_digits=10, 
+        max_digits=10,
         decimal_places=2,
         validators=[MinValueValidator(0)],
-        help_text='Selling price'
+        help_text='Selling price — used for POS, sales, invoices, and reports',
     )
     cost = models.DecimalField(
         max_digits=10, 
@@ -156,6 +164,16 @@ class Product(models.Model):
             models.Index(fields=['is_active']),
             models.Index(fields=['category', 'is_active']),
         ]
+        constraints = [
+            # Backstop against overselling: defence-in-depth alongside the
+            # row-locked check in StockMovement._apply_stock_effect(). Even if
+            # something writes stock directly in the future, the DB refuses to
+            # store a negative quantity.
+            CheckConstraint(
+                check=Q(stock_quantity__gte=0),
+                name='product_stock_quantity_non_negative',
+            ),
+        ]
 
     def __str__(self):
         return f"{self.name} ({self.sku})"
@@ -166,6 +184,11 @@ class Product(models.Model):
         if not self.track_stock:
             return False
         return self.stock_quantity <= self.low_stock_threshold
+
+    @property
+    def selling_price(self):
+        """Selling price used for transactions (same as ``price`` column)."""
+        return self.price
 
     @property
     def profit_margin(self):
@@ -233,13 +256,21 @@ class ProductVariant(models.Model):
     )
     sku = models.CharField(max_length=50, unique=True, db_index=True, help_text='Variant-specific SKU')
     barcode = models.CharField(max_length=50, blank=True, null=True, db_index=True, unique=True)
+    mrp = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+        help_text='Variant MRP (overrides product MRP when set)',
+    )
     price = models.DecimalField(
         max_digits=10,
         decimal_places=2,
         null=True,
         blank=True,
         validators=[MinValueValidator(0)],
-        help_text='Variant-specific price (overrides product price if set)'
+        help_text='Variant selling price (overrides product selling price when set)',
     )
     cost = models.DecimalField(
         max_digits=10,
@@ -269,6 +300,12 @@ class ProductVariant(models.Model):
             models.Index(fields=['barcode']),
             models.Index(fields=['product', 'is_active']),
         ]
+        constraints = [
+            CheckConstraint(
+                check=Q(stock_quantity__gte=0),
+                name='productvariant_stock_quantity_non_negative',
+            ),
+        ]
 
     def __str__(self):
         variant_parts = []
@@ -281,8 +318,20 @@ class ProductVariant(models.Model):
 
     @property
     def effective_price(self):
-        """Get effective price (variant price or product price)"""
+        """Selling price used at POS and on sale lines."""
         return self.price if self.price is not None else self.product.price
+
+    @property
+    def effective_mrp(self):
+        """List/MRP for display (variant override, else product)."""
+        if self.mrp is not None:
+            return self.mrp
+        return self.product.mrp if self.product.mrp else self.effective_price
+
+    @property
+    def selling_price(self):
+        """Alias for effective selling price."""
+        return self.effective_price
 
     @property
     def effective_cost(self):

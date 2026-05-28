@@ -25,7 +25,7 @@ class CustomerServiceTestCase(TestCase):
             name='Test Tenant', code='TEST', owner=self.user, created_by=self.user
         )
         self.branch = Branch.objects.create(
-            name='Test Branch', code='BR1', tenant=self.tenant, created_by=self.user
+            name='Test Branch', branch_code='BR1', tenant=self.tenant, created_by=self.user
         )
     
     def test_search_customers_by_name(self):
@@ -160,7 +160,7 @@ class SaleServiceTestCase(TestCase):
             name='Test Tenant', code='TEST', owner=self.user, created_by=self.user
         )
         self.branch = Branch.objects.create(
-            name='Test Branch', code='BR1', tenant=self.tenant, created_by=self.user
+            name='Test Branch', branch_code='BR1', tenant=self.tenant, created_by=self.user
         )
         self.category = Category.objects.create(name='Test Category', is_active=True)
         self.product = Product.objects.create(
@@ -217,9 +217,34 @@ class SaleServiceTestCase(TestCase):
         
         with self.assertRaises(ValidationError):
             self.service.validate_sale_items(items_data)
-    
+
+    def test_validate_sale_items_skips_stock_when_check_disabled(self):
+        """Holding drafts may list quantities above on-hand stock until checkout."""
+        items_data = [
+            {'product_id': self.product.id, 'quantity': 200},
+        ]
+        validated = self.service.validate_sale_items(items_data, check_stock=False)
+        self.assertEqual(len(validated), 1)
+        self.assertEqual(validated[0]['quantity'], 200)
+
+    def test_save_holding_sale_allows_over_stock_quantity(self):
+        """Saving a holding invoice must not reject over-stock cart lines."""
+        holding = self.service.save_holding_sale(
+            self.user,
+            [{'product_id': self.product.id, 'quantity': 150, 'unit_price': '100.00'}],
+            branch=self.branch,
+        )
+        self.assertEqual(holding.status, 'holding')
+        self.assertEqual(holding.items.count(), 1)
+        self.assertEqual(holding.items.first().quantity, 150)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 100)
+
     def test_validate_sale_items_with_variant(self):
         """Test validation with product variant"""
+        from settings.test_utils import enable_product_variants
+        enable_product_variants()
+
         size = Size.objects.create(name='Small', code='S', is_active=True)
         color = Color.objects.create(name='Red', is_active=True)
         self.product.has_variants = True
@@ -249,6 +274,36 @@ class SaleServiceTestCase(TestCase):
         validated = self.service.validate_sale_items(items_data)
         self.assertEqual(len(validated), 1)
         self.assertEqual(validated[0]['variant'], variant)
+        self.assertEqual(validated[0]['unit_price'], Decimal('110.00'))
+
+    def test_validate_sale_items_variant_product_without_feature(self):
+        """Legacy variant products sell as simple items when the feature is off."""
+        from settings.test_utils import disable_product_variants
+        from products.models import Size, Color, ProductVariant
+
+        disable_product_variants()
+        size = Size.objects.create(name='Small', code='S', is_active=True)
+        color = Color.objects.create(name='Red', is_active=True)
+        self.product.has_variants = True
+        self.product.price = Decimal('0')
+        self.product.stock_quantity = 0
+        self.product.save()
+        ProductVariant.objects.create(
+            product=self.product,
+            size=size,
+            color=color,
+            sku='TEST-001-S-RED',
+            price=Decimal('110.00'),
+            cost=Decimal('55.00'),
+            stock_quantity=50,
+            is_active=True,
+        )
+
+        validated = self.service.validate_sale_items([
+            {'product_id': self.product.id, 'quantity': 2},
+        ])
+        self.assertEqual(len(validated), 1)
+        self.assertIsNone(validated[0]['variant'])
         self.assertEqual(validated[0]['unit_price'], Decimal('110.00'))
     
     def test_create_sale_success(self):
@@ -284,7 +339,70 @@ class SaleServiceTestCase(TestCase):
         # Check stock was updated
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock_quantity, 98)
-    
+
+    def test_create_sale_decrements_stock_exactly_once(self):
+        """
+        Regression: sales used to double-decrement stock — once directly in
+        SaleService.create_sale and again in StockMovement.save(). Fix moves
+        all stock writes into StockMovement.save() as the single source of
+        truth. Selling 10 of 100 must leave exactly 90, not 80.
+        """
+        from inventory.models import StockMovement
+
+        items_data = [{
+            'product_id': self.product.id,
+            'quantity': 10,
+            'unit_price': Decimal('100.00'),
+        }]
+        sale_data = {
+            'sale_type': 'pos',
+            'payment_method': 'cash',
+            'amount_paid': Decimal('1000.00'),
+            'tax_amount': Decimal('0'),
+            'discount_amount': Decimal('0'),
+            'delivery_cost': Decimal('0'),
+        }
+
+        sale = self.service.create_sale(sale_data, items_data, self.user, self.branch)
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 90, "stock decremented more than once")
+
+        # And exactly one ledger row was written for this sale.
+        movements = StockMovement.objects.filter(
+            product=self.product, reference=sale.sale_number, movement_type='sale'
+        )
+        self.assertEqual(movements.count(), 1)
+        self.assertEqual(movements.first().quantity, 10)
+
+    def test_stock_movement_refuses_to_make_stock_negative(self):
+        """
+        Defence in depth: even if a code path bypasses SaleService validation
+        and writes a StockMovement directly, the row-locked guard inside
+        StockMovement._apply_stock_effect() must refuse to take stock below
+        zero (replacing the old silent max(0, ...) clamp).
+        """
+        from inventory.models import StockMovement
+
+        # 100 in stock; try to sell 150 directly via the ledger.
+        with self.assertRaises(ValidationError):
+            StockMovement.objects.create(
+                branch=self.branch,
+                product=self.product,
+                movement_type='sale',
+                quantity=150,
+                unit_cost=self.product.cost,
+                reference='TEST-OVERSELL',
+                user=self.user,
+                notes='Should be refused',
+            )
+
+        self.product.refresh_from_db()
+        self.assertEqual(
+            self.product.stock_quantity, 100,
+            "stock was mutated even though the movement was rejected",
+        )
+
     def test_create_sale_calculates_totals(self):
         """Test that sale totals are calculated correctly"""
         items_data = [
@@ -408,7 +526,7 @@ class InvoiceServiceTestCase(TestCase):
             name='Test Tenant', code='TEST', owner=self.user, created_by=self.user
         )
         self.branch = Branch.objects.create(
-            name='Test Branch', code='BR1', tenant=self.tenant, created_by=self.user
+            name='Test Branch', branch_code='BR1', tenant=self.tenant, created_by=self.user
         )
         self.category = Category.objects.create(name='Test Category', is_active=True)
         self.product = Product.objects.create(
@@ -459,7 +577,11 @@ class InvoiceServiceTestCase(TestCase):
         self.assertEqual(invoice.customer, self.customer)
         self.assertEqual(invoice.total, Decimal('105.00'))
         self.assertEqual(invoice.balance, Decimal('55.00'))
-        self.assertEqual(invoice.status, 'sent')
+        # A partially-paid invoice is 'partial', not 'sent'. The earlier
+        # assertion of 'sent' here did not match the service's behaviour and
+        # was the only stale spec hiding behind the (now fixed) Branch(code=)
+        # setUp failure.
+        self.assertEqual(invoice.status, 'partial')
         self.assertEqual(invoice.items.count(), 1)
     
     def test_create_invoice_from_sale_with_payment(self):
@@ -526,7 +648,7 @@ class PaymentServiceTestCase(TestCase):
             name='Test Tenant', code='TEST', owner=self.user, created_by=self.user
         )
         self.branch = Branch.objects.create(
-            name='Test Branch', code='BR1', tenant=self.tenant, created_by=self.user
+            name='Test Branch', branch_code='BR1', tenant=self.tenant, created_by=self.user
         )
         self.customer = Customer.objects.create(
             name='Test Customer',

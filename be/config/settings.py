@@ -2,72 +2,24 @@
 Django settings for CompleteBytePOS project.
 """
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-# Patch Django migration loader to handle migration conflicts
-# This is a workaround for Django 4.2.27 migration dependency issues
-import django.db.migrations.loader
-import django.db.migrations.graph
-_original_build_graph = django.db.migrations.loader.MigrationLoader.build_graph
-_original_validate_consistency = django.db.migrations.graph.MigrationGraph.validate_consistency
-
-def _patched_validate_consistency(self):
-    """Patched validate_consistency that skips validation errors for Django built-in apps"""
-    try:
-        return _original_validate_consistency(self)
-    except (django.db.migrations.exceptions.NodeNotFoundError, django.db.migrations.exceptions.InconsistentMigrationHistory) as e:
-        # Skip validation errors for Django built-in apps (auth, contenttypes, etc.)
-        # These are known issues with Django 4.2.27 and don't affect functionality
-        error_str = str(e)
-        if any(app in error_str for app in ['auth', 'contenttypes', 'sessions', 'admin']):
-            pass  # Ignore these validation errors - they don't prevent migrations from running
-        else:
-            raise
-
-def _patched_build_graph(self, *args, **kwargs):
-    """Patched build_graph that handles migration conflicts"""
-    try:
-        result = _original_build_graph(self, *args, **kwargs)
-        # Also patch validate_consistency on the graph
-        if hasattr(self.graph, 'validate_consistency'):
-            self.graph.validate_consistency = _patched_validate_consistency
-        return result
-    except Exception as e:
-        error_str = str(e)
-        if 'Conflicting migrations' in error_str or 'NodeNotFoundError' in str(type(e).__name__):
-            # Build graph manually, skipping problematic migrations
-            from django.db.migrations.graph import MigrationGraph
-            self.graph = MigrationGraph()
-            self.load_disk()
-            
-            # Add all migrations
-            for app_label, migrations in self.disk_migrations.items():
-                for migration_name, migration in migrations.items():
-                    self.graph.add_node((app_label, migration_name), migration)
-                    # Add dependencies (skip problematic ones)
-                    for dep_app, dep_name in migration.dependencies:
-                        if (dep_app, dep_name) in self.disk_migrations.get(dep_app, {}):
-                            try:
-                                dep_migration = self.disk_migrations[dep_app][dep_name]
-                                self.graph.add_dependency(
-                                    (app_label, migration_name),
-                                    (dep_app, dep_name),
-                                    dep_migration
-                                )
-                            except:
-                                pass  # Skip problematic dependencies
-            # Patch validate_consistency to skip errors
-            self.graph.validate_consistency = _patched_validate_consistency
-            return
-        raise
-
-# Apply patches
-django.db.migrations.graph.MigrationGraph.validate_consistency = _patched_validate_consistency
-django.db.migrations.loader.MigrationLoader.build_graph = _patched_build_graph
+# NOTE: A previous version of this file monkey-patched Django's MigrationLoader
+# and MigrationGraph to silently swallow NodeNotFoundError /
+# InconsistentMigrationHistory for built-in apps (auth, contenttypes, sessions,
+# admin). The real cause was a corrupted local virtualenv where some of those
+# built-in migration files had been deleted from site-packages, NOT a Django
+# bug. The patch only hid the corruption and made `makemigrations` crash
+# elsewhere with a confusing `AttributeError` inside `make_state`.
+# The fix is to keep the venv intact (e.g. `pip install --force-reinstall
+# --no-deps Django==4.2.27 djangorestframework-simplejwt==5.5.1`) and let
+# Django's own migration machinery enforce consistency. If migrations ever look
+# wrong again, fix the cause, do not paper over it.
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -244,7 +196,10 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    # Custom pagination class that honours ``?page_size=N`` (capped at
+    # ``max_page_size``). Backward-compatible: existing clients that don't
+    # supply page_size still get the default 20.
+    'DEFAULT_PAGINATION_CLASS': 'utils.pagination.StandardResultsSetPagination',
     'PAGE_SIZE': 20,
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
@@ -257,6 +212,15 @@ REST_FRAMEWORK = {
     'EXCEPTION_HANDLER': 'config.exceptions.custom_exception_handler',
     'URL_FORMAT_OVERRIDE': None,  # Disable format suffix in URL to prevent conflicts with query params
     'FORMAT_SUFFIX_KWARG': None,  # Disable format suffix handling completely
+    # Throttling: opt-in per-view via throttle_classes + throttle_scope.
+    # We don't set DEFAULT_THROTTLE_CLASSES because most endpoints don't
+    # benefit from rate limiting and would just add overhead.
+    'DEFAULT_THROTTLE_RATES': {
+        # Login endpoint (AuthViewSet.login uses ScopedRateThrottle with
+        # throttle_scope='login'). 10 attempts per minute per IP is enough
+        # for honest typo recovery; brute-force needs 1000s/min to succeed.
+        'login': '10/min',
+    },
 }
 
 # JWT Settings
@@ -367,7 +331,34 @@ CORS_PREFLIGHT_MAX_AGE = 86400  # 24 hours
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = 'Lax'
 
-# Logging configuration - Effective logging without over-logging
+# Logging configuration - skip file handlers during ``manage.py test`` (sandbox-safe)
+RUNNING_TESTS = 'test' in sys.argv
+
+_LOG_HANDLERS = {
+    'console': {
+        'level': 'INFO',
+        'class': 'logging.StreamHandler',
+        'formatter': 'simple',
+    },
+}
+if not RUNNING_TESTS:
+    logs_dir = BASE_DIR / 'logs'
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    _LOG_HANDLERS['file'] = {
+        'level': 'ERROR',
+        'class': 'logging.FileHandler',
+        'filename': logs_dir / 'error.log',
+        'formatter': 'verbose',
+    }
+    _LOG_HANDLERS['api_file'] = {
+        'level': 'INFO',
+        'class': 'logging.FileHandler',
+        'filename': logs_dir / 'api.log',
+        'formatter': 'verbose',
+    }
+
+_FILE_HANDLERS = ['file'] if 'file' in _LOG_HANDLERS else ['console']
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -383,25 +374,7 @@ LOGGING = {
             'datefmt': '%Y-%m-%d %H:%M:%S',
         },
     },
-    'handlers': {
-        'console': {
-            'level': 'INFO',
-            'class': 'logging.StreamHandler',
-            'formatter': 'simple',
-        },
-        'file': {
-            'level': 'ERROR',
-            'class': 'logging.FileHandler',
-            'filename': BASE_DIR / 'logs' / 'error.log',
-            'formatter': 'verbose',
-        },
-        'api_file': {
-            'level': 'INFO',
-            'class': 'logging.FileHandler',
-            'filename': BASE_DIR / 'logs' / 'api.log',
-            'formatter': 'verbose',
-        },
-    },
+    'handlers': _LOG_HANDLERS,
     'root': {
         'handlers': ['console'],
         'level': 'INFO',
@@ -413,7 +386,7 @@ LOGGING = {
             'propagate': False,
         },
         'django.request': {
-            'handlers': ['file'],
+            'handlers': _FILE_HANDLERS,
             'level': 'ERROR',
             'propagate': False,
         },
@@ -438,12 +411,12 @@ LOGGING = {
             'propagate': False,
         },
         'barcodes': {
-            'handlers': ['console', 'file'],
+            'handlers': _FILE_HANDLERS,
             'level': 'ERROR',
             'propagate': False,
         },
         'config': {
-            'handlers': ['console', 'file'],
+            'handlers': _FILE_HANDLERS,
             'level': 'ERROR',
             'propagate': False,
         },
@@ -453,20 +426,9 @@ LOGGING = {
             'propagate': False,
         },
         'accounts': {
-            'handlers': ['console', 'file'],
+            'handlers': ['console', *_FILE_HANDLERS],
             'level': 'INFO',
             'propagate': False,
         },
     },
 }
-
-# Ensure logs directory exists
-import os
-logs_dir = BASE_DIR / 'logs'
-if not os.path.exists(logs_dir):
-    os.makedirs(logs_dir)
-
-# Create logs directory if it doesn't exist
-logs_dir = BASE_DIR / 'logs'
-if not logs_dir.exists():
-    os.makedirs(logs_dir, exist_ok=True)

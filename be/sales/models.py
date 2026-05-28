@@ -99,14 +99,28 @@ class Sale(models.Model):
         ('pos', 'POS Sale'),
         ('normal', 'Normal Sale'),
     ]
+
+    STATUS_CHOICES = [
+        ('holding', 'Holding'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled'),
+    ]
     
     PAYMENT_METHODS = [
         ('cash', 'Cash'),
         ('mpesa', 'M-PESA'),
+        ('card', 'Card'),
         ('other', 'Other'),
     ]
 
     sale_number = models.CharField(max_length=50, unique=True, editable=False, db_index=True)
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='completed',
+        db_index=True,
+        help_text='Holding = draft invoice at the register; completed = stock moved and sale finalised.',
+    )
     sale_type = models.CharField(
         max_length=20, 
         choices=SALE_TYPES, 
@@ -126,6 +140,14 @@ class Sale(models.Model):
         on_delete=models.SET_NULL, 
         null=True,
         related_name='sales'
+    )
+    customer = models.ForeignKey(
+        'Customer',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='sales',
+        help_text='Customer attached to this sale (optional for walk-in).',
     )
     subtotal = models.DecimalField(
         max_digits=10, 
@@ -195,6 +217,7 @@ class Sale(models.Model):
             models.Index(fields=['created_at']),
             models.Index(fields=['sale_number']),
             models.Index(fields=['cashier', 'created_at']),
+            models.Index(fields=['status', 'cashier']),
         ]
 
     def save(self, *args, **kwargs):

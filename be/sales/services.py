@@ -10,9 +10,16 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 from .models import Sale, SaleItem, Invoice, InvoiceItem, Payment, Customer, PaymentPlan, CustomerWalletTransaction
 from products.models import Product, ProductVariant
+from products.stock_utils import (
+    sellable_stock_quantity,
+    sellable_unit_price,
+    sellable_unit_cost,
+    variants_sold_as_simple,
+)
 from inventory.models import StockMovement
 from settings.models import Branch
 from settings.utils import get_current_branch, is_branch_support_enabled
+from settings.feature_flags import is_product_variants_enabled
 from services.base import BaseService
 
 
@@ -88,11 +95,23 @@ class SaleService(BaseService):
                 Q(cashier__username__icontains=search) |
                 Q(notes__icontains=search)
             )
+
+        # Status filter — default hides register drafts from sales history / reports.
+        status = filters.get('status')
+        if status:
+            queryset = queryset.filter(status=status)
+        elif filters.get('include_holding') not in (True, 'true', '1', 1):
+            queryset = queryset.exclude(status='holding')
         
         return queryset
     
-    def validate_sale_items(self, items_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Validate sale items and check stock availability"""
+    def validate_sale_items(
+        self,
+        items_data: List[Dict[str, Any]],
+        *,
+        check_stock: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """Validate sale items; optionally enforce stock (checkout only)."""
         validated_items = []
         
         for item_data in items_data:
@@ -109,7 +128,7 @@ class SaleService(BaseService):
                 raise ValidationError(f"Product with id {product_id} not found")
             
             variant = None
-            if variant_id:
+            if variant_id and is_product_variants_enabled():
                 try:
                     variant = ProductVariant.objects.get(
                         id=variant_id,
@@ -120,29 +139,28 @@ class SaleService(BaseService):
                     raise ValidationError(
                         f"Variant with id {variant_id} not found for this product"
                     )
+            elif variant_id and not is_product_variants_enabled():
+                # Ignore stale variant_id from clients when the feature is off.
+                variant_id = None
             
-            # Check stock
-            if product.track_stock:
-                stock_quantity = variant.stock_quantity if variant else product.stock_quantity
+            # Stock is enforced at checkout, not while saving holding drafts.
+            if check_stock and product.track_stock:
+                stock_quantity = sellable_stock_quantity(product, variant)
                 if stock_quantity < quantity:
-                    stock_info = f"Variant {variant}" if variant else product.name
+                    stock_info = variant.sku if variant else product.name
                     raise ValidationError(
                         f"Insufficient stock for {stock_info}. Available: {stock_quantity}"
                     )
             
             # Get unit price
-            unit_price = item_data.get('unit_price')
-            if unit_price is None:
-                if variant and variant.price is not None:
-                    unit_price = variant.price
-                else:
-                    unit_price = product.price
+            unit_price = sellable_unit_price(
+                product,
+                variant,
+                override=item_data.get('unit_price'),
+            )
             
             # Get unit cost
-            if variant and variant.cost is not None:
-                unit_cost = variant.cost
-            else:
-                unit_cost = product.cost
+            unit_cost = sellable_unit_cost(product, variant)
             
             validated_items.append({
                 'product': product,
@@ -154,6 +172,256 @@ class SaleService(BaseService):
             })
         
         return validated_items
+
+    def _create_sale_stock_movements(
+        self,
+        *,
+        branch,
+        user,
+        reference: str,
+        notes: str,
+        product,
+        variant,
+        quantity: int,
+        unit_cost,
+    ):
+        """Create stock movement(s) for a sale line, FIFO across variants when needed."""
+        if not product.track_stock:
+            return
+
+        if variant is None and variants_sold_as_simple(product):
+            remaining = int(quantity)
+            for v in product.variants.filter(is_active=True, stock_quantity__gt=0).order_by('id'):
+                if remaining <= 0:
+                    break
+                take = min(remaining, v.stock_quantity)
+                StockMovement.objects.create(
+                    branch=branch,
+                    product=product,
+                    variant=v,
+                    movement_type='sale',
+                    quantity=take,
+                    unit_cost=unit_cost,
+                    total_cost=take * unit_cost,
+                    reference=reference,
+                    user=user,
+                    notes=notes,
+                )
+                remaining -= take
+            # Remaining quantity often lives on the parent row when variants
+            # were turned off or stock was never split across variant SKUs.
+            if remaining > 0:
+                StockMovement.objects.create(
+                    branch=branch,
+                    product=product,
+                    variant=None,
+                    movement_type='sale',
+                    quantity=remaining,
+                    unit_cost=unit_cost,
+                    total_cost=remaining * unit_cost,
+                    reference=reference,
+                    user=user,
+                    notes=notes,
+                )
+            return
+
+        StockMovement.objects.create(
+            branch=branch,
+            product=product,
+            variant=variant,
+            movement_type='sale',
+            quantity=quantity,
+            unit_cost=unit_cost,
+            total_cost=quantity * unit_cost,
+            reference=reference,
+            user=user,
+            notes=notes,
+        )
+
+    def get_active_holding(self, user, branch: Optional[Branch] = None) -> Optional[Sale]:
+        """Return the cashier's open holding invoice for this branch, if any."""
+        qs = self.model.objects.filter(
+            cashier=user,
+            status='holding',
+        ).prefetch_related('items__product', 'items__variant')
+        if branch:
+            qs = qs.filter(branch=branch)
+        return qs.order_by('-updated_at').first()
+
+    @transaction.atomic
+    def save_holding_sale(
+        self,
+        user,
+        items_data: List[Dict[str, Any]],
+        *,
+        branch: Optional[Branch] = None,
+        customer: Optional[Customer] = None,
+        tax_amount: Decimal = Decimal('0'),
+        discount_amount: Decimal = Decimal('0'),
+        notes: str = '',
+        holding_id: Optional[int] = None,
+    ) -> Sale:
+        """
+        Create or update a holding (draft) sale. Does NOT move stock or post
+        accounting entries — those happen in ``complete_holding_sale``.
+        """
+        validated_items = (
+            self.validate_sale_items(items_data, check_stock=False) if items_data else []
+        )
+
+        subtotal = sum(item['subtotal'] for item in validated_items)
+        total = subtotal + tax_amount - discount_amount
+
+        holding = None
+        if holding_id:
+            holding = self.model.objects.filter(
+                id=holding_id, cashier=user, status='holding'
+            ).first()
+        if not holding:
+            holding = self.get_active_holding(user, branch)
+
+        if holding:
+            holding.items.all().delete()
+            holding.customer = customer
+            holding.branch = branch or holding.branch
+            holding.subtotal = subtotal
+            holding.tax_amount = tax_amount
+            holding.discount_amount = discount_amount
+            holding.total = max(Decimal('0'), total)
+            holding.amount_paid = Decimal('0')
+            holding.change = Decimal('0')
+            holding.notes = notes or holding.notes
+            holding.save()
+        else:
+            holding = self.model.objects.create(
+                sale_type='pos',
+                status='holding',
+                branch=branch,
+                cashier=user,
+                customer=customer,
+                subtotal=subtotal,
+                tax_amount=tax_amount,
+                discount_amount=discount_amount,
+                total=max(Decimal('0'), total),
+                payment_method='cash',
+                amount_paid=Decimal('0'),
+                change=Decimal('0'),
+                notes=notes,
+            )
+
+        for item_data in validated_items:
+            SaleItem.objects.create(
+                sale=holding,
+                product=item_data['product'],
+                variant=item_data['variant'],
+                quantity=item_data['quantity'],
+                unit_price=item_data['unit_price'],
+                subtotal=item_data['subtotal'],
+            )
+
+        return holding
+
+    @transaction.atomic
+    def complete_holding_sale(
+        self,
+        holding: Sale,
+        *,
+        payment_method: str,
+        amount_paid: Decimal,
+        user,
+        branch: Optional[Branch] = None,
+        allow_partial: bool = False,
+        excess_payment_choice: str = 'change',
+        use_wallet: bool = False,
+        wallet_amount: Decimal = Decimal('0'),
+    ) -> Sale:
+        """Finalise a holding sale: stock, journal entry, status=completed."""
+        if holding.status != 'holding':
+            raise ValidationError('This sale is not a holding invoice.')
+
+        items_data = [
+            {
+                'product_id': item.product_id,
+                'variant_id': item.variant_id,
+                'quantity': item.quantity,
+                'unit_price': item.unit_price,
+            }
+            for item in holding.items.select_related('product', 'variant')
+        ]
+        if not items_data:
+            raise ValidationError('Cannot checkout an empty cart.')
+
+        validated_items = self.validate_sale_items(items_data)
+
+        subtotal = sum(item['subtotal'] for item in validated_items)
+        tax_amount = holding.tax_amount or Decimal('0')
+        discount_amount = holding.discount_amount or Decimal('0')
+        delivery_cost = holding.delivery_cost or Decimal('0')
+        total = subtotal + tax_amount - discount_amount + delivery_cost
+
+        customer = holding.customer
+        wallet_amount_used = Decimal('0')
+        wallet_credit_added = Decimal('0')
+
+        if customer and use_wallet and customer.wallet_balance > 0:
+            wallet_result = self.handle_wallet_transactions(
+                customer,
+                total,
+                amount_paid,
+                use_wallet,
+                wallet_amount,
+                holding,
+                user,
+            )
+            wallet_amount_used = wallet_result.get('wallet_amount_used', Decimal('0'))
+            wallet_credit_added = wallet_result.get('wallet_credit_added', Decimal('0'))
+
+        change = Decimal('0')
+        if payment_method in ('cash', 'mpesa', 'card'):
+            if excess_payment_choice == 'wallet' and customer and amount_paid > total:
+                change = Decimal('0')
+            else:
+                change = max(Decimal('0'), amount_paid - total)
+
+        holding.items.all().delete()
+        for item_data in validated_items:
+            SaleItem.objects.create(
+                sale=holding,
+                product=item_data['product'],
+                variant=item_data['variant'],
+                quantity=item_data['quantity'],
+                unit_price=item_data['unit_price'],
+                subtotal=item_data['subtotal'],
+            )
+            if item_data['product'].track_stock:
+                self._create_sale_stock_movements(
+                    branch=branch or holding.branch,
+                    user=user,
+                    reference=holding.sale_number,
+                    notes=f'Sale {holding.sale_number}',
+                    product=item_data['product'],
+                    variant=item_data['variant'],
+                    quantity=item_data['quantity'],
+                    unit_cost=item_data['unit_cost'],
+                )
+
+        holding.subtotal = subtotal
+        holding.total = total
+        holding.payment_method = payment_method
+        holding.amount_paid = amount_paid
+        holding.change = change
+        holding.status = 'completed'
+        holding.save()
+
+        try:
+            from accounting.services import create_sale_journal_entry
+            create_sale_journal_entry(holding)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error creating journal entry for sale: {e}")
+
+        return holding
     
     @transaction.atomic
     def create_sale(self, sale_data: Dict[str, Any], items_data: List[Dict[str, Any]],
@@ -182,8 +450,10 @@ class SaleService(BaseService):
         # Create sale
         sale = Sale.objects.create(
             sale_type=sale_type,
+            status='completed',
             branch=branch,
             cashier=user,
+            customer=sale_data.get('customer'),
             subtotal=subtotal,
             tax_amount=tax_amount,
             discount_amount=discount_amount,
@@ -198,7 +468,8 @@ class SaleService(BaseService):
             notes=sale_data.get('notes', ''),
         )
         
-        # Create sale items and update stock
+        # Create sale items. Stock is mutated exclusively by StockMovement.save()
+        # below — see inventory/models.py. Doing both here would double-decrement.
         for item_data in validated_items:
             SaleItem.objects.create(
                 sale=sale,
@@ -208,30 +479,17 @@ class SaleService(BaseService):
                 unit_price=item_data['unit_price'],
                 subtotal=item_data['subtotal']
             )
-            
-            # Update stock
+
             if item_data['product'].track_stock:
-                if item_data['variant']:
-                    variant = item_data['variant']
-                    variant.stock_quantity -= item_data['quantity']
-                    variant.save()
-                else:
-                    product = item_data['product']
-                    product.stock_quantity -= item_data['quantity']
-                    product.save()
-                
-                # Create stock movement
-                StockMovement.objects.create(
+                self._create_sale_stock_movements(
                     branch=branch,
+                    user=user,
+                    reference=sale.sale_number,
+                    notes=f'Sale {sale.sale_number}',
                     product=item_data['product'],
                     variant=item_data['variant'],
-                    movement_type='sale',
                     quantity=item_data['quantity'],
                     unit_cost=item_data['unit_cost'],
-                    total_cost=item_data['quantity'] * item_data['unit_cost'],
-                    reference=sale.sale_number,
-                    user=user,
-                    notes=f'Sale {sale.sale_number}'
                 )
         
         # Create journal entry
@@ -249,7 +507,7 @@ class SaleService(BaseService):
     def get_sale_statistics(self, date_from: Optional[str] = None,
                           date_to: Optional[str] = None) -> Dict[str, Any]:
         """Get comprehensive sale statistics"""
-        queryset = self.model.objects.all()
+        queryset = self.model.objects.filter(status='completed')
         
         if date_from:
             queryset = queryset.filter(created_at__gte=date_from)

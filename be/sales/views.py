@@ -1,14 +1,17 @@
 from rest_framework import viewsets, status, serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
 from django.db.models import Q, Sum
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 from datetime import datetime, timedelta
 from decimal import Decimal
 from .models import Sale, SaleItem, Invoice, InvoiceItem, Payment, Customer, PaymentPlan, PaymentReminder, CustomerWalletTransaction
 from .serializers import (
     SaleSerializer, SaleCreateSerializer,
+    HoldingSaleSerializer, CheckoutHoldingSerializer,
     InvoiceSerializer, InvoiceCreateSerializer,
     PaymentSerializer, PaymentCreateSerializer,
     CustomerSerializer, CustomerListSerializer
@@ -17,14 +20,67 @@ from products.models import Product, ProductVariant
 from inventory.models import StockMovement
 from settings.utils import get_current_branch, get_current_tenant, is_branch_support_enabled
 from .services import SaleService, InvoiceService, PaymentService, CustomerService
+from accounts.permissions import RequirePermPerAction
+from utils.audit_mixin import AuditedModelViewSetMixin
+from utils.validation_errors import validation_error_message
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-class SaleViewSet(viewsets.ModelViewSet):
+# RBAC maps. Note: SaleViewSet does NOT include 'destroy' here because we
+# disable DELETE on Sales at the http_method_names level for audit-trail
+# integrity (refunds/voids should be modelled separately, not DB deletes).
+SALES_PERMS = RequirePermPerAction('sales', {
+    'list': 'view',
+    'retrieve': 'view',
+    'create': 'create',
+    'update': 'update',
+    'partial_update': 'update',
+    'receipt': 'view',
+    'active_holding': 'view',
+    'save_holding': 'create',
+    'checkout': 'create',
+    'cancel_holding': 'update',
+})
+
+CUSTOMERS_PERMS = RequirePermPerAction('customers', {
+    'list': 'view',
+    'retrieve': 'view',
+    'create': 'create',
+    'update': 'update',
+    'partial_update': 'update',
+    'destroy': 'delete',
+})
+
+INVOICES_PERMS = RequirePermPerAction('invoicing', {
+    'list': 'view',
+    'retrieve': 'view',
+    'create': 'create',
+    'update': 'update',
+    'partial_update': 'update',
+    'send': 'update',
+    'statistics': 'view',
+    'download_pdf': 'view',
+    # 'destroy' deliberately omitted - DELETE disabled at http_method_names.
+})
+
+PAYMENTS_PERMS = RequirePermPerAction('invoicing', {
+    'list': 'view',
+    'retrieve': 'view',
+    'create': 'create',
+    # Payments are immutable financial events - no update or destroy.
+})
+
+
+class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = Sale.objects.all().select_related('cashier').prefetch_related('items__product')
     serializer_class = SaleSerializer
+    permission_classes = [IsAuthenticated, SALES_PERMS]
+    audit_module = 'sales'
+    # Sales are part of the audit trail - never deletable via the API. Use a
+    # void/refund flow instead (modelled separately).
+    http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
     ordering = ['-created_at']
     
     def __init__(self, *args, **kwargs):
@@ -41,6 +97,17 @@ class SaleViewSet(viewsets.ModelViewSet):
         for param in ['branch_id', 'show_all', 'date_from', 'date_to', 'payment_method', 'search']:
             if param in query_params:
                 filters[param] = query_params.get(param)
+
+        # Draft (holding) sales are hidden from list/history by default, but detail
+        # routes such as checkout and cancel-holding must resolve them by pk.
+        if getattr(self, 'action', None) in (
+            'retrieve',
+            'update',
+            'partial_update',
+            'checkout',
+            'cancel_holding',
+        ):
+            filters['include_holding'] = True
         
         return self.sale_service.build_queryset(filters, request=self.request)
 
@@ -348,6 +415,9 @@ class SaleViewSet(viewsets.ModelViewSet):
         # Create invoice for normal sales (always), optionally for POS sales
         invoice = None
         create_invoice = serializer.validated_data.get('create_invoice', False)
+        # Hoisted from below: referenced in the customer-name default branch
+        # before its original definition further down, which raised NameError.
+        create_payment_plan = serializer.validated_data.get('create_payment_plan', False)
         # Normal sales always create invoice
         if sale_type == 'normal' or create_invoice:
             customer_id = serializer.validated_data.get('customer_id', None)
@@ -434,8 +504,8 @@ class SaleViewSet(viewsets.ModelViewSet):
                     notes=f"Initial payment from sale {sale.sale_number}"
                 )
             
-            # Create payment plan if requested (for normal sales with installments)
-            create_payment_plan = serializer.validated_data.get('create_payment_plan', False)
+            # Create payment plan if requested (for normal sales with installments).
+            # `create_payment_plan` is hoisted near the top of this method.
             if create_payment_plan and invoice and invoice.balance > 0:
                 number_of_installments = serializer.validated_data.get('number_of_installments')
                 frequency = serializer.validated_data.get('installment_frequency')
@@ -505,10 +575,153 @@ class SaleViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(sale)
         return Response(serializer.data)
 
+    def _resolve_branch(self, request, branch_id=None):
+        if not is_branch_support_enabled():
+            return None
+        current_branch = get_current_branch(request)
+        if branch_id:
+            from settings.models import Branch
+            try:
+                branch = Branch.objects.get(id=branch_id, is_active=True)
+                tenant = get_current_tenant(request)
+                if tenant and branch.tenant != tenant:
+                    return None
+                return branch
+            except Branch.DoesNotExist:
+                pass
+        return current_branch
 
-class CustomerViewSet(viewsets.ModelViewSet):
+    @action(detail=False, methods=['get'], url_path='active-holding')
+    def active_holding(self, request):
+        """Return the cashier's open holding invoice for the current branch."""
+        branch = self._resolve_branch(request)
+        holding = self.sale_service.get_active_holding(request.user, branch)
+        if not holding:
+            return Response({'holding': None})
+        return Response({'holding': SaleSerializer(holding).data})
+
+    @action(detail=False, methods=['post'], url_path='holding')
+    @transaction.atomic
+    def save_holding(self, request):
+        """Create or update a holding invoice (draft) without moving stock."""
+        serializer = HoldingSaleSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        customer = None
+        customer_id = data.get('customer_id')
+        if customer_id:
+            try:
+                customer = Customer.objects.get(id=customer_id, is_active=True)
+            except Customer.DoesNotExist:
+                return Response(
+                    {'error': 'Customer not found'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+        branch = self._resolve_branch(request, data.get('branch_id'))
+        try:
+            holding = self.sale_service.save_holding_sale(
+                request.user,
+                data.get('items', []),
+                branch=branch,
+                customer=customer,
+                tax_amount=Decimal(str(data.get('tax_amount', 0))),
+                discount_amount=Decimal(str(data.get('discount_amount', 0))),
+                notes=data.get('notes', ''),
+                holding_id=data.get('holding_id'),
+            )
+        except ValidationError as e:
+            return Response(
+                {'error': validation_error_message(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(SaleSerializer(holding).data)
+
+    @action(detail=True, methods=['post'])
+    @transaction.atomic
+    def checkout(self, request, pk=None):
+        """Complete a holding sale: stock, accounting, receipt."""
+        holding = self.get_object()
+        if holding.status != 'holding':
+            return Response(
+                {'error': 'Only holding invoices can be checked out.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = CheckoutHoldingSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        payment_method = serializer.validated_data['payment_method']
+        amount_paid = Decimal(str(serializer.validated_data.get('amount_paid', 0)))
+        allow_partial = serializer.validated_data.get('allow_partial_payment', False)
+
+        customer = holding.customer
+        total = holding.total or Decimal('0')
+
+        if payment_method in ('cash', 'mpesa', 'card'):
+            if amount_paid <= 0:
+                return Response(
+                    {'error': 'Enter the amount received from the customer.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if amount_paid < total and not allow_partial:
+                return Response(
+                    {
+                        'error': (
+                            f'Amount received ({amount_paid}) is less than total ({total}). '
+                            'Select a customer and allow partial payment, or collect the full amount.'
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if amount_paid < total and allow_partial and not customer:
+                return Response(
+                    {'error': 'Customer required for partial payment.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        branch = holding.branch or self._resolve_branch(request)
+        try:
+            sale = self.sale_service.complete_holding_sale(
+                holding,
+                payment_method=payment_method,
+                amount_paid=amount_paid,
+                user=request.user,
+                branch=branch,
+                allow_partial=allow_partial,
+                excess_payment_choice=serializer.validated_data.get('excess_payment_choice', 'change'),
+                use_wallet=serializer.validated_data.get('use_wallet', False),
+                wallet_amount=Decimal(str(serializer.validated_data.get('wallet_amount', 0))),
+            )
+        except ValidationError as e:
+            return Response(
+                {'error': validation_error_message(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(SaleSerializer(sale).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='cancel-holding')
+    @transaction.atomic
+    def cancel_holding(self, request, pk=None):
+        """Discard a holding invoice without completing it."""
+        holding = self.get_object()
+        if holding.status != 'holding':
+            return Response(
+                {'error': 'Only holding invoices can be cancelled.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        holding.status = 'cancelled'
+        holding.save(update_fields=['status', 'updated_at'])
+        return Response({'message': 'Holding invoice cancelled.', 'sale_number': holding.sale_number})
+
+
+class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = Customer.objects.all()
     serializer_class = CustomerSerializer
+    permission_classes = [IsAuthenticated, CUSTOMERS_PERMS]
+    audit_module = 'customers'
     ordering = ['name']
     
     def get_serializer_class(self):
@@ -600,11 +813,15 @@ class CustomerViewSet(viewsets.ModelViewSet):
         return queryset
 
 
-class InvoiceViewSet(viewsets.ModelViewSet):
+class InvoiceViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = Invoice.objects.all().select_related('sale', 'created_by').prefetch_related(
         'items__product', 'items__variant', 'payments'
     )
     serializer_class = InvoiceSerializer
+    permission_classes = [IsAuthenticated, INVOICES_PERMS]
+    audit_module = 'invoicing'
+    # Invoices are part of the audit trail - never deletable via the API.
+    http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
     ordering = ['-created_at']
     
     def get_queryset(self):
@@ -922,9 +1139,13 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         return response
 
 
-class PaymentViewSet(viewsets.ModelViewSet):
+class PaymentViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = Payment.objects.all().select_related('invoice', 'recorded_by')
     serializer_class = PaymentSerializer
+    permission_classes = [IsAuthenticated, PAYMENTS_PERMS]
+    audit_module = 'invoicing'
+    # Payments are immutable financial events - never mutable via the API.
+    http_method_names = ['get', 'post', 'head', 'options']
     ordering = ['-payment_date', '-created_at']
     
     def get_queryset(self):

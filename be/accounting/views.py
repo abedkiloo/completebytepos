@@ -1,6 +1,7 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 from django.db.models import Sum, Q, F
 from django.db import transaction
 from django.utils import timezone
@@ -15,8 +16,26 @@ from .serializers import (
     BalanceSheetSerializer, IncomeStatementSerializer, TrialBalanceSerializer
 )
 from .services import AccountTypeService, AccountService, JournalEntryService, TransactionService
+from accounts.permissions import RequirePermPerAction
 from expenses.models import Expense
 from sales.models import Sale
+
+
+ACCOUNTING_PERMS = RequirePermPerAction('accounting', {
+    'list': 'view',
+    'retrieve': 'view',
+    'create': 'create',
+    'update': 'update',
+    'partial_update': 'update',
+    'destroy': 'delete',
+    'update_balance': 'update',
+    'balance_sheet': 'view',
+    'income_statement': 'view',
+    'trial_balance': 'view',
+    'general_ledger': 'view',
+    'cash_flow': 'view',
+    'account_statement': 'view',
+})
 
 
 # Wrapper functions for backward compatibility - delegate to service layer
@@ -210,6 +229,7 @@ def create_payment_journal_entry(payment):
 class AccountTypeViewSet(viewsets.ModelViewSet):
     queryset = AccountType.objects.all()
     serializer_class = AccountTypeSerializer
+    permission_classes = [IsAuthenticated, ACCOUNTING_PERMS]
     ordering = ['name']
     
     def __init__(self, *args, **kwargs):
@@ -224,6 +244,7 @@ class AccountTypeViewSet(viewsets.ModelViewSet):
 class AccountViewSet(viewsets.ModelViewSet):
     queryset = Account.objects.all().select_related('account_type', 'parent')
     serializer_class = AccountSerializer
+    permission_classes = [IsAuthenticated, ACCOUNTING_PERMS]
     ordering = ['account_code']
     
     def __init__(self, *args, **kwargs):
@@ -254,6 +275,9 @@ class AccountViewSet(viewsets.ModelViewSet):
 class JournalEntryViewSet(viewsets.ModelViewSet):
     queryset = JournalEntry.objects.all().select_related('account', 'created_by')
     serializer_class = JournalEntrySerializer
+    permission_classes = [IsAuthenticated, ACCOUNTING_PERMS]
+    # Journal entries are an audit log - never delete-able via the API.
+    http_method_names = ['get', 'post', 'head', 'options']
     ordering = ['-entry_date', '-created_at']
     
     def __init__(self, *args, **kwargs):
@@ -279,6 +303,9 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
 class TransactionViewSet(viewsets.ModelViewSet):
     queryset = Transaction.objects.all().prefetch_related('journal_entries').select_related('created_by')
     serializer_class = TransactionSerializer
+    permission_classes = [IsAuthenticated, ACCOUNTING_PERMS]
+    # Accounting transactions are an audit log - never delete-able via the API.
+    http_method_names = ['get', 'post', 'head', 'options']
     ordering = ['-transaction_date', '-created_at']
     
     def __init__(self, *args, **kwargs):
@@ -303,6 +330,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
 class AccountingReportViewSet(viewsets.ViewSet):
     """Accounting reports"""
+    permission_classes = [IsAuthenticated, ACCOUNTING_PERMS]
     
     @action(detail=False, methods=['get'])
     def balance_sheet(self, request):

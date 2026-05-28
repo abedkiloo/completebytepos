@@ -1,6 +1,8 @@
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from django.core.exceptions import ValidationError
 from django.db.models import Sum, Count, Q
 from django.utils import timezone
 from datetime import datetime, timedelta
@@ -9,15 +11,31 @@ from .serializers import (
     ExpenseCategorySerializer, ExpenseSerializer, ExpenseListSerializer
 )
 from .services import ExpenseCategoryService, ExpenseService
+from accounts.permissions import RequirePermPerAction
+from utils.audit_mixin import AuditedModelViewSetMixin
 from settings.utils import get_current_branch, get_current_tenant, is_branch_support_enabled
 import logging
 
 logger = logging.getLogger(__name__)
 
 
+EXPENSES_PERMS = RequirePermPerAction('expenses', {
+    'list': 'view',
+    'retrieve': 'view',
+    'create': 'create',
+    'update': 'update',
+    'partial_update': 'update',
+    'destroy': 'delete',
+    'statistics': 'view',
+    'approve': 'approve',
+    'reject': 'approve',
+})
+
+
 class ExpenseCategoryViewSet(viewsets.ModelViewSet):
     queryset = ExpenseCategory.objects.all()
     serializer_class = ExpenseCategorySerializer
+    permission_classes = [IsAuthenticated, EXPENSES_PERMS]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'description']
     ordering_fields = ['name', 'created_at']
@@ -35,9 +53,11 @@ class ExpenseCategoryViewSet(viewsets.ModelViewSet):
         return self.category_service.build_queryset(filters)
 
 
-class ExpenseViewSet(viewsets.ModelViewSet):
+class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = Expense.objects.all().select_related('category', 'created_by', 'approved_by')
     serializer_class = ExpenseSerializer
+    permission_classes = [IsAuthenticated, EXPENSES_PERMS]
+    audit_module = 'expenses'
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['expense_number', 'description', 'vendor', 'receipt_number']
     ordering_fields = ['expense_date', 'amount', 'created_at']

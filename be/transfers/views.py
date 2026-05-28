@@ -1,16 +1,34 @@
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 from django.db.models import Sum, Count, Q
 from django.core.exceptions import ValidationError
 from .models import MoneyTransfer
 from .serializers import MoneyTransferSerializer
 from .services import MoneyTransferService
+from accounts.permissions import RequirePermPerAction
+from utils.audit_mixin import AuditedModelViewSetMixin
 
 
-class MoneyTransferViewSet(viewsets.ModelViewSet):
+TRANSFERS_PERMS = RequirePermPerAction('money_transfer', {
+    'list': 'view',
+    'retrieve': 'view',
+    'create': 'create',
+    'update': 'update',
+    'partial_update': 'update',
+    'destroy': 'delete',
+    'statistics': 'view',
+    'approve': 'approve',
+    'reject': 'approve',
+})
+
+
+class MoneyTransferViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = MoneyTransfer.objects.all().select_related('from_account', 'to_account', 'created_by', 'approved_by')
     serializer_class = MoneyTransferSerializer
+    permission_classes = [IsAuthenticated, TRANSFERS_PERMS]
+    audit_module = 'money_transfer'
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['transfer_number', 'description', 'reference']
     ordering_fields = ['transfer_date', 'amount', 'created_at']

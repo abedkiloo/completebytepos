@@ -2,6 +2,7 @@ from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework.permissions import IsAuthenticated
 from django.db.models import Q, F, Sum, Count, Avg
 from django.db import transaction
 from django.http import HttpResponse
@@ -16,14 +17,53 @@ from .serializers import (
 from .services import (
     ProductService, CategoryService, SizeService, ColorService, ProductVariantService
 )
+from accounts.permissions import RequirePermPerAction
+from settings.feature_flags import is_product_variants_enabled
+from utils.audit_mixin import AuditedModelViewSetMixin
 import csv
 import json
+
+
+# Permission maps. Each entry maps a DRF action (built-in or @action name) to
+# the permission action verb checked against the user's role/custom_role.
+# @action endpoints not listed here are denied by RequirePermPerAction
+# (fail-closed).
+PRODUCTS_PERMS = RequirePermPerAction('products', {
+    'list': 'view',
+    'retrieve': 'view',
+    'create': 'create',
+    'update': 'update',
+    'partial_update': 'update',
+    'destroy': 'delete',
+    'search': 'view',
+    'low_stock': 'view',
+    'out_of_stock': 'view',
+    'statistics': 'view',
+    'export': 'export',
+    'import_csv': 'import',
+    'bulk_update': 'update',
+    'bulk_delete': 'delete',
+    'bulk_activate': 'update',
+    'bulk_deactivate': 'update',
+})
+
+CATEGORIES_PERMS = RequirePermPerAction('categories', {
+    'list': 'view',
+    'retrieve': 'view',
+    'create': 'create',
+    'update': 'update',
+    'partial_update': 'update',
+    'destroy': 'delete',
+    # CategoryViewSet.products is a read action listing products in a category
+    'products': 'view',
+})
 
 
 class SizeViewSet(viewsets.ModelViewSet):
     """ViewSet for managing product sizes"""
     queryset = Size.objects.all()
     serializer_class = SizeSerializer
+    permission_classes = [IsAuthenticated, PRODUCTS_PERMS]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'code']
     ordering_fields = ['display_order', 'name']
@@ -45,6 +85,7 @@ class ColorViewSet(viewsets.ModelViewSet):
     """ViewSet for managing product colors"""
     queryset = Color.objects.all()
     serializer_class = ColorSerializer
+    permission_classes = [IsAuthenticated, PRODUCTS_PERMS]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name']
     ordering_fields = ['name']
@@ -66,6 +107,7 @@ class ProductVariantViewSet(viewsets.ModelViewSet):
     """ViewSet for managing product variants"""
     queryset = ProductVariant.objects.select_related('product', 'size', 'color').all()
     serializer_class = ProductVariantSerializer
+    permission_classes = [IsAuthenticated, PRODUCTS_PERMS]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['sku', 'barcode', 'product__name']
     ordering_fields = ['product', 'size', 'color', 'sku']
@@ -85,9 +127,11 @@ class ProductVariantViewSet(viewsets.ModelViewSet):
         return self.variant_service.build_queryset(filters)
 
 
-class CategoryViewSet(viewsets.ModelViewSet):
+class CategoryViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = Category.objects.all().prefetch_related('products', 'children')
     serializer_class = CategorySerializer
+    permission_classes = [IsAuthenticated, CATEGORIES_PERMS]
+    audit_module = 'categories'
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'description']
     ordering_fields = ['name', 'created_at']
@@ -120,9 +164,11 @@ class CategoryViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class ProductViewSet(viewsets.ModelViewSet):
+class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
+    permission_classes = [IsAuthenticated, PRODUCTS_PERMS]
+    audit_module = 'products'
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'sku', 'barcode', 'description', 'supplier__name', 'category__name']
@@ -160,8 +206,8 @@ class ProductViewSet(viewsets.ModelViewSet):
             # Let serializer create the product (handles ManyToMany fields)
             product = serializer.save()
             
-            # Use service to create variants if needed
-            if product.has_variants:
+            # Variants only when the module feature is on
+            if is_product_variants_enabled() and product.has_variants:
                 sizes = product.available_sizes.all()
                 colors = product.available_colors.all()
                 if sizes.exists() or colors.exists():
@@ -170,6 +216,11 @@ class ProductViewSet(viewsets.ModelViewSet):
                         sizes=[s.id for s in sizes] if sizes.exists() else None,
                         colors=[c.id for c in colors] if colors.exists() else None
                     )
+            elif product.has_variants:
+                product.has_variants = False
+                product.available_sizes.clear()
+                product.available_colors.clear()
+                product.save(update_fields=['has_variants'])
         except Exception as e:
             import logging
             logger = logging.getLogger(__name__)
@@ -187,7 +238,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         sizes = product.available_sizes.all()
         colors = product.available_colors.all()
         
-        if product.has_variants and (sizes.exists() or colors.exists()):
+        if is_product_variants_enabled() and product.has_variants and (sizes.exists() or colors.exists()):
             # Delete existing variants and recreate
             ProductVariant.objects.filter(product=product).delete()
             self.product_service.variant_service.create_variants_for_product(
@@ -195,8 +246,13 @@ class ProductViewSet(viewsets.ModelViewSet):
                 sizes=[s.id for s in sizes] if sizes.exists() else None,
                 colors=[c.id for c in colors] if colors.exists() else None
             )
-        elif not product.has_variants:
-            # Delete variants if has_variants is False
+        elif not product.has_variants or not is_product_variants_enabled():
+            # Feature off or flag cleared — sell as a simple product
+            if product.has_variants:
+                product.has_variants = False
+                product.available_sizes.clear()
+                product.available_colors.clear()
+                product.save(update_fields=['has_variants'])
             ProductVariant.objects.filter(product=product).delete()
 
     @action(detail=False, methods=['get'])

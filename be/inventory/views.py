@@ -1,6 +1,7 @@
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
 from django.db.models import F, Sum, Count, Q
 from django.utils import timezone
@@ -14,15 +15,49 @@ from .serializers import (
 from .services import StockMovementService
 from products.models import Product, ProductVariant
 from settings.utils import get_current_branch, get_current_tenant, is_branch_support_enabled
+from accounts.permissions import RequirePermPerAction
+from utils.audit_mixin import AuditedModelViewSetMixin
 from django.core.exceptions import ValidationError
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-class StockMovementViewSet(viewsets.ModelViewSet):
+# Stock movements get gated against the `inventory` module. The custom @action
+# endpoints map to permission verbs that match their intent:
+#   adjust/purchase/transfer  -> 'create' (they create a StockMovement)
+#   undo                       -> 'update' (it reverses a previous movement)
+#   bulk_adjust                -> 'create'
+#   low_stock/out_of_stock/needs_reorder/report/movements_by_type/product_history -> 'view'
+INVENTORY_PERMS = RequirePermPerAction('inventory', {
+    'list': 'view',
+    'retrieve': 'view',
+    'create': 'create',
+    'update': 'update',
+    'partial_update': 'update',
+    'destroy': 'delete',
+    'adjust': 'create',
+    'purchase': 'create',
+    'transfer': 'create',
+    'undo': 'update',
+    'bulk_adjust': 'create',
+    'low_stock': 'view',
+    'out_of_stock': 'view',
+    'needs_reorder': 'view',
+    'report': 'view',
+    'movements_by_type': 'view',
+    'product_history': 'view',
+})
+
+
+class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = StockMovement.objects.all().select_related('product', 'user')
     serializer_class = StockMovementSerializer
+    permission_classes = [IsAuthenticated, INVENTORY_PERMS]
+    audit_module = 'inventory'
+    # Stock movements are an audit log - the ONLY way to reverse one is via
+    # the `undo` action which creates a compensating movement.
+    http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
     ordering = ['-created_at']
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['product__name', 'product__sku', 'reference', 'notes']
@@ -186,203 +221,38 @@ class StockMovementViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     @action(detail=True, methods=['post'])
     def undo(self, request, pk=None):
-        """Undo a stock transfer by reversing the movements"""
+        """Undo a stock transfer by reversing the movements (service layer)."""
         try:
             movement = self.get_object()
         except StockMovement.DoesNotExist:
             return Response(
                 {'error': 'Stock movement not found'},
-                status=status.HTTP_404_NOT_FOUND
+                status=status.HTTP_404_NOT_FOUND,
             )
-        
-        # Only allow undoing transfer movements
-        if movement.movement_type != 'transfer':
-            return Response(
-                {'error': 'Can only undo transfer movements'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Check if already undone
-        if movement.notes and 'UNDONE' in movement.notes:
-            return Response(
-                {'error': 'This transfer has already been undone'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Find the paired movement (if transfer between branches)
-        # For outbound transfers, find the inbound; for inbound, find the outbound
-        paired_movement = None
-        
-        # Primary method: Use shared reference ID to pair movements
-        # New transfers use format: TRF-{transfer_id}-OUT and TRF-{transfer_id}-IN
-        # This works even with custom notes
-        if movement.reference and movement.reference.startswith('TRF-'):
-            import re
-            # Extract transfer ID from reference (e.g., "TRF-ABC12345-OUT" -> "TRF-ABC12345")
-            ref_match = re.match(r'^(TRF-[A-Z0-9]+)-OUT$', movement.reference)
-            if ref_match:
-                # This is an outbound movement, find the inbound with matching transfer ID
-                transfer_id = ref_match.group(1)
-                paired_movement = StockMovement.objects.filter(
-                    reference=f'{transfer_id}-IN',
-                    movement_type='transfer',
-                    product=movement.product,
-                    variant=movement.variant
-                ).exclude(id=movement.id).first()
-            else:
-                ref_match = re.match(r'^(TRF-[A-Z0-9]+)-IN$', movement.reference)
-                if ref_match:
-                    # This is an inbound movement, find the outbound with matching transfer ID
-                    transfer_id = ref_match.group(1)
-                    paired_movement = StockMovement.objects.filter(
-                        reference=f'{transfer_id}-OUT',
-                        movement_type='transfer',
-                        product=movement.product,
-                        variant=movement.variant
-                    ).exclude(id=movement.id).first()
-        
-        # Fallback method: Use note patterns and timing for older transfers without shared reference
-        # This maintains backward compatibility with existing transfers
-        if not paired_movement:
-            if movement.quantity < 0:  # Outbound
-                # Build filter query - only include branch filter if branch exists
-                filter_kwargs = {
-                    'product': movement.product,
-                    'variant': movement.variant,
-                    'movement_type': 'transfer',
-                    'quantity': -movement.quantity,  # Positive quantity
-                    'created_at__gte': movement.created_at - timedelta(seconds=5),
-                    'created_at__lte': movement.created_at + timedelta(seconds=5),
-                }
-                # Only filter by branch name if branch exists (avoid empty string which matches all)
-                if movement.branch and movement.branch.name:
-                    filter_kwargs['notes__icontains'] = movement.branch.name
-                
-                paired_movement = StockMovement.objects.filter(**filter_kwargs).exclude(id=movement.id).first()
-            else:  # Inbound
-                # For inbound movements, find the paired outbound movement
-                # Inbound movements have notes like "Transfer in from {from_branch.name}"
-                # Outbound movements have notes like "Transfer out to {to_branch.name}"
-                # We need to find the outbound movement from the source branch
-                
-                # First, try to extract source branch from inbound movement notes
-                if movement.notes:
-                    import re
-                    # Match pattern: "Transfer in from {branch_name}" or custom notes
-                    # The standard format is: "Transfer in from {from_branch.name}"
-                    # We need to capture the full branch name, including spaces (e.g., "Main Branch")
-                    # Use greedy match (.+) to capture everything after "Transfer in from " until end of string
-                    # This correctly handles multi-word branch names like "Main Branch", "Downtown Store", etc.
-                    match = re.search(r'Transfer in from (.+)$', movement.notes, re.IGNORECASE)
-                    
-                    if match:
-                        source_branch_name = match.group(1).strip()
-                        # Find outbound movement from the source branch with matching quantity and timing
-                        paired_movement = StockMovement.objects.filter(
-                            product=movement.product,
-                            variant=movement.variant,
-                            movement_type='transfer',
-                            quantity=-movement.quantity,  # Negative quantity (outbound)
-                            created_at__gte=movement.created_at - timedelta(seconds=5),
-                            created_at__lte=movement.created_at + timedelta(seconds=5),
-                            branch__name__icontains=source_branch_name,
-                            notes__icontains='Transfer out'
-                        ).exclude(id=movement.id).first()
-                
-                # Fallback: if not found by branch name, search by "Transfer out" pattern
-                # This handles cases where notes format might be different
-                if not paired_movement:
-                    paired_movement = StockMovement.objects.filter(
-                        product=movement.product,
-                        variant=movement.variant,
-                        movement_type='transfer',
-                        quantity=-movement.quantity,  # Negative quantity (outbound)
-                        created_at__gte=movement.created_at - timedelta(seconds=5),
-                        created_at__lte=movement.created_at + timedelta(seconds=5),
-                        notes__icontains='Transfer out'  # Outbound movements have "Transfer out to {branch_name}"
-                    ).exclude(id=movement.id).first()
-        
-        # Reverse the movements
-        service = StockMovementService()
+
         try:
-            # Reverse the current movement
-            reverse_quantity = -movement.quantity
-            if movement.variant:
-                stock_quantity = movement.variant.stock_quantity
-            else:
-                stock_quantity = movement.product.stock_quantity
-            
-            # Check if we have enough stock to reverse
-            if reverse_quantity > 0 and stock_quantity < reverse_quantity:
-                return Response(
-                    {'error': f'Insufficient stock to undo. Available: {stock_quantity}, needed: {reverse_quantity}'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Create reverse movement
-            # Note: StockMovement.save() automatically updates stock based on movement_type and quantity
-            # No need to manually update stock here - it's handled by the model's save() method
-            reverse_movement = StockMovement.objects.create(
-                branch=movement.branch,
-                product=movement.product,
-                variant=movement.variant,
-                movement_type='transfer',
-                quantity=reverse_quantity,
-                unit_cost=movement.unit_cost,
-                total_cost=movement.total_cost,
-                reference=f'UNDO-{movement.reference}',
-                notes=f'UNDONE: {movement.notes}',
-                user=request.user
+            _, reverse_movement, reverse_paired = self.stock_service.undo_transfer(
+                movement, user=request.user
             )
-            
-            # If there's a paired movement, reverse it too
-            # Note: StockMovement.save() automatically updates stock based on movement_type and quantity
-            # No need to manually update stock here - it's handled by the model's save() method
-            if paired_movement:
-                reverse_paired_quantity = -paired_movement.quantity
-                reverse_paired_movement = StockMovement.objects.create(
-                    branch=paired_movement.branch,
-                    product=paired_movement.product,
-                    variant=paired_movement.variant,
-                    movement_type='transfer',
-                    quantity=reverse_paired_quantity,
-                    unit_cost=paired_movement.unit_cost,
-                    total_cost=paired_movement.total_cost,
-                    reference=f'UNDO-{paired_movement.reference}',
-                    notes=f'UNDONE: {paired_movement.notes}',
-                    user=request.user
-                )
-                
-                # Mark both as undone
-                # Use update_fields to prevent stock recalculation when only updating notes
-                movement.notes = f'UNDONE: {movement.notes}'
-                movement.save(update_fields=['notes'])
-                paired_movement.notes = f'UNDONE: {paired_movement.notes}'
-                paired_movement.save(update_fields=['notes'])
-                
+            if reverse_paired:
                 return Response({
                     'message': 'Transfer undone successfully',
                     'movements': [
                         self.get_serializer(reverse_movement).data,
-                        self.get_serializer(reverse_paired_movement).data
-                    ]
+                        self.get_serializer(reverse_paired).data,
+                    ],
                 }, status=status.HTTP_200_OK)
-            
-            # Mark as undone
-            # Use update_fields to prevent stock recalculation when only updating notes
-            movement.notes = f'UNDONE: {movement.notes}'
-            movement.save(update_fields=['notes'])
-            
             return Response({
                 'message': 'Transfer undone successfully',
-                'movement': self.get_serializer(reverse_movement).data
+                'movement': self.get_serializer(reverse_movement).data,
             }, status=status.HTTP_200_OK)
-            
+        except ValidationError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            logger.error(f"Error undoing transfer: {e}", exc_info=True)
+            logger.error(f'Error undoing transfer: {e}', exc_info=True)
             return Response(
                 {'error': f'Failed to undo transfer: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
     @transaction.atomic

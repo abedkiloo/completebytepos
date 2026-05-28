@@ -2,6 +2,7 @@
 Comprehensive tests for User Management API
 Tests: Create, Read, Update, Delete, List, Search, Role Assignment
 """
+from django.core.cache import cache
 from django.test import TransactionTestCase
 from django.contrib.auth.models import User
 from rest_framework.test import APIClient
@@ -16,16 +17,27 @@ class UserAPITestCase(TransactionTestCase):
     
     def setUp(self):
         """Set up test data"""
+        # AuthViewSet.login now uses ScopedRateThrottle at 10/min. The
+        # throttle counter lives in Django's cache which persists across
+        # tests within a single process. Clearing the cache here guarantees
+        # each test starts from a clean throttle slate.
+        cache.clear()
+
         # Create superuser
         self.superuser = User.objects.create_superuser(
             username='admin',
             email='admin@test.com',
             password='admin123'
         )
+        # NOTE: ``is_super_admin`` on UserProfile is a derived @property
+        # (returns True when role=='super_admin' or user.is_superuser). It
+        # cannot be passed as a constructor kwarg - doing so raised
+        # ``AttributeError: property 'is_super_admin' of 'UserProfile' object
+        # has no setter`` and broke every test in this class. The property
+        # is correctly satisfied by either of the two flags below.
         self.superuser_profile = UserProfile.objects.create(
             user=self.superuser,
             role='super_admin',
-            is_super_admin=True,
             is_active=True
         )
         

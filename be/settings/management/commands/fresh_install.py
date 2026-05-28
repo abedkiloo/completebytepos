@@ -124,26 +124,13 @@ class Command(BaseCommand):
                         self.stdout.write(self.style.ERROR(f'  ✗ Migration failed: {str(e2)[:100]}'))
                         raise
 
-                # Step 4: Create superuser
-                self.stdout.write('\nStep 4: Creating superuser...')
+                # Step 4: Bootstrap users (admin, manager, sales)
+                self.stdout.write('\nStep 4: Creating bootstrap users...')
                 try:
-                    user, created = User.objects.get_or_create(
-                        username='admin@3@1',
-                        defaults={
-                            'email': 'admin@3@1',
-                            'is_staff': True,
-                            'is_superuser': True,
-                            'is_active': True
-                        }
-                    )
-                    user.set_password('admin@3@1')
-                    user.save()
-                    if created:
-                        self.stdout.write(self.style.SUCCESS('  ✓ Superuser created (username: admin@3@1, password: admin@3@1)'))
-                    else:
-                        self.stdout.write(self.style.SUCCESS('  ✓ Superuser updated (username: admin@3@1, password: admin@3@1)'))
+                    call_command('create_users', verbosity=0)
+                    self.stdout.write(self.style.SUCCESS('  ✓ Bootstrap users created (admin / admin123, etc.)'))
                 except Exception as e:
-                    self.stdout.write(self.style.ERROR(f'  ✗ Superuser creation failed: {str(e)[:100]}'))
+                    self.stdout.write(self.style.ERROR(f'  ✗ User creation failed: {str(e)[:100]}'))
                     raise
 
                 # Step 5: Initialize permissions and roles

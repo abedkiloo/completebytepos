@@ -1,21 +1,38 @@
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 from django.db.models import Sum, Count
 from django.utils import timezone
 from datetime import datetime
 from .models import IncomeCategory, Income
 from .serializers import IncomeCategorySerializer, IncomeSerializer
 from .services import IncomeCategoryService, IncomeService
+from accounts.permissions import RequirePermPerAction
+from utils.audit_mixin import AuditedModelViewSetMixin
 from settings.utils import get_current_branch, get_current_tenant, is_branch_support_enabled
 import logging
 
 logger = logging.getLogger(__name__)
 
 
+INCOME_PERMS = RequirePermPerAction('income', {
+    'list': 'view',
+    'retrieve': 'view',
+    'create': 'create',
+    'update': 'update',
+    'partial_update': 'update',
+    'destroy': 'delete',
+    'statistics': 'view',
+    'approve': 'approve',
+    'reject': 'approve',
+})
+
+
 class IncomeCategoryViewSet(viewsets.ModelViewSet):
     queryset = IncomeCategory.objects.all()
     serializer_class = IncomeCategorySerializer
+    permission_classes = [IsAuthenticated, INCOME_PERMS]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'description']
     ordering_fields = ['name', 'created_at']
@@ -33,9 +50,11 @@ class IncomeCategoryViewSet(viewsets.ModelViewSet):
         return self.category_service.build_queryset(filters)
 
 
-class IncomeViewSet(viewsets.ModelViewSet):
+class IncomeViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = Income.objects.all().select_related('category', 'created_by', 'approved_by')
     serializer_class = IncomeSerializer
+    permission_classes = [IsAuthenticated, INCOME_PERMS]
+    audit_module = 'income'
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['income_number', 'description', 'payer', 'reference_number']
     ordering_fields = ['income_date', 'amount', 'created_at']

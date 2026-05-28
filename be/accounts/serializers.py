@@ -1,17 +1,43 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import UserProfile, ModuleSettings, ModuleFeature, Permission, Role
+from .models import UserProfile, ModuleSettings, ModuleFeature, Permission, Role, AuditLog
+from settings.module_registry import get_permission_domain_info
 
 
 class PermissionSerializer(serializers.ModelSerializer):
     module_display = serializers.CharField(source='get_module_display', read_only=True)
     action_display = serializers.CharField(source='get_action_display', read_only=True)
-    
+    domain = serializers.SerializerMethodField()
+    domain_label = serializers.SerializerMethodField()
+    catalog_module = serializers.SerializerMethodField()
+    catalog_module_label = serializers.SerializerMethodField()
+
+    def _domain_info(self, obj):
+        if not hasattr(self, '_domain_cache'):
+            self._domain_cache = {}
+        if obj.module not in self._domain_cache:
+            self._domain_cache[obj.module] = get_permission_domain_info(obj.module)
+        return self._domain_cache[obj.module]
+
+    def get_domain(self, obj):
+        return self._domain_info(obj)['domain']
+
+    def get_domain_label(self, obj):
+        return self._domain_info(obj)['domain_label']
+
+    def get_catalog_module(self, obj):
+        return self._domain_info(obj)['catalog_module']
+
+    def get_catalog_module_label(self, obj):
+        return self._domain_info(obj)['catalog_module_label']
+
     class Meta:
         model = Permission
         fields = [
             'id', 'module', 'action', 'name', 'description',
-            'module_display', 'action_display', 'created_at'
+            'module_display', 'action_display',
+            'domain', 'domain_label', 'catalog_module', 'catalog_module_label',
+            'created_at',
         ]
         read_only_fields = ['created_at']
 
@@ -207,6 +233,21 @@ class UserCreateSerializer(serializers.ModelSerializer):
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField()
     password = serializers.CharField(write_only=True)
+
+
+class AuditLogSerializer(serializers.ModelSerializer):
+    """Read-only serializer for AuditLog entries shown in admin/security UIs."""
+
+    user_username = serializers.CharField(source='user.username', read_only=True, default=None)
+
+    class Meta:
+        model = AuditLog
+        fields = [
+            'id', 'user', 'user_username', 'username_snapshot', 'action',
+            'module', 'object_type', 'object_id', 'object_repr', 'changes',
+            'ip_address', 'user_agent', 'path', 'method', 'created_at',
+        ]
+        read_only_fields = fields
 
 
 # Module settings serializers moved to settings app

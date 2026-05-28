@@ -3,7 +3,8 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     ModuleSettingsViewSet, ModuleFeatureViewSet,
     TenantViewSet, BranchViewSet,
-    fresh_install
+    fresh_install,
+    setup_status,
 )
 
 router = DefaultRouter()
@@ -14,5 +15,6 @@ router.register(r'branches', BranchViewSet, basename='branch')
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('setup-status/', setup_status, name='setup-status'),
     path('fresh-install/', fresh_install, name='fresh-install'),
 ]

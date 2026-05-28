@@ -1,5 +1,18 @@
+from django.db.models import Min, Sum
 from rest_framework import serializers
+from settings.feature_flags import is_product_variants_enabled
 from .models import Category, Product, Size, Color, ProductVariant
+
+
+def _map_selling_price_fields(data):
+    """Accept ``selling_price`` from clients; store on ``price`` column."""
+    if not hasattr(data, 'copy'):
+        data = dict(data)
+    else:
+        data = data.copy()
+    if 'selling_price' in data and data.get('selling_price') not in (None, ''):
+        data['price'] = data['selling_price']
+    return data
 
 
 class SizeSerializer(serializers.ModelSerializer):
@@ -24,7 +37,11 @@ class ProductVariantSerializer(serializers.ModelSerializer):
     size_code = serializers.CharField(source='size.code', read_only=True)
     color_name = serializers.CharField(source='color.name', read_only=True)
     color_hex = serializers.CharField(source='color.hex_code', read_only=True)
+    selling_price = serializers.DecimalField(
+        source='price', max_digits=10, decimal_places=2, required=False, allow_null=True
+    )
     effective_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    effective_mrp = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     effective_cost = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     is_low_stock = serializers.BooleanField(read_only=True)
     
@@ -33,13 +50,24 @@ class ProductVariantSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'product', 'size', 'size_name', 'size_code',
             'color', 'color_name', 'color_hex',
-            'sku', 'barcode', 'price', 'cost',
-            'effective_price', 'effective_cost',
+            'sku', 'barcode', 'mrp', 'price', 'selling_price', 'cost',
+            'effective_price', 'effective_mrp', 'effective_cost',
             'stock_quantity', 'low_stock_threshold',
             'is_low_stock', 'is_active',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'sku']
+        # NOTE: ``sku`` is intentionally writable. Clients may supply their
+        # own SKU convention (e.g. ``DRINK-COKE-500ML-L``). The model's
+        # ``save()`` auto-generates a UUID-based SKU only when none is
+        # supplied. Making ``sku`` read-only would silently drop the user's
+        # value AND disable the duplicate-SKU validator below.
+        read_only_fields = ['created_at', 'updated_at']
+        extra_kwargs = {
+            'sku': {'required': False, 'allow_blank': True},
+        }
+
+    def to_internal_value(self, data):
+        return super().to_internal_value(_map_selling_price_fields(data))
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -69,11 +97,25 @@ class CategorySerializer(serializers.ModelSerializer):
 
 class CategoryListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for category lists"""
-    product_count = serializers.IntegerField(read_only=True)
-    
+    product_count = serializers.SerializerMethodField()
+    children_count = serializers.SerializerMethodField()
+
     class Meta:
         model = Category
-        fields = ['id', 'name', 'product_count', 'is_active']
+        fields = [
+            'id', 'name', 'description', 'parent', 'is_active',
+            'product_count', 'children_count',
+        ]
+
+    def get_product_count(self, obj):
+        if hasattr(obj, 'products'):
+            return obj.products.count()
+        return obj.products.filter(is_active=True).count()
+
+    def get_children_count(self, obj):
+        if hasattr(obj, 'children'):
+            return obj.children.count()
+        return obj.children.all().count()
 
 
 class ProductSerializer(serializers.ModelSerializer):
@@ -92,6 +134,9 @@ class ProductSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
     supplier_name_display = serializers.SerializerMethodField()
     supplier_detail = serializers.SerializerMethodField()
+    selling_price = serializers.DecimalField(
+        source='price', max_digits=10, decimal_places=2, required=False
+    )
     
     class Meta:
         model = Product
@@ -101,18 +146,37 @@ class ProductSerializer(serializers.ModelSerializer):
             'subcategory', 'subcategory_name', 'subcategory_detail',
             'has_variants', 'available_sizes', 'available_sizes_detail',
             'available_colors', 'available_colors_detail', 'variants',
-            'price', 'cost', 'stock_quantity', 'low_stock_threshold', 'reorder_quantity',
+            'mrp', 'price', 'selling_price', 'cost', 'stock_quantity', 'low_stock_threshold', 'reorder_quantity',
             'unit', 'image', 'image_url', 'description', 
             'supplier', 'supplier_name', 'supplier_name_display', 'supplier_detail', 'supplier_contact',
             'tax_rate', 'is_taxable', 'track_stock', 'is_low_stock', 'needs_reorder',
             'profit_margin', 'profit_amount', 'total_value', 'is_active',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'sku']
+        # NOTE: ``sku`` is intentionally writable - see ProductVariantSerializer
+        # for the same rationale. Marking it read-only silently discarded
+        # client-supplied SKUs and disabled the ``validate_sku`` duplicate
+        # check on the same serializer.
+        read_only_fields = ['created_at', 'updated_at']
+        extra_kwargs = {
+            'sku': {'required': False, 'allow_blank': True},
+        }
     
+    def validate(self, attrs):
+        price = attrs.get('price')
+        mrp = attrs.get('mrp')
+        if mrp is not None and price is not None and mrp < price:
+            raise serializers.ValidationError(
+                {'mrp': 'MRP should be at least the selling price.'}
+            )
+        if (mrp is None or mrp == 0) and price is not None:
+            attrs['mrp'] = price
+        return attrs
+
     def to_internal_value(self, data):
         """Convert category/subcategory objects to IDs if needed"""
         # Make a copy to avoid mutating the original
+        data = _map_selling_price_fields(data)
         data = data.copy() if hasattr(data, 'copy') else dict(data)
         
         # Handle category field
@@ -498,13 +562,21 @@ class ProductListSerializer(serializers.ModelSerializer):
     available_colors_detail = ColorSerializer(source='available_colors', many=True, read_only=True)
     is_low_stock = serializers.BooleanField(read_only=True)
     image_url = serializers.SerializerMethodField()
+    selling_price = serializers.DecimalField(
+        source='price', max_digits=10, decimal_places=2, read_only=True
+    )
     
     class Meta:
         model = Product
         fields = [
-            'id', 'name', 'sku', 'barcode', 'category_name', 'subcategory_name', 'has_variants',
+            'id', 'name', 'sku', 'barcode',
+            # Expose the raw FK IDs alongside the display names so the FE
+            # (and tests) can filter / link without an extra round-trip.
+            'category', 'category_name',
+            'subcategory', 'subcategory_name',
+            'has_variants',
             'available_sizes_detail', 'available_colors_detail',
-            'price', 'cost', 'stock_quantity', 'unit',
+            'mrp', 'price', 'selling_price', 'cost', 'stock_quantity', 'unit', 'track_stock',
             'is_low_stock', 'is_active', 'image_url'
         ]
     
@@ -522,18 +594,65 @@ class ProductListSerializer(serializers.ModelSerializer):
             return obj.image.url
         return None
 
+    def _apply_catalog_variant_mode(self, instance, data):
+        """When variants are disabled, expose parent rows as simple sellable products."""
+        if not instance.has_variants:
+            return data
+        variants = instance.variants.filter(is_active=True)
+        if not variants.exists():
+            return data
+        if not is_product_variants_enabled():
+            data['has_variants'] = False
+            agg = variants.aggregate(total_stock=Sum('stock_quantity'), min_price=Min('price'))
+            if agg['total_stock'] is not None:
+                data['stock_quantity'] = agg['total_stock']
+            if (not data.get('price') or float(data['price'] or 0) == 0) and agg.get('min_price'):
+                data['price'] = str(agg['min_price'])
+        return data
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data = self._apply_catalog_variant_mode(instance, data)
+        if 'selling_price' not in data and data.get('price') is not None:
+            data['selling_price'] = data['price']
+        return data
+
 
 class ProductSearchSerializer(serializers.ModelSerializer):
     """Lightweight serializer for search results"""
     category_name = serializers.SerializerMethodField()
     has_variants = serializers.BooleanField(read_only=True)
+    selling_price = serializers.DecimalField(
+        source='price', max_digits=10, decimal_places=2, read_only=True
+    )
     
     class Meta:
         model = Product
-        fields = ['id', 'name', 'sku', 'barcode', 'category_name', 'has_variants', 'price', 'stock_quantity', 'is_active', 'unit']
+        fields = [
+            'id', 'name', 'sku', 'barcode', 'category_name', 'has_variants',
+            'mrp', 'price', 'selling_price', 'stock_quantity', 'is_active', 'unit',
+        ]
     
     def get_category_name(self, obj):
         return obj.category.name if obj.category else None
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if not instance.has_variants:
+            return data
+        variants = instance.variants.filter(is_active=True)
+        if not variants.exists() or is_product_variants_enabled():
+            return data
+        data['has_variants'] = False
+        agg = variants.aggregate(total_stock=Sum('stock_quantity'), min_price=Min('price'))
+        if agg['total_stock'] is not None:
+            data['stock_quantity'] = agg['total_stock']
+        if (not data.get('price') or float(data['price'] or 0) == 0) and agg.get('min_price'):
+            data['price'] = str(agg['min_price'])
+            data['selling_price'] = data['price']
+        if 'selling_price' not in data and data.get('price') is not None:
+            data['selling_price'] = data['price']
+        return data
 
 
 class BulkProductUpdateSerializer(serializers.Serializer):
@@ -549,7 +668,11 @@ class ProductStatisticsSerializer(serializers.Serializer):
     """Serializer for product statistics"""
     total_products = serializers.IntegerField()
     active_products = serializers.IntegerField()
+    # Legacy keys retained for backwards compatibility.
     low_stock_products = serializers.IntegerField()
     out_of_stock_products = serializers.IntegerField()
+    # Canonical ``_count`` aliases used by the Reports hub and dashboard.
+    low_stock_count = serializers.IntegerField()
+    out_of_stock_count = serializers.IntegerField()
     total_inventory_value = serializers.DecimalField(max_digits=12, decimal_places=2)
     total_products_value = serializers.DecimalField(max_digits=12, decimal_places=2)
