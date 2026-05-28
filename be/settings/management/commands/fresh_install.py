@@ -84,20 +84,21 @@ class Command(BaseCommand):
         self.stdout.write('')
 
         try:
-            with transaction.atomic():
-                # Step 1: Delete database if needed
-                if not options['skip_db_delete']:
-                    self.stdout.write('Step 1: Preparing fresh database...')
-                    db_path = 'db.sqlite3'
-                    if os.path.exists(db_path):
-                        os.remove(db_path)
-                        self.stdout.write(self.style.SUCCESS('  ✓ Existing database deleted'))
-                    else:
-                        self.stdout.write(self.style.SUCCESS('  ✓ No existing database found'))
+            # Step 1: Reset database (outside atomic — PostgreSQL DROP SCHEMA)
+            if not options['skip_db_delete']:
+                self.stdout.write('Step 1: Preparing fresh database...')
+                from django.conf import settings as django_settings
+                from config.database import is_postgresql_config, reset_default_database
+                if is_postgresql_config(django_settings.DATABASES):
+                    reset_default_database()
+                    self.stdout.write(self.style.SUCCESS('  ✓ PostgreSQL schema reset'))
                 else:
-                    self.stdout.write('Step 1: Skipping database deletion...')
+                    reset_default_database()
+                    self.stdout.write(self.style.SUCCESS('  ✓ SQLite database removed'))
+            else:
+                self.stdout.write('Step 1: Skipping database deletion...')
 
-                # Step 2: Create migrations (skip if migrations already exist)
+            with transaction.atomic():
                 self.stdout.write('\nStep 2: Creating migrations...')
                 try:
                     call_command('makemigrations', verbosity=0)

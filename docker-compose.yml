@@ -1,12 +1,36 @@
 # Docker Compose — PRODUCTION
 #
-# Frontend: multi-stage build (npm run build) → static files in nginx (port 80).
-# NOT the React dev server. Use docker-compose.dev.yml for hot reload.
+# Frontend: npm run build → nginx (port 80 in container).
+# Start: ./run_docker.sh --prod
 #
-# Start:  ./run_docker.sh --prod
-#    or:  docker compose up -d --build
+# Requires .env (copy from .env.example). PostgreSQL is the default database.
 
 services:
+  db:
+    image: postgres:16-alpine
+    container_name: completebytepos_db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-completebytepos}
+      POSTGRES_USER: ${POSTGRES_USER:-completebytepos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-completebytepos}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    restart: unless-stopped
+    networks:
+      - completebytepos_network
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-completebytepos} -d ${POSTGRES_DB:-completebytepos}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   backend:
     build:
       context: ./be
@@ -15,26 +39,28 @@ services:
     hostname: backend
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     volumes:
       - ./be:/app
       - backend_static:/app/staticfiles
       - backend_media:/app/media
-      - backend_db:/app/db
     working_dir: /app
     environment:
       - DEBUG=${DEBUG:-False}
       - DJANGO_SETTINGS_MODULE=config.settings
-      - DATABASE_URL=${DATABASE_URL:-sqlite:///db/db.sqlite3}
-      - DB_PATH=${DB_PATH:-/app/db/db.sqlite3}
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=${POSTGRES_DB:-completebytepos}
+      - DB_USER=${POSTGRES_USER:-completebytepos}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-completebytepos}
+      - POSTGRES_DB=${POSTGRES_DB:-completebytepos}
+      - POSTGRES_USER=${POSTGRES_USER:-completebytepos}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-completebytepos}
       - PYTHONUNBUFFERED=1
-    # Seed commands below are idempotent (``get_or_create`` / role updates
-    # in place), so re-running on every boot is a no-op when data already
-    # exists. This guarantees a fresh ``backend_db`` volume always boots
-    # into a working state - the symptom of a missing modules table is a
-    # blank "Module Settings" page and a missing POS link in the sidebar.
     command: >
       sh -c "
-        mkdir -p /app/db /app/logs &&
+        mkdir -p /app/logs &&
         python manage.py makemigrations --noinput || true &&
         python manage.py migrate --noinput &&
         python manage.py init_permissions --noinput || python manage.py init_permissions || true &&
@@ -45,6 +71,9 @@ services:
         gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 4 --threads 2 --timeout 120
       "
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
       - completebytepos_network
     healthcheck:
@@ -52,15 +81,14 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 90s
 
   frontend:
     build:
       context: ./fe
       dockerfile: Dockerfile
       args:
-        # Relative URL: browser calls same origin; nginx proxies /api → backend
-        REACT_APP_API_URL: /api
+        REACT_APP_API_URL: ${REACT_APP_API_URL:-/api}
     container_name: completebytepos_frontend
     hostname: frontend
     ports:
@@ -81,7 +109,7 @@ services:
 volumes:
   backend_static:
   backend_media:
-  backend_db:
+  postgres_data:
 
 networks:
   completebytepos_network:

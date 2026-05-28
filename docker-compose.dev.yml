@@ -1,11 +1,36 @@
 # Docker Compose — DEVELOPMENT
 #
 # Frontend: React dev server (npm start) with hot reload — NOT for production.
-# Production static build: docker-compose.yml + ./run_docker.sh --prod
+# Production: docker-compose.yml + ./run_docker.sh --prod
 #
-# Uses a shared network to avoid CORS issues
+# Requires .env (copy from .env.example). PostgreSQL is the default database.
 
 services:
+  db:
+    image: postgres:16-alpine
+    container_name: completebytepos_db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-completebytepos}
+      POSTGRES_USER: ${POSTGRES_USER:-completebytepos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-completebytepos}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    restart: unless-stopped
+    networks:
+      - completebytepos_network
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-completebytepos} -d ${POSTGRES_DB:-completebytepos}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   backend:
     build:
       context: ./be
@@ -14,25 +39,30 @@ services:
     hostname: backend
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     volumes:
-      # Mount source code for hot reloading
       - ./be:/app
-      # Exclude node_modules and other build artifacts from volume
       - /app/__pycache__
       - /app/*/__pycache__
       - backend_static:/app/staticfiles
       - backend_media:/app/media
-      - backend_db:/app/db
     working_dir: /app
     environment:
-      - DEBUG=True
+      - DEBUG=${DEBUG:-True}
       - DJANGO_SETTINGS_MODULE=config.settings
-      - DATABASE_URL=sqlite:///db/db.sqlite3
-      - DB_PATH=/app/db/db.sqlite3
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=${POSTGRES_DB:-completebytepos}
+      - DB_USER=${POSTGRES_USER:-completebytepos}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-completebytepos}
+      - POSTGRES_DB=${POSTGRES_DB:-completebytepos}
+      - POSTGRES_USER=${POSTGRES_USER:-completebytepos}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-completebytepos}
       - PYTHONUNBUFFERED=1
     command: >
       sh -c "
-        mkdir -p /app/db /app/logs &&
+        mkdir -p /app/logs &&
         python manage.py makemigrations --noinput || true &&
         python manage.py migrate --noinput &&
         python manage.py init_permissions --noinput || python manage.py init_permissions || true &&
@@ -43,6 +73,9 @@ services:
         gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --threads 2 --reload --timeout 120
       "
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
       - completebytepos_network
     healthcheck:
@@ -50,28 +83,26 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 90s
 
   frontend:
     build:
       context: ./fe
       dockerfile: Dockerfile.dev
       args:
-        - REACT_APP_API_URL=http://localhost:8000/api
+        # Unset = browser auto-detects http://<host>:8000/api (not localhost)
+        - REACT_APP_API_URL=${REACT_APP_API_URL:-}
     container_name: completebytepos_frontend
     hostname: frontend
     ports:
       - "3000:3000"
     volumes:
-      # Mount source code for hot reloading
       - ./fe:/app
-      # Exclude node_modules from host, use container's node_modules
       - /app/node_modules
-      # Exclude build folder
       - /app/build
     working_dir: /app
     environment:
-      - REACT_APP_API_URL=http://localhost:8000/api
+      - REACT_APP_API_URL=${REACT_APP_API_URL:-}
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true
       - FAST_REFRESH=true
@@ -88,7 +119,7 @@ services:
 volumes:
   backend_static:
   backend_media:
-  backend_db:
+  postgres_data:
 
 networks:
   completebytepos_network:

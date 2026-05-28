@@ -15,6 +15,7 @@ This folder lives **only in the backend repo**. It holds Docker, shell scripts, 
 
 ```bash
 cd /path/to/<workspace>
+cp .env.example .env    # first time only — edit POSTGRES_PASSWORD
 ./be/__setup/assemble.sh
 ```
 
@@ -28,13 +29,15 @@ cd /path/to/<workspace>
 ./check_data.sh
 ```
 
+PostgreSQL runs in Docker (`db` service). Data persists in the `postgres_data` volume.
+
 ## What gets copied
 
 - `docker-compose.yml`, `docker-compose.dev.yml`
 - `run_docker.sh`, `stop_docker.sh`, `run_production.sh`, `stop_production.sh`
 - `check_data.sh`, `init_modules.sh`, `run.py`
 - `docs/`
-- `.env.production.example`, `README_SETUP.md`
+- `.env.example`, `.env.production.example`, `README_SETUP.md`
 
 Not copied: `assemble.sh`, this `README.md`.
 

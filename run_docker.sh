@@ -266,9 +266,23 @@ populate_test_data() {
     print_info "Fresh installs already have: admin, manager, sales + 3 demo products."
 }
 
+ensure_env_file() {
+    cd "$PROJECT_ROOT"
+    if [ ! -f ".env" ]; then
+        if [ -f ".env.example" ]; then
+            cp .env.example .env
+            print_warning "Created .env from .env.example — review passwords before production."
+        else
+            print_error "Missing .env file. Copy .env.example to .env and set POSTGRES_PASSWORD."
+            exit 1
+        fi
+    fi
+}
+
 # Main
 main() {
     check_docker
+    ensure_env_file
     stop_existing
 
     PROD_MODE=false

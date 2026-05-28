@@ -363,17 +363,25 @@ def fresh_install(request):
         steps = []
         
         try:
-            # Step 1: Delete database
+            # Step 1: Reset database (PostgreSQL schema or legacy SQLite file)
             if not skip_db_delete:
                 steps.append({'step': 1, 'name': 'Preparing fresh database', 'status': 'running'})
-                db_path = 'db.sqlite3'
-                if os.path.exists(db_path):
-                    os.remove(db_path)
-                    steps[-1]['status'] = 'completed'
-                    steps[-1]['message'] = 'Existing database deleted'
-                else:
-                    steps[-1]['status'] = 'completed'
-                    steps[-1]['message'] = 'No existing database found'
+                try:
+                    from django.conf import settings as django_settings
+                    import django
+                    django.setup()
+                    from config.database import is_postgresql_config, reset_default_database
+                    if is_postgresql_config(django_settings.DATABASES):
+                        reset_default_database()
+                        steps[-1]['status'] = 'completed'
+                        steps[-1]['message'] = 'PostgreSQL schema reset'
+                    else:
+                        reset_default_database()
+                        steps[-1]['status'] = 'completed'
+                        steps[-1]['message'] = 'SQLite database file removed'
+                except Exception as e:
+                    steps[-1]['status'] = 'warning'
+                    steps[-1]['message'] = str(e)[:120]
             
             # Step 2: Create migrations
             steps.append({'step': 2, 'name': 'Creating migrations', 'status': 'running'})

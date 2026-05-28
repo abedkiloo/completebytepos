@@ -1,58 +1,13 @@
 import axios from 'axios';
+import { resolveApiBaseUrl } from '../config/apiBaseUrl';
 
-// Detect if we're running on ngrok or HTTPS
-const isHttps = window.location.protocol === 'https:';
-const isNgrok = window.location.hostname.includes('ngrok');
-const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-// Detect if running in Docker (nginx serves from /, and we check if API_BASE_URL contains 'backend')
-// const isDocker = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL.includes('backend');
+const API_BASE_URL = resolveApiBaseUrl();
 
-// Determine API URL
-// Priority: 1. Environment variable (Docker/build-time), 2. Window config, 3. Auto-detect server, 4. Auto-detect ngrok, 5. Default localhost
-let API_BASE_URL = process.env.REACT_APP_API_URL;
-
-if (!API_BASE_URL) {
-  // Check if backend URL is set in window config (for dynamic configuration)
-  if (window.REACT_APP_API_URL) {
-    API_BASE_URL = window.REACT_APP_API_URL;
-  } else if (isHttps || isNgrok) {
-    // If frontend is HTTPS/ngrok, we need HTTPS backend too
-    // Try to construct backend ngrok URL (you'll need to set this)
-    // For now, prompt user to set it
-    const backendNgrokUrl = localStorage.getItem('backend_ngrok_url');
-    if (backendNgrokUrl) {
-      API_BASE_URL = `${backendNgrokUrl}/api`;
-    } else {
-      // Default: assume backend is on same ngrok domain with different port
-      // This won't work - user needs to set backend ngrok URL
-      console.warn('⚠️ Frontend is on HTTPS/ngrok but backend URL not configured.');
-      console.warn('⚠️ Please set backend ngrok URL: localStorage.setItem("backend_ngrok_url", "https://your-backend-ngrok-url")');
-      console.warn('⚠️ Or set REACT_APP_API_URL environment variable');
-      // Fallback - this will fail but at least show the error
-      API_BASE_URL = 'http://localhost:8000/api';
-    }
-  } else if (!isLocalhost) {
-    // Running on a server (not localhost) - construct backend URL from current hostname
-    // Use same protocol and hostname, but port 8000 for backend
-    const protocol = window.location.protocol;
-    const hostname = window.location.hostname;
-    // For server deployments, backend is typically on port 8000
-    // If frontend is on port 3000, backend should be on 8000
-    API_BASE_URL = `${protocol}//${hostname}:8000/api`;
-    console.log(`[API] Auto-detected server deployment. Using backend URL: ${API_BASE_URL}`);
-  } else {
-    // Local development - use localhost
-    API_BASE_URL = 'http://localhost:8000/api';
-  }
-}
-
-// If API_BASE_URL is a relative path (starts with /), we're using nginx proxy (Docker)
-// This is already set correctly, just log it
 if (API_BASE_URL.startsWith('/')) {
-  console.log('[API] Using relative URL (nginx proxy). API calls will go through nginx to backend.');
+  console.log('[API] Using relative URL (nginx proxy). API calls go through the same host.');
+} else {
+  console.log(`[API] Using API Base URL: ${API_BASE_URL}`);
 }
-
-console.log(`[API] Using API Base URL: ${API_BASE_URL}`);
 
 // Only add ngrok header if using ngrok URL
 const isNgrokUrl = API_BASE_URL.includes('ngrok');

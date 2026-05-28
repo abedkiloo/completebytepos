@@ -14,6 +14,8 @@ eggs/
 .eggs/
 lib/
 lib64/
+!fe/src/lib/
+!fe/src/lib/**
 parts/
 sdist/
 var/
@@ -74,6 +76,8 @@ be/*.sqlite3-journal
 .env.production.local
 .env.*.local
 *.env
+!.env.example
+!**/.env.example
 .envrc
 secrets.json
 config/secrets.py
@@ -285,6 +289,8 @@ eggs/
 .eggs/
 lib/
 lib64/
+!fe/src/lib/
+!fe/src/lib/**
 parts/
 sdist/
 var/

@@ -1,38 +1,41 @@
 """
 Django settings for CompleteBytePOS project.
+All deployment-specific values come from environment variables — see .env.example.
 """
-import os
 import sys
+from datetime import timedelta
 from pathlib import Path
+
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
-
-# NOTE: A previous version of this file monkey-patched Django's MigrationLoader
-# and MigrationGraph to silently swallow NodeNotFoundError /
-# InconsistentMigrationHistory for built-in apps (auth, contenttypes, sessions,
-# admin). The real cause was a corrupted local virtualenv where some of those
-# built-in migration files had been deleted from site-packages, NOT a Django
-# bug. The patch only hid the corruption and made `makemigrations` crash
-# elsewhere with a confusing `AttributeError` inside `make_state`.
-# The fix is to keep the venv intact (e.g. `pip install --force-reinstall
-# --no-deps Django==4.2.27 djangorestframework-simplejwt==5.5.1`) and let
-# Django's own migration machinery enforce consistency. If migrations ever look
-# wrong again, fix the cause, do not paper over it.
+from config.database import build_databases
+from config.env import env_bool, env_csv_or_lines, env_int, env_list, env_path, env_str
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-sps$ltgla=lnb4a44o)2v)e3(42in*@43io^d8b*%$byycxf78')
+# Load .env from backend dir and workspace root (assembled be+fe layout)
+load_dotenv(BASE_DIR / '.env')
+load_dotenv(BASE_DIR.parent / '.env', override=False)
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DEBUG', 'True') == 'True'
+# ---------------------------------------------------------------------------
+# Core
+# ---------------------------------------------------------------------------
+SECRET_KEY = env_str(
+    'SECRET_KEY',
+    'django-insecure-change-me-before-production',
+)
+DEBUG = env_bool('DEBUG', True)
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', '*']  # Allow all hosts for now
+# Comma-separated hosts, or * for all (dev only)
+ALLOWED_HOSTS = env_list(
+    'ALLOWED_HOSTS',
+    ['localhost', '127.0.0.1', '0.0.0.0', 'backend'],
+)
 
-# Application definition
+# ---------------------------------------------------------------------------
+# Application
+# ---------------------------------------------------------------------------
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -56,15 +59,15 @@ INSTALLED_APPS = [
     'bankaccounts',
     'transfers',
     'suppliers',
-    'employees',  # Employee Management
-    'settings',  # Settings app for module settings and future system settings
+    'employees',
+    'settings',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
-    'middleware.cors_logging.CORSLoggingMiddleware',  # Log CORS requests
+    'middleware.cors_logging.CORSLoggingMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -72,12 +75,12 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-# Add WhiteNoise middleware if available (for production)
 try:
-    import whitenoise
+    import whitenoise  # noqa: F401
+
     MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
 except ImportError:
-    pass  # WhiteNoise not installed, skip it
+    pass
 
 ROOT_URLCONF = 'config.urls'
 
@@ -99,96 +102,51 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
+# ---------------------------------------------------------------------------
 # Database
-# SQLite Configuration (can switch to MySQL/PostgreSQL later)
-# Database configuration
-# Support Docker volume mount for database
-DB_PATH = os.environ.get('DB_PATH', None)
-if DB_PATH:
-    # Docker environment - use provided path
-    DATABASE_NAME = DB_PATH
-else:
-    # Local development - use project directory
-    DATABASE_NAME = BASE_DIR / 'db.sqlite3'
+# ---------------------------------------------------------------------------
+RUNNING_TESTS = 'test' in sys.argv
+DATABASES = build_databases(base_dir=BASE_DIR, running_tests=RUNNING_TESTS)
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': str(DATABASE_NAME),
-    }
-}
-
-# For MySQL (future use):
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.mysql',
-#         'NAME': os.getenv('DB_NAME', 'completebytepos'),
-#         'USER': os.getenv('DB_USER', 'root'),
-#         'PASSWORD': os.getenv('DB_PASSWORD', ''),
-#         'HOST': os.getenv('DB_HOST', 'localhost'),
-#         'PORT': os.getenv('DB_PORT', '3306'),
-#         'OPTIONS': {
-#             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-#             'charset': 'utf8mb4',
-#         },
-#     }
-# }
-# import pymysql
-# pymysql.install_as_MySQLdb()
-
-# For PostgreSQL (future use):
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': os.getenv('DB_NAME', 'completebytepos'),
-#         'USER': os.getenv('DB_USER', 'postgres'),
-#         'PASSWORD': os.getenv('DB_PASSWORD', ''),
-#         'HOST': os.getenv('DB_HOST', 'localhost'),
-#         'PORT': os.getenv('DB_PORT', '5432'),
-#     }
-# }
-
-# Password validation
+# ---------------------------------------------------------------------------
+# Auth / i18n
+# ---------------------------------------------------------------------------
 AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
+    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
-# Internationalization
-LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'Africa/Nairobi'  # Kenya timezone
+LANGUAGE_CODE = env_str('LANGUAGE_CODE', 'en-us')
+TIME_ZONE = env_str('TIME_ZONE', 'Africa/Nairobi')
 USE_I18N = True
 USE_TZ = True
 
-# Static files (CSS, JavaScript, Images)
-STATIC_URL = 'static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
+# ---------------------------------------------------------------------------
+# Static / media
+# ---------------------------------------------------------------------------
+STATIC_URL = env_str('STATIC_URL', '/static/')
+STATIC_ROOT = env_path('STATIC_ROOT', BASE_DIR / 'staticfiles')
 
-# WhiteNoise configuration for serving static files in production (if available)
 try:
-    import whitenoise
-    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+    import whitenoise  # noqa: F401
+
+    STATICFILES_STORAGE = env_str(
+        'STATICFILES_STORAGE',
+        'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    )
 except ImportError:
-    pass  # WhiteNoise not installed, use default storage
+    pass
 
-# Media files
-MEDIA_URL = 'media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_URL = env_str('MEDIA_URL', '/media/')
+MEDIA_ROOT = env_path('MEDIA_ROOT', BASE_DIR / 'media')
 
-# Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# REST Framework configuration
+# ---------------------------------------------------------------------------
+# REST / JWT
+# ---------------------------------------------------------------------------
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
@@ -196,11 +154,8 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
-    # Custom pagination class that honours ``?page_size=N`` (capped at
-    # ``max_page_size``). Backward-compatible: existing clients that don't
-    # supply page_size still get the default 20.
     'DEFAULT_PAGINATION_CLASS': 'utils.pagination.StandardResultsSetPagination',
-    'PAGE_SIZE': 20,
+    'PAGE_SIZE': env_int('API_PAGE_SIZE', 20),
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
     ],
@@ -210,148 +165,136 @@ REST_FRAMEWORK = {
         'rest_framework.parsers.MultiPartParser',
     ],
     'EXCEPTION_HANDLER': 'config.exceptions.custom_exception_handler',
-    'URL_FORMAT_OVERRIDE': None,  # Disable format suffix in URL to prevent conflicts with query params
-    'FORMAT_SUFFIX_KWARG': None,  # Disable format suffix handling completely
-    # Throttling: opt-in per-view via throttle_classes + throttle_scope.
-    # We don't set DEFAULT_THROTTLE_CLASSES because most endpoints don't
-    # benefit from rate limiting and would just add overhead.
+    'URL_FORMAT_OVERRIDE': None,
+    'FORMAT_SUFFIX_KWARG': None,
     'DEFAULT_THROTTLE_RATES': {
-        # Login endpoint (AuthViewSet.login uses ScopedRateThrottle with
-        # throttle_scope='login'). 10 attempts per minute per IP is enough
-        # for honest typo recovery; brute-force needs 1000s/min to succeed.
-        'login': '10/min',
+        'login': env_str('THROTTLE_LOGIN_RATE', '10/min'),
     },
 }
 
-# JWT Settings
-from datetime import timedelta
-
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),  # Token expires after 1 hour
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
-    'ROTATE_REFRESH_TOKENS': True,
-    'BLACKLIST_AFTER_ROTATION': True,
-    'UPDATE_LAST_LOGIN': False,  # Set to False to avoid requiring last_login field
-    'ALGORITHM': 'HS256',
-    'SIGNING_KEY': SECRET_KEY,
-    'AUTH_HEADER_TYPES': ('Bearer',),
-    'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=env_int('JWT_ACCESS_TOKEN_HOURS', 1)),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=env_int('JWT_REFRESH_TOKEN_DAYS', 7)),
+    'ROTATE_REFRESH_TOKENS': env_bool('JWT_ROTATE_REFRESH_TOKENS', True),
+    'BLACKLIST_AFTER_ROTATION': env_bool('JWT_BLACKLIST_AFTER_ROTATION', True),
+    'UPDATE_LAST_LOGIN': env_bool('JWT_UPDATE_LAST_LOGIN', False),
+    'ALGORITHM': env_str('JWT_ALGORITHM', 'HS256'),
+    'SIGNING_KEY': env_str('JWT_SIGNING_KEY', SECRET_KEY),
+    'AUTH_HEADER_TYPES': tuple(
+        env_list('JWT_AUTH_HEADER_TYPES', ['Bearer'])
+    ),
+    'AUTH_HEADER_NAME': env_str('JWT_AUTH_HEADER_NAME', 'HTTP_AUTHORIZATION'),
     'USER_ID_FIELD': 'id',
     'USER_ID_CLAIM': 'user_id',
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
     'TOKEN_TYPE_CLAIM': 'token_type',
 }
 
-# CSRF settings for API - Allow all origins for now
-CSRF_TRUSTED_ORIGINS = [
+# ---------------------------------------------------------------------------
+# Security (cookies / HTTPS)
+# ---------------------------------------------------------------------------
+CSRF_TRUSTED_ORIGINS = env_csv_or_lines(
+    'CSRF_TRUSTED_ORIGINS',
+    [
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
+        'http://localhost:8000',
+    ],
+)
+CSRF_COOKIE_HTTPONLY = env_bool('CSRF_COOKIE_HTTPONLY', False)
+CSRF_COOKIE_SAMESITE = env_str('CSRF_COOKIE_SAMESITE', 'Lax')
+CSRF_COOKIE_SECURE = env_bool('CSRF_COOKIE_SECURE', False)
+
+SESSION_COOKIE_HTTPONLY = env_bool('SESSION_COOKIE_HTTPONLY', True)
+SESSION_COOKIE_SAMESITE = env_str('SESSION_COOKIE_SAMESITE', 'Lax')
+SESSION_COOKIE_SECURE = env_bool('SESSION_COOKIE_SECURE', False)
+
+SECURE_SSL_REDIRECT = env_bool('SECURE_SSL_REDIRECT', False)
+if env_bool('USE_SECURE_PROXY_SSL_HEADER', False):
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# ---------------------------------------------------------------------------
+# CORS
+# ---------------------------------------------------------------------------
+CORS_ALLOW_ALL_ORIGINS = env_bool('CORS_ALLOW_ALL_ORIGINS', DEBUG)
+CORS_ALLOW_CREDENTIALS = env_bool('CORS_ALLOW_CREDENTIALS', True)
+
+_default_cors_origins = [
     'http://localhost:3000',
     'http://127.0.0.1:3000',
-    'http://216.158.230.163:3000',  # Server frontend
-    'http://216.158.230.163:8000',  # Server backend
- 
-]
-CSRF_COOKIE_HTTPONLY = False  # Allow JavaScript to read CSRF token
-CSRF_COOKIE_SAMESITE = 'Lax'
-# Disable CSRF for API endpoints (using JWT instead)
-CSRF_COOKIE_SECURE = False  # Set to True in production with HTTPS
-
-# CORS settings - Allow all origins for now
-# In Docker, nginx proxy handles CORS, but we keep this for direct API access
-CORS_ALLOW_ALL_ORIGINS = True
-CORS_ALLOW_CREDENTIALS = True
-
-# Docker network origins (if accessing backend directly)
-CORS_ALLOWED_ORIGINS = [
-    'http://localhost:3000',
     'http://localhost:8000',
     'http://frontend:80',
     'http://frontend',
-    'http://216.158.230.163:3000',
-    'http://216.158.230.163:8000',
-    'http://127.0.0.1:3000',  # Also allow 127.0.0.1
 ]
+CORS_ALLOWED_ORIGINS = env_csv_or_lines('CORS_ALLOWED_ORIGINS', _default_cors_origins)
 
-# Allow all headers (including preflight request headers)
-# Use default headers from django-cors-headers and add our custom header
+_extra_cors_headers = env_csv_or_lines(
+    'CORS_EXTRA_ALLOWED_HEADERS',
+    ['x-branch-id', 'X-Branch-ID', 'ngrok-skip-browser-warning'],
+)
 try:
     from corsheaders.defaults import default_headers
-    CORS_ALLOWED_HEADERS = list(default_headers) + [
-        'x-branch-id',  # Custom header for branch selection
-        'X-Branch-ID',  # Also allow uppercase version (browsers may send either)
-        'ngrok-skip-browser-warning',  # Allow ngrok header to bypass warning page
-    ]
+
+    CORS_ALLOWED_HEADERS = list(default_headers) + _extra_cors_headers
 except ImportError:
-    # Fallback if default_headers is not available
     CORS_ALLOWED_HEADERS = [
         'accept',
         'accept-encoding',
         'authorization',
         'content-type',
-        'dnt',
         'origin',
         'user-agent',
         'x-csrftoken',
         'x-requested-with',
-        'x-branch-id',  # Custom header for branch selection
-        'X-Branch-ID',  # Also allow uppercase version
-        'access-control-request-headers',
-        'access-control-request-method',
-        'sec-fetch-mode',
-        'sec-fetch-site',
-        'sec-fetch-dest',
-        'ngrok-skip-browser-warning',  # Allow ngrok header to bypass warning page
+        *_extra_cors_headers,
     ]
 
-# Ensure x-branch-id is always included (case-insensitive check)
-if not any('branch-id' in h.lower() for h in CORS_ALLOWED_HEADERS):
-    CORS_ALLOWED_HEADERS.extend(['x-branch-id', 'X-Branch-ID'])
-CORS_ALLOW_METHODS = [
-    'DELETE',
-    'GET',
-    'OPTIONS',
-    'PATCH',
-    'POST',
-    'PUT',
-]
-# Allow ngrok and other tunneling services
-CORS_ALLOWED_ORIGIN_REGEXES = [
-    r"^https://.*\.ngrok-free\.app$",
-    r"^https://.*\.ngrok\.io$",
-    r"^https://.*\.ngrok\.app$",
-]
-# Expose headers for CORS
-CORS_EXPOSE_HEADERS = [
-    'content-type',
-    'authorization',
-]
-# Preflight cache duration (in seconds)
-CORS_PREFLIGHT_MAX_AGE = 86400  # 24 hours
+CORS_ALLOW_METHODS = env_csv_or_lines(
+    'CORS_ALLOW_METHODS',
+    ['DELETE', 'GET', 'OPTIONS', 'PATCH', 'POST', 'PUT'],
+)
 
-# Session configuration
-SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SAMESITE = 'Lax'
+_cors_regex_default = [
+    r'^https://.*\.ngrok-free\.app$',
+    r'^https://.*\.ngrok\.io$',
+    r'^https://.*\.ngrok\.app$',
+]
+CORS_ALLOWED_ORIGIN_REGEXES = env_csv_or_lines(
+    'CORS_ALLOWED_ORIGIN_REGEXES',
+    _cors_regex_default,
+)
 
-# Logging configuration - skip file handlers during ``manage.py test`` (sandbox-safe)
-RUNNING_TESTS = 'test' in sys.argv
+CORS_EXPOSE_HEADERS = env_csv_or_lines(
+    'CORS_EXPOSE_HEADERS',
+    ['content-type', 'authorization'],
+)
+CORS_PREFLIGHT_MAX_AGE = env_int('CORS_PREFLIGHT_MAX_AGE', 86400)
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+LOG_LEVEL = env_str('LOG_LEVEL', 'INFO')
+DJANGO_LOG_LEVEL = env_str('DJANGO_LOG_LEVEL', LOG_LEVEL)
+DJANGO_REQUEST_LOG_LEVEL = env_str('DJANGO_REQUEST_LOG_LEVEL', 'ERROR')
 
 _LOG_HANDLERS = {
     'console': {
-        'level': 'INFO',
+        'level': LOG_LEVEL,
         'class': 'logging.StreamHandler',
         'formatter': 'simple',
     },
 }
 if not RUNNING_TESTS:
-    logs_dir = BASE_DIR / 'logs'
+    logs_dir = env_path('LOG_DIR', BASE_DIR / 'logs')
     logs_dir.mkdir(parents=True, exist_ok=True)
     _LOG_HANDLERS['file'] = {
-        'level': 'ERROR',
+        'level': env_str('LOG_FILE_LEVEL', 'ERROR'),
         'class': 'logging.FileHandler',
         'filename': logs_dir / 'error.log',
         'formatter': 'verbose',
     }
     _LOG_HANDLERS['api_file'] = {
-        'level': 'INFO',
+        'level': env_str('LOG_API_FILE_LEVEL', 'INFO'),
         'class': 'logging.FileHandler',
         'filename': logs_dir / 'api.log',
         'formatter': 'verbose',
@@ -377,57 +320,37 @@ LOGGING = {
     'handlers': _LOG_HANDLERS,
     'root': {
         'handlers': ['console'],
-        'level': 'INFO',
+        'level': LOG_LEVEL,
     },
     'loggers': {
         'django': {
             'handlers': ['console'],
-            'level': 'INFO',
+            'level': DJANGO_LOG_LEVEL,
             'propagate': False,
         },
         'django.request': {
             'handlers': _FILE_HANDLERS,
-            'level': 'ERROR',
+            'level': DJANGO_REQUEST_LOG_LEVEL,
             'propagate': False,
         },
-        'settings': {
-            'handlers': ['console'],
-            'level': 'INFO',
-            'propagate': False,
-        },
-        'sales': {
-            'handlers': ['console'],
-            'level': 'INFO',
-            'propagate': False,
-        },
-        'inventory': {
-            'handlers': ['console'],
-            'level': 'INFO',
-            'propagate': False,
-        },
+        'settings': {'handlers': ['console'], 'level': LOG_LEVEL, 'propagate': False},
+        'sales': {'handlers': ['console'], 'level': LOG_LEVEL, 'propagate': False},
+        'inventory': {'handlers': ['console'], 'level': LOG_LEVEL, 'propagate': False},
         'middleware.cors_logging': {
             'handlers': ['console'],
-            'level': 'WARNING',  # Only log warnings/errors for CORS
+            'level': env_str('CORS_LOG_LEVEL', 'WARNING'),
             'propagate': False,
         },
-        'barcodes': {
-            'handlers': _FILE_HANDLERS,
-            'level': 'ERROR',
-            'propagate': False,
-        },
-        'config': {
-            'handlers': _FILE_HANDLERS,
-            'level': 'ERROR',
-            'propagate': False,
-        },
+        'barcodes': {'handlers': _FILE_HANDLERS, 'level': 'ERROR', 'propagate': False},
+        'config': {'handlers': _FILE_HANDLERS, 'level': 'ERROR', 'propagate': False},
         'corsheaders': {
             'handlers': ['console'],
-            'level': 'WARNING',
+            'level': env_str('CORS_LOG_LEVEL', 'WARNING'),
             'propagate': False,
         },
         'accounts': {
             'handlers': ['console', *_FILE_HANDLERS],
-            'level': 'INFO',
+            'level': LOG_LEVEL,
             'propagate': False,
         },
     },

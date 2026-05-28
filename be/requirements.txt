@@ -1,9 +1,8 @@
 # CompleteBytePOS Backend Requirements
-# SQLite version (default, no additional driver needed)
-# For MySQL: add PyMySQL>=1.1.0
-# For PostgreSQL: add psycopg2-binary>=2.9.0
+# PostgreSQL is the default database (see .env.example)
 
 Django>=4.2,<5.0
+psycopg2-binary>=2.9.9
 djangorestframework>=3.14.0
 djangorestframework-simplejwt>=5.2.0
 django-cors-headers>=4.0.0
