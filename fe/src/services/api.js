@@ -2,12 +2,7 @@ import axios from 'axios';
 import { resolveApiBaseUrl } from '../config/apiBaseUrl';
 
 const API_BASE_URL = resolveApiBaseUrl();
-
-if (API_BASE_URL.startsWith('/')) {
-  console.log('[API] Using relative URL (nginx proxy). API calls go through the same host.');
-} else {
-  console.log(`[API] Using API Base URL: ${API_BASE_URL}`);
-}
+console.log(`[API] ${API_BASE_URL}`);
 
 // Only add ngrok header if using ngrok URL
 const isNgrokUrl = API_BASE_URL.includes('ngrok');
