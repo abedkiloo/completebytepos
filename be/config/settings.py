@@ -14,9 +14,9 @@ from config.env import env_bool, env_csv_or_lines, env_int, env_list, env_path, 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Load .env from backend dir and workspace root (assembled be+fe layout)
+# Load .env: workspace root (be+fe layout) overrides be/.env
 load_dotenv(BASE_DIR / '.env')
-load_dotenv(BASE_DIR.parent / '.env', override=False)
+load_dotenv(BASE_DIR.parent / '.env', override=True)
 
 # ---------------------------------------------------------------------------
 # Core
