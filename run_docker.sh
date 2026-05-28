@@ -18,6 +18,8 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}CompleteBytePOS - Docker Mode${NC}"
+echo -e "${BLUE}  Dev:  ./run_docker.sh${NC}"
+echo -e "${BLUE}  Prod: ./run_docker.sh --prod  (React build + nginx)${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
@@ -66,7 +68,64 @@ stop_existing() {
     $COMPOSE_CMD down 2>/dev/null || true
 }
 
-# Build and start
+# Production: static React build + nginx (see fe/Dockerfile, docs/DEPLOYMENT.md)
+start_containers_prod() {
+    print_info "Building and starting Docker containers in PRODUCTION mode..."
+    print_info "Frontend: npm run build → nginx (static files, NOT react-scripts start)"
+    cd "$PROJECT_ROOT"
+
+    COMPOSE_FILE="docker-compose.yml"
+
+    if [ "$1" == "--rebuild" ]; then
+        print_info "Rebuilding production images from scratch..."
+        $COMPOSE_CMD -f $COMPOSE_FILE build --no-cache
+    else
+        $COMPOSE_CMD -f $COMPOSE_FILE build
+    fi
+
+    $COMPOSE_CMD -f $COMPOSE_FILE up -d
+
+    print_info "Waiting for services to be ready..."
+    sleep 8
+
+    if docker ps | grep -q completebytepos_backend && docker ps | grep -q completebytepos_frontend; then
+        print_success "Production containers are running"
+        run_migrations
+    else
+        print_error "Some containers failed to start!"
+        $COMPOSE_CMD -f $COMPOSE_FILE logs
+        exit 1
+    fi
+}
+
+show_status_prod() {
+    echo ""
+    echo -e "${GREEN}========================================${NC}"
+    echo -e "${GREEN}Production stack is up${NC}"
+    echo -e "${GREEN}========================================${NC}"
+    echo ""
+    echo -e "Frontend (nginx + React build): ${BLUE}http://localhost:3000${NC}"
+    echo -e "Backend API (via nginx proxy):  ${BLUE}http://localhost:3000/api${NC}"
+    echo -e "Admin Panel:                  ${BLUE}http://localhost:8000/admin${NC}"
+    echo ""
+    echo -e "${YELLOW}This is NOT the dev server.${NC} UI changes require: ${BLUE}./run_docker.sh --prod --rebuild${NC}"
+    echo ""
+    docker ps --filter "name=completebytepos" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+    echo ""
+    echo -e "Logs: ${YELLOW}$COMPOSE_CMD -f docker-compose.yml logs -f${NC}"
+    echo -e "Stop: ${YELLOW}./stop_docker.sh${NC}"
+    echo ""
+
+    if curl -sI http://localhost:3000/ 2>/dev/null | grep -qi nginx; then
+        print_success "Frontend is nginx serving the production build"
+    elif curl -s http://localhost:3000/ >/dev/null 2>&1; then
+        print_success "Frontend is responding"
+    else
+        print_warning "Frontend may still be starting"
+    fi
+}
+
+# Build and start (development)
 start_containers() {
     print_info "Building and starting Docker containers in DEVELOPMENT mode..."
     print_info "Hot reloading is enabled for both frontend and backend"
@@ -169,8 +228,9 @@ show_status() {
     if curl -s http://localhost:8000/api/accounts/auth/me/ > /dev/null 2>&1; then
         print_success "Backend is responding"
         
-        # Populate test data (only in Docker dev mode)
-        populate_test_data
+        # Bootstrap uses create_users + seed_demo_catalog (3 users, 3 products).
+        # Heavy populate_test_data is opt-in only — see docs/POS_UX_ROLES_AND_TESTING.md
+        print_info "Bootstrap: admin/manager/sales + 3 demo products (via create_users on container start)"
     else
         print_warning "Backend may still be starting. Check logs if issues persist."
     fi
@@ -201,42 +261,40 @@ populate_test_data() {
     # Convert to integer for comparison
     USER_COUNT=${USER_COUNT:-0}
     
-    # If database is empty or has very few users, populate test data
-    if [ "$USER_COUNT" -lt "5" ]; then
-        print_info "Database appears empty or has minimal data. Populating test data..."
-        print_info "This may take a few minutes..."
-        
-        # Run populate_test_data command with proper error handling
-        if docker exec completebytepos_backend python manage.py populate_test_data --users 20 --customers 100 --products 1000; then
-            print_success "Test data populated successfully!"
-            print_info "  • 20 users created"
-            print_info "  • 100 customers created"
-            print_info "  • 1000 products with variants created"
-            print_info "  • Sample sales, expenses, and inventory data created"
-        else
-            print_warning "Failed to populate test data. This is not critical - you can run it manually:"
-            print_info "  docker exec completebytepos_backend python manage.py populate_test_data"
-        fi
-    else
-        print_info "Database already has data (${USER_COUNT} users found). Skipping test data population."
-        print_info "To populate test data manually, run:"
-        print_info "  docker exec completebytepos_backend python manage.py populate_test_data"
-    fi
+    print_info "Skipping auto populate_test_data (use only for load testing)."
+    print_info "  docker exec completebytepos_backend python manage.py populate_test_data --users 5 --products 50"
+    print_info "Fresh installs already have: admin, manager, sales + 3 demo products."
 }
 
 # Main
 main() {
     check_docker
     stop_existing
-    
-    # Check for --rebuild flag
-    if [ "$1" == "--rebuild" ]; then
-        start_containers --rebuild
+
+    PROD_MODE=false
+    REBUILD=false
+    for arg in "$@"; do
+        case "$arg" in
+            --prod|--production) PROD_MODE=true ;;
+            --rebuild) REBUILD=true ;;
+        esac
+    done
+
+    if [ "$PROD_MODE" = true ]; then
+        if [ "$REBUILD" = true ]; then
+            start_containers_prod --rebuild
+        else
+            start_containers_prod
+        fi
+        show_status_prod
     else
-        start_containers
+        if [ "$REBUILD" = true ]; then
+            start_containers --rebuild
+        else
+            start_containers
+        fi
+        show_status
     fi
-    
-    show_status
 }
 
 trap 'print_info "Script interrupted. Use ./stop_docker.sh to stop containers."' INT TERM

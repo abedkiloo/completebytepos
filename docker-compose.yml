@@ -1,5 +1,10 @@
-# Docker Compose file for CompleteBytePOS
-# Uses a shared network to avoid CORS issues
+# Docker Compose — PRODUCTION
+#
+# Frontend: multi-stage build (npm run build) → static files in nginx (port 80).
+# NOT the React dev server. Use docker-compose.dev.yml for hot reload.
+#
+# Start:  ./run_docker.sh --prod
+#    or:  docker compose up -d --build
 
 services:
   backend:
@@ -17,18 +22,27 @@ services:
       - backend_db:/app/db
     working_dir: /app
     environment:
-      - DEBUG=True
+      - DEBUG=${DEBUG:-False}
       - DJANGO_SETTINGS_MODULE=config.settings
-      - DATABASE_URL=sqlite:///db/db.sqlite3
-      - DB_PATH=/app/db/db.sqlite3
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///db/db.sqlite3}
+      - DB_PATH=${DB_PATH:-/app/db/db.sqlite3}
       - PYTHONUNBUFFERED=1
+    # Seed commands below are idempotent (``get_or_create`` / role updates
+    # in place), so re-running on every boot is a no-op when data already
+    # exists. This guarantees a fresh ``backend_db`` volume always boots
+    # into a working state - the symptom of a missing modules table is a
+    # blank "Module Settings" page and a missing POS link in the sidebar.
     command: >
       sh -c "
         mkdir -p /app/db /app/logs &&
         python manage.py makemigrations --noinput || true &&
         python manage.py migrate --noinput &&
+        python manage.py init_permissions --noinput || python manage.py init_permissions || true &&
+        python manage.py init_modules || true &&
+        python -c \"import os; os.environ.setdefault('DJANGO_SETTINGS_MODULE','config.settings'); import django; django.setup(); from settings.models import ModuleSettings, ModuleFeature; m,_=ModuleSettings.objects.get_or_create(module_name='products', defaults={'description':'Product management module','is_enabled':True}); f,_=ModuleFeature.objects.get_or_create(module=m, feature_key='product_variants', defaults={'feature_name':'Product Variants (Sizes/Colors)','description':'Enable size/color variants on products and variant picker at POS','is_enabled':False,'display_order':3}); f.is_enabled=False; f.save(update_fields=['is_enabled'])\" || true &&
+        python manage.py create_users || true &&
         python manage.py collectstatic --noinput || true &&
-        gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 4 --threads 2 --reload
+        gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 4 --threads 2 --timeout 120
       "
     restart: unless-stopped
     networks:
@@ -45,19 +59,24 @@ services:
       context: ./fe
       dockerfile: Dockerfile
       args:
-        - REACT_APP_API_URL=/api
+        # Relative URL: browser calls same origin; nginx proxies /api → backend
+        REACT_APP_API_URL: /api
     container_name: completebytepos_frontend
     hostname: frontend
     ports:
-      - "3000:80"
+      - "${FRONTEND_PORT:-3000}:80"
     depends_on:
       backend:
         condition: service_healthy
     restart: unless-stopped
     networks:
       - completebytepos_network
-    environment:
-      - REACT_APP_API_URL=/api
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
 volumes:
   backend_static:

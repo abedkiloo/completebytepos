@@ -18,6 +18,8 @@ class ModuleRegistryTests(TestCase):
         self.assertIn('billing_pos', starter['features']['sales'])
         self.assertNotIn('pos', starter['features']['sales'])
         self.assertNotIn('normal_sale', starter['features']['sales'])
+        self.assertTrue(starter['modules']['invoicing'])
+        self.assertIn('invoice_creation', starter['features']['invoicing'])
 
         full = resolve_preset('retail_full')
         self.assertTrue(full['modules']['reports'])
@@ -44,6 +46,11 @@ class ModuleRegistryTests(TestCase):
         self.assertTrue(billing.is_enabled)
         barcodes = ModuleSettings.objects.get(module_name='barcodes')
         self.assertFalse(barcodes.is_enabled)
+        invoicing = ModuleSettings.objects.get(module_name='invoicing')
+        self.assertTrue(invoicing.is_enabled)
+        self.assertTrue(
+            invoicing.features.get(feature_key='invoice_creation').is_enabled
+        )
 
     def test_all_registry_modules_exist_after_init(self):
         for name in MODULE_BY_NAME:

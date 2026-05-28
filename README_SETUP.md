@@ -281,15 +281,25 @@ python manage.py migrate
 
 ## Production Deployment
 
-For production:
+### Docker (frontend = React production build)
 
-1. Set `DEBUG=False` in `be/.env`
-2. Generate new `SECRET_KEY`
-3. Set proper `ALLOWED_HOSTS`
-4. Use PostgreSQL instead of MySQL
-5. Set up proper web server (Nginx + Gunicorn)
-6. Configure SSL/HTTPS
-7. Set up database backups
+Use the **production** compose stack so the UI is a static build (CRA `npm run build` + nginx), not the dev server:
+
+```bash
+./run_docker.sh --prod
+```
+
+After UI changes, rebuild: `./run_docker.sh --prod --rebuild`
+
+Details: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+
+### Checklist (any host)
+
+1. Set `DEBUG=False` and a strong `SECRET_KEY` (see `.env.production.example`)
+2. Set proper `ALLOWED_HOSTS`
+3. Frontend: run `npm run build` and serve `fe/build` with nginx (never `npm start` in production)
+4. Backend: Gunicorn behind nginx; proxy `/api` to Django
+5. Configure SSL/HTTPS and database backups
 
 ---
 

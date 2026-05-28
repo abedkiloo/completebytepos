@@ -364,12 +364,13 @@ PRESETS: dict[str, dict[str, Any]] = {
     'retail_starter': {
         'id': 'retail_starter',
         'label': 'Retail starter',
-        'description': 'Billing desk, products, customers, and stock — lean setup for new stores.',
+        'description': 'Billing desk, invoicing, products, customers, and stock — lean setup for new stores.',
         'sort_order': 1,
         'modules': {
             'products': True,
             'sales': True,
             'customers': True,
+            'invoicing': True,
             'inventory': True,
             'stock': True,
             'settings': True,
@@ -379,6 +380,7 @@ PRESETS: dict[str, dict[str, Any]] = {
             'sales': ['billing_pos', 'receipt_printing', 'sales_history'],
             'products': ['bulk_operations', 'csv_import_export'],
             'customers': ['customer_management', 'customer_history'],
+            'invoicing': ['invoice_creation', 'invoice_tracking', 'payment_tracking'],
             'inventory': ['stock_adjustments', 'low_stock_alerts', 'inventory_reports'],
             'stock': ['manage_stock', 'stock_adjustments', 'low_stock_alerts'],
             'settings': [
@@ -393,11 +395,10 @@ PRESETS: dict[str, dict[str, Any]] = {
     'retail_full': {
         'id': 'retail_full',
         'label': 'Full retail',
-        'description': 'Starter plus POS, barcodes, invoicing, suppliers, and reports.',
+        'description': 'Starter plus POS, barcodes, suppliers, and reports.',
         'sort_order': 2,
         'extends': 'retail_starter',
         'modules': {
-            'invoicing': True,
             'suppliers': True,
             'barcodes': True,
             'reports': True,
@@ -405,7 +406,7 @@ PRESETS: dict[str, dict[str, Any]] = {
         'features': {
             'sales': ['pos', 'normal_sale'],
             'products': ['barcode_printing'],
-            'invoicing': ['invoice_creation', 'invoice_tracking', 'payment_tracking'],
+            'invoicing': ['partial_payments'],
             'suppliers': ['supplier_management'],
             'barcodes': ['barcode_generation', 'label_printing'],
             'reports': ['sales_reports', 'product_reports', 'inventory_reports'],
