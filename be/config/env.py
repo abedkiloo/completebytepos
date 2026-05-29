@@ -34,8 +34,27 @@ def env_list(name: str, default: list[str] | None = None, sep: str = ',') -> lis
         return list(default or [])
     if raw.strip() == '*':
         return ['*']
-    items = [part.strip() for part in raw.split(sep) if part.strip()]
+    items = [
+        part.strip().strip('"').strip("'")
+        for part in raw.split(sep)
+        if part.strip()
+    ]
     return items
+
+
+def merge_unique_list(*lists: list[str] | None) -> list[str]:
+    """Merge lists preserving order, dropping empty duplicates."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for lst in lists:
+        if not lst:
+            continue
+        for item in lst:
+            key = (item or '').strip()
+            if key and key not in seen:
+                seen.add(key)
+                out.append(key)
+    return out
 
 
 def env_path(name: str, default: Path | str) -> Path:
