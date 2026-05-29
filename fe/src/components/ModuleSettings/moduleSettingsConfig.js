@@ -44,7 +44,7 @@ export function getFeatureTip(moduleName, featureKey) {
   const tips = {
     sales: {
       pos: 'Walk-in retail checkout.',
-      billing_pos: 'Invoices, credit, and held carts.',
+      billing_pos: 'Terminal POS — invoices, credit, and held carts.',
     },
     settings: {
       multi_branch_support: 'Shows branch selector in the header when on.',

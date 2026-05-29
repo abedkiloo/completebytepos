@@ -17,6 +17,18 @@ from settings.models import ModuleSettings, ModuleFeature
 from settings.module_catalog import get_enabled_modules_flat
 
 
+def _user_can_manage_permissions(user) -> bool:
+    """Super admins, legacy admins, and staff can view the permission catalog."""
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_superuser or user.is_staff:
+        return True
+    profile = getattr(user, 'profile', None)
+    if profile and (profile.is_super_admin or profile.is_admin):
+        return True
+    return False
+
+
 class PermissionViewSet(viewsets.ReadOnlyModelViewSet):
     """View permissions - only admins can view"""
     queryset = Permission.objects.all()
@@ -25,12 +37,10 @@ class PermissionViewSet(viewsets.ReadOnlyModelViewSet):
     ordering = ['module', 'action']
     
     def get_queryset(self):
-        # Only admins can view permissions
         try:
             if not hasattr(self, 'request') or not hasattr(self.request, 'user'):
                 return Permission.objects.none()
-            user = self.request.user
-            if user and user.is_authenticated and (user.is_staff or (hasattr(user, 'profile') and user.profile and user.profile.is_admin)):
+            if _user_can_manage_permissions(self.request.user):
                 return Permission.objects.all()
         except Exception as e:
             import logging
@@ -64,7 +74,7 @@ class PermissionViewSet(viewsets.ReadOnlyModelViewSet):
         """Get permissions grouped by module"""
         try:
             user = request.user
-            if not (user and (user.is_staff or (hasattr(user, 'profile') and user.profile and user.profile.is_admin))):
+            if not _user_can_manage_permissions(user):
                 return Response(
                     {'error': 'Permission denied'},
                     status=status.HTTP_403_FORBIDDEN
@@ -89,7 +99,7 @@ class PermissionViewSet(viewsets.ReadOnlyModelViewSet):
         """Permissions grouped by catalog domain, then catalog module."""
         try:
             user = request.user
-            if not (user and (user.is_staff or (hasattr(user, 'profile') and user.profile and user.profile.is_admin))):
+            if not _user_can_manage_permissions(user):
                 return Response(
                     {'error': 'Permission denied'},
                     status=status.HTTP_403_FORBIDDEN

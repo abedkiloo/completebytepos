@@ -36,7 +36,7 @@ function resolvePersona(me) {
 const QUICK_ACTIONS = {
   super_admin: [
     { to: '/pos', label: 'Retail POS', icon: ShoppingCart, description: 'Fast checkout' },
-    { to: '/pos/billing', label: 'Billing POS', icon: Receipt, description: 'Invoices & holding' },
+    { to: '/pos/billing', label: 'Terminal POS', icon: Receipt, description: 'Invoices & holding' },
     { to: '/products', label: 'Products', icon: Package, description: 'Catalog & stock' },
     { to: '/reports', label: 'Reports', icon: BarChart3, description: 'Business insights' },
     { to: '/users', label: 'Users', icon: Users, description: 'Access control' },
@@ -44,7 +44,7 @@ const QUICK_ACTIONS = {
   ],
   manager: [
     { to: '/pos', label: 'Retail POS', icon: ShoppingCart, description: 'Sell at counter' },
-    { to: '/pos/billing', label: 'Billing POS', icon: Receipt, description: 'Credit & drafts' },
+    { to: '/pos/billing', label: 'Terminal POS', icon: Receipt, description: 'Credit & drafts' },
     { to: '/products', label: 'Products', icon: Package, description: 'Stock & pricing' },
     { to: '/inventory', label: 'Inventory', icon: Package, description: 'Purchases & moves' },
     { to: '/reports', label: 'Reports', icon: BarChart3, description: 'Sales & stock' },
@@ -52,7 +52,7 @@ const QUICK_ACTIONS = {
   ],
   sales: [
     { to: '/pos', label: 'Start sale', icon: ShoppingCart, description: 'Retail POS' },
-    { to: '/pos/billing', label: 'Billing', icon: Receipt, description: 'Invoice checkout' },
+    { to: '/pos/billing', label: 'Terminal POS', icon: Receipt, description: 'Invoice checkout' },
     { to: '/customers', label: 'Customers', icon: Users, description: 'Walk-in & credit' },
   ],
 };
@@ -326,7 +326,7 @@ const Dashboard = () => {
               </CardHeader>
               <CardContent className="space-y-3 text-sm text-muted-foreground">
                 <p>Use <strong className="text-foreground">Retail POS</strong> for walk-in cash/card sales.</p>
-                <p>Use <strong className="text-foreground">Billing POS</strong> for invoices, credit, and held carts.</p>
+                <p>Use <strong className="text-foreground">Terminal POS</strong> for invoices, credit, and held carts.</p>
                 <p>Search by name, SKU, or barcode — stock shows before you add to cart.</p>
               </CardContent>
             </Card>

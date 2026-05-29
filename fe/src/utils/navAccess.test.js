@@ -41,7 +41,7 @@ describe('navAccess', () => {
     ).toBe(true);
     expect(
       canSeeNavItem(
-        { to: '/pos/billing', label: 'Billing' },
+        { to: '/pos/billing', label: 'Terminal POS' },
         'sales',
         salesCtx
       )
@@ -106,7 +106,7 @@ describe('navAccess', () => {
     ).toBe(false);
     expect(
       canSeeNavItem(
-        { to: '/pos/billing', label: 'Billing', feature: ['sales', 'billing_pos'] },
+        { to: '/pos/billing', label: 'Terminal POS', feature: ['sales', 'billing_pos'] },
         'sales',
         admin
       )

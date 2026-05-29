@@ -69,6 +69,22 @@ class RoleSerializer(serializers.ModelSerializer):
         except Exception:
             pass
         return 0
+
+    def create(self, validated_data):
+        permissions = validated_data.pop('permissions', None)
+        instance = Role.objects.create(**validated_data)
+        if permissions is not None:
+            instance.permissions.set(permissions)
+        return instance
+
+    def update(self, instance, validated_data):
+        permissions = validated_data.pop('permissions', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if permissions is not None:
+            instance.permissions.set(permissions)
+        return instance
     
     class Meta:
         model = Role

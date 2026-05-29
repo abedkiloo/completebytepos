@@ -50,7 +50,7 @@ export default function BillingPOSPage() {
         {/* Top bar */}
         <div className="flex items-center justify-between border-b bg-white px-4 py-3">
           <div>
-            <h1 className="text-lg font-semibold text-slate-900">Billing</h1>
+            <h1 className="text-lg font-semibold text-slate-900">Terminal POS</h1>
             <p className="text-xs text-muted-foreground">
               Draft invoice saved automatically
               {state.holdingNumber && (

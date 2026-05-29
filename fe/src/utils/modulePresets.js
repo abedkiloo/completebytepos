@@ -7,7 +7,7 @@ export const MODULE_PRESETS = [
     id: 'retail_starter',
     label: 'Retail starter',
     description:
-      'Billing desk, invoicing, products, customers, and stock — no POS, barcodes, or normal sale.',
+      'Terminal POS, invoicing, products, customers, and stock — no POS, barcodes, or normal sale.',
   },
   {
     id: 'retail_full',

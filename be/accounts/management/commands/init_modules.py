@@ -47,7 +47,7 @@ class Command(BaseCommand):
                 'is_enabled': True,
                 'features': [
                     {'key': 'pos', 'name': 'Point of Sale (POS)', 'description': 'Enable POS system for quick sales', 'order': 1},
-                    {'key': 'billing_pos', 'name': 'Billing POS (Retail Desk)', 'description': 'Invoice-style POS with holding drafts until checkout', 'order': 2},
+                    {'key': 'billing_pos', 'name': 'Terminal POS', 'description': 'Invoice-style POS with holding drafts until checkout', 'order': 2},
                     {'key': 'normal_sale', 'name': 'Normal Sale', 'description': 'Enable normal sales processing', 'order': 3},
                     {'key': 'sales_history', 'name': 'Sales History', 'description': 'Enable sales history tracking', 'order': 4},
                     {'key': 'receipt_printing', 'name': 'Receipt Printing', 'description': 'Enable receipt printing', 'order': 5},

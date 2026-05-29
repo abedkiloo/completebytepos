@@ -98,7 +98,7 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
         'sort_order': 10,
         'features': [
             _f('pos', 'Retail POS', 'Fast walk-in checkout.', 1),
-            _f('billing_pos', 'Billing POS', 'Invoices, credit, and held carts.', 2),
+            _f('billing_pos', 'Terminal POS', 'Invoices, credit, and held carts.', 2),
             _f('normal_sale', 'Normal sale', 'Full sale with delivery fields.', 3, enabled=False),
             _f('sales_history', 'Sales history', 'Search past transactions.', 4),
             _f('receipt_printing', 'Receipt printing', 'Print or reprint receipts.', 5),
@@ -364,7 +364,7 @@ PRESETS: dict[str, dict[str, Any]] = {
     'retail_starter': {
         'id': 'retail_starter',
         'label': 'Retail starter',
-        'description': 'Billing desk, invoicing, products, customers, and stock — lean setup for new stores.',
+        'description': 'Terminal POS, invoicing, products, customers, and stock — lean setup for new stores.',
         'sort_order': 1,
         'modules': {
             'products': True,

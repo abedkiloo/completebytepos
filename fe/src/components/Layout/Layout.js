@@ -78,7 +78,7 @@ const NAV_SECTIONS = [
     module: 'sales',
     items: [
       { to: '/pos', label: 'POS', icon: ShoppingCart, feature: ['sales', 'pos'] },
-      { to: '/pos/billing', label: 'Billing', icon: Receipt, feature: ['sales', 'billing_pos'] },
+      { to: '/pos/billing', label: 'Terminal POS', icon: Receipt, feature: ['sales', 'billing_pos'] },
       { to: '/normal-sale', label: 'Normal Sale', icon: Briefcase, feature: ['sales', 'normal_sale'] },
       { to: '/sales', label: 'Sales History', icon: DollarSign, feature: ['sales', 'sales_history'] },
     ],

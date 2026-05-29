@@ -4,8 +4,22 @@ import { rolesAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import { cn } from '../../lib/cn';
 import { DOMAIN_ORDER, DOMAIN_LABELS } from '../../utils/moduleDomains';
+import { Button } from '../ui/button';
 
-function buildDomainCatalog(permissions) {
+function normalizeDomainCatalog(catalog) {
+  if (!Array.isArray(catalog)) return [];
+  return catalog.map((domain) => ({
+    ...domain,
+    modules: (domain.modules || []).map((mod) => ({
+      ...mod,
+      permissions: [...(mod.permissions || [])].sort((a, b) =>
+        (a.action_display || a.action).localeCompare(b.action_display || b.action)
+      ),
+    })),
+  }));
+}
+
+function buildDomainCatalogFromFlat(permissions) {
   const byDomain = {};
 
   permissions.forEach((perm) => {
@@ -24,21 +38,34 @@ function buildDomainCatalog(permissions) {
     byDomain[domainId].modules[modKey].permissions.push(perm);
   });
 
-  return DOMAIN_ORDER.filter((id) => byDomain[id]).map((domainId) => {
+  const toDomainEntry = (domainId) => {
     const domain = byDomain[domainId];
     const modules = Object.values(domain.modules).sort((a, b) =>
       a.label.localeCompare(b.label)
     );
-    modules.forEach((m) => {
-      m.permissions.sort((a, b) =>
-        (a.action_display || a.action).localeCompare(b.action_display || b.action)
-      );
-    });
     return { ...domain, modules };
-  });
+  };
+
+  const ordered = DOMAIN_ORDER.filter((id) => byDomain[id]).map(toDomainEntry);
+  const extra = Object.keys(byDomain)
+    .filter((id) => !DOMAIN_ORDER.includes(id))
+    .sort()
+    .map(toDomainEntry);
+
+  return [...ordered, ...extra];
 }
 
-const RoleForm = ({ role, permissions, onClose }) => {
+function flattenCatalog(catalog) {
+  const ids = [];
+  catalog.forEach((domain) => {
+    domain.modules.forEach((mod) => {
+      mod.permissions.forEach((perm) => ids.push(perm.id));
+    });
+  });
+  return ids;
+}
+
+const RoleForm = ({ role, permissions, permissionCatalog, onClose }) => {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -51,7 +78,9 @@ const RoleForm = ({ role, permissions, onClose }) => {
   const [expandedDomains, setExpandedDomains] = useState({});
 
   useEffect(() => {
-    const catalog = buildDomainCatalog(permissions);
+    const catalog = permissionCatalog?.length
+      ? normalizeDomainCatalog(permissionCatalog)
+      : buildDomainCatalogFromFlat(permissions);
     setDomainCatalog(catalog);
     const expanded = {};
     catalog.forEach((d) => {
@@ -66,8 +95,15 @@ const RoleForm = ({ role, permissions, onClose }) => {
         is_active: role.is_active !== undefined ? role.is_active : true,
         permission_ids: role.permissions?.map((p) => p.id) || [],
       });
+    } else {
+      setFormData({
+        name: '',
+        description: '',
+        is_active: true,
+        permission_ids: [],
+      });
     }
-  }, [role, permissions]);
+  }, [role, permissions, permissionCatalog]);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -84,41 +120,73 @@ const RoleForm = ({ role, permissions, onClose }) => {
     }
   };
 
-  const handlePermissionToggle = (permissionId) => {
+  const setPermissionIds = (updater) => {
     setFormData((prev) => ({
       ...prev,
-      permission_ids: prev.permission_ids.includes(permissionId)
-        ? prev.permission_ids.filter((id) => id !== permissionId)
-        : [...prev.permission_ids, permissionId],
+      permission_ids: typeof updater === 'function' ? updater(prev.permission_ids) : updater,
     }));
+  };
+
+  const handlePermissionToggle = (permissionId) => {
+    setPermissionIds((ids) =>
+      ids.includes(permissionId)
+        ? ids.filter((id) => id !== permissionId)
+        : [...ids, permissionId]
+    );
   };
 
   const handleModuleToggle = (modulePermissions) => {
     const ids = modulePermissions.map((p) => p.id);
-    const allSelected = ids.every((id) => formData.permission_ids.includes(id));
-    setFormData((prev) => ({
-      ...prev,
-      permission_ids: allSelected
-        ? prev.permission_ids.filter((id) => !ids.includes(id))
-        : [...new Set([...prev.permission_ids, ...ids])],
-    }));
+    setPermissionIds((current) => {
+      const allSelected = ids.every((id) => current.includes(id));
+      return allSelected
+        ? current.filter((id) => !ids.includes(id))
+        : [...new Set([...current, ...ids])];
+    });
+  };
+
+  const handleDomainToggle = (domain) => {
+    const ids = flattenCatalog([domain]);
+    setPermissionIds((current) => {
+      const allSelected = ids.every((id) => current.includes(id));
+      return allSelected
+        ? current.filter((id) => !ids.includes(id))
+        : [...new Set([...current, ...ids])];
+    });
+  };
+
+  const handleSelectAll = () => {
+    setPermissionIds(flattenCatalog(domainCatalog));
+  };
+
+  const handleClearAll = () => {
+    setPermissionIds([]);
   };
 
   const toggleDomain = (domainId) => {
     setExpandedDomains((prev) => ({ ...prev, [domainId]: !prev[domainId] }));
   };
 
+  const totalPermissions = flattenCatalog(domainCatalog).length;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setErrors({});
 
+    const payload = {
+      name: formData.name,
+      description: formData.description,
+      is_active: formData.is_active,
+      permission_ids: formData.permission_ids,
+    };
+
     try {
       if (role) {
-        await rolesAPI.update(role.id, formData);
+        await rolesAPI.update(role.id, payload);
         toast.success('Role updated successfully');
       } else {
-        await rolesAPI.create(formData);
+        await rolesAPI.create(payload);
         toast.success('Role created successfully');
       }
       setTimeout(() => {
@@ -192,98 +260,134 @@ const RoleForm = ({ role, permissions, onClose }) => {
             </div>
 
             <div className="permissions-section">
-              <div className="permissions-header">
-                <h3>Permissions</h3>
-                <span className="selected-count">
-                  {formData.permission_ids.length} selected
-                </span>
+              <div className="permissions-header flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3>Permissions</h3>
+                  <span className="selected-count">
+                    {formData.permission_ids.length} of {totalPermissions} selected
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={handleSelectAll}>
+                    Select all
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={handleClearAll}>
+                    Clear all
+                  </Button>
+                </div>
               </div>
               <p className="mb-3 text-xs text-muted-foreground">
-                Grouped by the same business areas as Module Settings.
+                Select any combination of modules and actions for this role.
               </p>
 
               <div className="space-y-3">
-                {domainCatalog.map((domain) => (
-                  <div
-                    key={domain.id}
-                    className="rounded-lg border border-border bg-card"
-                  >
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold"
-                      onClick={() => toggleDomain(domain.id)}
+                {domainCatalog.map((domain) => {
+                  const domainIds = flattenCatalog([domain]);
+                  const domainAllSelected = domainIds.every((id) =>
+                    formData.permission_ids.includes(id)
+                  );
+                  const domainSomeSelected = domainIds.some((id) =>
+                    formData.permission_ids.includes(id)
+                  );
+
+                  return (
+                    <div
+                      key={domain.id}
+                      className="rounded-lg border border-border bg-card"
                     >
-                      {expandedDomains[domain.id] ? (
-                        <ChevronDown className="h-4 w-4 shrink-0" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4 shrink-0" />
-                      )}
-                      {domain.label}
-                    </button>
+                      <div className="flex items-center gap-2 px-3 py-2">
+                        <button
+                          type="button"
+                          className="flex flex-1 items-center gap-2 text-left text-sm font-semibold"
+                          onClick={() => toggleDomain(domain.id)}
+                        >
+                          {expandedDomains[domain.id] ? (
+                            <ChevronDown className="h-4 w-4 shrink-0" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 shrink-0" />
+                          )}
+                          {domain.label}
+                        </button>
+                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <input
+                            type="checkbox"
+                            checked={domainAllSelected}
+                            ref={(input) => {
+                              if (input) {
+                                input.indeterminate =
+                                  domainSomeSelected && !domainAllSelected;
+                              }
+                            }}
+                            onChange={() => handleDomainToggle(domain)}
+                          />
+                          All
+                        </label>
+                      </div>
 
-                    {expandedDomains[domain.id] && (
-                      <div className="space-y-2 border-t border-border px-3 pb-3 pt-2">
-                        {domain.modules.map((mod) => {
-                          const allSelected = mod.permissions.every((p) =>
-                            formData.permission_ids.includes(p.id)
-                          );
-                          const someSelected = mod.permissions.some((p) =>
-                            formData.permission_ids.includes(p.id)
-                          );
+                      {expandedDomains[domain.id] && (
+                        <div className="space-y-2 border-t border-border px-3 pb-3 pt-2">
+                          {domain.modules.map((mod) => {
+                            const allSelected = mod.permissions.every((p) =>
+                              formData.permission_ids.includes(p.id)
+                            );
+                            const someSelected = mod.permissions.some((p) =>
+                              formData.permission_ids.includes(p.id)
+                            );
 
-                          return (
-                            <div key={mod.id} className="permission-module">
-                              <div className="module-header">
-                                <label className="module-checkbox flex items-center gap-2">
-                                  <input
-                                    type="checkbox"
-                                    checked={allSelected}
-                                    ref={(input) => {
-                                      if (input) {
-                                        input.indeterminate =
-                                          someSelected && !allSelected;
-                                      }
-                                    }}
-                                    onChange={() =>
-                                      handleModuleToggle(mod.permissions)
-                                    }
-                                  />
-                                  <strong className="text-sm">{mod.label}</strong>
-                                </label>
-                              </div>
-                              <div
-                                className={cn(
-                                  'permission-items ml-6 grid gap-1',
-                                  'sm:grid-cols-2'
-                                )}
-                              >
-                                {mod.permissions.map((perm) => (
-                                  <label
-                                    key={perm.id}
-                                    className="permission-item flex items-center gap-2 text-sm"
-                                  >
+                            return (
+                              <div key={mod.id} className="permission-module">
+                                <div className="module-header">
+                                  <label className="module-checkbox flex items-center gap-2">
                                     <input
                                       type="checkbox"
-                                      checked={formData.permission_ids.includes(
-                                        perm.id
-                                      )}
+                                      checked={allSelected}
+                                      ref={(input) => {
+                                        if (input) {
+                                          input.indeterminate =
+                                            someSelected && !allSelected;
+                                        }
+                                      }}
                                       onChange={() =>
-                                        handlePermissionToggle(perm.id)
+                                        handleModuleToggle(mod.permissions)
                                       }
                                     />
-                                    <span>
-                                      {perm.action_display || perm.action}
-                                    </span>
+                                    <strong className="text-sm">{mod.label}</strong>
                                   </label>
-                                ))}
+                                </div>
+                                <div
+                                  className={cn(
+                                    'permission-items ml-6 grid gap-1',
+                                    'sm:grid-cols-2'
+                                  )}
+                                >
+                                  {mod.permissions.map((perm) => (
+                                    <label
+                                      key={perm.id}
+                                      className="permission-item flex items-center gap-2 text-sm"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={formData.permission_ids.includes(
+                                          perm.id
+                                        )}
+                                        onChange={() =>
+                                          handlePermissionToggle(perm.id)
+                                        }
+                                      />
+                                      <span>
+                                        {perm.action_display || perm.action}
+                                      </span>
+                                    </label>
+                                  ))}
+                                </div>
                               </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </form>

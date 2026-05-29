@@ -26,9 +26,11 @@ import {
 const Roles = () => {
   const [roles, setRoles] = useState([]);
   const [permissions, setPermissions] = useState([]);
+  const [permissionCatalog, setPermissionCatalog] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingRole, setEditingRole] = useState(null);
+  const [loadingRole, setLoadingRole] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null);
 
@@ -51,10 +53,31 @@ const Roles = () => {
 
   const loadPermissions = async () => {
     try {
-      const response = await permissionsAPI.list();
-      setPermissions(response.data.results || response.data || []);
+      const domainRes = await permissionsAPI.byDomain();
+      const catalog = domainRes.data?.catalog || [];
+      if (catalog.length > 0) {
+        setPermissionCatalog(catalog);
+        const flat = [];
+        catalog.forEach((domain) => {
+          domain.modules.forEach((mod) => {
+            mod.permissions.forEach((perm) => flat.push(perm));
+          });
+        });
+        setPermissions(flat);
+        return;
+      }
+    } catch (error) {
+      console.warn('by_domain permissions failed, falling back to list', error);
+    }
+
+    try {
+      const response = await permissionsAPI.list({ page_size: 200 });
+      const results = response.data.results || response.data || [];
+      setPermissions(results);
+      setPermissionCatalog([]);
     } catch (error) {
       console.error(error);
+      toast.error('Failed to load permissions');
     }
   };
 
@@ -63,9 +86,17 @@ const Roles = () => {
     setShowForm(true);
   };
 
-  const handleEdit = (role) => {
-    setEditingRole(role);
-    setShowForm(true);
+  const handleEdit = async (role) => {
+    setLoadingRole(true);
+    try {
+      const response = await rolesAPI.get(role.id);
+      setEditingRole(response.data);
+      setShowForm(true);
+    } catch (error) {
+      toast.error('Failed to load role details');
+    } finally {
+      setLoadingRole(false);
+    }
   };
 
   const handleDelete = (role) => {
@@ -162,7 +193,12 @@ const Roles = () => {
                   </DataTableCell>
                   <DataTableCell align="right">
                     <div className="flex justify-end gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => handleEdit(role)}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={loadingRole}
+                        onClick={() => handleEdit(role)}
+                      >
                         <Pencil className="h-4 w-4" />
                       </Button>
                       <Button
@@ -186,6 +222,7 @@ const Roles = () => {
           <RoleForm
             role={editingRole}
             permissions={permissions}
+            permissionCatalog={permissionCatalog}
             onClose={() => {
               setShowForm(false);
               setEditingRole(null);
