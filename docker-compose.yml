@@ -50,6 +50,7 @@ services:
       - DEBUG=${DEBUG:-False}
       - DJANGO_SETTINGS_MODULE=config.settings
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1,0.0.0.0,backend}
+      - PUBLIC_HOST=${PUBLIC_HOST:-}
       - DB_HOST=db
       - DB_PORT=5432
       - DB_NAME=${POSTGRES_DB:-completebytepos}

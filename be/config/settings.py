@@ -9,7 +9,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from config.database import build_databases
-from config.env import env_bool, env_csv_or_lines, env_int, env_list, env_path, env_str
+from config.env import env_bool, env_csv_or_lines, env_int, env_list, env_path, env_str, merge_unique_list
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -27,10 +27,13 @@ SECRET_KEY = env_str(
 )
 DEBUG = env_bool('DEBUG', True)
 
-# Comma-separated hosts, or * for all (dev only)
-ALLOWED_HOSTS = env_list(
-    'ALLOWED_HOSTS',
-    ['localhost', '127.0.0.1', '0.0.0.0', 'backend'],
+# Docker nginx proxies with Host: backend — always keep internal names allowed.
+_DOCKER_ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', 'backend', 'frontend']
+PUBLIC_HOST = env_str('PUBLIC_HOST') or env_str('SERVER_IP') or env_str('SERVER_PUBLIC_IP')
+ALLOWED_HOSTS = merge_unique_list(
+    env_list('ALLOWED_HOSTS', _DOCKER_ALLOWED_HOSTS),
+    _DOCKER_ALLOWED_HOSTS,
+    [PUBLIC_HOST] if PUBLIC_HOST else [],
 )
 
 # ---------------------------------------------------------------------------
@@ -193,13 +196,22 @@ SIMPLE_JWT = {
 # ---------------------------------------------------------------------------
 # Security (cookies / HTTPS)
 # ---------------------------------------------------------------------------
-CSRF_TRUSTED_ORIGINS = env_csv_or_lines(
-    'CSRF_TRUSTED_ORIGINS',
+CSRF_TRUSTED_ORIGINS = merge_unique_list(
+    env_csv_or_lines(
+        'CSRF_TRUSTED_ORIGINS',
+        [
+            'http://localhost:3000',
+            'http://127.0.0.1:3000',
+            'http://localhost:8000',
+        ],
+    ),
     [
-        'http://localhost:3000',
-        'http://127.0.0.1:3000',
-        'http://localhost:8000',
-    ],
+        f'http://{PUBLIC_HOST}',
+        f'http://{PUBLIC_HOST}:3000',
+        f'http://{PUBLIC_HOST}:8000',
+    ]
+    if PUBLIC_HOST
+    else [],
 )
 CSRF_COOKIE_HTTPONLY = env_bool('CSRF_COOKIE_HTTPONLY', False)
 CSRF_COOKIE_SAMESITE = env_str('CSRF_COOKIE_SAMESITE', 'Lax')
@@ -226,7 +238,16 @@ _default_cors_origins = [
     'http://frontend:80',
     'http://frontend',
 ]
-CORS_ALLOWED_ORIGINS = env_csv_or_lines('CORS_ALLOWED_ORIGINS', _default_cors_origins)
+CORS_ALLOWED_ORIGINS = merge_unique_list(
+    env_csv_or_lines('CORS_ALLOWED_ORIGINS', _default_cors_origins),
+    [
+        f'http://{PUBLIC_HOST}',
+        f'http://{PUBLIC_HOST}:3000',
+        f'http://{PUBLIC_HOST}:8000',
+    ]
+    if PUBLIC_HOST
+    else [],
+)
 
 _extra_cors_headers = env_csv_or_lines(
     'CORS_EXTRA_ALLOWED_HEADERS',
