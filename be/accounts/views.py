@@ -12,6 +12,16 @@ from .serializers import (
     RoleListSerializer, UserCreateSerializer, AuditLogSerializer
 )
 from .permissions import IsSuperAdmin, IsAdmin, HasPermission
+from accounts.module_settings import (
+    users_enable_create,
+    users_enable_edit,
+    users_enable_delete,
+    users_enable_inline_role_assignment,
+    users_enable_role_create,
+    users_enable_role_edit,
+    users_enable_role_delete,
+    users_enable_permission_catalog,
+)
 # Module settings moved to settings app
 from settings.models import ModuleSettings, ModuleFeature
 from settings.module_catalog import get_enabled_modules_flat
@@ -35,6 +45,13 @@ class PermissionViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = PermissionSerializer
     permission_classes = [IsAuthenticated]
     ordering = ['module', 'action']
+
+    @staticmethod
+    def _feature_disabled_response(feature_label: str):
+        return Response(
+            {'error': f'{feature_label} is disabled in store settings.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
     
     def get_queryset(self):
         try:
@@ -50,6 +67,8 @@ class PermissionViewSet(viewsets.ReadOnlyModelViewSet):
     
     def list(self, request, *args, **kwargs):
         """List all permissions with pagination"""
+        if not users_enable_permission_catalog():
+            return self._feature_disabled_response('Permission catalog')
         try:
             queryset = self.filter_queryset(self.get_queryset())
             page = self.paginate_queryset(queryset)
@@ -72,6 +91,8 @@ class PermissionViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=['get'])
     def by_module(self, request):
         """Get permissions grouped by module"""
+        if not users_enable_permission_catalog():
+            return self._feature_disabled_response('Permission catalog')
         try:
             user = request.user
             if not _user_can_manage_permissions(user):
@@ -97,6 +118,8 @@ class PermissionViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=['get'])
     def by_domain(self, request):
         """Permissions grouped by catalog domain, then catalog module."""
+        if not users_enable_permission_catalog():
+            return self._feature_disabled_response('Permission catalog')
         try:
             user = request.user
             if not _user_can_manage_permissions(user):
@@ -162,6 +185,13 @@ class RoleViewSet(viewsets.ModelViewSet):
     serializer_class = RoleSerializer
     permission_classes = [IsAuthenticated]
     ordering = ['name']
+
+    @staticmethod
+    def _feature_disabled_response(feature_label: str):
+        return Response(
+            {'error': f'{feature_label} is disabled in store settings.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
     
     def get_queryset(self):
         # All authenticated users can view roles
@@ -209,10 +239,32 @@ class RoleViewSet(viewsets.ModelViewSet):
     
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        if not users_enable_role_create():
+            return self._feature_disabled_response('Creating roles')
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        if not users_enable_role_edit():
+            return self._feature_disabled_response('Editing roles')
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        if not users_enable_role_edit():
+            return self._feature_disabled_response('Editing roles')
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        if not users_enable_role_delete():
+            return self._feature_disabled_response('Deleting roles')
+        return super().destroy(request, *args, **kwargs)
     
     @action(detail=True, methods=['post'])
     def assign_permissions(self, request, pk=None):
         """Assign permissions to a role"""
+        if not users_enable_role_edit():
+            return self._feature_disabled_response('Editing roles')
         role = self.get_object()
         permission_ids = request.data.get('permission_ids', [])
         
@@ -241,6 +293,13 @@ class UserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
     ordering = ['username']
+
+    @staticmethod
+    def _feature_disabled_response(feature_label: str):
+        return Response(
+            {'error': f'{feature_label} is disabled in store settings.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
     
     def get_serializer_class(self):
         action = getattr(self, 'action', None)
@@ -308,6 +367,8 @@ class UserViewSet(viewsets.ModelViewSet):
     
     def create(self, request, *args, **kwargs):
         """Create new user - only admins"""
+        if not users_enable_create():
+            return self._feature_disabled_response('Creating users')
         serializer = UserCreateSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
@@ -339,6 +400,8 @@ class UserViewSet(viewsets.ModelViewSet):
         
         # Admins can update other users
         if current_user.is_staff or (hasattr(current_user, 'profile') and current_user.profile and current_user.profile.is_admin):
+            if not users_enable_edit():
+                return self._feature_disabled_response('Editing users')
             serializer = self.get_serializer(user, data=request.data, partial=True)
             serializer.is_valid(raise_exception=True)
             serializer.save()
@@ -351,6 +414,8 @@ class UserViewSet(viewsets.ModelViewSet):
     
     def destroy(self, request, *args, **kwargs):
         """Delete user - only super admins"""
+        if not users_enable_delete():
+            return self._feature_disabled_response('Deleting users')
         user = request.user
         if not (user.is_superuser or (hasattr(user, 'profile') and user.profile and user.profile.is_super_admin)):
             return Response(
@@ -362,6 +427,8 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def assign_role(self, request, pk=None):
         """Assign a role to a user"""
+        if not users_enable_inline_role_assignment():
+            return self._feature_disabled_response('Inline role assignment')
         user = self.get_object()
         role_id = request.data.get('role_id')
         

@@ -12,6 +12,16 @@ class SupplierSerializer(serializers.ModelSerializer):
     def get_created_by_username(self, obj):
         """Safely get created_by username"""
         return obj.created_by.username if obj.created_by else None
+
+    def validate(self, attrs):
+        from suppliers.module_settings import validate_supplier_write
+
+        return validate_supplier_write(attrs)
+
+    def to_representation(self, instance):
+        from suppliers.module_settings import apply_supplier_representation_flags
+
+        return apply_supplier_representation_flags(super().to_representation(instance))
     
     class Meta:
         model = Supplier
@@ -29,10 +39,16 @@ class SupplierSerializer(serializers.ModelSerializer):
 
 class SupplierListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for supplier lists"""
+
     class Meta:
         model = Supplier
         fields = [
             'id', 'name', 'supplier_code', 'supplier_type', 'contact_person',
             'email', 'phone', 'city', 'country', 'is_preferred', 'is_active',
-            'rating', 'payment_terms'
+            'rating', 'payment_terms', 'credit_limit', 'account_balance',
         ]
+
+    def to_representation(self, instance):
+        from suppliers.module_settings import apply_supplier_representation_flags
+
+        return apply_supplier_representation_flags(super().to_representation(instance))

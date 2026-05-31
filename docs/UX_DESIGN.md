@@ -50,7 +50,9 @@ Managers see toggles **read-only**; only super admin can change them.
 | Sales, Expenses, Income | Done |
 | Inventory, Reports hub + detail shell | Done |
 | Module settings | Done (redesign) |
-| Suppliers, Roles, Accounting, Invoices, Barcodes, Normal sale | Legacy CSS — migrate with `page/` when touched |
+| Suppliers, Roles | Done (`page/` shell; list tables use shared patterns) |
+| Barcodes, Normal sale, Invoices list, Branches | Done (`PageShell` + Tailwind list/actions) |
+| Accounting | Done — report tables use Tailwind via `accountingReportUI.js` |
 
 ## Performance
 

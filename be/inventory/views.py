@@ -18,6 +18,16 @@ from settings.utils import get_current_branch, get_current_tenant, is_branch_sup
 from accounts.permissions import RequirePermPerAction
 from utils.audit_mixin import AuditedModelViewSetMixin
 from django.core.exceptions import ValidationError
+from inventory.module_settings import (
+    inventory_show_stock_movements,
+    inventory_enable_stock_adjustments,
+    inventory_enable_stock_purchases,
+    inventory_enable_stock_transfers,
+    inventory_show_low_stock_alerts,
+    inventory_show_out_of_stock_alerts,
+    inventory_enable_inventory_report,
+    inventory_allow_movement_undo,
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -67,6 +77,28 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         super().__init__(*args, **kwargs)
         self.stock_service = StockMovementService()
 
+    @staticmethod
+    def _feature_disabled_response(feature_label: str):
+        return Response(
+            {'error': f'{feature_label} is disabled in store settings.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    def list(self, request, *args, **kwargs):
+        if not inventory_show_stock_movements():
+            return self._feature_disabled_response('Stock movements')
+        return super().list(request, *args, **kwargs)
+
+    def retrieve(self, request, *args, **kwargs):
+        if not inventory_show_stock_movements():
+            return self._feature_disabled_response('Stock movements')
+        return super().retrieve(request, *args, **kwargs)
+
+    def create(self, request, *args, **kwargs):
+        if not inventory_show_stock_movements():
+            return self._feature_disabled_response('Stock movements')
+        return super().create(request, *args, **kwargs)
+
     def get_queryset(self):
         """Get queryset using service layer - all query logic moved to service"""
         filters = {}
@@ -83,6 +115,8 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def adjust(self, request):
         """Adjust stock for a product or variant - thin view, business logic in service"""
+        if not inventory_enable_stock_adjustments():
+            return self._feature_disabled_response('Stock adjustments')
         serializer = StockAdjustmentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
@@ -116,6 +150,8 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def purchase(self, request):
         """Record stock purchase - thin view, business logic in service"""
+        if not inventory_enable_stock_purchases():
+            return self._feature_disabled_response('Stock purchases')
         serializer = StockPurchaseSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
@@ -151,6 +187,8 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def transfer(self, request):
         """Record stock transfer between branches"""
+        if not inventory_enable_stock_transfers():
+            return self._feature_disabled_response('Stock transfers')
         serializer = StockTransferSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
@@ -222,6 +260,8 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def undo(self, request, pk=None):
         """Undo a stock transfer by reversing the movements (service layer)."""
+        if not inventory_allow_movement_undo():
+            return self._feature_disabled_response('Movement undo')
         try:
             movement = self.get_object()
         except StockMovement.DoesNotExist:
@@ -259,6 +299,8 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def bulk_adjust(self, request):
         """Bulk stock adjustments"""
+        if not inventory_enable_stock_adjustments():
+            return self._feature_disabled_response('Stock adjustments')
         serializer = BulkStockAdjustmentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
@@ -313,6 +355,8 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def low_stock(self, request):
         """Get all products with low stock"""
+        if not inventory_show_low_stock_alerts():
+            return self._feature_disabled_response('Low-stock alerts')
         from products.serializers import ProductListSerializer
         
         products = Product.objects.filter(
@@ -326,6 +370,8 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def out_of_stock(self, request):
         """Get all products that are out of stock"""
+        if not inventory_show_out_of_stock_alerts():
+            return self._feature_disabled_response('Out-of-stock alerts')
         from products.serializers import ProductListSerializer
         
         products = Product.objects.filter(
@@ -339,6 +385,8 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def needs_reorder(self, request):
         """Get all products that need reordering"""
+        if not inventory_show_low_stock_alerts():
+            return self._feature_disabled_response('Low-stock alerts')
         from products.serializers import ProductListSerializer
         
         products = Product.objects.filter(
@@ -353,6 +401,8 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def report(self, request):
         """Get inventory report - thin view, business logic in service"""
+        if not inventory_enable_inventory_report():
+            return self._feature_disabled_response('Inventory overview report')
         current_branch = get_current_branch(request)
         product_id = request.query_params.get('product_id')
         if product_id:
@@ -371,6 +421,8 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def movements_by_type(self, request):
         """Get movements grouped by type"""
+        if not inventory_show_stock_movements():
+            return self._feature_disabled_response('Stock movements')
         date_from = request.query_params.get('date_from', None)
         date_to = request.query_params.get('date_to', None)
         
@@ -392,6 +444,8 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def product_history(self, request):
         """Get stock movement history for a specific product"""
+        if not inventory_show_stock_movements():
+            return self._feature_disabled_response('Stock movements')
         product_id = request.query_params.get('product_id', None)
         
         if not product_id:

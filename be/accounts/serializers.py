@@ -2,6 +2,11 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import UserProfile, ModuleSettings, ModuleFeature, Permission, Role, AuditLog
 from settings.module_registry import get_permission_domain_info
+from accounts.module_settings import (
+    apply_user_representation_flags,
+    apply_profile_representation_flags,
+    validate_user_write,
+)
 
 
 class PermissionSerializer(serializers.ModelSerializer):
@@ -138,6 +143,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
         allow_null=True
     )
     role_display = serializers.CharField(source='get_role_display', read_only=True, allow_null=True, required=False)
+
+    def to_representation(self, instance):
+        return apply_profile_representation_flags(super().to_representation(instance))
     
     class Meta:
         model = UserProfile
@@ -163,6 +171,12 @@ class UserSerializer(serializers.ModelSerializer):
             'date_joined', 'profile', 'permissions'
         ]
         read_only_fields = ['date_joined']
+
+    def to_representation(self, instance):
+        return apply_user_representation_flags(super().to_representation(instance))
+
+    def validate(self, attrs):
+        return validate_user_write(attrs)
     
     def get_permissions(self, obj):
         """Get all permissions for this user"""
@@ -219,6 +233,9 @@ class UserCreateSerializer(serializers.ModelSerializer):
             'password', 'is_staff', 'is_active',
             'role', 'custom_role_id', 'phone_number'
         ]
+
+    def validate(self, attrs):
+        return validate_user_write(attrs)
     
     def create(self, validated_data):
         role = validated_data.pop('role', 'cashier')

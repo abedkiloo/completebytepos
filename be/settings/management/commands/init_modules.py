@@ -55,4 +55,7 @@ class Command(BaseCommand):
                     if updated:
                         feature.save()
 
+        from django.core.management import call_command
+
+        call_command('init_module_settings', verbosity=0)
         self.stdout.write(self.style.SUCCESS('Module registry sync complete.'))

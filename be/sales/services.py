@@ -10,6 +10,7 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 from .models import Sale, SaleItem, Invoice, InvoiceItem, Payment, Customer, PaymentPlan, CustomerWalletTransaction
 from products.models import Product, ProductVariant
+from products.status_rules import get_operational_product, get_operational_variant
 from products.stock_utils import (
     sellable_stock_quantity,
     sellable_unit_price,
@@ -18,9 +19,12 @@ from products.stock_utils import (
 )
 from inventory.models import StockMovement
 from settings.models import Branch
-from settings.utils import get_current_branch, is_branch_support_enabled
+from settings.utils import get_current_branch, get_current_tenant, is_branch_support_enabled
 from settings.feature_flags import is_product_variants_enabled
 from services.base import BaseService
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class SaleService(BaseService):
@@ -123,18 +127,14 @@ class SaleService(BaseService):
                 raise ValidationError("Product ID is required for each item")
             
             try:
-                product = Product.objects.get(id=product_id, is_active=True)
+                product = get_operational_product(product_id)
             except Product.DoesNotExist:
                 raise ValidationError(f"Product with id {product_id} not found")
             
             variant = None
             if variant_id and is_product_variants_enabled():
                 try:
-                    variant = ProductVariant.objects.get(
-                        id=variant_id,
-                        product=product,
-                        is_active=True
-                    )
+                    variant = get_operational_variant(variant_id, product)
                 except ProductVariant.DoesNotExist:
                     raise ValidationError(
                         f"Variant with id {variant_id} not found for this product"
@@ -351,7 +351,12 @@ class SaleService(BaseService):
         if not items_data:
             raise ValidationError('Cannot checkout an empty cart.')
 
-        validated_items = self.validate_sale_items(items_data)
+        from sales.module_settings import sales_validate_stock_before_sale
+
+        validated_items = self.validate_sale_items(
+            items_data,
+            check_stock=sales_validate_stock_before_sale(),
+        )
 
         subtotal = sum(item['subtotal'] for item in validated_items)
         tax_amount = holding.tax_amount or Decimal('0')
@@ -360,28 +365,20 @@ class SaleService(BaseService):
         total = subtotal + tax_amount - discount_amount + delivery_cost
 
         customer = holding.customer
-        wallet_amount_used = Decimal('0')
-        wallet_credit_added = Decimal('0')
+        self._validate_checkout_payment(
+            payment_method, amount_paid, total, customer, allow_partial
+        )
 
-        if customer and use_wallet and customer.wallet_balance > 0:
-            wallet_result = self.handle_wallet_transactions(
-                customer,
-                total,
-                amount_paid,
-                use_wallet,
-                wallet_amount,
-                holding,
-                user,
-            )
-            wallet_amount_used = wallet_result.get('wallet_amount_used', Decimal('0'))
-            wallet_credit_added = wallet_result.get('wallet_credit_added', Decimal('0'))
-
-        change = Decimal('0')
-        if payment_method in ('cash', 'mpesa', 'card'):
-            if excess_payment_choice == 'wallet' and customer and amount_paid > total:
-                change = Decimal('0')
-            else:
-                change = max(Decimal('0'), amount_paid - total)
+        payment_result = self._prepare_sale_payment(
+            customer=customer,
+            sale_type='pos',
+            total=total,
+            amount_paid=amount_paid,
+            allow_partial=allow_partial,
+            excess_payment_choice=excess_payment_choice,
+            use_wallet=use_wallet,
+            wallet_amount_requested=wallet_amount,
+        )
 
         holding.items.all().delete()
         for item_data in validated_items:
@@ -393,7 +390,10 @@ class SaleService(BaseService):
                 unit_price=item_data['unit_price'],
                 subtotal=item_data['subtotal'],
             )
-            if item_data['product'].track_stock:
+            if (
+                item_data['product'].track_stock
+                and sales_validate_stock_before_sale()
+            ):
                 self._create_sale_stock_movements(
                     branch=branch or holding.branch,
                     user=user,
@@ -408,28 +408,32 @@ class SaleService(BaseService):
         holding.subtotal = subtotal
         holding.total = total
         holding.payment_method = payment_method
-        holding.amount_paid = amount_paid
-        holding.change = change
         holding.status = 'completed'
         holding.save()
+
+        self._apply_sale_payment(customer, holding, user, payment_result)
 
         try:
             from accounting.services import create_sale_journal_entry
             create_sale_journal_entry(holding)
         except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"Error creating journal entry for sale: {e}")
+            logger.error('Error creating journal entry for sale: %s', e)
 
         return holding
     
     @transaction.atomic
     def create_sale(self, sale_data: Dict[str, Any], items_data: List[Dict[str, Any]],
-                   user, branch: Optional[Branch] = None) -> Sale:
+                   user, branch: Optional[Branch] = None,
+                   *, validated_items: Optional[List[Dict[str, Any]]] = None) -> Sale:
         """Create a sale with items and update inventory"""
-        # Validate items
-        validated_items = self.validate_sale_items(items_data)
-        
+        from sales.module_settings import sales_validate_stock_before_sale
+
+        if validated_items is None:
+            validated_items = self.validate_sale_items(
+                items_data,
+                check_stock=sales_validate_stock_before_sale(),
+            )
+
         # Calculate totals
         subtotal = sum(item['subtotal'] for item in validated_items)
         tax_amount = sale_data.get('tax_amount', Decimal('0'))
@@ -480,7 +484,10 @@ class SaleService(BaseService):
                 subtotal=item_data['subtotal']
             )
 
-            if item_data['product'].track_stock:
+            if (
+                item_data['product'].track_stock
+                and sales_validate_stock_before_sale()
+            ):
                 self._create_sale_stock_movements(
                     branch=branch,
                     user=user,
@@ -595,6 +602,341 @@ class SaleService(BaseService):
             'wallet_credit_added': wallet_credit_added,
             'change': change
         }
+
+    def resolve_customer(self, customer_id: Optional[int]) -> Optional[Customer]:
+        if not customer_id:
+            return None
+        try:
+            return Customer.objects.get(id=customer_id, is_active=True)
+        except Customer.DoesNotExist:
+            logger.warning('Customer %s not found for sale', customer_id)
+            return None
+
+    def resolve_sale_branch(self, request, branch_id: Optional[int] = None) -> Optional[Branch]:
+        if not is_branch_support_enabled():
+            return None
+        current_branch = get_current_branch(request)
+        if branch_id:
+            try:
+                branch = Branch.objects.get(id=branch_id, is_active=True)
+                tenant = get_current_tenant(request)
+                if tenant and branch.tenant != tenant:
+                    raise ValidationError('Branch does not belong to current tenant')
+                return branch
+            except Branch.DoesNotExist:
+                return current_branch
+        if not current_branch:
+            raise ValidationError('No branch selected. Please select a branch first.')
+        return current_branch
+
+    def _validate_checkout_payment(
+        self,
+        payment_method: str,
+        amount_paid: Decimal,
+        total: Decimal,
+        customer: Optional[Customer],
+        allow_partial: bool,
+    ) -> None:
+        if payment_method not in ('cash', 'mpesa', 'card'):
+            return
+        if amount_paid <= 0:
+            raise ValidationError('Enter the amount received from the customer.')
+        if amount_paid < total and not allow_partial:
+            raise ValidationError(
+                f'Amount received ({amount_paid}) is less than total ({total}). '
+                'Select a customer and allow partial payment, or collect the full amount.'
+            )
+        if amount_paid < total and allow_partial and not customer:
+            raise ValidationError('Customer required for partial payment.')
+
+    def _prepare_sale_payment(
+        self,
+        *,
+        customer: Optional[Customer],
+        sale_type: str,
+        total: Decimal,
+        amount_paid: Decimal,
+        allow_partial: bool,
+        excess_payment_choice: str,
+        use_wallet: bool,
+        wallet_amount_requested: Decimal,
+    ) -> Dict[str, Any]:
+        wallet_amount_used = Decimal('0')
+        wallet_credit_added = Decimal('0')
+        change = Decimal('0')
+        pending_debt = None
+
+        if customer and use_wallet and customer.wallet_balance > 0:
+            if wallet_amount_requested > 0:
+                wallet_amount_used = min(wallet_amount_requested, customer.wallet_balance, total)
+            else:
+                wallet_amount_used = min(customer.wallet_balance, total)
+
+        if sale_type in ('pos', 'normal'):
+            total_payment = amount_paid + wallet_amount_used
+            change = total_payment - total
+
+            if change < 0:
+                if not allow_partial:
+                    raise ValidationError(
+                        f'Total payment ({total_payment}) is less than total ({total}). '
+                        f'Amount paid: {amount_paid}, Wallet used: {wallet_amount_used}. '
+                        'Please select a customer and allow partial payment to proceed.'
+                    )
+                if not customer:
+                    raise ValidationError('Customer must be selected to allow partial payment')
+                pending_debt = abs(change)
+                change = Decimal('0')
+            elif change > 0 and excess_payment_choice == 'wallet' and customer:
+                wallet_credit_added = change
+                change = Decimal('0')
+
+        return {
+            'wallet_amount_used': wallet_amount_used,
+            'wallet_credit_added': wallet_credit_added,
+            'change': max(change, Decimal('0')),
+            'pending_debt': pending_debt,
+            'amount_paid_recorded': amount_paid + wallet_amount_used,
+        }
+
+    def _apply_sale_payment(
+        self,
+        customer: Optional[Customer],
+        sale: Sale,
+        user,
+        payment_result: Dict[str, Any],
+    ) -> None:
+        if not customer:
+            sale.amount_paid = payment_result['amount_paid_recorded']
+            sale.change = payment_result['change']
+            sale.save(update_fields=['amount_paid', 'change', 'updated_at'])
+            return
+
+        wallet_amount_used = payment_result['wallet_amount_used']
+        if wallet_amount_used > 0:
+            customer.wallet_balance -= wallet_amount_used
+            customer.save(update_fields=['wallet_balance', 'updated_at'])
+            CustomerWalletTransaction.objects.create(
+                customer=customer,
+                transaction_type='debit',
+                source_type='payment',
+                amount=wallet_amount_used,
+                balance_after=customer.wallet_balance,
+                sale=sale,
+                reference=sale.sale_number,
+                notes=f'Used {wallet_amount_used} from wallet for sale',
+                created_by=user,
+            )
+
+        pending_debt = payment_result.get('pending_debt')
+        if pending_debt:
+            customer.wallet_balance -= pending_debt
+            customer.save(update_fields=['wallet_balance', 'updated_at'])
+            CustomerWalletTransaction.objects.create(
+                customer=customer,
+                transaction_type='debit',
+                source_type='debt',
+                amount=pending_debt,
+                balance_after=customer.wallet_balance,
+                sale=sale,
+                reference=sale.sale_number,
+                notes=(
+                    f'Unpaid balance from sale added to customer debt '
+                    f'(wallet balance: {customer.wallet_balance})'
+                ),
+                created_by=user,
+            )
+
+        wallet_credit_added = payment_result['wallet_credit_added']
+        if wallet_credit_added > 0:
+            customer.wallet_balance += wallet_credit_added
+            customer.save(update_fields=['wallet_balance', 'updated_at'])
+            CustomerWalletTransaction.objects.create(
+                customer=customer,
+                transaction_type='credit',
+                source_type='overpayment',
+                amount=wallet_credit_added,
+                balance_after=customer.wallet_balance,
+                sale=sale,
+                reference=sale.sale_number,
+                notes='Overpayment from sale added to wallet',
+                created_by=user,
+            )
+
+        sale.customer = customer
+        sale.amount_paid = payment_result['amount_paid_recorded']
+        sale.change = payment_result['change']
+        sale.save(update_fields=['customer', 'amount_paid', 'change', 'updated_at'])
+
+    def _maybe_create_invoice_for_sale(
+        self,
+        sale: Sale,
+        validated_data: Dict[str, Any],
+        customer: Optional[Customer],
+        user,
+        amount_paid: Decimal,
+    ) -> Optional[Invoice]:
+        sale_type = validated_data.get('sale_type', 'pos')
+        create_invoice = validated_data.get('create_invoice', False)
+        if sale_type != 'normal' and not create_invoice:
+            return None
+
+        if not sale.items.exists():
+            raise ValidationError('Cannot create invoice: Sale must have at least one item')
+
+        payment_method = validated_data.get('payment_method', 'cash')
+        customer_name = validated_data.get('customer_name', '') or ''
+        customer_email = validated_data.get('customer_email', '') or ''
+        customer_phone = validated_data.get('customer_phone', '') or ''
+        customer_address = validated_data.get('customer_address', '') or ''
+        due_date = validated_data.get('due_date')
+        notes = validated_data.get('notes', '') or ''
+
+        if customer:
+            customer_name = customer.name or customer_name
+            customer_email = customer.email or customer_email
+            customer_phone = customer.phone or customer_phone
+            customer_address = customer.address or customer_address
+        elif not customer_name:
+            if payment_method == 'cash':
+                customer_name = 'Cash Customer'
+            elif validated_data.get('create_payment_plan'):
+                customer_name = 'Walk-in Customer'
+            else:
+                customer_name = 'Customer'
+
+        invoice_service = InvoiceService()
+        invoice = invoice_service.create_invoice_from_sale(
+            sale,
+            customer=customer,
+            customer_name=customer_name,
+            customer_email=customer_email,
+            customer_phone=customer_phone,
+            customer_address=customer_address,
+            due_date=due_date,
+            notes=notes,
+            user=user,
+            amount_paid=amount_paid,
+        )
+
+        if validated_data.get('create_payment_plan') and invoice.balance > 0:
+            number_of_installments = validated_data.get('number_of_installments')
+            frequency = validated_data.get('installment_frequency')
+            start_date = validated_data.get('payment_plan_start_date')
+
+            if not number_of_installments or number_of_installments < 1:
+                raise ValidationError(
+                    'Number of installments is required and must be at least 1 for payment plans'
+                )
+            if not frequency:
+                raise ValidationError('Installment frequency is required for payment plans')
+            if not start_date:
+                raise ValidationError('Payment plan start date is required for payment plans')
+
+            invoice_service.create_payment_plan(
+                invoice,
+                number_of_installments,
+                frequency,
+                start_date,
+                user=user,
+            )
+
+        return invoice
+
+    @transaction.atomic
+    def create_sale_from_validated_data(
+        self,
+        validated_data: Dict[str, Any],
+        user,
+        request,
+    ) -> Dict[str, Any]:
+        """Orchestrate sale creation: items, payment, wallet, optional invoice."""
+        from sales.module_settings import sales_validate_stock_before_sale
+
+        branch = self.resolve_sale_branch(request, validated_data.get('branch_id'))
+        customer = self.resolve_customer(validated_data.get('customer_id'))
+
+        items_data = validated_data['items']
+        payment_method = validated_data.get('payment_method', 'cash')
+        amount_paid_value = validated_data.get('amount_paid', 0)
+        amount_paid = (
+            Decimal(str(amount_paid_value)) if amount_paid_value is not None else Decimal('0')
+        )
+        tax_amount = Decimal(str(validated_data.get('tax_amount', 0)))
+        discount_amount = Decimal(str(validated_data.get('discount_amount', 0)))
+        delivery_method = validated_data.get('delivery_method', '') or None
+        delivery_cost = Decimal(str(validated_data.get('delivery_cost', 0)))
+        sale_type = validated_data.get('sale_type', 'pos')
+
+        validated_items = self.validate_sale_items(
+            items_data,
+            check_stock=sales_validate_stock_before_sale(),
+        )
+        subtotal = sum(item['subtotal'] for item in validated_items)
+        total = subtotal + tax_amount - discount_amount + delivery_cost
+
+        payment_result = self._prepare_sale_payment(
+            customer=customer,
+            sale_type=sale_type,
+            total=total,
+            amount_paid=amount_paid,
+            allow_partial=validated_data.get('allow_partial_payment', False),
+            excess_payment_choice=validated_data.get('excess_payment_choice', 'change'),
+            use_wallet=validated_data.get('use_wallet', False),
+            wallet_amount_requested=Decimal(str(validated_data.get('wallet_amount', 0) or 0)),
+        )
+
+        sale_data = {
+            'sale_type': sale_type,
+            'payment_method': payment_method,
+            'amount_paid': amount_paid,
+            'notes': validated_data.get('notes', ''),
+            'tax_amount': tax_amount,
+            'discount_amount': discount_amount,
+            'delivery_method': delivery_method,
+            'delivery_cost': delivery_cost,
+            'customer': customer,
+        }
+
+        sale = self.create_sale(
+            sale_data,
+            items_data,
+            user,
+            branch,
+            validated_items=validated_items,
+        )
+        self._apply_sale_payment(customer, sale, user, payment_result)
+
+        invoice = self._maybe_create_invoice_for_sale(
+            sale,
+            validated_data,
+            customer,
+            user,
+            amount_paid,
+        )
+
+        result = {
+            'sale': sale,
+            'invoice': invoice,
+            'wallet_amount_used': payment_result['wallet_amount_used'],
+            'wallet_credit_added': payment_result['wallet_credit_added'],
+        }
+        if customer:
+            customer.refresh_from_db()
+            result['wallet_balance'] = customer.wallet_balance
+            if payment_result['wallet_credit_added'] > 0:
+                result['message'] = (
+                    f'Sale completed. {payment_result["wallet_credit_added"]} KES added to customer wallet.'
+                )
+        return result
+
+    @transaction.atomic
+    def cancel_holding_sale(self, holding: Sale) -> Sale:
+        if holding.status != 'holding':
+            raise ValidationError('Only holding invoices can be cancelled.')
+        holding.status = 'cancelled'
+        holding.save(update_fields=['status', 'updated_at'])
+        return holding
 
 
 class InvoiceService(BaseService):

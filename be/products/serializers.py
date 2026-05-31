@@ -404,8 +404,22 @@ class ProductSerializer(serializers.ModelSerializer):
                     # Category doesn't exist, but this will be caught by field validation
                     pass
         
-        return data
-    
+        from products.module_settings import products_show_cost_price, products_show_mrp
+        from products.status_rules import strip_product_status_from_write_data
+
+        if not products_show_cost_price():
+            data.pop('cost', None)
+        if not products_show_mrp():
+            data.pop('mrp', None)
+
+        return strip_product_status_from_write_data(data)
+
+    def to_representation(self, instance):
+        from products.module_settings import apply_product_list_representation_flags
+
+        data = super().to_representation(instance)
+        return apply_product_list_representation_flags(data)
+
     def create(self, validated_data):
         """Create product instance, handling ManyToMany fields separately"""
         # Extract ManyToMany fields
@@ -633,11 +647,13 @@ class ProductListSerializer(serializers.ModelSerializer):
         return data
 
     def to_representation(self, instance):
+        from products.module_settings import apply_product_list_representation_flags
+
         data = super().to_representation(instance)
         data = self._apply_catalog_variant_mode(instance, data)
         if 'selling_price' not in data and data.get('price') is not None:
             data['selling_price'] = data['price']
-        return data
+        return apply_product_list_representation_flags(data)
 
 
 class ProductSearchSerializer(serializers.ModelSerializer):
@@ -659,12 +675,14 @@ class ProductSearchSerializer(serializers.ModelSerializer):
         return obj.category.name if obj.category else None
 
     def to_representation(self, instance):
+        from products.module_settings import apply_product_list_representation_flags
+
         data = super().to_representation(instance)
         if not instance.has_variants:
-            return data
+            return apply_product_list_representation_flags(data)
         variants = instance.variants.filter(is_active=True)
         if not variants.exists() or is_product_variants_enabled():
-            return data
+            return apply_product_list_representation_flags(data)
         data['has_variants'] = False
         agg = variants.aggregate(total_stock=Sum('stock_quantity'), min_price=Min('price'))
         if agg['total_stock'] is not None:
@@ -674,7 +692,7 @@ class ProductSearchSerializer(serializers.ModelSerializer):
             data['selling_price'] = data['price']
         if 'selling_price' not in data and data.get('price') is not None:
             data['selling_price'] = data['price']
-        return data
+        return apply_product_list_representation_flags(data)
 
 
 class BulkProductUpdateSerializer(serializers.Serializer):

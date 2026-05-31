@@ -7,6 +7,12 @@ from accounts.permissions import HasPermission, HasModuleAccess
 from .models import Employee
 from .serializers import EmployeeSerializer
 from .services import EmployeeService
+from employees.module_settings import (
+    employees_enable_create,
+    employees_enable_edit,
+    employees_enable_delete,
+    employees_enable_statistics,
+)
 
 
 class EmployeeViewSet(viewsets.ModelViewSet):
@@ -46,10 +52,42 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                 filters[param] = query_params.get(param)
         
         return self.employee_service.build_queryset(filters)
+
+    @staticmethod
+    def _feature_disabled_response(feature_label: str):
+        return Response(
+            {'error': f'{feature_label} is disabled in store settings.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        if not employees_enable_create():
+            return self._feature_disabled_response('Creating employees')
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        if not employees_enable_edit():
+            return self._feature_disabled_response('Editing employees')
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        if not employees_enable_edit():
+            return self._feature_disabled_response('Editing employees')
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        if not employees_enable_delete():
+            return self._feature_disabled_response('Deleting employees')
+        return super().destroy(request, *args, **kwargs)
     
     @action(detail=False, methods=['get'])
     def statistics(self, request):
         """Get employee statistics - thin view, business logic in service"""
+        if not employees_enable_statistics():
+            return self._feature_disabled_response('Employee statistics')
         try:
             queryset = self.get_queryset()
             stats = self.employee_service.get_employee_statistics(queryset)

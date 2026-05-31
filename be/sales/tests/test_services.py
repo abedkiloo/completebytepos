@@ -515,6 +515,61 @@ class SaleServiceTestCase(TestCase):
         self.assertEqual(stats['total_sales'], 1)
         self.assertEqual(stats['pos_sales'], 1)
 
+    def test_create_sale_from_validated_data(self):
+        """Orchestrator creates completed sale with wallet debit linked to sale."""
+        from unittest.mock import patch
+
+        validated = {
+            'items': [{'product_id': self.product.id, 'quantity': 1}],
+            'payment_method': 'cash',
+            'amount_paid': Decimal('50.00'),
+            'sale_type': 'pos',
+            'use_wallet': True,
+            'wallet_amount': Decimal('50.00'),
+            'customer_id': self.customer.id,
+            'branch_id': self.branch.id,
+        }
+        request = type('Req', (), {'user': self.user, 'session': {}})()
+        with patch('sales.services.is_branch_support_enabled', return_value=False):
+            result = self.service.create_sale_from_validated_data(validated, self.user, request)
+
+        sale = result['sale']
+        self.assertEqual(sale.status, 'completed')
+        self.assertEqual(sale.amount_paid, Decimal('100.00'))
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.wallet_balance, Decimal('150.00'))
+        self.assertTrue(
+            CustomerWalletTransaction.objects.filter(sale=sale, source_type='payment').exists()
+        )
+
+    def test_cancel_holding_sale(self):
+        holding = Sale.objects.create(
+            sale_type='pos',
+            status='holding',
+            branch=self.branch,
+            cashier=self.user,
+            subtotal=Decimal('0'),
+            total=Decimal('0'),
+            payment_method='cash',
+            amount_paid=Decimal('0'),
+            change=Decimal('0'),
+        )
+        cancelled = self.service.cancel_holding_sale(holding)
+        self.assertEqual(cancelled.status, 'cancelled')
+
+    def test_prepare_sale_payment_rejects_underpayment(self):
+        with self.assertRaises(ValidationError):
+            self.service._prepare_sale_payment(
+                customer=None,
+                sale_type='pos',
+                total=Decimal('100.00'),
+                amount_paid=Decimal('50.00'),
+                allow_partial=False,
+                excess_payment_choice='change',
+                use_wallet=False,
+                wallet_amount_requested=Decimal('0'),
+            )
+
 
 class InvoiceServiceTestCase(TestCase):
     """Tests for InvoiceService"""

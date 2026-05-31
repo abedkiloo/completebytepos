@@ -11,6 +11,14 @@ from .serializers import SupplierSerializer, SupplierListSerializer
 from .services import SupplierService
 from accounts.permissions import IsSuperAdmin, IsAdmin, HasPermission, HasModuleAccess
 from settings.models import ModuleSettings
+from suppliers.module_settings import (
+    suppliers_enable_create,
+    suppliers_enable_edit,
+    suppliers_enable_delete,
+    suppliers_enable_statistics,
+    suppliers_enable_products,
+    suppliers_show_credit_fields,
+)
 
 
 class HasSupplierPermission(permissions.BasePermission):
@@ -105,18 +113,50 @@ class SupplierViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """Set created_by when creating supplier"""
         serializer.save(created_by=self.request.user)
+
+    @staticmethod
+    def _feature_disabled_response(feature_label: str):
+        return Response(
+            {'error': f'{feature_label} is disabled in store settings.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    def create(self, request, *args, **kwargs):
+        if not suppliers_enable_create():
+            return self._feature_disabled_response('Creating suppliers')
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        if not suppliers_enable_edit():
+            return self._feature_disabled_response('Editing suppliers')
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        if not suppliers_enable_edit():
+            return self._feature_disabled_response('Editing suppliers')
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        if not suppliers_enable_delete():
+            return self._feature_disabled_response('Deleting suppliers')
+        return super().destroy(request, *args, **kwargs)
     
     @action(detail=False, methods=['get'])
     def statistics(self, request):
         """Get supplier statistics - thin view, business logic in service"""
+        if not suppliers_enable_statistics():
+            return self._feature_disabled_response('Supplier statistics')
         try:
             if not ModuleSettings.is_module_enabled('suppliers'):
-                return Response({
+                payload = {
                     'total_suppliers': 0,
                     'preferred_suppliers': 0,
                     'total_account_balance': 0.0,
-                    'by_type': []
-                })
+                    'by_type': [],
+                }
+                if suppliers_show_credit_fields():
+                    payload['total_account_balance'] = 0.0
+                return Response(payload)
             
             stats = self.supplier_service.get_all_supplier_statistics()
             
@@ -127,6 +167,8 @@ class SupplierViewSet(viewsets.ModelViewSet):
             )
             stats['average_rating'] = float(rating_agg['avg_rating'] or Decimal('0'))
             stats['active_suppliers'] = queryset.filter(is_active=True).count()
+            if not suppliers_show_credit_fields():
+                stats.pop('total_account_balance', None)
             
             return Response(stats)
         except Exception as e:
@@ -144,6 +186,8 @@ class SupplierViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def products(self, request, pk=None):
         """Get all products from this supplier"""
+        if not suppliers_enable_products():
+            return self._feature_disabled_response('Supplier product list')
         if not ModuleSettings.is_module_enabled('suppliers'):
             return Response({'error': 'Suppliers module is disabled'}, status=status.HTTP_403_FORBIDDEN)
         

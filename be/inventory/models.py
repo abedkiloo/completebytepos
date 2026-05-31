@@ -123,6 +123,14 @@ class StockMovement(models.Model):
         # Unknown movement types default to a stock-removing effect to be safe.
         return -abs(self.quantity)
 
+    def _allow_negative_stock_for_sale(self) -> bool:
+        """When sales stock validation is off, sale movements may drive qty below zero."""
+        if self.movement_type != 'sale':
+            return False
+        from sales.module_settings import sales_validate_stock_before_sale
+
+        return not sales_validate_stock_before_sale()
+
     def _apply_stock_effect(self):
         """
         Atomically apply this movement's effect to the target Product or
@@ -152,7 +160,8 @@ class StockMovement(models.Model):
                 if not self.variant.product.track_stock:
                     return
                 locked = ProductVariant.objects.select_for_update().get(pk=self.variant_id)
-                self._guard_negative(locked.stock_quantity, delta, str(locked))
+                if not self._allow_negative_stock_for_sale():
+                    self._guard_negative(locked.stock_quantity, delta, str(locked))
                 update_kwargs = {'stock_quantity': F('stock_quantity') + delta}
                 if self.movement_type == 'purchase' and self.unit_cost and delta > 0:
                     update_kwargs['cost'] = self._weighted_average_cost(
@@ -166,7 +175,8 @@ class StockMovement(models.Model):
                 if not self.product.track_stock:
                     return
                 locked = Product.objects.select_for_update().get(pk=self.product_id)
-                self._guard_negative(locked.stock_quantity, delta, locked.name)
+                if not self._allow_negative_stock_for_sale():
+                    self._guard_negative(locked.stock_quantity, delta, locked.name)
                 update_kwargs = {'stock_quantity': F('stock_quantity') + delta}
                 if self.movement_type == 'purchase' and self.unit_cost and delta > 0:
                     update_kwargs['cost'] = self._weighted_average_cost(

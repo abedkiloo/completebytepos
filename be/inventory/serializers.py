@@ -56,6 +56,11 @@ class StockMovementSerializer(serializers.ModelSerializer):
             return obj.variant.stock_quantity
         return obj.product.stock_quantity
 
+    def to_representation(self, instance):
+        from inventory.module_settings import apply_stock_movement_representation_flags
+
+        return apply_stock_movement_representation_flags(super().to_representation(instance))
+
 
 class StockAdjustmentSerializer(serializers.Serializer):
     """Serializer for stock adjustments"""

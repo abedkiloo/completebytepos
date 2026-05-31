@@ -405,7 +405,9 @@ class StockMovementService(BaseService):
         start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
         start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-        products_qs = Product.objects.filter(is_active=True)
+        from products.status_rules import apply_operational_product_filter
+
+        products_qs = apply_operational_product_filter(Product.objects.all())
         tracked_qs = products_qs.filter(track_stock=True)
         if product_id:
             tracked_qs = tracked_qs.filter(id=product_id)

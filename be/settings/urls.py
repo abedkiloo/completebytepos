@@ -6,6 +6,7 @@ from .views import (
     fresh_install,
     setup_status,
     store_settings,
+    module_settings_detail,
 )
 
 router = DefaultRouter()
@@ -19,4 +20,5 @@ urlpatterns = [
     path('setup-status/', setup_status, name='setup-status'),
     path('fresh-install/', fresh_install, name='fresh-install'),
     path('store-settings/', store_settings, name='store-settings'),
+    path('<str:module_name>/', module_settings_detail, name='module-settings-detail'),
 ]

@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from .models import ModuleSettings, ModuleFeature, Branch, Tenant, StoreSettings
+from .models import ModuleSettings, ModuleFeature, ModuleSetting, Branch, Tenant, StoreSettings
+from .module_settings_registry import MODULE_SETTING_DEFINITIONS
 from .store_settings_helpers import normalize_payment_methods, VALID_PAYMENT_METHODS
 
 
@@ -200,3 +201,55 @@ class StoreSettingsSerializer(serializers.ModelSerializer):
                 instance.receipt_logo.delete(save=False)
             validated_data['receipt_logo'] = None
         return super().update(instance, validated_data)
+
+
+class ModuleSettingEntrySerializer(serializers.Serializer):
+    """One keyed setting with metadata for the Settings UI."""
+
+    value = serializers.JSONField()
+    default_value = serializers.JSONField()
+    label = serializers.CharField()
+    description = serializers.CharField()
+    display_order = serializers.IntegerField()
+    impact = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+
+
+class ModuleSettingsModuleSerializer(serializers.Serializer):
+    module = serializers.CharField()
+    settings = serializers.DictField(child=ModuleSettingEntrySerializer())
+
+
+def build_module_settings_response(module: str) -> dict:
+    """Structured payload for GET /api/settings/{module}/."""
+    from .settings_service import SettingsService
+
+    rows = {r.key: r for r in ModuleSetting.objects.filter(module=module)}
+    settings_out = {}
+
+    definitions = MODULE_SETTING_DEFINITIONS.get(module, [])
+    seen = set()
+    for definition in sorted(definitions, key=lambda d: d.get('display_order', 0)):
+        key = definition['key']
+        seen.add(key)
+        row = rows.get(key)
+        settings_out[key] = {
+            'value': SettingsService.get(module, key, definition['default_value']),
+            'default_value': row.default_value if row else definition['default_value'],
+            'label': row.label if row else definition['label'],
+            'description': row.description if row else definition.get('description', ''),
+            'display_order': row.display_order if row else definition.get('display_order', 0),
+            'impact': definition.get('impact'),
+        }
+
+    for key, row in rows.items():
+        if key in seen:
+            continue
+        settings_out[key] = {
+            'value': row.value if row.value is not None else row.default_value,
+            'default_value': row.default_value,
+            'label': row.label,
+            'description': row.description,
+            'display_order': row.display_order,
+        }
+
+    return {'module': module, 'settings': settings_out}

@@ -17,9 +17,11 @@ from .serializers import (
     CustomerSerializer, CustomerListSerializer
 )
 from products.models import Product, ProductVariant
+from products.status_rules import get_operational_product, get_operational_variant
 from inventory.models import StockMovement
 from settings.utils import get_current_branch, get_current_tenant, is_branch_support_enabled
 from .services import SaleService, InvoiceService, PaymentService, CustomerService
+from .module_settings import sales_validate_stock_before_sale
 from accounts.permissions import RequirePermPerAction
 from utils.audit_mixin import AuditedModelViewSetMixin
 from utils.validation_errors import validation_error_message
@@ -114,459 +116,35 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        """Create a sale with items and update inventory"""
+        """Create a sale with items and update inventory."""
         serializer = SaleCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
-        items_data = serializer.validated_data['items']
-        payment_method = serializer.validated_data.get('payment_method', 'cash')
-        amount_paid_value = serializer.validated_data.get('amount_paid', 0)
-        amount_paid = Decimal(str(amount_paid_value)) if amount_paid_value is not None else Decimal('0')
-        notes = serializer.validated_data.get('notes', '')
-        tax_amount = Decimal(str(serializer.validated_data.get('tax_amount', 0)))
-        discount_amount = Decimal(str(serializer.validated_data.get('discount_amount', 0)))
-        delivery_method = serializer.validated_data.get('delivery_method', '') or None
-        delivery_cost = Decimal(str(serializer.validated_data.get('delivery_cost', 0)))
-        
-        # Calculate totals
-        subtotal = Decimal('0')
-        sale_items = []
-        
-        for item_data in items_data:
-            product_id = item_data['product_id']
-            quantity = item_data['quantity']
-            unit_price = item_data.get('unit_price', None)
-            variant_id = item_data.get('variant_id', None)
-            
-            try:
-                product = Product.objects.get(id=product_id, is_active=True)
-            except Product.DoesNotExist:
-                return Response(
-                    {'error': f'Product with id {product_id} not found'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            
-            variant = None
-            if variant_id:
-                try:
-                    variant = ProductVariant.objects.get(id=variant_id, product=product, is_active=True)
-                except ProductVariant.DoesNotExist:
-                    return Response(
-                        {'error': f'Variant with id {variant_id} not found for this product'},
-                        status=status.HTTP_404_NOT_FOUND
-                    )
-            
-            # Check stock - use variant stock if variant exists, otherwise product stock
-            stock_quantity = variant.stock_quantity if variant else product.stock_quantity
-            if stock_quantity < quantity:
-                stock_info = f"Variant {variant}" if variant else product.name
-                return Response(
-                    {'error': f'Insufficient stock for {stock_info}. Available: {stock_quantity}'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Use variant price if variant exists and has price, otherwise product price
-            if unit_price is None:
-                if variant and variant.price is not None:
-                    unit_price = variant.price
-                else:
-                    unit_price = product.price
-            else:
-                unit_price = Decimal(str(unit_price))
-            
-            # Get cost for stock movement
-            if variant and variant.cost is not None:
-                unit_cost = variant.cost
-            else:
-                unit_cost = product.cost
-            
-            item_subtotal = Decimal(quantity) * unit_price
-            subtotal += item_subtotal
-            
-            sale_items.append({
-                'product': product,
-                'variant': variant,
-                'quantity': quantity,
-                'unit_price': unit_price,
-                'unit_cost': unit_cost,
-                'subtotal': item_subtotal
-            })
-        
-        # Calculate total (including delivery cost)
-        total = subtotal + tax_amount - discount_amount + delivery_cost
-        
-        # Get sale type (default to 'pos' for backward compatibility)
-        sale_type = serializer.validated_data.get('sale_type', 'pos')
-        
-        # Handle wallet usage if customer is selected (before creating sale)
-        customer_id = serializer.validated_data.get('customer_id', None)
-        customer = None
-        wallet_amount_used = Decimal('0')
-        wallet_credit_added = Decimal('0')
-        
-        if customer_id:
-            try:
-                customer = Customer.objects.get(id=customer_id, is_active=True)
-            except Customer.DoesNotExist:
-                logger.warning(f"Customer {customer_id} not found for wallet transaction")
-        
-        # Check if wallet should be used
-        use_wallet = serializer.validated_data.get('use_wallet', False)
-        wallet_amount_requested = serializer.validated_data.get('wallet_amount', 0) or Decimal('0')
-        
-        # Calculate totals first (needed for wallet calculations)
-        subtotal = sum(item['subtotal'] for item in sale_items)
-        total = subtotal + tax_amount - discount_amount + delivery_cost
-        
-        if customer and use_wallet and customer.wallet_balance > 0:
-            # Determine how much to use from wallet
-            if wallet_amount_requested > 0:
-                wallet_amount_used = min(wallet_amount_requested, customer.wallet_balance, total)
-            else:
-                # Use all available wallet balance (up to total)
-                wallet_amount_used = min(customer.wallet_balance, total)
-            
-            # Deduct from wallet
-            customer.wallet_balance -= wallet_amount_used
-            customer.save()
-            
-            # Create wallet transaction record
-            CustomerWalletTransaction.objects.create(
-                customer=customer,
-                transaction_type='debit',
-                source_type='payment',
-                amount=wallet_amount_used,
-                balance_after=customer.wallet_balance,
-                reference=f"Sale payment",
-                notes=f"Used {wallet_amount_used} from wallet for sale",
-                created_by=request.user
-            )
-            
-            logger.info(f"Used {wallet_amount_used} from customer {customer.id} wallet. Remaining balance: {customer.wallet_balance}")
-        
-        # For POS and normal sales, validate payment amount and handle overpayment/underpayment
-        change = Decimal('0')
-        allow_partial = serializer.validated_data.get('allow_partial_payment', False)
-        pending_debt_transaction = None  # Will be set if partial payment creates debt
-        
-        if sale_type in ['pos', 'normal']:
-            # Total payment = amount_paid + wallet_amount_used
-            total_payment = amount_paid + wallet_amount_used
-            change = total_payment - total
-            
-            # If underpayment (change < 0), handle based on allow_partial_payment flag
-            if change < 0:
-                if not allow_partial:
-                    return Response(
-                        {'error': f'Total payment ({total_payment}) is less than total ({total}). Amount paid: {amount_paid}, Wallet used: {wallet_amount_used}. Please select a customer and allow partial payment to proceed.'},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
-                # Customer must be selected for partial payment
-                if not customer:
-                    return Response(
-                        {'error': 'Customer must be selected to allow partial payment'},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
-                # Add the unpaid amount (debt) to customer's negative wallet balance
-                debt_amount = abs(change)  # Make it positive for clarity
-                customer.wallet_balance -= debt_amount  # Subtract to make it negative
-                customer.save()
-                
-                # Note: Wallet transaction will be created after sale is created (see below)
-                # Store debt info for later wallet transaction creation
-                pending_debt_transaction = {
-                    'customer': customer,
-                    'transaction_type': 'debit',
-                    'source_type': 'debt',
-                    'amount': debt_amount,
-                    'balance_after': customer.wallet_balance,
-                    'notes': f"Unpaid balance from sale added to customer debt (wallet balance: {customer.wallet_balance})",
-                }
-                
-                logger.info(f"Added {debt_amount} debt to customer {customer.id} wallet. New balance: {customer.wallet_balance}")
-                change = Decimal('0')  # No change when underpaying
-            elif change > 0:
-                # If customer overpays (change > 0), handle based on excess_payment_choice
-                excess_choice = serializer.validated_data.get('excess_payment_choice', 'change')
-                if excess_choice == 'wallet' and customer:
-                    # Add excess to wallet
-                    customer.wallet_balance += change
-                    customer.save()
-                    wallet_credit_added = change
-                    
-                    # Create wallet transaction record for credit
-                    CustomerWalletTransaction.objects.create(
-                        customer=customer,
-                        transaction_type='credit',
-                        source_type='overpayment',
-                        amount=change,
-                        balance_after=customer.wallet_balance,
-                        reference='Sale pending',
-                        notes=f"Overpayment from sale added to wallet",
-                        created_by=request.user
-                    )
-                    
-                    logger.info(f"Added {change} to customer {customer.id} wallet from overpayment. New balance: {customer.wallet_balance}")
-                    change = Decimal('0')  # Set change to 0 since it's now in wallet
-                # If excess_choice == 'change', keep the change value (will be returned to customer)
-        
-        # Get current branch
-        branch = None
-        if is_branch_support_enabled():
-            current_branch = get_current_branch(request)
-            if not current_branch:
-                logger.warning(f"Sale creation attempted without branch - user: {request.user.username}")
-                return Response(
-                    {'error': 'No branch selected. Please select a branch first.'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            branch_id = serializer.validated_data.get('branch_id', None)
-            if branch_id:
-                from settings.models import Branch
-                try:
-                    branch = Branch.objects.get(id=branch_id, is_active=True)
-                    tenant = get_current_tenant(request)
-                    if tenant and branch.tenant != tenant:
-                        return Response(
-                            {'error': 'Branch does not belong to current tenant'},
-                            status=status.HTTP_400_BAD_REQUEST
-                        )
-                except Branch.DoesNotExist:
-                    branch = current_branch
-            else:
-                branch = current_branch
-        
-        # Prepare sale data for service
-        sale_data = {
-            'sale_type': sale_type,
-            'payment_method': payment_method,
-            'amount_paid': amount_paid,
-            'notes': notes,
-            'tax_amount': tax_amount,
-            'discount_amount': discount_amount,
-            'delivery_method': delivery_method,
-            'delivery_cost': delivery_cost,
-        }
-        
-        # Use service to create sale (handles items, stock, journal entries)
+
         try:
-            sale = self.sale_service.create_sale(
-                sale_data,
-                items_data,
+            result = self.sale_service.create_sale_from_validated_data(
+                serializer.validated_data,
                 request.user,
-                branch
+                request,
             )
         except ValidationError as e:
             return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
+                {'error': validation_error_message(e)},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-        
-        # Create wallet transaction for debt (if partial payment was used)
-        # This must be done after sale is created so we can reference it
-        if pending_debt_transaction:
-            CustomerWalletTransaction.objects.create(
-                customer=pending_debt_transaction['customer'],
-                transaction_type=pending_debt_transaction['transaction_type'],
-                source_type=pending_debt_transaction['source_type'],
-                amount=pending_debt_transaction['amount'],
-                balance_after=pending_debt_transaction['balance_after'],
-                sale=sale,
-                reference=sale.sale_number,
-                notes=pending_debt_transaction['notes'],
-                created_by=request.user
-            )
-        
-        # Handle wallet transactions (update sale references)
-        if customer and wallet_amount_used > 0:
-            wallet_debit = CustomerWalletTransaction.objects.filter(
-                customer=customer,
-                sale__isnull=True,
-                transaction_type='debit',
-                source_type='payment'
-            ).order_by('-created_at').first()
-            if wallet_debit:
-                wallet_debit.sale = sale
-                wallet_debit.save()
-        
-        if customer and wallet_credit_added > 0:
-            wallet_credit = CustomerWalletTransaction.objects.filter(
-                customer=customer,
-                sale__isnull=True,
-                transaction_type='credit',
-                source_type='overpayment'
-            ).order_by('-created_at').first()
-            if wallet_credit:
-                wallet_credit.sale = sale
-                wallet_credit.reference = sale.sale_number
-                wallet_credit.save()
-        
-        # Update sale with wallet amounts and change
-        sale.amount_paid = amount_paid + wallet_amount_used
-        sale.change = max(change, 0)
-        sale.save()
-        
-        # Note: Partial payment debt handling is already done above (lines 189-221) for both POS and normal sales
-        # The debt is subtracted from wallet balance and the transaction is created after sale creation
-        # No need to duplicate this logic here for normal sales
-        
-        # Create invoice for normal sales (always), optionally for POS sales
-        invoice = None
-        create_invoice = serializer.validated_data.get('create_invoice', False)
-        # Hoisted from below: referenced in the customer-name default branch
-        # before its original definition further down, which raised NameError.
-        create_payment_plan = serializer.validated_data.get('create_payment_plan', False)
-        # Normal sales always create invoice
-        if sale_type == 'normal' or create_invoice:
-            customer_id = serializer.validated_data.get('customer_id', None)
-            # Use customer from wallet handling above if available, otherwise fetch
-            if not customer and customer_id:
-                try:
-                    customer = Customer.objects.get(id=customer_id, is_active=True)
-                except Customer.DoesNotExist:
-                    logger.warning(f"Customer {customer_id} not found, creating invoice without customer")
-            
-            # For cash payments (pay_now), customer can be optional
-            # For installments, customer should be provided but we'll allow null for flexibility
-            customer_name = serializer.validated_data.get('customer_name', '')
-            customer_email = serializer.validated_data.get('customer_email', '')
-            customer_phone = serializer.validated_data.get('customer_phone', '')
-            customer_address = serializer.validated_data.get('customer_address', '')
-            due_date = serializer.validated_data.get('due_date', None)
-            
-            # Use customer details if customer is provided
-            if customer:
-                customer_name = customer.name or customer_name
-                customer_email = customer.email or customer_email
-                customer_phone = customer.phone or customer_phone
-                customer_address = customer.address or customer_address
-            
-            # For cash sales without customer, use a default name if not provided
-            if not customer and not customer_name:
-                if payment_method == 'cash':
-                    customer_name = 'Cash Customer'
-                elif create_payment_plan:
-                    customer_name = 'Walk-in Customer'
-                else:
-                    customer_name = 'Customer'
-            
-            # Ensure sale has items before creating invoice
-            sale_items = sale.items.all()
-            if not sale_items.exists():
-                return Response(
-                    {'error': 'Cannot create invoice: Sale must have at least one item'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Create invoice from sale
-            invoice = Invoice.objects.create(
-                sale=sale,
-                branch=sale.branch,  # Use same branch as sale
-                customer=customer,
-                customer_name=customer_name,
-                customer_email=customer_email,
-                customer_phone=customer_phone,
-                customer_address=customer_address,
-                subtotal=subtotal,
-                tax_amount=tax_amount,
-                discount_amount=discount_amount,
-                total=total,
-                due_date=due_date,
-                issued_date=timezone.now().date(),
-                status='sent' if amount_paid < total else 'paid',
-                created_by=request.user,
-                notes=notes
-            )
-            
-            # Create invoice items from sale items - ensure all items are copied
-            for sale_item in sale_items:
-                InvoiceItem.objects.create(
-                    invoice=invoice,
-                    product=sale_item.product,
-                    variant=sale_item.variant,
-                    size=sale_item.size,
-                    color=sale_item.color,
-                    quantity=sale_item.quantity,
-                    unit_price=sale_item.unit_price,
-                    subtotal=sale_item.subtotal
-                )
-            
-            # If payment was made, create payment record
-            if amount_paid > 0:
-                Payment.objects.create(
-                    invoice=invoice,
-                    amount=amount_paid,
-                    payment_method=payment_method,
-                    payment_date=timezone.now().date(),
-                    recorded_by=request.user,
-                    notes=f"Initial payment from sale {sale.sale_number}"
-                )
-            
-            # Create payment plan if requested (for normal sales with installments).
-            # `create_payment_plan` is hoisted near the top of this method.
-            if create_payment_plan and invoice and invoice.balance > 0:
-                number_of_installments = serializer.validated_data.get('number_of_installments')
-                frequency = serializer.validated_data.get('installment_frequency')
-                start_date = serializer.validated_data.get('payment_plan_start_date')
-                
-                # Validate that all required fields are present
-                if not number_of_installments or number_of_installments < 1:
-                    logger.error("Payment plan creation attempted without valid number_of_installments")
-                    return Response(
-                        {'error': 'Number of installments is required and must be at least 1 for payment plans'},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                if not frequency:
-                    logger.error("Payment plan creation attempted without installment_frequency")
-                    return Response(
-                        {'error': 'Installment frequency is required for payment plans'},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                if not start_date:
-                    logger.error("Payment plan creation attempted without payment_plan_start_date")
-                    return Response(
-                        {'error': 'Payment plan start date is required for payment plans'},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
-                if not start_date:
-                    start_date = timezone.now().date()
-                else:
-                    from datetime import datetime
-                    if isinstance(start_date, str):
-                        start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
-                
-                # Calculate installment amount
-                installment_amount = invoice.balance / number_of_installments
-                
-                PaymentPlan.objects.create(
-                    invoice=invoice,
-                    total_amount=invoice.balance,
-                    number_of_installments=number_of_installments,
-                    installment_amount=installment_amount,
-                    frequency=frequency,
-                    start_date=start_date,
-                    next_payment_date=start_date,
-                    is_active=True,
-                    created_by=request.user,
-                    notes=f"Payment plan created from sale {sale.sale_number}"
-                )
-        
+
+        sale = result['sale']
         response_data = SaleSerializer(sale).data
+        invoice = result.get('invoice')
         if invoice:
             response_data['invoice'] = InvoiceSerializer(invoice).data
-        
-        # Add wallet information to response
-        if customer:
-            response_data['wallet_balance'] = str(customer.wallet_balance)
-            response_data['wallet_amount_used'] = str(wallet_amount_used)
-            if wallet_credit_added > 0:
-                response_data['wallet_credit_added'] = str(wallet_credit_added)
-                response_data['message'] = f"Sale completed. {wallet_credit_added} KES added to customer wallet."
-        
+
+        if result.get('wallet_balance') is not None:
+            response_data['wallet_balance'] = str(result['wallet_balance'])
+            response_data['wallet_amount_used'] = str(result['wallet_amount_used'])
+            if result.get('wallet_credit_added', Decimal('0')) > 0:
+                response_data['wallet_credit_added'] = str(result['wallet_credit_added'])
+                response_data['message'] = result.get('message', '')
+
         return Response(response_data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'])
@@ -598,20 +176,10 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         })
 
     def _resolve_branch(self, request, branch_id=None):
-        if not is_branch_support_enabled():
+        try:
+            return self.sale_service.resolve_sale_branch(request, branch_id)
+        except ValidationError:
             return None
-        current_branch = get_current_branch(request)
-        if branch_id:
-            from settings.models import Branch
-            try:
-                branch = Branch.objects.get(id=branch_id, is_active=True)
-                tenant = get_current_tenant(request)
-                if tenant and branch.tenant != tenant:
-                    return None
-                return branch
-            except Branch.DoesNotExist:
-                pass
-        return current_branch
 
     @action(detail=False, methods=['get'], url_path='active-holding')
     def active_holding(self, request):
@@ -630,18 +198,20 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        customer = None
-        customer_id = data.get('customer_id')
-        if customer_id:
-            try:
-                customer = Customer.objects.get(id=customer_id, is_active=True)
-            except Customer.DoesNotExist:
-                return Response(
-                    {'error': 'Customer not found'},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
+        customer = self.sale_service.resolve_customer(data.get('customer_id'))
+        if data.get('customer_id') and customer is None:
+            return Response(
+                {'error': 'Customer not found'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
-        branch = self._resolve_branch(request, data.get('branch_id'))
+        try:
+            branch = self.sale_service.resolve_sale_branch(request, data.get('branch_id'))
+        except ValidationError as e:
+            return Response(
+                {'error': validation_error_message(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         try:
             holding = self.sale_service.save_holding_sale(
                 request.user,
@@ -666,52 +236,25 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     def checkout(self, request, pk=None):
         """Complete a holding sale: stock, accounting, receipt."""
         holding = self.get_object()
-        if holding.status != 'holding':
+        serializer = CheckoutHoldingSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            branch = holding.branch or self.sale_service.resolve_sale_branch(request)
+        except ValidationError as e:
             return Response(
-                {'error': 'Only holding invoices can be checked out.'},
+                {'error': validation_error_message(e)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        serializer = CheckoutHoldingSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        payment_method = serializer.validated_data['payment_method']
-        amount_paid = Decimal(str(serializer.validated_data.get('amount_paid', 0)))
-        allow_partial = serializer.validated_data.get('allow_partial_payment', False)
-
-        customer = holding.customer
-        total = holding.total or Decimal('0')
-
-        if payment_method in ('cash', 'mpesa', 'card'):
-            if amount_paid <= 0:
-                return Response(
-                    {'error': 'Enter the amount received from the customer.'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            if amount_paid < total and not allow_partial:
-                return Response(
-                    {
-                        'error': (
-                            f'Amount received ({amount_paid}) is less than total ({total}). '
-                            'Select a customer and allow partial payment, or collect the full amount.'
-                        )
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            if amount_paid < total and allow_partial and not customer:
-                return Response(
-                    {'error': 'Customer required for partial payment.'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-        branch = holding.branch or self._resolve_branch(request)
         try:
             sale = self.sale_service.complete_holding_sale(
                 holding,
-                payment_method=payment_method,
-                amount_paid=amount_paid,
+                payment_method=serializer.validated_data['payment_method'],
+                amount_paid=Decimal(str(serializer.validated_data.get('amount_paid', 0))),
                 user=request.user,
                 branch=branch,
-                allow_partial=allow_partial,
+                allow_partial=serializer.validated_data.get('allow_partial_payment', False),
                 excess_payment_choice=serializer.validated_data.get('excess_payment_choice', 'change'),
                 use_wallet=serializer.validated_data.get('use_wallet', False),
                 wallet_amount=Decimal(str(serializer.validated_data.get('wallet_amount', 0))),
@@ -729,13 +272,13 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     def cancel_holding(self, request, pk=None):
         """Discard a holding invoice without completing it."""
         holding = self.get_object()
-        if holding.status != 'holding':
+        try:
+            self.sale_service.cancel_holding_sale(holding)
+        except ValidationError as e:
             return Response(
-                {'error': 'Only holding invoices can be cancelled.'},
+                {'error': validation_error_message(e)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        holding.status = 'cancelled'
-        holding.save(update_fields=['status', 'updated_at'])
         return Response({'message': 'Holding invoice cancelled.', 'sale_number': holding.sale_number})
 
 
@@ -745,15 +288,26 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, CUSTOMERS_PERMS]
     audit_module = 'customers'
     ordering = ['name']
-    
+
+    @staticmethod
+    def _feature_disabled_response(feature_label: str):
+        return Response(
+            {'error': f'{feature_label} is disabled in store settings.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
     def get_serializer_class(self):
         if self.action == 'list':
             return CustomerListSerializer
         return CustomerSerializer
-    
+
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         """Create a customer with proper error handling"""
+        from sales.customer_module_settings import customers_enable_create
+
+        if not customers_enable_create():
+            return self._feature_disabled_response('Creating customers')
         try:
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
@@ -779,6 +333,10 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @transaction.atomic
     def update(self, request, *args, **kwargs):
         """Update a customer with proper error handling"""
+        from sales.customer_module_settings import customers_enable_edit
+
+        if not customers_enable_edit():
+            return self._feature_disabled_response('Editing customers')
         try:
             partial = kwargs.pop('partial', False)
             instance = self.get_object()
@@ -795,7 +353,14 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 {'error': f'Failed to update customer: {str(e)}'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-    
+
+    def destroy(self, request, *args, **kwargs):
+        from sales.customer_module_settings import customers_enable_delete
+
+        if not customers_enable_delete():
+            return self._feature_disabled_response('Deleting customers')
+        return super().destroy(request, *args, **kwargs)
+
     def get_queryset(self):
         queryset = Customer.objects.all().select_related('branch')
         
@@ -1078,7 +643,7 @@ class InvoiceViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 description = item_data.get('description', '')
                 
                 try:
-                    product = Product.objects.get(id=product_id, is_active=True)
+                    product = get_operational_product(product_id)
                 except Product.DoesNotExist:
                     return Response(
                         {'error': f'Product with id {product_id} not found or is inactive'},
@@ -1088,7 +653,7 @@ class InvoiceViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 variant = None
                 if variant_id:
                     try:
-                        variant = ProductVariant.objects.get(id=variant_id, product=product, is_active=True)
+                        variant = get_operational_variant(variant_id, product)
                     except ProductVariant.DoesNotExist:
                         return Response(
                             {'error': f'Variant with id {variant_id} not found or is inactive for product {product.name}'},

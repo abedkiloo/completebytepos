@@ -6,13 +6,16 @@ from django.contrib.auth.models import User
 from django.db.models import Q
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from .models import ModuleSettings, ModuleFeature, Branch, Tenant, StoreSettings
+from .models import ModuleSettings, ModuleFeature, ModuleSetting, Branch, Tenant, StoreSettings
 from .serializers import (
     ModuleSettingsSerializer, ModuleFeatureSerializer,
     BranchSerializer, BranchListSerializer,
     TenantSerializer, TenantListSerializer,
     StoreSettingsSerializer,
+    build_module_settings_response,
 )
+from .settings_service import SettingsService
+from .module_settings_registry import MODULE_SETTING_DEFINITIONS
 from accounts.permissions import IsSuperAdmin
 from .utils import get_current_tenant, get_current_branch, set_current_tenant, set_current_branch, is_branch_support_enabled
 from .module_catalog import apply_module_preset, build_modules_response
@@ -433,6 +436,7 @@ def fresh_install(request):
             steps.append({'step': 6, 'name': 'Initializing modules and features', 'status': 'running'})
             try:
                 call_command('init_modules', verbosity=0)
+                call_command('init_module_settings', verbosity=0)
                 preset_id = request.data.get('module_preset', 'retail_starter')
                 admin_user = User.objects.filter(username=BOOTSTRAP_USERS[0]['username']).first()
                 apply_module_preset(preset_id, user=admin_user)
@@ -515,6 +519,48 @@ def fresh_install(request):
             'error': str(e),
             'steps': steps if 'steps' in locals() else []
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def module_settings_detail(request, module_name):
+    """
+    Per-module configuration (JSON values).
+    GET: all keys with metadata. PATCH: partial update, e.g. ``{"show_status": false}``.
+    """
+    known_modules = set(MODULE_SETTING_DEFINITIONS.keys()) | set(
+        ModuleSetting.objects.values_list('module', flat=True).distinct()
+    )
+    if module_name not in known_modules:
+        return Response({'detail': f'Unknown module: {module_name}'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response(build_module_settings_response(module_name))
+
+    if not IsSuperAdmin().has_permission(request, None):
+        return Response(
+            {'detail': 'Only super admins can change module settings.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    allowed_keys = {
+        d['key'] for d in MODULE_SETTING_DEFINITIONS.get(module_name, [])
+    } | set(
+        ModuleSetting.objects.filter(module=module_name).values_list('key', flat=True)
+    )
+    updates = {}
+    for key, value in request.data.items():
+        if key in allowed_keys:
+            updates[key] = value
+
+    if not updates:
+        return Response(
+            {'detail': 'No valid setting keys in request body.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    SettingsService.set_many(module_name, updates, user=request.user)
+    return Response(build_module_settings_response(module_name))
 
 
 @api_view(['GET', 'PATCH'])

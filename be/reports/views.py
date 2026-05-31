@@ -1,4 +1,4 @@
-from rest_framework import viewsets
+from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -6,6 +6,7 @@ from django.db.models import Sum, Count, F, Q
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 from datetime import datetime, timedelta
+from functools import wraps
 from sales.models import Sale, SaleItem, Invoice, Customer, Payment
 from products.models import Product
 from inventory.models import StockMovement
@@ -13,6 +14,11 @@ from expenses.models import Expense
 from income.models import Income
 from accounts.permissions import RequirePermPerAction
 from .services import ReportDashboardService, resolve_period
+from .module_settings import (
+    reports_action_enabled,
+    reports_action_label,
+    apply_report_response_flags,
+)
 
 
 REPORTS_PERMS = RequirePermPerAction('reports', {
@@ -37,14 +43,44 @@ REPORTS_PERMS = RequirePermPerAction('reports', {
 })
 
 
+def gated_report_action(action_name):
+    """Gate a report endpoint and strip sensitive fields from JSON responses."""
+
+    def decorator(view_method):
+        @wraps(view_method)
+        def wrapper(self, request, *args, **kwargs):
+            if not reports_action_enabled(action_name):
+                return ReportViewSet._feature_disabled_response(
+                    reports_action_label(action_name)
+                )
+            response = view_method(self, request, *args, **kwargs)
+            if isinstance(response, Response) and isinstance(response.data, dict):
+                response.data = apply_report_response_flags(response.data)
+            return response
+
+        return wrapper
+
+    return decorator
+
+
 class ReportViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated, REPORTS_PERMS]
+
+    @staticmethod
+    def _feature_disabled_response(feature_label: str):
+        return Response(
+            {'error': f'{feature_label} is disabled in store settings.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
     @action(detail=False, methods=['get'])
+    @gated_report_action('dashboard')
     def dashboard(self, request):
         """Dashboard summary data with all metrics"""
         return Response(ReportDashboardService.get_dashboard_summary())
 
     @action(detail=False, methods=['get'])
+    @gated_report_action('sales')
     def sales(self, request):
         """Sales report with date filtering"""
         date_from = request.query_params.get('date_from', None)
@@ -97,6 +133,7 @@ class ReportViewSet(viewsets.ViewSet):
         })
 
     @action(detail=False, methods=['get'])
+    @gated_report_action('products')
     def products(self, request):
         """Product sales report"""
         date_from = request.query_params.get('date_from', None)
@@ -125,6 +162,7 @@ class ReportViewSet(viewsets.ViewSet):
         })
 
     @action(detail=False, methods=['get'])
+    @gated_report_action('inventory')
     def inventory(self, request):
         """Inventory report"""
         low_stock = Product.objects.filter(
@@ -179,6 +217,7 @@ class ReportViewSet(viewsets.ViewSet):
         })
 
     @action(detail=False, methods=['get'])
+    @gated_report_action('purchase')
     def purchase(self, request):
         """Purchase report from stock movements"""
         date_from = request.query_params.get('date_from', None)
@@ -214,6 +253,7 @@ class ReportViewSet(viewsets.ViewSet):
         })
 
     @action(detail=False, methods=['get'])
+    @gated_report_action('invoice')
     def invoice(self, request):
         """Invoice report"""
         date_from = request.query_params.get('date_from', None)
@@ -252,6 +292,7 @@ class ReportViewSet(viewsets.ViewSet):
         })
 
     @action(detail=False, methods=['get'])
+    @gated_report_action('supplier')
     def supplier(self, request):
         """Supplier report - based on purchase movements"""
         date_from = request.query_params.get('date_from', None)
@@ -290,6 +331,7 @@ class ReportViewSet(viewsets.ViewSet):
         })
 
     @action(detail=False, methods=['get'])
+    @gated_report_action('customer')
     def customer(self, request):
         """
         Customer report.
@@ -353,6 +395,7 @@ class ReportViewSet(viewsets.ViewSet):
         })
 
     @action(detail=False, methods=['get'])
+    @gated_report_action('expense')
     def expense(self, request):
         """Expense report"""
         date_from = request.query_params.get('date_from', None)
@@ -389,6 +432,7 @@ class ReportViewSet(viewsets.ViewSet):
         })
 
     @action(detail=False, methods=['get'])
+    @gated_report_action('income')
     def income(self, request):
         """Income report"""
         date_from = request.query_params.get('date_from', None)
@@ -423,6 +467,7 @@ class ReportViewSet(viewsets.ViewSet):
         })
 
     @action(detail=False, methods=['get'])
+    @gated_report_action('tax')
     def tax(self, request):
         """Tax report"""
         date_from = request.query_params.get('date_from', None)
@@ -462,6 +507,7 @@ class ReportViewSet(viewsets.ViewSet):
         })
 
     @action(detail=False, methods=['get'])
+    @gated_report_action('profit_loss')
     def profit_loss(self, request):
         """Profit & Loss report"""
         date_from = request.query_params.get('date_from', None)
@@ -526,6 +572,7 @@ class ReportViewSet(viewsets.ViewSet):
         })
 
     @action(detail=False, methods=['get'])
+    @gated_report_action('annual')
     def annual(self, request):
         """Annual report"""
         year = int(request.query_params.get('year', timezone.now().year))
@@ -593,6 +640,7 @@ class ReportViewSet(viewsets.ViewSet):
     # ------------------------------------------------------------------
 
     @action(detail=False, methods=['get'])
+    @gated_report_action('sales_overview')
     def sales_overview(self, request):
         """
         Top-line sales metrics + per-day trend, gated by ?period=today|week|month.
@@ -661,6 +709,7 @@ class ReportViewSet(viewsets.ViewSet):
         })
 
     @action(detail=False, methods=['get'])
+    @gated_report_action('top_products')
     def top_products(self, request):
         """Best-selling products in the chosen period.
 
@@ -703,6 +752,7 @@ class ReportViewSet(viewsets.ViewSet):
         })
 
     @action(detail=False, methods=['get'])
+    @gated_report_action('cash_and_payments')
     def cash_and_payments(self, request):
         """Money-in breakdown: sales tender + invoice payments, by method.
 
@@ -755,6 +805,7 @@ class ReportViewSet(viewsets.ViewSet):
         })
 
     @action(detail=False, methods=['get'])
+    @gated_report_action('inventory_health')
     def inventory_health(self, request):
         """Stock health snapshot: low / out / value / recent movements.
 
@@ -763,7 +814,9 @@ class ReportViewSet(viewsets.ViewSet):
         """
         start, end, label = resolve_period(request)
 
-        products = Product.objects.filter(is_active=True)
+        from products.status_rules import apply_operational_product_filter
+
+        products = apply_operational_product_filter(Product.objects.all())
 
         low_stock_count = products.filter(
             track_stock=True,
@@ -813,6 +866,7 @@ class ReportViewSet(viewsets.ViewSet):
         })
 
     @action(detail=False, methods=['get'])
+    @gated_report_action('customer_outstanding')
     def customer_outstanding(self, request):
         """Money customers owe us, plus AR aging.
 

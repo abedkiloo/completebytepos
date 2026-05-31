@@ -111,6 +111,14 @@ WSGI_APPLICATION = 'config.wsgi.application'
 RUNNING_TESTS = 'test' in sys.argv
 DATABASES = build_databases(base_dir=BASE_DIR, running_tests=RUNNING_TESTS)
 
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'completebytepos-settings',
+        'TIMEOUT': 30,
+    },
+}
+
 # ---------------------------------------------------------------------------
 # Auth / i18n
 # ---------------------------------------------------------------------------

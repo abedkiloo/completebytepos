@@ -43,24 +43,37 @@ class CustomerSerializer(serializers.ModelSerializer):
     
     def validate(self, attrs):
         """Additional validation"""
+        from sales.customer_module_settings import validate_customer_write
+
         # Ensure name is provided
         if not attrs.get('name') or not attrs.get('name').strip():
             raise serializers.ValidationError({'name': 'Customer name is required'})
-        
-        return attrs
+
+        return validate_customer_write(attrs)
+
+    def to_representation(self, instance):
+        from sales.customer_module_settings import apply_customer_representation_flags
+
+        return apply_customer_representation_flags(super().to_representation(instance))
 
 
 class CustomerListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for customer lists"""
     total_outstanding = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
-    
+    wallet_balance = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+
     class Meta:
         model = Customer
         fields = [
             'id', 'customer_code', 'name', 'customer_type',
             'email', 'phone', 'city', 'country',
-            'is_active', 'total_outstanding'
+            'is_active', 'total_outstanding', 'wallet_balance',
         ]
+
+    def to_representation(self, instance):
+        from sales.customer_module_settings import apply_customer_representation_flags
+
+        return apply_customer_representation_flags(super().to_representation(instance))
 
 
 class SaleItemSerializer(serializers.ModelSerializer):
@@ -117,6 +130,11 @@ class HoldingSaleSerializer(serializers.Serializer):
     holding_id = serializers.IntegerField(required=False, allow_null=True)
     branch_id = serializers.IntegerField(required=False, allow_null=True)
 
+    def validate(self, attrs):
+        from sales.module_settings import apply_sale_module_settings
+
+        return apply_sale_module_settings(attrs)
+
 
 class CheckoutHoldingSerializer(serializers.Serializer):
     """Complete a holding sale and print receipt."""
@@ -130,6 +148,11 @@ class CheckoutHoldingSerializer(serializers.Serializer):
     )
     use_wallet = serializers.BooleanField(default=False)
     wallet_amount = serializers.DecimalField(max_digits=10, decimal_places=2, default=0, required=False)
+
+    def validate(self, attrs):
+        from sales.module_settings import apply_sale_module_settings
+
+        return apply_sale_module_settings(attrs)
 
 
 class SaleCreateSerializer(serializers.Serializer):
@@ -293,8 +316,10 @@ class SaleCreateSerializer(serializers.Serializer):
         if sale_type == 'normal' and create_payment_plan and not customer_id:
             # Warn but don't fail - allow installments without customer for walk-in sales
             pass
-        
-        return attrs
+
+        from sales.module_settings import apply_sale_module_settings
+
+        return apply_sale_module_settings(attrs)
 
 
 class InvoiceItemSerializer(serializers.ModelSerializer):

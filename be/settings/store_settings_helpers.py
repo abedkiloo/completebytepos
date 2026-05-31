@@ -31,3 +31,17 @@ def normalize_payment_methods(methods):
         if key in VALID_PAYMENT_METHODS and key not in cleaned:
             cleaned.append(key)
     return cleaned or list(DEFAULT_PAYMENT_METHODS)
+
+
+def entity_status_ui_hidden() -> bool:
+    """When True, all per-module active/inactive UI and API fields are suppressed."""
+    from settings.models import StoreSettings
+
+    return bool(StoreSettings.load().hide_entity_status_toggles)
+
+
+def entity_status_visible(module_flag_enabled: bool) -> bool:
+    """Combine a module status flag with the store-wide status UI kill switch."""
+    if entity_status_ui_hidden():
+        return False
+    return bool(module_flag_enabled)

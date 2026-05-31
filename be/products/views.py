@@ -19,6 +19,10 @@ from .services import (
 )
 from accounts.permissions import RequirePermPerAction
 from settings.feature_flags import is_product_variants_enabled
+from products.module_settings import (
+    products_bulk_operations_enabled,
+    products_csv_import_export_enabled,
+)
 from utils.audit_mixin import AuditedModelViewSetMixin
 import csv
 import json
@@ -179,6 +183,13 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         super().__init__(*args, **kwargs)
         self.product_service = ProductService()
 
+    @staticmethod
+    def _feature_disabled_response(feature_label: str):
+        return Response(
+            {'error': f'{feature_label} is disabled in store settings.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
     def get_serializer_class(self):
         if self.action == 'list':
             return ProductListSerializer
@@ -304,6 +315,8 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def bulk_update(self, request):
         """Bulk update products"""
+        if not products_bulk_operations_enabled():
+            return self._feature_disabled_response('Bulk operations')
         serializer = BulkProductUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
@@ -325,6 +338,8 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def bulk_delete(self, request):
         """Bulk delete products"""
+        if not products_bulk_operations_enabled():
+            return self._feature_disabled_response('Bulk operations')
         product_ids = request.data.get('product_ids', [])
         
         if not product_ids:
@@ -348,6 +363,8 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def bulk_activate(self, request):
         """Bulk activate products"""
+        if not products_bulk_operations_enabled():
+            return self._feature_disabled_response('Bulk operations')
         product_ids = request.data.get('product_ids', [])
         
         if not product_ids:
@@ -371,6 +388,8 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def bulk_deactivate(self, request):
         """Bulk deactivate products"""
+        if not products_bulk_operations_enabled():
+            return self._feature_disabled_response('Bulk operations')
         product_ids = request.data.get('product_ids', [])
         
         if not product_ids:
@@ -410,6 +429,8 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def export(self, request):
         """Export products to CSV with all fields matching the template format"""
+        if not products_csv_import_export_enabled():
+            return self._feature_disabled_response('CSV import/export')
         products = self.get_queryset()
         
         csv_data = self.product_service.export_products_to_csv(products)
@@ -427,6 +448,8 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def import_csv(self, request):
         """Import products from CSV - supports template format"""
+        if not products_csv_import_export_enabled():
+            return self._feature_disabled_response('CSV import/export')
         if 'file' not in request.FILES:
             return Response(
                 {'error': 'No file provided'},

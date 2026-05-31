@@ -317,6 +317,42 @@ class Branch(models.Model):
         return queryset.order_by('name')
 
 
+class ModuleSetting(models.Model):
+    """
+    Per-module configuration (typed JSON values).
+    Rows are never deleted — only ``value`` is updated.
+    """
+
+    module = models.CharField(max_length=50, db_index=True)
+    key = models.CharField(max_length=100)
+    value = models.JSONField(null=True, blank=True)
+    label = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    default_value = models.JSONField()
+    display_order = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='module_setting_updates',
+    )
+
+    class Meta:
+        verbose_name = 'Module Setting'
+        verbose_name_plural = 'Module Settings'
+        unique_together = [['module', 'key']]
+        ordering = ['module', 'display_order', 'key']
+        indexes = [
+            models.Index(fields=['module', 'key']),
+        ]
+
+    def __str__(self):
+        return f'{self.module}.{self.key}'
+
+
 class StoreSettings(models.Model):
     """
     Singleton store-wide configuration (receipt, payments, catalog rules, UI flags).
@@ -333,7 +369,11 @@ class StoreSettings(models.Model):
     )
     hide_entity_status_toggles = models.BooleanField(
         default=False,
-        help_text='Hide active/inactive toggles on catalog and user forms',
+        help_text=(
+            'Store-wide override: hides active/inactive UI for products, customers, '
+            'employees, suppliers, users, and categories. Module status flags are ignored '
+            'while this is on.'
+        ),
     )
     enabled_payment_methods = models.JSONField(
         default=list,

@@ -8,6 +8,11 @@ from django.db import transaction
 from django.db.models import Q, Sum, Count, Avg, F, QuerySet
 from django.core.exceptions import ValidationError
 from .models import Product, Category, Size, Color, ProductVariant
+from .status_rules import (
+    apply_operational_product_filter,
+    products_show_status_enabled,
+    strip_product_status_filter,
+)
 from suppliers.models import Supplier
 from services.base import BaseService, QueryService
 
@@ -82,7 +87,7 @@ class CategoryService(BaseService):
         """Get all products in a category"""
         category = self.get(category_id)
         queryset = category.products.all()
-        if active_only:
+        if active_only and products_show_status_enabled():
             queryset = queryset.filter(is_active=True)
         return queryset
 
@@ -277,11 +282,13 @@ class ProductService(BaseService):
             elif limit > 1000:
                 limit = 1000
             
-            queryset = self.model.objects.filter(
-                Q(name__icontains=query) |
-                Q(sku__icontains=query) |
-                Q(barcode__icontains=query)
-            ).filter(is_active=True)[:limit]
+            queryset = apply_operational_product_filter(
+                self.model.objects.filter(
+                    Q(name__icontains=query) |
+                    Q(sku__icontains=query) |
+                    Q(barcode__icontains=query)
+                )
+            )[:limit]
             
             return list(queryset)
         except Exception as e:
@@ -292,19 +299,22 @@ class ProductService(BaseService):
     
     def get_low_stock_products(self) -> List[Product]:
         """Get products with stock below threshold"""
-        return list(self.model.objects.filter(
-            track_stock=True,
-            is_active=True,
-            stock_quantity__lt=F('low_stock_threshold')
-        ).exclude(stock_quantity=0))
+        return list(
+            apply_operational_product_filter(
+                self.model.objects.filter(
+                    track_stock=True,
+                    stock_quantity__lt=F('low_stock_threshold'),
+                )
+            ).exclude(stock_quantity=0)
+        )
     
     def get_out_of_stock_products(self) -> List[Product]:
         """Get products that are out of stock"""
-        return list(self.model.objects.filter(
-            track_stock=True,
-            is_active=True,
-            stock_quantity=0
-        ))
+        return list(
+            apply_operational_product_filter(
+                self.model.objects.filter(track_stock=True, stock_quantity=0)
+            )
+        )
     
     def build_queryset(self, filters: Optional[Dict[str, Any]] = None) -> QuerySet:
         """
@@ -331,9 +341,11 @@ class ProductService(BaseService):
             'available_sizes', 'available_colors', 'variants'
         )
         
+        filters = strip_product_status_filter(filters or {})
+
         if not filters:
             return queryset
-        
+
         is_active = filters.get('is_active')
         if is_active is not None:
             # Handle "undefined", "null", and empty strings as no filter

@@ -23,7 +23,17 @@ class EmployeeSerializer(serializers.ModelSerializer):
         if obj.created_by:
             return obj.created_by.username
         return None
-    
+
+    def validate(self, attrs):
+        from employees.module_settings import validate_employee_write
+
+        return validate_employee_write(attrs)
+
+    def to_representation(self, instance):
+        from employees.module_settings import apply_employee_representation_flags
+
+        return apply_employee_representation_flags(super().to_representation(instance))
+
     def validate_employee_id(self, value):
         """Ensure employee_id is unique"""
         if self.instance:
