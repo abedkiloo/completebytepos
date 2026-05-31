@@ -5,10 +5,22 @@ import { useProductVariantsEnabled } from '../../hooks/useProductVariantsEnabled
 import SearchableSelect from '../Shared/SearchableSelect';
 import CategoryForm from './CategoryForm';
 import SupplierForm from '../Suppliers/SupplierForm';
-import '../../styles/slide-in-panel.css';
-import './Products.css';
+import {
+  SELLING_PRICE_CLASS,
+  productImagesEnabled,
+} from '../../utils/productDisplay';
 
-const ProductForm = ({ product, categories = [], onClose, onSave, catalogOnly = false, hideStatusToggles = false }) => {
+const ProductForm = ({
+  product,
+  categories = [],
+  onClose,
+  onSave,
+  catalogOnly = false,
+  showProductStatus = true,
+  showCost = true,
+  showMrp = true,
+}) => {
+  const imagesEnabled = productImagesEnabled();
   const variantsEnabled = useProductVariantsEnabled();
   const [formData, setFormData] = useState({
     name: '',
@@ -320,11 +332,12 @@ const ProductForm = ({ product, categories = [], onClose, onSave, catalogOnly = 
         newErrors.selling_price = 'Selling price is required';
       }
 
-      if (formData.mrp && parseFloat(formData.mrp) < 0) {
+      if (showMrp && formData.mrp && parseFloat(formData.mrp) < 0) {
         newErrors.mrp = 'MRP must be zero or positive';
       }
 
       if (
+        showMrp &&
         formData.mrp &&
         formData.selling_price &&
         parseFloat(formData.mrp) < parseFloat(formData.selling_price)
@@ -332,11 +345,14 @@ const ProductForm = ({ product, categories = [], onClose, onSave, catalogOnly = 
         newErrors.mrp = 'MRP should be at least the selling price';
       }
 
-      if (formData.cost && parseFloat(formData.cost) < 0) {
+      if (showCost && formData.cost && parseFloat(formData.cost) < 0) {
         newErrors.cost = 'Cost must be positive';
       }
 
-      if (parseFloat(formData.selling_price) < parseFloat(formData.cost || 0)) {
+      if (
+        showCost &&
+        parseFloat(formData.selling_price) < parseFloat(formData.cost || 0)
+      ) {
         newErrors.selling_price = 'Selling price should be greater than or equal to cost';
       }
     }
@@ -606,6 +622,7 @@ const ProductForm = ({ product, categories = [], onClose, onSave, catalogOnly = 
 
           {!catalogOnly && (
           <div className="form-row">
+            {showMrp && (
             <div className="form-group">
               <label>MRP (KES)</label>
               <input
@@ -620,9 +637,10 @@ const ProductForm = ({ product, categories = [], onClose, onSave, catalogOnly = 
               {errors.mrp && <span className="error">{errors.mrp}</span>}
               <small className="text-muted">Maximum retail price for display</small>
             </div>
+            )}
 
             <div className="form-group">
-              <label>Selling price (KES) *</label>
+              <label className={SELLING_PRICE_CLASS}>Selling price (KES) *</label>
               <input
                 type="number"
                 name="selling_price"
@@ -631,6 +649,7 @@ const ProductForm = ({ product, categories = [], onClose, onSave, catalogOnly = 
                 step="0.01"
                 min="0"
                 required
+                className={SELLING_PRICE_CLASS}
               />
               {errors.selling_price && <span className="error">{errors.selling_price}</span>}
               <small className="text-muted">Used at POS, on invoices, and in all reports</small>
@@ -638,7 +657,7 @@ const ProductForm = ({ product, categories = [], onClose, onSave, catalogOnly = 
           </div>
           )}
 
-          {!catalogOnly && (
+          {!catalogOnly && showCost && (
           <div className="form-row">
             <div className="form-group">
               <label>Cost (KES)</label>
@@ -772,6 +791,7 @@ const ProductForm = ({ product, categories = [], onClose, onSave, catalogOnly = 
           </div>
           )}
 
+          {imagesEnabled && (
           <div className="form-row">
             <div className="form-group">
               <label>Image</label>
@@ -785,6 +805,7 @@ const ProductForm = ({ product, categories = [], onClose, onSave, catalogOnly = 
               )}
             </div>
           </div>
+          )}
 
           <div className="form-group">
             <label>Description</label>
@@ -817,7 +838,7 @@ const ProductForm = ({ product, categories = [], onClose, onSave, catalogOnly = 
               Taxable
             </label>
             )}
-            {!hideStatusToggles && (
+            {showProductStatus && (
             <label>
               <input
                 type="checkbox"

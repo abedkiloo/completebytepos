@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { inventoryAPI, productsAPI } from '../../services/api';
 import SearchableSelect from '../Shared/SearchableSelect';
-import './Inventory.css';
+import { Button } from '../ui/button';
 
 const StockAdjustmentModal = ({ product, onClose, onSave }) => {
   const [formData, setFormData] = useState({
@@ -31,7 +31,6 @@ const StockAdjustmentModal = ({ product, onClose, onSave }) => {
     }
   };
 
-  // Transform products for SearchableSelect component
   const productOptions = products.map(prod => ({
     id: prod.id,
     name: `${prod.name}${prod.sku ? ` (${prod.sku})` : ''} - Stock: ${prod.stock_quantity || 0}`,
@@ -41,7 +40,7 @@ const StockAdjustmentModal = ({ product, onClose, onSave }) => {
     const productId = e.target.value;
     setFormData(prev => ({
       ...prev,
-      product_id: productId ? parseInt(productId) : ''
+      product_id: productId ? parseInt(productId, 10) : '',
     }));
   };
 
@@ -49,7 +48,7 @@ const StockAdjustmentModal = ({ product, onClose, onSave }) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: name === 'quantity' || name === 'product_id' ? parseInt(value) || 0 : value
+      [name]: name === 'quantity' || name === 'product_id' ? parseInt(value, 10) || 0 : value,
     }));
   };
 
@@ -69,65 +68,68 @@ const StockAdjustmentModal = ({ product, onClose, onSave }) => {
   };
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-content">
-        <div className="modal-header">
+    <div className="slide-in-overlay" onClick={onClose}>
+      <div className="slide-in-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="slide-in-panel-header">
           <h2>Stock Adjustment</h2>
-          <button onClick={onClose} className="close-btn">×</button>
+          <button type="button" onClick={onClose} className="slide-in-panel-close">×</button>
         </div>
 
-        <form onSubmit={handleSubmit} className="stock-form">
-          {error && <div className="error-message">{error}</div>}
+        <div className="slide-in-panel-body">
+          <form onSubmit={handleSubmit}>
+            {error ? <p className="mb-3 text-sm text-destructive">{error}</p> : null}
 
-          {!product && (
+            {!product && (
+              <div className="form-group">
+                <label>Product *</label>
+                <SearchableSelect
+                  value={formData.product_id || ''}
+                  onChange={handleProductChange}
+                  options={productOptions}
+                  placeholder="Search and select product..."
+                  name="product_id"
+                  searchable={true}
+                />
+              </div>
+            )}
+
             <div className="form-group">
-              <label>Product *</label>
-              <SearchableSelect
-                value={formData.product_id || ''}
-                onChange={handleProductChange}
-                options={productOptions}
-                placeholder="Search and select product..."
-                name="product_id"
-                searchable={true}
+              <label>Adjustment Quantity *</label>
+              <input
+                type="number"
+                name="quantity"
+                value={formData.quantity}
+                onChange={handleChange}
+                required
+                placeholder="Positive to add, negative to remove"
+              />
+              <small className="form-text">Enter positive number to add stock, negative to remove</small>
+            </div>
+
+            <div className="form-group">
+              <label>Notes</label>
+              <textarea
+                name="notes"
+                value={formData.notes}
+                onChange={handleChange}
+                rows="3"
+                placeholder="Reason for adjustment..."
               />
             </div>
-          )}
 
-          <div className="form-group">
-            <label>Adjustment Quantity *</label>
-            <input
-              type="number"
-              name="quantity"
-              value={formData.quantity}
-              onChange={handleChange}
-              required
-              placeholder="Positive to add, negative to remove"
-            />
-            <small>Enter positive number to add stock, negative to remove</small>
-          </div>
-
-          <div className="form-group">
-            <label>Notes</label>
-            <textarea
-              name="notes"
-              value={formData.notes}
-              onChange={handleChange}
-              rows="3"
-              placeholder="Reason for adjustment..."
-            />
-          </div>
-
-          <div className="form-actions">
-            <button type="button" onClick={onClose}>Cancel</button>
-            <button type="submit" disabled={loading}>
-              {loading ? 'Adjusting...' : 'Adjust Stock'}
-            </button>
-          </div>
-        </form>
+            <div className="slide-in-panel-footer">
+              <Button type="button" variant="outline" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? 'Adjusting...' : 'Adjust Stock'}
+              </Button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );
 };
 
 export default StockAdjustmentModal;
-

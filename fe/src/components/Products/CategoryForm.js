@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { categoriesAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import SearchableSelect from '../Shared/SearchableSelect';
-import '../../styles/slide-in-panel.css';
-import './Products.css';
 
 const CategoryForm = ({ 
   isOpen, 

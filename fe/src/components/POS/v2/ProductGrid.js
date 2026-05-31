@@ -32,6 +32,7 @@ export function ProductGrid({
   onSelectSubcategory,
   onAddToCart,
   searchInputRef,
+  respectStockLimits = true,
 }) {
   const activeTop = categories.find((c) => c.id === selectedCategory);
   const subcategories = activeTop?.children || [];
@@ -122,6 +123,7 @@ export function ProductGrid({
                   <ProductTile
                     key={product.id}
                     product={product}
+                    respectStockLimits={respectStockLimits}
                     onClick={() => onAddToCart(product)}
                   />
                 ))}
@@ -158,10 +160,10 @@ function CategoryChip({ active, onClick, label, badge, icon: Icon, size = 'md' }
   );
 }
 
-function ProductTile({ product, onClick }) {
+function ProductTile({ product, onClick, respectStockLimits = true }) {
   const stock = product.stock_quantity ?? 0;
   const lowStock = product.track_stock && stock > 0 && stock <= (product.low_stock_threshold || 5);
-  const outOfStock = isProductOutOfStock(product);
+  const outOfStock = respectStockLimits && isProductOutOfStock(product);
 
   return (
     <button

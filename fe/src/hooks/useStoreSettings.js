@@ -21,6 +21,15 @@ export function useStoreSettings() {
         setSettings(res.data);
       })
       .catch(() => {});
+
+    const onUpdated = (event) => {
+      if (event.detail) {
+        cacheStoreSettings(event.detail);
+        setSettings(event.detail);
+      }
+    };
+    window.addEventListener('storeSettingsUpdated', onUpdated);
+    return () => window.removeEventListener('storeSettingsUpdated', onUpdated);
   }, []);
 
   const refresh = useCallback(async () => {

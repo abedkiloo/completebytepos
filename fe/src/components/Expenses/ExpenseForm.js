@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { expensesAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import SearchableSelect from '../Shared/SearchableSelect';
-import './Expenses.css';
 
 const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }) => {
   const [formData, setFormData] = useState({

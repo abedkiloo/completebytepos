@@ -24,6 +24,11 @@ import {
   isBillingPosEnabled,
   isRetailPosEnabled,
 } from '../../utils/moduleFeatures';
+import { useModuleSettings } from '../../hooks/useModuleSettings';
+import {
+  reportsEnableDashboardSummary,
+  reportsShowCostAndProfit,
+} from '../../utils/reportDisplay';
 import {
   getStoredAuth,
   hasPermission,
@@ -60,6 +65,9 @@ const Dashboard = () => {
   const [lowStockProducts, setLowStockProducts] = useState([]);
   const [recentSales, setRecentSales] = useState([]);
   const [me, setMe] = useState(null);
+  const { settings: reportSettings } = useModuleSettings('reports');
+  const dashboardReportsEnabled = reportsEnableDashboardSummary(reportSettings);
+  const showProfitMetrics = reportsShowCostAndProfit(reportSettings);
 
   useEffect(() => {
     const load = async () => {
@@ -67,9 +75,10 @@ const Dashboard = () => {
         const { permissions } = getStoredAuth();
         const canViewReports = hasPermission(permissions, 'reports', 'view');
 
-        const dashboardPromise = canViewReports
-          ? reportsAPI.dashboard()
-          : salesAPI.dashboardSummary();
+        const dashboardPromise =
+          canViewReports && dashboardReportsEnabled
+            ? reportsAPI.dashboard()
+            : salesAPI.dashboardSummary();
 
         const [meRes, dashRes, stockRes, salesRes] = await Promise.all([
           authAPI.me().catch(() => null),
@@ -88,7 +97,7 @@ const Dashboard = () => {
       }
     };
     load();
-  }, []);
+  }, [dashboardReportsEnabled]);
 
   const persona = useMemo(() => resolvePersona(me), [me]);
   const displayName = me?.user?.username || me?.user?.first_name || 'there';
@@ -130,11 +139,15 @@ const Dashboard = () => {
             value: formatCurrency(data.month?.total || data.total_sales || 0),
             hint: 'Completed sales',
           },
-          {
-            label: 'Profit (est.)',
-            value: formatCurrency(data.profit || 0),
-            hint: 'From dashboard report',
-          },
+          ...(showProfitMetrics
+            ? [
+                {
+                  label: 'Profit (est.)',
+                  value: formatCurrency(data.profit || 0),
+                  hint: 'From dashboard report',
+                },
+              ]
+            : []),
           {
             label: 'Low stock SKUs',
             value: formatNumber(data.low_stock_count || lowStockProducts.length),

@@ -23,6 +23,7 @@ export const VISIBLE_SECTIONS = {
     'inventory',
     'stock',
     'suppliers',
+    'employees',
     'sales',
     'customers',
     'invoicing',

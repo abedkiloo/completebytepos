@@ -10,7 +10,6 @@ import { normalizeModuleSettings, readCachedModules } from './utils/moduleCache'
 import SetupGate from './components/Installation/SetupGate';
 import AppLayout from './components/Layout/AppLayout';
 import { fetchSetupStatus } from './utils/setupStatus';
-import './App.css';
 import './styles/responsive.css';
 import './styles/transitions.css';
 import './styles/mobile-fixes.css';
@@ -33,6 +32,7 @@ const Users = lazy(() => import('./components/Users/Users'));
 const Roles = lazy(() => import('./components/Roles/Roles'));
 const Customers = lazy(() => import('./components/Customers/Customers'));
 const Suppliers = lazy(() => import('./components/Suppliers/Suppliers'));
+const Employees = lazy(() => import('./components/Employees/Employees'));
 const NormalSale = lazy(() => import('./components/NormalSale/NormalSale'));
 const ModuleSettings = lazy(() => import('./components/ModuleSettings/ModuleSettings'));
 const Invoices = lazy(() => import('./components/Invoices/Invoices'));
@@ -156,6 +156,7 @@ function App() {
                 <Route path="/roles" element={<Roles />} />
                 <Route path="/customers" element={<Customers />} />
                 <Route path="/suppliers" element={<Suppliers />} />
+                <Route path="/employees" element={<Employees />} />
                 <Route path="/normal-sale" element={<NormalSale />} />
                 <Route path="/module-settings" element={<ModuleSettings />} />
                 <Route path="/system-settings" element={<SystemSettings />} />

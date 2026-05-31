@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { variantsAPI, productsAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
-import './VariantSelector.css';
+import { cn } from '../../lib/cn';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
 
 const VariantSelector = ({ product, onSelect, onClose }) => {
   const [variants, setVariants] = useState([]);
@@ -313,26 +315,33 @@ const VariantSelector = ({ product, onSelect, onClose }) => {
   }
 
   return (
-    <div className="variant-selector-overlay" onClick={onClose}>
-      <div className="variant-selector-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="variant-selector-header">
-          <h3>Select Variant</h3>
-          <button className="variant-selector-close" onClick={onClose}>×</button>
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="flex max-h-[90vh] w-full max-w-md flex-col rounded-lg border bg-background shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b px-6 py-4">
+          <h3 className="text-lg font-semibold">Select Variant</h3>
+          <button
+            type="button"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            ×
+          </button>
         </div>
 
-        <div className="variant-selector-content">
-          <div className="variant-product-info">
-            <h4>{product.name}</h4>
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          <div className="mb-4 border-b pb-4">
+            <h4 className="mb-1 text-base font-medium">{product.name}</h4>
             {product.category_name && (
-              <span className="variant-category">{product.category_name}</span>
+              <span className="mr-2 text-sm text-muted-foreground">{product.category_name}</span>
             )}
             {product.subcategory_name && (
-              <span className="variant-subcategory">→ {product.subcategory_name}</span>
+              <span className="text-sm text-muted-foreground">→ {product.subcategory_name}</span>
             )}
           </div>
 
           {loading || loadingDetails ? (
-            <div className="variant-loading">Loading variants...</div>
+            <div className="py-8 text-center text-muted-foreground">Loading variants...</div>
           ) : (
             <>
               {/* Debug info - remove in production */}
@@ -347,13 +356,19 @@ const VariantSelector = ({ product, onSelect, onClose }) => {
               )}
 
               {availableSizes.length > 0 ? (
-                <div className="variant-section">
-                  <label>Size</label>
-                  <div className="variant-options">
+                <div className="mb-4">
+                  <label className="mb-2 block text-sm font-semibold">Size</label>
+                  <div className="flex flex-wrap gap-2">
                     {availableSizes.map(size => (
                       <button
                         key={size.id}
-                        className={`variant-option ${selectedSize === size.id ? 'selected' : ''}`}
+                        type="button"
+                        className={cn(
+                          'rounded-md border-2 px-3 py-2 text-sm font-medium transition-colors',
+                          selectedSize === size.id
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'border-border bg-background hover:border-primary/50 hover:bg-primary/5'
+                        )}
                         onClick={() => handleSizeSelect(size.id)}
                       >
                         {size.name} {size.code ? `(${size.code})` : ''}
@@ -364,20 +379,26 @@ const VariantSelector = ({ product, onSelect, onClose }) => {
               ) : null}
 
               {availableColors.length > 0 ? (
-                <div className="variant-section">
-                  <label>Color</label>
-                  <div className="variant-options">
+                <div className="mb-4">
+                  <label className="mb-2 block text-sm font-semibold">Color</label>
+                  <div className="flex flex-wrap gap-2">
                     {availableColors.map(color => (
                       <button
                         key={color.id}
-                        className={`variant-option color-option ${selectedColor === color.id ? 'selected' : ''}`}
+                        type="button"
+                        className={cn(
+                          'inline-flex items-center gap-2 rounded-md border-2 border-l-4 px-3 py-2 text-sm font-medium transition-colors',
+                          selectedColor === color.id
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'border-border bg-background hover:border-primary/50 hover:bg-primary/5'
+                        )}
                         onClick={() => handleColorSelect(color.id)}
-                        style={color.hex_code ? { borderLeftColor: color.hex_code } : {}}
+                        style={color.hex_code ? { borderLeftColor: color.hex_code } : undefined}
                       >
                         {color.name}
                         {color.hex_code && (
                           <span
-                            className="color-swatch"
+                            className="inline-block h-5 w-5 rounded border border-border"
                             style={{ backgroundColor: color.hex_code }}
                           />
                         )}
@@ -388,20 +409,16 @@ const VariantSelector = ({ product, onSelect, onClose }) => {
               ) : null}
 
               {selectedVariant && (
-                <div className="variant-details">
-                  <div className="variant-detail-row">
-                    <strong>{formatCurrency(getVariantPrice())}</strong>
-                  </div>
-                  <div className="variant-detail-row">
-                    <span className={getVariantStock() === 0 ? 'out-of-stock' : ''}>
-                      {getVariantStock()} {product.unit || 'pcs'}
-                    </span>
+                <div className="mt-4 rounded-md bg-muted/40 p-4">
+                  <div className="text-base font-semibold">{formatCurrency(getVariantPrice())}</div>
+                  <div className={cn('text-sm', getVariantStock() === 0 ? 'text-destructive' : 'text-muted-foreground')}>
+                    {getVariantStock()} {product.unit || 'pcs'}
                   </div>
                 </div>
               )}
 
               {!selectedVariant && product.has_variants && variants.length > 0 && (
-                <div className="variant-message">
+                <div className="py-4 text-center text-sm italic text-muted-foreground">
                   {availableSizes.length > 0 && availableColors.length > 0 && (
                     <span>Please select both size and color</span>
                   )}
@@ -417,148 +434,82 @@ const VariantSelector = ({ product, onSelect, onClose }) => {
                 </div>
               )}
 
-              {/* Quantity Selection - Always show */}
-              <div className="variant-section" style={{ marginTop: '1rem' }}>
-                <label style={{ fontSize: '0.9rem', fontWeight: '600', marginBottom: '0.5rem', display: 'block' }}>
+              <div className="mt-4">
+                <label className="mb-2 block text-sm font-semibold">
                   Quantity
                   {getVariantStock() > 0 && (
-                    <span style={{ fontSize: '0.8rem', color: '#6b7280', fontWeight: '400', marginLeft: '0.5rem' }}>
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">
                       (1 - {getVariantStock()})
                     </span>
                   )}
                 </label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <button
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-9 w-9 shrink-0"
                       onClick={() => {
                         const newQty = Math.max(1, quantity - 1);
                         setQuantity(newQty);
                         setQuantityInput(newQty.toString());
                         setQuantityError(null);
                       }}
-                      style={{
-                        minWidth: '36px',
-                        height: '36px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '4px',
-                        background: 'white',
-                        cursor: 'pointer',
-                        fontSize: '1.1rem',
-                        fontWeight: '600',
-                        color: '#374151',
-                        transition: 'all 0.2s'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.target.style.borderColor = '#667eea';
-                        e.target.style.background = '#f0f4ff';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.target.style.borderColor = '#d1d5db';
-                        e.target.style.background = 'white';
-                      }}
                     >
                       -
-                    </button>
-                    <input
+                    </Button>
+                    <Input
                       type="number"
                       min="1"
                       max={getVariantStock() > 0 ? getVariantStock() : undefined}
                       value={quantityInput}
                       onChange={(e) => {
-                        // Allow free typing - store raw input value
-                        const inputValue = e.target.value;
-                        setQuantityInput(inputValue);
-                        // Clear error while typing
+                        setQuantityInput(e.target.value);
                         setQuantityError(null);
                       }}
                       onFocus={(e) => {
-                        // Select all text on focus for easy replacement
                         e.target.select();
-                        // Sync input with current quantity
                         setQuantityInput(quantity.toString());
                         setQuantityError(null);
                       }}
                       onBlur={(e) => {
-                        // Validate and clamp on blur
                         validateAndSetQuantity(e.target.value.trim());
                       }}
                       onKeyDown={(e) => {
-                        // Allow Enter to blur and validate
                         if (e.key === 'Enter') {
                           e.target.blur();
                         }
-                        // Allow Escape to cancel and reset
                         if (e.key === 'Escape') {
                           setQuantityInput(quantity.toString());
                           setQuantityError(null);
                           e.target.blur();
                         }
                       }}
-                      style={{
-                        width: '120px',
-                        textAlign: 'center',
-                        padding: '0.75rem',
-                        border: `2px solid ${quantityError ? '#ef4444' : '#667eea'}`,
-                        borderRadius: '4px',
-                        fontSize: '1.1rem',
-                        fontWeight: '700',
-                        color: quantityError ? '#ef4444' : '#111827',
-                        outline: 'none',
-                        backgroundColor: quantityError ? '#fef2f2' : '#f9fafb',
-                        transition: 'all 0.2s'
-                      }}
-                      autoFocus={false}
+                      className={cn(
+                        'h-9 w-28 text-center text-base font-bold tabular-nums',
+                        quantityError && 'border-destructive bg-destructive/5 text-destructive'
+                      )}
                     />
-                    <button
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-9 w-9 shrink-0"
                       onClick={() => {
                         const maxStock = getVariantStock();
-                        let newQty;
-                        if (maxStock > 0) {
-                          newQty = Math.min(quantity + 1, maxStock);
-                        } else {
-                          newQty = quantity + 1;
-                        }
+                        const newQty = maxStock > 0 ? Math.min(quantity + 1, maxStock) : quantity + 1;
                         setQuantity(newQty);
                         setQuantityInput(newQty.toString());
                         setQuantityError(null);
                       }}
                       disabled={getVariantStock() > 0 && quantity >= getVariantStock()}
-                      style={{
-                        minWidth: '36px',
-                        height: '36px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '4px',
-                        background: 'white',
-                        cursor: getVariantStock() > 0 && quantity >= getVariantStock() ? 'not-allowed' : 'pointer',
-                        fontSize: '1.1rem',
-                        fontWeight: '600',
-                        color: '#374151',
-                        opacity: getVariantStock() > 0 && quantity >= getVariantStock() ? 0.5 : 1,
-                        transition: 'all 0.2s'
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!(getVariantStock() > 0 && quantity >= getVariantStock())) {
-                          e.target.style.borderColor = '#667eea';
-                          e.target.style.background = '#f0f4ff';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        e.target.style.borderColor = '#d1d5db';
-                        e.target.style.background = 'white';
-                      }}
                     >
                       +
-                    </button>
+                    </Button>
                   </div>
                   {quantityError && (
-                    <div style={{
-                      fontSize: '0.8rem',
-                      color: '#ef4444',
-                      padding: '0.5rem',
-                      background: '#fef2f2',
-                      borderRadius: '4px',
-                      border: '1px solid #fecaca'
-                    }}>
+                    <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
                       {quantityError}
                     </div>
                   )}
@@ -568,17 +519,18 @@ const VariantSelector = ({ product, onSelect, onClose }) => {
           )}
         </div>
 
-        <div className="variant-selector-footer">
-          <button className="variant-cancel-btn" onClick={onClose}>
+        <div className="flex gap-3 border-t px-6 py-4">
+          <Button type="button" variant="outline" className="flex-1" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            className="variant-add-btn"
+          </Button>
+          <Button
+            type="button"
+            className="flex-1"
             onClick={handleAddToCart}
             disabled={!canAddToCart() || getVariantStock() === 0}
           >
             Add to Cart
-          </button>
+          </Button>
         </div>
       </div>
     </div>

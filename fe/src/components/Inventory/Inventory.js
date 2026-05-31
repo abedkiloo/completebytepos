@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowLeftRight,
@@ -10,6 +10,17 @@ import {
 import { inventoryAPI } from '../../services/api';
 import { formatCurrency, formatNumber, formatDateTime } from '../../utils/formatters';
 import { isFeatureEnabledInAny } from '../../utils/moduleSettings';
+import { useModuleSettings } from '../../hooks/useModuleSettings';
+import {
+  inventoryShowStockMovements,
+  inventoryAdjustmentsEnabled,
+  inventoryPurchasesEnabled,
+  inventoryTransfersEnabled,
+  inventoryShowLowStockAlerts,
+  inventoryShowOutOfStockAlerts,
+  inventoryReportEnabled,
+  inventoryShowMovementCost,
+} from '../../utils/inventoryDisplay';
 import SearchableSelect from '../Shared/SearchableSelect';
 import StockAdjustmentModal from './StockAdjustmentModal';
 import StockPurchaseModal from './StockPurchaseModal';
@@ -40,6 +51,20 @@ import { cn } from '../../lib/cn';
 const Inventory = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { settings: inventorySettings } = useModuleSettings('inventory');
+
+  const canShowMovements = inventoryShowStockMovements(inventorySettings);
+  const canAdjust =
+    isFeatureEnabledInAny(['inventory', 'stock'], 'stock_adjustments') &&
+    inventoryAdjustmentsEnabled(inventorySettings);
+  const canPurchase = inventoryPurchasesEnabled(inventorySettings);
+  const canTransfer =
+    isFeatureEnabledInAny(['inventory', 'stock'], 'stock_transfers') &&
+    inventoryTransfersEnabled(inventorySettings);
+  const canShowLowStock = inventoryShowLowStockAlerts(inventorySettings);
+  const canShowOutOfStock = inventoryShowOutOfStockAlerts(inventorySettings);
+  const canShowReport = inventoryReportEnabled(inventorySettings);
+  const showMovementCost = inventoryShowMovementCost(inventorySettings);
   const [movements, setMovements] = useState([]);
   const [lowStockProducts, setLowStockProducts] = useState([]);
   const [outOfStockProducts, setOutOfStockProducts] = useState([]);
@@ -56,21 +81,34 @@ const Inventory = () => {
     date_from: '',
     date_to: '',
   });
-  const [activeTab, setActiveTab] = useState('movements'); // movements, low_stock, out_of_stock, report
-  const [, forceUpdate] = useState(0);
+  const firstAvailableTab = useMemo(() => {
+    if (canShowMovements) return 'movements';
+    if (canShowLowStock) return 'low_stock';
+    if (canShowOutOfStock) return 'out_of_stock';
+    if (canShowReport) return 'report';
+    return 'movements';
+  }, [canShowMovements, canShowLowStock, canShowOutOfStock, canShowReport]);
 
-  // Listen for module settings updates
+  const [activeTab, setActiveTab] = useState(firstAvailableTab);
+
   useEffect(() => {
-    const handleModuleSettingsUpdate = () => {
-      // Force re-render to check updated module settings
-      forceUpdate(prev => prev + 1);
+    const allowed = {
+      movements: canShowMovements,
+      low_stock: canShowLowStock,
+      out_of_stock: canShowOutOfStock,
+      report: canShowReport,
     };
-    
-    window.addEventListener('moduleSettingsUpdated', handleModuleSettingsUpdate);
-    return () => {
-      window.removeEventListener('moduleSettingsUpdated', handleModuleSettingsUpdate);
-    };
-  }, []);
+    if (!allowed[activeTab]) {
+      setActiveTab(firstAvailableTab);
+    }
+  }, [
+    activeTab,
+    firstAvailableTab,
+    canShowMovements,
+    canShowLowStock,
+    canShowOutOfStock,
+    canShowReport,
+  ]);
 
   // Handle URL parameters to open appropriate modals/tabs
   useEffect(() => {
@@ -78,20 +116,17 @@ const Inventory = () => {
     const action = params.get('action');
     const view = params.get('view');
 
-    if (action === 'adjust' && isFeatureEnabledInAny(['inventory', 'stock'], 'stock_adjustments')) {
+    if (action === 'adjust' && canAdjust) {
       setShowAdjustmentModal(true);
-      // Clean URL after opening modal
       navigate('/inventory', { replace: true });
-    } else if (action === 'transfer' && isFeatureEnabledInAny(['inventory', 'stock'], 'stock_transfers')) {
+    } else if (action === 'transfer' && canTransfer) {
       setShowTransferModal(true);
-      // Clean URL after opening modal
       navigate('/inventory', { replace: true });
-    } else if (view === 'movements') {
+    } else if (view === 'movements' && canShowMovements) {
       setActiveTab('movements');
-      // Clean URL
       navigate('/inventory', { replace: true });
     }
-  }, [location.search, navigate]);
+  }, [location.search, navigate, canAdjust, canTransfer, canShowMovements]);
 
   useEffect(() => {
     loadData();
@@ -100,13 +135,13 @@ const Inventory = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      if (activeTab === 'movements') {
+      if (activeTab === 'movements' && canShowMovements) {
         await loadMovements();
-      } else if (activeTab === 'low_stock') {
+      } else if (activeTab === 'low_stock' && canShowLowStock) {
         await loadLowStock();
-      } else if (activeTab === 'out_of_stock') {
+      } else if (activeTab === 'out_of_stock' && canShowOutOfStock) {
         await loadOutOfStock();
-      } else if (activeTab === 'report') {
+      } else if (activeTab === 'report' && canShowReport) {
         await loadReport();
       }
     } catch (error) {
@@ -191,7 +226,10 @@ const Inventory = () => {
     return map[type] || 'outline';
   };
 
-  if (loading && activeTab === 'movements' && movements.length === 0) {
+  const hasAnyTab =
+    canShowMovements || canShowLowStock || canShowOutOfStock || canShowReport;
+
+  if (loading && activeTab === 'movements' && movements.length === 0 && canShowMovements) {
     return (
       <PageLoading rows={8} showStats />
     );
@@ -203,17 +241,19 @@ const Inventory = () => {
           title="Inventory"
           description="Track stock movements, low stock alerts, and valuation."
         >
-          <Button onClick={handlePurchase}>
-            <Plus className="h-4 w-4" />
-            Record purchase
-          </Button>
-          {isFeatureEnabledInAny(['inventory', 'stock'], 'stock_adjustments') && (
+          {canPurchase && (
+            <Button onClick={handlePurchase}>
+              <Plus className="h-4 w-4" />
+              Record purchase
+            </Button>
+          )}
+          {canAdjust && (
             <Button variant="outline" onClick={handleAdjustment}>
               <Scale className="h-4 w-4" />
               Adjust
             </Button>
           )}
-          {isFeatureEnabledInAny(['inventory', 'stock'], 'stock_transfers') && (
+          {canTransfer && (
             <Button variant="outline" onClick={handleTransfer}>
               <ArrowLeftRight className="h-4 w-4" />
               Transfer
@@ -221,18 +261,30 @@ const Inventory = () => {
           )}
         </PageHeader>
 
+        {!hasAnyTab ? (
+          <EmptyState
+            icon={Package}
+            title="Inventory views are hidden"
+            description="Enable at least one inventory option under System Settings → Inventory / stock."
+          />
+        ) : (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1">
-            <TabsTrigger value="movements">Movements</TabsTrigger>
-            <TabsTrigger value="low_stock">
-              Low stock ({lowStockProducts.length})
-            </TabsTrigger>
-            <TabsTrigger value="out_of_stock">
-              Out of stock ({outOfStockProducts.length})
-            </TabsTrigger>
-            <TabsTrigger value="report">Overview</TabsTrigger>
+            {canShowMovements && <TabsTrigger value="movements">Movements</TabsTrigger>}
+            {canShowLowStock && (
+              <TabsTrigger value="low_stock">
+                Low stock ({lowStockProducts.length})
+              </TabsTrigger>
+            )}
+            {canShowOutOfStock && (
+              <TabsTrigger value="out_of_stock">
+                Out of stock ({outOfStockProducts.length})
+              </TabsTrigger>
+            )}
+            {canShowReport && <TabsTrigger value="report">Overview</TabsTrigger>}
           </TabsList>
 
+          {canShowMovements && (
           <TabsContent value="movements" className="mt-4 space-y-4">
             <FilterBar>
               <FilterField label="Type" className="min-w-[160px]">
@@ -283,8 +335,8 @@ const Inventory = () => {
                 icon={Package}
                 title="No movements yet"
                 description="Record a purchase or complete a sale to see stock activity."
-                actionLabel="Record purchase"
-                onAction={handlePurchase}
+                actionLabel={canPurchase ? 'Record purchase' : undefined}
+                onAction={canPurchase ? handlePurchase : undefined}
               />
             ) : (
               <DataTable>
@@ -332,6 +384,7 @@ const Inventory = () => {
                         {movement.user_name || '—'}
                       </DataTableCell>
                       <DataTableCell align="right">
+                        {canShowMovements && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -347,6 +400,7 @@ const Inventory = () => {
                         >
                           <History className="h-4 w-4" />
                         </Button>
+                        )}
                       </DataTableCell>
                     </DataTableRow>
                   ))}
@@ -354,7 +408,9 @@ const Inventory = () => {
               </DataTable>
             )}
           </TabsContent>
+          )}
 
+          {canShowLowStock && (
           <TabsContent value="low_stock" className="mt-4">
             {loading ? (
               <PageLoading rows={4} />
@@ -372,17 +428,20 @@ const Inventory = () => {
                     product={product}
                     tone="warning"
                     label="Low stock"
+                    canReorder={canPurchase}
                     onReorder={() => {
                       setSelectedProduct(product);
                       setShowPurchaseModal(true);
                     }}
-                    onHistory={() => handleViewHistory(product)}
+                    onHistory={canShowMovements ? () => handleViewHistory(product) : undefined}
                   />
                 ))}
               </div>
             )}
           </TabsContent>
+          )}
 
+          {canShowOutOfStock && (
           <TabsContent value="out_of_stock" className="mt-4">
             {loading ? (
               <PageLoading rows={4} />
@@ -400,17 +459,20 @@ const Inventory = () => {
                     product={product}
                     tone="destructive"
                     label="Out of stock"
+                    canReorder={canPurchase}
                     onReorder={() => {
                       setSelectedProduct(product);
                       setShowPurchaseModal(true);
                     }}
-                    onHistory={() => handleViewHistory(product)}
+                    onHistory={canShowMovements ? () => handleViewHistory(product) : undefined}
                   />
                 ))}
               </div>
             )}
           </TabsContent>
+          )}
 
+          {canShowReport && (
           <TabsContent value="report" className="mt-4">
             {loading || !report ? (
               <PageLoading rows={4} showStats />
@@ -449,9 +511,11 @@ const Inventory = () => {
               </div>
             )}
           </TabsContent>
+          )}
         </Tabs>
+        )}
 
-      {showAdjustmentModal && isFeatureEnabledInAny(['inventory', 'stock'], 'stock_adjustments') && (
+      {showAdjustmentModal && canAdjust && (
         <StockAdjustmentModal
           product={selectedProduct}
           onClose={() => {
@@ -466,7 +530,7 @@ const Inventory = () => {
         />
       )}
 
-      {showPurchaseModal && (
+      {showPurchaseModal && canPurchase && (
         <StockPurchaseModal
           product={selectedProduct}
           onClose={() => {
@@ -481,9 +545,10 @@ const Inventory = () => {
         />
       )}
 
-      {showHistoryModal && selectedProduct && (
+      {showHistoryModal && selectedProduct && canShowMovements && (
         <StockHistoryModal
           product={selectedProduct}
+          showCost={showMovementCost}
           onClose={() => {
             setShowHistoryModal(false);
             setSelectedProduct(null);
@@ -491,7 +556,7 @@ const Inventory = () => {
         />
       )}
 
-      {showTransferModal && isFeatureEnabledInAny(['inventory', 'stock'], 'stock_transfers') && (
+      {showTransferModal && canTransfer && (
         <StockTransferModal
           isOpen={showTransferModal}
           product={selectedProduct}
@@ -509,7 +574,7 @@ const Inventory = () => {
   );
 };
 
-function StockProductCard({ product, tone, label, onReorder, onHistory }) {
+function StockProductCard({ product, tone, label, canReorder = true, onReorder, onHistory }) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
@@ -526,12 +591,16 @@ function StockProductCard({ product, tone, label, onReorder, onHistory }) {
         </p>
         <p>Threshold: {formatNumber(product.low_stock_threshold)}</p>
         <div className="flex gap-2 pt-2">
-          <Button size="sm" onClick={onReorder}>
-            Reorder
-          </Button>
-          <Button size="sm" variant="outline" onClick={onHistory}>
-            History
-          </Button>
+          {canReorder && (
+            <Button size="sm" onClick={onReorder}>
+              Reorder
+            </Button>
+          )}
+          {onHistory && (
+            <Button size="sm" variant="outline" onClick={onHistory}>
+              History
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>

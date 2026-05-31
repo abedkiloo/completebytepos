@@ -32,6 +32,19 @@ import { Skeleton } from '../ui/skeleton';
 import { ScrollArea } from '../ui/scroll-area';
 import { cn } from '../../lib/cn';
 import { PageShell, PageHeader } from '../page';
+import { useModuleSettings } from '../../hooks/useModuleSettings';
+import { useStoreSettings } from '../../hooks/useStoreSettings';
+import {
+  customersShowCustomerCode,
+  customersShowOutstandingBalance,
+  customersEnableCreate,
+  customersEnableEdit,
+  customersEnableDelete,
+  customersShowCustomerType,
+  customersShowTaxId,
+  customersShowNotes,
+  customersShowStatus,
+} from '../../utils/customerDisplay';
 
 const EMPTY_FORM = {
   name: '',
@@ -49,6 +62,19 @@ const EMPTY_FORM = {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const Customers = () => {
+  const { settings: customerModuleSettings } = useModuleSettings('customers');
+  const { settings: storeSettings } = useStoreSettings();
+
+  const showCustomerCode = customersShowCustomerCode(customerModuleSettings);
+  const showOutstanding = customersShowOutstandingBalance(customerModuleSettings);
+  const canCreate = customersEnableCreate(customerModuleSettings);
+  const canEdit = customersEnableEdit(customerModuleSettings);
+  const canDelete = customersEnableDelete(customerModuleSettings);
+  const showCustomerType = customersShowCustomerType(customerModuleSettings);
+  const showTaxId = customersShowTaxId(customerModuleSettings);
+  const showNotes = customersShowNotes(customerModuleSettings);
+  const showStatus = customersShowStatus(customerModuleSettings, storeSettings);
+
   // --- Data ---
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -96,13 +122,14 @@ const Customers = () => {
   const totals = useMemo(
     () => ({
       count: customers.length,
-      withDebt: customers.filter((c) => (c.total_outstanding || 0) > 0).length,
-      totalOwed: customers.reduce(
-        (sum, c) => sum + parseFloat(c.total_outstanding || 0),
-        0
-      ),
+      withDebt: showOutstanding
+        ? customers.filter((c) => (c.total_outstanding || 0) > 0).length
+        : 0,
+      totalOwed: showOutstanding
+        ? customers.reduce((sum, c) => sum + parseFloat(c.total_outstanding || 0), 0)
+        : 0,
     }),
-    [customers]
+    [customers, showOutstanding]
   );
 
   // --- Editor handlers ---
@@ -238,31 +265,42 @@ const Customers = () => {
           title="Customers"
           description="Manage shoppers, their contact details, and outstanding balances."
         >
-          <Button onClick={openCreate}>
-            <Plus className="h-4 w-4" />
-            Add customer
-          </Button>
+          {canCreate && (
+            <Button onClick={openCreate}>
+              <Plus className="h-4 w-4" />
+              Add customer
+            </Button>
+          )}
         </PageHeader>
 
         {/* --- Summary chips --- */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div
+          className={cn(
+            'grid grid-cols-1 gap-3',
+            showOutstanding ? 'sm:grid-cols-3' : 'sm:grid-cols-1'
+          )}
+        >
           <SummaryCard
             icon={UsersIcon}
             label="Total customers"
             value={totals.count.toLocaleString()}
           />
-          <SummaryCard
-            icon={UsersIcon}
-            label="With balance owing"
-            value={totals.withDebt.toLocaleString()}
-            tone={totals.withDebt > 0 ? 'warning' : 'default'}
-          />
-          <SummaryCard
-            icon={UsersIcon}
-            label="Total outstanding"
-            value={formatCurrency(totals.totalOwed)}
-            tone={totals.totalOwed > 0 ? 'destructive' : 'default'}
-          />
+          {showOutstanding && (
+            <>
+              <SummaryCard
+                icon={UsersIcon}
+                label="With balance owing"
+                value={totals.withDebt.toLocaleString()}
+                tone={totals.withDebt > 0 ? 'warning' : 'default'}
+              />
+              <SummaryCard
+                icon={UsersIcon}
+                label="Total outstanding"
+                value={formatCurrency(totals.totalOwed)}
+                tone={totals.totalOwed > 0 ? 'destructive' : 'default'}
+              />
+            </>
+          )}
         </div>
 
         {/* --- Search toolbar --- */}
@@ -296,16 +334,25 @@ const Customers = () => {
                   <th className="px-4 py-2.5 text-left font-medium">Customer</th>
                   <th className="px-4 py-2.5 text-left font-medium">Contact</th>
                   <th className="px-4 py-2.5 text-left font-medium">City</th>
-                  <th className="px-4 py-2.5 text-right font-medium">Outstanding</th>
-                  <th className="px-4 py-2.5 text-left font-medium">Status</th>
-                  <th className="px-4 py-2.5 text-right font-medium">Actions</th>
+                  {showOutstanding && (
+                    <th className="px-4 py-2.5 text-right font-medium">Outstanding</th>
+                  )}
+                  {showStatus && (
+                    <th className="px-4 py-2.5 text-left font-medium">Status</th>
+                  )}
+                  {(canEdit || canDelete) && (
+                    <th className="px-4 py-2.5 text-right font-medium">Actions</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {loading && customers.length === 0 ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <tr key={i}>
-                      {Array.from({ length: 6 }).map((__, j) => (
+                      {Array.from({
+                        length:
+                          4 + (showOutstanding ? 1 : 0) + (showStatus ? 1 : 0) + (canEdit || canDelete ? 1 : 0),
+                      }).map((__, j) => (
                         <td key={j} className="px-4 py-3">
                           <Skeleton className="h-4 w-full" />
                         </td>
@@ -314,8 +361,19 @@ const Customers = () => {
                   ))
                 ) : customers.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center">
-                      <EmptyState onCreate={openCreate} searchQuery={searchQuery} />
+                    <td
+                      colSpan={
+                        4 +
+                        (showOutstanding ? 1 : 0) +
+                        (showStatus ? 1 : 0) +
+                        (canEdit || canDelete ? 1 : 0)
+                      }
+                      className="px-4 py-12 text-center"
+                    >
+                      <EmptyState
+                        onCreate={canCreate ? openCreate : undefined}
+                        searchQuery={searchQuery}
+                      />
                     </td>
                   </tr>
                 ) : (
@@ -323,6 +381,12 @@ const Customers = () => {
                     <CustomerRow
                       key={customer.id}
                       customer={customer}
+                      showCustomerCode={showCustomerCode}
+                      showOutstanding={showOutstanding}
+                      showStatus={showStatus}
+                      showCustomerType={showCustomerType}
+                      canEdit={canEdit}
+                      canDelete={canDelete}
                       onEdit={() => openEdit(customer)}
                       onDelete={() => setPendingDelete(customer)}
                     />
@@ -343,6 +407,10 @@ const Customers = () => {
         onChange={updateField}
         onSubmit={handleSubmit}
         saving={saving}
+        showCustomerType={showCustomerType}
+        showTaxId={showTaxId}
+        showNotes={showNotes}
+        showStatus={showStatus}
       />
 
       {/* --- Delete confirm --- */}
@@ -388,19 +456,29 @@ function SummaryCard({ icon: Icon, label, value, tone = 'default' }) {
   );
 }
 
-function CustomerRow({ customer, onEdit, onDelete }) {
+function CustomerRow({
+  customer,
+  showCustomerCode,
+  showOutstanding,
+  showStatus,
+  showCustomerType,
+  canEdit,
+  canDelete,
+  onEdit,
+  onDelete,
+}) {
   const outstanding = parseFloat(customer.total_outstanding || 0);
   return (
     <tr
       className={cn(
         'transition-colors hover:bg-muted/40',
-        !customer.is_active && 'opacity-60'
+        showStatus && !customer.is_active && 'opacity-60'
       )}
     >
       <td className="px-4 py-3">
         <div className="flex flex-col">
           <span className="font-medium text-foreground">{customer.name}</span>
-          {customer.customer_code && (
+          {showCustomerCode && customer.customer_code && (
             <span className="font-mono text-xs text-muted-foreground">
               {customer.customer_code}
             </span>
@@ -436,44 +514,54 @@ function CustomerRow({ customer, onEdit, onDelete }) {
           '—'
         )}
       </td>
-      <td className="px-4 py-3 text-right">
-        <span
-          className={cn(
-            'font-semibold tabular-nums',
-            outstanding > 0 ? 'text-destructive' : 'text-muted-foreground'
-          )}
-        >
-          {formatCurrency(outstanding)}
-        </span>
-      </td>
-      <td className="px-4 py-3">
-        <Badge variant={customer.is_active ? 'success' : 'outline'}>
-          {customer.is_active ? 'Active' : 'Inactive'}
-        </Badge>
-        {customer.customer_type === 'business' && (
-          <Badge variant="secondary" className="ml-1.5">
-            Business
-          </Badge>
-        )}
-      </td>
-      <td className="px-4 py-3">
-        <div className="flex items-center justify-end gap-1">
-          <Button variant="ghost" size="sm" onClick={onEdit} aria-label="Edit customer">
-            <Pencil className="h-3.5 w-3.5" />
-            <span className="sr-only sm:not-sr-only sm:ml-1">Edit</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onDelete}
-            aria-label="Delete customer"
-            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+      {showOutstanding && (
+        <td className="px-4 py-3 text-right">
+          <span
+            className={cn(
+              'font-semibold tabular-nums',
+              outstanding > 0 ? 'text-destructive' : 'text-muted-foreground'
+            )}
           >
-            <Trash2 className="h-3.5 w-3.5" />
-            <span className="sr-only sm:not-sr-only sm:ml-1">Delete</span>
-          </Button>
-        </div>
-      </td>
+            {formatCurrency(outstanding)}
+          </span>
+        </td>
+      )}
+      {showStatus && (
+        <td className="px-4 py-3">
+          <Badge variant={customer.is_active ? 'success' : 'outline'}>
+            {customer.is_active ? 'Active' : 'Inactive'}
+          </Badge>
+          {showCustomerType && customer.customer_type === 'business' && (
+            <Badge variant="secondary" className="ml-1.5">
+              Business
+            </Badge>
+          )}
+        </td>
+      )}
+      {(canEdit || canDelete) && (
+        <td className="px-4 py-3">
+          <div className="flex items-center justify-end gap-1">
+            {canEdit && (
+              <Button variant="ghost" size="sm" onClick={onEdit} aria-label="Edit customer">
+                <Pencil className="h-3.5 w-3.5" />
+                <span className="sr-only sm:not-sr-only sm:ml-1">Edit</span>
+              </Button>
+            )}
+            {canDelete && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onDelete}
+                aria-label="Delete customer"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span className="sr-only sm:not-sr-only sm:ml-1">Delete</span>
+              </Button>
+            )}
+          </div>
+        </td>
+      )}
     </tr>
   );
 }
@@ -497,10 +585,12 @@ function EmptyState({ onCreate, searchQuery }) {
           Add a customer to start tracking purchases, balances and wallet credit.
         </p>
       </div>
-      <Button onClick={onCreate} variant="default" size="sm">
-        <Plus className="h-4 w-4" />
-        Add your first customer
-      </Button>
+      {onCreate && (
+        <Button onClick={onCreate} variant="default" size="sm">
+          <Plus className="h-4 w-4" />
+          Add your first customer
+        </Button>
+      )}
     </div>
   );
 }
@@ -514,6 +604,10 @@ function CustomerFormDialog({
   onChange,
   onSubmit,
   saving,
+  showCustomerType = true,
+  showTaxId = true,
+  showNotes = true,
+  showStatus = true,
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -542,6 +636,7 @@ function CustomerFormDialog({
                     autoFocus
                   />
                 </Field>
+                {showCustomerType && (
                 <Field label="Type" htmlFor="cust-type">
                   <SegmentedControl
                     value={formData.customer_type}
@@ -552,6 +647,7 @@ function CustomerFormDialog({
                     ]}
                   />
                 </Field>
+                )}
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -604,6 +700,7 @@ function CustomerFormDialog({
                 </Field>
               </div>
 
+              {showTaxId && (
               <Field
                 label="Tax ID / VAT number"
                 htmlFor="cust-tax"
@@ -615,7 +712,9 @@ function CustomerFormDialog({
                   onChange={(e) => onChange('tax_id', e.target.value)}
                 />
               </Field>
+              )}
 
+              {showNotes && (
               <Field label="Notes" htmlFor="cust-notes">
                 <textarea
                   id="cust-notes"
@@ -626,7 +725,9 @@ function CustomerFormDialog({
                   placeholder="Internal notes (preferences, delivery instructions…)"
                 />
               </Field>
+              )}
 
+              {showStatus && (
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
@@ -636,6 +737,7 @@ function CustomerFormDialog({
                 />
                 <span>Active — appears in customer pickers</span>
               </label>
+              )}
             </div>
           </ScrollArea>
 

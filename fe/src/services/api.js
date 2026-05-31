@@ -245,6 +245,15 @@ export const suppliersAPI = {
   products: (id) => api.get(`/suppliers/suppliers/${id}/products/`),
 };
 
+export const employeesAPI = {
+  list: (params) => api.get('/employees/employees/', { params }),
+  get: (id) => api.get(`/employees/employees/${id}/`),
+  create: (data) => api.post('/employees/employees/', data),
+  update: (id, data) => api.put(`/employees/employees/${id}/`, data),
+  delete: (id) => api.delete(`/employees/employees/${id}/`),
+  statistics: () => api.get('/employees/employees/statistics/'),
+};
+
 export const variantsAPI = {
   list: (params) => api.get('/products/variants/', { params }),
   get: (id) => api.get(`/products/variants/${id}/`),
@@ -620,6 +629,12 @@ export const storeSettingsAPI = {
     }
     return api.patch('/settings/store-settings/', data);
   },
+};
+
+/** Per-module feature flags: GET/PATCH /api/settings/{module}/ */
+export const moduleSettingsAPI = {
+  get: (module) => api.get(`/settings/${module}/`),
+  patch: (module, data) => api.patch(`/settings/${module}/`, data),
 };
 
 export const usersAPI = {

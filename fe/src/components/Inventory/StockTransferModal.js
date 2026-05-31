@@ -3,9 +3,11 @@ import { inventoryAPI, productsAPI, branchesAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import SearchableSelect from '../Shared/SearchableSelect';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
-import './Inventory.css';
-
+import { useModuleSettings } from '../../hooks/useModuleSettings';
+import { inventoryAllowMovementUndo } from '../../utils/inventoryDisplay';
 const StockTransferModal = ({ isOpen, onClose, onSuccess, product }) => {
+  const { settings: inventorySettings } = useModuleSettings('inventory');
+  const allowUndo = inventoryAllowMovementUndo(inventorySettings);
   const [products, setProducts] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -272,7 +274,9 @@ const StockTransferModal = ({ isOpen, onClose, onSuccess, product }) => {
             <>
               <div style={{ marginBottom: '1rem', padding: '1rem', background: '#d1fae5', borderRadius: '6px' }}>
                 <p style={{ margin: 0, color: '#065f46', fontWeight: '600' }}>✓ {transferResult.message}</p>
-                {transferResult.movements && transferResult.movements.length > 0 && (
+                {allowUndo &&
+                  transferResult.movements &&
+                  transferResult.movements.length > 0 && (
                   <div style={{ marginTop: '0.5rem' }}>
                     {transferResult.movements.map((movement, idx) => (
                       <button

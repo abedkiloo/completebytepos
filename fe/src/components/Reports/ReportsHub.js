@@ -27,6 +27,17 @@ import {
 } from 'lucide-react';
 
 import { reportsAPI } from '../../services/api';
+import { useModuleSettings } from '../../hooks/useModuleSettings';
+import {
+  reportsEnableSalesReports,
+  reportsEnableProductReports,
+  reportsEnableInventoryReports,
+  reportsEnableInvoiceReports,
+  reportsEnableCashReports,
+  reportsShowDiscount,
+  reportsShowTax,
+  reportsShowLegacyCatalog,
+} from '../../utils/reportDisplay';
 import {
   formatCompactCurrency,
   formatCurrency,
@@ -192,7 +203,7 @@ function chartHeight(extra = 0) {
 // Individual report tiles
 // --------------------------------------------------------------------------
 
-function SalesOverviewTile({ onOpen }) {
+function SalesOverviewTile({ onOpen, showDiscount, showTax }) {
   const [period, setPeriod] = useState('today');
   const { data, loading, error } = useReport(reportsAPI.salesOverview, period);
 
@@ -227,11 +238,18 @@ function SalesOverviewTile({ onOpen }) {
               value={formatCurrency(summary.avg_ticket || 0)}
               sub={`${formatNumber(summary.items_sold || 0)} items`}
             />
+            {showDiscount ? (
             <Stat
               label="Discount"
               value={formatCompactCurrency(summary.discount || 0)}
-              sub={`Tax ${formatCompactCurrency(summary.tax || 0)}`}
+              sub={showTax ? `Tax ${formatCompactCurrency(summary.tax || 0)}` : undefined}
             />
+            ) : showTax ? (
+            <Stat
+              label="Tax"
+              value={formatCompactCurrency(summary.tax || 0)}
+            />
+            ) : null}
           </>
         )}
       </div>
@@ -613,7 +631,19 @@ function prettyMethod(method) {
 
 export default function ReportsHub() {
   const navigate = useNavigate();
+  const { settings: reportSettings } = useModuleSettings('reports');
   const goLegacy = (reportName) => () => navigate(`/reports?report=${reportName}`);
+
+  const showSales = reportsEnableSalesReports(reportSettings);
+  const showProducts = reportsEnableProductReports(reportSettings);
+  const showCash = reportsEnableCashReports(reportSettings);
+  const showInventory = reportsEnableInventoryReports(reportSettings);
+  const showInvoice = reportsEnableInvoiceReports(reportSettings);
+  const showDiscount = reportsShowDiscount(reportSettings);
+  const showTax = reportsShowTax(reportSettings);
+  const showLegacy = reportsShowLegacyCatalog(reportSettings);
+
+  const visibleCount = [showSales, showProducts, showCash, showInventory, showInvoice].filter(Boolean).length;
 
   return (
     <div className="space-y-6">
@@ -624,6 +654,15 @@ export default function ReportsHub() {
             Daily, weekly and monthly view of the metrics that matter most for the
             store.
           </p>
+          {showLegacy ? (
+            <button
+              type="button"
+              onClick={() => navigate('/reports?report=__legacy__')}
+              className="mt-2 text-xs font-medium text-primary hover:underline"
+            >
+              Browse all report types
+            </button>
+          ) : null}
         </div>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1">
@@ -638,13 +677,21 @@ export default function ReportsHub() {
         </div>
       </header>
 
+      {visibleCount === 0 ? (
+        <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
+          All report tiles are turned off in System Settings → Reports &amp; analytics.
+        </div>
+      ) : (
       <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-2">
-        <SalesOverviewTile onOpen={goLegacy('sales')} />
-        <TopProductsTile onOpen={goLegacy('products')} />
-        <CashAndPaymentsTile onOpen={goLegacy('income')} />
-        <InventoryHealthTile onOpen={goLegacy('inventory')} />
-        <CustomerOutstandingTile onOpen={goLegacy('invoice')} />
+        {showSales ? (
+          <SalesOverviewTile onOpen={goLegacy('sales')} showDiscount={showDiscount} showTax={showTax} />
+        ) : null}
+        {showProducts ? <TopProductsTile onOpen={goLegacy('products')} /> : null}
+        {showCash ? <CashAndPaymentsTile onOpen={goLegacy('income')} /> : null}
+        {showInventory ? <InventoryHealthTile onOpen={goLegacy('inventory')} /> : null}
+        {showInvoice ? <CustomerOutstandingTile onOpen={goLegacy('invoice')} /> : null}
       </div>
+      )}
     </div>
   );
 }

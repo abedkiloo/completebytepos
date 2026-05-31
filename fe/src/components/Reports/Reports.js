@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { reportsAPI } from '../../services/api';
+import { useModuleSettings } from '../../hooks/useModuleSettings';
+import {
+  reportsLegacyReportEnabled,
+  reportsShowDiscount,
+  reportsShowTax,
+  reportsShowCostAndProfit,
+} from '../../utils/reportDisplay';
 import { formatCurrency, formatNumber, formatDateTime, formatCompactCurrency } from '../../utils/formatters';
 import ReportsList from './ReportsList';
 import ReportsHub from './ReportsHub';
@@ -8,11 +15,16 @@ import { PageShell, PageHeader, FilterBar, FilterField, PageLoading, EmptyState 
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { ArrowLeft, BarChart3 } from 'lucide-react';
+import { R } from './reportUI';
 
 const Reports = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const reportParam = searchParams.get('report');
+  const { settings: reportSettings } = useModuleSettings('reports');
+  const showDiscount = reportsShowDiscount(reportSettings);
+  const showTax = reportsShowTax(reportSettings);
+  const showCostProfit = reportsShowCostAndProfit(reportSettings);
   
   // All hooks must be called at the top level, before any conditional returns
   const [loading, setLoading] = useState(false);
@@ -24,6 +36,11 @@ const Reports = () => {
   });
 
   const loadReport = useCallback(async () => {
+    if (reportParam && reportParam !== '__legacy__' && !reportsLegacyReportEnabled(reportSettings, reportParam)) {
+      setReportData(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const params = {};
@@ -79,7 +96,7 @@ const Reports = () => {
     } finally {
       setLoading(false);
     }
-  }, [reportParam, filters]);
+  }, [reportParam, filters, reportSettings]);
 
   useEffect(() => {
     // Only load report if reportParam exists
@@ -105,6 +122,18 @@ const Reports = () => {
   if (reportParam === '__legacy__') {
     return (
       <ReportsList />
+    );
+  }
+
+  if (reportParam && reportParam !== '__legacy__' && !reportsLegacyReportEnabled(reportSettings, reportParam)) {
+    return (
+      <PageShell>
+        <PageHeader title="Report unavailable" description="This report type is disabled in store settings." />
+        <Button variant="outline" onClick={() => navigate('/reports')}>
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to reports
+        </Button>
+      </PageShell>
     );
   }
 
@@ -157,7 +186,7 @@ const Reports = () => {
       case 'annual':
         return renderAnnualReport();
       default:
-        return <div className="empty-state">Report not found</div>;
+        return <div className={R.empty}>Report not found</div>;
     }
   };
 
@@ -165,34 +194,38 @@ const Reports = () => {
     const { summary, by_payment_method, daily_breakdown } = reportData;
     return (
       <>
-        <div className="report-summary">
-          <div className="summary-card">
+        <div className={R.summaryGrid}>
+          <div className={R.summaryCard}>
             <h3>Total Sales</h3>
-            <p className="summary-value">{summary?.total_sales || 0}</p>
+            <p className={R.summaryValue}>{summary?.total_sales || 0}</p>
           </div>
-          <div className="summary-card">
+          <div className={R.summaryCard}>
             <h3>Total Revenue</h3>
-            <p className="summary-value">{formatCompactCurrency(summary?.total_revenue || 0)}</p>
+            <p className={R.summaryValue}>{formatCompactCurrency(summary?.total_revenue || 0)}</p>
           </div>
-          <div className="summary-card">
+          <div className={R.summaryCard}>
             <h3>Total Items Sold</h3>
-            <p className="summary-value">{formatNumber(summary?.total_items || 0)}</p>
+            <p className={R.summaryValue}>{formatNumber(summary?.total_items || 0)}</p>
           </div>
-          <div className="summary-card">
+          {showTax ? (
+          <div className={R.summaryCard}>
             <h3>Total Tax</h3>
-            <p className="summary-value">{formatCompactCurrency(summary?.total_tax || 0)}</p>
+            <p className={R.summaryValue}>{formatCompactCurrency(summary?.total_tax || 0)}</p>
           </div>
-          <div className="summary-card">
+          ) : null}
+          {showDiscount ? (
+          <div className={R.summaryCard}>
             <h3>Total Discount</h3>
-            <p className="summary-value">{formatCompactCurrency(summary?.total_discount || 0)}</p>
+            <p className={R.summaryValue}>{formatCompactCurrency(summary?.total_discount || 0)}</p>
           </div>
+          ) : null}
         </div>
 
         {by_payment_method && by_payment_method.length > 0 && (
-          <div className="report-section">
+          <div className={R.section}>
             <h3>Sales by Payment Method</h3>
-            <div className="responsive-table-container">
-              <table className="report-table">
+            <div className={R.tableWrap}>
+              <table className={R.table}>
                 <thead>
                   <tr>
                     <th>Payment Method</th>
@@ -215,10 +248,10 @@ const Reports = () => {
         )}
 
         {daily_breakdown && daily_breakdown.length > 0 && (
-          <div className="report-section">
+          <div className={R.section}>
             <h3>Daily Sales Breakdown</h3>
-            <div className="responsive-table-container">
-              <table className="report-table">
+            <div className={R.tableWrap}>
+              <table className={R.table}>
                 <thead>
                   <tr>
                     <th>Date</th>
@@ -247,26 +280,26 @@ const Reports = () => {
     const { summary, purchases } = reportData;
     return (
       <>
-        <div className="report-summary">
-          <div className="summary-card">
+        <div className={R.summaryGrid}>
+          <div className={R.summaryCard}>
             <h3>Total Purchases</h3>
-            <p className="summary-value">{summary?.total_purchases || 0}</p>
+            <p className={R.summaryValue}>{summary?.total_purchases || 0}</p>
           </div>
-          <div className="summary-card">
+          <div className={R.summaryCard}>
             <h3>Total Amount</h3>
-            <p className="summary-value">{formatCurrency(summary?.total_amount || 0)}</p>
+            <p className={R.summaryValue}>{formatCurrency(summary?.total_amount || 0)}</p>
           </div>
-          <div className="summary-card">
+          <div className={R.summaryCard}>
             <h3>Total Items</h3>
-            <p className="summary-value">{formatNumber(summary?.total_items || 0)}</p>
+            <p className={R.summaryValue}>{formatNumber(summary?.total_items || 0)}</p>
           </div>
         </div>
 
         {purchases && purchases.length > 0 && (
-          <div className="report-section">
+          <div className={R.section}>
             <h3>Purchase Details</h3>
-            <div className="responsive-table-container">
-              <table className="report-table">
+            <div className={R.tableWrap}>
+              <table className={R.table}>
                 <thead>
                   <tr>
                     <th>Date</th>
@@ -299,38 +332,46 @@ const Reports = () => {
     const { low_stock_count, out_of_stock_count, total_inventory_value, total_products_value, recent_movements } = reportData;
     return (
       <>
-        <div className="report-summary">
-          <div className="summary-card">
+        <div className={R.summaryGrid}>
+          <div className={R.summaryCard}>
             <h3>Low Stock Items</h3>
-            <p className="summary-value">{low_stock_count || 0}</p>
+            <p className={R.summaryValue}>{low_stock_count || 0}</p>
           </div>
-          <div className="summary-card">
+          <div className={R.summaryCard}>
             <h3>Out of Stock Items</h3>
-            <p className="summary-value">{out_of_stock_count || 0}</p>
+            <p className={R.summaryValue}>{out_of_stock_count || 0}</p>
           </div>
-          <div className="summary-card">
+          {showCostProfit ? (
+          <div className={R.summaryCard}>
             <h3>Total Inventory Value</h3>
-            <p className="summary-value">{formatCurrency(total_inventory_value || 0)}</p>
+            <p className={R.summaryValue}>{formatCurrency(total_inventory_value || 0)}</p>
           </div>
-          <div className="summary-card">
+          ) : null}
+          {showCostProfit ? (
+          <div className={R.summaryCard}>
             <h3>Total Products Value</h3>
-            <p className="summary-value">{formatCurrency(total_products_value || 0)}</p>
+            <p className={R.summaryValue}>{formatCurrency(total_products_value || 0)}</p>
           </div>
+          ) : null}
         </div>
 
         {recent_movements && recent_movements.length > 0 && (
-          <div className="report-section">
+          <div className={R.section}>
             <h3>Recent Stock Movements</h3>
-            <div className="responsive-table-container">
-              <table className="report-table">
+            <div className={R.tableWrap}>
+              <table className={R.table}>
                 <thead>
                   <tr>
                     <th>Date</th>
                     <th>Product</th>
                     <th>Type</th>
                     <th>Quantity</th>
-                    <th>Unit Cost</th>
-                    <th>Total Cost</th>
+                    {showCostProfit ? (
+                      <>
+                        <th>Unit Cost</th>
+                        <th>Total Cost</th>
+                      </>
+                    ) : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -340,8 +381,12 @@ const Reports = () => {
                       <td>{movement.product_name}</td>
                       <td className="capitalize">{movement.movement_type}</td>
                       <td>{formatNumber(movement.quantity)}</td>
-                      <td>{formatCurrency(movement.unit_cost)}</td>
-                      <td>{formatCurrency(movement.total_cost)}</td>
+                      {showCostProfit ? (
+                        <>
+                          <td>{formatCurrency(movement.unit_cost)}</td>
+                          <td>{formatCurrency(movement.total_cost)}</td>
+                        </>
+                      ) : null}
                     </tr>
                   ))}
                 </tbody>
@@ -357,30 +402,30 @@ const Reports = () => {
     const { summary, invoices } = reportData;
     return (
       <>
-        <div className="report-summary">
-          <div className="summary-card">
+        <div className={R.summaryGrid}>
+          <div className={R.summaryCard}>
             <h3>Total Invoices</h3>
-            <p className="summary-value">{summary?.total_invoices || 0}</p>
+            <p className={R.summaryValue}>{summary?.total_invoices || 0}</p>
           </div>
-          <div className="summary-card">
+          <div className={R.summaryCard}>
             <h3>Total Amount</h3>
-            <p className="summary-value">{formatCurrency(summary?.total_amount || 0)}</p>
+            <p className={R.summaryValue}>{formatCurrency(summary?.total_amount || 0)}</p>
           </div>
-          <div className="summary-card">
+          <div className={R.summaryCard}>
             <h3>Paid</h3>
-            <p className="summary-value">{formatCurrency(summary?.paid_amount || 0)}</p>
+            <p className={R.summaryValue}>{formatCurrency(summary?.paid_amount || 0)}</p>
           </div>
-          <div className="summary-card">
+          <div className={R.summaryCard}>
             <h3>Outstanding</h3>
-            <p className="summary-value">{formatCurrency(summary?.outstanding_amount || 0)}</p>
+            <p className={R.summaryValue}>{formatCurrency(summary?.outstanding_amount || 0)}</p>
           </div>
         </div>
 
         {invoices && invoices.length > 0 && (
-          <div className="report-section">
+          <div className={R.section}>
             <h3>Invoice Details</h3>
-            <div className="responsive-table-container">
-              <table className="report-table">
+            <div className={R.tableWrap}>
+              <table className={R.table}>
                 <thead>
                   <tr>
                     <th>Invoice #</th>
@@ -413,22 +458,22 @@ const Reports = () => {
     const { summary, suppliers } = reportData;
     return (
       <>
-        <div className="report-summary">
-          <div className="summary-card">
+        <div className={R.summaryGrid}>
+          <div className={R.summaryCard}>
             <h3>Total Suppliers</h3>
-            <p className="summary-value">{summary?.total_suppliers || 0}</p>
+            <p className={R.summaryValue}>{summary?.total_suppliers || 0}</p>
           </div>
-          <div className="summary-card">
+          <div className={R.summaryCard}>
             <h3>Total Purchases</h3>
-            <p className="summary-value">{formatCurrency(summary?.total_purchases || 0)}</p>
+            <p className={R.summaryValue}>{formatCurrency(summary?.total_purchases || 0)}</p>
           </div>
         </div>
 
         {suppliers && suppliers.length > 0 && (
-          <div className="report-section">
+          <div className={R.section}>
             <h3>Supplier Performance</h3>
-            <div className="responsive-table-container">
-              <table className="report-table">
+            <div className={R.tableWrap}>
+              <table className={R.table}>
                 <thead>
                   <tr>
                     <th>Supplier</th>
@@ -459,26 +504,26 @@ const Reports = () => {
     const { summary, customers } = reportData;
     return (
       <>
-        <div className="report-summary">
-          <div className="summary-card">
+        <div className={R.summaryGrid}>
+          <div className={R.summaryCard}>
             <h3>Total Customers</h3>
-            <p className="summary-value">{summary?.total_customers || 0}</p>
+            <p className={R.summaryValue}>{summary?.total_customers || 0}</p>
           </div>
-          <div className="summary-card">
+          <div className={R.summaryCard}>
             <h3>Total Sales</h3>
-            <p className="summary-value">{formatCurrency(summary?.total_sales || 0)}</p>
+            <p className={R.summaryValue}>{formatCurrency(summary?.total_sales || 0)}</p>
           </div>
-          <div className="summary-card">
+          <div className={R.summaryCard}>
             <h3>Avg Order Value</h3>
-            <p className="summary-value">{formatCurrency(summary?.avg_order_value || 0)}</p>
+            <p className={R.summaryValue}>{formatCurrency(summary?.avg_order_value || 0)}</p>
           </div>
         </div>
 
         {customers && customers.length > 0 && (
-          <div className="report-section">
+          <div className={R.section}>
             <h3>Customer Performance</h3>
-            <div className="responsive-table-container">
-              <table className="report-table">
+            <div className={R.tableWrap}>
+              <table className={R.table}>
                 <thead>
                   <tr>
                     <th>Customer</th>
@@ -512,10 +557,10 @@ const Reports = () => {
     return (
       <>
         {products && products.length > 0 ? (
-          <div className="report-section">
+          <div className={R.section}>
             <h3>Product Sales Performance</h3>
-            <div className="responsive-table-container">
-              <table className="report-table">
+            <div className={R.tableWrap}>
+              <table className={R.table}>
                 <thead>
                   <tr>
                     <th>Product Name</th>
@@ -542,7 +587,7 @@ const Reports = () => {
             </div>
           </div>
         ) : (
-          <div className="empty-state">No product sales data available</div>
+          <div className={R.empty}>No product sales data available</div>
         )}
       </>
     );
@@ -552,26 +597,26 @@ const Reports = () => {
     const { summary, expenses } = reportData;
     return (
       <>
-        <div className="report-summary">
-          <div className="summary-card">
+        <div className={R.summaryGrid}>
+          <div className={R.summaryCard}>
             <h3>Total Expenses</h3>
-            <p className="summary-value">{formatCurrency(summary?.total_expenses || 0)}</p>
+            <p className={R.summaryValue}>{formatCurrency(summary?.total_expenses || 0)}</p>
           </div>
-          <div className="summary-card">
+          <div className={R.summaryCard}>
             <h3>Expense Count</h3>
-            <p className="summary-value">{summary?.expense_count || 0}</p>
+            <p className={R.summaryValue}>{summary?.expense_count || 0}</p>
           </div>
-          <div className="summary-card">
+          <div className={R.summaryCard}>
             <h3>By Category</h3>
-            <p className="summary-value">{summary?.category_count || 0}</p>
+            <p className={R.summaryValue}>{summary?.category_count || 0}</p>
           </div>
         </div>
 
         {expenses && expenses.length > 0 && (
-          <div className="report-section">
+          <div className={R.section}>
             <h3>Expense Details</h3>
-            <div className="responsive-table-container">
-              <table className="report-table">
+            <div className={R.tableWrap}>
+              <table className={R.table}>
                 <thead>
                   <tr>
                     <th>Date</th>
@@ -604,22 +649,22 @@ const Reports = () => {
     const { summary, income } = reportData;
     return (
       <>
-        <div className="report-summary">
-          <div className="summary-card">
+        <div className={R.summaryGrid}>
+          <div className={R.summaryCard}>
             <h3>Total Income</h3>
-            <p className="summary-value">{formatCurrency(summary?.total_income || 0)}</p>
+            <p className={R.summaryValue}>{formatCurrency(summary?.total_income || 0)}</p>
           </div>
-          <div className="summary-card">
+          <div className={R.summaryCard}>
             <h3>Income Count</h3>
-            <p className="summary-value">{summary?.income_count || 0}</p>
+            <p className={R.summaryValue}>{summary?.income_count || 0}</p>
           </div>
         </div>
 
         {income && income.length > 0 && (
-          <div className="report-section">
+          <div className={R.section}>
             <h3>Income Details</h3>
-            <div className="responsive-table-container">
-              <table className="report-table">
+            <div className={R.tableWrap}>
+              <table className={R.table}>
                 <thead>
                   <tr>
                     <th>Date</th>
@@ -650,22 +695,22 @@ const Reports = () => {
     const { summary, tax_breakdown } = reportData;
     return (
       <>
-        <div className="report-summary">
-          <div className="summary-card">
+        <div className={R.summaryGrid}>
+          <div className={R.summaryCard}>
             <h3>Total Tax Collected</h3>
-            <p className="summary-value">{formatCurrency(summary?.total_tax || 0)}</p>
+            <p className={R.summaryValue}>{formatCurrency(summary?.total_tax || 0)}</p>
           </div>
-          <div className="summary-card">
+          <div className={R.summaryCard}>
             <h3>Tax Rate</h3>
-            <p className="summary-value">{summary?.tax_rate || 0}%</p>
+            <p className={R.summaryValue}>{summary?.tax_rate || 0}%</p>
           </div>
         </div>
 
         {tax_breakdown && tax_breakdown.length > 0 && (
-          <div className="report-section">
+          <div className={R.section}>
             <h3>Tax Breakdown</h3>
-            <div className="responsive-table-container">
-              <table className="report-table">
+            <div className={R.tableWrap}>
+              <table className={R.table}>
                 <thead>
                   <tr>
                     <th>Date</th>
@@ -696,38 +741,42 @@ const Reports = () => {
     const { summary, monthly_breakdown } = reportData;
     return (
       <>
-        <div className="report-summary">
-          <div className="summary-card">
+        <div className={R.summaryGrid}>
+          <div className={R.summaryCard}>
             <h3>Total Revenue</h3>
-            <p className="summary-value">{formatCurrency(summary?.total_revenue || 0)}</p>
+            <p className={R.summaryValue}>{formatCurrency(summary?.total_revenue || 0)}</p>
           </div>
-          <div className="summary-card">
+          <div className={R.summaryCard}>
             <h3>Total Expenses</h3>
-            <p className="summary-value">{formatCurrency(summary?.total_expenses || 0)}</p>
+            <p className={R.summaryValue}>{formatCurrency(summary?.total_expenses || 0)}</p>
           </div>
-          <div className="summary-card">
+          {showCostProfit ? (
+          <div className={R.summaryCard}>
             <h3>Net Profit</h3>
-            <p className="summary-value" style={{ color: (summary?.net_profit || 0) >= 0 ? '#10b981' : '#ef4444' }}>
+            <p className={R.summaryValue} style={{ color: (summary?.net_profit || 0) >= 0 ? '#10b981' : '#ef4444' }}>
               {formatCurrency(summary?.net_profit || 0)}
             </p>
           </div>
-          <div className="summary-card">
+          ) : null}
+          {showCostProfit ? (
+          <div className={R.summaryCard}>
             <h3>Profit Margin</h3>
-            <p className="summary-value">{summary?.profit_margin || 0}%</p>
+            <p className={R.summaryValue}>{summary?.profit_margin || 0}%</p>
           </div>
+          ) : null}
         </div>
 
         {monthly_breakdown && monthly_breakdown.length > 0 && (
-          <div className="report-section">
+          <div className={R.section}>
             <h3>Monthly Breakdown</h3>
-            <div className="responsive-table-container">
-              <table className="report-table">
+            <div className={R.tableWrap}>
+              <table className={R.table}>
                 <thead>
                   <tr>
                     <th>Month</th>
                     <th>Revenue</th>
                     <th>Expenses</th>
-                    <th>Profit</th>
+                    {showCostProfit ? <th>Profit</th> : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -736,9 +785,11 @@ const Reports = () => {
                       <td>{item.month}</td>
                       <td>{formatCurrency(item.revenue)}</td>
                       <td>{formatCurrency(item.expenses)}</td>
+                      {showCostProfit ? (
                       <td style={{ color: item.profit >= 0 ? '#10b981' : '#ef4444' }}>
                         {formatCurrency(item.profit)}
                       </td>
+                      ) : null}
                     </tr>
                   ))}
                 </tbody>
@@ -754,32 +805,32 @@ const Reports = () => {
     const { summary, monthly_data } = reportData;
     return (
       <>
-        <div className="report-summary">
-          <div className="summary-card">
+        <div className={R.summaryGrid}>
+          <div className={R.summaryCard}>
             <h3>Total Sales</h3>
-            <p className="summary-value">{formatCurrency(summary?.total_sales || 0)}</p>
+            <p className={R.summaryValue}>{formatCurrency(summary?.total_sales || 0)}</p>
           </div>
-          <div className="summary-card">
+          <div className={R.summaryCard}>
             <h3>Total Expenses</h3>
-            <p className="summary-value">{formatCurrency(summary?.total_expenses || 0)}</p>
+            <p className={R.summaryValue}>{formatCurrency(summary?.total_expenses || 0)}</p>
           </div>
-          <div className="summary-card">
+          <div className={R.summaryCard}>
             <h3>Net Profit</h3>
-            <p className="summary-value" style={{ color: (summary?.net_profit || 0) >= 0 ? '#10b981' : '#ef4444' }}>
+            <p className={R.summaryValue} style={{ color: (summary?.net_profit || 0) >= 0 ? '#10b981' : '#ef4444' }}>
               {formatCurrency(summary?.net_profit || 0)}
             </p>
           </div>
-          <div className="summary-card">
+          <div className={R.summaryCard}>
             <h3>Growth Rate</h3>
-            <p className="summary-value">{summary?.growth_rate || 0}%</p>
+            <p className={R.summaryValue}>{summary?.growth_rate || 0}%</p>
           </div>
         </div>
 
         {monthly_data && monthly_data.length > 0 && (
-          <div className="report-section">
+          <div className={R.section}>
             <h3>Monthly Performance</h3>
-            <div className="responsive-table-container">
-              <table className="report-table">
+            <div className={R.tableWrap}>
+              <table className={R.table}>
                 <thead>
                   <tr>
                     <th>Month</th>
@@ -877,7 +928,7 @@ const Reports = () => {
           </FilterBar>
         )}
 
-        <div className="report-content">{renderReport()}</div>
+        <div className={R.panel}>{renderReport()}</div>
       </PageShell>
   );
 };

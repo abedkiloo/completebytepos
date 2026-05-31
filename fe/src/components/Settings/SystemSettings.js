@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Image, Receipt, CreditCard, Package } from 'lucide-react';
+import { Image, Receipt, CreditCard, Package, Info } from 'lucide-react';
 
 import { PageShell, PageHeader } from '../page';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -10,6 +10,8 @@ import { storeSettingsAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import { PAYMENT_METHODS } from '../../utils/paymentMethods';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
+import ModuleSettingsCard from './ModuleSettingsCard';
+import { MODULE_SETTINGS_CARDS } from './moduleSettingsCards';
 
 export default function SystemSettings() {
   const { settings, applyLocal } = useStoreSettings();
@@ -112,18 +114,48 @@ export default function SystemSettings() {
     <PageShell narrow>
       <PageHeader
         title="System Settings"
-        description="Receipt branding, checkout payment methods, catalog rules, and UI controls."
+        description="Store-wide POS rules, receipt branding, and per-module feature toggles."
       />
 
       <div className="space-y-3">
+        <Card className="border-primary/20 bg-primary/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Info className="h-4 w-4 text-primary" />
+              How settings are organised
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm text-muted-foreground">
+            <p>
+              <span className="font-medium text-foreground">Store rules</span> (top section, receipt,
+              payments) apply to the whole business. Click <span className="font-medium text-foreground">Save settings</span>{' '}
+              to persist them.
+            </p>
+            <p>
+              <span className="font-medium text-foreground">Module toggles</span> below save immediately
+              when you check or uncheck them. They gate UI and API behaviour without deleting data.
+            </p>
+            <p>
+              <span className="font-medium text-foreground">Module Settings</span> (separate page) controls
+              which modules and install-level features are enabled. Both layers must allow something before
+              it appears in the app.
+            </p>
+            <p>
+              After upgrading, run{' '}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">python manage.py init_module_settings</code>{' '}
+              once so new toggles exist in the database.
+            </p>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
               <Package className="h-4 w-4 text-primary" />
-              Catalog &amp; products
+              Store POS rules
             </CardTitle>
             <CardDescription>
-              Let sales staff add products and categories without entering prices.
+              Cross-cutting checkout and catalog behaviour. Saved with the button at the bottom of this page.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
@@ -169,14 +201,20 @@ export default function SystemSettings() {
                 className="mt-0.5"
               />
               <span>
-                <span className="font-medium">Hide active / inactive toggles</span>
+                <span className="font-medium">Hide all active / inactive controls</span>
                 <span className="mt-0.5 block text-muted-foreground">
-                  Hides status controls on product, category, and user forms.
+                  Store-wide override: hides status badges, filters, and toggles for products,
+                  customers, employees, suppliers, users, and categories — even when a module&apos;s
+                  status toggle is on.
                 </span>
               </span>
             </label>
           </CardContent>
         </Card>
+
+        {MODULE_SETTINGS_CARDS.map((card) => (
+          <ModuleSettingsCard key={card.module} {...card} />
+        ))}
 
         <Card>
           <CardHeader className="pb-3">
@@ -300,10 +338,13 @@ export default function SystemSettings() {
           </CardContent>
         </Card>
 
-        <div className="flex justify-end">
+        <div className="flex flex-col items-end gap-1">
           <Button onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving…' : 'Save settings'}
+            {saving ? 'Saving…' : 'Save store settings'}
           </Button>
+          <p className="text-xs text-muted-foreground">
+            Module toggles above save automatically when changed.
+          </p>
         </div>
       </div>
     </PageShell>

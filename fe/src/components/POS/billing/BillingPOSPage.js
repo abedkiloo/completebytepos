@@ -26,6 +26,8 @@ import { getSellableStock, isProductOutOfStock } from '../../../utils/productSto
 import { useStoreSettings } from '../../../hooks/useStoreSettings';
 import { filterEnabledPaymentMethods } from '../../../utils/paymentMethods';
 import { isManagerOrAdminFromStorage } from '../../../utils/roleAccess';
+import { useModuleSettings } from '../../../hooks/useModuleSettings';
+import { canQuickAddCustomerAtPos } from '../../../utils/customerDisplay';
 
 export default function BillingPOSPage() {
   const state = useBillingPOSState();
@@ -36,7 +38,11 @@ export default function BillingPOSPage() {
   }));
   const searchRef = useRef(null);
   const [showNewCustomer, setShowNewCustomer] = React.useState(false);
-  const canAddCustomer = isManagerOrAdminFromStorage();
+  const { settings: customerModuleSettings } = useModuleSettings('customers');
+  const canAddCustomer = canQuickAddCustomerAtPos(
+    isManagerOrAdminFromStorage(),
+    customerModuleSettings
+  );
 
   if (state.loadingHolding) {
     return (
@@ -89,7 +95,7 @@ export default function BillingPOSPage() {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && state.searchResults[0]) {
                       const first = state.searchResults[0];
-                      if (isProductOutOfStock(first)) {
+                      if (state.validateStock && isProductOutOfStock(first)) {
                         toast.warning(`${first.name} is out of stock`);
                         return;
                       }
@@ -108,7 +114,7 @@ export default function BillingPOSPage() {
                     <li className="px-3 py-2 text-sm text-muted-foreground">No products found</li>
                   )}
                   {state.searchResults.map((p) => {
-                    const outOfStock = isProductOutOfStock(p);
+                    const outOfStock = state.validateStock && isProductOutOfStock(p);
                     const stock = getSellableStock(p);
                     return (
                       <li key={p.id}>
@@ -303,7 +309,8 @@ export default function BillingPOSPage() {
                     <div className="text-xs text-muted-foreground">Default for cash sales</div>
                   )}
                 </div>
-                {!state.isWalkInCustomer(state.selectedCustomer) && (
+                {!state.requireCustomer &&
+                  !state.isWalkInCustomer(state.selectedCustomer) && (
                   <Button variant="ghost" size="sm" onClick={state.selectWalkInCustomer}>
                     Walk-in
                   </Button>
@@ -342,6 +349,7 @@ export default function BillingPOSPage() {
             <div className="flex flex-1 flex-col rounded-xl border bg-white p-4 shadow-sm">
               <h2 className="mb-4 text-sm font-semibold text-slate-800">Invoice Details</h2>
 
+              {state.showDiscount && (
               <div className="mb-4">
                 <Label className="mb-1.5 text-xs text-muted-foreground">Discount</Label>
                 <div className="flex gap-2">
@@ -376,7 +384,9 @@ export default function BillingPOSPage() {
                   />
                 </div>
               </div>
+              )}
 
+              {state.showTax && (
               <div className="mb-4">
                 <Label className="mb-1.5 text-xs text-muted-foreground">Tax % (GST)</Label>
                 <Input
@@ -389,9 +399,11 @@ export default function BillingPOSPage() {
                   className="h-10"
                 />
               </div>
+              )}
 
               <div className="mb-3">
                 <Label className="mb-2 text-xs text-muted-foreground">Payment Mode</Label>
+                {state.allowPartialPayment && (
                 <label className="mb-2 flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
@@ -400,6 +412,7 @@ export default function BillingPOSPage() {
                   />
                   Partial payment (balance on customer account)
                 </label>
+                )}
                 <div className={cn('grid gap-2', paymentModes.length <= 2 ? 'grid-cols-2' : 'grid-cols-3')}>
                   {paymentModes.map((m) => (
                     <button

@@ -34,6 +34,12 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
+    "test:flags": "react-scripts test --watchAll=false --testPathPattern=\"Display|moduleSettingsCache|FeatureFlag|useModuleSettings|productDisplay|sellingPrice\"",
+    "test:e2e": "playwright test -c e2e/playwright.config.js",
+    "test:e2e:install": "playwright install chromium",
+    "test:e2e:smoke": "playwright test -c e2e/playwright.config.js specs/smoke-routes.spec.js specs/pos-smoke.spec.js",
+    "test:e2e:settings": "playwright test -c e2e/playwright.config.js specs/module-settings.spec.js specs/high-impact-settings.spec.js specs/products.spec.js",
+    "test:e2e:persona": "playwright test -c e2e/playwright.config.js specs/persona-access.spec.js",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {
@@ -55,6 +61,7 @@
     ]
   },
   "devDependencies": {
+    "@playwright/test": "^1.52.0",
     "autoprefixer": "^10.5.0",
     "postcss": "^8.5.15",
     "tailwindcss": "^3.4.19"

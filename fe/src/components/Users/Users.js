@@ -6,6 +6,20 @@ import SearchableSelect from '../Shared/SearchableSelect';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import { toast } from '../../utils/toast';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
+import { useModuleSettings } from '../../hooks/useModuleSettings';
+import {
+  usersShowEmail,
+  usersShowPhone,
+  usersShowFullName,
+  usersShowStatus,
+  usersShowDateJoined,
+  usersShowStatistics,
+  usersShowStaffFlag,
+  usersEnableCreate,
+  usersEnableEdit,
+  usersEnableDelete,
+  usersEnableInlineRoleAssignment,
+} from '../../utils/userDisplay';
 import { Button } from '../ui/button';
 import {
   PageShell,
@@ -27,7 +41,17 @@ import {
 
 const Users = () => {
   const { settings } = useStoreSettings();
+  const { settings: userSettings } = useModuleSettings('users');
   const hideStatusToggles = settings.hide_entity_status_toggles;
+  const showEmail = usersShowEmail(userSettings);
+  const showFullName = usersShowFullName(userSettings);
+  const showStatus = usersShowStatus(userSettings, settings);
+  const showDateJoined = usersShowDateJoined(userSettings);
+  const showStats = usersShowStatistics(userSettings);
+  const canCreate = usersEnableCreate(userSettings);
+  const canEdit = usersEnableEdit(userSettings);
+  const canDelete = usersEnableDelete(userSettings);
+  const canAssignRole = usersEnableInlineRoleAssignment(userSettings);
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -155,12 +179,15 @@ const Users = () => {
           title="Users"
           description="Manage who can sign in and what they can do in the store."
         >
+          {canCreate ? (
           <Button onClick={handleCreate}>
             <Plus className="h-4 w-4" />
             Add user
           </Button>
+          ) : null}
         </PageHeader>
 
+        {showStats ? (
         <div className="grid gap-3 sm:grid-cols-2">
           <SummaryCard
             icon={UsersIcon}
@@ -174,6 +201,7 @@ const Users = () => {
             tone="success"
           />
         </div>
+        ) : null}
 
         <FilterBar>
           <SearchField
@@ -196,6 +224,7 @@ const Users = () => {
               placeholder="All roles"
             />
           </FilterField>
+          {showStatus ? (
           <FilterField label="Status">
             <SearchableSelect
               value={filterStatus}
@@ -208,6 +237,7 @@ const Users = () => {
               placeholder="All status"
             />
           </FilterField>
+          ) : null}
         </FilterBar>
 
         {filteredUsers.length === 0 ? (
@@ -215,31 +245,36 @@ const Users = () => {
             icon={UsersIcon}
             title="No users found"
             description="Adjust filters or add a new team member."
-            actionLabel="Add user"
-            onAction={handleCreate}
+            actionLabel={canCreate ? 'Add user' : undefined}
+            onAction={canCreate ? handleCreate : undefined}
           />
         ) : (
           <DataTable>
             <DataTableHeader>
               <DataTableHead>Username</DataTableHead>
-              <DataTableHead>Name</DataTableHead>
-              <DataTableHead>Email</DataTableHead>
+              {showFullName ? <DataTableHead>Name</DataTableHead> : null}
+              {showEmail ? <DataTableHead>Email</DataTableHead> : null}
               <DataTableHead>Role</DataTableHead>
-              <DataTableHead>Status</DataTableHead>
-              <DataTableHead>Joined</DataTableHead>
+              {showStatus ? <DataTableHead>Status</DataTableHead> : null}
+              {showDateJoined ? <DataTableHead>Joined</DataTableHead> : null}
               <DataTableHead align="right">Actions</DataTableHead>
             </DataTableHeader>
             <DataTableBody>
               {filteredUsers.map((user) => (
                 <DataTableRow key={user.id}>
                   <DataTableCell className="font-medium">{user.username}</DataTableCell>
+                  {showFullName ? (
                   <DataTableCell>
                     {[user.first_name, user.last_name].filter(Boolean).join(' ') || '—'}
                   </DataTableCell>
+                  ) : null}
+                  {showEmail ? (
                   <DataTableCell className="text-muted-foreground">
                     {user.email || '—'}
                   </DataTableCell>
+                  ) : null}
                   <DataTableCell>
+                    {canAssignRole ? (
                     <SearchableSelect
                       value={
                         user.profile?.custom_role?.id || user.profile?.role || ''
@@ -259,22 +294,35 @@ const Users = () => {
                       ]}
                       placeholder="Select role"
                     />
+                    ) : (
+                      user.profile?.custom_role?.name ||
+                      user.profile?.role_display ||
+                      user.profile?.role ||
+                      '—'
+                    )}
                   </DataTableCell>
+                  {showStatus ? (
                   <DataTableCell>
                     <ActiveStatusBadge
                       active={user.is_active && user.profile?.is_active}
                     />
                   </DataTableCell>
+                  ) : null}
+                  {showDateJoined ? (
                   <DataTableCell className="text-muted-foreground">
                     {user.date_joined
                       ? new Date(user.date_joined).toLocaleDateString()
                       : '—'}
                   </DataTableCell>
+                  ) : null}
                   <DataTableCell align="right">
                     <div className="flex justify-end gap-1">
+                      {canEdit ? (
                       <Button variant="ghost" size="sm" onClick={() => handleEdit(user)}>
                         <Pencil className="h-4 w-4" />
                       </Button>
+                      ) : null}
+                      {canDelete ? (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -284,6 +332,7 @@ const Users = () => {
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
+                      ) : null}
                     </div>
                   </DataTableCell>
                 </DataTableRow>
@@ -293,7 +342,17 @@ const Users = () => {
         )}
 
         {showForm && (
-          <UserForm user={editingUser} roles={roles} onClose={handleFormClose} hideStatusToggles={hideStatusToggles} />
+          <UserForm
+            user={editingUser}
+            roles={roles}
+            onClose={handleFormClose}
+            hideStatusToggles={hideStatusToggles || !showStatus}
+            showEmail={showEmail}
+            showFullName={showFullName}
+            showPhone={usersShowPhone(userSettings)}
+            showStaffFlag={usersShowStaffFlag(userSettings)}
+            showInlineRoles={canAssignRole}
+          />
         )}
 
         <ConfirmDialog

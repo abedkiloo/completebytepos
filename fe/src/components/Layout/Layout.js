@@ -32,6 +32,7 @@ import {
   Building2,
   Calculator,
   SlidersHorizontal,
+  UserCog,
 } from 'lucide-react';
 
 import { modulesAPI, storeSettingsAPI } from '../../services/api';
@@ -96,6 +97,14 @@ const NAV_SECTIONS = [
     module: 'customers',
     items: [
       { to: '/customers', label: 'Customers', icon: UsersIcon },
+    ],
+  },
+  {
+    id: 'employees',
+    label: 'Employees',
+    module: 'employees',
+    items: [
+      { to: '/employees', label: 'Employees', icon: UserCog, feature: ['employees', 'employee_management'] },
     ],
   },
   {

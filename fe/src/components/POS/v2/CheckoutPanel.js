@@ -49,6 +49,9 @@ export function CheckoutPanel({
   itemCount,
   hasOversell = false,
   enabledPaymentMethods,
+  showDiscount = true,
+  showTax = true,
+  showDelivery = true,
 }) {
   const [showExtras, setShowExtras] = useState(false);
   const methods = useMemo(
@@ -76,24 +79,32 @@ export function CheckoutPanel({
       {/* Totals */}
       <div className="space-y-1 px-3 py-2 text-sm">
         <Row label="Subtotal" value={formatCurrency(subtotal)} />
-        {discountAmount > 0 && (
+        {showDiscount && discountAmount > 0 && (
           <Row label="Discount" value={`- ${formatCurrency(discountAmount)}`} muted />
         )}
-        {taxAmount > 0 && <Row label={`Tax (${taxPct}%)`} value={formatCurrency(taxAmount)} muted />}
-        {deliveryEnabled && deliveryCost > 0 && (
+        {showTax && taxAmount > 0 && (
+          <Row label={`Tax (${taxPct}%)`} value={formatCurrency(taxAmount)} muted />
+        )}
+        {showDelivery && deliveryEnabled && deliveryCost > 0 && (
           <Row label="Delivery" value={formatCurrency(deliveryCost)} muted />
         )}
 
+        {(showDiscount || showTax || showDelivery) && (
         <button
           type="button"
           onClick={() => setShowExtras((v) => !v)}
           className="text-xs font-medium text-primary hover:underline"
         >
-          {showExtras ? 'Hide' : 'Add'} discount / tax / delivery
+          {showExtras ? 'Hide' : 'Add'}{' '}
+          {[showDiscount && 'discount', showTax && 'tax', showDelivery && 'delivery']
+            .filter(Boolean)
+            .join(' / ')}
         </button>
+        )}
 
-        {showExtras && (
+        {showExtras && (showDiscount || showTax || showDelivery) && (
           <div className="mt-2 grid grid-cols-2 gap-2">
+            {showDiscount && (
             <div className="col-span-2 flex items-center gap-2">
               <Percent className="h-4 w-4 text-muted-foreground" />
               <Input
@@ -114,7 +125,9 @@ export function CheckoutPanel({
                 ]}
               />
             </div>
+            )}
 
+            {showTax && (
             <div className="flex items-center gap-2">
               <Percent className="h-4 w-4 text-muted-foreground" />
               <Input
@@ -127,7 +140,9 @@ export function CheckoutPanel({
                 className="h-9"
               />
             </div>
+            )}
 
+            {showDelivery && (
             <div className="flex items-center gap-2">
               <Truck className="h-4 w-4 text-muted-foreground" />
               <Input
@@ -145,6 +160,7 @@ export function CheckoutPanel({
                 className="h-9"
               />
             </div>
+            )}
           </div>
         )}
       </div>

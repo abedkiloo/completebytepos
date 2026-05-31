@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
+import { Plus } from 'lucide-react';
+
 import { salesAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import NormalSaleModal from './NormalSaleModal';
-import '../../styles/shared.css';
-import './NormalSale.css';
+import { Button } from '../ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { PageShell, PageHeader } from '../page';
 
 const NormalSale = () => {
   const [showSaleModal, setShowSaleModal] = useState(false);
@@ -11,9 +14,7 @@ const NormalSale = () => {
   const handleSaveSale = async (saleData) => {
     try {
       const response = await salesAPI.create(saleData);
-      
-      // Don't show generic success here - let modal handle wallet messages
-      // Only show if no wallet message will be shown
+
       if (!response.data.wallet_credit_added && !response.data.wallet_amount_used) {
         if (response.data.invoice) {
           toast.success('Sale completed and invoice created successfully');
@@ -21,59 +22,55 @@ const NormalSale = () => {
           toast.success('Sale completed successfully');
         }
       }
-      
-      // Return response so modal can access wallet information
+
       return response;
     } catch (error) {
       toast.error('Failed to create sale: ' + (error.response?.data?.error || error.message));
-      throw error; // Re-throw to let modal handle it
+      throw error;
     }
   };
 
   return (
-    <div className="normal-sale-page">
-        <div className="page-header">
-          <div>
-            <h1>Normal Sale</h1>
-            <p>Create sales with customer invoicing and payment plans</p>
-          </div>
-          <div>
-              <button 
-              className="btn btn-primary"
-              onClick={() => setShowSaleModal(true)}
-              >
-              <span>+</span>
-              <span>Add Sales</span>
-              </button>
-          </div>
-        </div>
+    <PageShell narrow>
+      <PageHeader
+        title="Normal Sale"
+        description="Create sales with customer invoicing and payment plans."
+      >
+        <Button onClick={() => setShowSaleModal(true)}>
+          <Plus className="h-4 w-4" />
+          Add sales
+        </Button>
+      </PageHeader>
 
-        <div className="normal-sale-content">
-          <div className="normal-sale-info-card">
-            <h3>Normal Sale Features</h3>
-            <ul>
-              <li>✓ Automatic invoice creation</li>
-              <li>✓ Customer selection and management</li>
-              <li>✓ Support for partial payments</li>
-              <li>✓ Payment plans and installments</li>
-              <li>✓ Payment reminders</li>
-              <li>✓ Variant selection for products</li>
-            </ul>
-            <p className="normal-sale-info-text">
-              Click "Add Sales" to create a new sale with invoice. Normal sales always create an invoice
-              and support flexible payment options including installments.
-            </p>
-          </div>
-        </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Normal sale features</CardTitle>
+          <CardDescription>
+            Invoiced sales with flexible payment options including partial pay and installments.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm text-muted-foreground">
+          <ul className="list-inside list-disc space-y-1">
+            <li>Automatic invoice creation</li>
+            <li>Customer selection and management</li>
+            <li>Partial payments and installments</li>
+            <li>Variant selection for products</li>
+          </ul>
+          <p>
+            Click <span className="font-medium text-foreground">Add sales</span> to open the sale
+            dialog. Normal sales always create an invoice.
+          </p>
+        </CardContent>
+      </Card>
 
-        {showSaleModal && (
-          <NormalSaleModal
-            isOpen={showSaleModal}
-            onClose={() => setShowSaleModal(false)}
-            onSave={handleSaveSale}
-          />
-        )}
-      </div>
+      {showSaleModal && (
+        <NormalSaleModal
+          isOpen={showSaleModal}
+          onClose={() => setShowSaleModal(false)}
+          onSave={handleSaveSale}
+        />
+      )}
+    </PageShell>
   );
 };
 

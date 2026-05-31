@@ -34,7 +34,17 @@ import VariantSelector from '../VariantSelector';
 import CustomerFormModal from '../../Customers/CustomerFormModal';
 import BranchSelector from '../../BranchSelector/BranchSelector';
 import { useStoreSettings } from '../../../hooks/useStoreSettings';
+import {
+  salesShowDiscount,
+  salesShowTax,
+  salesShowDelivery,
+} from '../../../utils/salesDisplay';
 import { isManagerOrAdminFromStorage } from '../../../utils/roleAccess';
+import { useModuleSettings } from '../../../hooks/useModuleSettings';
+import {
+  canQuickAddCustomerAtPos,
+  customersShowCustomerCode,
+} from '../../../utils/customerDisplay';
 
 /**
  * Redesigned Point-of-Sale screen.
@@ -58,7 +68,12 @@ export default function POSPage() {
   const navigate = useNavigate();
   const state = usePOSState();
   const { settings } = useStoreSettings();
-  const canAddCustomer = isManagerOrAdminFromStorage();
+  const { settings: customerModuleSettings } = useModuleSettings('customers');
+  const canAddCustomer = canQuickAddCustomerAtPos(
+    isManagerOrAdminFromStorage(),
+    customerModuleSettings
+  );
+  const showCustomerCodeInPicker = customersShowCustomerCode(customerModuleSettings);
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -233,6 +248,7 @@ export default function POSPage() {
             onSelectSubcategory={state.setSelectedSubcategory}
             onAddToCart={state.tryAddToCart}
             searchInputRef={searchInputRef}
+            respectStockLimits={state.validateStock}
           />
         </section>
 
@@ -244,6 +260,8 @@ export default function POSPage() {
               selectedCustomer={state.selectedCustomer}
               onSelect={state.setSelectedCustomer}
               onAddNew={canAddCustomer ? () => setShowCustomerForm(true) : undefined}
+              requireCustomer={state.requireCustomer}
+              showCustomerCode={showCustomerCodeInPicker}
             />
           </div>
 
@@ -285,6 +303,9 @@ export default function POSPage() {
             itemCount={state.cartItemCount}
             hasOversell={state.hasOversell}
             enabledPaymentMethods={settings.enabled_payment_methods}
+            showDiscount={salesShowDiscount(state.salesModuleSettings)}
+            showTax={salesShowTax(state.salesModuleSettings)}
+            showDelivery={salesShowDelivery(state.salesModuleSettings)}
           />
         </aside>
       </div>
@@ -306,6 +327,7 @@ export default function POSPage() {
         pending={state.pendingSaleData}
         customer={state.selectedCustomer}
         submitting={state.submitting}
+        allowWallet={state.allowExcessToWallet}
         onConfirm={(choice) => state.submitSale({ excessChoice: choice })}
       />
 

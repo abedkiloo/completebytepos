@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { Plus } from 'lucide-react';
 import { branchesAPI, usersAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import SearchableSelect from '../Shared/SearchableSelect';
-import '../../styles/slide-in-panel.css';
-import './Branches.css';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
+import { PageShell, PageHeader, PageLoading, FilterBar, SearchField } from '../page';
 
 const Branches = () => {
   const [branches, setBranches] = useState([]);
@@ -145,84 +147,78 @@ const Branches = () => {
   });
 
   return (
-    <div className="branches-container">
-        <div className="page-header">
-          <div className="page-header-content">
-            <h1>Branch Management</h1>
-            <p>Manage branches and locations</p>
-          </div>
-          <div className="page-header-actions">
-            <button className="btn btn-primary" onClick={handleCreate}>
-              <span>+</span>
-              <span>Create Branch</span>
-            </button>
-          </div>
-        </div>
+    <PageShell>
+        <PageHeader title="Branch management" description="Manage branches and locations.">
+          <Button onClick={handleCreate}>
+            <Plus className="h-4 w-4" />
+            Create branch
+          </Button>
+        </PageHeader>
 
-        <div className="branches-toolbar">
-          <div className="search-box">
-            <input
-              type="text"
-              placeholder="Search branches..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            <span className="search-icon">🔍</span>
-          </div>
-        </div>
+        <FilterBar>
+          <SearchField
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search branches…"
+            className="min-w-[200px] flex-[2]"
+          />
+        </FilterBar>
 
         {loading ? (
-          <div className="loading">Loading branches...</div>
+          <PageLoading rows={6} />
         ) : (
-          <div className="branches-table-container">
-            <table className="branches-table">
-              <thead>
+          <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
+            <table className="w-full text-sm">
+              <thead className="border-b bg-muted/40 text-left">
                 <tr>
-                  <th>Branch Code</th>
-                  <th>Name</th>
-                  <th>Location</th>
-                  <th>Manager</th>
-                  <th>Status</th>
-                  <th>Type</th>
-                  <th>Actions</th>
+                  <th className="px-3 py-2 font-medium">Branch code</th>
+                  <th className="px-3 py-2 font-medium">Name</th>
+                  <th className="px-3 py-2 font-medium">Location</th>
+                  <th className="px-3 py-2 font-medium">Manager</th>
+                  <th className="px-3 py-2 font-medium">Status</th>
+                  <th className="px-3 py-2 font-medium">Type</th>
+                  <th className="px-3 py-2 font-medium text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredBranches.length === 0 ? (
                   <tr>
-                    <td colSpan="7" className="empty-state">
+                    <td colSpan="7" className="px-3 py-8 text-center text-muted-foreground">
                       No branches found
                     </td>
                   </tr>
                 ) : (
-                  filteredBranches.map(branch => (
-                    <tr key={branch.id}>
-                      <td>
-                        <strong>{branch.branch_code}</strong>
+                  filteredBranches.map((branch) => (
+                    <tr key={branch.id} className="border-b last:border-0 hover:bg-muted/30">
+                      <td className="px-3 py-2 font-medium">{branch.branch_code}</td>
+                      <td className="px-3 py-2">{branch.name}</td>
+                      <td className="px-3 py-2">
+                        {[branch.city, branch.country].filter(Boolean).join(', ') || '—'}
                       </td>
-                      <td>{branch.name}</td>
-                      <td>
-                        {branch.city && <span>{branch.city}</span>}
-                        {branch.city && branch.country && <span>, </span>}
-                        {branch.country && <span>{branch.country}</span>}
-                      </td>
-                      <td>
-                        {branch.manager_name || 'N/A'}
-                      </td>
-                      <td>
-                        <span className={`status-badge ${branch.is_active ? 'active' : 'inactive'}`}>
+                      <td className="px-3 py-2">{branch.manager_name || 'N/A'}</td>
+                      <td className="px-3 py-2">
+                        <Badge variant={branch.is_active ? 'success' : 'secondary'}>
                           {branch.is_active ? 'Active' : 'Inactive'}
-                        </span>
+                        </Badge>
                       </td>
-                      <td>
-                        {branch.is_headquarters && (
-                          <span className="badge badge-hq">Headquarters</span>
-                        )}
+                      <td className="px-3 py-2">
+                        {branch.is_headquarters ? (
+                          <Badge variant="outline">Headquarters</Badge>
+                        ) : null}
                       </td>
-                      <td>
-                        <div className="action-buttons">
-                          <button onClick={() => handleEdit(branch)} className="btn-edit">Edit</button>
-                          <button onClick={() => handleDelete(branch)} className="btn-delete">Delete</button>
+                      <td className="px-3 py-2">
+                        <div className="flex justify-end gap-1">
+                          <Button type="button" variant="outline" size="sm" onClick={() => handleEdit(branch)}>
+                            Edit
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleDelete(branch)}
+                          >
+                            Delete
+                          </Button>
                         </div>
                       </td>
                     </tr>
@@ -376,7 +372,7 @@ const Branches = () => {
           cancelText="Cancel"
           type="danger"
         />
-      </div>
+    </PageShell>
   );
 };
 

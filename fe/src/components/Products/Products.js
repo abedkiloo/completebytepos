@@ -38,8 +38,19 @@ import {
 import { cn } from '../../lib/cn';
 import { PageShell, PageHeader } from '../page';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
+import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { getPersonaFromStorage } from '../../utils/navAccess';
 import { PERSONA } from '../../utils/roleAccess';
+import {
+  SELLING_PRICE_CLASS,
+  showProductStatus,
+  showProductCostPrice,
+  showProductMrp,
+  showProductSkuInList,
+  showProductLowStockBadges,
+  productBulkOperationsEnabled,
+  productCsvImportExportEnabled,
+} from '../../utils/productDisplay';
 
 const EMPTY_FILTERS = {
   search: '',
@@ -50,13 +61,20 @@ const EMPTY_FILTERS = {
 };
 
 const Products = () => {
-  const { settings } = useStoreSettings();
+  const { settings: storeSettings } = useStoreSettings();
+  const { settings: productModuleSettings } = useModuleSettings('products');
   const persona = getPersonaFromStorage();
   const catalogOnly =
-    settings.allow_sales_add_products &&
-    settings.sales_catalog_skip_pricing &&
+    storeSettings.allow_sales_add_products &&
+    storeSettings.sales_catalog_skip_pricing &&
     persona === PERSONA.SALES;
-  const hideStatusToggles = settings.hide_entity_status_toggles;
+  const showStatus = showProductStatus(productModuleSettings, storeSettings);
+  const showCost = showProductCostPrice(productModuleSettings);
+  const showMrp = showProductMrp(productModuleSettings);
+  const showSku = showProductSkuInList(productModuleSettings);
+  const showLowStock = showProductLowStockBadges(productModuleSettings);
+  const bulkEnabled = productBulkOperationsEnabled(productModuleSettings);
+  const csvEnabled = productCsvImportExportEnabled(productModuleSettings);
 
   // --- Data ---
   const [products, setProducts] = useState([]);
@@ -110,7 +128,7 @@ const Products = () => {
       const params = { page_size: 1000 };
       if (filters.search.trim()) params.search = filters.search.trim();
       if (filters.category) params.category = filters.category;
-      if (filters.is_active) params.is_active = filters.is_active;
+      if (showStatus && filters.is_active) params.is_active = filters.is_active;
       if (filters.low_stock) params.low_stock = 'true';
       if (filters.out_of_stock) params.out_of_stock = 'true';
 
@@ -124,7 +142,7 @@ const Products = () => {
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [filters, showStatus]);
 
   useEffect(() => {
     loadCategories();
@@ -144,11 +162,11 @@ const Products = () => {
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (filters.category) count += 1;
-    if (filters.is_active) count += 1;
+    if (showStatus && filters.is_active) count += 1;
     if (filters.low_stock) count += 1;
     if (filters.out_of_stock) count += 1;
     return count;
-  }, [filters]);
+  }, [filters, showStatus]);
 
   const allSelected =
     products.length > 0 && selectedProductIds.length === products.length;
@@ -415,6 +433,8 @@ const Products = () => {
           }
         >
           <div className="flex flex-wrap items-center gap-2">
+            {(csvEnabled || catalogOnly) && (
+              <>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline">
@@ -424,23 +444,27 @@ const Products = () => {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>
-                  {catalogOnly ? 'Import catalog' : 'Bulk operations'}
+                  {catalogOnly ? 'Import catalog' : 'Spreadsheet'}
                 </DropdownMenuLabel>
                 <DropdownMenuItem onClick={handleDownloadTemplate}>
                   <Download className="mr-2 h-4 w-4" />
                   Download template
                 </DropdownMenuItem>
-                {!catalogOnly && (
+                {csvEnabled && !catalogOnly && (
                   <DropdownMenuItem onClick={handleExport}>
                     <Download className="mr-2 h-4 w-4" />
                     Export products
                   </DropdownMenuItem>
                 )}
+                {csvEnabled && (
+                  <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
                   <Upload className="mr-2 h-4 w-4" />
                   Import from CSV
                 </DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
             <input
@@ -451,10 +475,11 @@ const Products = () => {
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (file) handleImport(file);
-                // reset so re-uploading the same file fires onChange again
                 e.target.value = '';
               }}
             />
+              </>
+            )}
             <Button onClick={openCreate}>
               <Plus className="h-4 w-4" />
               Add product
@@ -471,10 +496,11 @@ const Products = () => {
           setFilters={setFilters}
           categories={categories}
           activeCount={activeFilterCount}
+          showProductStatus={showStatus}
         />
 
         {/* --- Bulk action bar --- */}
-        {selectedProductIds.length > 0 && !catalogOnly && (
+        {bulkEnabled && selectedProductIds.length > 0 && !catalogOnly && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/40 bg-primary/5 px-4 py-2.5">
             <div className="flex items-center gap-3 text-sm">
               <Badge variant="default">{selectedProductIds.length} selected</Badge>
@@ -487,12 +513,16 @@ const Products = () => {
               </button>
             </div>
             <div className="flex items-center gap-2">
+              {showStatus && (
+                <>
               <Button variant="outline" size="sm" onClick={handleBulkActivate}>
                 Activate
               </Button>
               <Button variant="outline" size="sm" onClick={handleBulkDeactivate}>
                 Deactivate
               </Button>
+                </>
+              )}
               <Button
                 variant="destructive"
                 size="sm"
@@ -511,7 +541,7 @@ const Products = () => {
             <table className="min-w-full divide-y divide-border text-sm">
               <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  {!catalogOnly && (
+                  {bulkEnabled && !catalogOnly && (
                   <th className="px-4 py-2.5">
                     <input
                       type="checkbox"
@@ -529,16 +559,20 @@ const Products = () => {
                   <th className="px-4 py-2.5 text-left font-medium">Category</th>
                   {!catalogOnly && (
                     <>
+                      {showMrp && (
                       <th className="px-4 py-2.5 text-right font-medium">MRP</th>
+                      )}
                       <th className="px-4 py-2.5 text-right font-medium">Selling</th>
+                      {showCost && (
                       <th className="px-4 py-2.5 text-right font-medium">Cost</th>
+                      )}
                     </>
                   )}
                   {catalogOnly && (
                     <th className="px-4 py-2.5 text-right font-medium">Price</th>
                   )}
                   <th className="px-4 py-2.5 text-right font-medium">Stock</th>
-                  {!hideStatusToggles && (
+                  {showStatus && (
                     <th className="px-4 py-2.5 text-left font-medium">Status</th>
                   )}
                   <th className="px-4 py-2.5 text-right font-medium">Actions</th>
@@ -574,7 +608,12 @@ const Products = () => {
                       onEdit={() => openEdit(product)}
                       onDelete={() => setConfirmDelete(product.id)}
                       catalogOnly={catalogOnly}
-                      hideStatusToggles={hideStatusToggles}
+                      showProductStatus={showStatus}
+                      bulkEnabled={bulkEnabled}
+                      showMrp={showMrp}
+                      showCost={showCost}
+                      showSku={showSku}
+                      showLowStock={showLowStock}
                     />
                   ))
                 )}
@@ -589,7 +628,9 @@ const Products = () => {
           product={editingProduct}
           categories={categories}
           catalogOnly={catalogOnly}
-          hideStatusToggles={hideStatusToggles}
+          showProductStatus={showStatus}
+          showCost={showCost}
+          showMrp={showMrp}
           onClose={() => {
             setShowForm(false);
             setEditingProduct(null);
@@ -695,7 +736,7 @@ function SummaryStats({ statistics }) {
   );
 }
 
-function FilterBar({ filters, setFilters, categories, activeCount }) {
+function FilterBar({ filters, setFilters, categories, activeCount, showProductStatus: showStatus = true }) {
   const update = (patch) => setFilters((prev) => ({ ...prev, ...patch }));
   return (
     <div className="space-y-3">
@@ -734,6 +775,8 @@ function FilterBar({ filters, setFilters, categories, activeCount }) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-64">
+            {showStatus && (
+              <>
             <DropdownMenuLabel>Status</DropdownMenuLabel>
             <DropdownMenuItem onSelect={() => update({ is_active: '' })}>
               <span className={cn(filters.is_active === '' && 'font-semibold')}>
@@ -751,6 +794,8 @@ function FilterBar({ filters, setFilters, categories, activeCount }) {
               </span>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
+              </>
+            )}
             <DropdownMenuLabel>Stock</DropdownMenuLabel>
             <DropdownMenuItem
               onSelect={(e) => {
@@ -835,7 +880,20 @@ function CategoryChip({ label, active, onClick }) {
   );
 }
 
-function ProductRow({ product, selected, onToggle, onEdit, onDelete, catalogOnly = false, hideStatusToggles = false }) {
+function ProductRow({
+  product,
+  selected,
+  onToggle,
+  onEdit,
+  onDelete,
+  catalogOnly = false,
+  showProductStatus: showStatus = true,
+  bulkEnabled = true,
+  showMrp = true,
+  showCost = true,
+  showSku = false,
+  showLowStock = true,
+}) {
   const sellingPrice = parseFloat(product.selling_price ?? product.price ?? 0);
   const pricePending = catalogOnly && sellingPrice <= 0;
 
@@ -844,10 +902,10 @@ function ProductRow({ product, selected, onToggle, onEdit, onDelete, catalogOnly
       className={cn(
         'transition-colors hover:bg-muted/40',
         selected && 'bg-primary/5',
-        !product.is_active && 'opacity-60'
+        showStatus && !product.is_active && 'opacity-60'
       )}
     >
-      {!catalogOnly && (
+      {bulkEnabled && !catalogOnly && (
       <td className="px-4 py-3">
         <input
           type="checkbox"
@@ -866,6 +924,9 @@ function ProductRow({ product, selected, onToggle, onEdit, onDelete, catalogOnly
               {product.name}
             </div>
             <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+              {showSku && product.sku && (
+                <span className="font-mono text-[11px]">{product.sku}</span>
+              )}
               {product.has_variants && (
                 <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
                   {(product.available_sizes_detail?.length || 0) +
@@ -873,7 +934,7 @@ function ProductRow({ product, selected, onToggle, onEdit, onDelete, catalogOnly
                   variants
                 </Badge>
               )}
-              {product.is_low_stock && (
+              {showLowStock && product.is_low_stock && (
                 <Badge variant="warning" className="px-1.5 py-0 text-[10px]">
                   Low stock
                 </Badge>
@@ -890,15 +951,19 @@ function ProductRow({ product, selected, onToggle, onEdit, onDelete, catalogOnly
       </td>
       {!catalogOnly && (
         <>
+          {showMrp && (
           <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
             {formatCurrency(product.mrp ?? product.price)}
           </td>
-          <td className="px-4 py-3 text-right tabular-nums font-medium">
+          )}
+          <td className={cn('px-4 py-3 text-right', SELLING_PRICE_CLASS)}>
             {formatCurrency(product.selling_price ?? product.price)}
           </td>
+          {showCost && (
           <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
             {formatCurrency(product.cost)}
           </td>
+          )}
         </>
       )}
       {catalogOnly && (
@@ -908,7 +973,7 @@ function ProductRow({ product, selected, onToggle, onEdit, onDelete, catalogOnly
               Pending manager
             </Badge>
           ) : (
-            <span className="tabular-nums font-medium">
+            <span className={SELLING_PRICE_CLASS}>
               {formatCurrency(product.selling_price ?? product.price)}
             </span>
           )}
@@ -917,7 +982,7 @@ function ProductRow({ product, selected, onToggle, onEdit, onDelete, catalogOnly
       <td className="px-4 py-3 text-right">
         <StockCell product={product} />
       </td>
-      {!hideStatusToggles && (
+      {showStatus && (
       <td className="px-4 py-3">
         <Badge variant={product.is_active ? 'success' : 'outline'}>
           {product.is_active ? 'Active' : 'Inactive'}

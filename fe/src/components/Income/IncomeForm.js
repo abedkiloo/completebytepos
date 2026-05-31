@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { incomeAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import SearchableSelect from '../Shared/SearchableSelect';
-import '../../styles/slide-in-panel.css';
-import './Income.css';
 
 const IncomeForm = ({ income, categories, onClose, onSave }) => {
   const [formData, setFormData] = useState({

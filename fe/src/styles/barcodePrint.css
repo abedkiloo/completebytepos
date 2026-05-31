@@ -1,0 +1,33 @@
+/**
+ * Barcode label print pipeline — keep separate from Tailwind UI.
+ */
+@media print {
+  body > *:not(.print-preview-container) {
+    display: none !important;
+  }
+
+  .print-preview-container {
+    position: static !important;
+    background: white !important;
+  }
+
+  .barcode-print-dialog {
+    box-shadow: none !important;
+    max-width: 100% !important;
+    max-height: none !important;
+  }
+
+  .barcode-print-header,
+  .barcode-print-actions {
+    display: none !important;
+  }
+
+  .barcode-print-body {
+    padding: 0 !important;
+  }
+
+  .barcode-print-image-wrap {
+    page-break-inside: avoid;
+    margin-bottom: 1rem;
+  }
+}

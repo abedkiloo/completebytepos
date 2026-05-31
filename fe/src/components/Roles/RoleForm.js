@@ -65,7 +65,7 @@ function flattenCatalog(catalog) {
   return ids;
 }
 
-const RoleForm = ({ role, permissions, permissionCatalog, onClose }) => {
+const RoleForm = ({ role, permissions, permissionCatalog, showPermissionCatalog = true, onClose }) => {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -259,6 +259,7 @@ const RoleForm = ({ role, permissions, permissionCatalog, onClose }) => {
               </label>
             </div>
 
+            {showPermissionCatalog ? (
             <div className="permissions-section">
               <div className="permissions-header flex flex-wrap items-center justify-between gap-2">
                 <div>
@@ -390,6 +391,11 @@ const RoleForm = ({ role, permissions, permissionCatalog, onClose }) => {
                 })}
               </div>
             </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Permission catalog is hidden in store settings. Existing permissions on this role are preserved.
+              </p>
+            )}
           </form>
         </div>
         <div className="slide-in-panel-footer">

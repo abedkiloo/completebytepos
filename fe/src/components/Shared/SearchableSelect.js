@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import './SearchableSelect.css';
+import { cn } from '../../lib/cn';
 
 const SearchableSelect = ({
   value,
@@ -18,7 +18,6 @@ const SearchableSelect = ({
   const dropdownRef = useRef(null);
   const inputRef = useRef(null);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -29,7 +28,6 @@ const SearchableSelect = ({
 
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside);
-      // Focus search input when dropdown opens
       if (inputRef.current && searchable) {
         setTimeout(() => inputRef.current?.focus(), 100);
       }
@@ -40,7 +38,6 @@ const SearchableSelect = ({
     };
   }, [isOpen, searchable]);
 
-  // Filter options based on search term
   const filteredOptions = searchable && searchTerm
     ? options.filter(option =>
         option.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -75,21 +72,33 @@ const SearchableSelect = ({
   };
 
   return (
-    <div className={`searchable-select ${className}`} ref={dropdownRef}>
+    <div className={cn('relative w-full', className)} ref={dropdownRef}>
       <div
-        className={`searchable-select-trigger ${isOpen ? 'open' : ''} ${disabled ? 'disabled' : ''}`}
+        className={cn(
+          'flex min-h-10 cursor-pointer items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors',
+          isOpen && 'border-ring ring-2 ring-ring/20',
+          disabled && 'cursor-not-allowed bg-muted opacity-60'
+        )}
         onClick={handleToggle}
       >
-        <span className={selectedOption ? 'selected-value' : 'placeholder'}>
+        <span className={cn('flex-1 text-left', selectedOption ? 'text-foreground' : 'text-muted-foreground')}>
           {selectedOption ? (selectedOption.name || selectedOption.label) : placeholder}
         </span>
-        <span className="dropdown-arrow">▼</span>
+        <span
+          className={cn(
+            'ml-2 text-xs text-muted-foreground transition-transform',
+            isOpen && 'rotate-180'
+          )}
+          aria-hidden
+        >
+          ▼
+        </span>
       </div>
 
       {isOpen && (
-        <div className="searchable-select-dropdown">
+        <div className="absolute left-0 right-0 top-full z-[1000] mt-1 flex max-h-[300px] flex-col overflow-hidden rounded-md border border-border bg-background shadow-lg animate-in fade-in-0 zoom-in-95">
           {searchable && (
-            <div className="searchable-select-search">
+            <div className="border-b border-border p-2">
               <input
                 ref={inputRef}
                 type="text"
@@ -97,11 +106,12 @@ const SearchableSelect = ({
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onClick={(e) => e.stopPropagation()}
+                className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
               />
             </div>
           )}
 
-          <div className="searchable-select-options">
+          <div className="max-h-[200px] flex-1 overflow-y-auto">
             {filteredOptions.length > 0 ? (
               filteredOptions.map((option, index) => {
                 const optionValue = option.id || option.value;
@@ -109,7 +119,10 @@ const SearchableSelect = ({
                 return (
                   <div
                     key={optionKey(option, index)}
-                    className={`searchable-select-option ${isSelected ? 'selected' : ''}`}
+                    className={cn(
+                      'cursor-pointer px-3 py-2 text-sm text-foreground transition-colors hover:bg-muted',
+                      isSelected && 'bg-primary/10 font-medium text-primary'
+                    )}
                     onClick={() => handleSelect(option)}
                   >
                     {option.name || option.label}
@@ -117,15 +130,18 @@ const SearchableSelect = ({
                 );
               })
             ) : (
-              <div className="searchable-select-option no-results">
+              <div className="cursor-default px-3 py-4 text-center text-sm text-muted-foreground">
                 {searchTerm ? `No results found for "${searchTerm}"` : 'No options available'}
               </div>
             )}
           </div>
 
           {onAddNew && (
-            <div 
-              className={`searchable-select-add-new ${filteredOptions.length === 0 && searchTerm ? 'highlight' : ''}`}
+            <div
+              className={cn(
+                'flex cursor-pointer items-center gap-2 border-t border-border bg-muted/40 px-3 py-2.5 text-sm font-medium text-primary transition-colors hover:bg-muted',
+                filteredOptions.length === 0 && searchTerm && 'border-t-2 border-t-primary bg-primary/5 font-semibold'
+              )}
               onClick={(e) => {
                 e.stopPropagation();
                 onAddNew();
@@ -133,14 +149,13 @@ const SearchableSelect = ({
                 setSearchTerm('');
               }}
             >
-              <span className="add-new-icon">+</span>
+              <span className="text-lg font-bold leading-none">+</span>
               <span>{addNewLabel}</span>
             </div>
           )}
         </div>
       )}
 
-      {/* Hidden select for form compatibility */}
       <select
         name={name}
         value={value || ''}

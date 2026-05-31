@@ -74,6 +74,7 @@ export function ExcessPaymentConfirm({
   pending,
   customer,
   submitting,
+  allowWallet = true,
   onConfirm,
 }) {
   if (!pending) return null;
@@ -87,7 +88,7 @@ export function ExcessPaymentConfirm({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className={allowWallet ? 'grid grid-cols-2 gap-3' : ''}>
           <button
             type="button"
             onClick={() => onConfirm('change')}
@@ -98,6 +99,7 @@ export function ExcessPaymentConfirm({
             <span className="text-sm font-semibold">Return as change</span>
             <span className="text-xs text-muted-foreground">Cashier hands cash back</span>
           </button>
+          {allowWallet && (
           <button
             type="button"
             onClick={() => onConfirm('wallet')}
@@ -110,6 +112,7 @@ export function ExcessPaymentConfirm({
               Credit {customer?.name || 'customer'}'s account
             </span>
           </button>
+          )}
         </div>
 
         <DialogFooter>

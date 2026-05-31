@@ -14,6 +14,8 @@ import { ScrollArea } from '../../ui/scroll-area';
 import { toast } from '../../../utils/toast';
 import { formatCurrency } from '../../../utils/formatters';
 import { isManagerOrAdminFromStorage } from '../../../utils/roleAccess';
+import { useModuleSettings } from '../../../hooks/useModuleSettings';
+import { canQuickAddCustomerAtPos } from '../../../utils/customerDisplay';
 import CustomerFormModal from '../../Customers/CustomerFormModal';
 
 import { ThermalReceipt } from './ThermalReceipt';
@@ -67,6 +69,7 @@ export default function ReceiptDialog({
   autoPrint = false,
 }) {
   const store = useStoreInfo(sale);
+  const { settings: customerModuleSettings } = useModuleSettings('customers');
   const [printing, setPrinting] = useState(false);
   const [printedOnce, setPrintedOnce] = useState(false);
   const [showCustomerForm, setShowCustomerForm] = useState(false);
@@ -99,7 +102,10 @@ export default function ReceiptDialog({
 
   const customerName = customerDisplayName(sale);
   const walkIn = isWalkInSale(sale);
-  const canAddCustomer = isManagerOrAdminFromStorage();
+  const canAddCustomer = canQuickAddCustomerAtPos(
+    isManagerOrAdminFromStorage(),
+    customerModuleSettings
+  );
 
   return (
     <>

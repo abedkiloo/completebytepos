@@ -9,6 +9,16 @@ import {
 import { toast } from '../../../utils/toast';
 import { isProductVariantsEnabled, normalizeProductForSale } from '../../../utils/moduleFeatures';
 import { isProductOutOfStock } from '../../../utils/productStock';
+import { useModuleSettings } from '../../../hooks/useModuleSettings';
+import {
+  salesShowDiscount,
+  salesShowTax,
+  salesShowDelivery,
+  salesRequireCustomer,
+  salesAllowPartialPayment,
+  salesAllowExcessToWallet,
+  salesValidateStock,
+} from '../../../utils/salesDisplay';
 
 /**
  * Cart-item identity.
@@ -54,6 +64,17 @@ export const getLineStockCap = (item) => {
  *    component-local
  */
 export function usePOSState() {
+  const { settings: salesModuleSettings } = useModuleSettings('sales');
+  const validateStock = salesValidateStock(salesModuleSettings);
+  const requireCustomer = salesRequireCustomer(salesModuleSettings);
+  const allowPartialPayment = salesAllowPartialPayment(salesModuleSettings);
+  const allowExcessToWallet = salesAllowExcessToWallet(salesModuleSettings);
+
+  const stockCapForItem = useCallback(
+    (item) => (validateStock ? getLineStockCap(item) : null),
+    [validateStock]
+  );
+
   // --- Data ---
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -153,15 +174,25 @@ export function usePOSState() {
       // always populated) without polluting the customers table with a
       // synthetic row. Sale processing turns id==='walk-in' into null.
       const walkIn = { id: 'walk-in', name: 'Walk-in customer', customer_code: 'WALK-IN', is_active: true };
-      const merged = list.some((c) => c.id === 'walk-in') ? list : [walkIn, ...list];
-      setCustomers(merged);
-      setSelectedCustomer((prev) => prev || walkIn);
+      if (requireCustomer) {
+        setCustomers(list);
+        setSelectedCustomer((prev) => (prev && prev.id !== 'walk-in' ? prev : null));
+      } else {
+        const merged = list.some((c) => c.id === 'walk-in') ? list : [walkIn, ...list];
+        setCustomers(merged);
+        setSelectedCustomer((prev) => prev || walkIn);
+      }
     } catch (e) {
       const walkIn = { id: 'walk-in', name: 'Walk-in customer', customer_code: 'WALK-IN', is_active: true };
-      setCustomers([walkIn]);
-      setSelectedCustomer((prev) => prev || walkIn);
+      if (requireCustomer) {
+        setCustomers([]);
+        setSelectedCustomer(null);
+      } else {
+        setCustomers([walkIn]);
+        setSelectedCustomer((prev) => prev || walkIn);
+      }
     }
-  }, []);
+  }, [requireCustomer]);
 
   const loadUser = useCallback(async () => {
     try {
@@ -203,7 +234,7 @@ export function usePOSState() {
     setCart((prev) => {
       const existing = prev.find((item) => cartItemKey(item) === key);
       if (existing) {
-        const cap = getLineStockCap(existing);
+        const cap = stockCapForItem(existing);
         const requested = existing.quantity + qtyToAdd;
         const next = cap !== null ? Math.min(requested, cap) : requested;
         if (cap !== null && requested > cap) {
@@ -227,7 +258,7 @@ export function usePOSState() {
         sku: product.sku || product.variant?.sku || '',
         stock_quantity: stock,
       };
-      const cap = getLineStockCap(newItem);
+      const cap = stockCapForItem(newItem);
       if (cap !== null && qtyToAdd > cap) {
         toast.warning(
           `Only ${cap} ${product.name} in stock — capped at the available quantity.`
@@ -244,7 +275,7 @@ export function usePOSState() {
 
   const tryAddToCart = useCallback(
     (product) => {
-      if (isProductOutOfStock(product)) {
+      if (validateStock && isProductOutOfStock(product)) {
         toast.warning(`${product.name} is out of stock`);
         return;
       }
@@ -269,7 +300,7 @@ export function usePOSState() {
       }
       addProductToCart(normalizeProductForSale(product));
     },
-    [addProductToCart]
+    [addProductToCart, validateStock]
   );
 
   const setItemQuantity = useCallback((item, newQty) => {
@@ -281,7 +312,7 @@ export function usePOSState() {
     setCart((prev) =>
       prev.map((i) => {
         if (cartItemKey(i) !== cartItemKey(item)) return i;
-        const cap = getLineStockCap(i);
+        const cap = stockCapForItem(i);
         const next = cap !== null ? Math.min(requested, cap) : requested;
         if (cap !== null && requested > cap) {
           toast.warning(`Only ${cap} in stock for ${i.name}.`);
@@ -296,7 +327,7 @@ export function usePOSState() {
       const next = prev
         .map((i) => {
           if (cartItemKey(i) !== cartItemKey(item)) return i;
-          const cap = getLineStockCap(i);
+          const cap = stockCapForItem(i);
           const requested = i.quantity + delta;
           if (delta > 0 && cap !== null && requested > cap) {
             toast.warning(`Only ${cap} in stock for ${i.name}.`);
@@ -325,19 +356,20 @@ export function usePOSState() {
   );
 
   const discountAmount = useMemo(() => {
+    if (!salesShowDiscount(salesModuleSettings)) return 0;
     if (discountType === 'percentage') return (subtotal * discount) / 100;
     return Math.min(discount, subtotal);
-  }, [subtotal, discount, discountType]);
+  }, [subtotal, discount, discountType, salesModuleSettings]);
 
-  const taxAmount = useMemo(
-    () => (subtotal - discountAmount) * (taxPct / 100),
-    [subtotal, discountAmount, taxPct]
-  );
+  const taxAmount = useMemo(() => {
+    if (!salesShowTax(salesModuleSettings)) return 0;
+    return (subtotal - discountAmount) * (taxPct / 100);
+  }, [subtotal, discountAmount, taxPct, salesModuleSettings]);
 
-  const total = useMemo(
-    () => subtotal - discountAmount + taxAmount + (deliveryEnabled ? deliveryCost : 0),
-    [subtotal, discountAmount, taxAmount, deliveryEnabled, deliveryCost]
-  );
+  const total = useMemo(() => {
+    const delivery = salesShowDelivery(salesModuleSettings) && deliveryEnabled ? deliveryCost : 0;
+    return subtotal - discountAmount + taxAmount + delivery;
+  }, [subtotal, discountAmount, taxAmount, deliveryEnabled, deliveryCost, salesModuleSettings]);
 
   const change = useMemo(() => {
     if (!['cash', 'mpesa'].includes(paymentMethod)) return 0;
@@ -360,11 +392,12 @@ export function usePOSState() {
    */
   const hasOversell = useMemo(
     () =>
+      validateStock &&
       cart.some((item) => {
-        const cap = getLineStockCap(item);
+        const cap = stockCapForItem(item);
         return cap !== null && item.quantity > cap;
       }),
-    [cart]
+    [cart, validateStock, stockCapForItem]
   );
 
   // ------------------------------------------------------------------
@@ -500,6 +533,10 @@ export function usePOSState() {
       toast.warning('Cart is empty');
       return;
     }
+    if (requireCustomer && (!selectedCustomer || selectedCustomer.id === 'walk-in')) {
+      toast.warning('Select a registered customer before completing this sale.');
+      return;
+    }
     if (hasOversell) {
       toast.error(
         'One or more items exceed available stock. Adjust quantities before completing the sale.'
@@ -517,6 +554,10 @@ export function usePOSState() {
       }
 
       if (received < total) {
+        if (!allowPartialPayment) {
+          toast.warning('Partial payment is disabled. Collect the full amount to continue.');
+          return;
+        }
         if (!selectedCustomer || selectedCustomer.id === 'walk-in') {
           toast.warning(
             'Pick a registered customer before allowing a partial payment — the balance is recorded against their account.'
@@ -529,8 +570,12 @@ export function usePOSState() {
       }
 
       if (received > total && selectedCustomer && selectedCustomer.id !== 'walk-in') {
-        setPendingSaleData({ total, received, excess: received - total });
-        setShowExcessPaymentConfirm(true);
+        if (allowExcessToWallet) {
+          setPendingSaleData({ total, received, excess: received - total });
+          setShowExcessPaymentConfirm(true);
+          return;
+        }
+        submitSale({ allowPartial: false, excessChoice: 'change' });
         return;
       }
     }
@@ -539,11 +584,14 @@ export function usePOSState() {
   }, [
     submitting,
     cart.length,
+    requireCustomer,
     hasOversell,
     paymentMethod,
     receivedAmount,
     total,
     selectedCustomer,
+    allowPartialPayment,
+    allowExcessToWallet,
     submitSale,
   ]);
 
@@ -575,6 +623,11 @@ export function usePOSState() {
     // customer
     selectedCustomer, setSelectedCustomer,
     setCustomers,
+    requireCustomer,
+    allowPartialPayment,
+    allowExcessToWallet,
+    validateStock,
+    salesModuleSettings,
 
     // totals & knobs
     taxPct, setTaxPct,

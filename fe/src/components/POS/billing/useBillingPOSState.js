@@ -16,12 +16,20 @@ import {
   isWalkInCustomer,
   customerIdForSale,
 } from '../../../utils/walkInCustomer';
+import { useModuleSettings } from '../../../hooks/useModuleSettings';
+import {
+  salesShowDiscount,
+  salesShowTax,
+  salesRequireCustomer,
+  salesAllowPartialPayment,
+  salesValidateStock,
+} from '../../../utils/salesDisplay';
 
 const HOLDING_SYNC_MS = 600;
 
 /** Clamp line quantity to on-hand stock when the product tracks stock. */
-function applyStockCapToLine(line) {
-  const cap = getLineStockCap(line);
+function applyStockCapToLine(line, validateStock = true) {
+  const cap = validateStock ? getLineStockCap(line) : null;
   if (cap === null) return line;
   if (line.quantity > cap) {
     return { ...line, quantity: Math.max(0, cap) };
@@ -54,6 +62,13 @@ function holdingItemToCartLine(item) {
 }
 
 export function useBillingPOSState() {
+  const { settings: salesModuleSettings } = useModuleSettings('sales');
+  const validateStock = salesValidateStock(salesModuleSettings);
+  const requireCustomer = salesRequireCustomer(salesModuleSettings);
+  const allowPartialPayment = salesAllowPartialPayment(salesModuleSettings);
+  const showDiscount = salesShowDiscount(salesModuleSettings);
+  const showTax = salesShowTax(salesModuleSettings);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -88,22 +103,23 @@ export function useBillingPOSState() {
   );
 
   const discountAmount = useMemo(() => {
+    if (!showDiscount) return 0;
     const d = parseFloat(discount) || 0;
     if (discountType === 'percentage') {
       return Math.min(subtotal, (subtotal * d) / 100);
     }
     return Math.min(subtotal, d);
-  }, [discount, discountType, subtotal]);
+  }, [discount, discountType, subtotal, showDiscount]);
 
   const taxableValue = useMemo(
     () => Math.max(0, subtotal - discountAmount),
     [subtotal, discountAmount]
   );
 
-  const taxAmount = useMemo(
-    () => (taxableValue * (parseFloat(taxPct) || 0)) / 100,
-    [taxableValue, taxPct]
-  );
+  const taxAmount = useMemo(() => {
+    if (!showTax) return 0;
+    return (taxableValue * (parseFloat(taxPct) || 0)) / 100;
+  }, [taxableValue, taxPct, showTax]);
 
   const total = useMemo(
     () => taxableValue + taxAmount,
@@ -119,11 +135,16 @@ export function useBillingPOSState() {
     try {
       const res = await customersAPI.list({ is_active: true, page_size: 500 });
       const data = res.data.results || res.data || [];
-      setCustomers(mergeCustomersWithWalkIn(data));
+      if (requireCustomer) {
+        setCustomers(data);
+        setSelectedCustomer((prev) => (prev && !isWalkInCustomer(prev) ? prev : null));
+      } else {
+        setCustomers(mergeCustomersWithWalkIn(data));
+      }
     } catch {
-      setCustomers([WALK_IN_CUSTOMER]);
+      setCustomers(requireCustomer ? [] : [WALK_IN_CUSTOMER]);
     }
-  }, []);
+  }, [requireCustomer]);
 
   const selectWalkInCustomer = useCallback(() => {
     setSelectedCustomer(WALK_IN_CUSTOMER);
@@ -254,7 +275,7 @@ export function useBillingPOSState() {
   }, [cart, selectedCustomer, taxAmount, discountAmount, loadingHolding, holdingId, syncHolding]);
 
   const addToCart = useCallback((product, variant = null) => {
-    if (isProductOutOfStock(product)) {
+    if (validateStock && isProductOutOfStock(product)) {
       toast.warning(`${product.name} is out of stock`);
       return;
     }
@@ -279,9 +300,11 @@ export function useBillingPOSState() {
     const mrp = variant
       ? parseFloat(variant.effective_mrp ?? variant.mrp ?? base.mrp ?? selling)
       : getMrp(base);
-    const stockCap = variant
-      ? getLineStockCap({ stock_quantity: variant.stock_quantity, track_stock: true })
-      : getLineStockCap(base);
+    const stockCap = validateStock
+      ? variant
+        ? getLineStockCap({ stock_quantity: variant.stock_quantity, track_stock: true })
+        : getLineStockCap(base)
+      : null;
 
     const line = {
       id: base.id,
@@ -303,42 +326,42 @@ export function useBillingPOSState() {
       const idx = prev.findIndex((i) => cartItemKey(i) === key);
       if (idx >= 0) {
         const next = [...prev];
-        const cap = getLineStockCap(next[idx]);
+        const cap = validateStock ? getLineStockCap(next[idx]) : null;
         const newQty = next[idx].quantity + 1;
         if (cap !== null && newQty > cap) {
           toast.warning(`Only ${cap} in stock`);
           return prev;
         }
-        next[idx] = applyStockCapToLine({ ...next[idx], quantity: newQty });
+        next[idx] = applyStockCapToLine({ ...next[idx], quantity: newQty }, validateStock);
         return next;
       }
       if (stockCap !== null && stockCap < 1) {
         toast.warning('Out of stock');
         return prev;
       }
-      return [...prev, applyStockCapToLine(line)];
+      return [...prev, applyStockCapToLine(line, validateStock)];
     });
     setSearchQuery('');
     setSearchResults([]);
-  }, []);
+  }, [validateStock]);
 
   const updateQty = useCallback((key, delta) => {
     setCart((prev) =>
       prev
         .map((item) => {
           if (cartItemKey(item) !== key) return item;
-          const cap = getLineStockCap(item);
+          const cap = validateStock ? getLineStockCap(item) : null;
           const nextQty = item.quantity + delta;
           if (nextQty <= 0) return null;
           if (cap !== null && nextQty > cap) {
             toast.warning(`Only ${cap} in stock for ${item.name}`);
             return item;
           }
-          return applyStockCapToLine({ ...item, quantity: nextQty });
+          return applyStockCapToLine({ ...item, quantity: nextQty }, validateStock);
         })
         .filter(Boolean)
     );
-  }, []);
+  }, [validateStock]);
 
   const removeLine = useCallback((key) => {
     setCart((prev) => prev.filter((i) => cartItemKey(i) !== key));
@@ -392,9 +415,19 @@ export function useBillingPOSState() {
       toast.warning('Enter amount received');
       return;
     }
-    if (partialPayment && isWalkInCustomer(selectedCustomer)) {
-      toast.warning('Select a registered customer to record a balance on account.');
+    if (requireCustomer && (!selectedCustomer || isWalkInCustomer(selectedCustomer))) {
+      toast.warning('Select a registered customer to complete this sale.');
       return;
+    }
+    if (partialPayment) {
+      if (!allowPartialPayment) {
+        toast.warning('Partial payment is disabled in store settings.');
+        return;
+      }
+      if (isWalkInCustomer(selectedCustomer)) {
+        toast.warning('Select a registered customer to record a balance on account.');
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -438,6 +471,9 @@ export function useBillingPOSState() {
     amountPaid,
     paymentMethod,
     partialPayment,
+    allowPartialPayment,
+    requireCustomer,
+    selectedCustomer,
     total,
   ]);
 
@@ -501,5 +537,10 @@ export function useBillingPOSState() {
     lastSale,
     showReceipt,
     setShowReceipt,
+    showDiscount,
+    showTax,
+    allowPartialPayment,
+    requireCustomer,
+    validateStock,
   };
 }

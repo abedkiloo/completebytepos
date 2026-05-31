@@ -23,21 +23,26 @@ export function CustomerPicker({
   selectedCustomer,
   onSelect,
   onAddNew,
+  requireCustomer = false,
+  showCustomerCode = true,
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
 
   const filtered = useMemo(() => {
-    if (!query) return customers;
+    const base = requireCustomer
+      ? customers.filter((c) => c.id !== 'walk-in')
+      : customers;
+    if (!query) return base;
     const q = query.toLowerCase();
-    return customers.filter(
+    return base.filter(
       (c) =>
         c.name?.toLowerCase().includes(q) ||
         c.phone?.toLowerCase().includes(q) ||
         c.email?.toLowerCase().includes(q) ||
         c.customer_code?.toLowerCase().includes(q)
     );
-  }, [customers, query]);
+  }, [customers, query, requireCustomer]);
 
   return (
     <>
@@ -49,7 +54,7 @@ export function CustomerPicker({
         <UserIcon className="h-4 w-4 text-muted-foreground" />
         <div className="min-w-0 flex-1">
           <div className="truncate font-medium text-foreground">
-            {selectedCustomer?.name || 'Walk-in customer'}
+            {selectedCustomer?.name || (requireCustomer ? 'Select customer' : 'Walk-in customer')}
           </div>
           {selectedCustomer?.phone && (
             <div className="truncate text-xs text-muted-foreground">{selectedCustomer.phone}</div>
@@ -98,7 +103,13 @@ export function CustomerPicker({
                       <div className="min-w-0">
                         <div className="truncate font-medium">{c.name}</div>
                         <div className="truncate text-xs text-muted-foreground">
-                          {[c.phone, c.email, c.customer_code].filter(Boolean).join(' · ')}
+                          {[
+                            c.phone,
+                            c.email,
+                            showCustomerCode ? c.customer_code : null,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
                         </div>
                       </div>
                       {active && <Check className="h-4 w-4 shrink-0" />}

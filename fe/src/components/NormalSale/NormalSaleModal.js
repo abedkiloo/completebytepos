@@ -6,7 +6,8 @@ import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import SearchableSelect from '../Shared/SearchableSelect';
 import CustomerFormModal from '../Customers/CustomerFormModal';
 import { toast } from '../../utils/toast';
-import './NormalSaleModal.css';
+import { cn } from '../../lib/cn';
+import { Button } from '../ui/button';
 
 const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
   const [customers, setCustomers] = useState([]);
@@ -611,20 +612,26 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="normal-sale-modal-overlay" onClick={handleClose}>
-      <div className="normal-sale-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="normal-sale-modal-header">
-          <h2>Add Sales</h2>
-          <button className="normal-sale-modal-close" onClick={handleClose}>×</button>
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto bg-black/60 p-4 max-md:p-0" onClick={handleClose}>
+      <div className="flex max-h-[90vh] w-full max-w-6xl flex-col rounded-lg bg-background shadow-xl max-md:max-h-screen max-md:rounded-none" onClick={(e) => e.stopPropagation()}>
+        <div className="flex shrink-0 items-center justify-between border-b px-6 py-4">
+          <h2 className="text-xl font-semibold">Add Sales</h2>
+          <button
+            type="button"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-colors hover:bg-destructive/90"
+            onClick={handleClose}
+          >
+            ×
+          </button>
         </div>
 
-        <div className="normal-sale-modal-body">
+        <div className="flex-1 overflow-y-auto px-6 py-4">
           {/* Top Row: Customer, Date, Supplier */}
-          <div className="normal-sale-form-row">
-            <div className="normal-sale-form-group">
+          <div className="form-row mb-6">
+            <div className="form-group">
               <label>Customer Name *</label>
-              <div className="normal-sale-select-with-button">
-                <div className="normal-sale-product-input-wrapper" style={{ flex: 1 }}>
+              <div className="flex items-stretch gap-2">
+                <div className="relative" style={{ flex: 1 }}>
                   <input
                     type="text"
                     placeholder={selectedCustomer ? `${selectedCustomer.name} (${selectedCustomer.customer_code || 'N/A'})` : "Search customer by name, code, phone, or email..."}
@@ -656,12 +663,12 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                     required
                   />
                   {showCustomerSearch && (
-                    <div className="normal-sale-product-dropdown">
+                    <div className="absolute left-0 right-0 top-full z-[100] mt-1 max-h-[300px] overflow-y-auto rounded-md border border-border bg-background shadow-md">
                       {filteredCustomers.length > 0 ? (
                         filteredCustomers.map(customer => (
                           <div
                             key={customer.id}
-                            className="normal-sale-product-option"
+                            className="cursor-pointer border-b border-border/50 px-3 py-2 last:border-b-0 hover:bg-muted"
                             onMouseDown={(e) => {
                               // Use onMouseDown to prevent onBlur from firing first
                               e.preventDefault();
@@ -674,11 +681,9 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                               setCustomerSearch('');
                               setShowCustomerSearch(false);
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f0f9ff'}
-                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                           >
-                            <div className="normal-sale-product-option-name">{customer.name}</div>
-                            <div className="normal-sale-product-option-details">
+                            <div className="mb-1 font-medium text-foreground">{customer.name}</div>
+                            <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                               {customer.customer_code && <span>Code: {customer.customer_code}</span>}
                               {customer.phone && <span>Phone: {customer.phone}</span>}
                               {customer.email && <span>Email: {customer.email}</span>}
@@ -686,9 +691,9 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                           </div>
                         ))
                       ) : customerSearch ? (
-                        <div className="normal-sale-product-option">
-                          <div className="normal-sale-product-option-name">No customers found</div>
-                          <div className="normal-sale-product-option-details">
+                        <div className="cursor-pointer border-b border-border/50 px-3 py-2 last:border-b-0 hover:bg-muted">
+                          <div className="mb-1 font-medium text-foreground">No customers found</div>
+                          <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                             <span>Try a different search term</span>
                           </div>
                         </div>
@@ -698,7 +703,7 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                 </div>
                 <button
                   type="button"
-                  className="normal-sale-add-button"
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary text-lg text-primary-foreground hover:bg-primary/90"
                   onClick={() => setShowCustomerFormModal(true)}
                   title="Add New Customer"
                 >
@@ -707,7 +712,7 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
               </div>
             </div>
 
-            <div className="normal-sale-form-group">
+            <div className="form-group">
               <label>Date *</label>
               <input
                 type="date"
@@ -717,7 +722,7 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
               />
             </div>
 
-            <div className="normal-sale-form-group">
+            <div className="form-group">
               <label>Due Date</label>
               <input
                 type="date"
@@ -729,13 +734,14 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
           </div>
 
           {/* Product Selection - Extended Search Bar */}
-          <div className="normal-sale-form-row">
-            <div className="normal-sale-form-group normal-sale-product-search">
+          <div className="form-row mb-6">
+            <div className="form-group col-span-full">
               <label>Search & Add Products *</label>
-              <div className="normal-sale-product-input-wrapper">
+              <div className="relative">
                 <input
                   type="text"
                   placeholder="Type product name, SKU, or barcode to search and add..."
+                  className="pr-10"
                   value={productSearch}
                   onChange={handleProductSearchChange}
                   onFocus={() => {
@@ -761,24 +767,22 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                     }, 200);
                   }}
                 />
-                <span className="normal-sale-barcode-icon">📷</span>
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">📷</span>
                 {showProductSearch && productSearchResults.length > 0 && (
-                  <div className="normal-sale-product-dropdown">
+                  <div className="absolute left-0 right-0 top-full z-[100] mt-1 max-h-[300px] overflow-y-auto rounded-md border border-border bg-background shadow-md">
                     {productSearchResults.map(product => (
                       <div
                         key={product.id}
-                        className="normal-sale-product-option"
+                        className="cursor-pointer border-b border-border/50 px-3 py-2 last:border-b-0 hover:bg-muted"
                         onMouseDown={(e) => {
                           // Use onMouseDown to prevent onBlur from firing first
                           e.preventDefault();
                           handleProductSelect(product);
                         }}
                         onClick={() => handleProductSelect(product)}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f0f9ff'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                       >
-                        <div className="normal-sale-product-option-name">{product.name}</div>
-                        <div className="normal-sale-product-option-details">
+                        <div className="mb-1 font-medium text-foreground">{product.name}</div>
+                        <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                           {product.sku && <span>SKU: {product.sku}</span>}
                           <span style={{ fontWeight: '600', color: '#059669' }}>{formatCurrency(product.price)}</span>
                           {product.stock !== undefined && (
@@ -796,35 +800,35 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
           </div>
 
           {/* Product Table */}
-          <div className="normal-sale-product-table-wrapper">
-            <table className="normal-sale-product-table">
-              <thead>
+          <div className="my-6 overflow-hidden rounded-md border border-border max-md:overflow-x-auto">
+            <table className="w-full border-collapse bg-background max-md:min-w-[800px]">
+              <thead className="bg-muted/40">
                 <tr>
-                  <th>Product</th>
-                  <th>Qty</th>
-                  <th>Unit Price</th>
-                  <th>Discount</th>
-                  <th>Tax(%)</th>
-                  <th>Tax Amount</th>
-                  <th>Total</th>
-                  <th>Action</th>
+                  <th className="whitespace-nowrap border-b-2 border-border px-3 py-2 text-left text-sm font-semibold">Product</th>
+                  <th className="whitespace-nowrap border-b-2 border-border px-3 py-2 text-left text-sm font-semibold">Qty</th>
+                  <th className="whitespace-nowrap border-b-2 border-border px-3 py-2 text-left text-sm font-semibold">Unit Price</th>
+                  <th className="whitespace-nowrap border-b-2 border-border px-3 py-2 text-left text-sm font-semibold">Discount</th>
+                  <th className="whitespace-nowrap border-b-2 border-border px-3 py-2 text-left text-sm font-semibold">Tax(%)</th>
+                  <th className="whitespace-nowrap border-b-2 border-border px-3 py-2 text-left text-sm font-semibold">Tax Amount</th>
+                  <th className="whitespace-nowrap border-b-2 border-border px-3 py-2 text-left text-sm font-semibold">Total</th>
+                  <th className="whitespace-nowrap border-b-2 border-border px-3 py-2 text-left text-sm font-semibold">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {productRows.map((row, index) => (
-                  <tr key={index}>
-                    <td>
+                  <tr key={index} className="border-b border-border last:border-b-0 hover:bg-muted/30">
+                    <td className="px-3 py-2 align-middle">
                       {row.product_name ? (
-                        <div className="normal-sale-product-cell">
-                          <div className="normal-sale-product-name">{row.product_name}</div>
-                          {row.size && <span className="normal-sale-variant-badge">Size: {row.size}</span>}
-                          {row.color && <span className="normal-sale-variant-badge">Color: {row.color}</span>}
+                        <div className="min-w-[200px]">
+                          <div className="mb-1 font-medium text-foreground">{row.product_name}</div>
+                          {row.size && <span className="mr-2 mt-1 inline-block rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">Size: {row.size}</span>}
+                          {row.color && <span className="mr-2 mt-1 inline-block rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">Color: {row.color}</span>}
                           {row.product_sku && (
-                            <div className="normal-sale-product-sku">SKU: {row.product_sku}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">SKU: {row.product_sku}</div>
                           )}
                         </div>
                       ) : (
-                        <div className="normal-sale-product-input-wrapper">
+                        <div className="relative">
                           <input
                             type="text"
                             placeholder="Search product..."
@@ -836,11 +840,11 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                             }}
                           />
                           {showProductSearch && productSearchResults.length > 0 && selectedProductRowIndex === index && (
-                            <div className="normal-sale-product-dropdown">
+                            <div className="absolute left-0 right-0 top-full z-[100] mt-1 max-h-[300px] overflow-y-auto rounded-md border border-border bg-background shadow-md">
                               {productSearchResults.map(product => (
                                 <div
                                   key={product.id}
-                                  className="normal-sale-product-option"
+                                  className="cursor-pointer border-b border-border/50 px-3 py-2 last:border-b-0 hover:bg-muted"
                                   onMouseDown={(e) => {
                                     // Use onMouseDown to prevent onBlur from firing first
                                     e.preventDefault();
@@ -851,11 +855,9 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                                     handleProductSelect(product);
                                     setSelectedProductRowIndex(null);
                                   }}
-                                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f0f9ff'}
-                                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                 >
-                                  <div className="normal-sale-product-option-name">{product.name}</div>
-                                  <div className="normal-sale-product-option-details">
+                                  <div className="mb-1 font-medium text-foreground">{product.name}</div>
+                                  <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                                     {product.sku && <span>SKU: {product.sku}</span>}
                                     <span style={{ fontWeight: '600', color: '#059669' }}>{formatCurrency(product.price)}</span>
                                     {product.stock !== undefined && (
@@ -871,17 +873,17 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                         </div>
                       )}
                     </td>
-                    <td>
-                      {/* Quantity input - always editable for products with or without variants (only disabled when no product selected) */}
+                    <td className="px-3 py-2 align-middle">
                       <input
                         type="number"
                         min="1"
                         value={row.quantity}
                         onChange={(e) => updateProductRow(index, 'quantity', e.target.value)}
                         disabled={!row.product_id}
+                        className="w-full rounded border border-input px-2 py-1 text-sm"
                       />
                     </td>
-                    <td>
+                    <td className="px-3 py-2 align-middle">
                       <input
                         type="number"
                         min="0"
@@ -889,9 +891,10 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                         value={row.unit_price}
                         onChange={(e) => updateProductRow(index, 'unit_price', e.target.value)}
                         disabled={!row.product_id}
+                        className="w-full rounded border border-input px-2 py-1 text-sm"
                       />
                     </td>
-                    <td>
+                    <td className="px-3 py-2 align-middle">
                       <input
                         type="number"
                         min="0"
@@ -899,9 +902,10 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                         value={row.discount}
                         onChange={(e) => updateProductRow(index, 'discount', e.target.value)}
                         disabled={!row.product_id}
+                        className="w-full rounded border border-input px-2 py-1 text-sm"
                       />
                     </td>
-                    <td>
+                    <td className="px-3 py-2 align-middle">
                       <input
                         type="number"
                         min="0"
@@ -909,14 +913,15 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                         value={row.tax_percent}
                         onChange={(e) => updateProductRow(index, 'tax_percent', e.target.value)}
                         disabled={!row.product_id}
+                        className="w-full rounded border border-input px-2 py-1 text-sm"
                       />
                     </td>
-                    <td>{formatCurrency(row.tax_amount)}</td>
-                    <td>{formatCurrency(row.total_cost)}</td>
-                    <td style={{ textAlign: 'center' }}>
+                    <td className="px-3 py-2 align-middle">{formatCurrency(row.tax_amount)}</td>
+                    <td className="px-3 py-2 align-middle">{formatCurrency(row.total_cost)}</td>
+                    <td className="px-3 py-2 text-center align-middle">
                       <button
                         type="button"
-                        className="normal-sale-remove-row"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-destructive text-destructive-foreground transition hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-30"
                         onClick={() => removeProductRow(index)}
                         title={row.product_id ? "Click to remove this product" : "No product to remove"}
                         disabled={!row.product_id}
@@ -929,18 +934,10 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
               </tbody>
             </table>
             {productRows.length === 0 && (
-              <div style={{ 
-                textAlign: 'center', 
-                padding: '2rem', 
-                color: '#6b7280',
-                fontStyle: 'italic',
-                border: '2px dashed #d1d5db',
-                borderRadius: '6px',
-                marginTop: '0.5rem'
-              }}>
+              <div className="mt-2 rounded-md border-2 border-dashed border-border py-8 text-center italic text-muted-foreground">
                 🔍 Search for products above to add them to the sale
                 <br />
-                <small style={{ fontSize: '0.75rem', marginTop: '0.5rem', display: 'block' }}>
+                <small className="mt-2 block text-xs">
                   Type product name, SKU, or barcode and click to add
                 </small>
               </div>
@@ -948,8 +945,8 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
           </div>
 
           {/* Bottom Row: Order Tax, Discount, Shipping, Status */}
-          <div className="normal-sale-form-row">
-            <div className="normal-sale-form-group">
+          <div className="form-row mb-6">
+            <div className="form-group">
               <label>Order Tax</label>
               <input
                 type="number"
@@ -960,7 +957,7 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
               />
             </div>
 
-            <div className="normal-sale-form-group">
+            <div className="form-group">
               <label>Discount</label>
               <input
                 type="number"
@@ -971,7 +968,7 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
               />
             </div>
 
-            <div className="normal-sale-form-group">
+            <div className="form-group">
               <label>Delivery Method</label>
               <SearchableSelect
                 value={deliveryMethod}
@@ -990,7 +987,7 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
               />
             </div>
 
-            <div className="normal-sale-form-group">
+            <div className="form-group">
               <label>Shipping Cost</label>
               <input
                 type="number"
@@ -1002,7 +999,7 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
               />
             </div>
 
-            <div className="normal-sale-form-group">
+            <div className="form-group">
               <label>Status</label>
               <SearchableSelect
                 value={status}
@@ -1019,8 +1016,8 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
 
           {/* Shipping Information Section */}
           {(deliveryMethod === 'delivery' || deliveryMethod === 'express') && (
-            <div className="normal-sale-form-row">
-              <div className="normal-sale-form-group" style={{ gridColumn: '1 / -1' }}>
+            <div className="form-row mb-6">
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                 <label>Shipping Address</label>
                 <textarea
                   rows="3"
@@ -1029,7 +1026,7 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                   placeholder="Enter full shipping address"
                 />
               </div>
-              <div className="normal-sale-form-group">
+              <div className="form-group">
                 <label>Location</label>
                 <input
                   type="text"
@@ -1042,11 +1039,11 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
           )}
 
           {/* Payment Type Section */}
-          <div className="normal-sale-payment-section">
-            <div className="normal-sale-form-group" style={{ gridColumn: '1 / -1' }}>
+          <div className="my-6">
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
               <label>Payment Type *</label>
               <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
-                <label className="normal-sale-radio-label">
+                <label className="flex cursor-pointer items-center gap-2 rounded-md border-2 border-border bg-background px-6 py-3 font-medium transition hover:border-primary/50 has-[:checked]:border-primary has-[:checked]:bg-primary/5">
                   <input
                     type="radio"
                     name="paymentType"
@@ -1064,7 +1061,7 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                   />
                   <span>💳 Pay Now</span>
                 </label>
-                <label className="normal-sale-radio-label">
+                <label className="flex cursor-pointer items-center gap-2 rounded-md border-2 border-border bg-background px-6 py-3 font-medium transition hover:border-primary/50 has-[:checked]:border-primary has-[:checked]:bg-primary/5">
                   <input
                     type="radio"
                     name="paymentType"
@@ -1079,10 +1076,10 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
 
             {/* Pay Now Fields */}
             {paymentType === 'pay_now' && (
-              <div className="normal-sale-payment-now-fields" style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginTop: '1rem', padding: '1rem', background: '#f0f9ff', borderRadius: '6px' }}>
+              <div className="grid grid-cols-1 gap-4 rounded-md bg-primary/5 p-4 md:grid-cols-[repeat(auto-fit,minmax(200px,1fr))]">
                 {/* Wallet Balance Display */}
                 {selectedCustomer && totals.walletBalance > 0 && (
-                  <div className="normal-sale-form-group" style={{ gridColumn: '1 / -1', padding: '0.75rem', background: '#dbeafe', borderRadius: '6px', border: '1px solid #93c5fd' }}>
+                  <div className="form-group" style={{ gridColumn: '1 / -1', padding: '0.75rem', background: '#dbeafe', borderRadius: '6px', border: '1px solid #93c5fd' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                       <label style={{ margin: 0, fontWeight: '600', color: '#1e40af' }}>
                         💰 Customer Wallet Balance
@@ -1127,7 +1124,7 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                   </div>
                 )}
 
-                <div className="normal-sale-form-group">
+                <div className="form-group">
                   <label>Payment Method *</label>
                   <SearchableSelect
                     value={paymentMethod}
@@ -1141,7 +1138,7 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                   />
                 </div>
 
-                <div className="normal-sale-form-group">
+                <div className="form-group">
                   <label>Amount Paid *</label>
                   <input
                     type="number"
@@ -1185,8 +1182,8 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
 
             {/* Installments Fields */}
             {paymentType === 'installments' && (
-              <div className="normal-sale-payment-plan-fields" style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginTop: '1rem', padding: '1rem', background: '#fef3c7', borderRadius: '6px' }}>
-                <div className="normal-sale-form-group">
+              <div className="grid grid-cols-1 gap-4 rounded-md bg-warning/10 p-4 md:grid-cols-[repeat(auto-fit,minmax(200px,1fr))]">
+                <div className="form-group">
                   <label>Number of Installments *</label>
                   <input
                     type="number"
@@ -1211,7 +1208,7 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                   </small>
                 </div>
 
-                <div className="normal-sale-form-group">
+                <div className="form-group">
                   <label>Frequency *</label>
                   <SearchableSelect
                     value={paymentPlanData.frequency}
@@ -1230,7 +1227,7 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                   />
                 </div>
 
-                <div className="normal-sale-form-group">
+                <div className="form-group">
                   <label>Start Date *</label>
                   <input
                     type="date"
@@ -1248,7 +1245,7 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
           </div>
 
           {/* Notes */}
-          <div className="normal-sale-form-group">
+          <div className="form-group">
             <label>Notes</label>
             <textarea
               value={notes}
@@ -1259,41 +1256,33 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
           </div>
 
           {/* Summary Box */}
-          <div className="normal-sale-summary-box">
-            <div className="normal-sale-summary-row">
+          <div className="ml-auto mt-6 w-full max-w-xs rounded-md border border-border bg-muted/40 p-4 max-md:ml-0 max-md:max-w-full">
+            <div className="flex justify-between border-b border-border py-2 text-sm">
               <span>Order Tax:</span>
               <span>{formatCurrency(totals.totalTax)}</span>
             </div>
-            <div className="normal-sale-summary-row">
+            <div className="flex justify-between border-b border-border py-2 text-sm">
               <span>Discount:</span>
               <span>{formatCurrency(totals.totalDiscount)}</span>
             </div>
-            <div className="normal-sale-summary-row">
+            <div className="flex justify-between border-b border-border py-2 text-sm">
               <span>Shipping:</span>
               <span>{formatCurrency(totals.shipping)}</span>
             </div>
-            <div className="normal-sale-summary-row normal-sale-summary-total">
+            <div className="flex justify-between border-b border-border py-2 text-base font-semibold mt-2 border-t-2 pt-3">
               <span>Grand Total:</span>
               <span>{formatCurrency(totals.grandTotal)}</span>
             </div>
           </div>
         </div>
 
-        <div className="normal-sale-modal-footer">
-          <button
-            type="button"
-            className="normal-sale-cancel-btn"
-            onClick={handleClose}
-          >
+        <div className="flex shrink-0 justify-end gap-4 border-t px-6 py-4 max-md:flex-col-reverse">
+          <Button type="button" variant="secondary" onClick={handleClose}>
             Cancel
-          </button>
-          <button
-            type="button"
-            className="normal-sale-submit-btn"
-            onClick={handleSubmit}
-          >
+          </Button>
+          <Button type="button" onClick={handleSubmit} className="bg-orange-500 hover:bg-orange-600">
             Submit
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -1349,66 +1338,79 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
       
       {/* Excess Payment Confirmation Dialog */}
       {showExcessPaymentConfirm && pendingSaleData && (
-        <div className="modal-overlay" onClick={() => setShowExcessPaymentConfirm(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
-            <div className="modal-header">
-              <h2>Excess Payment</h2>
-              <button onClick={() => setShowExcessPaymentConfirm(false)} className="close-btn">×</button>
+        <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/50 p-4" onClick={() => setShowExcessPaymentConfirm(false)}>
+          <div className="w-full max-w-lg rounded-lg border bg-background shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b px-6 py-4">
+              <h2 className="text-lg font-semibold">Excess Payment</h2>
+              <button
+                type="button"
+                onClick={() => setShowExcessPaymentConfirm(false)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
+                aria-label="Close"
+              >
+                ×
+              </button>
             </div>
-            <div className="modal-body" style={{ padding: '1.5rem' }}>
-              <p style={{ marginBottom: '1rem' }}>
+            <div className="space-y-4 px-6 py-4">
+              <p>
                 <strong>Total:</strong> {formatCurrency(pendingSaleData.total)}<br />
                 <strong>Paid:</strong> {formatCurrency(pendingSaleData.paid)}{pendingSaleData.walletToUse > 0 ? ` (including ${formatCurrency(pendingSaleData.walletToUse)} from wallet)` : ''}<br />
                 <strong>Excess:</strong> {formatCurrency(pendingSaleData.excess)}
               </p>
-              <p style={{ marginBottom: '1.5rem', color: '#666' }}>
-                How would you like to handle the excess payment?
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', padding: '0.75rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', backgroundColor: excessPaymentChoice === 'change' ? '#f0f9ff' : 'white' }}>
+              <p className="text-muted-foreground">How would you like to handle the excess payment?</p>
+              <div className="flex flex-col gap-3">
+                <label className={cn(
+                  'flex cursor-pointer items-start gap-3 rounded-md border p-3',
+                  excessPaymentChoice === 'change' ? 'border-primary bg-primary/5' : 'border-border bg-background'
+                )}>
                   <input
                     type="radio"
                     name="excessPayment"
                     value="change"
                     checked={excessPaymentChoice === 'change'}
                     onChange={(e) => setExcessPaymentChoice(e.target.value)}
-                    style={{ marginRight: '0.75rem' }}
+                    className="mt-1"
                   />
                   <div>
                     <strong>Give Change</strong>
-                    <div style={{ fontSize: '0.875rem', color: '#666', marginTop: '0.25rem' }}>
+                    <div className="mt-1 text-sm text-muted-foreground">
                       Return {formatCurrency(pendingSaleData.excess)} to the customer
                     </div>
                   </div>
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', padding: '0.75rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', backgroundColor: excessPaymentChoice === 'wallet' ? '#f0f9ff' : 'white' }}>
+                <label className={cn(
+                  'flex cursor-pointer items-start gap-3 rounded-md border p-3',
+                  excessPaymentChoice === 'wallet' ? 'border-primary bg-primary/5' : 'border-border bg-background'
+                )}>
                   <input
                     type="radio"
                     name="excessPayment"
                     value="wallet"
                     checked={excessPaymentChoice === 'wallet'}
                     onChange={(e) => setExcessPaymentChoice(e.target.value)}
-                    style={{ marginRight: '0.75rem' }}
+                    className="mt-1"
                   />
                   <div>
                     <strong>Add to Wallet</strong>
-                    <div style={{ fontSize: '0.875rem', color: '#666', marginTop: '0.25rem' }}>
-                      Add {formatCurrency(pendingSaleData.excess)} to {selectedCustomer?.name || 'customer'}'s wallet for future use
+                    <div className="mt-1 text-sm text-muted-foreground">
+                      Add {formatCurrency(pendingSaleData.excess)} to {selectedCustomer?.name || 'customer'}&apos;s wallet for future use
                     </div>
                   </div>
                 </label>
               </div>
             </div>
-            <div className="modal-actions">
-              <button onClick={() => setShowExcessPaymentConfirm(false)} className="btn-cancel">Cancel</button>
-              <button 
+            <div className="flex justify-end gap-2 border-t px-6 py-4">
+              <Button type="button" variant="outline" onClick={() => setShowExcessPaymentConfirm(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
                 onClick={() => {
                   processSale(false, excessPaymentChoice);
-                }} 
-                className="btn-submit"
+                }}
               >
                 Complete Sale
-              </button>
+              </Button>
             </div>
           </div>
         </div>

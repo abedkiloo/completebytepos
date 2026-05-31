@@ -6,6 +6,24 @@ import SupplierForm from './SupplierForm';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { toast } from '../../utils/toast';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
+import { useModuleSettings } from '../../hooks/useModuleSettings';
+import { useStoreSettings } from '../../hooks/useStoreSettings';
+import {
+  suppliersShowSupplierCode,
+  suppliersShowSupplierType,
+  suppliersShowContactDetails,
+  suppliersShowPaymentTerms,
+  suppliersShowCreditFields,
+  suppliersShowRating,
+  suppliersShowPreferredFlag,
+  suppliersShowStatus,
+  suppliersEnableCreate,
+  suppliersEnableEdit,
+  suppliersEnableDelete,
+  suppliersShowNotes,
+  suppliersShowBusinessDetails,
+  suppliersEnableStatistics,
+} from '../../utils/supplierDisplay';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import {
@@ -18,9 +36,24 @@ import {
   FilterField,
   SummaryCard,
 } from '../page';
-import '../../styles/slide-in-panel.css';
 
 const Suppliers = () => {
+  const { settings: supplierSettings } = useModuleSettings('suppliers');
+  const { settings: storeSettings } = useStoreSettings();
+
+  const showSupplierCode = suppliersShowSupplierCode(supplierSettings);
+  const showSupplierType = suppliersShowSupplierType(supplierSettings);
+  const showContact = suppliersShowContactDetails(supplierSettings);
+  const showPaymentTerms = suppliersShowPaymentTerms(supplierSettings);
+  const showCredit = suppliersShowCreditFields(supplierSettings);
+  const showRating = suppliersShowRating(supplierSettings);
+  const showPreferred = suppliersShowPreferredFlag(supplierSettings);
+  const showStatus = suppliersShowStatus(supplierSettings, storeSettings);
+  const canCreate = suppliersEnableCreate(supplierSettings);
+  const canEdit = suppliersEnableEdit(supplierSettings);
+  const canDelete = suppliersEnableDelete(supplierSettings);
+  const showStats = suppliersEnableStatistics(supplierSettings);
+
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -68,6 +101,10 @@ const Suppliers = () => {
   };
 
   const loadStatistics = async () => {
+    if (!showStats) {
+      setStatistics(null);
+      return;
+    }
     try {
       const response = await suppliersAPI.statistics();
       setStatistics(response.data);
@@ -147,22 +184,30 @@ const Suppliers = () => {
   return (
     <PageShell>
         <PageHeader title="Suppliers" description="Vendors you buy stock from.">
-          <Button onClick={handleCreate}>
-            <Plus className="h-4 w-4" />
-            Add supplier
-          </Button>
+          {canCreate && (
+            <Button onClick={handleCreate}>
+              <Plus className="h-4 w-4" />
+              Add supplier
+            </Button>
+          )}
         </PageHeader>
 
-        {statistics && (
+        {showStats && statistics && (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <SummaryCard icon={Factory} label="Total" value={statistics.total_suppliers || 0} />
-            <SummaryCard icon={Factory} label="Active" value={statistics.active_suppliers || 0} tone="success" />
-            <SummaryCard icon={Factory} label="Preferred" value={statistics.preferred_suppliers || 0} />
-            <SummaryCard
-              icon={Factory}
-              label="Account balance"
-              value={formatCurrency(statistics.total_account_balance || 0)}
-            />
+            {showStatus && (
+              <SummaryCard icon={Factory} label="Active" value={statistics.active_suppliers || 0} tone="success" />
+            )}
+            {showPreferred && (
+              <SummaryCard icon={Factory} label="Preferred" value={statistics.preferred_suppliers || 0} />
+            )}
+            {showCredit && (
+              <SummaryCard
+                icon={Factory}
+                label="Account balance"
+                value={formatCurrency(statistics.total_account_balance || 0)}
+              />
+            )}
           </div>
         )}
 
@@ -174,6 +219,7 @@ const Suppliers = () => {
             className="min-w-[200px] flex-[2]"
           />
           <FilterField label="Status">
+            {showStatus ? (
             <SearchableSelect
               value={filters.is_active}
               onChange={(e) => setFilters({ ...filters, is_active: e.target.value })}
@@ -184,7 +230,9 @@ const Suppliers = () => {
               ]}
               placeholder="All status"
             />
+            ) : null}
           </FilterField>
+          {showSupplierType && (
           <FilterField label="Type">
             <SearchableSelect
               value={filters.supplier_type}
@@ -200,6 +248,7 @@ const Suppliers = () => {
               placeholder="All types"
             />
           </FilterField>
+          )}
         </FilterBar>
 
         {suppliers.length === 0 ? (
@@ -207,70 +256,82 @@ const Suppliers = () => {
             icon={Factory}
             title="No suppliers"
             description="Add vendors you purchase inventory from."
-            actionLabel="Add supplier"
-            onAction={handleCreate}
+            actionLabel={canCreate ? 'Add supplier' : undefined}
+            onAction={canCreate ? handleCreate : undefined}
           />
         ) : (
           <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
             <table className="w-full text-sm">
               <thead>
                 <tr>
-                  <th>Code</th>
+                  {showSupplierCode && <th>Code</th>}
                   <th>Name</th>
-                  <th>Type</th>
-                  <th>Contact Person</th>
-                  <th>Email</th>
-                  <th>Phone</th>
-                  <th>City</th>
-                  <th>Payment Terms</th>
-                  <th>Credit Limit</th>
-                  <th>Account Balance</th>
-                  <th>Rating</th>
-                  <th>Status</th>
-                  <th>Actions</th>
+                  {showSupplierType && <th>Type</th>}
+                  {showContact && <th>Contact Person</th>}
+                  {showContact && <th>Email</th>}
+                  {showContact && <th>Phone</th>}
+                  {showContact && <th>City</th>}
+                  {showPaymentTerms && <th>Payment Terms</th>}
+                  {showCredit && <th>Credit Limit</th>}
+                  {showCredit && <th>Account Balance</th>}
+                  {showRating && <th>Rating</th>}
+                  {showStatus && <th>Status</th>}
+                  {(canEdit || canDelete) && <th>Actions</th>}
                 </tr>
               </thead>
               <tbody>
                 {suppliers.map((supplier) => (
                   <tr key={supplier.id}>
-                    <td>{supplier.supplier_code}</td>
+                    {showSupplierCode && <td>{supplier.supplier_code}</td>}
                     <td>
                       <div className="supplier-name-cell">
                         <strong>{supplier.name}</strong>
-                        {supplier.is_preferred && (
+                        {showPreferred && supplier.is_preferred && (
                           <span className="badge preferred">Preferred</span>
                         )}
                       </div>
                     </td>
-                    <td>{getSupplierTypeDisplay(supplier.supplier_type)}</td>
-                    <td>{supplier.contact_person || '-'}</td>
-                    <td>{supplier.email || '-'}</td>
-                    <td>{supplier.phone || '-'}</td>
-                    <td>{supplier.city || '-'}</td>
-                    <td>{getPaymentTermsDisplay(supplier.payment_terms)}</td>
-                    <td>{formatCurrency(supplier.credit_limit || 0)}</td>
-                    <td>
-                      <span className={supplier.account_balance > 0 ? 'balance-owed' : ''}>
-                        {formatCurrency(supplier.account_balance || 0)}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="rating-stars">
-                        {'★'.repeat(supplier.rating || 0)}
-                        {'☆'.repeat(5 - (supplier.rating || 0))}
-                      </div>
-                    </td>
-                    <td>
-                      <span className={`status-badge ${supplier.is_active ? 'active' : 'inactive'}`}>
-                        {supplier.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="action-buttons">
-                        <button onClick={() => handleEdit(supplier)} className="btn-edit">Edit</button>
-                        <button onClick={() => handleDelete(supplier)} className="btn-delete">Delete</button>
-                      </div>
-                    </td>
+                    {showSupplierType && <td>{getSupplierTypeDisplay(supplier.supplier_type)}</td>}
+                    {showContact && <td>{supplier.contact_person || '-'}</td>}
+                    {showContact && <td>{supplier.email || '-'}</td>}
+                    {showContact && <td>{supplier.phone || '-'}</td>}
+                    {showContact && <td>{supplier.city || '-'}</td>}
+                    {showPaymentTerms && <td>{getPaymentTermsDisplay(supplier.payment_terms)}</td>}
+                    {showCredit && <td>{formatCurrency(supplier.credit_limit || 0)}</td>}
+                    {showCredit && (
+                      <td>
+                        <span className={supplier.account_balance > 0 ? 'balance-owed' : ''}>
+                          {formatCurrency(supplier.account_balance || 0)}
+                        </span>
+                      </td>
+                    )}
+                    {showRating && (
+                      <td>
+                        <div className="rating-stars">
+                          {'★'.repeat(supplier.rating || 0)}
+                          {'☆'.repeat(5 - (supplier.rating || 0))}
+                        </div>
+                      </td>
+                    )}
+                    {showStatus && (
+                      <td>
+                        <span className={`status-badge ${supplier.is_active ? 'active' : 'inactive'}`}>
+                          {supplier.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                    )}
+                    {(canEdit || canDelete) && (
+                      <td>
+                        <div className="action-buttons">
+                          {canEdit && (
+                            <button onClick={() => handleEdit(supplier)} className="btn-edit">Edit</button>
+                          )}
+                          {canDelete && (
+                            <button onClick={() => handleDelete(supplier)} className="btn-delete">Delete</button>
+                          )}
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -287,6 +348,15 @@ const Suppliers = () => {
               setSelectedSupplier(null);
             }}
             onSave={handleSave}
+            showSupplierType={showSupplierType}
+            showContactDetails={showContact}
+            showBusinessDetails={suppliersShowBusinessDetails(supplierSettings)}
+            showPaymentTerms={showPaymentTerms}
+            showCreditFields={showCredit}
+            showNotes={suppliersShowNotes(supplierSettings)}
+            showRating={showRating}
+            showPreferred={showPreferred}
+            showStatus={showStatus}
           />
         )}
 

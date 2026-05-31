@@ -6,9 +6,8 @@ import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { PageShell, PageHeader, PageLoading, EmptyState, FilterBar, SearchField, FilterPills } from '../page';
 import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
 import { Plus, FileText } from 'lucide-react';
-import '../../styles/slide-in-panel.css';
-import './Invoices.css';
 
 const Invoices = () => {
   const [invoices, setInvoices] = useState([]);
@@ -454,18 +453,6 @@ const Invoices = () => {
     name: `${customer.name}${customer.customer_code ? ` (${customer.customer_code})` : ''}`,
   }));
 
-  const getStatusColor = (status) => {
-    const colors = {
-      draft: 'gray',
-      sent: 'blue',
-      partial: 'orange',
-      paid: 'green',
-      overdue: 'red',
-      cancelled: 'gray',
-    };
-    return colors[status] || 'gray';
-  };
-
   const calculateTotal = () => {
     const subtotal = parseFloat(formData.subtotal) || 0;
     const tax = parseFloat(formData.tax_amount) || 0;
@@ -523,79 +510,77 @@ const Invoices = () => {
             onAction={handleCreate}
           />
         ) : (
-          <div className="invoices-table-container">
-            <table className="invoices-table">
-              <thead>
+          <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
+            <table className="w-full text-sm">
+              <thead className="border-b bg-muted/40 text-left">
                 <tr>
-                  <th>Invoice #</th>
-                  <th>Customer</th>
-                  <th>Date</th>
-                  <th>Due Date</th>
-                  <th>Total</th>
-                  <th>Paid</th>
-                  <th>Balance</th>
-                  <th>Status</th>
-                  <th>Actions</th>
+                  <th className="px-3 py-2 font-medium">Invoice #</th>
+                  <th className="px-3 py-2 font-medium">Customer</th>
+                  <th className="px-3 py-2 font-medium">Date</th>
+                  <th className="px-3 py-2 font-medium">Due date</th>
+                  <th className="px-3 py-2 font-medium">Total</th>
+                  <th className="px-3 py-2 font-medium">Paid</th>
+                  <th className="px-3 py-2 font-medium">Balance</th>
+                  <th className="px-3 py-2 font-medium">Status</th>
+                  <th className="px-3 py-2 font-medium text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {invoices.length === 0 ? (
-                  <tr>
-                    <td colSpan="9" className="empty-state">
-                      No invoices found
+                {invoices.map((invoice) => (
+                  <tr key={invoice.id} className="border-b last:border-0 hover:bg-muted/30">
+                    <td className="px-3 py-2 font-medium">{invoice.invoice_number}</td>
+                    <td className="px-3 py-2">
+                      <div>{invoice.customer_name || invoice.customer_detail?.name || 'N/A'}</div>
+                      {invoice.customer_email ? (
+                        <div className="text-xs text-muted-foreground">{invoice.customer_email}</div>
+                      ) : null}
+                    </td>
+                    <td className="px-3 py-2">{new Date(invoice.created_at).toLocaleDateString()}</td>
+                    <td className="px-3 py-2">
+                      {invoice.due_date ? new Date(invoice.due_date).toLocaleDateString() : '-'}
+                    </td>
+                    <td className="px-3 py-2">{formatCurrency(invoice.total)}</td>
+                    <td className="px-3 py-2">{formatCurrency(invoice.amount_paid || 0)}</td>
+                    <td className="px-3 py-2">
+                      <span className={invoice.balance > 0 ? 'font-medium text-amber-700' : 'text-emerald-700'}>
+                        {formatCurrency(invoice.balance || 0)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2">
+                      <Badge variant="secondary" className="capitalize">
+                        {invoice.status}
+                      </Badge>
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex flex-wrap justify-end gap-1">
+                        <Button type="button" variant="outline" size="sm" onClick={() => handleEdit(invoice)}>
+                          View
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => invoicesAPI.downloadPDF(invoice.id)}
+                        >
+                          PDF
+                        </Button>
+                        {invoice.balance > 0 ? (
+                          <Button type="button" size="sm" onClick={() => handleAddPayment(invoice)}>
+                            Payment
+                          </Button>
+                        ) : null}
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleDelete(invoice)}
+                        >
+                          Delete
+                        </Button>
+                      </div>
                     </td>
                   </tr>
-                ) : (
-                  invoices.map(invoice => (
-                    <tr key={invoice.id}>
-                      <td>
-                        <strong>{invoice.invoice_number}</strong>
-                      </td>
-                      <td>
-                        <div className="customer-name">
-                          {invoice.customer_name || invoice.customer_detail?.name || 'N/A'}
-                        </div>
-                        {invoice.customer_email && (
-                          <div className="customer-email">{invoice.customer_email}</div>
-                        )}
-                      </td>
-                      <td>{new Date(invoice.created_at).toLocaleDateString()}</td>
-                      <td>
-                        {invoice.due_date ? new Date(invoice.due_date).toLocaleDateString() : '-'}
-                      </td>
-                      <td>{formatCurrency(invoice.total)}</td>
-                      <td>{formatCurrency(invoice.amount_paid || 0)}</td>
-                      <td>
-                        <span className={invoice.balance > 0 ? 'outstanding' : 'paid'}>
-                          {formatCurrency(invoice.balance || 0)}
-                        </span>
-                      </td>
-                      <td>
-                        <span className={`status-badge ${getStatusColor(invoice.status)}`}>
-                          {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
-                        </span>
-                      </td>
-                      <td>
-                        <div className="action-buttons">
-                          <button onClick={() => handleEdit(invoice)} className="btn-edit">View</button>
-                          <button 
-                            onClick={() => invoicesAPI.downloadPDF(invoice.id)} 
-                            className="btn-download"
-                            title="Download PDF"
-                          >
-                            📥 PDF
-                          </button>
-                          {invoice.balance > 0 && (
-                            <button onClick={() => handleAddPayment(invoice)} className="btn-payment">
-                              Payment
-                            </button>
-                          )}
-                          <button onClick={() => handleDelete(invoice)} className="btn-delete">Delete</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
+                ))}
               </tbody>
             </table>
           </div>
@@ -661,26 +646,21 @@ const Invoices = () => {
                 <div className="form-group">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                     <label>Invoice Items</label>
-                    <button
-                      type="button"
-                      onClick={handleAddItem}
-                      className="btn btn-primary"
-                      style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
-                    >
+                    <Button type="button" size="sm" onClick={handleAddItem}>
                       + Add Item
-                    </button>
+                    </Button>
                   </div>
                   
                   {formData.items && formData.items.length > 0 ? (
-                    <div className="invoice-items-table">
-                      <table>
-                        <thead>
+                    <div className="mt-2 overflow-hidden rounded-lg border bg-card">
+                      <table className="w-full text-sm">
+                        <thead className="border-b bg-muted/40 text-left text-xs font-medium text-muted-foreground">
                           <tr>
-                            <th>Product</th>
-                            <th>Qty</th>
-                            <th>Unit Price</th>
-                            <th>Subtotal</th>
-                            <th>Action</th>
+                            <th className="px-3 py-2">Product</th>
+                            <th className="px-3 py-2 text-right">Qty</th>
+                            <th className="px-3 py-2 text-right">Unit Price</th>
+                            <th className="px-3 py-2 text-right">Subtotal</th>
+                            <th className="px-3 py-2 text-right">Action</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -691,8 +671,8 @@ const Invoices = () => {
                             }));
                             
                             return (
-                              <tr key={idx}>
-                                <td>
+                              <tr key={idx} className="border-b last:border-0">
+                                <td className="px-3 py-2">
                                   <SearchableSelect
                                     value={item.product_id || ''}
                                     onChange={(e) => handleItemProductChange(idx, e.target.value)}
@@ -700,7 +680,7 @@ const Invoices = () => {
                                     placeholder="Select Product"
                                   />
                                 </td>
-                                <td>
+                                <td className="px-3 py-2 text-right">
                                   <input
                                     type="number"
                                     min="0"
@@ -713,31 +693,31 @@ const Invoices = () => {
                                         handleItemChange(idx, 'quantity', '0');
                                       }
                                     }}
-                                    style={{ width: '80px', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '4px' }}
+                                    className="w-20 rounded-md border px-2 py-1 text-right"
                                   />
                                 </td>
-                                <td>
+                                <td className="px-3 py-2 text-right">
                                   <input
                                     type="number"
                                     min="0"
                                     step="0.01"
                                     value={item.unit_price || ''}
                                     onChange={(e) => handleItemChange(idx, 'unit_price', e.target.value)}
-                                    style={{ width: '100px', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '4px' }}
+                                    className="w-24 rounded-md border px-2 py-1 text-right"
                                   />
                                 </td>
-                                <td className="item-subtotal">
+                                <td className="px-3 py-2 text-right font-semibold tabular-nums">
                                   {formatCurrency(item.subtotal || 0)}
                                 </td>
-                                <td>
-                                  <button
+                                <td className="px-3 py-2 text-right">
+                                  <Button
                                     type="button"
+                                    variant="destructive"
+                                    size="sm"
                                     onClick={() => handleRemoveItem(idx)}
-                                    className="btn-delete"
-                                    style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
                                   >
                                     Remove
-                                  </button>
+                                  </Button>
                                 </td>
                               </tr>
                             );
@@ -746,8 +726,8 @@ const Invoices = () => {
                       </table>
                     </div>
                   ) : (
-                    <div style={{ padding: '1rem', textAlign: 'center', color: '#6b7280', background: '#f9fafb', borderRadius: '8px', border: '1px dashed #d1d5db' }}>
-                      No items added. Click "Add Item" to add products to this invoice.
+                    <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-6 text-center text-sm text-muted-foreground">
+                      No items added. Click &quot;Add Item&quot; to add products to this invoice.
                     </div>
                   )}
                 </div>
@@ -756,14 +736,14 @@ const Invoices = () => {
                 {selectedInvoice && selectedInvoice.items && selectedInvoice.items.length > 0 && (
                   <div className="form-group">
                     <label>Invoice Items</label>
-                    <div className="invoice-items-table">
-                      <table>
-                        <thead>
+                    <div className="mt-2 overflow-hidden rounded-lg border bg-card">
+                      <table className="w-full text-sm">
+                        <thead className="border-b bg-muted/40 text-left text-xs font-medium text-muted-foreground">
                           <tr>
-                            <th>Item</th>
-                            <th>Qty</th>
-                            <th>Unit Price</th>
-                            <th>Subtotal</th>
+                            <th className="px-3 py-2">Item</th>
+                            <th className="px-3 py-2 text-right">Qty</th>
+                            <th className="px-3 py-2 text-right">Unit Price</th>
+                            <th className="px-3 py-2 text-right">Subtotal</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -775,19 +755,19 @@ const Invoices = () => {
                             const displayName = `${item.product_name || 'N/A'}${variantStr}`;
                             
                             return (
-                              <tr key={item.id || idx}>
-                                <td>
-                                  <div className="item-name">{displayName}</div>
+                              <tr key={item.id || idx} className="border-b last:border-0">
+                                <td className="px-3 py-2">
+                                  <div className="font-medium">{displayName}</div>
                                   {item.product_sku && (
-                                    <div className="item-sku">SKU: {item.product_sku}</div>
+                                    <div className="text-xs text-muted-foreground">SKU: {item.product_sku}</div>
                                   )}
                                   {item.description && (
-                                    <div className="item-description">{item.description}</div>
+                                    <div className="text-xs italic text-muted-foreground">{item.description}</div>
                                   )}
                                 </td>
-                                <td>{item.quantity}</td>
-                                <td>{formatCurrency(item.unit_price)}</td>
-                                <td className="item-subtotal">{formatCurrency(item.subtotal)}</td>
+                                <td className="px-3 py-2 text-right">{item.quantity}</td>
+                                <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(item.unit_price)}</td>
+                                <td className="px-3 py-2 text-right font-semibold tabular-nums">{formatCurrency(item.subtotal)}</td>
                               </tr>
                             );
                           })}
@@ -878,12 +858,12 @@ const Invoices = () => {
                   />
                 </div>
                 <div className="slide-in-panel-footer">
-                  <button type="button" onClick={() => setShowModal(false)} className="btn btn-secondary">
+                  <Button type="button" variant="outline" onClick={() => setShowModal(false)}>
                     Cancel
-                  </button>
-                  <button type="submit" className="btn btn-primary">
+                  </Button>
+                  <Button type="submit">
                     {selectedInvoice ? 'Update' : 'Create'}
-                  </button>
+                  </Button>
                 </div>
                 </form>
               </div>
@@ -900,7 +880,7 @@ const Invoices = () => {
                 <button onClick={() => setShowPaymentModal(false)} className="slide-in-panel-close">×</button>
               </div>
               <div className="slide-in-panel-body">
-                <div className="payment-info">
+                <div className="mb-4 space-y-1 rounded-lg border bg-muted/30 p-4 text-sm">
                   <p><strong>Invoice:</strong> {selectedInvoice.invoice_number}</p>
                   <p><strong>Total:</strong> {formatCurrency(selectedInvoice.total)}</p>
                   <p><strong>Paid:</strong> {formatCurrency(selectedInvoice.amount_paid || 0)}</p>
@@ -963,12 +943,12 @@ const Invoices = () => {
                   />
                 </div>
                 <div className="slide-in-panel-footer">
-                  <button type="button" onClick={() => setShowPaymentModal(false)} className="btn btn-secondary">
+                  <Button type="button" variant="outline" onClick={() => setShowPaymentModal(false)}>
                     Cancel
-                  </button>
-                  <button type="submit" className="btn btn-primary">
+                  </Button>
+                  <Button type="submit">
                     Record Payment
-                  </button>
+                  </Button>
                 </div>
                 </form>
               </div>

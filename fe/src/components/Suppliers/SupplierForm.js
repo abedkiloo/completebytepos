@@ -2,10 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { suppliersAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import SearchableSelect from '../Shared/SearchableSelect';
-import '../../styles/slide-in-panel.css';
-import './Suppliers.css';
 
-const SupplierForm = ({ supplier, onClose, onSave }) => {
+const SupplierForm = ({
+  supplier,
+  onClose,
+  onSave,
+  showSupplierType = true,
+  showContactDetails = true,
+  showBusinessDetails = true,
+  showPaymentTerms = true,
+  showCreditFields = true,
+  showNotes = true,
+  showRating = true,
+  showPreferred = true,
+  showStatus = true,
+}) => {
   const [formData, setFormData] = useState({
     name: '',
     supplier_type: 'business',
@@ -167,6 +178,7 @@ const SupplierForm = ({ supplier, onClose, onSave }) => {
                   />
                   {errors.name && <span className="error">{errors.name}</span>}
                 </div>
+                {showSupplierType && (
                 <div className="form-group">
                   <label>Supplier Type *</label>
                   <SearchableSelect
@@ -183,9 +195,12 @@ const SupplierForm = ({ supplier, onClose, onSave }) => {
                     placeholder="Select Supplier Type"
                   />
                 </div>
+                )}
               </div>
             </div>
 
+            {showContactDetails && (
+            <>
             <div className="form-section">
               <h3>Contact Information</h3>
               <div className="form-row">
@@ -283,7 +298,10 @@ const SupplierForm = ({ supplier, onClose, onSave }) => {
                 </div>
               </div>
             </div>
+            </>
+            )}
 
+            {showBusinessDetails && (
             <div className="form-section">
               <h3>Business Information</h3>
               <div className="form-row">
@@ -317,10 +335,13 @@ const SupplierForm = ({ supplier, onClose, onSave }) => {
                 />
               </div>
             </div>
+            )}
 
+            {(showPaymentTerms || showCreditFields) && (
             <div className="form-section">
               <h3>Financial Information</h3>
               <div className="form-row">
+                {showPaymentTerms && (
                 <div className="form-group">
                   <label>Payment Terms</label>
                   <SearchableSelect
@@ -339,6 +360,8 @@ const SupplierForm = ({ supplier, onClose, onSave }) => {
                     placeholder="Select Payment Terms"
                   />
                 </div>
+                )}
+                {showCreditFields && (
                 <div className="form-group">
                   <label>Credit Limit (KES)</label>
                   <input
@@ -352,7 +375,9 @@ const SupplierForm = ({ supplier, onClose, onSave }) => {
                   {errors.credit_limit && <span className="error">{errors.credit_limit}</span>}
                   <small className="form-text">0 means no credit limit</small>
                 </div>
+                )}
               </div>
+              {showCreditFields && (
               <div className="form-group">
                 <label>Account Balance (KES)</label>
                 <input
@@ -366,10 +391,14 @@ const SupplierForm = ({ supplier, onClose, onSave }) => {
                 {errors.account_balance && <span className="error">{errors.account_balance}</span>}
                 <small className="form-text">Amount currently owed to supplier</small>
               </div>
+              )}
             </div>
+            )}
 
+            {(showNotes || showRating) && (
             <div className="form-section">
               <h3>Additional Information</h3>
+              {showNotes && (
               <div className="form-group">
                 <label>Notes</label>
                 <textarea
@@ -380,6 +409,8 @@ const SupplierForm = ({ supplier, onClose, onSave }) => {
                   placeholder="Additional notes about this supplier"
                 />
               </div>
+              )}
+              {showRating && (
               <div className="form-row">
                 <div className="form-group">
                   <label>Rating (1-5)</label>
@@ -398,9 +429,13 @@ const SupplierForm = ({ supplier, onClose, onSave }) => {
                   />
                 </div>
               </div>
+              )}
             </div>
+            )}
 
+            {(showPreferred || showStatus) && (
             <div className="form-checkboxes">
+              {showPreferred && (
               <label>
                 <input
                   type="checkbox"
@@ -410,6 +445,8 @@ const SupplierForm = ({ supplier, onClose, onSave }) => {
                 />
                 {' '}Preferred Supplier
               </label>
+              )}
+              {showStatus && (
               <label>
                 <input
                   type="checkbox"
@@ -419,7 +456,9 @@ const SupplierForm = ({ supplier, onClose, onSave }) => {
                 />
                 {' '}Active
               </label>
+              )}
             </div>
+            )}
           </form>
         </div>
 

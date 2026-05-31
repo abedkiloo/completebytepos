@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { inventoryAPI, productsAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
 import SearchableSelect from '../Shared/SearchableSelect';
-import '../../styles/slide-in-panel.css';
-import './Inventory.css';
 
 const StockPurchaseModal = ({ product, onClose, onSave }) => {
   const defaultQuantity = (product?.reorder_quantity != null && product.reorder_quantity > 0)

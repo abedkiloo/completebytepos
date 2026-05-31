@@ -2,9 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { usersAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import SearchableSelect from '../Shared/SearchableSelect';
-import '../../styles/slide-in-panel.css';
 
-const UserForm = ({ user, roles, onClose, hideStatusToggles = false }) => {
+const UserForm = ({
+  user,
+  roles,
+  onClose,
+  hideStatusToggles = false,
+  showEmail = true,
+  showFullName = true,
+  showPhone = true,
+  showStaffFlag = true,
+  showInlineRoles = true,
+}) => {
   const [formData, setFormData] = useState({
     username: '',
     email: '',
@@ -118,6 +127,7 @@ const UserForm = ({ user, roles, onClose, hideStatusToggles = false }) => {
               {errors.username && <span className="error">{errors.username}</span>}
             </div>
 
+            {showEmail ? (
             <div className="form-group">
               <label htmlFor="email">Email</label>
               <input
@@ -129,8 +139,10 @@ const UserForm = ({ user, roles, onClose, hideStatusToggles = false }) => {
               />
               {errors.email && <span className="error">{errors.email}</span>}
             </div>
+            ) : null}
           </div>
 
+          {showFullName ? (
           <div className="form-row">
             <div className="form-group">
               <label htmlFor="first_name">First Name</label>
@@ -154,6 +166,7 @@ const UserForm = ({ user, roles, onClose, hideStatusToggles = false }) => {
               />
             </div>
           </div>
+          ) : null}
 
           {!user && (
             <div className="form-group">
@@ -171,6 +184,7 @@ const UserForm = ({ user, roles, onClose, hideStatusToggles = false }) => {
             </div>
           )}
 
+          {showInlineRoles ? (
           <div className="form-row">
             <div className="form-group">
               <label htmlFor="role">Default Role</label>
@@ -202,7 +216,9 @@ const UserForm = ({ user, roles, onClose, hideStatusToggles = false }) => {
               />
             </div>
           </div>
+          ) : null}
 
+          {showPhone ? (
           <div className="form-group">
             <label htmlFor="phone_number">Phone Number</label>
             <input
@@ -213,8 +229,10 @@ const UserForm = ({ user, roles, onClose, hideStatusToggles = false }) => {
               onChange={handleChange}
             />
           </div>
+          ) : null}
 
           <div className="form-row">
+            {showStaffFlag ? (
             <div className="form-group checkbox-group">
               <label>
                 <input
@@ -226,6 +244,7 @@ const UserForm = ({ user, roles, onClose, hideStatusToggles = false }) => {
                 Staff Member
               </label>
             </div>
+            ) : null}
 
             {!hideStatusToggles && (
             <div className="form-group checkbox-group">

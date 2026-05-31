@@ -4,13 +4,74 @@
  */
 
 .form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 0.5rem !important;
   margin-bottom: 0.5rem !important;
 }
 
 .form-group {
+  display: flex;
+  flex-direction: column;
   margin-bottom: 0.5rem !important;
   gap: 0.125rem;
+}
+
+.form-section {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.form-section:last-of-type {
+  border-bottom: none;
+}
+
+.form-section h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.form-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.form-checkboxes label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  border: 1px solid hsl(var(--input));
+  border-radius: calc(var(--radius) - 2px);
+  background: hsl(var(--background));
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2);
+}
+
+.form-group input.readonly,
+.form-group input:read-only {
+  background: hsl(var(--muted));
+  cursor: not-allowed;
+}
+
+.form-group .error {
+  color: hsl(var(--destructive));
 }
 
 .form-group label {
@@ -68,6 +129,38 @@
 .modal-body form,
 [class*='-form-modal'] form {
   padding: 1rem;
+}
+
+.select-with-add {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.select-with-add .searchable-select,
+.select-with-add > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.image-preview {
+  max-width: 200px;
+  max-height: 200px;
+  margin-top: 0.5rem;
+  border-radius: calc(var(--radius) - 2px);
+}
+
+.form-group input.error,
+.form-group select.error,
+.form-group textarea.error {
+  border-color: hsl(var(--destructive));
+}
+
+.error-text {
+  display: block;
+  margin-top: 0.125rem;
+  font-size: 0.75rem;
+  color: hsl(var(--destructive));
 }
 
 @media (max-width: 768px) {

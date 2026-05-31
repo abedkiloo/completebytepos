@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { inventoryAPI } from '../../services/api';
 import { formatCurrency, formatNumber, formatDateTime } from '../../utils/formatters';
-import './Inventory.css';
+import { PageLoading } from '../page';
+import { Badge } from '../ui/badge';
+import { cn } from '../../lib/cn';
 
-const StockHistoryModal = ({ product, onClose }) => {
+const StockHistoryModal = ({ product, onClose, showCost = true }) => {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -13,7 +15,7 @@ const StockHistoryModal = ({ product, onClose }) => {
 
   const loadHistory = async () => {
     if (!product?.id) return;
-    
+
     setLoading(true);
     try {
       const response = await inventoryAPI.productHistory(product.id);
@@ -25,81 +27,93 @@ const StockHistoryModal = ({ product, onClose }) => {
     }
   };
 
-  const getMovementTypeColor = (type) => {
-    const colors = {
-      'sale': '#ef4444',
-      'purchase': '#10b981',
-      'adjustment': '#f59e0b',
-      'return': '#3b82f6',
-      'damage': '#dc2626',
-      'transfer': '#8b5cf6',
-      'waste': '#f97316',
-      'expired': '#6b7280',
+  const movementTone = (type) => {
+    const map = {
+      sale: 'destructive',
+      purchase: 'default',
+      adjustment: 'secondary',
+      return: 'secondary',
+      damage: 'destructive',
+      transfer: 'secondary',
+      waste: 'secondary',
+      expired: 'secondary',
     };
-    return colors[type] || '#6b7280';
+    return map[type] || 'secondary';
   };
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-content history-modal">
-        <div className="modal-header">
-          <h2>Stock History - {product?.name}</h2>
-          <button onClick={onClose} className="close-btn">×</button>
+    <div className="slide-in-overlay" onClick={onClose}>
+      <div className="slide-in-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="slide-in-panel-header">
+          <h2>Stock History — {product?.name}</h2>
+          <button type="button" onClick={onClose} className="slide-in-panel-close">×</button>
         </div>
 
-        {loading ? (
-          <div className="loading">Loading history...</div>
-        ) : (
-          <div className="history-content">
-            {history.length === 0 ? (
-              <div className="empty-state">No stock movements found</div>
-            ) : (
-              <table className="history-table">
-                <thead>
+        <div className="slide-in-panel-body">
+          {loading ? (
+            <PageLoading rows={5} />
+          ) : history.length === 0 ? (
+            <div className="rounded-lg border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
+              No stock movements found
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border">
+              <table className="w-full text-sm">
+                <thead className="border-b bg-muted/40 text-left text-xs font-medium text-muted-foreground">
                   <tr>
-                    <th>Date</th>
-                    <th>Type</th>
-                    <th>Quantity</th>
-                    <th>Unit Cost</th>
-                    <th>Total Cost</th>
-                    <th>Stock Before</th>
-                    <th>Stock After</th>
-                    <th>User</th>
-                    <th>Reference</th>
+                    <th className="px-3 py-2">Date</th>
+                    <th className="px-3 py-2">Type</th>
+                    <th className="px-3 py-2">Qty</th>
+                    {showCost ? <th className="px-3 py-2">Unit Cost</th> : null}
+                    {showCost ? <th className="px-3 py-2">Total Cost</th> : null}
+                    <th className="px-3 py-2">Before</th>
+                    <th className="px-3 py-2">After</th>
+                    <th className="px-3 py-2">User</th>
+                    <th className="px-3 py-2">Reference</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {history.map(movement => (
-                    <tr key={movement.id}>
-                      <td>{formatDateTime(movement.created_at)}</td>
-                      <td>
-                        <span
-                          className="movement-type-badge"
-                          style={{ backgroundColor: getMovementTypeColor(movement.movement_type) }}
-                        >
+                  {history.map((movement) => (
+                    <tr key={movement.id} className="border-b last:border-0 hover:bg-muted/30">
+                      <td className="whitespace-nowrap px-3 py-2">{formatDateTime(movement.created_at)}</td>
+                      <td className="px-3 py-2">
+                        <Badge variant={movementTone(movement.movement_type)} className="capitalize">
                           {movement.movement_type}
-                        </span>
+                        </Badge>
                       </td>
-                      <td className={movement.quantity > 0 ? 'positive' : 'negative'}>
-                        {movement.quantity > 0 ? '+' : ''}{formatNumber(movement.quantity)}
+                      <td
+                        className={cn(
+                          'px-3 py-2 tabular-nums',
+                          movement.quantity > 0 ? 'text-emerald-700' : 'text-destructive'
+                        )}
+                      >
+                        {movement.quantity > 0 ? '+' : ''}
+                        {formatNumber(movement.quantity)}
                       </td>
-                      <td>{movement.unit_cost ? formatCurrency(movement.unit_cost) : '-'}</td>
-                      <td>{movement.total_cost ? formatCurrency(movement.total_cost) : '-'}</td>
-                      <td>{formatNumber(movement.stock_before || 0)}</td>
-                      <td>{formatNumber(movement.stock_after || 0)}</td>
-                      <td>{movement.user_name || '-'}</td>
-                      <td>{movement.reference || '-'}</td>
+                      {showCost ? (
+                        <td className="px-3 py-2 tabular-nums">
+                          {movement.unit_cost ? formatCurrency(movement.unit_cost) : '-'}
+                        </td>
+                      ) : null}
+                      {showCost ? (
+                        <td className="px-3 py-2 tabular-nums">
+                          {movement.total_cost ? formatCurrency(movement.total_cost) : '-'}
+                        </td>
+                      ) : null}
+                      <td className="px-3 py-2 tabular-nums">{formatNumber(movement.stock_before || 0)}</td>
+                      <td className="px-3 py-2 tabular-nums">{formatNumber(movement.stock_after || 0)}</td>
+                      <td className="px-3 py-2">{movement.user_name || '-'}</td>
+                      <td className="px-3 py-2">{movement.reference || '-'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 };
 
 export default StockHistoryModal;
-

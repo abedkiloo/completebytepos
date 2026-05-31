@@ -4,8 +4,11 @@ import { formatCurrency } from '../../utils/formatters';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { toast } from '../../utils/toast';
-import '../../styles/shared.css';
-import './Barcodes.css';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Badge } from '../ui/badge';
+import { PageShell, PageHeader, PageLoading, FilterBar, SearchField, FilterField } from '../page';
+import '../../styles/barcodePrint.css';
 
 const Barcodes = () => {
   const [products, setProducts] = useState([]);
@@ -229,239 +232,192 @@ const Barcodes = () => {
   const productsWithoutBarcode = products.filter(p => !p.barcode).length;
 
   return (
-    <div className="barcodes-page">
-      <div className="page-header">
-        <div className="page-header-content">
-          <h1>Barcode Management & Printing</h1>
-        </div>
-        <div className="page-header-actions">
-          <button
-            onClick={handleGenerateMissing}
-            disabled={generating || productsWithoutBarcode === 0}
-            className="btn btn-primary"
-          >
-            {generating ? 'Generating...' : `Generate Missing (${productsWithoutBarcode})`}
-          </button>
-        </div>
-      </div>
+    <>
+    <PageShell>
+      <PageHeader
+        title="Barcode management"
+        description="Generate, preview, and print product barcode labels."
+      >
+        <Button
+          onClick={handleGenerateMissing}
+          disabled={generating || productsWithoutBarcode === 0}
+        >
+          {generating ? 'Generating…' : `Generate missing (${productsWithoutBarcode})`}
+        </Button>
+      </PageHeader>
 
-      <div className="barcodes-controls">
-        <div className="controls-section">
-          <h3>Barcode/QR Code Format</h3>
-          <div className="format-options">
-            <label className="format-option">
-              <input
-                type="radio"
-                name="barcodeFormat"
-                value="code128"
-                checked={barcodeFormat === 'code128'}
-                onChange={(e) => setBarcodeFormat(e.target.value)}
-              />
-              <span>Code 128</span>
-            </label>
-            <label className="format-option">
-              <input
-                type="radio"
-                name="barcodeFormat"
-                value="ean13"
-                checked={barcodeFormat === 'ean13'}
-                onChange={(e) => setBarcodeFormat(e.target.value)}
-              />
-              <span>EAN-13</span>
-            </label>
-            <label className="format-option">
-              <input
-                type="radio"
-                name="barcodeFormat"
-                value="ean8"
-                checked={barcodeFormat === 'ean8'}
-                onChange={(e) => setBarcodeFormat(e.target.value)}
-              />
-              <span>EAN-8</span>
-            </label>
-            <label className="format-option qr-option">
-              <input
-                type="radio"
-                name="barcodeFormat"
-                value="qrcode"
-                checked={barcodeFormat === 'qrcode'}
-                onChange={(e) => setBarcodeFormat(e.target.value)}
-              />
-              <span>📱 QR Code</span>
-            </label>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-lg border bg-card p-4 shadow-sm">
+          <h3 className="mb-3 text-sm font-semibold">Barcode / QR format</h3>
+          <div className="flex flex-wrap gap-3 text-sm">
+            {[
+              { id: 'code128', label: 'Code 128' },
+              { id: 'ean13', label: 'EAN-13' },
+              { id: 'ean8', label: 'EAN-8' },
+              { id: 'qrcode', label: 'QR Code' },
+            ].map((fmt) => (
+              <label key={fmt.id} className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="barcodeFormat"
+                  value={fmt.id}
+                  checked={barcodeFormat === fmt.id}
+                  onChange={(e) => setBarcodeFormat(e.target.value)}
+                />
+                {fmt.label}
+              </label>
+            ))}
           </div>
-          <SearchableSelect
-            value={barcodeFormat}
-            onChange={(e) => setBarcodeFormat(e.target.value)}
-            className="format-select-mobile"
-            options={[
-              { id: 'code128', name: 'Code 128' },
-              { id: 'ean13', name: 'EAN-13' },
-              { id: 'ean8', name: 'EAN-8' },
-              { id: 'qrcode', name: '📱 QR Code' }
-            ]}
-            placeholder="Select Format"
-          />
         </div>
 
-        <div className="controls-section">
-          <h3>Label Settings</h3>
-          <div className="label-settings">
-            <label>
+        <div className="rounded-lg border bg-card p-4 shadow-sm">
+          <h3 className="mb-3 text-sm font-semibold">Label settings</h3>
+          <div className="space-y-2 text-sm">
+            <label className="flex items-center gap-2">
               <input
                 type="checkbox"
                 checked={labelSettings.include_name}
                 onChange={(e) => setLabelSettings({ ...labelSettings, include_name: e.target.checked })}
               />
-              Include Product Name
+              Include product name
             </label>
-            <label>
+            <label className="flex items-center gap-2">
               <input
                 type="checkbox"
                 checked={labelSettings.include_price}
                 onChange={(e) => setLabelSettings({ ...labelSettings, include_price: e.target.checked })}
               />
-              Include Price
+              Include price
             </label>
-            <div className="setting-row">
-              <label>Quantity per Product:</label>
-              <input
+            <div className="flex items-center gap-2">
+              <span>Quantity per product:</span>
+              <Input
                 type="number"
                 min="1"
                 max="10"
+                className="h-8 w-20"
                 value={labelSettings.quantity}
-                onChange={(e) => setLabelSettings({ ...labelSettings, quantity: parseInt(e.target.value) || 1 })}
-                className="quantity-input"
+                onChange={(e) =>
+                  setLabelSettings({ ...labelSettings, quantity: parseInt(e.target.value, 10) || 1 })
+                }
               />
             </div>
           </div>
         </div>
       </div>
 
-      <div className="barcodes-filters">
-        <input
-          type="text"
-          placeholder="Search products..."
+      <FilterBar className="mt-4">
+        <SearchField
           value={filters.search}
           onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-          className="search-input"
+          placeholder="Search products…"
+          className="min-w-[200px] flex-[2]"
         />
-        <SearchableSelect
-          value={filters.has_barcode}
-          onChange={(e) => setFilters({ ...filters, has_barcode: e.target.value })}
-          className="filter-select"
-          options={[
-            { id: 'all', name: 'All Products' },
-            { id: 'yes', name: 'With Barcode' },
-            { id: 'no', name: 'Without Barcode' }
-          ]}
-          placeholder="All Products"
-        />
-      </div>
+        <FilterField label="Barcode">
+          <SearchableSelect
+            value={filters.has_barcode}
+            onChange={(e) => setFilters({ ...filters, has_barcode: e.target.value })}
+            options={[
+              { id: 'all', name: 'All products' },
+              { id: 'yes', name: 'With barcode' },
+              { id: 'no', name: 'Without barcode' },
+            ]}
+            placeholder="All products"
+          />
+        </FilterField>
+      </FilterBar>
 
-      <div className="barcodes-actions">
-        <div className="selection-info">
-          <span>{selectedProducts.length} selected</span>
-          <button onClick={handleSelectAll} className="btn-link">
-            {selectedProducts.length === products.length ? 'Deselect All' : 'Select All'}
-          </button>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+        <span className="text-muted-foreground">{selectedProducts.length} selected</span>
+        <div className="flex gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={handleSelectAll}>
+            {selectedProducts.length === products.length ? 'Deselect all' : 'Select all'}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            onClick={handlePrintLabels}
+            disabled={selectedProducts.length === 0 || generating}
+          >
+            {generating ? 'Generating PDF…' : `Print ${selectedProducts.length} label(s)`}
+          </Button>
         </div>
-        <button
-          onClick={handlePrintLabels}
-          disabled={selectedProducts.length === 0 || generating}
-          className="btn-primary"
-        >
-          {generating ? 'Generating PDF...' : `Print ${selectedProducts.length} Label(s)`}
-        </button>
       </div>
 
       {loading ? (
-        <div className="loading">Loading products...</div>
+        <PageLoading rows={8} />
       ) : (
-        <div className="products-table-container">
-          <table className="products-table">
-            <thead>
+        <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
+          <table className="w-full text-sm">
+            <thead className="border-b bg-muted/40 text-left">
               <tr>
-                <th>
+                <th className="px-3 py-2">
                   <input
                     type="checkbox"
                     checked={selectedProducts.length === products.length && products.length > 0}
                     onChange={handleSelectAll}
+                    aria-label="Select all products"
                   />
                 </th>
-                <th>Product</th>
-                <th>SKU</th>
-                <th>Barcode</th>
-                <th>Price</th>
-                <th>Actions</th>
+                <th className="px-3 py-2 font-medium">Product</th>
+                <th className="px-3 py-2 font-medium">SKU</th>
+                <th className="px-3 py-2 font-medium">Barcode</th>
+                <th className="px-3 py-2 font-medium">Price</th>
+                <th className="px-3 py-2 font-medium text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {products.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="empty-state">
+                  <td colSpan="6" className="px-3 py-8 text-center text-muted-foreground">
                     No products found
                   </td>
                 </tr>
               ) : (
-                products.map(product => (
-                  <tr key={product.id} className={!product.barcode ? 'no-barcode' : ''}>
-                    <td>
+                products.map((product) => (
+                  <tr key={product.id} className="border-b last:border-0 hover:bg-muted/30">
+                    <td className="px-3 py-2">
                       <input
                         type="checkbox"
                         checked={selectedProducts.includes(product.id)}
                         onChange={() => handleSelectProduct(product.id)}
+                        aria-label={`Select ${product.name}`}
                       />
                     </td>
-                    <td>
-                      <div className="product-info">
-                        <div className="product-name">{product.name}</div>
-                        {product.has_variants && (
-                          <div className="variant-info">
-                            {(product.available_sizes_detail?.length || 0) > 0 && (
-                              <span>{product.available_sizes_detail.length} sizes</span>
-                            )}
-                            {(product.available_sizes_detail?.length || 0) > 0 && (product.available_colors_detail?.length || 0) > 0 && ' • '}
-                            {(product.available_colors_detail?.length || 0) > 0 && (
-                              <span>{product.available_colors_detail.length} colors</span>
-                            )}
-                          </div>
-                        )}
-                        {product.category_name && (
-                          <div className="product-category">
-                            {product.category_name}
-                            {product.subcategory_name && ` → ${product.subcategory_name}`}
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td>{product.sku}</td>
-                    <td>
-                      {product.barcode ? (
-                        <span className="barcode-value">{product.barcode}</span>
-                      ) : (
-                        <span className="no-barcode-badge">No Barcode</span>
+                    <td className="px-3 py-2">
+                      <div className="font-medium">{product.name}</div>
+                      {product.category_name && (
+                        <div className="text-xs text-muted-foreground">{product.category_name}</div>
                       )}
                     </td>
-                    <td>{formatCurrency(product.price)}</td>
-                    <td>
-                      <div className="action-buttons">
-                        <button
+                    <td className="px-3 py-2">{product.sku}</td>
+                    <td className="px-3 py-2">
+                      {product.barcode ? (
+                        <code className="text-xs">{product.barcode}</code>
+                      ) : (
+                        <Badge variant="secondary">No barcode</Badge>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">{formatCurrency(product.price)}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
                           onClick={() => handlePreviewBarcode(product)}
-                          className="btn-preview"
                           disabled={!product.barcode && !product.sku}
-                          title={!product.barcode && !product.sku ? 'Product needs a barcode or SKU' : 'Preview barcode'}
                         >
                           Preview
-                        </button>
-                        <button
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
                           onClick={() => handlePrintSingle(product)}
-                          className="btn-print"
                           disabled={!product.barcode && !product.sku}
-                          title={!product.barcode && !product.sku ? 'Product needs a barcode or SKU' : 'Print barcode label'}
                         >
                           Print
-                        </button>
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -471,96 +427,91 @@ const Barcodes = () => {
           </table>
         </div>
       )}
+    </PageShell>
 
       {previewBarcode && previewProduct && (
-        <div className="modal-overlay print-preview-container" onClick={() => { setPreviewBarcode(null); setPreviewProduct(null); }}>
-          <div className="modal-content barcode-preview" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Barcode Preview - {previewProduct.name}</h2>
-              <button onClick={() => { setPreviewBarcode(null); setPreviewProduct(null); }} className="close-btn">×</button>
+        <div
+          className="print-preview-container fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => { setPreviewBarcode(null); setPreviewProduct(null); }}
+        >
+          <div className="barcode-print-dialog w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-lg border bg-background shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="barcode-print-header flex items-center justify-between border-b px-6 py-4">
+              <h2 className="text-lg font-semibold">Barcode Preview — {previewProduct.name}</h2>
+              <button
+                type="button"
+                onClick={() => { setPreviewBarcode(null); setPreviewProduct(null); }}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label="Close"
+              >
+                ×
+              </button>
             </div>
-            <div className="preview-content">
-              <div className="barcode-image-container">
-                <img src={previewBarcode.image} alt="Barcode" className="barcode-image" />
+            <div className="barcode-print-body space-y-4 p-6">
+              <div className="barcode-print-image-wrap rounded-md bg-muted/40 p-4 text-center">
+                <img src={previewBarcode.image} alt="Barcode" className="mx-auto max-w-full" />
               </div>
-              <div className="barcode-info">
+              <div className="space-y-1 text-sm text-foreground">
                 <p><strong>Format:</strong> {previewBarcode.format?.toUpperCase() || 'CODE128'}</p>
                 <p><strong>Value:</strong> {previewBarcode.barcode}</p>
                 <p><strong>Product:</strong> {previewProduct.name}</p>
                 <p><strong>SKU:</strong> {previewProduct.sku}</p>
               </div>
-              <div className="preview-actions">
-                <button
-                  onClick={handlePrint}
-                  className="btn-primary"
-                >
-                  Print
-                </button>
-                <button
-                  onClick={handleDownloadPDF}
-                  className="btn-secondary"
-                  disabled={generating}
-                >
+              <div className="barcode-print-actions flex flex-wrap justify-end gap-2">
+                <Button type="button" onClick={handlePrint}>Print</Button>
+                <Button type="button" variant="outline" onClick={handleDownloadPDF} disabled={generating}>
                   {generating ? 'Downloading...' : 'Download PDF'}
-                </button>
-                <button
-                  onClick={() => { setPreviewBarcode(null); setPreviewProduct(null); }}
-                  className="btn-secondary"
-                >
+                </Button>
+                <Button type="button" variant="outline" onClick={() => { setPreviewBarcode(null); setPreviewProduct(null); }}>
                   Close
-                </button>
+                </Button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Print Preview Modal for Multiple Products */}
       {showPrintPreview && printPreviewData && (
-        <div className="modal-overlay" onClick={() => { setShowPrintPreview(false); setPrintPreviewData(null); }}>
-          <div className="modal-content barcode-preview" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Print Preview - {printPreviewData.totalProducts} Product(s)</h2>
-              <button onClick={() => { setShowPrintPreview(false); setPrintPreviewData(null); }} className="close-btn">×</button>
+        <div
+          className="print-preview-container fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => { setShowPrintPreview(false); setPrintPreviewData(null); }}
+        >
+          <div className="barcode-print-dialog w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-lg border bg-background shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="barcode-print-header flex items-center justify-between border-b px-6 py-4">
+              <h2 className="text-lg font-semibold">Print Preview — {printPreviewData.totalProducts} Product(s)</h2>
+              <button
+                type="button"
+                onClick={() => { setShowPrintPreview(false); setPrintPreviewData(null); }}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label="Close"
+              >
+                ×
+              </button>
             </div>
-            <div className="preview-content">
-              <div className="barcode-image-container">
-                <img src={printPreviewData.preview.image} alt="Barcode" className="barcode-image" />
+            <div className="barcode-print-body space-y-4 p-6">
+              <div className="barcode-print-image-wrap rounded-md bg-muted/40 p-4 text-center">
+                <img src={printPreviewData.preview.image} alt="Barcode" className="mx-auto max-w-full" />
               </div>
-              <div className="barcode-info">
+              <div className="space-y-1 text-sm text-foreground">
                 <p><strong>Format:</strong> {printPreviewData.preview.format?.toUpperCase() || 'CODE128'}</p>
                 <p><strong>Sample Product:</strong> {printPreviewData.product.name}</p>
                 <p><strong>Total Products:</strong> {printPreviewData.totalProducts}</p>
                 <p><strong>Quantity per Product:</strong> {labelSettings.quantity}</p>
                 <p><strong>Total Labels:</strong> {printPreviewData.totalProducts * labelSettings.quantity}</p>
               </div>
-              <div className="preview-actions">
-                <button
-                  onClick={handlePrint}
-                  className="btn-primary"
-                >
-                  Print
-                </button>
-                <button
-                  onClick={handleDownloadPDF}
-                  className="btn-secondary"
-                  disabled={generating}
-                >
+              <div className="barcode-print-actions flex flex-wrap justify-end gap-2">
+                <Button type="button" onClick={handlePrint}>Print</Button>
+                <Button type="button" variant="outline" onClick={handleDownloadPDF} disabled={generating}>
                   {generating ? 'Downloading...' : 'Download PDF'}
-                </button>
-                <button
-                  onClick={() => { setShowPrintPreview(false); setPrintPreviewData(null); }}
-                  className="btn-secondary"
-                >
+                </Button>
+                <Button type="button" variant="outline" onClick={() => { setShowPrintPreview(false); setPrintPreviewData(null); }}>
                   Cancel
-                </button>
+                </Button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-        {/* Confirm Generate Dialog */}
         <ConfirmDialog
           isOpen={showConfirmGenerate}
           title="Generate Missing Barcodes"
@@ -571,7 +522,7 @@ const Barcodes = () => {
           cancelText="Cancel"
           type="primary"
         />
-      </div>
+    </>
   );
 };
 

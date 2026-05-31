@@ -2,8 +2,6 @@ import React, { useState } from 'react';
 import { customersAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import SearchableSelect from '../Shared/SearchableSelect';
-import '../../styles/slide-in-panel.css';
-import './Customers.css';
 
 const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
   const [formData, setFormData] = useState({

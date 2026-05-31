@@ -4,6 +4,13 @@ import { rolesAPI, permissionsAPI } from '../../services/api';
 import RoleForm from './RoleForm';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import { toast } from '../../utils/toast';
+import { useModuleSettings } from '../../hooks/useModuleSettings';
+import {
+  usersEnableRoleCreate,
+  usersEnableRoleEdit,
+  usersEnableRoleDelete,
+  usersEnablePermissionCatalog,
+} from '../../utils/userDisplay';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
@@ -24,6 +31,11 @@ import {
 } from '../page';
 
 const Roles = () => {
+  const { settings: userSettings } = useModuleSettings('users');
+  const canCreateRole = usersEnableRoleCreate(userSettings);
+  const canEditRole = usersEnableRoleEdit(userSettings);
+  const canDeleteRole = usersEnableRoleDelete(userSettings);
+  const showPermissionCatalog = usersEnablePermissionCatalog(userSettings);
   const [roles, setRoles] = useState([]);
   const [permissions, setPermissions] = useState([]);
   const [permissionCatalog, setPermissionCatalog] = useState([]);
@@ -36,8 +48,10 @@ const Roles = () => {
 
   useEffect(() => {
     loadRoles();
-    loadPermissions();
-  }, []);
+    if (showPermissionCatalog) {
+      loadPermissions();
+    }
+  }, [showPermissionCatalog]);
 
   const loadRoles = async () => {
     setLoading(true);
@@ -139,10 +153,12 @@ const Roles = () => {
           title="Roles"
           description="Group permissions for managers, sales staff, and custom jobs."
         >
+          {canCreateRole ? (
           <Button onClick={handleCreate}>
             <Plus className="h-4 w-4" />
             Add role
           </Button>
+          ) : null}
         </PageHeader>
 
         <FilterBar>
@@ -159,8 +175,8 @@ const Roles = () => {
             icon={Shield}
             title="No roles"
             description="Create a role to bundle permissions for your team."
-            actionLabel="Add role"
-            onAction={handleCreate}
+            actionLabel={canCreateRole ? 'Add role' : undefined}
+            onAction={canCreateRole ? handleCreate : undefined}
           />
         ) : (
           <DataTable>
@@ -193,6 +209,7 @@ const Roles = () => {
                   </DataTableCell>
                   <DataTableCell align="right">
                     <div className="flex justify-end gap-1">
+                      {canEditRole ? (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -201,6 +218,8 @@ const Roles = () => {
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
+                      ) : null}
+                      {canDeleteRole ? (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -210,6 +229,7 @@ const Roles = () => {
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
+                      ) : null}
                     </div>
                   </DataTableCell>
                 </DataTableRow>
@@ -223,6 +243,7 @@ const Roles = () => {
             role={editingRole}
             permissions={permissions}
             permissionCatalog={permissionCatalog}
+            showPermissionCatalog={showPermissionCatalog}
             onClose={() => {
               setShowForm(false);
               setEditingRole(null);
