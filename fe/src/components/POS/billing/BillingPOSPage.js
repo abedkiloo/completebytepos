@@ -23,17 +23,20 @@ import CustomerFormModal from '../../Customers/CustomerFormModal';
 import ReceiptDialog from '../v2/ReceiptDialog';
 import { toast } from '../../../utils/toast';
 import { getSellableStock, isProductOutOfStock } from '../../../utils/productStock';
-
-const PAYMENT_MODES = [
-  { id: 'cash', label: 'Cash' },
-  { id: 'mpesa', label: 'UPI / M-PESA' },
-  { id: 'card', label: 'Card' },
-];
+import { useStoreSettings } from '../../../hooks/useStoreSettings';
+import { filterEnabledPaymentMethods } from '../../../utils/paymentMethods';
+import { isManagerOrAdminFromStorage } from '../../../utils/roleAccess';
 
 export default function BillingPOSPage() {
   const state = useBillingPOSState();
+  const { settings } = useStoreSettings();
+  const paymentModes = filterEnabledPaymentMethods(settings.enabled_payment_methods).map((m) => ({
+    id: m.id,
+    label: m.id === 'mpesa' ? 'UPI / M-PESA' : m.label,
+  }));
   const searchRef = useRef(null);
   const [showNewCustomer, setShowNewCustomer] = React.useState(false);
+  const canAddCustomer = isManagerOrAdminFromStorage();
 
   if (state.loadingHolding) {
     return (
@@ -123,9 +126,6 @@ export default function BillingPOSPage() {
                         >
                           <span className="min-w-0 flex-1">
                             <span className="block font-medium">{p.name}</span>
-                            {p.sku && (
-                              <span className="block text-xs opacity-80">{p.sku}</span>
-                            )}
                           </span>
                           <span className="flex shrink-0 flex-col items-end gap-0.5">
                             <span
@@ -203,9 +203,6 @@ export default function BillingPOSPage() {
                         <tr key={key} className="border-b last:border-0">
                           <td className="px-4 py-3">
                             <div className="font-medium">{item.name}</div>
-                            {item.sku && (
-                              <div className="text-xs text-muted-foreground">{item.sku}</div>
-                            )}
                           </td>
                           <td className="px-2 py-3 text-right tabular-nums text-muted-foreground">
                             {formatCurrency(item.mrp ?? item.price)}
@@ -282,15 +279,17 @@ export default function BillingPOSPage() {
                   <User className="h-4 w-4 text-primary" />
                   Customer
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 gap-1"
-                  onClick={() => setShowNewCustomer(true)}
-                >
-                  <UserPlus className="h-3.5 w-3.5" />
-                  New Customer
-                </Button>
+                {canAddCustomer && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1"
+                    onClick={() => setShowNewCustomer(true)}
+                  >
+                    <UserPlus className="h-3.5 w-3.5" />
+                    New Customer
+                  </Button>
+                )}
               </div>
               <div className="mb-2 flex items-center justify-between rounded-lg bg-primary/5 px-3 py-2">
                 <div>
@@ -401,8 +400,8 @@ export default function BillingPOSPage() {
                   />
                   Partial payment (balance on customer account)
                 </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {PAYMENT_MODES.map((m) => (
+                <div className={cn('grid gap-2', paymentModes.length <= 2 ? 'grid-cols-2' : 'grid-cols-3')}>
+                  {paymentModes.map((m) => (
                     <button
                       key={m.id}
                       type="button"
@@ -489,23 +488,25 @@ export default function BillingPOSPage() {
         />
       )}
 
-      <CustomerFormModal
-        isOpen={showNewCustomer}
-        onClose={() => setShowNewCustomer(false)}
-        onCustomerCreated={async (customer) => {
-          await state.loadCustomers();
-          state.setSelectedCustomer(customer);
-          state.setCustomerQuery('');
-          setShowNewCustomer(false);
-          toast.success('Customer added and selected for this sale');
-        }}
-      />
+      {canAddCustomer && (
+        <CustomerFormModal
+          isOpen={showNewCustomer}
+          onClose={() => setShowNewCustomer(false)}
+          onCustomerCreated={async (customer) => {
+            await state.loadCustomers();
+            state.setSelectedCustomer(customer);
+            state.setCustomerQuery('');
+            setShowNewCustomer(false);
+            toast.success('Customer added and selected for this sale');
+          }}
+        />
+      )}
 
       <ReceiptDialog
         sale={state.lastSale}
         open={state.showReceipt}
         onOpenChange={state.setShowReceipt}
-        autoPrint={false}
+        autoPrint={settings.receipt_auto_print}
       />
     </>
   );

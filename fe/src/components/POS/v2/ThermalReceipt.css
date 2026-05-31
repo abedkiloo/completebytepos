@@ -70,6 +70,10 @@
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+.receipt-thermal__row-right--price {
+  color: #15803d;
+  font-weight: 700;
+}
 .receipt-thermal__row--bold .receipt-thermal__row-left,
 .receipt-thermal__row--bold .receipt-thermal__row-right {
   font-weight: 700;
@@ -78,12 +82,22 @@
   font-size: 13pt;
   padding: 0.5mm 0;
 }
+.receipt-thermal__row--emphasised .receipt-thermal__row-right--price {
+  font-size: 14pt;
+  font-weight: 800;
+}
 .receipt-thermal__item {
   padding: 0.5mm 0;
 }
 .receipt-thermal__item-name {
   font-weight: 600;
   word-break: break-word;
+}
+.receipt-thermal__item-sku {
+  font-size: 9pt;
+  font-family: ui-monospace, monospace;
+  opacity: 0.65;
+  margin-top: 0.25mm;
 }
 .receipt-thermal__item-variant {
   font-weight: 400;

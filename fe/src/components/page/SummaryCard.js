@@ -12,7 +12,7 @@ const TONE_STYLES = {
 export function SummaryCard({ icon: Icon, label, value, tone = 'default', className }) {
   return (
     <Card className={cn('overflow-hidden', className)}>
-      <CardContent className="flex items-center gap-4 p-4">
+      <CardContent className="flex items-center gap-3 p-3">
         {Icon && (
           <div
             className={cn(
@@ -27,7 +27,7 @@ export function SummaryCard({ icon: Icon, label, value, tone = 'default', classN
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {label}
           </p>
-          <p className="truncate text-xl font-bold tabular-nums text-foreground">{value}</p>
+          <p className="truncate text-lg font-bold tabular-nums text-foreground">{value}</p>
         </div>
       </CardContent>
     </Card>

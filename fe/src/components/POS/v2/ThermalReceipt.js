@@ -46,10 +46,6 @@ export const ThermalReceipt = forwardRef(function ThermalReceipt(
   const items = sale.items || [];
   const dateLabel = formatReceiptDate(sale.created_at);
   const cashierLabel = sale.cashier_name || sale.cashier || '';
-  const customerLabel =
-    sale.customer_name ||
-    sale.customer?.name ||
-    (sale.customer_id ? null : 'Walk-in');
   const balance = (parseFloat(sale.total) || 0) - (parseFloat(sale.amount_paid) || 0);
   const change = parseFloat(sale.change) || 0;
   const isPaymentMpesa = sale.payment_method === 'mpesa';
@@ -66,7 +62,17 @@ export const ThermalReceipt = forwardRef(function ThermalReceipt(
     >
       {/* Header */}
       <header className="receipt-thermal__header">
+        {store.receiptLogoUrl && (
+          <img
+            src={store.receiptLogoUrl}
+            alt=""
+            className="receipt-thermal__logo mx-auto mb-1 max-h-12 object-contain"
+          />
+        )}
         <div className="receipt-thermal__store">{store.storeName}</div>
+        {store.receiptHeader && (
+          <div className="receipt-thermal__line-thin">{store.receiptHeader}</div>
+        )}
         {store.branchName && (
           <div className="receipt-thermal__branch">{store.branchName}</div>
         )}
@@ -90,7 +96,6 @@ export const ThermalReceipt = forwardRef(function ThermalReceipt(
         <ReceiptRow left="Receipt" right={sale.sale_number || '—'} bold />
         <ReceiptRow left="Date" right={dateLabel} />
         {cashierLabel && <ReceiptRow left="Cashier" right={cashierLabel} />}
-        {customerLabel && <ReceiptRow left="Customer" right={customerLabel} />}
       </section>
 
       <SingleRule />
@@ -101,7 +106,11 @@ export const ThermalReceipt = forwardRef(function ThermalReceipt(
           <div className="receipt-thermal__line-thin">No items.</div>
         ) : (
           items.map((item, index) => (
-            <ReceiptItem key={item.id ?? index} item={item} />
+            <ReceiptItem
+              key={item.id ?? index}
+              item={item}
+              showSku={store.showSku}
+            />
           ))
         )}
       </section>
@@ -113,23 +122,27 @@ export const ThermalReceipt = forwardRef(function ThermalReceipt(
         <ReceiptRow
           left="Subtotal"
           right={formatCurrency(sale.subtotal)}
+          price
         />
         {!!parseFloat(sale.discount_amount) && (
           <ReceiptRow
             left="Discount"
             right={`-${formatCurrency(sale.discount_amount)}`}
+            price
           />
         )}
         {!!parseFloat(sale.tax_amount) && (
           <ReceiptRow
             left={`VAT${sale.tax_rate ? ` (${sale.tax_rate}%)` : ''}`}
             right={formatCurrency(sale.tax_amount)}
+            price
           />
         )}
         {!!parseFloat(sale.delivery_cost) && (
           <ReceiptRow
             left="Delivery"
             right={formatCurrency(sale.delivery_cost)}
+            price
           />
         )}
       </section>
@@ -141,6 +154,7 @@ export const ThermalReceipt = forwardRef(function ThermalReceipt(
         right={formatCurrency(sale.total)}
         bold
         emphasised
+        price
       />
 
       <DoubleRule />
@@ -150,15 +164,17 @@ export const ThermalReceipt = forwardRef(function ThermalReceipt(
         <ReceiptRow
           left={paymentLabel}
           right={formatCurrency(sale.amount_paid)}
+          price
         />
         {(isPaymentCash || isPaymentMpesa) && change > 0 && (
-          <ReceiptRow left="Change" right={formatCurrency(change)} bold />
+          <ReceiptRow left="Change" right={formatCurrency(change)} bold price />
         )}
         {balance > 0.005 && (
           <ReceiptRow
             left="Balance (owed)"
             right={formatCurrency(balance)}
             bold
+            price
           />
         )}
         {isPaymentWallet && (
@@ -178,8 +194,9 @@ export const ThermalReceipt = forwardRef(function ThermalReceipt(
   );
 });
 
-function ReceiptItem({ item }) {
+function ReceiptItem({ item, showSku = false }) {
   const name = item.product_name || item.product?.name || 'Item';
+  const sku = item.product_sku || item.variant_sku || item.product?.sku || '';
   const variantParts = [item.size_name, item.color_name].filter(Boolean);
   const qty = parseFloat(item.quantity) || 0;
   const unit = parseFloat(item.unit_price) || 0;
@@ -197,24 +214,32 @@ function ReceiptItem({ item }) {
           </span>
         )}
       </div>
+      {showSku && sku && (
+        <div className="receipt-thermal__item-sku">{sku}</div>
+      )}
       <ReceiptRow
         left={`  ${qty} × ${formatCurrency(unit)}`}
         right={formatCurrency(subtotal)}
+        price
       />
     </div>
   );
 }
 
-function ReceiptRow({ left, right, bold = false, emphasised = false }) {
+function ReceiptRow({ left, right, bold = false, emphasised = false, price = false }) {
   const className = [
     'receipt-thermal__row',
     bold && 'receipt-thermal__row--bold',
     emphasised && 'receipt-thermal__row--emphasised',
   ].filter(Boolean).join(' ');
+  const rightClass = [
+    'receipt-thermal__row-right',
+    price && 'receipt-thermal__row-right--price',
+  ].filter(Boolean).join(' ');
   return (
     <div className={className}>
       <span className="receipt-thermal__row-left">{left}</span>
-      <span className="receipt-thermal__row-right">{right}</span>
+      <span className={rightClass}>{right}</span>
     </div>
   );
 }
@@ -323,6 +348,10 @@ export const THERMAL_RECEIPT_CSS = String.raw`
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+.receipt-thermal__row-right--price {
+  color: #15803d;
+  font-weight: 700;
+}
 .receipt-thermal__row--bold .receipt-thermal__row-left,
 .receipt-thermal__row--bold .receipt-thermal__row-right {
   font-weight: 700;
@@ -331,12 +360,22 @@ export const THERMAL_RECEIPT_CSS = String.raw`
   font-size: 13pt;
   padding: 0.5mm 0;
 }
+.receipt-thermal__row--emphasised .receipt-thermal__row-right--price {
+  font-size: 14pt;
+  font-weight: 800;
+}
 .receipt-thermal__item {
   padding: 0.5mm 0;
 }
 .receipt-thermal__item-name {
   font-weight: 600;
   word-break: break-word;
+}
+.receipt-thermal__item-sku {
+  font-size: 9pt;
+  font-family: ui-monospace, monospace;
+  opacity: 0.65;
+  margin-top: 0.25mm;
 }
 .receipt-thermal__item-variant {
   font-weight: 400;

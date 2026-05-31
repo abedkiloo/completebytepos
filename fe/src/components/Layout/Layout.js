@@ -31,9 +31,10 @@ import {
   KeyRound,
   Building2,
   Calculator,
+  SlidersHorizontal,
 } from 'lucide-react';
 
-import { authAPI, modulesAPI } from '../../services/api';
+import { modulesAPI, storeSettingsAPI } from '../../services/api';
 import BranchSelector from '../BranchSelector/BranchSelector';
 import { Button } from '../ui/button';
 import { Separator } from '../ui/separator';
@@ -48,6 +49,10 @@ import {
 import { cn } from '../../lib/cn';
 import { canSeeNavItem, buildNavContext } from '../../utils/navAccess';
 import { normalizeModuleSettings, readCachedModules } from '../../utils/moduleCache';
+import { clearAuthState, logoutLocally, clearSessionTeardownFlag } from '../../utils/authSession';
+import { isManagerOrAdminFromStorage } from '../../utils/roleAccess';
+import { stopIdleSessionWatch } from '../../utils/sessionIdle';
+import { cacheStoreSettings } from '../../utils/storeSettingsCache';
 
 /**
  * Navigation tree.
@@ -79,6 +84,8 @@ const NAV_SECTIONS = [
     items: [
       { to: '/pos', label: 'POS', icon: ShoppingCart, feature: ['sales', 'pos'] },
       { to: '/pos/billing', label: 'Terminal POS', icon: Receipt, feature: ['sales', 'billing_pos'] },
+      { to: '/products', label: 'Products', icon: Package, salesCatalogItem: true, module: 'products' },
+      { to: '/categories', label: 'Categories', icon: FolderTree, salesCatalogItem: true, module: 'products' },
       { to: '/normal-sale', label: 'Normal Sale', icon: Briefcase, feature: ['sales', 'normal_sale'] },
       { to: '/sales', label: 'Sales History', icon: DollarSign, feature: ['sales', 'sales_history'] },
     ],
@@ -158,6 +165,7 @@ const NAV_SECTIONS = [
       { to: '/users', label: 'User Management', icon: UsersIcon, feature: ['settings', 'user_management'] },
       { to: '/roles', label: 'Role Management', icon: ShieldCheck, feature: ['settings', 'role_management'] },
       { to: '/module-settings', label: 'Module Settings', icon: KeyRound, requireSuperAdmin: true },
+      { to: '/system-settings', label: 'System Settings', icon: SlidersHorizontal, requireSuperAdmin: true },
       { to: '/branches', label: 'Branch Management', icon: Building2, requireSuperAdmin: true },
     ],
   },
@@ -180,6 +188,7 @@ const Layout = ({ children }) => {
   // Initially everything collapsed except the most-used section to reduce
   // visual noise. Cashiers can pop sections open as they need them.
   const [expanded, setExpanded] = useState({ sales: true, inventory: true });
+  const [navTick, setNavTick] = useState(0);
 
   // Read user once per mount, not on every render (the original re-parsed the
   // localStorage JSON on every commit which broke dependency arrays). Stable
@@ -201,6 +210,7 @@ const Layout = ({ children }) => {
     userProfile.role === 'super_admin' ||
     userProfile.is_super_admin ||
     userProfile.custom_role?.name === 'Super Admin';
+  const isManagerOrAdmin = isManagerOrAdminFromStorage();
 
   const loadModuleSettings = useCallback(async () => {
     try {
@@ -218,9 +228,20 @@ const Layout = ({ children }) => {
     }
   }, []);
 
+  const loadStoreSettings = useCallback(async () => {
+    try {
+      const response = await storeSettingsAPI.get();
+      cacheStoreSettings(response.data);
+      window.dispatchEvent(new CustomEvent('storeSettingsUpdated', { detail: response.data }));
+    } catch {
+      /* use cached defaults */
+    }
+  }, []);
+
   useEffect(() => {
     loadModuleSettings();
-  }, [loadModuleSettings]);
+    loadStoreSettings();
+  }, [loadModuleSettings, loadStoreSettings]);
 
   useEffect(() => {
     const onModulesUpdated = (event) => {
@@ -228,8 +249,15 @@ const Layout = ({ children }) => {
       setModuleSettings(flat);
       setLoadingModules(false);
     };
+    const onStoreSettingsUpdated = () => {
+      setNavTick((t) => t + 1);
+    };
     window.addEventListener('moduleSettingsUpdated', onModulesUpdated);
-    return () => window.removeEventListener('moduleSettingsUpdated', onModulesUpdated);
+    window.addEventListener('storeSettingsUpdated', onStoreSettingsUpdated);
+    return () => {
+      window.removeEventListener('moduleSettingsUpdated', onModulesUpdated);
+      window.removeEventListener('storeSettingsUpdated', onStoreSettingsUpdated);
+    };
   }, []);
 
   // Keep sidebar in sync with viewport size. < 1024 px = mobile; sidebar is
@@ -251,7 +279,7 @@ const Layout = ({ children }) => {
 
   const itemVisible = useCallback(
     (item, sectionId) => canSeeNavItem(item, sectionId, navCtx),
-    [navCtx]
+    [navCtx, navTick]
   );
 
   const isActive = useCallback(
@@ -273,13 +301,12 @@ const Layout = ({ children }) => {
 
   const handleLogout = async () => {
     try {
-      const refreshToken = localStorage.getItem('refresh_token');
-      if (refreshToken) await authAPI.logout(refreshToken);
+      stopIdleSessionWatch();
+      await logoutLocally();
     } catch (e) {
-      // Logout endpoint failure shouldn't trap the user in the app.
+      clearAuthState();
     } finally {
-      ['access_token', 'refresh_token', 'isAuthenticated', 'user', 'enabled_modules']
-        .forEach((key) => localStorage.removeItem(key));
+      clearSessionTeardownFlag();
       navigate('/login');
     }
   };
@@ -327,7 +354,7 @@ const Layout = ({ children }) => {
         </Link>
 
         <div className="ml-auto flex items-center gap-2">
-          <BranchSelector showAllOption={isSuperAdmin} />
+          {isManagerOrAdmin && <BranchSelector showAllOption={isSuperAdmin} />}
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

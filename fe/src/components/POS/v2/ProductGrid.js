@@ -46,7 +46,7 @@ export function ProductGrid({
             ref={searchInputRef}
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search products, SKU, or scan a barcode…  (F2)"
+            placeholder="Search products or scan a barcode…  (F2)"
             className="h-11 pl-10 text-base"
             autoComplete="off"
             inputMode="search"
@@ -212,9 +212,6 @@ function ProductTile({ product, onClick }) {
         >
           {product.name}
         </span>
-        {product.sku && (
-          <span className="text-[11px] font-mono text-muted-foreground">{product.sku}</span>
-        )}
         <span className="mt-auto text-base font-semibold text-foreground">
           {formatCurrency(product.price)}
         </span>
@@ -248,7 +245,7 @@ function EmptyState({ searchQuery }) {
         <p className="font-medium text-foreground">No products match</p>
         <p className="mt-1 text-sm text-muted-foreground">
           {searchQuery
-            ? `Nothing for "${searchQuery}". Try a different name, SKU, or category.`
+            ? `Nothing for "${searchQuery}". Try a different name or category.`
             : 'No products in this category yet. Add some from the Products screen.'}
         </p>
       </div>

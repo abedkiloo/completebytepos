@@ -4,7 +4,7 @@ import { toast } from '../../utils/toast';
 import SearchableSelect from '../Shared/SearchableSelect';
 import '../../styles/slide-in-panel.css';
 
-const UserForm = ({ user, roles, onClose }) => {
+const UserForm = ({ user, roles, onClose, hideStatusToggles = false }) => {
   const [formData, setFormData] = useState({
     username: '',
     email: '',
@@ -227,6 +227,7 @@ const UserForm = ({ user, roles, onClose }) => {
               </label>
             </div>
 
+            {!hideStatusToggles && (
             <div className="form-group checkbox-group">
               <label>
                 <input
@@ -238,6 +239,7 @@ const UserForm = ({ user, roles, onClose }) => {
                 Active
               </label>
             </div>
+            )}
           </div>
 
           </form>

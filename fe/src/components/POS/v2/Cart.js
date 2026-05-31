@@ -38,8 +38,8 @@ export function Cart({
 }) {
   if (items.length === 0) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-muted-foreground">
-        <ShoppingCart className="h-12 w-12 opacity-40" />
+      <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center text-muted-foreground">
+        <ShoppingCart className="h-10 w-10 opacity-40" />
         <div>
           <p className="font-medium text-foreground">Cart is empty</p>
           <p className="mt-1 text-sm">Tap a product on the left to add it.</p>
@@ -50,7 +50,7 @@ export function Cart({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center justify-between border-b px-4 py-2">
+      <div className="flex items-center justify-between border-b px-3 py-1.5">
         <span className="text-sm font-medium text-muted-foreground">
           {items.length} {items.length === 1 ? 'line' : 'lines'} ·{' '}
           {items.reduce((s, i) => s + i.quantity, 0)} items
@@ -96,7 +96,7 @@ function CartLine({ item, onAdjust, onRemove }) {
   return (
     <li
       className={cn(
-        'flex items-start gap-3 px-4 py-3 transition-colors',
+        'flex items-start gap-2 px-3 py-2 transition-colors',
         over && 'bg-destructive/5'
       )}
     >
@@ -116,14 +116,12 @@ function CartLine({ item, onAdjust, onRemove }) {
         </div>
 
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-          {item.sku && <span className="font-mono">{item.sku}</span>}
-          {variantLabel && (
+          {variantLabel ? (
             <>
-              <span>·</span>
               <span>{variantLabel}</span>
+              <span>·</span>
             </>
-          )}
-          <span>·</span>
+          ) : null}
           <span>{formatCurrency(item.price)} each</span>
           <StockChip stock={stock} />
         </div>

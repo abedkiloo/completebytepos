@@ -33,6 +33,8 @@ import ReceiptDialog from './ReceiptDialog';
 import VariantSelector from '../VariantSelector';
 import CustomerFormModal from '../../Customers/CustomerFormModal';
 import BranchSelector from '../../BranchSelector/BranchSelector';
+import { useStoreSettings } from '../../../hooks/useStoreSettings';
+import { isManagerOrAdminFromStorage } from '../../../utils/roleAccess';
 
 /**
  * Redesigned Point-of-Sale screen.
@@ -55,6 +57,8 @@ import BranchSelector from '../../BranchSelector/BranchSelector';
 export default function POSPage() {
   const navigate = useNavigate();
   const state = usePOSState();
+  const { settings } = useStoreSettings();
+  const canAddCustomer = isManagerOrAdminFromStorage();
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -163,14 +167,20 @@ export default function POSPage() {
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          <BranchSelector />
-          <Separator orientation="vertical" className="hidden h-6 sm:block" />
+          {canAddCustomer && (
+            <>
+              <BranchSelector />
+              <Separator orientation="vertical" className="hidden h-6 sm:block" />
+            </>
+          )}
           <Button variant="ghost" size="icon" onClick={handleRefresh} aria-label="Refresh products">
             <RefreshCw className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={() => navigate('/reports')} aria-label="Reports">
-            <BarChart3 className="h-4 w-4" />
-          </Button>
+          {canAddCustomer && (
+            <Button variant="ghost" size="icon" onClick={() => navigate('/reports')} aria-label="Reports">
+              <BarChart3 className="h-4 w-4" />
+            </Button>
+          )}
           <Button variant="ghost" size="icon" onClick={handleReprintLast} aria-label="Reprint last receipt">
             <Printer className="h-4 w-4" />
           </Button>
@@ -227,13 +237,13 @@ export default function POSPage() {
         </section>
 
         {/* Right: cart + checkout */}
-        <aside className="flex w-[24rem] shrink-0 flex-col border-l bg-background lg:w-[26rem] xl:w-[28rem]">
-          <div className="border-b px-4 py-3">
+        <aside className="flex w-[18rem] shrink-0 flex-col border-l bg-background lg:w-[20rem]">
+          <div className="border-b px-3 py-2">
             <CustomerPicker
               customers={state.customers}
               selectedCustomer={state.selectedCustomer}
               onSelect={state.setSelectedCustomer}
-              onAddNew={() => setShowCustomerForm(true)}
+              onAddNew={canAddCustomer ? () => setShowCustomerForm(true) : undefined}
             />
           </div>
 
@@ -274,6 +284,7 @@ export default function POSPage() {
             onPay={state.requestPayment}
             itemCount={state.cartItemCount}
             hasOversell={state.hasOversell}
+            enabledPaymentMethods={settings.enabled_payment_methods}
           />
         </aside>
       </div>
@@ -313,9 +324,10 @@ export default function POSPage() {
         sale={state.lastSale}
         open={state.showReceipt}
         onOpenChange={state.setShowReceipt}
+        autoPrint={settings.receipt_auto_print}
       />
 
-      {showCustomerForm && (
+      {canAddCustomer && showCustomerForm && (
         <CustomerFormModal
           onSave={handleCustomerCreated}
           onClose={() => setShowCustomerForm(false)}

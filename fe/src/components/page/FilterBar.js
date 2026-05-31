@@ -8,14 +8,14 @@ import { Button } from '../ui/button';
 export function FilterBar({ children, className }) {
   return (
     <Card className={cn('shadow-sm', className)}>
-      <CardContent className="flex flex-wrap items-end gap-4 p-4">{children}</CardContent>
+      <CardContent className="flex flex-wrap items-end gap-2 p-3">{children}</CardContent>
     </Card>
   );
 }
 
 export function FilterField({ label, children, className }) {
   return (
-    <div className={cn('flex min-w-[140px] flex-1 flex-col gap-1.5', className)}>
+    <div className={cn('flex min-w-[140px] flex-1 flex-col gap-1', className)}>
       {label && (
         <label className="text-xs font-medium text-muted-foreground">{label}</label>
       )}

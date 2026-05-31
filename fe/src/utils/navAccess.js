@@ -13,6 +13,7 @@ import {
   isModuleEnabledInSettings,
   isFeatureEnabledInSettings,
 } from './moduleCache';
+import { readCachedStoreSettings } from './storeSettingsCache';
 
 /** Section ids visible per persona (`null` = all sections). */
 export const VISIBLE_SECTIONS = {
@@ -57,6 +58,12 @@ export function isSuperAdminFromStorage() {
 }
 
 function sectionAllowedForPersona(sectionId, persona) {
+  if (persona === PERSONA.SALES && sectionId === 'inventory') {
+    return readCachedStoreSettings().allow_sales_add_products;
+  }
+  if (persona === PERSONA.SALES && sectionId === 'sales') {
+    return true;
+  }
   const allowed = VISIBLE_SECTIONS[persona];
   if (allowed === null) return true;
   return allowed.includes(sectionId);
@@ -80,6 +87,13 @@ export function canSeeNavItem(item, sectionId, ctx) {
 
   if (persona === PERSONA.SALES) {
     const path = item.to.split('?')[0];
+    if (item.salesCatalogItem) {
+      return readCachedStoreSettings().allow_sales_add_products;
+    }
+    if (path === '/products' || path === '/categories') {
+      return readCachedStoreSettings().allow_sales_add_products;
+    }
+    if (sectionId === 'inventory') return false;
     if (sectionId === 'sales' && !SALES_ONLY_PATHS.has(path)) return false;
     if (sectionId === 'settings') return false;
     if (sectionId === 'reports' || sectionId === 'accounting') return false;

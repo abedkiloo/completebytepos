@@ -1,0 +1,35 @@
+import {
+  DEFAULT_STORE_SETTINGS,
+  cacheStoreSettings,
+  readCachedStoreSettings,
+  clearStoreSettingsCache,
+} from './storeSettingsCache';
+
+describe('storeSettingsCache', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  test('readCachedStoreSettings returns defaults when empty', () => {
+    expect(readCachedStoreSettings()).toEqual(DEFAULT_STORE_SETTINGS);
+  });
+
+  test('cacheStoreSettings merges and persists', () => {
+    cacheStoreSettings({
+      allow_sales_add_products: true,
+      enabled_payment_methods: ['cash'],
+      receipt_footer_text: 'Karibu',
+    });
+    const stored = readCachedStoreSettings();
+    expect(stored.allow_sales_add_products).toBe(true);
+    expect(stored.enabled_payment_methods).toEqual(['cash']);
+    expect(stored.receipt_footer_text).toBe('Karibu');
+    expect(stored.sales_catalog_skip_pricing).toBe(true);
+  });
+
+  test('clearStoreSettingsCache removes stored values', () => {
+    cacheStoreSettings({ receipt_auto_print: true });
+    clearStoreSettingsCache();
+    expect(readCachedStoreSettings()).toEqual(DEFAULT_STORE_SETTINGS);
+  });
+});

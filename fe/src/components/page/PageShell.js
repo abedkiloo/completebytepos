@@ -9,7 +9,7 @@ export function PageShell({ children, className, narrow }) {
   return (
     <div
       className={cn(
-        'mx-auto w-full space-y-6 p-4 md:p-6',
+        'mx-auto w-full space-y-3 p-2 md:p-3',
         narrow ? 'max-w-4xl' : 'max-w-7xl',
         className
       )}

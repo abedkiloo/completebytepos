@@ -3,7 +3,7 @@ import { categoriesAPI } from '../../services/api';
 import SearchableSelect from '../Shared/SearchableSelect';
 import './Categories.css';
 
-const CategoryForm = ({ category, onClose, onSave, categories = [] }) => {
+const CategoryForm = ({ category, onClose, onSave, categories = [], hideStatusToggles = false }) => {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -132,6 +132,7 @@ const CategoryForm = ({ category, onClose, onSave, categories = [] }) => {
             <small>Select a parent category to create a subcategory</small>
           </div>
 
+          {!hideStatusToggles && (
           <div className="form-group">
             <label className="checkbox-label">
               <input
@@ -144,6 +145,7 @@ const CategoryForm = ({ category, onClose, onSave, categories = [] }) => {
             </label>
             <small>Inactive categories won't appear in product selection</small>
           </div>
+          )}
 
           <div className="form-actions">
             <button type="button" onClick={onClose}>Cancel</button>

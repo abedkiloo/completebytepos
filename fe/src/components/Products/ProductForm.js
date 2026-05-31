@@ -8,7 +8,7 @@ import SupplierForm from '../Suppliers/SupplierForm';
 import '../../styles/slide-in-panel.css';
 import './Products.css';
 
-const ProductForm = ({ product, categories = [], onClose, onSave }) => {
+const ProductForm = ({ product, categories = [], onClose, onSave, catalogOnly = false, hideStatusToggles = false }) => {
   const variantsEnabled = useProductVariantsEnabled();
   const [formData, setFormData] = useState({
     name: '',
@@ -315,28 +315,30 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
       newErrors.name = 'Product name is required';
     }
     
-    if (!formData.selling_price || parseFloat(formData.selling_price) < 0) {
-      newErrors.selling_price = 'Selling price is required';
-    }
+    if (!catalogOnly) {
+      if (!formData.selling_price || parseFloat(formData.selling_price) < 0) {
+        newErrors.selling_price = 'Selling price is required';
+      }
 
-    if (formData.mrp && parseFloat(formData.mrp) < 0) {
-      newErrors.mrp = 'MRP must be zero or positive';
-    }
+      if (formData.mrp && parseFloat(formData.mrp) < 0) {
+        newErrors.mrp = 'MRP must be zero or positive';
+      }
 
-    if (
-      formData.mrp &&
-      formData.selling_price &&
-      parseFloat(formData.mrp) < parseFloat(formData.selling_price)
-    ) {
-      newErrors.mrp = 'MRP should be at least the selling price';
-    }
-    
-    if (formData.cost && parseFloat(formData.cost) < 0) {
-      newErrors.cost = 'Cost must be positive';
-    }
-    
-    if (parseFloat(formData.selling_price) < parseFloat(formData.cost || 0)) {
-      newErrors.selling_price = 'Selling price should be greater than or equal to cost';
+      if (
+        formData.mrp &&
+        formData.selling_price &&
+        parseFloat(formData.mrp) < parseFloat(formData.selling_price)
+      ) {
+        newErrors.mrp = 'MRP should be at least the selling price';
+      }
+
+      if (formData.cost && parseFloat(formData.cost) < 0) {
+        newErrors.cost = 'Cost must be positive';
+      }
+
+      if (parseFloat(formData.selling_price) < parseFloat(formData.cost || 0)) {
+        newErrors.selling_price = 'Selling price should be greater than or equal to cost';
+      }
     }
     
     setErrors(newErrors);
@@ -353,6 +355,11 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
     setLoading(true);
     try {
       const payload = { ...formData };
+      if (catalogOnly) {
+        payload.selling_price = 0;
+        payload.mrp = 0;
+        payload.cost = 0;
+      }
       if (!variantsEnabled) {
         payload.has_variants = false;
         payload.available_sizes = [];
@@ -507,7 +514,7 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
             </div>
           </div>
           ) : (
-            <p className="text-sm text-muted-foreground" style={{ marginBottom: '1rem' }}>
+            <p className="mb-2 text-sm text-muted-foreground">
               Size/color variants are turned off. Enable{' '}
               <strong>Products → Product Variants</strong> in Module Settings if you need them.
             </p>
@@ -597,6 +604,7 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
             </div>
           )}
 
+          {!catalogOnly && (
           <div className="form-row">
             <div className="form-group">
               <label>MRP (KES)</label>
@@ -628,7 +636,9 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
               <small className="text-muted">Used at POS, on invoices, and in all reports</small>
             </div>
           </div>
+          )}
 
+          {!catalogOnly && (
           <div className="form-row">
             <div className="form-group">
               <label>Cost (KES)</label>
@@ -643,6 +653,7 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
               {errors.cost && <span className="error">{errors.cost}</span>}
             </div>
           </div>
+          )}
 
           <div className="form-row">
             <div className="form-group">
@@ -745,6 +756,7 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
             </div>
           </div>
 
+          {!catalogOnly && (
           <div className="form-row">
             <div className="form-group">
               <label>Tax Rate (%)</label>
@@ -757,7 +769,10 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
                 min="0"
               />
             </div>
+          </div>
+          )}
 
+          <div className="form-row">
             <div className="form-group">
               <label>Image</label>
               <input
@@ -791,6 +806,7 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
               />
               Track Stock
             </label>
+            {!catalogOnly && (
             <label>
               <input
                 type="checkbox"
@@ -800,6 +816,8 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
               />
               Taxable
             </label>
+            )}
+            {!hideStatusToggles && (
             <label>
               <input
                 type="checkbox"
@@ -809,6 +827,7 @@ const ProductForm = ({ product, categories = [], onClose, onSave }) => {
               />
               Active
             </label>
+            )}
           </div>
 
           </form>

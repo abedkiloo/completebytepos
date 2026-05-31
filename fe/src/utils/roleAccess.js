@@ -3,6 +3,7 @@
  * Data comes from GET /api/accounts/auth/me/ (stored after login).
  */
 import { normalizeModuleSettings, isRichModulePayload } from './moduleCache';
+import { readCachedStoreSettings } from './storeSettingsCache';
 
 export const PERSONA = {
   SUPER_ADMIN: 'super_admin',
@@ -29,6 +30,7 @@ export const APP_ROUTE_PREFIXES = [
   '/suppliers',
   '/normal-sale',
   '/module-settings',
+  '/system-settings',
   '/invoices',
   '/branches',
 ];
@@ -37,6 +39,7 @@ const SUPER_ADMIN_ONLY_PREFIXES = new Set([
   '/users',
   '/roles',
   '/module-settings',
+  '/system-settings',
   '/branches',
 ]);
 
@@ -81,6 +84,24 @@ export function resolvePersona(mePayload) {
   return PERSONA.SALES;
 }
 
+export function getPersonaFromStorage() {
+  const { user, profile } = getStoredAuth();
+  return resolvePersona({
+    user,
+    profile,
+    is_super_admin:
+      user?.is_superuser ||
+      profile?.role === 'super_admin' ||
+      profile?.is_super_admin,
+  });
+}
+
+/** Super admin or manager — not front-line sales/cashier. */
+export function isManagerOrAdminFromStorage() {
+  const persona = getPersonaFromStorage();
+  return persona === PERSONA.SUPER_ADMIN || persona === PERSONA.MANAGER;
+}
+
 export function hasPermission(permissions, module, action) {
   if (!Array.isArray(permissions)) return false;
   const key = `${module}.${action}`;
@@ -115,7 +136,17 @@ export const ROUTE_MODULE_MAP = {
   '/roles': 'settings',
   '/module-settings': 'settings',
   '/branches': 'settings',
+  '/system-settings': 'settings',
 };
+
+function salesRoutePrefixes() {
+  const base = ALLOWED_ROUTE_PREFIXES[PERSONA.SALES];
+  const store = readCachedStoreSettings();
+  if (store.allow_sales_add_products) {
+    return [...base, '/products', '/categories'];
+  }
+  return base;
+}
 
 export function canAccessRoute(persona, pathname, options = {}) {
   const { isSuperAdmin = false, moduleSettings = null, loadingModules = false } = options;
@@ -124,7 +155,10 @@ export function canAccessRoute(persona, pathname, options = {}) {
     return true;
   }
 
-  const allowed = ALLOWED_ROUTE_PREFIXES[persona];
+  const allowed =
+    persona === PERSONA.SALES
+      ? salesRoutePrefixes()
+      : ALLOWED_ROUTE_PREFIXES[persona];
   const list = allowed === null ? APP_ROUTE_PREFIXES : allowed || ALLOWED_ROUTE_PREFIXES[PERSONA.SALES];
   const routeAllowed = list.some((prefix) => pathMatchesPrefix(pathname, prefix));
   if (!routeAllowed) return false;

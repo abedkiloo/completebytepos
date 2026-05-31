@@ -31,6 +31,27 @@ export function isProductVariantsEnabled() {
   return isModuleFeatureEnabled('products', 'product_variants', false);
 }
 
+/** Terminal POS (invoices, held carts) — off unless enabled in Module Settings. */
+export function isBillingPosEnabled() {
+  return isModuleFeatureEnabled('sales', 'billing_pos', false);
+}
+
+/** Retail POS (fast walk-in checkout). */
+export function isRetailPosEnabled() {
+  return isModuleFeatureEnabled('sales', 'pos', true);
+}
+
+/** Primary checkout route: Terminal POS when active, otherwise Retail POS. */
+export function getDefaultPosRoute() {
+  if (isBillingPosEnabled()) {
+    return '/pos/billing';
+  }
+  if (isRetailPosEnabled()) {
+    return '/pos';
+  }
+  return '/pos/billing';
+}
+
 /**
  * When variants are disabled at POS, sell the parent product using
  * aggregated variant stock/price if the catalogue was set up with variants.

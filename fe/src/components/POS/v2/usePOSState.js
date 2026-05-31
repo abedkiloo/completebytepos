@@ -248,6 +248,11 @@ export function usePOSState() {
         toast.warning(`${product.name} is out of stock`);
         return;
       }
+      const salePrice = parseFloat(product.price ?? product.selling_price ?? 0);
+      if (!salePrice || salePrice <= 0) {
+        toast.warning(`${product.name} has no selling price yet. Ask a manager to set pricing.`);
+        return;
+      }
       const hasSizes =
         (product.available_sizes_detail?.length || 0) > 0 ||
         (product.available_sizes?.length || 0) > 0;

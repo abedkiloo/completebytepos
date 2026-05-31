@@ -50,6 +50,12 @@ const SearchableSelect = ({
 
   const selectedOption = options.find(opt => String(opt.id || opt.value) === String(value));
 
+  const optionKey = (option, index) => {
+    const v = option.id ?? option.value;
+    const base = v != null && v !== '' ? String(v) : 'option';
+    return `${base}-${index}`;
+  };
+
   const handleSelect = (option) => {
     const optionValue = option.id || option.value;
     onChange({
@@ -97,12 +103,12 @@ const SearchableSelect = ({
 
           <div className="searchable-select-options">
             {filteredOptions.length > 0 ? (
-              filteredOptions.map((option) => {
+              filteredOptions.map((option, index) => {
                 const optionValue = option.id || option.value;
                 const isSelected = String(optionValue) === String(value);
                 return (
                   <div
-                    key={optionValue}
+                    key={optionKey(option, index)}
                     className={`searchable-select-option ${isSelected ? 'selected' : ''}`}
                     onClick={() => handleSelect(option)}
                   >
@@ -142,11 +148,11 @@ const SearchableSelect = ({
         disabled={disabled}
         style={{ display: 'none' }}
       >
-        <option value="">{placeholder}</option>
-        {options.map(option => {
+        <option key="__placeholder__" value="">{placeholder}</option>
+        {options.map((option, index) => {
           const optionValue = option.id || option.value;
           return (
-            <option key={optionValue} value={String(optionValue)}>
+            <option key={optionKey(option, index)} value={String(optionValue)}>
               {option.name || option.label}
             </option>
           );

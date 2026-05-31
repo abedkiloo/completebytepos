@@ -14,6 +14,7 @@ import './App.css';
 import './styles/responsive.css';
 import './styles/transitions.css';
 import './styles/mobile-fixes.css';
+import './styles/forms-compact.css';
 
 const Login = lazy(() => import('./components/Auth/Login'));
 const Dashboard = lazy(() => import('./components/Dashboard/Dashboard'));
@@ -36,6 +37,7 @@ const NormalSale = lazy(() => import('./components/NormalSale/NormalSale'));
 const ModuleSettings = lazy(() => import('./components/ModuleSettings/ModuleSettings'));
 const Invoices = lazy(() => import('./components/Invoices/Invoices'));
 const Branches = lazy(() => import('./components/Branches/Branches'));
+const SystemSettings = lazy(() => import('./components/Settings/SystemSettings'));
 const Installation = lazy(() => import('./components/Installation/Installation'));
 
 const ProtectedRoute = () => {
@@ -156,6 +158,7 @@ function App() {
                 <Route path="/suppliers" element={<Suppliers />} />
                 <Route path="/normal-sale" element={<NormalSale />} />
                 <Route path="/module-settings" element={<ModuleSettings />} />
+                <Route path="/system-settings" element={<SystemSettings />} />
                 <Route path="/invoices" element={<Invoices />} />
                 <Route path="/branches" element={<Branches />} />
               </Route>

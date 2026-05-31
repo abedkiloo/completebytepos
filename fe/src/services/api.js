@@ -1,8 +1,11 @@
 import axios from 'axios';
 import { resolveApiBaseUrl } from '../config/apiBaseUrl';
+import {
+  isSessionTeardownActive,
+  logoutAndRedirect,
+} from '../utils/authSession';
 
 const API_BASE_URL = resolveApiBaseUrl();
-console.log(`[API] ${API_BASE_URL}`);
 
 // Only add ngrok header if using ngrok URL
 const isNgrokUrl = API_BASE_URL.includes('ngrok');
@@ -20,8 +23,55 @@ const api = axios.create({
 
 // Get token from localStorage
 const getToken = () => {
+  if (isSessionTeardownActive()) return null;
   return localStorage.getItem('access_token');
 };
+
+function isAuthBypassUrl(url = '') {
+  return (
+    url.includes('/token/refresh/') ||
+    url.includes('/accounts/auth/logout/') ||
+    url.includes('/accounts/auth/login/') ||
+    url.includes('/auth/login')
+  );
+}
+
+/** Single in-flight refresh so parallel 401s do not stampede the server. */
+let refreshPromise = null;
+
+async function refreshAccessToken() {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (!refreshToken) {
+      throw new Error('No refresh token');
+    }
+
+    const refreshHeaders = { 'Content-Type': 'application/json' };
+    if (isNgrokUrl) {
+      refreshHeaders['ngrok-skip-browser-warning'] = 'true';
+    }
+
+    const response = await axios.post(
+      `${API_BASE_URL}/token/refresh/`,
+      { refresh: refreshToken },
+      { headers: refreshHeaders, timeout: 8000 }
+    );
+
+    const { access } = response.data || {};
+    if (!access) {
+      throw new Error('Refresh response missing access token');
+    }
+
+    localStorage.setItem('access_token', access);
+    return access;
+  })().finally(() => {
+    refreshPromise = null;
+  });
+
+  return refreshPromise;
+}
 
 // Request interceptor - Add JWT token and branch ID to requests
 api.interceptors.request.use(
@@ -43,6 +93,7 @@ api.interceptors.request.use(
       config.url.includes('/settings/tenants') ||
       config.url.includes('/settings/setup-status') ||
       config.url.includes('/settings/fresh-install') ||
+      config.url.includes('/settings/store-settings') ||
       config.url.includes('/token/')
     );
     
@@ -99,62 +150,37 @@ api.interceptors.response.use(
   },
   async (error) => {
     const originalRequest = error.config || {};
+    const url = originalRequest.url || '';
+    const status = error.response?.status;
 
-    // If 401 and not already retried, try to refresh token
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-
-      try {
-        const refreshToken = localStorage.getItem('refresh_token');
-        if (refreshToken) {
-          const refreshHeaders = {};
-          if (isNgrokUrl) {
-            refreshHeaders['ngrok-skip-browser-warning'] = 'true';
-          }
-          const response = await axios.post(`${API_BASE_URL}/token/refresh/`, {
-            refresh: refreshToken
-          }, {
-            headers: refreshHeaders,
-          });
-          
-          const { access } = response.data;
-          localStorage.setItem('access_token', access);
-          
-          // Retry original request with new token
-          originalRequest.headers.Authorization = `Bearer ${access}`;
-          return api(originalRequest);
-        }
-      } catch (refreshError) {
-        // Refresh failed, logout user
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        localStorage.removeItem('user');
-        localStorage.removeItem('isAuthenticated');
-        window.location.href = '/login';
-        return Promise.reject(refreshError);
-      }
+    if (status !== 401) {
+      return Promise.reject(error);
     }
 
-    // If still 401 after refresh attempt, handle according to request type
-    if (error.response?.status === 401) {
-      const url = originalRequest.url || '';
-      const isLoginRequest =
-        url.includes('/accounts/auth/login') ||
-        url.includes('/auth/login');
+    // Never recurse on auth endpoints or while tearing down the session.
+    if (isAuthBypassUrl(url) || isSessionTeardownActive()) {
+      return Promise.reject(error);
+    }
 
-      // For login requests, DON'T redirect or clear tokens - let the UI show an error instead
-      if (isLoginRequest) {
+    const isLoginRequest =
+      url.includes('/accounts/auth/login') || url.includes('/auth/login');
+    if (isLoginRequest) {
+      return Promise.reject(error);
+    }
+
+    if (!originalRequest._retry) {
+      originalRequest._retry = true;
+      try {
+        const access = await refreshAccessToken();
+        originalRequest.headers.Authorization = `Bearer ${access}`;
+        return api(originalRequest);
+      } catch {
+        await logoutAndRedirect({ reason: 'auth' });
         return Promise.reject(error);
       }
-
-      // For all other requests, clear auth state and redirect to login
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
-      localStorage.removeItem('user');
-      localStorage.removeItem('isAuthenticated');
-      window.location.href = '/login';
     }
 
+    await logoutAndRedirect({ reason: 'auth' });
     return Promise.reject(error);
   }
 );
@@ -230,6 +256,8 @@ export const variantsAPI = {
 
 export const salesAPI = {
   list: (params) => api.get('/sales/', { params }),
+  /** Today/month totals for dashboard (sales.view — no reports.view required). */
+  dashboardSummary: () => api.get('/sales/dashboard-summary/'),
   get: (id) => api.get(`/sales/${id}/`),
   create: (data) => api.post('/sales/', data),
   receipt: (id) => api.get(`/sales/${id}/receipt/`),
@@ -580,6 +608,18 @@ export const moduleFeaturesAPI = {
   get: (id) => api.get(`/settings/module-features/${id}/`),
   update: (id, data) => api.put(`/settings/module-features/${id}/`, data),
   patch: (id, data) => api.patch(`/settings/module-features/${id}/`, data),
+};
+
+export const storeSettingsAPI = {
+  get: () => api.get('/settings/store-settings/'),
+  update: (data) => {
+    if (data instanceof FormData) {
+      return api.patch('/settings/store-settings/', data, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+    }
+    return api.patch('/settings/store-settings/', data);
+  },
 };
 
 export const usersAPI = {

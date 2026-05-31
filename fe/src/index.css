@@ -11,7 +11,7 @@
  *
  * The palette targets a retail POS:
  *  - background: a near-white neutral that doesn't fatigue cashiers over an 8h shift
- *  - primary: confident, trustworthy action colour (indigo-600)
+ *  - primary: confident green action colour for retail POS
  *  - destructive: unambiguous red for void/refund/remove
  *  - success: green for "paid" / receipts / in-stock chips
  *  - warning: amber for low-stock / pending payment plans
@@ -27,7 +27,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    --primary: 238 80% 56%;            /* indigo-600 */
+    --primary: 142 71% 40%;            /* green-600 */
     --primary-foreground: 0 0% 100%;
 
     --secondary: 220 14% 96%;
@@ -50,7 +50,7 @@
 
     --border: 220 13% 91%;
     --input: 220 13% 91%;
-    --ring: 238 80% 56%;
+    --ring: 142 71% 40%;
 
     --radius: 0.5rem;
   }
@@ -84,6 +84,12 @@
   .pos-target {
     min-height: 44px;
     min-width: 44px;
+  }
+}
+
+@layer components {
+  .field-stack {
+    @apply flex flex-col gap-1;
   }
 }
 

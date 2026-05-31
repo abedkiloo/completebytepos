@@ -65,7 +65,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1.5rem 2rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid #e5e7eb;
   background: #f9fafb;
   position: sticky;
@@ -76,7 +76,7 @@
 
 .slide-in-panel-header h2 {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: 1.125rem;
   font-weight: 600;
   color: #111827;
 }
@@ -105,18 +105,18 @@
 
 .slide-in-panel-body {
   flex: 1;
-  padding: 2rem;
+  padding: 1rem;
   overflow-y: auto;
   min-height: 0;
 }
 
 .slide-in-panel-footer {
-  padding: 1.5rem 2rem;
+  padding: 0.75rem 1rem;
   border-top: 1px solid #e5e7eb;
   background: #f9fafb;
   display: flex;
   justify-content: flex-end;
-  gap: 1rem;
+  gap: 0.5rem;
   position: sticky;
   bottom: 0;
   flex-shrink: 0;
@@ -137,19 +137,19 @@
   }
   
   .slide-in-panel-header {
-    padding: 1rem 1.5rem;
+    padding: 0.625rem 0.875rem;
   }
   
   .slide-in-panel-header h2 {
-    font-size: 1.25rem;
+    font-size: 1.0625rem;
   }
   
   .slide-in-panel-body {
-    padding: 1.5rem;
+    padding: 0.875rem;
   }
   
   .slide-in-panel-footer {
-    padding: 1rem 1.5rem;
+    padding: 0.625rem 0.875rem;
     flex-direction: column;
   }
   

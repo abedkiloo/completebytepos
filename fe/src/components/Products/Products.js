@@ -37,6 +37,9 @@ import {
 } from '../ui/dropdown-menu';
 import { cn } from '../../lib/cn';
 import { PageShell, PageHeader } from '../page';
+import { useStoreSettings } from '../../hooks/useStoreSettings';
+import { getPersonaFromStorage } from '../../utils/navAccess';
+import { PERSONA } from '../../utils/roleAccess';
 
 const EMPTY_FILTERS = {
   search: '',
@@ -47,6 +50,14 @@ const EMPTY_FILTERS = {
 };
 
 const Products = () => {
+  const { settings } = useStoreSettings();
+  const persona = getPersonaFromStorage();
+  const catalogOnly =
+    settings.allow_sales_add_products &&
+    settings.sales_catalog_skip_pricing &&
+    persona === PERSONA.SALES;
+  const hideStatusToggles = settings.hide_entity_status_toggles;
+
   // --- Data ---
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -268,80 +279,84 @@ const Products = () => {
   };
 
   const handleDownloadTemplate = () => {
-    const csvHeaders = [
-      'name',
-      'sku',
-      'barcode',
-      'category',
-      'subcategory',
-      'mrp',
-      'selling_price',
-      'cost',
-      'stock_quantity',
-      'low_stock_threshold',
-      'reorder_quantity',
-      'unit',
-      'description',
-      'supplier',
-      'supplier_contact',
-      'tax_rate',
-      'is_taxable',
-      'track_stock',
-      'is_active',
-      'has_variants',
-      'available_sizes',
-      'available_colors',
-    ];
-    const csvContent = [
-      '\ufeff',
-      csvHeaders.join(','),
-      [
-        'Sample Product',
-        'SKU-001',
-        '1234567890123',
-        'Electronics',
-        'Mobile Phones',
-        '1000.00',
-        '800.00',
-        '50',
-        '10',
-        '20',
-        'piece',
-        'Sample product description',
-        'Supplier Name',
-        'supplier@example.com',
-        '16',
-        'true',
-        'true',
-        'true',
-        'false',
-        '',
-        '',
-      ].join(','),
-      [
-        'Product with Variants',
-        'SKU-002',
-        '9876543210987',
-        'Clothing',
-        'T-Shirts',
-        '1500.00',
-        '1000.00',
-        '100',
-        '20',
-        '50',
-        'piece',
-        'T-shirt with size and color options',
-        'Fashion Supplier',
-        'fashion@example.com',
-        '16',
-        'true',
-        'true',
-        'true',
-        'true',
-        'Small,Medium,Large',
-        'Red,Blue,Green',
-      ].join(','),
-    ].join('\n');
+    const csvHeaders = catalogOnly
+      ? [
+          'name',
+          'sku',
+          'barcode',
+          'category',
+          'subcategory',
+          'stock_quantity',
+          'unit',
+          'description',
+          'track_stock',
+          'has_variants',
+          'available_sizes',
+          'available_colors',
+        ]
+      : [
+          'name',
+          'sku',
+          'barcode',
+          'category',
+          'subcategory',
+          'mrp',
+          'selling_price',
+          'cost',
+          'stock_quantity',
+          'low_stock_threshold',
+          'reorder_quantity',
+          'unit',
+          'description',
+          'supplier',
+          'supplier_contact',
+          'tax_rate',
+          'is_taxable',
+          'track_stock',
+          'is_active',
+          'has_variants',
+          'available_sizes',
+          'available_colors',
+        ];
+    const sampleRow = catalogOnly
+      ? [
+          'Sample Product',
+          'SKU-001',
+          '1234567890123',
+          'Electronics',
+          'Mobile Phones',
+          '10',
+          'piece',
+          'Sample product description',
+          'true',
+          'false',
+          '',
+          '',
+        ]
+      : [
+          'Sample Product',
+          'SKU-001',
+          '1234567890123',
+          'Electronics',
+          'Mobile Phones',
+          '1000.00',
+          '800.00',
+          '50',
+          '10',
+          '20',
+          'piece',
+          'Sample product description',
+          'Supplier Name',
+          'supplier@example.com',
+          '16',
+          'true',
+          'true',
+          'true',
+          'false',
+          '',
+          '',
+        ];
+    const csvContent = ['\ufeff', csvHeaders.join(','), sampleRow.join(',')].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = window.URL.createObjectURL(blob);
@@ -352,7 +367,11 @@ const Products = () => {
     a.click();
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
-    toast.success('Template downloaded — fill it in and re-import.');
+    toast.success(
+      catalogOnly
+        ? 'Catalog template downloaded — add products; manager sets prices later.'
+        : 'Template downloaded — fill it in and re-import.'
+    );
   };
 
   const handleImport = async (file) => {
@@ -389,7 +408,11 @@ const Products = () => {
     <PageShell>
         <PageHeader
           title="Products"
-          description="Add, edit, and bulk-manage your catalog."
+          description={
+            catalogOnly
+              ? 'Add products or import a list. Your manager will set prices before items go on sale.'
+              : 'Add, edit, and bulk-manage your catalog.'
+          }
         >
           <div className="flex flex-wrap items-center gap-2">
             <DropdownMenu>
@@ -400,15 +423,19 @@ const Products = () => {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>Bulk operations</DropdownMenuLabel>
+                <DropdownMenuLabel>
+                  {catalogOnly ? 'Import catalog' : 'Bulk operations'}
+                </DropdownMenuLabel>
                 <DropdownMenuItem onClick={handleDownloadTemplate}>
                   <Download className="mr-2 h-4 w-4" />
                   Download template
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleExport}>
-                  <Download className="mr-2 h-4 w-4" />
-                  Export products
-                </DropdownMenuItem>
+                {!catalogOnly && (
+                  <DropdownMenuItem onClick={handleExport}>
+                    <Download className="mr-2 h-4 w-4" />
+                    Export products
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
                   <Upload className="mr-2 h-4 w-4" />
@@ -447,7 +474,7 @@ const Products = () => {
         />
 
         {/* --- Bulk action bar --- */}
-        {selectedProductIds.length > 0 && (
+        {selectedProductIds.length > 0 && !catalogOnly && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/40 bg-primary/5 px-4 py-2.5">
             <div className="flex items-center gap-3 text-sm">
               <Badge variant="default">{selectedProductIds.length} selected</Badge>
@@ -484,6 +511,7 @@ const Products = () => {
             <table className="min-w-full divide-y divide-border text-sm">
               <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
+                  {!catalogOnly && (
                   <th className="px-4 py-2.5">
                     <input
                       type="checkbox"
@@ -496,14 +524,23 @@ const Products = () => {
                       className="h-4 w-4 rounded border-input text-primary focus:ring-1 focus:ring-ring"
                     />
                   </th>
+                  )}
                   <th className="px-4 py-2.5 text-left font-medium">Product</th>
                   <th className="px-4 py-2.5 text-left font-medium">Category</th>
-                  <th className="px-4 py-2.5 text-left font-medium">SKU</th>
-                  <th className="px-4 py-2.5 text-right font-medium">MRP</th>
-                  <th className="px-4 py-2.5 text-right font-medium">Selling</th>
-                  <th className="px-4 py-2.5 text-right font-medium">Cost</th>
+                  {!catalogOnly && (
+                    <>
+                      <th className="px-4 py-2.5 text-right font-medium">MRP</th>
+                      <th className="px-4 py-2.5 text-right font-medium">Selling</th>
+                      <th className="px-4 py-2.5 text-right font-medium">Cost</th>
+                    </>
+                  )}
+                  {catalogOnly && (
+                    <th className="px-4 py-2.5 text-right font-medium">Price</th>
+                  )}
                   <th className="px-4 py-2.5 text-right font-medium">Stock</th>
-                  <th className="px-4 py-2.5 text-left font-medium">Status</th>
+                  {!hideStatusToggles && (
+                    <th className="px-4 py-2.5 text-left font-medium">Status</th>
+                  )}
                   <th className="px-4 py-2.5 text-right font-medium">Actions</th>
                 </tr>
               </thead>
@@ -511,7 +548,7 @@ const Products = () => {
                 {loading && products.length === 0 ? (
                   Array.from({ length: 6 }).map((_, i) => (
                     <tr key={i}>
-                      {Array.from({ length: 9 }).map((__, j) => (
+                      {Array.from({ length: 8 }).map((__, j) => (
                         <td key={j} className="px-4 py-3">
                           <Skeleton className="h-4 w-full" />
                         </td>
@@ -520,7 +557,7 @@ const Products = () => {
                   ))
                 ) : products.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-12">
+                    <td colSpan={8} className="px-4 py-12">
                       <EmptyProducts
                         onCreate={openCreate}
                         hasFilters={!!filters.search || activeFilterCount > 0}
@@ -536,6 +573,8 @@ const Products = () => {
                       onToggle={() => toggleProductSelection(product.id)}
                       onEdit={() => openEdit(product)}
                       onDelete={() => setConfirmDelete(product.id)}
+                      catalogOnly={catalogOnly}
+                      hideStatusToggles={hideStatusToggles}
                     />
                   ))
                 )}
@@ -549,6 +588,8 @@ const Products = () => {
         <ProductForm
           product={editingProduct}
           categories={categories}
+          catalogOnly={catalogOnly}
+          hideStatusToggles={hideStatusToggles}
           onClose={() => {
             setShowForm(false);
             setEditingProduct(null);
@@ -665,7 +706,7 @@ function FilterBar({ filters, setFilters, categories, activeCount }) {
             type="search"
             value={filters.search}
             onChange={(e) => update({ search: e.target.value })}
-            placeholder="Search by name, SKU, or barcode…"
+            placeholder="Search by name or barcode…"
             className="h-10 pl-9"
           />
           {filters.search && (
@@ -794,7 +835,10 @@ function CategoryChip({ label, active, onClick }) {
   );
 }
 
-function ProductRow({ product, selected, onToggle, onEdit, onDelete }) {
+function ProductRow({ product, selected, onToggle, onEdit, onDelete, catalogOnly = false, hideStatusToggles = false }) {
+  const sellingPrice = parseFloat(product.selling_price ?? product.price ?? 0);
+  const pricePending = catalogOnly && sellingPrice <= 0;
+
   return (
     <tr
       className={cn(
@@ -803,6 +847,7 @@ function ProductRow({ product, selected, onToggle, onEdit, onDelete }) {
         !product.is_active && 'opacity-60'
       )}
     >
+      {!catalogOnly && (
       <td className="px-4 py-3">
         <input
           type="checkbox"
@@ -812,6 +857,7 @@ function ProductRow({ product, selected, onToggle, onEdit, onDelete }) {
           className="h-4 w-4 rounded border-input text-primary focus:ring-1 focus:ring-ring"
         />
       </td>
+      )}
       <td className="px-4 py-3">
         <div className="flex items-center gap-3">
           <ProductThumb product={product} />
@@ -842,32 +888,49 @@ function ProductRow({ product, selected, onToggle, onEdit, onDelete }) {
           <div className="text-xs text-muted-foreground">→ {product.subcategory_name}</div>
         )}
       </td>
-      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-        {product.sku || '—'}
-      </td>
-      <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
-        {formatCurrency(product.mrp ?? product.price)}
-      </td>
-      <td className="px-4 py-3 text-right tabular-nums font-medium">
-        {formatCurrency(product.selling_price ?? product.price)}
-      </td>
-      <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
-        {formatCurrency(product.cost)}
-      </td>
+      {!catalogOnly && (
+        <>
+          <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
+            {formatCurrency(product.mrp ?? product.price)}
+          </td>
+          <td className="px-4 py-3 text-right tabular-nums font-medium">
+            {formatCurrency(product.selling_price ?? product.price)}
+          </td>
+          <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
+            {formatCurrency(product.cost)}
+          </td>
+        </>
+      )}
+      {catalogOnly && (
+        <td className="px-4 py-3 text-right text-sm">
+          {pricePending ? (
+            <Badge variant="outline" className="font-normal text-muted-foreground">
+              Pending manager
+            </Badge>
+          ) : (
+            <span className="tabular-nums font-medium">
+              {formatCurrency(product.selling_price ?? product.price)}
+            </span>
+          )}
+        </td>
+      )}
       <td className="px-4 py-3 text-right">
         <StockCell product={product} />
       </td>
+      {!hideStatusToggles && (
       <td className="px-4 py-3">
         <Badge variant={product.is_active ? 'success' : 'outline'}>
           {product.is_active ? 'Active' : 'Inactive'}
         </Badge>
       </td>
+      )}
       <td className="px-4 py-3">
         <div className="flex items-center justify-end gap-1">
           <Button variant="ghost" size="sm" onClick={onEdit} aria-label="Edit product">
             <Pencil className="h-3.5 w-3.5" />
             <span className="sr-only sm:not-sr-only sm:ml-1">Edit</span>
           </Button>
+          {!catalogOnly && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm" aria-label="More actions">
@@ -884,6 +947,7 @@ function ProductRow({ product, selected, onToggle, onEdit, onDelete }) {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          )}
         </div>
       </td>
     </tr>

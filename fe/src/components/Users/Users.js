@@ -5,6 +5,7 @@ import UserForm from './UserForm';
 import SearchableSelect from '../Shared/SearchableSelect';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import { toast } from '../../utils/toast';
+import { useStoreSettings } from '../../hooks/useStoreSettings';
 import { Button } from '../ui/button';
 import {
   PageShell,
@@ -25,6 +26,8 @@ import {
 } from '../page';
 
 const Users = () => {
+  const { settings } = useStoreSettings();
+  const hideStatusToggles = settings.hide_entity_status_toggles;
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -290,7 +293,7 @@ const Users = () => {
         )}
 
         {showForm && (
-          <UserForm user={editingUser} roles={roles} onClose={handleFormClose} />
+          <UserForm user={editingUser} roles={roles} onClose={handleFormClose} hideStatusToggles={hideStatusToggles} />
         )}
 
         <ConfirmDialog

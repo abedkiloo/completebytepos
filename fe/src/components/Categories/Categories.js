@@ -5,6 +5,7 @@ import { formatNumber } from '../../utils/formatters';
 import CategoryForm from './CategoryForm';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import { toast } from '../../utils/toast';
+import { useStoreSettings } from '../../hooks/useStoreSettings';
 import { Button } from '../ui/button';
 import {
   PageShell,
@@ -30,6 +31,9 @@ const FILTER_OPTIONS = [
 ];
 
 const Categories = () => {
+  const { settings } = useStoreSettings();
+  const hideStatusToggles = settings.hide_entity_status_toggles;
+
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -173,7 +177,7 @@ const Categories = () => {
               <DataTableHead>Description</DataTableHead>
               <DataTableHead align="right">Products</DataTableHead>
               <DataTableHead align="right">Subcats</DataTableHead>
-              <DataTableHead>Status</DataTableHead>
+              {!hideStatusToggles && <DataTableHead>Status</DataTableHead>}
               <DataTableHead align="right">Actions</DataTableHead>
             </DataTableHeader>
             <DataTableBody>
@@ -194,9 +198,11 @@ const Categories = () => {
                   <DataTableCell align="right">
                     {formatNumber(category.children_count || 0)}
                   </DataTableCell>
+                  {!hideStatusToggles && (
                   <DataTableCell>
                     <ActiveStatusBadge active={category.is_active} />
                   </DataTableCell>
+                  )}
                   <DataTableCell align="right">
                     <div className="flex justify-end gap-1">
                       <Button
@@ -206,6 +212,7 @@ const Categories = () => {
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
+                      {!hideStatusToggles && (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -213,6 +220,7 @@ const Categories = () => {
                       >
                         {category.is_active ? 'Off' : 'On'}
                       </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="sm"
@@ -242,6 +250,7 @@ const Categories = () => {
               loadCategories();
             }}
             categories={categories}
+            hideStatusToggles={hideStatusToggles}
           />
         )}
 

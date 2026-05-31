@@ -19,19 +19,16 @@ import { Badge } from '../ui/badge';
 import { Skeleton } from '../ui/skeleton';
 import { cn } from '../../lib/cn';
 import { PageShell } from '../page';
-
-function resolvePersona(me) {
-  const profile = me?.profile;
-  const role = profile?.role;
-  const customName = profile?.custom_role?.name;
-  if (me?.is_super_admin || role === 'super_admin' || customName === 'Super Admin') {
-    return 'super_admin';
-  }
-  if (role === 'manager' || customName === 'Manager') {
-    return 'manager';
-  }
-  return 'sales';
-}
+import {
+  getDefaultPosRoute,
+  isBillingPosEnabled,
+  isRetailPosEnabled,
+} from '../../utils/moduleFeatures';
+import {
+  getStoredAuth,
+  hasPermission,
+  resolvePersona,
+} from '../../utils/roleAccess';
 
 const QUICK_ACTIONS = {
   super_admin: [
@@ -51,7 +48,7 @@ const QUICK_ACTIONS = {
     { to: '/customers', label: 'Customers', icon: Users, description: 'CRM' },
   ],
   sales: [
-    { to: '/pos', label: 'Start sale', icon: ShoppingCart, description: 'Retail POS' },
+    { to: '/pos', label: 'Start sale', icon: ShoppingCart, description: 'Open checkout', primaryPos: true },
     { to: '/pos/billing', label: 'Terminal POS', icon: Receipt, description: 'Invoice checkout' },
     { to: '/customers', label: 'Customers', icon: Users, description: 'Walk-in & credit' },
   ],
@@ -67,9 +64,16 @@ const Dashboard = () => {
   useEffect(() => {
     const load = async () => {
       try {
+        const { permissions } = getStoredAuth();
+        const canViewReports = hasPermission(permissions, 'reports', 'view');
+
+        const dashboardPromise = canViewReports
+          ? reportsAPI.dashboard()
+          : salesAPI.dashboardSummary();
+
         const [meRes, dashRes, stockRes, salesRes] = await Promise.all([
           authAPI.me().catch(() => null),
-          reportsAPI.dashboard().catch(() => null),
+          dashboardPromise.catch(() => null),
           productsAPI.list({ low_stock: 'true', is_active: 'true' }).catch(() => null),
           salesAPI.list({ limit: 6 }).catch(() => null),
         ]);
@@ -139,7 +143,35 @@ const Dashboard = () => {
           },
         ];
 
-  const actions = QUICK_ACTIONS[persona] || QUICK_ACTIONS.sales;
+  const actions = useMemo(() => {
+    const base = QUICK_ACTIONS[persona] || QUICK_ACTIONS.sales;
+    const defaultPos = getDefaultPosRoute();
+    const billingOn = isBillingPosEnabled();
+    const retailOn = isRetailPosEnabled();
+
+    return base
+      .map((action) => {
+        if (action.primaryPos) {
+          return {
+            ...action,
+            to: defaultPos,
+            icon: billingOn ? Receipt : ShoppingCart,
+            description: billingOn ? 'Terminal POS checkout' : 'Retail POS checkout',
+          };
+        }
+        return action;
+      })
+      .filter((action) => {
+        if (persona !== 'sales') return true;
+        if (action.primaryPos) return true;
+        if (action.to === '/pos/billing' && billingOn) return false;
+        if (action.to === '/pos/billing' && !billingOn) return false;
+        if (action.to === '/pos' && billingOn && !retailOn) return false;
+        return true;
+      });
+  }, [persona]);
+
+  const posRoute = getDefaultPosRoute();
 
   if (loading) {
     return (
@@ -241,7 +273,7 @@ const Dashboard = () => {
               {recentSales.length === 0 ? (
                 <p className="py-8 text-center text-sm text-muted-foreground">
                   No sales yet.{' '}
-                  <Link to="/pos" className="text-primary underline">
+                  <Link to={posRoute} className="text-primary underline">
                     Open POS
                   </Link>
                 </p>
@@ -325,8 +357,14 @@ const Dashboard = () => {
                 <CardDescription>Keep checkout fast and accurate</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3 text-sm text-muted-foreground">
-                <p>Use <strong className="text-foreground">Retail POS</strong> for walk-in cash/card sales.</p>
-                <p>Use <strong className="text-foreground">Terminal POS</strong> for invoices, credit, and held carts.</p>
+                {isBillingPosEnabled() ? (
+                  <p>Use <strong className="text-foreground">Start sale</strong> for Terminal POS — invoices, credit, and held carts.</p>
+                ) : (
+                  <p>Use <strong className="text-foreground">Start sale</strong> for walk-in cash/card sales.</p>
+                )}
+                {isRetailPosEnabled() && isBillingPosEnabled() && (
+                  <p>Retail POS is also available from the sidebar when you need fast counter checkout.</p>
+                )}
                 <p>Search by name, SKU, or barcode — stock shows before you add to cart.</p>
               </CardContent>
             </Card>

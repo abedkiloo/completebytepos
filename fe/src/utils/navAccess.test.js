@@ -7,6 +7,7 @@ import {
   getPersonaFromStorage,
   VISIBLE_SECTIONS,
 } from './navAccess';
+import { cacheStoreSettings } from './storeSettingsCache';
 
 const ctx = (persona, overrides = {}) => ({
   persona,
@@ -132,5 +133,46 @@ describe('navAccess', () => {
       JSON.stringify({ role: 'manager', custom_role: { name: 'Manager' } })
     );
     expect(getPersonaFromStorage()).toBe(PERSONA.MANAGER);
+  });
+
+  test('sales sees products nav when catalog add enabled', () => {
+    cacheStoreSettings({ allow_sales_add_products: true });
+    const salesCtx = ctx(PERSONA.SALES);
+    expect(
+      canSeeNavItem({ to: '/products', label: 'Products' }, 'inventory', salesCtx)
+    ).toBe(true);
+    expect(
+      canSeeNavItem({ to: '/categories', label: 'Categories' }, 'inventory', salesCtx)
+    ).toBe(true);
+    expect(
+      canSeeNavItem({ to: '/barcodes', label: 'Barcodes', module: 'barcodes' }, 'inventory', salesCtx)
+    ).toBe(false);
+  });
+
+  test('sales sees products nav when catalog add enabled', () => {
+    cacheStoreSettings({ allow_sales_add_products: true });
+    const salesCtx = ctx(PERSONA.SALES);
+    expect(
+      canSeeNavItem(
+        { to: '/products', label: 'Products', salesCatalogItem: true },
+        'sales',
+        salesCtx
+      )
+    ).toBe(true);
+    expect(
+      canSeeNavItem(
+        { to: '/categories', label: 'Categories', salesCatalogItem: true },
+        'sales',
+        salesCtx
+      )
+    ).toBe(true);
+  });
+
+  test('sales hides inventory nav when catalog add disabled', () => {
+    cacheStoreSettings({ allow_sales_add_products: false });
+    const salesCtx = ctx(PERSONA.SALES);
+    expect(
+      canSeeNavItem({ to: '/products', label: 'Products' }, 'inventory', salesCtx)
+    ).toBe(false);
   });
 });

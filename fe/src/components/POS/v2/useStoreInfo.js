@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
 
+import { readCachedStoreSettings } from '../../../utils/storeSettingsCache';
+
 /**
  * Resolve "store / branch / tenant" metadata for the receipt header.
  *
@@ -20,6 +22,8 @@ export function useStoreInfo(sale) {
     const branch = sale?.branch || cachedBranch || profile.branch || {};
     const tenant = branch?.tenant || profile.tenant || {};
 
+    const storePrefs = readCachedStoreSettings();
+
     const storeName = tenant.name || branch.name || 'CompleteByte POS';
     const branchName = branch.name && branch.name !== storeName ? branch.name : null;
 
@@ -32,7 +36,13 @@ export function useStoreInfo(sale) {
       phone: branch.phone || tenant.phone || '',
       email: branch.email || tenant.email || '',
       taxId: tenant.tax_id || tenant.kra_pin || '',
-      receiptFooter: tenant.receipt_footer || 'Thank you for your business!',
+      receiptFooter:
+        storePrefs.receipt_footer_text ||
+        tenant.receipt_footer ||
+        'Thank you for your business!',
+      receiptHeader: storePrefs.receipt_header_text || '',
+      receiptLogoUrl: storePrefs.receipt_show_logo ? storePrefs.receipt_logo_url : null,
+      showSku: Boolean(storePrefs.receipt_show_sku),
     };
   }, [sale]);
 }

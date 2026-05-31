@@ -3,6 +3,8 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react';
 
 import { authAPI } from '../../services/api';
+import { markSessionActivity } from '../../utils/sessionIdle';
+import { clearSessionTeardownFlag } from '../../utils/authSession';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -31,6 +33,13 @@ const Login = () => {
     if (state.password) setPassword(state.password);
     if (state.fromInstall) setFromInstall(true);
 
+    const params = new URLSearchParams(location.search);
+    if (params.get('expired') === 'idle' || sessionStorage.getItem('session_expired_reason') === 'idle') {
+      setError('Your session expired after 5 minutes of inactivity. Please sign in again.');
+      sessionStorage.removeItem('session_expired_reason');
+    }
+    clearSessionTeardownFlag();
+
     let cancelled = false;
     import('../../utils/setupStatus')
       .then(({ fetchSetupStatus }) => fetchSetupStatus())
@@ -47,7 +56,7 @@ const Login = () => {
     return () => {
       cancelled = true;
     };
-  }, [location.state, navigate]);
+  }, [location.state, location.search, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -77,6 +86,17 @@ const Login = () => {
       const { persistMeResponse } = await import('../../utils/roleAccess');
       persistMeResponse({ user, profile, permissions, enabled_modules });
 
+      try {
+        const { storeSettingsAPI } = await import('../../services/api');
+        const { cacheStoreSettings } = await import('../../utils/storeSettingsCache');
+        const settingsRes = await storeSettingsAPI.get();
+        cacheStoreSettings(settingsRes.data);
+      } catch {
+        /* store settings optional at login */
+      }
+
+      markSessionActivity();
+      clearSessionTeardownFlag();
       navigate('/');
     } catch (err) {
       setError(
@@ -117,7 +137,7 @@ const Login = () => {
         </CardHeader>
 
         <CardContent>
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-3" noValidate>
             {error && (
               <div
                 role="alert"
@@ -128,7 +148,7 @@ const Login = () => {
               </div>
             )}
 
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1">
               <Label htmlFor="username">Username</Label>
               <Input
                 id="username"
@@ -144,7 +164,7 @@ const Login = () => {
               />
             </div>
 
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1">
               <Label htmlFor="password">Password</Label>
               <div className="relative">
                 <Input

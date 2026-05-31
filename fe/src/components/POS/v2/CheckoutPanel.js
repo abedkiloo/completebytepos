@@ -1,9 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Banknote,
-  Smartphone,
-  Wallet,
-  CreditCard,
   Receipt as ReceiptIcon,
   Loader2,
   Truck,
@@ -17,21 +13,7 @@ import { Label } from '../../ui/label';
 import { Separator } from '../../ui/separator';
 import { formatCurrency } from '../../../utils/formatters';
 import { cn } from '../../../lib/cn';
-
-/**
- * Right-side checkout: totals breakdown, payment method picker, cash input
- * with quick-cash buttons, and the big primary Pay button.
- *
- * Quick-cash buttons are the single biggest cashier-speed win in any retail
- * POS — they let the most common rounded amounts ("got 500, sale is 320")
- * become one tap.
- */
-const PAYMENT_METHODS = [
-  { id: 'cash', label: 'Cash', icon: Banknote, requiresAmount: true },
-  { id: 'mpesa', label: 'M-Pesa', icon: Smartphone, requiresAmount: true },
-  { id: 'wallet', label: 'Wallet', icon: Wallet, requiresAmount: false },
-  { id: 'card', label: 'Card', icon: CreditCard, requiresAmount: false },
-];
+import { filterEnabledPaymentMethods } from '../../../utils/paymentMethods';
 
 export function CheckoutPanel({
   // totals
@@ -66,9 +48,21 @@ export function CheckoutPanel({
   // misc
   itemCount,
   hasOversell = false,
+  enabledPaymentMethods,
 }) {
   const [showExtras, setShowExtras] = useState(false);
-  const method = PAYMENT_METHODS.find((m) => m.id === paymentMethod) || PAYMENT_METHODS[0];
+  const methods = useMemo(
+    () => filterEnabledPaymentMethods(enabledPaymentMethods),
+    [enabledPaymentMethods]
+  );
+
+  useEffect(() => {
+    if (!methods.some((m) => m.id === paymentMethod)) {
+      setPaymentMethod(methods[0]?.id || 'cash');
+    }
+  }, [methods, paymentMethod, setPaymentMethod]);
+
+  const method = methods.find((m) => m.id === paymentMethod) || methods[0];
 
   const isCashLike = method.requiresAmount;
   const canPay =
@@ -80,7 +74,7 @@ export function CheckoutPanel({
   return (
     <div className="flex flex-col border-t bg-background">
       {/* Totals */}
-      <div className="space-y-1.5 px-4 py-3 text-sm">
+      <div className="space-y-1 px-3 py-2 text-sm">
         <Row label="Subtotal" value={formatCurrency(subtotal)} />
         {discountAmount > 0 && (
           <Row label="Discount" value={`- ${formatCurrency(discountAmount)}`} muted />
@@ -158,7 +152,7 @@ export function CheckoutPanel({
       <Separator />
 
       {/* Grand total */}
-      <div className="flex items-baseline justify-between px-4 py-3">
+      <div className="flex items-baseline justify-between px-3 py-2">
         <span className="text-sm font-medium text-muted-foreground">Total</span>
         <span className="text-pos-total tabular-nums">{formatCurrency(total)}</span>
       </div>
@@ -166,12 +160,17 @@ export function CheckoutPanel({
       <Separator />
 
       {/* Payment method tabs */}
-      <div className="px-4 pt-3">
-        <Label className="mb-1.5 block text-xs uppercase tracking-wide text-muted-foreground">
+      <div className="px-3 pt-2">
+        <Label className="mb-1 block text-xs uppercase tracking-wide text-muted-foreground">
           Payment method
         </Label>
-        <div className="grid grid-cols-4 gap-1.5">
-          {PAYMENT_METHODS.map((m) => {
+        <div
+          className={cn(
+            'grid gap-1',
+            methods.length <= 2 ? 'grid-cols-2' : methods.length === 3 ? 'grid-cols-3' : 'grid-cols-4'
+          )}
+        >
+          {methods.map((m) => {
             const Icon = m.icon;
             const active = paymentMethod === m.id;
             return (
@@ -180,7 +179,7 @@ export function CheckoutPanel({
                 type="button"
                 onClick={() => setPaymentMethod(m.id)}
                 className={cn(
-                  'pos-target flex flex-col items-center justify-center gap-1 rounded-md border py-2.5 text-xs font-medium transition-colors',
+                  'pos-target flex flex-col items-center justify-center gap-0.5 rounded-md border py-2 text-xs font-medium transition-colors',
                   active
                     ? 'border-primary bg-primary/10 text-primary'
                     : 'border-border bg-background text-foreground hover:bg-accent'
@@ -196,8 +195,8 @@ export function CheckoutPanel({
 
       {/* Cash / M-Pesa: amount tendered + quick-cash */}
       {isCashLike && (
-        <div className="px-4 pt-3">
-          <Label htmlFor="received" className="mb-1.5 block text-xs uppercase tracking-wide text-muted-foreground">
+        <div className="px-3 pt-2">
+          <Label htmlFor="received" className="mb-1 block text-xs uppercase tracking-wide text-muted-foreground">
             Amount received
           </Label>
           <Input
@@ -237,7 +236,7 @@ export function CheckoutPanel({
       )}
 
       {/* Pay button — the primary CTA */}
-      <div className="p-4 pt-3">
+      <div className="p-3 pt-2">
         <Button
           size="cashier-lg"
           className="w-full text-base font-semibold"
