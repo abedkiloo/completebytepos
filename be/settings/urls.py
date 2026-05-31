@@ -5,6 +5,7 @@ from .views import (
     TenantViewSet, BranchViewSet,
     fresh_install,
     setup_status,
+    store_settings,
 )
 
 router = DefaultRouter()
@@ -17,4 +18,5 @@ urlpatterns = [
     path('', include(router.urls)),
     path('setup-status/', setup_status, name='setup-status'),
     path('fresh-install/', fresh_install, name='fresh-install'),
+    path('store-settings/', store_settings, name='store-settings'),
 ]

@@ -6,11 +6,12 @@ from django.contrib.auth.models import User
 from django.db.models import Q
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from .models import ModuleSettings, ModuleFeature, Branch, Tenant
+from .models import ModuleSettings, ModuleFeature, Branch, Tenant, StoreSettings
 from .serializers import (
     ModuleSettingsSerializer, ModuleFeatureSerializer,
     BranchSerializer, BranchListSerializer,
-    TenantSerializer, TenantListSerializer
+    TenantSerializer, TenantListSerializer,
+    StoreSettingsSerializer,
 )
 from accounts.permissions import IsSuperAdmin
 from .utils import get_current_tenant, get_current_branch, set_current_tenant, set_current_branch, is_branch_support_enabled
@@ -514,3 +515,31 @@ def fresh_install(request):
             'error': str(e),
             'steps': steps if 'steps' in locals() else []
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def store_settings(request):
+    """
+    Tenant-wide store configuration (receipt, payments, catalog rules).
+    All authenticated users may read; only super admins may update.
+    """
+    settings_obj = StoreSettings.load()
+
+    if request.method == 'GET':
+        serializer = StoreSettingsSerializer(settings_obj, context={'request': request})
+        return Response(serializer.data)
+
+    if not IsSuperAdmin().has_permission(request, None):
+        return Response({'detail': 'Only super admins can change store settings.'}, status=status.HTTP_403_FORBIDDEN)
+
+    clear_logo = request.data.get('clear_receipt_logo') in (True, 'true', '1', 1)
+    serializer = StoreSettingsSerializer(
+        settings_obj,
+        data=request.data,
+        partial=True,
+        context={'request': request, 'clear_receipt_logo': clear_logo},
+    )
+    serializer.is_valid(raise_exception=True)
+    serializer.save(updated_by=request.user)
+    return Response(serializer.data)

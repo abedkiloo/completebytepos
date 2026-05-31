@@ -315,3 +315,80 @@ class Branch(models.Model):
         if tenant:
             queryset = queryset.filter(tenant=tenant)
         return queryset.order_by('name')
+
+
+class StoreSettings(models.Model):
+    """
+    Singleton store-wide configuration (receipt, payments, catalog rules, UI flags).
+    Always use ``StoreSettings.load()`` — only one row (pk=1) exists.
+    """
+
+    allow_sales_add_products = models.BooleanField(
+        default=True,
+        help_text='Allow sales staff to add products and categories from the catalog UI',
+    )
+    sales_catalog_skip_pricing = models.BooleanField(
+        default=True,
+        help_text='When sales add products, skip pricing fields (manager sets prices later)',
+    )
+    hide_entity_status_toggles = models.BooleanField(
+        default=False,
+        help_text='Hide active/inactive toggles on catalog and user forms',
+    )
+    enabled_payment_methods = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='Payment methods shown at checkout (cash, mpesa, wallet, card)',
+    )
+    receipt_logo = models.ImageField(upload_to='receipt/', blank=True, null=True)
+    receipt_header_text = models.TextField(
+        blank=True,
+        help_text='Optional message below store name on receipts',
+    )
+    receipt_footer_text = models.TextField(
+        blank=True,
+        default='Thank you for your business!',
+        help_text='Message at the bottom of printed receipts',
+    )
+    receipt_show_logo = models.BooleanField(default=True)
+    receipt_show_sku = models.BooleanField(
+        default=False,
+        help_text='Show product SKU on printed and preview receipts',
+    )
+    receipt_auto_print = models.BooleanField(
+        default=False,
+        help_text='Automatically open print dialog after completing a sale',
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='store_settings_updates',
+    )
+
+    class Meta:
+        verbose_name = 'Store Settings'
+        verbose_name_plural = 'Store Settings'
+
+    def __str__(self):
+        return 'Store Settings'
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def load(cls):
+        from .store_settings_helpers import DEFAULT_PAYMENT_METHODS, normalize_payment_methods
+
+        obj, _created = cls.objects.get_or_create(
+            pk=1,
+            defaults={'enabled_payment_methods': list(DEFAULT_PAYMENT_METHODS)},
+        )
+        normalized = normalize_payment_methods(obj.enabled_payment_methods)
+        if obj.enabled_payment_methods != normalized:
+            obj.enabled_payment_methods = normalized
+            obj.save(update_fields=['enabled_payment_methods'])
+        return obj

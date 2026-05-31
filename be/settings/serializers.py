@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from .models import ModuleSettings, ModuleFeature, Branch, Tenant
+from .models import ModuleSettings, ModuleFeature, Branch, Tenant, StoreSettings
+from .store_settings_helpers import normalize_payment_methods, VALID_PAYMENT_METHODS
 
 
 class ModuleFeatureSerializer(serializers.ModelSerializer):
@@ -126,3 +127,76 @@ class BranchListSerializer(serializers.ModelSerializer):
             'id', 'tenant_name', 'branch_code', 'name', 'city', 'country',
             'is_active', 'is_headquarters'
         ]
+
+
+class StoreSettingsSerializer(serializers.ModelSerializer):
+    receipt_logo_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = StoreSettings
+        fields = [
+            'allow_sales_add_products',
+            'sales_catalog_skip_pricing',
+            'hide_entity_status_toggles',
+            'enabled_payment_methods',
+            'receipt_logo',
+            'receipt_logo_url',
+            'receipt_header_text',
+            'receipt_footer_text',
+            'receipt_show_logo',
+            'receipt_show_sku',
+            'receipt_auto_print',
+            'updated_at',
+        ]
+        read_only_fields = ['updated_at']
+        extra_kwargs = {
+            'receipt_logo': {'write_only': True, 'required': False, 'allow_null': True},
+        }
+
+    def to_internal_value(self, data):
+        # Build a plain dict — QueryDict coerces non-string values (e.g. parsed
+        # JSON lists) to invalid Python repr strings like "['cash']".
+        if hasattr(data, 'keys'):
+            ret = {key: data.get(key) for key in data.keys()}
+        else:
+            ret = dict(data)
+
+        methods = ret.get('enabled_payment_methods')
+        if isinstance(methods, str):
+            import json
+            try:
+                ret['enabled_payment_methods'] = json.loads(methods)
+            except json.JSONDecodeError:
+                ret['enabled_payment_methods'] = [
+                    m.strip() for m in methods.split(',') if m.strip()
+                ]
+        return super().to_internal_value(ret)
+
+    def get_receipt_logo_url(self, obj):
+        if not obj.receipt_logo:
+            return None
+        request = self.context.get('request')
+        url = obj.receipt_logo.url
+        if request:
+            return request.build_absolute_uri(url)
+        return url
+
+    def validate_enabled_payment_methods(self, value):
+        if value is not None and len(value) == 0:
+            raise serializers.ValidationError('Select at least one payment method.')
+        normalized = normalize_payment_methods(value)
+        if not normalized:
+            raise serializers.ValidationError('Select at least one payment method.')
+        invalid = [m for m in (value or []) if str(m).strip().lower() not in VALID_PAYMENT_METHODS]
+        if invalid:
+            raise serializers.ValidationError(
+                f'Unknown payment method(s): {", ".join(invalid)}'
+            )
+        return normalized
+
+    def update(self, instance, validated_data):
+        if validated_data.get('receipt_logo') is None and self.context.get('clear_receipt_logo'):
+            if instance.receipt_logo:
+                instance.receipt_logo.delete(save=False)
+            validated_data['receipt_logo'] = None
+        return super().update(instance, validated_data)

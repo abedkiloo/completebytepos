@@ -435,7 +435,7 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         
         file = request.FILES['file']
         try:
-            results = self.product_service.import_products_from_csv(file)
+            results = self.product_service.import_products_from_csv(file, user=request.user)
             
             message = f'Import completed: {results["created"]} created, {results["updated"]} updated'
             if results['errors']:

@@ -10,15 +10,9 @@ class Command(BaseCommand):
         self.stdout.write('Initializing chart of accounts...')
         
         # Create Account Types
-        account_types = [
-            {'name': 'asset', 'description': 'Assets', 'normal_balance': 'debit'},
-            {'name': 'liability', 'description': 'Liabilities', 'normal_balance': 'credit'},
-            {'name': 'equity', 'description': 'Equity', 'normal_balance': 'credit'},
-            {'name': 'revenue', 'description': 'Revenue', 'normal_balance': 'credit'},
-            {'name': 'expense', 'description': 'Expenses', 'normal_balance': 'debit'},
-        ]
-        
-        for at_data in account_types:
+        from accounting.chart_setup import DEFAULT_ACCOUNT_TYPES
+
+        for at_data in DEFAULT_ACCOUNT_TYPES:
             account_type, created = AccountType.objects.get_or_create(
                 name=at_data['name'],
                 defaults=at_data

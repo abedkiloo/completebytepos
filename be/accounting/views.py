@@ -16,6 +16,7 @@ from .serializers import (
     BalanceSheetSerializer, IncomeStatementSerializer, TrialBalanceSerializer
 )
 from .services import AccountTypeService, AccountService, JournalEntryService, TransactionService
+from .chart_setup import ensure_default_account_types, get_account_type
 from accounts.permissions import RequirePermPerAction
 from expenses.models import Expense
 from sales.models import Sale
@@ -343,9 +344,15 @@ class AccountingReportViewSet(viewsets.ViewSet):
         
         # Get accounts up to the date
         entries_until_date = JournalEntry.objects.filter(entry_date__lte=as_of_date)
-        
+
+        ensure_default_account_types()
+        asset_type = get_account_type('asset')
+        liability_type = get_account_type('liability')
+        equity_type = get_account_type('equity')
+        revenue_type = get_account_type('revenue')
+        expense_type = get_account_type('expense')
+
         # Assets
-        asset_type = AccountType.objects.get(name='asset')
         assets = {}
         asset_accounts = Account.objects.filter(account_type=asset_type, is_active=True)
         total_assets = Decimal('0.00')
@@ -368,13 +375,8 @@ class AccountingReportViewSet(viewsets.ViewSet):
                 total_assets += balance
         
         # Liabilities
-        try:
-            liability_type = AccountType.objects.get(name='liability')
-        except AccountType.DoesNotExist:
-            liability_type = None
-        
         liabilities = {}
-        liability_accounts = Account.objects.filter(account_type=liability_type, is_active=True) if liability_type else []
+        liability_accounts = Account.objects.filter(account_type=liability_type, is_active=True)
         total_liabilities = Decimal('0.00')
         
         for account in liability_accounts:
@@ -395,13 +397,8 @@ class AccountingReportViewSet(viewsets.ViewSet):
                 total_liabilities += balance
         
         # Equity
-        try:
-            equity_type = AccountType.objects.get(name='equity')
-        except AccountType.DoesNotExist:
-            equity_type = None
-        
         equity = {}
-        equity_accounts = Account.objects.filter(account_type=equity_type, is_active=True) if equity_type else []
+        equity_accounts = Account.objects.filter(account_type=equity_type, is_active=True)
         total_equity = Decimal('0.00')
         
         for account in equity_accounts:
@@ -422,28 +419,19 @@ class AccountingReportViewSet(viewsets.ViewSet):
                 total_equity += balance
         
         # Calculate retained earnings (Revenue - Expenses)
-        try:
-            revenue_type = AccountType.objects.get(name='revenue')
-            expense_type = AccountType.objects.get(name='expense')
-        except AccountType.DoesNotExist:
-            revenue_type = None
-            expense_type = None
-        
         revenue_total = Decimal('0.00')
-        if revenue_type:
-            for account in Account.objects.filter(account_type=revenue_type, is_active=True):
-                credit_total = entries_until_date.filter(
-                    account=account, entry_type='credit'
-                ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
-                revenue_total += credit_total
-        
+        for account in Account.objects.filter(account_type=revenue_type, is_active=True):
+            credit_total = entries_until_date.filter(
+                account=account, entry_type='credit'
+            ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+            revenue_total += credit_total
+
         expense_total = Decimal('0.00')
-        if expense_type:
-            for account in Account.objects.filter(account_type=expense_type, is_active=True):
-                debit_total = entries_until_date.filter(
-                    account=account, entry_type='debit'
-                ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
-                expense_total += debit_total
+        for account in Account.objects.filter(account_type=expense_type, is_active=True):
+            debit_total = entries_until_date.filter(
+                account=account, entry_type='debit'
+            ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+            expense_total += debit_total
         
         net_income = revenue_total - expense_total
         
@@ -499,16 +487,12 @@ class AccountingReportViewSet(viewsets.ViewSet):
             entry_date__gte=date_from,
             entry_date__lte=date_to
         )
-        
+
+        ensure_default_account_types()
+        revenue_type = get_account_type('revenue')
+        expense_type = get_account_type('expense')
+
         # Revenue
-        try:
-            revenue_type = AccountType.objects.get(name='revenue')
-        except AccountType.DoesNotExist:
-            return Response(
-                {'error': 'Account types not initialized. Please set up chart of accounts first.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
         revenue = {}
         revenue_accounts = Account.objects.filter(account_type=revenue_type, is_active=True)
         total_revenue = Decimal('0.00')
@@ -526,14 +510,6 @@ class AccountingReportViewSet(viewsets.ViewSet):
                 total_revenue += credit_total
         
         # Expenses
-        try:
-            expense_type = AccountType.objects.get(name='expense')
-        except AccountType.DoesNotExist:
-            return Response(
-                {'error': 'Account types not initialized. Please set up chart of accounts first.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
         expenses = {}
         expense_accounts = Account.objects.filter(account_type=expense_type, is_active=True)
         total_expenses = Decimal('0.00')

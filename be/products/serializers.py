@@ -162,20 +162,8 @@ class ProductSerializer(serializers.ModelSerializer):
             'sku': {'required': False, 'allow_blank': True},
         }
     
-    def validate(self, attrs):
-        price = attrs.get('price')
-        mrp = attrs.get('mrp')
-        if mrp is not None and price is not None and mrp < price:
-            raise serializers.ValidationError(
-                {'mrp': 'MRP should be at least the selling price.'}
-            )
-        if (mrp is None or mrp == 0) and price is not None:
-            attrs['mrp'] = price
-        return attrs
-
     def to_internal_value(self, data):
         """Convert category/subcategory objects to IDs if needed"""
-        # Make a copy to avoid mutating the original
         data = _map_selling_price_fields(data)
         data = data.copy() if hasattr(data, 'copy') else dict(data)
         
@@ -314,11 +302,45 @@ class ProductSerializer(serializers.ModelSerializer):
         return value
     
     def validate(self, data):
-        """Validate product data"""
-        if data.get('price', 0) < data.get('cost', 0):
+        """Validate product data and apply store catalog rules for sales staff."""
+        from settings.models import StoreSettings
+        from settings.store_settings_helpers import user_may_edit_pricing
+
+        request = self.context.get('request')
+        catalog_skip = False
+        if request and not user_may_edit_pricing(request.user):
+            store = StoreSettings.load()
+            if store.allow_sales_add_products and store.sales_catalog_skip_pricing:
+                catalog_skip = True
+                data.pop('price', None)
+                data.pop('mrp', None)
+                data['cost'] = data.get('cost') or 0
+                if self.instance is None:
+                    data['price'] = 0
+                    data['mrp'] = 0
+                elif self.instance is not None:
+                    # Sales may edit catalog fields but not pricing on update
+                    data.pop('price', None)
+                    data.pop('mrp', None)
+                    data.pop('cost', None)
+
+        if not catalog_skip and data.get('price', 0) < data.get('cost', 0):
             raise serializers.ValidationError({
                 'price': 'Selling price should be greater than or equal to cost price.'
             })
+
+        price = data.get('price')
+        if price is None and self.instance is not None:
+            price = self.instance.price
+        mrp = data.get('mrp')
+        if mrp is None and self.instance is not None:
+            mrp = self.instance.mrp
+        if mrp is not None and price is not None and mrp < price:
+            raise serializers.ValidationError(
+                {'mrp': 'MRP should be at least the selling price.'}
+            )
+        if (mrp is None or mrp == 0) and price is not None and not catalog_skip:
+            data['mrp'] = price
         
         # Validate subcategory is a child of category
         category_id = data.get('category')

@@ -194,7 +194,7 @@ ROLE_SCREEN_MATRIX = {
         'POS (/pos)',
         'Terminal POS (/pos/billing)',
         'Customers (add walk-in / credit)',
-        'Product lookup (view only)',
+        'Products & categories (add / import — manager sets prices)',
     ],
 }
 
@@ -233,7 +233,7 @@ def _sales_queryset():
             'products', 'categories', 'sales', 'pos', 'barcodes',
             'customers', 'invoicing',
         ],
-        action__in=['view', 'create'],
+        action__in=['view', 'create', 'update', 'import'],
     )
 
 
@@ -268,7 +268,7 @@ def sync_default_roles(created_by=None):
     sales, _ = Role.objects.update_or_create(
         name=ROLE_SALES,
         defaults={
-            'description': 'Front-line sales — POS, billing, customers; view products only',
+            'description': 'Front-line sales — POS, customers, catalog add (pricing set by manager)',
             'is_system_role': True,
             'is_active': True,
             'created_by': created_by,

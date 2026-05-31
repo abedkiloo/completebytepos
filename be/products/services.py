@@ -701,8 +701,9 @@ class ProductService(BaseService):
         return output.getvalue()
     
     @transaction.atomic
-    def import_products_from_csv(self, csv_file) -> Dict[str, Any]:
+    def import_products_from_csv(self, csv_file, user=None) -> Dict[str, Any]:
         """Import products from CSV file - supports template and old format"""
+        from .catalog_rules import apply_sales_catalog_rules
         import csv
         import io
         
@@ -745,6 +746,15 @@ class ProductService(BaseService):
                     
                     # Parse row data
                     parsed_data = self._parse_product_row(row)
+                    product_exists = self.model.objects.filter(sku=sku).exists()
+
+                    # Sales catalog import: never set pricing from CSV
+                    if user is not None:
+                        apply_sales_catalog_rules(
+                            parsed_data,
+                            user=user,
+                            is_create=not product_exists,
+                        )
                     
                     # Extract sizes and colors for variant creation
                     sizes_str = parsed_data.pop('_sizes_str', '')

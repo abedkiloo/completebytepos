@@ -38,6 +38,7 @@ SALES_PERMS = RequirePermPerAction('sales', {
     'update': 'update',
     'partial_update': 'update',
     'receipt': 'view',
+    'dashboard_summary': 'view',
     'active_holding': 'view',
     'save_holding': 'create',
     'checkout': 'create',
@@ -574,6 +575,27 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         sale = self.get_object()
         serializer = self.get_serializer(sale)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='dashboard-summary')
+    def dashboard_summary(self, request):
+        """Lightweight today/month totals for the home screen (sales personnel)."""
+        today = timezone.now().date()
+        start_of_day = timezone.make_aware(datetime.combine(today, datetime.min.time()))
+        start_of_month = timezone.make_aware(datetime(today.year, today.month, 1))
+
+        base = self.sale_service.build_queryset({}, request=request).filter(status='completed')
+        today_sales = base.filter(created_at__gte=start_of_day)
+        month_sales = base.filter(created_at__gte=start_of_month)
+
+        return Response({
+            'today': {
+                'sales_count': today_sales.count(),
+                'total': float(today_sales.aggregate(total=Sum('total'))['total'] or 0),
+            },
+            'month': {
+                'total': float(month_sales.aggregate(total=Sum('total'))['total'] or 0),
+            },
+        })
 
     def _resolve_branch(self, request, branch_id=None):
         if not is_branch_support_enabled():
