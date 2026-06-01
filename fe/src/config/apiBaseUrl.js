@@ -6,5 +6,19 @@
  * Prod: /api  (nginx proxies to backend)
  */
 export function resolveApiBaseUrl() {
-  return (process.env.REACT_APP_API_URL || 'http://localhost:8000/api').trim();
+  const configured = (process.env.REACT_APP_API_URL || '').trim();
+
+  // "/api" only works behind nginx. CRA dev server has no /api proxy.
+  if (
+    configured === '/api' &&
+    process.env.NODE_ENV !== 'production' &&
+    typeof window !== 'undefined'
+  ) {
+    const { protocol, hostname } = window.location;
+    return `${protocol}//${hostname}:8000/api`;
+  }
+
+  if (configured) return configured;
+
+  return 'http://localhost:8000/api';
 }
