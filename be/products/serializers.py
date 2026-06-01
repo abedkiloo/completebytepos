@@ -94,6 +94,20 @@ class CategorySerializer(serializers.ModelSerializer):
             return obj.children.count()
         return obj.children.all().count()
 
+    def validate(self, data):
+        parent = data.get('parent', getattr(self.instance, 'parent', None))
+        if parent is not None and hasattr(parent, 'parent_id') and parent.parent_id:
+            raise serializers.ValidationError({
+                'parent': 'Parent must be a top-level category, not another subcategory.',
+            })
+        if self.instance and self.instance.children.exists():
+            new_parent = data.get('parent', self.instance.parent_id)
+            if new_parent and new_parent != self.instance.parent_id:
+                raise serializers.ValidationError({
+                    'parent': 'Cannot change parent on a category that already has subcategories.',
+                })
+        return data
+
 
 class CategoryListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for category lists"""

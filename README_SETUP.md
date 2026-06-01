@@ -1,5 +1,8 @@
 # CompleteBytePOS - Setup & Run Guide
 
+> **Canonical guide (Docker, VPS, environment variables, tenant/branch setup, troubleshooting):** [docs/SETUP.md](docs/SETUP.md)  
+> **Production build (nginx, static assets):** [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+
 ## Quick Start
 
 ### Prerequisites

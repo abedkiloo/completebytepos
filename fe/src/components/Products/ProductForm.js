@@ -147,35 +147,14 @@ const ProductForm = ({
           }
         }
       } else {
-        // If no category selected, load all subcategories (for when user selects subcategory first)
-        try {
-          const response = await categoriesAPI.list({ is_active: 'true' });
-          const allCategoriesData = response.data.results || response.data || [];
-          const subcategoriesList = Array.isArray(allCategoriesData) 
-            ? allCategoriesData.filter(cat => cat.parent) 
-            : [];
-          setSubcategories(subcategoriesList);
-        } catch (error) {
-          console.error('Error loading subcategories:', error);
-          setSubcategories([]);
+        setSubcategories([]);
+        if (formData.subcategory) {
+          setFormData((prev) => ({ ...prev, subcategory: '' }));
         }
       }
     };
     loadSubcategories();
   }, [formData.category]);
-
-  // Auto-populate category when subcategory is selected (if category not set or doesn't match)
-  useEffect(() => {
-    if (formData.subcategory) {
-      const selectedSubcategory = allCategories.find(cat => cat.id === parseInt(formData.subcategory));
-      if (selectedSubcategory && selectedSubcategory.parent) {
-        // Auto-set category to subcategory's parent if not already set or doesn't match
-        if (!formData.category || formData.category !== String(selectedSubcategory.parent)) {
-          setFormData(prev => ({ ...prev, category: String(selectedSubcategory.parent) }));
-        }
-      }
-    }
-  }, [formData.subcategory, allCategories]);
 
   useEffect(() => {
     if (product) {
@@ -456,6 +435,9 @@ const ProductForm = ({
               {errors.name && <span className="error">{errors.name}</span>}
             </div>
 
+          </div>
+
+          <div className="form-row form-row-paired">
             <div className="form-group">
               <label>Category</label>
               <div className="select-with-add">
@@ -465,12 +447,12 @@ const ProductForm = ({
                   onChange={handleChange}
                   options={allCategories.filter(cat => !cat.parent).map(cat => ({
                     id: cat.id,
-                    name: cat.name
+                    name: cat.name,
                   }))}
-                  placeholder="Select category..."
+                  placeholder="Select category…"
                   searchable={true}
                   onAddNew={() => setShowCategoryForm(true)}
-                  addNewLabel="+ Add New Category"
+                  addNewLabel="+ Add category"
                 />
               </div>
             </div>
@@ -483,32 +465,31 @@ const ProductForm = ({
                   name="subcategory"
                   value={formData.subcategory}
                   onChange={handleChange}
-                  options={subcategories.map(subcat => ({
+                  options={subcategories.map((subcat) => ({
                     id: subcat.id,
-                    name: subcat.name
+                    name: subcat.name,
                   }))}
                   placeholder={
-                    formData.category 
-                      ? subcategories.length === 0 
-                        ? "Loading subcategories..." 
-                        : "Select subcategory..."
-                      : "Select a category first or select any subcategory"
+                    !formData.category
+                      ? 'Select category first'
+                      : subcategories.length === 0
+                        ? 'No subcategories — add one'
+                        : 'Select subcategory (optional)'
                   }
                   searchable={true}
-                  disabled={false}
-                  onAddNew={formData.category ? () => setShowSubcategoryForm(true) : () => {
-                    toast.error('Please select a category first before creating a subcategory');
-                  }}
-                  addNewLabel="+ Add New Subcategory"
+                  disabled={!formData.category}
+                  onAddNew={
+                    formData.category
+                      ? () => setShowSubcategoryForm(true)
+                      : () => {
+                          toast.error('Select a category before adding a subcategory');
+                        }
+                  }
+                  addNewLabel="+ Add subcategory"
                 />
-                {formData.subcategory && !formData.category && (
-                  <small className="form-text text-muted">
-                    Category will be automatically set to the subcategory's parent
-                  </small>
-                )}
                 {formData.category && subcategories.length === 0 && (
                   <small className="form-text text-muted">
-                    No subcategories available for this category
+                    Optional. Use + Add subcategory or leave empty.
                   </small>
                 )}
               </div>

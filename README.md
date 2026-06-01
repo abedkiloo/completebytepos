@@ -9,13 +9,28 @@ A comprehensive, production-ready Point of Sale (POS) system designed for Kenyan
 
 ## 🚀 Quick Start
 
+> **Full setup guide (Docker, VPS, tenant/branch, env vars, troubleshooting):** [docs/SETUP.md](docs/SETUP.md)
+
 ### Prerequisites
 
 - **Python** 3.11 or higher
 - **Node.js** 18 or higher
 - **npm** or **yarn**
+- **Docker** (recommended for production and team dev)
 
-### First Time Setup
+### Docker (recommended)
+
+```bash
+cp .env.example .env
+./run_docker.sh              # development
+# ./run_docker.sh --prod     # production VPS
+
+docker exec completebytepos_backend python manage.py setup_new_organization
+```
+
+See [docs/SETUP.md](docs/SETUP.md) for remote server `REACT_APP_API_URL`, default users, and verification.
+
+### First Time Setup (local script)
 
 1. **Clone the repository**
    ```bash

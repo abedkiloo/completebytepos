@@ -1,5 +1,7 @@
 # Production deployment (React build + nginx)
 
+For first-time install, environment variables, tenant/branch setup, and VPS troubleshooting, see **[SETUP.md](./SETUP.md)**.
+
 CompleteBytePOS follows the [Create React App production build](https://create-react-app.dev/docs/production-build/) pattern:
 
 1. **`npm run build`** — minified JS/CSS into `fe/build/`

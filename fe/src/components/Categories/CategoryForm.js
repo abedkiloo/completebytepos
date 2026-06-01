@@ -1,8 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { categoriesAPI } from '../../services/api';
 import SearchableSelect from '../Shared/SearchableSelect';
 
-const CategoryForm = ({ category, onClose, onSave, categories = [], hideStatusToggles = false }) => {
+const CategoryForm = ({
+  category,
+  initialParentId = null,
+  onClose,
+  onSave,
+  categories = [],
+  hideStatusToggles = false,
+}) => {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -12,27 +19,55 @@ const CategoryForm = ({ category, onClose, onSave, categories = [], hideStatusTo
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const isSubcategory = Boolean(category?.parent);
+  const hasChildren = (category?.children_count || 0) > 0;
+  const lockedParentId =
+    initialParentId != null
+      ? String(initialParentId)
+      : isSubcategory
+        ? String(category.parent)
+        : '';
+
+  const topLevelParents = useMemo(
+    () =>
+      categories.filter(
+        (cat) => !cat.parent && (!category || cat.id !== category.id)
+      ),
+    [categories, category]
+  );
+
+  const lockedParentName = useMemo(() => {
+    if (!lockedParentId) return '';
+    const found = categories.find((c) => String(c.id) === lockedParentId);
+    return found?.name || '';
+  }, [categories, lockedParentId]);
+
   useEffect(() => {
     if (category) {
       setFormData({
         name: category.name || '',
         description: category.description || '',
-        parent: category.parent || '',
+        parent: category.parent ? String(category.parent) : '',
         is_active: category.is_active !== undefined ? category.is_active : true,
       });
+    } else {
+      setFormData({
+        name: '',
+        description: '',
+        parent: initialParentId != null ? String(initialParentId) : '',
+        is_active: true,
+      });
     }
-  }, [category]);
+    setError('');
+  }, [category, initialParentId]);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: type === 'checkbox' ? checked : value,
     }));
-
-    if (error) {
-      setError('');
-    }
+    if (error) setError('');
   };
 
   const handleSubmit = async (e) => {
@@ -52,8 +87,11 @@ const CategoryForm = ({ category, onClose, onSave, categories = [], hideStatusTo
         is_active: formData.is_active,
       };
 
-      if (formData.parent) {
-        submitData.parent = parseInt(formData.parent);
+      const parentToUse = lockedParentId || formData.parent;
+      if (parentToUse) {
+        submitData.parent = parseInt(parentToUse, 10);
+      } else if (category && category.parent) {
+        submitData.parent = null;
       }
 
       if (category) {
@@ -63,25 +101,39 @@ const CategoryForm = ({ category, onClose, onSave, categories = [], hideStatusTo
       }
 
       onSave();
-    } catch (error) {
-      const errorMsg = error.response?.data?.error ||
-                      error.response?.data?.name?.[0] ||
-                      error.response?.data?.detail ||
-                      'Failed to save category';
-      setError(errorMsg);
+    } catch (err) {
+      const data = err.response?.data;
+      const errorMsg =
+        data?.error ||
+        data?.parent?.[0] ||
+        data?.name?.[0] ||
+        data?.detail ||
+        'Failed to save category';
+      setError(typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg));
     } finally {
       setLoading(false);
     }
   };
 
-  const parentOptions = categories.filter(cat => !category || cat.id !== category.id);
+  const showParentPicker =
+    !lockedParentId && !hasChildren && !isSubcategory;
+
+  const title = category
+    ? isSubcategory
+      ? 'Edit subcategory'
+      : 'Edit category'
+    : lockedParentId
+      ? 'Add subcategory'
+      : 'Add category';
 
   return (
     <div className="slide-in-overlay" onClick={onClose}>
       <div className="slide-in-panel" onClick={(e) => e.stopPropagation()}>
         <div className="slide-in-panel-header">
-          <h2>{category ? 'Edit Category' : 'Add Category'}</h2>
-          <button onClick={onClose} className="slide-in-panel-close">×</button>
+          <h2>{title}</h2>
+          <button type="button" onClick={onClose} className="slide-in-panel-close">
+            ×
+          </button>
         </div>
 
         <div className="slide-in-panel-body">
@@ -92,15 +144,30 @@ const CategoryForm = ({ category, onClose, onSave, categories = [], hideStatusTo
               </div>
             )}
 
+            {lockedParentId && (
+              <div className="form-group">
+                <label>Parent category</label>
+                <input
+                  type="text"
+                  value={lockedParentName}
+                  readOnly
+                  className="readonly bg-muted"
+                />
+                <small className="form-text text-muted">
+                  Subcategories belong to one top-level category.
+                </small>
+              </div>
+            )}
+
             <div className="form-group">
-              <label>Category Name *</label>
+              <label>{lockedParentId ? 'Subcategory name *' : 'Category name *'}</label>
               <input
                 type="text"
                 name="name"
                 value={formData.name}
                 onChange={handleChange}
                 required
-                placeholder="Enter category name"
+                placeholder={lockedParentId ? 'e.g. Leather sofas' : 'e.g. Furniture'}
                 autoFocus
               />
             </div>
@@ -111,27 +178,38 @@ const CategoryForm = ({ category, onClose, onSave, categories = [], hideStatusTo
                 name="description"
                 value={formData.description}
                 onChange={handleChange}
-                rows="4"
-                placeholder="Enter category description (optional)"
+                rows="3"
+                placeholder="Optional description"
               />
             </div>
 
-            <div className="form-group">
-              <label>Parent Category</label>
-              <SearchableSelect
-                name="parent"
-                value={formData.parent}
-                onChange={handleChange}
-                options={[
-                  { id: '', name: 'No Parent (Top Level)' },
-                  ...parentOptions
-                    .filter(cat => cat.is_active !== false)
-                    .map(cat => ({ id: cat.id, name: cat.name }))
-                ]}
-                placeholder="No Parent (Top Level)"
-              />
-              <small className="form-text text-muted">Select a parent category to create a subcategory</small>
-            </div>
+            {showParentPicker && (
+              <div className="form-group">
+                <label>Parent category (optional)</label>
+                <SearchableSelect
+                  name="parent"
+                  value={formData.parent || ''}
+                  onChange={handleChange}
+                  options={[
+                    { id: '', name: 'None — top-level category' },
+                    ...topLevelParents
+                      .filter((cat) => cat.is_active !== false)
+                      .map((cat) => ({ id: cat.id, name: cat.name })),
+                  ]}
+                  placeholder="Top-level category only"
+                />
+                <small className="form-text text-muted">
+                  Only top-level categories can be parents. You cannot nest subcategories
+                  under other subcategories.
+                </small>
+              </div>
+            )}
+
+            {hasChildren && !isSubcategory && (
+              <p className="text-sm text-muted-foreground">
+                This category has subcategories. Its parent cannot be changed.
+              </p>
+            )}
 
             {!hideStatusToggles && (
               <div className="form-group">
@@ -144,7 +222,9 @@ const CategoryForm = ({ category, onClose, onSave, categories = [], hideStatusTo
                   />
                   <span>Active</span>
                 </label>
-                <small className="form-text text-muted">Inactive categories won&apos;t appear in product selection</small>
+                <small className="form-text text-muted">
+                  Inactive categories are hidden from product and POS pickers.
+                </small>
               </div>
             )}
           </form>

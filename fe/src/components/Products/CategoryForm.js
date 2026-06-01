@@ -1,14 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { categoriesAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import SearchableSelect from '../Shared/SearchableSelect';
 
-const CategoryForm = ({ 
-  isOpen, 
-  onClose, 
-  onSave, 
+const CategoryForm = ({
+  isOpen,
+  onClose,
+  onSave,
   parentCategory = null,
-  categories = [] // For selecting parent when creating subcategory
+  categories = [],
 }) => {
   const [formData, setFormData] = useState({
     name: '',
@@ -19,9 +19,19 @@ const CategoryForm = ({
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
 
+  const isSubcategory = Boolean(parentCategory);
+  const topLevelParents = useMemo(
+    () => categories.filter((cat) => !cat.parent),
+    [categories]
+  );
+  const parentName = useMemo(() => {
+    if (!parentCategory) return '';
+    const found = categories.find((c) => String(c.id) === String(parentCategory));
+    return found?.name || '';
+  }, [categories, parentCategory]);
+
   useEffect(() => {
     if (isOpen) {
-      // Reset form when opening
       setFormData({
         name: '',
         description: '',
@@ -34,37 +44,31 @@ const CategoryForm = ({
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: type === 'checkbox' ? checked : value,
     }));
-    // Clear error for this field
     if (errors[name]) {
-      setErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[name];
-        return newErrors;
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
       });
     }
   };
 
   const validate = () => {
     const newErrors = {};
-    
     if (!formData.name.trim()) {
-      newErrors.name = 'Category name is required';
+      newErrors.name = 'Name is required';
     }
-    
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (!validate()) {
-      return;
-    }
+    if (!validate()) return;
 
     setLoading(true);
     try {
@@ -74,28 +78,25 @@ const CategoryForm = ({
         is_active: formData.is_active,
       };
 
-      // Include parent if provided (for subcategories) or if parentCategory prop is set
       if (parentCategory) {
-        submitData.parent = parseInt(parentCategory);
+        submitData.parent = parseInt(parentCategory, 10);
       } else if (formData.parent) {
-        submitData.parent = parseInt(formData.parent);
+        submitData.parent = parseInt(formData.parent, 10);
       }
 
       const response = await categoriesAPI.create(submitData);
-      toast.success(parentCategory ? 'Subcategory created successfully' : 'Category created successfully');
-      
-      // Call onSave with the new category
-      if (onSave) {
-        onSave(response.data);
-      }
-      
-      // Close the form
+      toast.success(
+        isSubcategory ? 'Subcategory created successfully' : 'Category created successfully'
+      );
+      if (onSave) onSave(response.data);
       onClose();
     } catch (error) {
       if (error.response?.data) {
         setErrors(error.response.data);
-        const errorMessage = error.response.data.error || 
-          Object.values(error.response.data).flat().join(', ') || 
+        const errorMessage =
+          error.response.data.error ||
+          error.response.data.parent?.[0] ||
+          Object.values(error.response.data).flat().join(', ') ||
           'Failed to create category';
         toast.error(errorMessage);
       } else {
@@ -108,48 +109,55 @@ const CategoryForm = ({
 
   if (!isOpen) return null;
 
-  // Get parent categories (categories without a parent)
-  const parentCategories = categories.filter(cat => !cat.parent);
-
   return (
     <div className="slide-in-overlay nested" onClick={onClose}>
       <div className="slide-in-panel nested" onClick={(e) => e.stopPropagation()}>
         <div className="slide-in-panel-header">
-          <h2>{parentCategory ? 'Add New Subcategory' : 'Add New Category'}</h2>
-          <button onClick={onClose} className="slide-in-panel-close">×</button>
+          <h2>{isSubcategory ? 'Add subcategory' : 'Add category'}</h2>
+          <button type="button" onClick={onClose} className="slide-in-panel-close">
+            ×
+          </button>
         </div>
 
         <div className="slide-in-panel-body">
           <form onSubmit={handleSubmit} className="category-form">
+            {isSubcategory && (
+              <div className="form-group">
+                <label>Parent category</label>
+                <input type="text" value={parentName} readOnly className="readonly bg-muted" />
+              </div>
+            )}
+
             <div className="form-group">
-              <label>Name *</label>
+              <label>{isSubcategory ? 'Subcategory name *' : 'Category name *'}</label>
               <input
                 type="text"
                 name="name"
                 value={formData.name}
                 onChange={handleChange}
                 required
-                placeholder={parentCategory ? 'Subcategory name' : 'Category name'}
+                placeholder={isSubcategory ? 'Subcategory name' : 'Category name'}
+                autoFocus
               />
               {errors.name && <span className="error">{errors.name}</span>}
             </div>
 
-            {!parentCategory && (
+            {!isSubcategory && (
               <div className="form-group">
-                <label>Parent Category (optional)</label>
+                <label>Parent (optional)</label>
                 <SearchableSelect
                   name="parent"
                   value={formData.parent || ''}
                   onChange={handleChange}
                   options={[
-                    { id: '', name: 'None (Top-level category)' },
-                    ...parentCategories.map(cat => ({ id: cat.id, name: cat.name }))
+                    { id: '', name: 'None — top-level category' },
+                    ...topLevelParents.map((cat) => ({ id: cat.id, name: cat.name })),
                   ]}
-                  placeholder="Search and select parent category..."
+                  placeholder="Top-level parent only"
                   searchable={true}
                 />
                 <small className="form-text text-muted">
-                  Leave empty to create a top-level category, or select a parent to create a subcategory
+                  Pick a parent only to create a subcategory under an existing category.
                 </small>
               </div>
             )}
@@ -166,14 +174,14 @@ const CategoryForm = ({
             </div>
 
             <div className="form-group">
-              <label>
+              <label className="flex cursor-pointer items-center gap-2">
                 <input
                   type="checkbox"
                   name="is_active"
                   checked={formData.is_active}
                   onChange={handleChange}
                 />
-                {' '}Active
+                <span>Active</span>
               </label>
             </div>
           </form>
@@ -183,13 +191,13 @@ const CategoryForm = ({
           <button type="button" onClick={onClose} className="btn btn-secondary">
             Cancel
           </button>
-          <button 
-            type="submit" 
-            onClick={handleSubmit} 
-            disabled={loading} 
+          <button
+            type="submit"
+            onClick={handleSubmit}
+            disabled={loading}
             className="btn btn-primary"
           >
-            {loading ? 'Creating...' : 'Create Category'}
+            {loading ? 'Creating…' : isSubcategory ? 'Create subcategory' : 'Create category'}
           </button>
         </div>
       </div>
