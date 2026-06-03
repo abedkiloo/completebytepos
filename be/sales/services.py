@@ -136,8 +136,13 @@ class SaleService(BaseService):
                 try:
                     variant = get_operational_variant(variant_id, product)
                 except ProductVariant.DoesNotExist:
+                    if int(variant_id) == int(product_id):
+                        raise ValidationError(
+                            f'Invalid variant_id {variant_id}: it matches product_id. '
+                            'Use the ProductVariant id from size/color selection, not the product id.'
+                        )
                     raise ValidationError(
-                        f"Variant with id {variant_id} not found for this product"
+                        f'Variant with id {variant_id} not found for product {product_id}'
                     )
             elif variant_id and not is_product_variants_enabled():
                 # Ignore stale variant_id from clients when the feature is off.

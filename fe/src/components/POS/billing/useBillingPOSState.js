@@ -9,7 +9,6 @@ import { cartItemKey, getLineStockCap } from '../v2/usePOSState';
 import { isProductVariantsEnabled, normalizeProductForSale } from '../../../utils/moduleFeatures';
 import { isProductOutOfStock } from '../../../utils/productStock';
 import { formatApiError } from '../../../utils/apiErrors';
-import { getMrp, getSellingPrice } from '../../../utils/productPricing';
 import {
   WALK_IN_CUSTOMER,
   mergeCustomersWithWalkIn,
@@ -24,6 +23,7 @@ import {
   salesAllowPartialPayment,
   salesValidateStock,
 } from '../../../utils/salesDisplay';
+import { buildBillingCartLine } from '../../../utils/billingCartLine';
 
 const HOLDING_SYNC_MS = 600;
 
@@ -292,34 +292,22 @@ export function useBillingPOSState() {
       }
     }
     const base = normalizeProductForSale(product);
-    const selling = variant
-      ? parseFloat(
-          variant.effective_price ?? variant.selling_price ?? variant.price ?? base.price
-        )
-      : getSellingPrice(base);
-    const mrp = variant
-      ? parseFloat(variant.effective_mrp ?? variant.mrp ?? base.mrp ?? selling)
-      : getMrp(base);
-    const stockCap = validateStock
-      ? variant
-        ? getLineStockCap({ stock_quantity: variant.stock_quantity, track_stock: true })
-        : getLineStockCap(base)
-      : null;
-
+    const draft = buildBillingCartLine(base, variant, { validateStock });
     const line = {
-      id: base.id,
-      name: base.name,
-      sku: variant?.sku || base.sku,
-      mrp,
-      selling_price: selling,
-      price: selling,
-      cost: parseFloat(variant?.cost ?? base.cost ?? 0),
-      quantity: 1,
-      variant_id: isProductVariantsEnabled() ? (variant?.id || null) : null,
-      stock_quantity: variant?.stock_quantity ?? base.stock_quantity,
-      track_stock: base.track_stock,
-      has_variants: isProductVariantsEnabled() ? base.has_variants : false,
+      id: draft.id,
+      name: draft.name,
+      sku: draft.sku,
+      mrp: draft.mrp,
+      selling_price: draft.selling_price,
+      price: draft.price,
+      cost: draft.cost,
+      quantity: draft.quantity,
+      variant_id: isProductVariantsEnabled() ? draft.variant_id : null,
+      stock_quantity: draft.stock_quantity,
+      track_stock: draft.track_stock,
+      has_variants: isProductVariantsEnabled() ? draft.has_variants : false,
     };
+    const stockCap = validateStock ? getLineStockCap(line) : null;
 
     setCart((prev) => {
       const key = cartItemKey(line);

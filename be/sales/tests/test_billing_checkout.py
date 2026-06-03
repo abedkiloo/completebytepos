@@ -7,11 +7,11 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from products.models import Category, Product
+from products.models import Category, Color, Product, ProductVariant, Size
 from sales.models import Sale
 from sales.services import SaleService
 from settings.models import Branch, Tenant
-from settings.test_utils import disable_product_variants
+from settings.test_utils import disable_product_variants, enable_product_variants
 
 
 class BillingCheckoutAPITestCase(APITestCase):
@@ -114,3 +114,75 @@ class BillingCheckoutAPITestCase(APITestCase):
         self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
         awkward.refresh_from_db()
         self.assertEqual(awkward.stock_quantity, 433)
+
+    def test_save_holding_api_with_variant_id(self):
+        enable_product_variants()
+        size = Size.objects.create(name='Medium', code='M', is_active=True)
+        color = Color.objects.create(name='White', hex_code='#ffffff', is_active=True)
+        variant_product = Product.objects.create(
+            name='Webbing',
+            sku='WEB-V',
+            category=self.product.category,
+            mrp=Decimal('600'),
+            price=Decimal('500'),
+            cost=Decimal('200'),
+            stock_quantity=10,
+            track_stock=True,
+            has_variants=True,
+            is_active=True,
+        )
+        variant_product.available_sizes.add(size)
+        variant_product.available_colors.add(color)
+        variant = ProductVariant.objects.create(
+            product=variant_product,
+            size=size,
+            color=color,
+            sku='WEB-M-W',
+            price=Decimal('500'),
+            cost=Decimal('200'),
+            stock_quantity=3,
+            is_active=True,
+        )
+        response = self.client.post(
+            '/api/sales/holding/',
+            {
+                'holding_id': None,
+                'items': [
+                    {
+                        'product_id': variant_product.id,
+                        'variant_id': variant.id,
+                        'quantity': 1,
+                        'unit_price': '500',
+                    }
+                ],
+                'customer_id': None,
+                'tax_amount': 0,
+                'discount_amount': 0,
+                'branch_id': self.branch.id,
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['status'], 'holding')
+        self.assertEqual(len(response.data['items']), 1)
+        self.assertEqual(response.data['items'][0]['variant'], variant.id)
+
+    def test_save_holding_rejects_product_id_as_variant_id(self):
+        enable_product_variants()
+        response = self.client.post(
+            '/api/sales/holding/',
+            {
+                'items': [
+                    {
+                        'product_id': self.product.id,
+                        'variant_id': self.product.id,
+                        'quantity': 1,
+                        'unit_price': '80',
+                    }
+                ],
+                'branch_id': self.branch.id,
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('variant_id', response.data.get('error', '').lower())
