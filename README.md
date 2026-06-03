@@ -9,7 +9,8 @@ A comprehensive, production-ready Point of Sale (POS) system designed for Kenyan
 
 ## 🚀 Quick Start
 
-> **Full setup guide (Docker, VPS, tenant/branch, env vars, troubleshooting):** [docs/SETUP.md](docs/SETUP.md)
+> **Full setup guide (Docker, VPS, tenant/branch, env vars, troubleshooting):** [docs/SETUP.md](docs/SETUP.md)  
+> **Testing & coverage:** [docs/TESTING.md](docs/TESTING.md)
 
 ### Prerequisites
 

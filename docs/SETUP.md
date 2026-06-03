@@ -3,7 +3,8 @@
 This guide covers **first-time installation**, **Docker (dev & production)**, **VPS deployment**, **organization setup (tenant & branch)**, **environment variables**, and **common fixes**.
 
 For production build details (nginx, static assets), see [DEPLOYMENT.md](./DEPLOYMENT.md).  
-For roles, personas, and testing, see [POS_UX_ROLES_AND_TESTING.md](./POS_UX_ROLES_AND_TESTING.md).
+For roles, personas, and testing, see [POS_UX_ROLES_AND_TESTING.md](./POS_UX_ROLES_AND_TESTING.md).  
+For coverage layout and 95% targets by layer, see [TESTING.md](./TESTING.md).
 
 ---
 
@@ -100,6 +101,21 @@ See [First-time organization setup](#first-time-organization-setup) for alternat
 ### 5. Log in
 
 Use [default users](#default-users), then change passwords in production.
+
+### 6. Product size/color variants (optional)
+
+If you use **size/color variants** on products:
+
+1. **Module Settings → Products** — enable **Product Variants**.
+2. **Inventory → Sizes & colors** (sidebar) — add each size and color, or seed defaults:
+
+```bash
+docker exec completebytepos_backend python manage.py init_sizes_colors
+```
+
+3. **Products → Add product** — check **This product has size/color variants**, then select sizes/colors (Ctrl/Cmd for multiple).
+
+A fresh database has **no** sizes/colors until you add them on that page or run `init_sizes_colors`.
 
 ---
 
@@ -420,6 +436,31 @@ Log out/in; select headquarters branch if multi-branch is enabled.
 ### Duplicate `REACT_APP_API_URL` in `.env`
 
 Docker Compose may use the **last** value. Comment out all but one line; prefer a single correct URL for your mode.
+
+### Product images 404 (`/media/products/...`)
+
+**Cause:** With `DEBUG=False`, Django did not serve uploaded files; nginx also had no `/media/` route.
+
+**Fix:**
+
+1. Set your VPS IP in root `.env`: `PUBLIC_HOST=193.37.213.177` (your real IP).
+2. Ensure `SERVE_MEDIA=true` (default).
+3. Rebuild and restart (nginx must proxy `/media/`):
+
+```bash
+docker compose build frontend backend
+docker compose up -d
+```
+
+4. Open images via the app origin, e.g. `http://YOUR_IP:3000/media/products/webbing.jpg` (port **3000**, not 8000), or `:8000` after backend restart.
+
+5. Confirm files exist in the media volume:
+
+```bash
+docker exec completebytepos_backend ls -la /app/media/products/
+```
+
+6. **Module Settings → Products → Product Images** must be enabled for uploads in the UI.
 
 ### Migrations / backend not starting
 

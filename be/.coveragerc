@@ -13,6 +13,7 @@ omit =
 show_missing = True
 skip_covered = False
 precision = 1
+# Per-module gates: use run_tests_coverage.sh; raise fail_under when whole BE ≥ 75%.
 fail_under = 0
 
 [html]

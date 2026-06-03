@@ -21,7 +21,9 @@ from accounts.module_settings import (
     users_enable_role_edit,
     users_enable_role_delete,
     users_enable_permission_catalog,
+    users_show_phone,
 )
+from accounts.user_write import prepare_user_write_data, apply_profile_updates
 # Module settings moved to settings app
 from settings.models import ModuleSettings, ModuleFeature
 from settings.module_catalog import get_enabled_modules_flat
@@ -385,27 +387,34 @@ class UserViewSet(viewsets.ModelViewSet):
         # Users can update their own profile (except role)
         if user.id == current_user.id:
             # Don't allow changing role or staff status
-            data = request.data.copy()
+            data, profile_data = prepare_user_write_data(request.data)
             data.pop('is_staff', None)
             data.pop('is_superuser', None)
+            profile_data.pop('role', None)
+            profile_data.pop('custom_role_id', None)
+            profile_data.pop('custom_role', None)
             if 'profile' in data:
-                profile_data = data['profile']
-                profile_data.pop('role', None)
-                profile_data.pop('custom_role_id', None)
-            
+                nested = data.pop('profile')
+                if isinstance(nested, dict):
+                    if 'phone_number' in nested and users_show_phone():
+                        profile_data['phone_number'] = nested.get('phone_number') or ''
+
             serializer = self.get_serializer(user, data=data, partial=True)
             serializer.is_valid(raise_exception=True)
-            serializer.save()
-            return Response(serializer.data)
-        
+            user = serializer.save()
+            apply_profile_updates(user, profile_data)
+            return Response(UserSerializer(user).data)
+
         # Admins can update other users
         if current_user.is_staff or (hasattr(current_user, 'profile') and current_user.profile and current_user.profile.is_admin):
             if not users_enable_edit():
                 return self._feature_disabled_response('Editing users')
-            serializer = self.get_serializer(user, data=request.data, partial=True)
+            data, profile_data = prepare_user_write_data(request.data)
+            serializer = self.get_serializer(user, data=data, partial=True)
             serializer.is_valid(raise_exception=True)
-            serializer.save()
-            return Response(serializer.data)
+            user = serializer.save()
+            apply_profile_updates(user, profile_data)
+            return Response(UserSerializer(user).data)
         
         return Response(
             {'error': 'Permission denied'},

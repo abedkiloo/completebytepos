@@ -160,7 +160,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     profile = UserProfileSerializer(read_only=True, allow_null=True, required=False)
-    password = serializers.CharField(write_only=True, required=False)
+    password = serializers.CharField(write_only=True, required=False, allow_blank=True)
     permissions = serializers.SerializerMethodField()
     
     class Meta:
@@ -213,6 +213,11 @@ class UserSerializer(serializers.ModelSerializer):
             instance.set_password(password)
         instance.save()
         return instance
+
+    def validate_password(self, value):
+        if value is None or value == '':
+            return None
+        return value
 
 
 class UserCreateSerializer(serializers.ModelSerializer):

@@ -152,6 +152,19 @@ except ImportError:
 
 MEDIA_URL = env_str('MEDIA_URL', '/media/')
 MEDIA_ROOT = env_path('MEDIA_ROOT', BASE_DIR / 'media')
+# Serve uploads from Django/gunicorn when not using S3 (required when DEBUG=False).
+SERVE_MEDIA = env_bool('SERVE_MEDIA', True)
+# Browser-facing base for image_url (nginx on FRONTEND_PORT proxies /media/ → backend).
+MEDIA_PUBLIC_BASE_URL = env_str('MEDIA_PUBLIC_BASE_URL')
+MEDIA_PUBLIC_PORT = env_int('MEDIA_PUBLIC_PORT', 0) or None
+if not MEDIA_PUBLIC_BASE_URL and PUBLIC_HOST:
+    _fe_port = env_str('FRONTEND_PORT', '3000')
+    MEDIA_PUBLIC_BASE_URL = f'http://{PUBLIC_HOST}:{_fe_port}'
+    if MEDIA_PUBLIC_PORT is None:
+        try:
+            MEDIA_PUBLIC_PORT = int(_fe_port)
+        except ValueError:
+            MEDIA_PUBLIC_PORT = 3000
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

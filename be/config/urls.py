@@ -32,6 +32,6 @@ urlpatterns = [
     path('api/employees/', include('employees.urls')),
 ]
 
-# Serve media files in development
-if settings.DEBUG:
+# Uploaded files (product images). In production use nginx /media/ → backend or SERVE_MEDIA.
+if settings.DEBUG or getattr(settings, 'SERVE_MEDIA', False):
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
