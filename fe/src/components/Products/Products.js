@@ -19,6 +19,7 @@ import {
 
 import { productsAPI, categoriesAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
+import { resolveMediaUrl } from '../../utils/mediaUrl';
 import ProductForm from './ProductForm';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import { toast } from '../../utils/toast';
@@ -1020,10 +1021,11 @@ function ProductRow({
 }
 
 function ProductThumb({ product }) {
-  if (product.image_url) {
+  const imageSrc = resolveMediaUrl(product.image_url);
+  if (imageSrc) {
     return (
       <img
-        src={product.image_url}
+        src={imageSrc}
         alt={product.name}
         className="h-10 w-10 shrink-0 rounded-md border bg-muted object-cover"
         loading="lazy"

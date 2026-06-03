@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { categoriesAPI } from '../../services/api';
 import SearchableSelect from '../Shared/SearchableSelect';
+import { required, normalizeApiErrors } from '../../utils/formValidation';
 
 const CategoryForm = ({
   category,
@@ -72,13 +73,14 @@ const CategoryForm = ({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
 
-    if (!formData.name.trim()) {
-      setError('Category name is required');
+    const nameErr = required(formData.name, 'Category name is required');
+    if (nameErr) {
+      setError(nameErr);
       return;
     }
 
+    setError('');
     setLoading(true);
     try {
       const submitData = {
@@ -102,14 +104,10 @@ const CategoryForm = ({
 
       onSave();
     } catch (err) {
-      const data = err.response?.data;
-      const errorMsg =
-        data?.error ||
-        data?.parent?.[0] ||
-        data?.name?.[0] ||
-        data?.detail ||
-        'Failed to save category';
-      setError(typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg));
+      const apiErrors = normalizeApiErrors(err.response?.data);
+      const fieldMsg =
+        apiErrors.name || apiErrors.parent || apiErrors._form;
+      setError(fieldMsg || 'Failed to save category');
     } finally {
       setLoading(false);
     }
@@ -138,12 +136,6 @@ const CategoryForm = ({
 
         <div className="slide-in-panel-body">
           <form onSubmit={handleSubmit} className="category-form">
-            {error && (
-              <div className="mb-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {error}
-              </div>
-            )}
-
             {lockedParentId && (
               <div className="form-group">
                 <label>Parent category</label>
@@ -159,7 +151,7 @@ const CategoryForm = ({
               </div>
             )}
 
-            <div className="form-group">
+            <div className={`form-group ${error && !lockedParentId ? 'has-error field-error' : ''}`}>
               <label>{lockedParentId ? 'Subcategory name *' : 'Category name *'}</label>
               <input
                 type="text"
@@ -169,7 +161,13 @@ const CategoryForm = ({
                 required
                 placeholder={lockedParentId ? 'e.g. Leather sofas' : 'e.g. Furniture'}
                 autoFocus
+                aria-invalid={Boolean(error)}
               />
+              {error && (
+                <span className="field-error-message" role="alert">
+                  {error}
+                </span>
+              )}
             </div>
 
             <div className="form-group">

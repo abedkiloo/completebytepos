@@ -29,7 +29,6 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
 import { Skeleton } from '../ui/skeleton';
-import { ScrollArea } from '../ui/scroll-area';
 import { cn } from '../../lib/cn';
 import { PageShell, PageHeader } from '../page';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
@@ -612,46 +611,51 @@ function CustomerFormDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="sm:max-w-2xl"
+        className={cn(
+          'left-[50%] top-[4vh] flex w-[calc(100%-2rem)] max-h-[92dvh] translate-x-[-50%] translate-y-0',
+          'flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl'
+        )}
         description={
           editing
             ? 'Update this customer\u2019s contact details, credit limit, and notes.'
             : 'Create a new customer profile to track sales, wallet balance, and credit.'
         }
       >
-        <DialogHeader>
+        <DialogHeader className="shrink-0 space-y-1 border-b px-6 py-4 pr-12">
           <DialogTitle>{editing ? 'Edit customer' : 'Add customer'}</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={onSubmit} className="space-y-4">
-          <ScrollArea className="max-h-[60vh] pr-3">
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field label="Name" htmlFor="cust-name" required error={formErrors.name}>
-                  <Input
-                    id="cust-name"
-                    value={formData.name}
-                    onChange={(e) => onChange('name', e.target.value)}
-                    placeholder="Jane Doe"
-                    autoFocus
-                  />
-                </Field>
-                {showCustomerType && (
-                <Field label="Type" htmlFor="cust-type">
-                  <SegmentedControl
-                    value={formData.customer_type}
-                    onChange={(v) => onChange('customer_type', v)}
-                    options={[
-                      { value: 'individual', label: 'Individual' },
-                      { value: 'business', label: 'Business' },
-                    ]}
-                  />
-                </Field>
-                )}
-              </div>
+        <form onSubmit={onSubmit} className="flex flex-col">
+          <div
+            className="dialog-form-scroll max-h-[calc(92dvh-10.5rem)] overflow-y-auto overscroll-contain px-6 py-4"
+            role="region"
+            aria-label="Customer details"
+          >
+            <div className="flex flex-col gap-4 pb-2">
+              <Field label="Name" htmlFor="cust-name" required error={formErrors.name}>
+                <Input
+                  id="cust-name"
+                  value={formData.name}
+                  onChange={(e) => onChange('name', e.target.value)}
+                  placeholder="Jane Doe"
+                  autoFocus
+                />
+              </Field>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field label="Email" htmlFor="cust-email" error={formErrors.email}>
+              {showCustomerType && (
+              <Field label="Type" htmlFor="cust-type">
+                <SegmentedControl
+                  value={formData.customer_type}
+                  onChange={(v) => onChange('customer_type', v)}
+                  options={[
+                    { value: 'individual', label: 'Individual' },
+                    { value: 'business', label: 'Business' },
+                  ]}
+                />
+              </Field>
+              )}
+
+              <Field label="Email" htmlFor="cust-email" error={formErrors.email}>
                   <Input
                     id="cust-email"
                     type="email"
@@ -659,18 +663,18 @@ function CustomerFormDialog({
                     onChange={(e) => onChange('email', e.target.value)}
                     placeholder="jane@example.com"
                   />
-                </Field>
-                <Field label="Phone" htmlFor="cust-phone" error={formErrors.phone}>
-                  <Input
-                    id="cust-phone"
-                    type="tel"
-                    inputMode="tel"
-                    value={formData.phone}
-                    onChange={(e) => onChange('phone', e.target.value)}
-                    placeholder="+254…"
-                  />
-                </Field>
-              </div>
+              </Field>
+
+              <Field label="Phone" htmlFor="cust-phone" error={formErrors.phone}>
+                <Input
+                  id="cust-phone"
+                  type="tel"
+                  inputMode="tel"
+                  value={formData.phone}
+                  onChange={(e) => onChange('phone', e.target.value)}
+                  placeholder="+254…"
+                />
+              </Field>
 
               <Field label="Address" htmlFor="cust-address">
                 <textarea
@@ -683,22 +687,21 @@ function CustomerFormDialog({
                 />
               </Field>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field label="City" htmlFor="cust-city">
-                  <Input
-                    id="cust-city"
-                    value={formData.city}
-                    onChange={(e) => onChange('city', e.target.value)}
-                  />
-                </Field>
-                <Field label="Country" htmlFor="cust-country">
-                  <Input
-                    id="cust-country"
-                    value={formData.country}
-                    onChange={(e) => onChange('country', e.target.value)}
-                  />
-                </Field>
-              </div>
+              <Field label="City" htmlFor="cust-city">
+                <Input
+                  id="cust-city"
+                  value={formData.city}
+                  onChange={(e) => onChange('city', e.target.value)}
+                />
+              </Field>
+
+              <Field label="Country" htmlFor="cust-country">
+                <Input
+                  id="cust-country"
+                  value={formData.country}
+                  onChange={(e) => onChange('country', e.target.value)}
+                />
+              </Field>
 
               {showTaxId && (
               <Field
@@ -739,9 +742,9 @@ function CustomerFormDialog({
               </label>
               )}
             </div>
-          </ScrollArea>
+          </div>
 
-          <DialogFooter className="gap-2 sm:gap-2">
+          <DialogFooter className="shrink-0 gap-2 border-t bg-background px-6 py-4 sm:gap-2">
             <Button
               type="button"
               variant="outline"

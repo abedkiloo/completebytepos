@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { productsAPI, categoriesAPI, sizesAPI, colorsAPI, suppliersAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
+import { resolveMediaUrl } from '../../utils/mediaUrl';
 import { useProductVariantsEnabled } from '../../hooks/useProductVariantsEnabled';
 import SearchableSelect from '../Shared/SearchableSelect';
 import CategoryForm from './CategoryForm';
@@ -194,7 +196,7 @@ const ProductForm = ({
         is_active: product.is_active !== undefined ? product.is_active : true,
       }));
       if (product.image_url) {
-        setImagePreview(product.image_url);
+        setImagePreview(resolveMediaUrl(product.image_url));
       }
     }
   }, [product]);
@@ -518,6 +520,21 @@ const ProductForm = ({
           )}
 
           {variantsEnabled && formData.has_variants && (
+            <>
+            {(sizes.length === 0 || colors.length === 0) && (
+              <div className="form-banner-error mb-3" role="status">
+                {sizes.length === 0 && colors.length === 0
+                  ? 'No sizes or colors exist yet. '
+                  : sizes.length === 0
+                    ? 'No sizes defined yet. '
+                    : 'No colors defined yet. '}
+                Add them under{' '}
+                <Link to="/product-attributes" className="font-medium underline">
+                  Sizes &amp; colors
+                </Link>
+                {' '}(or Sales → Sizes &amp; colors), then return here and select from the lists below.
+              </div>
+            )}
             <div className="form-row">
               <div className="form-group">
                 <label>Available Sizes</label>
@@ -599,6 +616,7 @@ const ProductForm = ({
                 </small>
               </div>
             </div>
+            </>
           )}
 
           {!catalogOnly && (

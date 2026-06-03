@@ -85,12 +85,14 @@ describe('roleAccess', () => {
     cacheStoreSettings({ allow_sales_add_products: true });
     expect(canAccessRoute(PERSONA.SALES, '/products')).toBe(true);
     expect(canAccessRoute(PERSONA.SALES, '/categories')).toBe(true);
+    expect(canAccessRoute(PERSONA.SALES, '/product-attributes')).toBe(true);
   });
 
   test('sales cannot access products when catalog add is off', () => {
     cacheStoreSettings({ allow_sales_add_products: false });
     expect(canAccessRoute(PERSONA.SALES, '/products')).toBe(false);
     expect(canAccessRoute(PERSONA.SALES, '/categories')).toBe(false);
+    expect(canAccessRoute(PERSONA.SALES, '/product-attributes')).toBe(false);
   });
 
   test('sales can access products with default store settings cache', () => {

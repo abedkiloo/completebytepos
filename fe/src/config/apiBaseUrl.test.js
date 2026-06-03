@@ -33,4 +33,10 @@ describe('resolveApiBaseUrl', () => {
     const { resolveApiBaseUrl } = require('./apiBaseUrl');
     expect(resolveApiBaseUrl()).toBe('/api');
   });
+
+  it('defaults to localhost when unset', () => {
+    delete process.env.REACT_APP_API_URL;
+    const { resolveApiBaseUrl } = require('./apiBaseUrl');
+    expect(resolveApiBaseUrl()).toBe('http://localhost:8000/api');
+  });
 });

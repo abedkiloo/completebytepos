@@ -12,6 +12,7 @@ const SearchableSelect = ({
   addNewLabel = '+ Add New',
   className = '',
   name = '',
+  invalid = false,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -75,9 +76,10 @@ const SearchableSelect = ({
     <div className={cn('relative w-full', className)} ref={dropdownRef}>
       <div
         className={cn(
-          'flex min-h-10 cursor-pointer items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors',
+          'searchable-select-trigger flex min-h-10 cursor-pointer items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors',
           isOpen && 'border-ring ring-2 ring-ring/20',
-          disabled && 'cursor-not-allowed bg-muted opacity-60'
+          disabled && 'cursor-not-allowed bg-muted opacity-60',
+          invalid && 'border-destructive ring-2 ring-destructive/25'
         )}
         onClick={handleToggle}
       >

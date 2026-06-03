@@ -33,6 +33,7 @@ import {
   Calculator,
   SlidersHorizontal,
   UserCog,
+  Palette,
 } from 'lucide-react';
 
 import { modulesAPI, storeSettingsAPI } from '../../services/api';
@@ -87,6 +88,7 @@ const NAV_SECTIONS = [
       { to: '/pos/billing', label: 'Terminal POS', icon: Receipt, feature: ['sales', 'billing_pos'] },
       { to: '/products', label: 'Products', icon: Package, salesCatalogItem: true, module: 'products' },
       { to: '/categories', label: 'Categories', icon: FolderTree, salesCatalogItem: true, module: 'products' },
+      { to: '/product-attributes', label: 'Sizes & colors', icon: Palette, salesCatalogItem: true, module: 'products', feature: ['products', 'product_variants'] },
       { to: '/normal-sale', label: 'Normal Sale', icon: Briefcase, feature: ['sales', 'normal_sale'] },
       { to: '/sales', label: 'Sales History', icon: DollarSign, feature: ['sales', 'sales_history'] },
     ],
@@ -114,6 +116,7 @@ const NAV_SECTIONS = [
     items: [
       { to: '/products', label: 'Products', icon: Package },
       { to: '/categories', label: 'Categories', icon: FolderTree },
+      { to: '/product-attributes', label: 'Sizes & colors', icon: Palette, feature: ['products', 'product_variants'] },
       { to: '/barcodes', label: 'Print Barcode', icon: Barcode, module: 'barcodes' },
       { to: '/barcodes', label: 'Print QR Code', icon: QrCode, module: 'barcodes' },
     ],

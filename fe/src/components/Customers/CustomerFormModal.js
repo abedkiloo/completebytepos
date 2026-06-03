@@ -139,7 +139,7 @@ const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
 
   return (
     <div className="slide-in-overlay" onClick={handleClose}>
-      <div className="slide-in-panel" onClick={(e) => e.stopPropagation()}>
+      <div className="slide-in-panel flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="slide-in-panel-header">
           <h2>Add New Customer</h2>
           <button onClick={handleClose} className="slide-in-panel-close">×</button>

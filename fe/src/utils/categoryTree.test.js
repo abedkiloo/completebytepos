@@ -37,4 +37,45 @@ describe('categoryTree', () => {
     const subs = filterByLevel(sample, 'subcategories');
     expect(subs).toHaveLength(2);
   });
+
+  it('filterByLevel all returns unchanged', () => {
+    expect(filterByLevel(sample, 'all')).toHaveLength(4);
+  });
+
+  it('filterByLevel parents only', () => {
+    expect(filterByLevel(sample, 'parents')).toHaveLength(2);
+  });
+
+  it('handles orphan subcategories', () => {
+    const orphan = { id: 99, name: 'Lost', parent: 999 };
+    const { orphans } = partitionCategories([...sample, orphan]);
+    expect(orphans).toHaveLength(1);
+    const rows = flattenCategoryTree([], {}, orphans);
+    expect(rows[0].isOrphan).toBe(true);
+    expect(filterCategoriesForSearch([orphan], 'lost')).toHaveLength(1);
+  });
+
+  it('search returns all when query empty', () => {
+    expect(filterCategoriesForSearch(sample, '')).toHaveLength(4);
+    expect(filterCategoriesForSearch(sample, '   ')).toHaveLength(4);
+  });
+
+  it('search includes all children when parent matches', () => {
+    const filtered = filterCategoriesForSearch(sample, 'furniture');
+    expect(filtered.map((c) => c.id).sort()).toEqual([1, 2]);
+  });
+
+  it('search keeps parent when only child matches', () => {
+    const filtered = filterCategoriesForSearch(sample, 'phones');
+    expect(filtered.map((c) => c.id).sort()).toEqual([3, 4]);
+  });
+
+  it('search matches description', () => {
+    const data = [
+      { id: 1, name: 'A', parent: null, description: 'alpha group' },
+      { id: 2, name: 'B', parent: 1 },
+    ];
+    const filtered = filterCategoriesForSearch(data, 'alpha');
+    expect(filtered.map((c) => c.id)).toContain(1);
+  });
 });

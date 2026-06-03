@@ -9,6 +9,7 @@ import { Badge } from '../../ui/badge';
 import { formatCurrency } from '../../../utils/formatters';
 import { cn } from '../../../lib/cn';
 import { isProductOutOfStock } from '../../../utils/productStock';
+import { resolveMediaUrl } from '../../../utils/mediaUrl';
 
 /**
  * Left + centre region of the POS:
@@ -184,7 +185,7 @@ function ProductTile({ product, onClick, respectStockLimits = true }) {
       <div className="relative flex aspect-square w-full items-center justify-center bg-muted">
         {product.image_url || product.image ? (
           <img
-            src={product.image_url || product.image}
+            src={resolveMediaUrl(product.image_url || product.image)}
             alt={product.name}
             className="h-full w-full object-cover"
             loading="lazy"

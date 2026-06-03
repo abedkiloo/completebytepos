@@ -34,6 +34,8 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
+    "test:unit": "react-scripts test --watchAll=false --testPathPattern=\"src/(utils|config|hooks)/\"",
+    "test:coverage": "react-scripts test --watchAll=false --coverage --testPathPattern=\"src/(utils|config|hooks)/\"",
     "test:flags": "react-scripts test --watchAll=false --testPathPattern=\"Display|moduleSettingsCache|FeatureFlag|useModuleSettings|productDisplay|sellingPrice\"",
     "test:e2e": "playwright test -c e2e/playwright.config.js",
     "test:e2e:install": "playwright install chromium",
@@ -47,6 +49,51 @@
       "react-app",
       "react-app/jest"
     ]
+  },
+  "jest": {
+    "collectCoverageFrom": [
+      "src/utils/formValidation.js",
+      "src/utils/userFormPayload.js",
+      "src/utils/categoryTree.js",
+      "src/config/apiBaseUrl.js"
+    ],
+    "coveragePathIgnorePatterns": [
+      "/node_modules/",
+      "src/utils/authSession.js",
+      "src/utils/toast.js"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 80,
+        "functions": 88,
+        "lines": 88,
+        "statements": 88
+      },
+      "./src/utils/formValidation.js": {
+        "branches": 88,
+        "functions": 95,
+        "lines": 95,
+        "statements": 90
+      },
+      "./src/utils/userFormPayload.js": {
+        "branches": 68,
+        "functions": 95,
+        "lines": 95,
+        "statements": 95
+      },
+      "./src/utils/categoryTree.js": {
+        "branches": 75,
+        "functions": 85,
+        "lines": 95,
+        "statements": 93
+      },
+      "./src/config/apiBaseUrl.js": {
+        "branches": 85,
+        "functions": 95,
+        "lines": 95,
+        "statements": 95
+      }
+    }
   },
   "browserslist": {
     "production": [

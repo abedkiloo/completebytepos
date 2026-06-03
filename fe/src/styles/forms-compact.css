@@ -173,6 +173,43 @@
   border-color: hsl(var(--destructive));
 }
 
+/* Inline validation — missing/invalid fields */
+.form-group.has-error.field-error label {
+  color: hsl(var(--destructive));
+}
+
+.form-group.has-error.field-error input,
+.form-group.has-error.field-error select,
+.form-group.has-error.field-error textarea,
+.form-group.has-error.field-error .searchable-select-trigger {
+  border-color: hsl(var(--destructive)) !important;
+  box-shadow: 0 0 0 1px hsl(var(--destructive) / 0.35);
+}
+
+.form-group.has-error.field-error input:focus,
+.form-group.has-error.field-error textarea:focus {
+  border-color: hsl(var(--destructive));
+  box-shadow: 0 0 0 2px hsl(var(--destructive) / 0.25);
+}
+
+.field-error-message {
+  display: block;
+  margin-top: 0.125rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: hsl(var(--destructive));
+}
+
+.form-banner-error {
+  margin-bottom: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: calc(var(--radius) - 2px);
+  border: 1px solid hsl(var(--destructive) / 0.35);
+  background: hsl(var(--destructive) / 0.08);
+  font-size: 0.8125rem;
+  color: hsl(var(--destructive));
+}
+
 .error-text {
   display: block;
   margin-top: 0.125rem;

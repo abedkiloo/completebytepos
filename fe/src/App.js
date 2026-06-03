@@ -21,6 +21,7 @@ const POS = lazy(() => import('./components/POS/v2/POSPage'));
 const BillingPOS = lazy(() => import('./components/POS/billing/BillingPOSPage'));
 const Products = lazy(() => import('./components/Products/Products'));
 const Categories = lazy(() => import('./components/Categories/Categories'));
+const ProductAttributes = lazy(() => import('./components/Products/ProductAttributes'));
 const Sales = lazy(() => import('./components/Sales/Sales'));
 const Inventory = lazy(() => import('./components/Inventory/Inventory'));
 const Barcodes = lazy(() => import('./components/Barcodes/Barcodes'));
@@ -145,6 +146,7 @@ function App() {
                 <Route path="/pos/billing" element={<BillingPOS />} />
                 <Route path="/products" element={<Products />} />
                 <Route path="/categories" element={<Categories />} />
+                <Route path="/product-attributes" element={<ProductAttributes />} />
                 <Route path="/sales" element={<Sales />} />
                 <Route path="/inventory" element={<Inventory />} />
                 <Route path="/barcodes" element={<Barcodes />} />

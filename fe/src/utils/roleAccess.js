@@ -17,6 +17,7 @@ export const APP_ROUTE_PREFIXES = [
   '/pos',
   '/products',
   '/categories',
+  '/product-attributes',
   '/sales',
   '/inventory',
   '/barcodes',
@@ -120,6 +121,7 @@ function pathMatchesPrefix(pathname, prefix) {
 export const ROUTE_MODULE_MAP = {
   '/products': 'products',
   '/categories': 'products',
+  '/product-attributes': 'products',
   '/barcodes': 'barcodes',
   '/inventory': 'stock',
   '/suppliers': 'suppliers',
@@ -145,7 +147,7 @@ function salesRoutePrefixes() {
   const base = ALLOWED_ROUTE_PREFIXES[PERSONA.SALES];
   const store = readCachedStoreSettings();
   if (store.allow_sales_add_products) {
-    return [...base, '/products', '/categories'];
+    return [...base, '/products', '/categories', '/product-attributes'];
   }
   return base;
 }

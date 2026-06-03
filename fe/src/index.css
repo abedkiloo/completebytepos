@@ -102,7 +102,7 @@
   }
 
   .slide-in-panel {
-    @apply relative flex h-screen w-2/3 max-w-[900px] flex-col overflow-y-auto bg-background shadow-[-4px_0_20px_rgba(0,0,0,0.15)];
+    @apply relative flex h-screen max-h-[100dvh] w-2/3 max-w-[900px] flex-col overflow-hidden bg-background shadow-[-4px_0_20px_rgba(0,0,0,0.15)];
     animation: slideInFromRight 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
@@ -132,6 +132,24 @@
 
   .slide-in-panel-footer button {
     @apply max-md:w-full;
+  }
+
+  /* Scrollable dialog / modal form bodies (customer, etc.) */
+  .dialog-form-scroll {
+    scrollbar-gutter: stable;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .dialog-form-scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .dialog-form-scroll::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-border;
+  }
+
+  .dialog-form-scroll::-webkit-scrollbar-track {
+    @apply bg-transparent;
   }
 }
 
