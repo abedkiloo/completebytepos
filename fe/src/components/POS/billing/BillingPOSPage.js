@@ -493,6 +493,7 @@ export default function BillingPOSPage() {
       {state.variantPickerProduct && (
         <VariantSelector
           product={state.variantPickerProduct}
+          validateStock={state.validateStock}
           onSelect={(variant) => {
             state.addToCart(state.variantPickerProduct, variant);
             state.setVariantPickerProduct(null);

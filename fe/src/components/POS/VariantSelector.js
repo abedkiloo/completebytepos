@@ -4,8 +4,16 @@ import { formatCurrency } from '../../utils/formatters';
 import { cn } from '../../lib/cn';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+import {
+  findVariantForSelection,
+  getSellableStockForVariant,
+  getVariantDisplayPrice,
+  canAddVariantToCart,
+  isVariantAddToCartDisabled,
+  buildVariantCartPayload,
+} from '../../utils/variantSelector';
 
-const VariantSelector = ({ product, onSelect, onClose }) => {
+const VariantSelector = ({ product, onSelect, onClose, validateStock = true }) => {
   const [variants, setVariants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingDetails, setLoadingDetails] = useState(true);
@@ -23,67 +31,42 @@ const VariantSelector = ({ product, onSelect, onClose }) => {
     loadVariants();
   }, [product]);
 
-  // Sync quantityInput with quantity when quantity changes externally
   useEffect(() => {
     setQuantityInput(quantity.toString());
-    setQuantityError(null); // Clear any errors when quantity changes externally
+    setQuantityError(null);
   }, [quantity]);
 
   const loadProductDetails = async () => {
     setLoadingDetails(true);
     try {
-      // Always fetch full product details to ensure we have sizes and colors
       const response = await productsAPI.get(product.id);
       const fullProduct = response.data;
-      
-      console.log('[VariantSelector] Full product data:', {
-        id: fullProduct.id,
-        name: fullProduct.name,
-        has_variants: fullProduct.has_variants,
-        sizes_count: fullProduct.available_sizes_detail?.length || 0,
-        colors_count: fullProduct.available_colors_detail?.length || 0,
-        sizes: fullProduct.available_sizes_detail,
-        colors: fullProduct.available_colors_detail
-      });
-      
-      // Set sizes - check both available_sizes_detail and available_sizes
-      const sizes = fullProduct.available_sizes_detail || fullProduct.available_sizes || [];
-      if (sizes.length > 0) {
-        setAvailableSizes(Array.isArray(sizes) ? sizes : []);
-        console.log('[VariantSelector] Set sizes:', sizes.length);
-      } else if (product.available_sizes_detail && product.available_sizes_detail.length > 0) {
-        // Fallback to product prop if API doesn't return it
-        setAvailableSizes(product.available_sizes_detail);
-        console.log('[VariantSelector] Using fallback sizes from product prop');
-      } else if (product.available_sizes && product.available_sizes.length > 0) {
-        setAvailableSizes(product.available_sizes);
-        console.log('[VariantSelector] Using fallback sizes (array) from product prop');
-      }
-      
-      // Set colors - check both available_colors_detail and available_colors
-      const colors = fullProduct.available_colors_detail || fullProduct.available_colors || [];
-      if (colors.length > 0) {
-        setAvailableColors(Array.isArray(colors) ? colors : []);
-        console.log('[VariantSelector] Set colors:', colors.length);
-      } else if (product.available_colors_detail && product.available_colors_detail.length > 0) {
-        // Fallback to product prop if API doesn't return it
-        setAvailableColors(product.available_colors_detail);
-        console.log('[VariantSelector] Using fallback colors from product prop');
-      } else if (product.available_colors && product.available_colors.length > 0) {
-        setAvailableColors(product.available_colors);
-        console.log('[VariantSelector] Using fallback colors (array) from product prop');
-      }
+
+      const sizes =
+        fullProduct.available_sizes_detail ||
+        fullProduct.available_sizes ||
+        product.available_sizes_detail ||
+        product.available_sizes ||
+        [];
+      const colors =
+        fullProduct.available_colors_detail ||
+        fullProduct.available_colors ||
+        product.available_colors_detail ||
+        product.available_colors ||
+        [];
+
+      setAvailableSizes(Array.isArray(sizes) ? sizes : []);
+      setAvailableColors(Array.isArray(colors) ? colors : []);
     } catch (error) {
       console.error('[VariantSelector] Error loading product details:', error);
-      // Fallback to product prop data
-      if (product.available_sizes_detail && product.available_sizes_detail.length > 0) {
+      if (product.available_sizes_detail?.length) {
         setAvailableSizes(product.available_sizes_detail);
-      } else if (product.available_sizes && product.available_sizes.length > 0) {
+      } else if (product.available_sizes?.length) {
         setAvailableSizes(product.available_sizes);
       }
-      if (product.available_colors_detail && product.available_colors_detail.length > 0) {
+      if (product.available_colors_detail?.length) {
         setAvailableColors(product.available_colors_detail);
-      } else if (product.available_colors && product.available_colors.length > 0) {
+      } else if (product.available_colors?.length) {
         setAvailableColors(product.available_colors);
       }
     } finally {
@@ -96,16 +79,8 @@ const VariantSelector = ({ product, onSelect, onClose }) => {
       const response = await variantsAPI.getByProduct(product.id);
       const variantsData = response.data.results || response.data || [];
       setVariants(variantsData);
-      
-      // If no variants exist but product has sizes/colors, we can still proceed
-      // The user can add the product without a variant (using base product)
-      if (variantsData.length === 0 && (product.available_sizes?.length > 0 || product.available_colors?.length > 0)) {
-        // Product has variants enabled but no variants created yet
-        // Allow adding base product
-      }
     } catch (error) {
       console.error('Error loading variants:', error);
-      // If error, still allow proceeding with base product
     } finally {
       setLoading(false);
     }
@@ -122,160 +97,59 @@ const VariantSelector = ({ product, onSelect, onClose }) => {
     setSelectedVariant(null);
   };
 
-  // Find variant based on selected size and color
   useEffect(() => {
-    console.log('[VariantSelector] Variant matching effect:', {
-      variantsCount: variants.length,
-      availableSizes: availableSizes.length,
-      availableColors: availableColors.length,
+    const variant = findVariantForSelection(
+      variants,
       selectedSize,
-      selectedColor
-    });
+      selectedColor,
+      availableSizes,
+      availableColors
+    );
+    setSelectedVariant(variant);
+  }, [selectedSize, selectedColor, variants, availableSizes, availableColors]);
 
-    if (variants.length === 0) {
-      // No variants created yet, allow adding base product
-      setSelectedVariant(null);
-      return;
-    }
-    
-    // If both sizes and colors are available, require both selections
-    if (availableSizes.length > 0 && availableColors.length > 0) {
-      if (selectedSize && selectedColor) {
-        const variant = variants.find(v => {
-          // Handle both ID and object formats for size
-          const sizeMatch = v.size === selectedSize || 
-                          v.size_id === selectedSize || 
-                          (typeof v.size === 'object' && v.size?.id === selectedSize) ||
-                          (typeof v.size === 'number' && v.size === selectedSize);
-          // Handle both ID and object formats for color
-          const colorMatch = v.color === selectedColor || 
-                           v.color_id === selectedColor || 
-                           (typeof v.color === 'object' && v.color?.id === selectedColor) ||
-                           (typeof v.color === 'number' && v.color === selectedColor);
-          return sizeMatch && colorMatch;
-        });
-        console.log('[VariantSelector] Found variant for size+color:', variant);
-        setSelectedVariant(variant || null);
-      } else {
-        setSelectedVariant(null);
-      }
-    }
-    // If only sizes are available, require size selection
-    else if (availableSizes.length > 0 && availableColors.length === 0) {
-      if (selectedSize) {
-        const variant = variants.find(v => {
-          const sizeMatch = v.size === selectedSize || 
-                          v.size_id === selectedSize || 
-                          (typeof v.size === 'object' && v.size?.id === selectedSize) ||
-                          (typeof v.size === 'number' && v.size === selectedSize);
-          return sizeMatch && (!v.color && !v.color_id);
-        });
-        console.log('[VariantSelector] Found variant for size only:', variant);
-        setSelectedVariant(variant || null);
-      } else {
-        setSelectedVariant(null);
-      }
-    }
-    // If only colors are available, require color selection
-    else if (availableColors.length > 0 && availableSizes.length === 0) {
-      if (selectedColor) {
-        const variant = variants.find(v => {
-          const colorMatch = v.color === selectedColor || 
-                           v.color_id === selectedColor || 
-                           (typeof v.color === 'object' && v.color?.id === selectedColor) ||
-                           (typeof v.color === 'number' && v.color === selectedColor);
-          return colorMatch && (!v.size && !v.size_id);
-        });
-        console.log('[VariantSelector] Found variant for color only:', variant);
-        setSelectedVariant(variant || null);
-      } else {
-        setSelectedVariant(null);
-      }
-    }
-    // No size/color options, allow base product
-    else {
-      setSelectedVariant(null);
-    }
-  }, [selectedSize, selectedColor, variants, availableSizes.length, availableColors.length]);
+  const effectiveStock = getSellableStockForVariant(product, selectedVariant);
+  const canAdd = canAddVariantToCart({
+    product,
+    variants,
+    selectedSize,
+    selectedColor,
+    selectedVariant,
+    availableSizes,
+    availableColors,
+  });
+  const addDisabled = isVariantAddToCartDisabled({
+    product,
+    selectedVariant,
+    canAdd,
+    validateStock,
+  });
 
   const handleAddToCart = () => {
-    const qty = Math.max(1, parseInt(quantity) || 1);
-    if (selectedVariant) {
-      onSelect({
-        ...product,
-        variant_id: selectedVariant.id,
-        variant: selectedVariant,
-        size: selectedVariant.size_name,
-        size_id: selectedVariant.size,
-        color: selectedVariant.color_name,
-        color_id: selectedVariant.color,
-        price: parseFloat(selectedVariant.effective_price || selectedVariant.price || product.price),
-        stock_quantity: selectedVariant.stock_quantity,
-        sku: selectedVariant.sku || product.sku || '',
-        quantity: qty,
-      });
-    } else if (!product.has_variants) {
-      // Product without variants - add directly
-      onSelect({
-        ...product,
-        price: parseFloat(product.price),
-        sku: product.sku || '',
-        stock_quantity: product.stock_quantity || 0,
-        quantity: qty,
-      });
-    }
-  };
-
-  const canAddToCart = () => {
-    if (!product.has_variants) return true;
-    // If no variants exist, allow adding base product
-    if (variants.length === 0) return true;
-    // If both sizes and colors are available, require both selections
-    if (availableSizes.length > 0 && availableColors.length > 0) {
-      return selectedSize !== null && selectedColor !== null && selectedVariant !== null;
-    }
-    // If only sizes are available, require size selection
-    if (availableSizes.length > 0 && availableColors.length === 0) {
-      return selectedSize !== null && selectedVariant !== null;
-    }
-    // If only colors are available, require color selection
-    if (availableColors.length > 0 && availableSizes.length === 0) {
-      return selectedColor !== null && selectedVariant !== null;
-    }
-    // No size/color options, allow base product
-    return true;
+    if (addDisabled) return;
+    const payload = buildVariantCartPayload(product, selectedVariant, quantity);
+    onSelect(payload);
   };
 
   const getVariantStock = () => {
-    if (selectedVariant) {
-      return selectedVariant.stock_quantity;
-    }
-    return product.stock_quantity || 0;
+    if (effectiveStock === null) return null;
+    return effectiveStock;
   };
 
-  const getVariantPrice = () => {
-    if (selectedVariant) {
-      return selectedVariant.effective_price || selectedVariant.price || product.price;
-    }
-    return product.price;
-  };
+  const getVariantPrice = () => getVariantDisplayPrice(product, selectedVariant);
 
   const validateAndSetQuantity = (inputValue) => {
-    // Clear previous error
     setQuantityError(null);
 
-    // Handle empty or invalid input
-    if (inputValue === '' || inputValue === '-' || inputValue === null || inputValue === undefined) {
+    if (inputValue === '' || inputValue === '-' || inputValue == null) {
       setQuantity(1);
       setQuantityInput('1');
       return;
     }
 
-    // Parse the input value
-    const numValue = parseInt(inputValue);
-    
-    // Check if it's a valid number
-    if (isNaN(numValue)) {
+    const numValue = parseInt(inputValue, 10);
+
+    if (Number.isNaN(numValue)) {
       setQuantityError('Please enter a valid number');
       setQuantity(1);
       setQuantityInput('1');
@@ -285,7 +159,6 @@ const VariantSelector = ({ product, onSelect, onClose }) => {
     const maxStock = getVariantStock();
     const minValue = 1;
 
-    // Check lower bound
     if (numValue < minValue) {
       setQuantityError(`Minimum quantity is ${minValue}`);
       const finalVal = minValue;
@@ -294,8 +167,7 @@ const VariantSelector = ({ product, onSelect, onClose }) => {
       return;
     }
 
-    // Check upper bound (if stock is tracked)
-    if (maxStock > 0 && numValue > maxStock) {
+    if (validateStock && maxStock != null && maxStock > 0 && numValue > maxStock) {
       setQuantityError(`Maximum quantity is ${maxStock} (stock available)`);
       const finalVal = maxStock;
       setQuantity(finalVal);
@@ -303,16 +175,17 @@ const VariantSelector = ({ product, onSelect, onClose }) => {
       return;
     }
 
-    // Valid value - set it
     setQuantity(numValue);
     setQuantityInput(numValue.toString());
   };
 
   if (!product.has_variants && variants.length === 0) {
-    // No variants, add directly
-    handleAddToCart();
+    onSelect(buildVariantCartPayload(product, null, 1));
     return null;
   }
+
+  const stockDisplay = getVariantStock();
+  const showSelectionSummary = selectedVariant != null;
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
@@ -344,17 +217,6 @@ const VariantSelector = ({ product, onSelect, onClose }) => {
             <div className="py-8 text-center text-muted-foreground">Loading variants...</div>
           ) : (
             <>
-              {/* Debug info - remove in production */}
-              {process.env.NODE_ENV === 'development' && (
-                <div style={{ padding: '10px', background: '#f0f0f0', marginBottom: '10px', fontSize: '12px' }}>
-                  <div>Available Sizes: {availableSizes.length}</div>
-                  <div>Available Colors: {availableColors.length}</div>
-                  <div>Variants: {variants.length}</div>
-                  <div>Selected Size: {selectedSize}</div>
-                  <div>Selected Color: {selectedColor}</div>
-                </div>
-              )}
-
               {availableSizes.length > 0 ? (
                 <div className="mb-4">
                   <label className="mb-2 block text-sm font-semibold">Size</label>
@@ -408,12 +270,26 @@ const VariantSelector = ({ product, onSelect, onClose }) => {
                 </div>
               ) : null}
 
-              {selectedVariant && (
+              {showSelectionSummary && (
                 <div className="mt-4 rounded-md bg-muted/40 p-4">
                   <div className="text-base font-semibold">{formatCurrency(getVariantPrice())}</div>
-                  <div className={cn('text-sm', getVariantStock() === 0 ? 'text-destructive' : 'text-muted-foreground')}>
-                    {getVariantStock()} {product.unit || 'pcs'}
+                  <div
+                    className={cn(
+                      'text-sm',
+                      validateStock && stockDisplay === 0
+                        ? 'text-destructive'
+                        : 'text-muted-foreground'
+                    )}
+                  >
+                    {stockDisplay === null
+                      ? 'Stock not tracked'
+                      : `${stockDisplay} ${product.unit || 'pcs'}`}
                   </div>
+                  {validateStock && stockDisplay === 0 && (
+                    <p className="mt-2 text-xs text-destructive">
+                      No stock on this variant. Adjust inventory or turn off stock validation in Sales settings.
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -437,9 +313,9 @@ const VariantSelector = ({ product, onSelect, onClose }) => {
               <div className="mt-4">
                 <label className="mb-2 block text-sm font-semibold">
                   Quantity
-                  {getVariantStock() > 0 && (
+                  {validateStock && stockDisplay != null && stockDisplay > 0 && (
                     <span className="ml-2 text-xs font-normal text-muted-foreground">
-                      (1 - {getVariantStock()})
+                      (1 - {stockDisplay})
                     </span>
                   )}
                 </label>
@@ -462,7 +338,11 @@ const VariantSelector = ({ product, onSelect, onClose }) => {
                     <Input
                       type="number"
                       min="1"
-                      max={getVariantStock() > 0 ? getVariantStock() : undefined}
+                      max={
+                        validateStock && stockDisplay != null && stockDisplay > 0
+                          ? stockDisplay
+                          : undefined
+                      }
                       value={quantityInput}
                       onChange={(e) => {
                         setQuantityInput(e.target.value);
@@ -498,12 +378,20 @@ const VariantSelector = ({ product, onSelect, onClose }) => {
                       className="h-9 w-9 shrink-0"
                       onClick={() => {
                         const maxStock = getVariantStock();
-                        const newQty = maxStock > 0 ? Math.min(quantity + 1, maxStock) : quantity + 1;
+                        const newQty =
+                          validateStock && maxStock != null && maxStock > 0
+                            ? Math.min(quantity + 1, maxStock)
+                            : quantity + 1;
                         setQuantity(newQty);
                         setQuantityInput(newQty.toString());
                         setQuantityError(null);
                       }}
-                      disabled={getVariantStock() > 0 && quantity >= getVariantStock()}
+                      disabled={
+                        validateStock &&
+                        stockDisplay != null &&
+                        stockDisplay > 0 &&
+                        quantity >= stockDisplay
+                      }
                     >
                       +
                     </Button>
@@ -527,7 +415,7 @@ const VariantSelector = ({ product, onSelect, onClose }) => {
             type="button"
             className="flex-1"
             onClick={handleAddToCart}
-            disabled={!canAddToCart() || getVariantStock() === 0}
+            disabled={addDisabled}
           >
             Add to Cart
           </Button>
@@ -538,4 +426,3 @@ const VariantSelector = ({ product, onSelect, onClose }) => {
 };
 
 export default VariantSelector;
-
