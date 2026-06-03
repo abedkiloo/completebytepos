@@ -10,6 +10,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from decimal import Decimal
 from products.models import Category, Product, Size, Color, ProductVariant
 from settings.models import Tenant, Branch
+from utils.tests.module_setting_helpers import enable_products_list_api_fields
 
 
 class ProductAPITestCase(TransactionTestCase):
@@ -17,6 +18,7 @@ class ProductAPITestCase(TransactionTestCase):
     
     def setUp(self):
         """Set up test data"""
+        enable_products_list_api_fields()
         # Create superuser
         self.superuser = User.objects.create_superuser(
             username='admin',

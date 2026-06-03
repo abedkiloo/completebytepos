@@ -3,6 +3,15 @@ from django.db import models
 from django.db.models import CheckConstraint, Q
 
 
+def _non_negative_stock_constraint(name: str):
+    """Django 4.x uses check=; Django 5.1+ uses condition=."""
+    q = Q(stock_quantity__gte=0)
+    try:
+        return CheckConstraint(condition=q, name=name)
+    except TypeError:
+        return CheckConstraint(check=q, name=name)
+
+
 class Size(models.Model):
     """Product sizes (e.g., S, M, L, XL, etc.)"""
     name = models.CharField(max_length=50, unique=True)
@@ -169,10 +178,7 @@ class Product(models.Model):
             # row-locked check in StockMovement._apply_stock_effect(). Even if
             # something writes stock directly in the future, the DB refuses to
             # store a negative quantity.
-            CheckConstraint(
-                check=Q(stock_quantity__gte=0),
-                name='product_stock_quantity_non_negative',
-            ),
+            _non_negative_stock_constraint('product_stock_quantity_non_negative'),
         ]
 
     def __str__(self):
@@ -301,10 +307,7 @@ class ProductVariant(models.Model):
             models.Index(fields=['product', 'is_active']),
         ]
         constraints = [
-            CheckConstraint(
-                check=Q(stock_quantity__gte=0),
-                name='productvariant_stock_quantity_non_negative',
-            ),
+            _non_negative_stock_constraint('productvariant_stock_quantity_non_negative'),
         ]
 
     def __str__(self):

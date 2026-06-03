@@ -151,7 +151,11 @@ except ImportError:
     pass
 
 MEDIA_URL = env_str('MEDIA_URL', '/media/')
-MEDIA_ROOT = env_path('MEDIA_ROOT', BASE_DIR / 'media')
+# Avoid Docker /app paths during manage.py test (local .env often sets MEDIA_ROOT=/app/media).
+if 'test' in sys.argv:
+    MEDIA_ROOT = BASE_DIR / 'test_media'
+else:
+    MEDIA_ROOT = env_path('MEDIA_ROOT', BASE_DIR / 'media')
 # Serve uploads from Django/gunicorn when not using S3 (required when DEBUG=False).
 SERVE_MEDIA = env_bool('SERVE_MEDIA', True)
 # Browser-facing base for image_url (nginx on FRONTEND_PORT proxies /media/ → backend).

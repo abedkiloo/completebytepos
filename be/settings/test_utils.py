@@ -66,10 +66,17 @@ def enable_multi_branch_support() -> None:
 
 
 def disable_multi_branch_support() -> None:
-    module = ModuleSettings.objects.filter(module_name='settings').first()
-    if not module:
-        return
-    feature = module.features.filter(feature_key='multi_branch_support').first()
-    if feature and feature.is_enabled:
-        feature.is_enabled = False
-        feature.save(update_fields=['is_enabled'])
+    module, _ = ModuleSettings.objects.get_or_create(
+        module_name='settings',
+        defaults={'description': 'System settings module', 'is_enabled': True},
+    )
+    ModuleFeature.objects.update_or_create(
+        module=module,
+        feature_key='multi_branch_support',
+        defaults={
+            'feature_name': 'Multi-Branch Support',
+            'description': 'Enable multi-branch functionality',
+            'is_enabled': False,
+            'display_order': 6,
+        },
+    )

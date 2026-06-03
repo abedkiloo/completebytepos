@@ -38,7 +38,7 @@ import { formatCurrency } from '../../../utils/formatters';
  * cannot depend on browser-only state or React Router.
  */
 export const ThermalReceipt = forwardRef(function ThermalReceipt(
-  { sale, store },
+  { sale, store, compact = false },
   ref
 ) {
   if (!sale) return null;
@@ -56,7 +56,7 @@ export const ThermalReceipt = forwardRef(function ThermalReceipt(
   return (
     <article
       ref={ref}
-      className="receipt-thermal"
+      className={`receipt-thermal${compact ? ' receipt-thermal--preview' : ''}`}
       data-receipt-root="true"
       aria-label={`Receipt ${sale.sale_number || ''}`}
     >
@@ -66,7 +66,7 @@ export const ThermalReceipt = forwardRef(function ThermalReceipt(
           <img
             src={store.receiptLogoUrl}
             alt=""
-            className="receipt-thermal__logo mx-auto mb-1 max-h-12 object-contain"
+            className={`receipt-thermal__logo mx-auto mb-0.5 object-contain ${compact ? 'max-h-8' : 'max-h-12'}`}
           />
         )}
         <div className="receipt-thermal__store">{store.storeName}</div>
@@ -287,35 +287,35 @@ export const THERMAL_RECEIPT_CSS = String.raw`
 .receipt-thermal {
   width: 80mm;
   max-width: 80mm;
-  padding: 4mm 4mm 6mm;
+  padding: 2.5mm 2mm 3.5mm;
   margin: 0 auto;
   background: #ffffff;
   color: #000000;
   font-family: 'SF Mono', Menlo, Consolas, 'Courier New', monospace;
-  font-size: 11pt;
-  line-height: 1.35;
+  font-size: 9.5pt;
+  line-height: 1.22;
   font-variant-numeric: tabular-nums;
 }
 .receipt-thermal__header {
   text-align: center;
-  margin-bottom: 2mm;
+  margin-bottom: 1mm;
 }
 .receipt-thermal__store {
-  font-size: 14pt;
+  font-size: 11.5pt;
   font-weight: 700;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
   text-transform: uppercase;
 }
 .receipt-thermal__branch {
-  font-size: 10pt;
+  font-size: 9pt;
   font-weight: 600;
 }
 .receipt-thermal__line-thin {
-  font-size: 9.5pt;
-  margin-top: 0.5mm;
+  font-size: 8.5pt;
+  margin-top: 0.25mm;
 }
 .receipt-thermal__rule {
-  margin: 1.5mm 0;
+  margin: 1mm 0;
   border-top: 1px dashed #000;
 }
 .receipt-thermal__rule--double {
@@ -330,13 +330,13 @@ export const THERMAL_RECEIPT_CSS = String.raw`
 .receipt-thermal__payment {
   display: flex;
   flex-direction: column;
-  gap: 0.5mm;
+  gap: 0.35mm;
 }
 .receipt-thermal__row {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 4mm;
+  gap: 2mm;
 }
 .receipt-thermal__row-left {
   flex: 1;
@@ -357,62 +357,60 @@ export const THERMAL_RECEIPT_CSS = String.raw`
   font-weight: 700;
 }
 .receipt-thermal__row--emphasised {
-  font-size: 13pt;
-  padding: 0.5mm 0;
+  font-size: 10.5pt;
+  padding: 0.35mm 0;
 }
 .receipt-thermal__row--emphasised .receipt-thermal__row-right--price {
-  font-size: 14pt;
+  font-size: 11.5pt;
   font-weight: 800;
 }
 .receipt-thermal__item {
-  padding: 0.5mm 0;
+  padding: 0.35mm 0;
 }
 .receipt-thermal__item-name {
   font-weight: 600;
   word-break: break-word;
 }
 .receipt-thermal__item-sku {
-  font-size: 9pt;
+  font-size: 8pt;
   font-family: ui-monospace, monospace;
   opacity: 0.65;
-  margin-top: 0.25mm;
+  margin-top: 0.15mm;
 }
 .receipt-thermal__item-variant {
   font-weight: 400;
-  font-size: 10pt;
+  font-size: 8.5pt;
   opacity: 0.75;
 }
 .receipt-thermal__note {
-  font-size: 9.5pt;
+  font-size: 8.5pt;
   font-style: italic;
   text-align: center;
-  margin-top: 1mm;
+  margin-top: 0.75mm;
 }
 .receipt-thermal__footer {
   text-align: center;
-  margin-top: 2mm;
+  margin-top: 1mm;
 }
 .receipt-thermal__thanks {
-  margin: 0 0 1mm;
+  margin: 0 0 0.5mm;
   font-weight: 600;
 }
 .receipt-thermal__sale-no {
   margin: 0;
-  font-size: 9.5pt;
-  letter-spacing: 1px;
+  font-size: 8.5pt;
+  letter-spacing: 0.5px;
 }
-
-/* Compact preset for 58mm thermal printers (some Kenyan retailers use these). */
 .receipt-thermal--58mm {
   width: 58mm;
   max-width: 58mm;
-  padding: 3mm;
-  font-size: 9.5pt;
+  padding: 2mm;
+  font-size: 8.5pt;
 }
 .receipt-thermal--58mm .receipt-thermal__store {
-  font-size: 12pt;
+  font-size: 10.5pt;
 }
 .receipt-thermal--58mm .receipt-thermal__row--emphasised {
-  font-size: 11pt;
+  font-size: 9.5pt;
 }
 `;

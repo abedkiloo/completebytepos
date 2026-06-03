@@ -1,6 +1,7 @@
 """Supplier service unit tests."""
 
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
@@ -76,3 +77,46 @@ class SupplierServiceTestCase(TestCase):
         stats = self.service.get_all_supplier_statistics()
         self.assertGreaterEqual(stats['total_suppliers'], 1)
         self.assertIn('by_type', stats)
+
+    def test_build_queryset_supplier_type_and_preferred(self):
+        self.supplier.is_preferred = True
+        self.supplier.save(update_fields=['is_preferred'])
+        qs = self.service.build_queryset({
+            'supplier_type': 'wholesaler',
+            'is_preferred': 'true',
+        })
+        self.assertEqual(qs.count(), 1)
+
+    def test_search_suppliers_empty_query_returns_empty(self):
+        self.assertEqual(self.service.search_suppliers('   '), [])
+
+    def test_get_supplier_statistics_missing_raises(self):
+        with self.assertRaises(ValidationError):
+            self.service.get_supplier_statistics(999999)
+
+    def test_build_queryset_without_filters_returns_ordered(self):
+        self.assertEqual(self.service.build_queryset().count(), 1)
+
+    def test_search_suppliers_clamps_limit(self):
+        for _ in range(3):
+            Supplier.objects.create(
+                name=f'Bulk Vendor {_}',
+                is_active=True,
+                created_by=self.user,
+            )
+        results = self.service.search_suppliers('Bulk', limit=0)
+        self.assertLessEqual(len(results), 50)
+        capped = self.service.search_suppliers('Bulk', limit=5000)
+        self.assertLessEqual(len(capped), 1000)
+
+    def test_update_account_balance_debit_clamps_at_zero(self):
+        broke = self.service.update_account_balance(
+            self.supplier,
+            Decimal('999.00'),
+            transaction_type='debit',
+        )
+        self.assertEqual(broke.account_balance, Decimal('0'))
+
+    def test_search_suppliers_returns_empty_on_query_error(self):
+        with patch.object(Supplier.objects, 'filter', side_effect=RuntimeError('db')):
+            self.assertEqual(self.service.search_suppliers('Acme'), [])

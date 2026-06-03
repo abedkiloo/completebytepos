@@ -1,0 +1,45 @@
+{
+  "minimum_percent": 95,
+  "comment": "Add packages here as service/API tests reach 95%. Run: ./run_tests_coverage.sh --gates",
+  "packages": [
+    {
+      "name": "accounts",
+      "include": ["accounts/user_write.py"]
+    },
+    {
+      "name": "accounting",
+      "include": ["accounting/chart_setup.py"]
+    },
+    {
+      "name": "products",
+      "include": ["products/catalog_rules.py"]
+    },
+    {
+      "name": "inventory",
+      "include": ["inventory/services.py"]
+    },
+    {
+      "name": "expenses",
+      "include": ["expenses/services.py"]
+    },
+    {
+      "name": "income",
+      "include": ["income/services.py"]
+    },
+    {
+      "name": "transfers",
+      "include": ["transfers/services.py"]
+    },
+    {
+      "name": "suppliers",
+      "include": ["suppliers/services.py"]
+    },
+    {
+      "name": "bankaccounts",
+      "include": ["bankaccounts/services.py"]
+    }
+  ],
+  "ramp_up": [
+    "sales/customer_module_settings.py"
+  ]
+}

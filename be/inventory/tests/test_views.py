@@ -9,6 +9,7 @@ from rest_framework.test import APIClient
 from inventory.models import StockMovement
 from products.models import Category, Product
 from utils.tests.api_test_base import ManagerAPITestCase, SalesAPITestCase
+from utils.tests.module_setting_helpers import enable_inventory_api_features, enable_products_list_api_fields
 
 
 class InventoryViewsTestCase(ManagerAPITestCase):
@@ -49,6 +50,11 @@ class InventoryViewsTestCase(ManagerAPITestCase):
             track_stock=True,
             is_active=True,
         )
+
+    def setUp(self):
+        super().setUp()
+        enable_products_list_api_fields()
+        enable_inventory_api_features()
 
     def test_list_requires_authentication(self):
         anon = APIClient()

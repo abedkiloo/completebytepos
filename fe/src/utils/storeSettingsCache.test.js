@@ -27,6 +27,16 @@ describe('storeSettingsCache', () => {
     expect(stored.sales_catalog_skip_pricing).toBe(true);
   });
 
+  test('readCachedStoreSettings recovers from corrupt JSON', () => {
+    localStorage.setItem('store_settings', 'not-json');
+    expect(readCachedStoreSettings()).toEqual(DEFAULT_STORE_SETTINGS);
+  });
+
+  test('cacheStoreSettings ignores falsy data', () => {
+    cacheStoreSettings(null);
+    expect(localStorage.getItem('store_settings')).toBeNull();
+  });
+
   test('clearStoreSettingsCache removes stored values', () => {
     cacheStoreSettings({ receipt_auto_print: true });
     clearStoreSettingsCache();

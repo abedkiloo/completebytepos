@@ -10,6 +10,7 @@ from inventory.models import StockMovement
 from products.models import Category, Product
 from settings.test_utils import enable_multi_branch_support
 from utils.tests.api_test_base import ManagerAPITestCase, SuperAdminAPITestCase
+from utils.tests.module_setting_helpers import enable_inventory_api_features
 
 
 class InventoryViewsExtendedTestCase(ManagerAPITestCase):
@@ -37,6 +38,10 @@ class InventoryViewsExtendedTestCase(ManagerAPITestCase):
             track_stock=False,
             is_active=True,
         )
+
+    def setUp(self):
+        super().setUp()
+        enable_inventory_api_features()
 
     def test_retrieve_single_movement(self):
         create = self.client.post(

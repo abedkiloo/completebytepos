@@ -60,3 +60,75 @@ class MoneyTransferServiceTestCase(TestCase):
         )
         with self.assertRaises(ValidationError):
             self.service.approve_transfer(transfer, self.user)
+
+    def test_build_queryset_without_filters_returns_ordered(self):
+        MoneyTransfer.objects.create(
+            transfer_type='bank_to_bank',
+            from_account=self.from_acct,
+            to_account=self.to_acct,
+            amount=Decimal('1.00'),
+            transfer_date=timezone.now().date(),
+            status='pending',
+            description='Listed',
+            created_by=self.user,
+        )
+        self.assertEqual(self.service.build_queryset().count(), 1)
+
+    def test_build_queryset_filters(self):
+        pending = MoneyTransfer.objects.create(
+            transfer_type='bank_to_bank',
+            from_account=self.from_acct,
+            to_account=self.to_acct,
+            amount=Decimal('250.00'),
+            transfer_date=timezone.now().date(),
+            status='pending',
+            description='Pending xfer',
+            created_by=self.user,
+        )
+        self.service.approve_transfer(pending, self.user)
+        qs = self.service.build_queryset({
+            'status': 'completed',
+            'transfer_type': 'bank_to_bank',
+            'account': self.from_acct.id,
+        })
+        self.assertEqual(qs.count(), 1)
+
+    def test_build_queryset_invalid_account_returns_empty(self):
+        qs = self.service.build_queryset({'account': 'nope'})
+        self.assertEqual(qs.count(), 0)
+
+    def test_build_queryset_date_filters(self):
+        today = timezone.now().date()
+        MoneyTransfer.objects.create(
+            transfer_type='bank_to_bank',
+            from_account=self.from_acct,
+            to_account=self.to_acct,
+            amount=Decimal('10.00'),
+            transfer_date=today,
+            status='pending',
+            description='Dated',
+            created_by=self.user,
+        )
+        qs = self.service.build_queryset({
+            'date_from': today,
+            'date_to': today,
+        })
+        self.assertEqual(qs.count(), 1)
+
+    def test_get_transfer_statistics(self):
+        self.service.approve_transfer(
+            MoneyTransfer.objects.create(
+                transfer_type='bank_to_bank',
+                from_account=self.from_acct,
+                to_account=self.to_acct,
+                amount=Decimal('50.00'),
+                transfer_date=timezone.now().date(),
+                status='pending',
+                description='Stats',
+                created_by=self.user,
+            ),
+            self.user,
+        )
+        stats = self.service.get_transfer_statistics()
+        self.assertGreaterEqual(stats['total_transferred'], 50.0)
+        self.assertTrue(any(row['status'] == 'completed' for row in stats['by_status']))

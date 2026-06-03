@@ -1,15 +1,25 @@
-from .models import Branch, Tenant, ModuleFeature
+from .models import Branch, Tenant, ModuleFeature, ModuleSettings
 import logging
 
 logger = logging.getLogger(__name__)
 
 
 def is_branch_support_enabled():
-    """Check if multi-branch support is enabled in module settings"""
+    """Check if multi-branch support is enabled in module settings."""
     try:
-        return ModuleFeature.is_feature_enabled('settings', 'multi_branch_support')
-    except:
-        # Default to False if not configured (branches are optional)
+        module = ModuleSettings.objects.get(module_name='settings')
+    except ModuleSettings.DoesNotExist:
+        return False
+    if not module.is_enabled:
+        return False
+    try:
+        feature = ModuleFeature.objects.get(
+            module=module,
+            feature_key='multi_branch_support',
+        )
+        return feature.is_enabled
+    except ModuleFeature.DoesNotExist:
+        # Unconfigured installs: branches are optional until explicitly enabled.
         return False
 
 

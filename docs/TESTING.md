@@ -1,163 +1,138 @@
 # Testing guide
 
-How tests are organised, how to run them, and coverage targets.
+Architecture for **95% coverage** on business logic (backend services/helpers, frontend utils/config/hooks).
 
 ## Test pyramid
 
 | Layer | Backend | Frontend | Purpose |
 |-------|---------|----------|---------|
-| **Unit** | `*/tests/test_*.py` for services, serializers, helpers | `src/utils/*.test.js`, `src/config/*.test.js` | Fast, no UI; business rules |
-| **API** | `APITestCase` / `TransactionTestCase` + `APIClient` | — | HTTP contracts, permissions |
-| **E2E** | — | `fe/e2e/specs/*.spec.js` (Playwright) | Full flows in browser |
+| **Unit** | `<app>/tests/test_*.py` | `src/utils/*.test.js`, `src/hooks/*.test.js` | Fast; rules & helpers |
+| **API** | `APITestCase` + `utils/tests/api_test_base.py` | — | HTTP contracts, permissions |
+| **E2E** | — | `fe/e2e/specs/*.spec.js` | Critical personas only |
 
-Prefer **unit tests** for pure logic; **API tests** for endpoints; **E2E** for critical personas only.
+**Rule:** Keep views/components thin; test logic in services (BE) and utils/hooks (FE).
 
 ---
 
-## Backend layout
+## Backend architecture
 
 ```
 be/
-├── utils/tests/
-│   └── api_test_base.py      # ManagerAPITestCase, SalesAPITestCase, …
-├── accounts/
-│   ├── user_write.py         # prepare_user_write_data, apply_profile_updates
-│   └── tests/
-│       ├── test_user_write.py
-│       └── test_user_profile_update.py
-├── products/tests/
-│   ├── test_services.py
-│   ├── test_category_serializer.py
+├── testing/
+│   ├── coverage_gates.json   # Modules that must stay ≥ 95%
+│   ├── check_gates.py
+│   └── README.md
+├── utils/tests/api_test_base.py   # ManagerAPITestCase, SalesAPITestCase
+├── <app>/
+│   ├── services.py              # ← primary test target
+│   ├── tests/
+│   │   ├── test_services.py
+│   │   ├── test_views.py
+│   │   └── test_*_serializer.py
 │   └── …
-└── .coveragerc
+├── .coveragerc
+└── run_tests_coverage.sh
 ```
 
 ### Naming
 
-- File: `test_<subject>.py` under app `tests/` package.
+- File: `test_<subject>.py` under `<app>/tests/`.
 - Class: `<Subject>Tests` or `<Subject>APITests`.
-- One behaviour per test method; name describes outcome (`test_update_without_password_succeeds`).
+- Method: `test_<outcome>_<condition>`.
 
-### Run (Docker)
+### Run
 
 ```bash
-# All tests
+# Docker
 docker exec completebytepos_backend python manage.py test
+docker exec completebytepos_backend sh -c "cd /app && USE_SQLITE=true ./run_tests_coverage.sh --gates"
 
-# One app
-docker exec completebytepos_backend python manage.py test accounts.tests
-
-# With coverage
-docker exec completebytepos_backend coverage run manage.py test
-docker exec completebytepos_backend coverage report -m
-docker exec completebytepos_backend coverage html   # htmlcov/
-```
-
-### Run (local SQLite)
-
-```bash
+# Local (use project venv — Django 4.2)
 cd be
-USE_SQLITE=true python manage.py test accounts.tests products.tests
-USE_SQLITE=true coverage run manage.py test accounts.tests
-USE_SQLITE=true coverage report -m
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+USE_SQLITE=true ./run_tests_coverage.sh
+USE_SQLITE=true ./run_tests_coverage.sh --gates   # enforce 95% on gated packages
 ```
 
-Or: `./run_tests_coverage.sh [module]`
+### Coverage gates (95%)
 
-### Coverage targets (backend)
+Gated paths are listed in `be/testing/coverage_gates.json` (config, `user_write`, `catalog_rules`, `*/services.py` for core apps, etc.).
 
-| Area | Target | Notes |
-|------|--------|--------|
-| `accounts/user_write.py`, `products/serializers` (category) | **≥ 95%** | Pure write/validation logic |
-| `*/services.py` | **≥ 85%** | Add tests per app incrementally |
-| Views (thin) | **≥ 70%** | Often covered by API tests |
-| Migrations, `populate_test_data` | Excluded | See `.coveragerc` |
+CI runs `./run_tests_coverage.sh --gates` and fails if any package is below **95%**.
+
+| Layer | Target |
+|-------|--------|
+| Gated logic modules | **≥ 95%** (enforced) |
+| Other services / serializers | **≥ 85%** (goal) |
+| Views | **≥ 75%** via API tests |
+| Migrations, admin, `populate_test_data` | Excluded (`.coveragerc`) |
 
 ---
 
-## Frontend layout
+## Frontend architecture
 
 ```
 fe/src/
-├── utils/
-│   ├── formValidation.js
-│   ├── formValidation.test.js
-│   ├── userFormPayload.js
-│   ├── userFormPayload.test.js
-│   ├── categoryTree.js
-│   └── categoryTree.test.js
-├── config/
-│   ├── apiBaseUrl.js
-│   └── apiBaseUrl.test.js
-├── components/
-│   └── …/*.test.js           # Component tests (RTL) — add sparingly
-└── test-utils/               # Shared render/mocks (when needed)
+├── test-utils/           # Shared mocks (localStorage, render helpers)
+├── utils/                # Business rules — **95% gate**
+│   ├── foo.js
+│   └── foo.test.js       # co-located
+├── config/               # apiBaseUrl, env — **95% gate**
+├── hooks/                  # useStoreSettings, etc. — **95% gate**
+└── components/           # RTL tests sparingly; E2E for flows
 ```
 
 ### Principles
 
-1. **Extract logic from components** into `src/utils/` (or hooks) and test there — keeps UI tests small.
-2. **Co-locate** tests: `foo.js` + `foo.test.js` in the same folder.
-3. **Do not** chase 95% on every React page; chase 95% on **utils, config, hooks**.
+1. Extract logic from components into `utils/` or `hooks/` and test there.
+2. Co-locate: `foo.js` + `foo.test.js`.
+3. Do **not** gate entire `components/` at 95%; use E2E for pages.
 
 ### Run
 
 ```bash
 cd fe
-
-# Watch mode
-npm test
-
-# CI / single run
-npm test -- --watchAll=false
-
-# Coverage (see package.json thresholds)
-npm run test:coverage
-
-# Logic-only slice
-npm run test:unit
+npm test                              # watch
+npm run test:unit                     # utils + config + hooks
+npm run test:coverage                 # CI — fails under 95% lines/statements
+npm run test:e2e:smoke                # Playwright smoke
 ```
 
-### Coverage targets (frontend)
+Jest **`npm run test:coverage`** enforces **≥ 95%** lines/statements on:
 
-| Path | Target |
-|------|--------|
-| `src/utils/**` | **≥ 95%** |
-| `src/config/**` | **≥ 95%** |
-| `src/hooks/**` | **≥ 85%** |
-| `src/components/**` | Grow over time; not gated at 95% |
+`apiBaseUrl`, `formValidation`, `userFormPayload`, `categoryTree`, `apiErrors`, `formatters`, `mediaUrl`, `productStock`, `productPricing`, `setupStatus`, `storeSettingsCache`, `walkInCustomer`, `paymentMethods`, `modulePresets`, `moduleDomains`, `useStoreSettings`, `useProductVariantsEnabled`.
 
-Jest enforces thresholds in `package.json` → `jest.coverageThreshold`.
+**`npm run test:flags`** runs `*Display.js`, `sessionIdle`, `moduleFeatures`, `navAccess`, `roleAccess`, etc.
+
+**`npm run test:coverage:all`** — full utils report without failing thresholds (for dashboards).
+
+Hooks (`useStoreSettings`, `useProductVariantsEnabled`) are covered by dedicated hook tests; raise hook coverage in a follow-up if you add them to the gate list.
 
 ---
 
-## What to test when you change code
+## What to add when you change code
 
-| Change | Add tests in |
-|--------|----------------|
-| New API endpoint | `be/<app>/tests/test_views.py` or `test_*_api.py` |
+| Change | Tests |
+|--------|--------|
 | Service method | `be/<app>/tests/test_services.py` |
-| Serializer validation | `be/<app>/tests/test_*_serializer.py` |
-| FE util / payload builder | `fe/src/utils/<name>.test.js` |
-| Role / module flag | Existing `*Display.test.js`, `roleAccess.test.js` |
+| Serializer validation | `test_*_serializer.py` |
+| API endpoint | `test_views.py` + `api_test_base` |
+| FE util / payload | `fe/src/utils/<name>.test.js` |
+| New hook | `fe/src/hooks/<name>.test.js` |
 
 ---
 
-## CI checklist
+## CI
 
-```bash
-# Backend
-cd be && USE_SQLITE=true coverage run manage.py test && coverage report --fail-under=80
+GitHub Actions workflow `.github/workflows/tests.yml`:
 
-# Frontend
-cd fe && npm run test:coverage
-```
-
-Adjust `--fail-under` as coverage improves.
+- **backend:** `USE_SQLITE=true ./run_tests_coverage.sh --gates`
+- **frontend:** `npm run test:coverage`
 
 ---
 
-## Related docs
+## Related
 
 - [POS_UX_ROLES_AND_TESTING.md](./POS_UX_ROLES_AND_TESTING.md) — personas, E2E
-- [SETUP.md](./SETUP.md) — Docker test commands
+- [SETUP.md](./SETUP.md) — Docker commands

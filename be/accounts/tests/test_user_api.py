@@ -8,7 +8,7 @@ from django.contrib.auth.models import User
 from rest_framework.test import APIClient
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import UserProfile, Role
+from accounts.models import UserProfile, Role
 from settings.models import Tenant, Branch
 
 
@@ -537,7 +537,7 @@ class UserAPITestCase(TransactionTestCase):
     
     def test_list_permissions(self):
         """Test listing permissions"""
-        from .models import Permission
+        from accounts.models import Permission
         
         # Create a permission
         permission = Permission.objects.create(
@@ -554,7 +554,7 @@ class UserAPITestCase(TransactionTestCase):
     
     def test_permissions_by_module(self):
         """Test getting permissions grouped by module"""
-        from .models import Permission
+        from accounts.models import Permission
         
         Permission.objects.create(module='products', action='view')
         Permission.objects.create(module='products', action='create')
@@ -627,7 +627,7 @@ class UserAPITestCase(TransactionTestCase):
     
     def test_assign_permissions_to_role(self):
         """Test assigning permissions to a role"""
-        from .models import Permission
+        from accounts.models import Permission
         
         permission1 = Permission.objects.create(module='products', action='view')
         permission2 = Permission.objects.create(module='products', action='create')

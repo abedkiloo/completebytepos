@@ -36,7 +36,8 @@
     "test": "react-scripts test",
     "test:unit": "react-scripts test --watchAll=false --testPathPattern=\"src/(utils|config|hooks)/\"",
     "test:coverage": "react-scripts test --watchAll=false --coverage --testPathPattern=\"src/(utils|config|hooks)/\"",
-    "test:flags": "react-scripts test --watchAll=false --testPathPattern=\"Display|moduleSettingsCache|FeatureFlag|useModuleSettings|productDisplay|sellingPrice\"",
+    "test:coverage:all": "react-scripts test --watchAll=false --coverage --testPathPattern=\"src/(utils|config|hooks)/|Display\\.test|moduleSettingsCache|FeatureFlag|sellingPrice\" --coverageThreshold='{}'",
+    "test:flags": "react-scripts test --watchAll=false --testPathPattern=\"Display|moduleSettingsCache|FeatureFlag|useModuleSettings|productDisplay|sellingPrice|sessionIdle\"",
     "test:e2e": "playwright test -c e2e/playwright.config.js",
     "test:e2e:install": "playwright install chromium",
     "test:e2e:smoke": "playwright test -c e2e/playwright.config.js specs/smoke-routes.spec.js specs/pos-smoke.spec.js",
@@ -52,22 +53,39 @@
   },
   "jest": {
     "collectCoverageFrom": [
+      "src/config/apiBaseUrl.js",
       "src/utils/formValidation.js",
       "src/utils/userFormPayload.js",
       "src/utils/categoryTree.js",
-      "src/config/apiBaseUrl.js"
+      "src/utils/walkInCustomer.js",
+      "src/utils/paymentMethods.js",
+      "src/utils/modulePresets.js",
+      "src/utils/moduleDomains.js",
+      "src/utils/apiErrors.js",
+      "src/utils/formatters.js",
+      "src/utils/mediaUrl.js",
+      "src/utils/productStock.js",
+      "src/utils/productPricing.js",
+      "src/utils/setupStatus.js",
+      "src/utils/storeSettingsCache.js",
+      "src/hooks/useStoreSettings.js",
+      "src/hooks/useProductVariantsEnabled.js"
     ],
     "coveragePathIgnorePatterns": [
-      "/node_modules/",
-      "src/utils/authSession.js",
-      "src/utils/toast.js"
+      "/node_modules/"
     ],
     "coverageThreshold": {
       "global": {
-        "branches": 80,
-        "functions": 88,
-        "lines": 88,
-        "statements": 88
+        "branches": 82,
+        "functions": 92,
+        "lines": 95,
+        "statements": 95
+      },
+      "./src/config/apiBaseUrl.js": {
+        "branches": 85,
+        "functions": 95,
+        "lines": 95,
+        "statements": 95
       },
       "./src/utils/formValidation.js": {
         "branches": 88,
@@ -86,12 +104,6 @@
         "functions": 85,
         "lines": 95,
         "statements": 93
-      },
-      "./src/config/apiBaseUrl.js": {
-        "branches": 85,
-        "functions": 95,
-        "lines": 95,
-        "statements": 95
       }
     }
   },

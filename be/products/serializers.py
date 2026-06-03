@@ -347,12 +347,13 @@ class ProductSerializer(serializers.ModelSerializer):
         mrp = data.get('mrp')
         if mrp is None and self.instance is not None:
             mrp = self.instance.mrp
-        if mrp is not None and price is not None and mrp < price:
+        if (mrp is None or mrp == 0) and price is not None and not catalog_skip:
+            data['mrp'] = price
+            mrp = data['mrp']
+        if mrp is not None and price is not None and mrp > 0 and mrp < price:
             raise serializers.ValidationError(
                 {'mrp': 'MRP should be at least the selling price.'}
             )
-        if (mrp is None or mrp == 0) and price is not None and not catalog_skip:
-            data['mrp'] = price
         
         # Validate subcategory is a child of category
         category_id = data.get('category')

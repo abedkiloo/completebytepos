@@ -1,0 +1,66 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: be
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run tests
+        env:
+          USE_SQLITE: 'true'
+          DJANGO_SETTINGS_MODULE: config.settings
+        run: python manage.py test --verbosity=1
+      - name: Coverage gates (logic modules ≥ 95%)
+        env:
+          USE_SQLITE: 'true'
+          DJANGO_SETTINGS_MODULE: config.settings
+        run: |
+          chmod +x run_tests_coverage.sh
+          coverage run manage.py test \
+            accounts.tests.test_user_write \
+            accounting.tests.test_chart_setup \
+            products.tests.test_catalog_rules \
+            inventory.tests.test_services \
+            expenses.tests.test_services \
+            income.tests.test_services \
+            transfers.tests.test_services \
+            suppliers.tests.test_services \
+            bankaccounts.tests.test_services \
+            --verbosity=0
+          coverage json -o coverage.json -q
+          python3 testing/check_gates.py
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: fe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: fe/package-lock.json
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+      - name: Core unit tests (95% coverage gate)
+        run: npm run test:coverage
+      - name: Display / module flag tests
+        run: npm run test:flags

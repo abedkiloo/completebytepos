@@ -10,7 +10,6 @@ import {
 } from '../../ui/dialog';
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
-import { ScrollArea } from '../../ui/scroll-area';
 import { toast } from '../../../utils/toast';
 import { formatCurrency } from '../../../utils/formatters';
 import { isManagerOrAdminFromStorage } from '../../../utils/roleAccess';
@@ -111,10 +110,10 @@ export default function ReceiptDialog({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className="flex max-h-[90vh] w-[calc(100%-2rem)] max-w-[420px] flex-col gap-0 overflow-hidden p-0 sm:max-w-[420px]"
+          className="left-[50%] top-[3vh] flex max-h-[94dvh] w-[calc(100%-1rem)] max-w-[380px] translate-x-[-50%] translate-y-0 flex-col gap-0 overflow-hidden p-0 sm:max-w-[380px]"
           description={`Receipt for sale ${sale.sale_number}. Print, email, or send via WhatsApp.`}
         >
-          <DialogHeader className="shrink-0 border-b px-5 py-4">
+          <DialogHeader className="shrink-0 border-b px-3 py-2.5">
             <DialogTitle className="flex items-center gap-2 text-base">
               <ReceiptIcon className="h-5 w-5 text-primary" />
               Receipt
@@ -130,7 +129,7 @@ export default function ReceiptDialog({
             </DialogTitle>
           </DialogHeader>
 
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b bg-muted/20 px-5 py-3">
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b bg-muted/20 px-3 py-2">
             <div className="flex min-w-0 items-center gap-2">
               {walkIn ? (
                 <Badge variant="secondary" className="shrink-0 font-medium">
@@ -159,13 +158,17 @@ export default function ReceiptDialog({
             )}
           </div>
 
-          <ScrollArea className="min-h-0 flex-1 bg-muted/30 px-5 py-4">
-            <div className="mx-auto w-fit rounded-md bg-white shadow-sm ring-1 ring-border print:shadow-none print:ring-0">
-              <ThermalReceipt sale={sale} store={store} />
+          <div
+            className="receipt-dialog-scroll min-h-0 max-h-[calc(94dvh-10.5rem)] flex-1 overflow-y-auto overscroll-contain bg-muted/20 px-1 py-1.5"
+            role="region"
+            aria-label="Receipt preview"
+          >
+            <div className="w-full rounded-sm bg-white shadow-sm ring-1 ring-border print:shadow-none print:ring-0">
+              <ThermalReceipt sale={sale} store={store} compact />
             </div>
-          </ScrollArea>
+          </div>
 
-          <DialogFooter className="shrink-0 grid grid-cols-3 gap-2 border-t bg-background p-4">
+          <DialogFooter className="shrink-0 grid grid-cols-3 gap-1.5 border-t bg-background p-2.5">
             <SendWhatsAppButton sale={sale} />
             <SendEmailButton sale={sale} />
             <Button

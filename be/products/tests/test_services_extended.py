@@ -14,11 +14,14 @@ from products.services import (
 from settings.models import Tenant
 from django.contrib.auth.models import User
 
+from utils.tests.module_setting_helpers import enable_products_show_status
+
 
 class ProductServiceBuildQuerysetTestCase(TestCase):
     """Extended tests for ProductService build_queryset method"""
     
     def setUp(self):
+        enable_products_show_status()
         self.service = ProductService()
         self.user = User.objects.create_user(username='testuser', password='testpass')
         self.tenant = Tenant.objects.create(
@@ -403,6 +406,7 @@ class CategoryServiceBuildQuerysetTestCase(TestCase):
     """Tests for CategoryService build_queryset method"""
     
     def setUp(self):
+        enable_products_show_status()
         self.service = CategoryService()
         self.user = User.objects.create_user(username='testuser', password='testpass')
         self.tenant = Tenant.objects.create(

@@ -14,16 +14,32 @@ if [ -d "venv" ]; then
   source venv/bin/activate
 fi
 
-LABEL="${1:-}"
+GATES=false
+LABEL=""
+for arg in "$@"; do
+  case "$arg" in
+    --gates) GATES=true ;;
+    *) LABEL="$arg" ;;
+  esac
+done
 
 echo "Running tests (USE_SQLITE=$USE_SQLITE)…"
+TEST_EXIT=0
 if [ -n "$LABEL" ]; then
-  coverage run --source='.' manage.py test "$LABEL" --verbosity=1
+  coverage run --source='.' manage.py test "$LABEL" --verbosity=1 || TEST_EXIT=$?
 else
-  coverage run --source='.' manage.py test --verbosity=1
+  coverage run --source='.' manage.py test --verbosity=1 || TEST_EXIT=$?
 fi
 
 echo ""
 coverage report -m
+coverage json -o coverage.json -q
 echo ""
 echo "HTML report: file://$(pwd)/htmlcov/index.html"
+
+if [ "$GATES" = true ]; then
+  echo ""
+  python3 testing/check_gates.py || TEST_EXIT=1
+fi
+
+exit "$TEST_EXIT"

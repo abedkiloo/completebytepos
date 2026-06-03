@@ -40,11 +40,11 @@ class ThreeUserPersonasTestCase(APITestCase):
     def setUpTestData(cls):
         ensure_permissions()
         sync_default_roles()
-        disable_multi_branch_support()
         _enable_modules(
             'products', 'sales', 'pos', 'inventory', 'reports', 'expenses',
             'income', 'users', 'roles', 'settings', 'modules', 'customers',
         )
+        disable_multi_branch_support()
         cls.users = {}
         for spec in BOOTSTRAP_USERS:
             user, _ = User.objects.get_or_create(

@@ -70,3 +70,14 @@ class ApplyProfileUpdatesTests(TestCase):
         apply_profile_updates(self.user, {'custom_role': None})
         self.user.profile.refresh_from_db()
         self.assertIsNone(self.user.profile.custom_role_id)
+
+    def test_ignores_invalid_custom_role_id(self):
+        UserProfile.objects.create(user=self.user, role='cashier')
+        apply_profile_updates(self.user, {'custom_role_id': 'not-an-id'})
+        self.user.profile.refresh_from_db()
+        self.assertIsNone(self.user.profile.custom_role_id)
+
+    def test_no_op_when_profile_data_empty(self):
+        UserProfile.objects.create(user=self.user, role='cashier')
+        apply_profile_updates(self.user, {})
+        self.assertEqual(self.user.profile.role, 'cashier')

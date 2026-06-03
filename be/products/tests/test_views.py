@@ -14,12 +14,15 @@ from suppliers.models import Supplier
 import json
 import io
 
+from utils.tests.module_setting_helpers import enable_products_list_api_fields
+
 
 class ProductViewSetTestCase(APITestCase):
     """Comprehensive tests for ProductViewSet API endpoints"""
     
     def setUp(self):
         """Set up test data"""
+        enable_products_list_api_fields()
         # Create superuser
         self.superuser = User.objects.create_superuser(
             username='admin',

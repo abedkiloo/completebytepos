@@ -3,7 +3,10 @@ from accounts.models import ModuleSettings, ModuleFeature
 
 
 class Command(BaseCommand):
-    help = 'Initialize module settings and features'
+    help = (
+        'Legacy module seed (pre-registry). Prefer: python manage.py init_modules '
+        '(settings app).'
+    )
 
     def handle(self, *args, **options):
         self.stdout.write('Initializing module settings and features...')
