@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react';
 
 import { authAPI } from '../../services/api';
+import { sessionIdleExpiredMessage } from '../../config/sessionConfig';
 import { markSessionActivity } from '../../utils/sessionIdle';
 import { clearSessionTeardownFlag } from '../../utils/authSession';
 import { Button } from '../ui/button';
@@ -35,7 +36,7 @@ const Login = () => {
 
     const params = new URLSearchParams(location.search);
     if (params.get('expired') === 'idle' || sessionStorage.getItem('session_expired_reason') === 'idle') {
-      setError('Your session expired after 5 minutes of inactivity. Please sign in again.');
+      setError(sessionIdleExpiredMessage());
       sessionStorage.removeItem('session_expired_reason');
     }
     clearSessionTeardownFlag();

@@ -399,6 +399,21 @@ class StoreSettings(models.Model):
         default=False,
         help_text='Automatically open print dialog after completing a sale',
     )
+    maker_checker_enabled = models.BooleanField(
+        default=False,
+        help_text='Require checker approval before sensitive price/stock/settings changes go live',
+    )
+    emergency_stock_mode = models.BooleanField(
+        default=False,
+        help_text='Allow immediate positive stock adds without maker-checker (still audited)',
+    )
+    maker_checker_sales_controls = models.BooleanField(
+        default=False,
+        help_text=(
+            'Optional: post-completion sale edits via maker-checker (notes/payment method only). '
+            'Off by default — POS and checkout are unchanged.'
+        ),
+    )
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(
         User,

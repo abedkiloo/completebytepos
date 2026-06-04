@@ -11,6 +11,16 @@ import {
   SELLING_PRICE_CLASS,
   productImagesEnabled,
 } from '../../utils/productDisplay';
+import { useStoreSettings } from '../../hooks/useStoreSettings';
+import { useProductUnits } from '../../hooks/useProductUnits';
+import ChangeReasonField from '../Approvals/ChangeReasonField';
+import ProductVariantsPanel from './ProductVariantsPanel';
+import {
+  isMakerCheckerEnabled,
+  isPendingApprovalResponse,
+  productEditNeedsReason,
+  PENDING_APPROVAL_MESSAGE,
+} from '../../utils/makerChecker';
 
 const ProductForm = ({
   product,
@@ -18,12 +28,18 @@ const ProductForm = ({
   onClose,
   onSave,
   catalogOnly = false,
+  financialFieldsLocked = false,
   showProductStatus = true,
   showCost = true,
   showMrp = true,
 }) => {
   const imagesEnabled = productImagesEnabled();
   const variantsEnabled = useProductVariantsEnabled();
+  const { settings: storeSettings } = useStoreSettings();
+  const { options: unitOptions } = useProductUnits();
+  const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
+  const hideFinancialFields = catalogOnly || financialFieldsLocked;
+  const [changeReason, setChangeReason] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     sku: '',
@@ -384,18 +400,31 @@ const ProductForm = ({
         submitData.append('image', image);
       }
 
+      const needsReason = makerCheckerOn && productEditNeedsReason(payload, product, {
+        financialFieldsLocked: hideFinancialFields,
+      });
+      if (needsReason) {
+        if (!changeReason.trim()) {
+          toast.warning('Enter a reason for this sensitive change.');
+          setLoading(false);
+          return;
+        }
+        submitData.append('reason', changeReason.trim());
+      }
+
       let response;
       if (product) {
         response = await productsAPI.update(product.id, submitData);
-        console.log('Product updated:', response.data);
-        toast.success('Product updated successfully');
+        if (isPendingApprovalResponse(response.status)) {
+          toast.warning(PENDING_APPROVAL_MESSAGE);
+        } else {
+          toast.success('Product updated successfully');
+        }
       } else {
         response = await productsAPI.create(submitData);
-        console.log('Product created:', response.data);
         toast.success('Product created successfully');
       }
-      
-      // Wait a bit for backend to process, then save and refresh
+
       setTimeout(() => {
         onSave();
       }, 200);
@@ -616,10 +645,15 @@ const ProductForm = ({
                 </small>
               </div>
             </div>
+            {product?.id && formData.has_variants ? (
+              <div className="mt-3">
+                <ProductVariantsPanel productId={product.id} />
+              </div>
+            ) : null}
             </>
           )}
 
-          {!catalogOnly && (
+          {!hideFinancialFields && (
           <div className="form-row">
             {showMrp && (
             <div className="form-group">
@@ -656,7 +690,7 @@ const ProductForm = ({
           </div>
           )}
 
-          {!catalogOnly && showCost && (
+          {!hideFinancialFields && showCost && (
           <div className="form-row">
             <div className="form-group">
               <label>Cost (KES)</label>
@@ -673,6 +707,7 @@ const ProductForm = ({
           </div>
           )}
 
+          {!hideFinancialFields && (
           <div className="form-row">
             <div className="form-group">
               <label>Stock Quantity</label>
@@ -706,24 +741,17 @@ const ProductForm = ({
                 min="0"
               />
             </div>
+          </div>
+          )}
 
+          <div className="form-row">
             <div className="form-group">
               <label>Unit</label>
               <SearchableSelect
                 name="unit"
                 value={formData.unit}
                 onChange={handleChange}
-                options={[
-                  { id: 'piece', name: 'Piece' },
-                  { id: 'kg', name: 'Kilogram' },
-                  { id: 'g', name: 'Gram' },
-                  { id: 'l', name: 'Liter' },
-                  { id: 'ml', name: 'Milliliter' },
-                  { id: 'box', name: 'Box' },
-                  { id: 'pack', name: 'Pack' },
-                  { id: 'bottle', name: 'Bottle' },
-                  { id: 'can', name: 'Can' },
-                ]}
+                options={unitOptions}
                 placeholder="Select unit..."
                 searchable={true}
               />
@@ -774,7 +802,7 @@ const ProductForm = ({
             </div>
           </div>
 
-          {!catalogOnly && (
+          {!hideFinancialFields && (
           <div className="form-row">
             <div className="form-group">
               <label>Tax Rate (%)</label>
@@ -826,7 +854,7 @@ const ProductForm = ({
               />
               Track Stock
             </label>
-            {!catalogOnly && (
+            {!hideFinancialFields && (
             <label>
               <input
                 type="checkbox"
@@ -852,6 +880,15 @@ const ProductForm = ({
 
           </form>
         </div>
+        {makerCheckerOn &&
+        productEditNeedsReason(formData, product, {
+          financialFieldsLocked: hideFinancialFields,
+        }) ? (
+          <div className="border-t px-4 py-3">
+            <ChangeReasonField value={changeReason} onChange={setChangeReason} />
+          </div>
+        ) : null}
+
         <div className="slide-in-panel-footer">
           <button type="button" onClick={onClose} className="btn btn-secondary">Cancel</button>
           <button type="submit" onClick={handleSubmit} disabled={loading} className="btn btn-primary">

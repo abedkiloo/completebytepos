@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { isProductVariantsEnabled } from '../utils/moduleFeatures';
+import { normalizeModuleSettings } from '../utils/moduleCache';
 import { modulesAPI } from '../services/api';
 
 /**
  * Whether size/color variants are enabled (Module Settings → Products).
- * Refreshes when enabled_modules is written to localStorage.
+ * Refreshes when enabled_modules is written or moduleSettingsUpdated fires.
  */
 export function useProductVariantsEnabled() {
   const read = useCallback(() => isProductVariantsEnabled(), []);
@@ -17,22 +18,28 @@ export function useProductVariantsEnabled() {
     const onStorage = (e) => {
       if (!e.key || e.key === 'enabled_modules') refresh();
     };
-    window.addEventListener('storage', onStorage);
+    const onModulesUpdated = () => refresh();
 
-    // Layout may populate modules after first paint — one fetch if cache empty.
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('moduleSettingsUpdated', onModulesUpdated);
+
     const cached = localStorage.getItem('enabled_modules');
     if (!cached || cached === '{}') {
       modulesAPI
         .list()
         .then((res) => {
-          const data = res.data || {};
-          localStorage.setItem('enabled_modules', JSON.stringify(data));
+          const flat = normalizeModuleSettings(res.data || {});
+          delete flat.catalog;
+          localStorage.setItem('enabled_modules', JSON.stringify(flat));
           refresh();
         })
         .catch(() => {});
     }
 
-    return () => window.removeEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('moduleSettingsUpdated', onModulesUpdated);
+    };
   }, [read]);
 
   return enabled;

@@ -4,6 +4,7 @@ import {
   isSessionTeardownActive,
   logoutAndRedirect,
 } from '../utils/authSession';
+import { markSessionActivity } from '../utils/sessionIdle';
 
 const API_BASE_URL = resolveApiBaseUrl();
 
@@ -146,6 +147,9 @@ api.interceptors.request.use(
 // Response interceptor - Handle token refresh on 401
 api.interceptors.response.use(
   (response) => {
+    if (getToken()) {
+      markSessionActivity();
+    }
     return response;
   },
   async (error) => {
@@ -195,7 +199,7 @@ export const productsAPI = {
   update: (id, data) => api.put(`/products/${id}/`, data, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
-  delete: (id) => api.delete(`/products/${id}/`),
+  delete: (id, data) => api.delete(`/products/${id}/`, { data: data || {} }),
   search: (query, limit = 20) => api.get('/products/search/', { params: { q: query, limit } }),
   lowStock: () => api.get('/products/low_stock/'),
   outOfStock: () => api.get('/products/out_of_stock/'),
@@ -208,6 +212,11 @@ export const productsAPI = {
   importCSV: (formData) => api.post('/products/import_csv/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
+  units: {
+    list: (params) => api.get('/products/units/', { params }),
+    options: () => api.get('/products/units/', { params: { format: 'options', is_active: 'true' } }),
+    create: (data) => api.post('/products/units/', data),
+  },
 };
 
 export const categoriesAPI = {
@@ -215,7 +224,7 @@ export const categoriesAPI = {
   get: (id) => api.get(`/products/categories/${id}/`),
   create: (data) => api.post('/products/categories/', data),
   update: (id, data) => api.put(`/products/categories/${id}/`, data),
-  delete: (id) => api.delete(`/products/categories/${id}/`),
+  delete: (id, data) => api.delete(`/products/categories/${id}/`, { data: data || {} }),
   products: (id) => api.get(`/products/categories/${id}/products/`),
 };
 
@@ -259,7 +268,7 @@ export const variantsAPI = {
   get: (id) => api.get(`/products/variants/${id}/`),
   create: (data) => api.post('/products/variants/', data),
   update: (id, data) => api.put(`/products/variants/${id}/`, data),
-  delete: (id) => api.delete(`/products/variants/${id}/`),
+  delete: (id, data) => api.delete(`/products/variants/${id}/`, { data: data || {} }),
   getByProduct: (productId) => api.get(`/products/variants/?product=${productId}`),
 };
 
@@ -275,6 +284,7 @@ export const salesAPI = {
   saveHolding: (data) => api.post('/sales/holding/', data),
   checkout: (id, data) => api.post(`/sales/${id}/checkout/`, data),
   cancelHolding: (id) => api.post(`/sales/${id}/cancel-holding/`),
+  refund: (id, data) => api.post(`/sales/${id}/refund/`, data),
 };
 
 export const customersAPI = {
@@ -380,6 +390,14 @@ export const reportsAPI = {
 export const auditLogAPI = {
   list: (params) => api.get('/accounts/audit-logs/', { params }),
   get: (id) => api.get(`/accounts/audit-logs/${id}/`),
+};
+
+export const pendingChangesAPI = {
+  list: (params) => api.get('/approvals/pending-changes/', { params }),
+  pending: () => api.get('/approvals/pending-changes/pending/'),
+  get: (id) => api.get(`/approvals/pending-changes/${id}/`),
+  approve: (id, data = {}) => api.post(`/approvals/pending-changes/${id}/approve/`, data),
+  reject: (id, data) => api.post(`/approvals/pending-changes/${id}/reject/`, data),
 };
 
 export const barcodesAPI = {

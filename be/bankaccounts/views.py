@@ -7,6 +7,7 @@ from .models import BankAccount, BankTransaction
 from .serializers import BankAccountSerializer, BankTransactionSerializer
 from .services import BankAccountService, BankTransactionService
 from accounts.permissions import RequirePermPerAction
+from utils.audit_helpers import audited_perform_create
 from utils.audit_mixin import AuditedModelViewSetMixin
 
 
@@ -43,7 +44,7 @@ class BankAccountViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         return self.account_service.build_queryset(filters)
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        audited_perform_create(self, serializer, created_by=self.request.user)
 
     @action(detail=True, methods=['post'])
     def update_balance(self, request, pk=None):
@@ -83,4 +84,4 @@ class BankTransactionViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         return self.transaction_service.build_queryset(filters)
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        audited_perform_create(self, serializer, created_by=self.request.user)

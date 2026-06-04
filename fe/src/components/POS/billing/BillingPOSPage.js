@@ -19,6 +19,8 @@ import { cn } from '../../../lib/cn';
 import { formatCurrency } from '../../../utils/formatters';
 import { useBillingPOSState } from './useBillingPOSState';
 import VariantSelector from '../VariantSelector';
+import PosCartRecoveryDialog from '../PosCartRecoveryDialog';
+import PartialPaymentCustomerDialog from './PartialPaymentCustomerDialog';
 import CustomerFormModal from '../../Customers/CustomerFormModal';
 import ReceiptDialog from '../v2/ReceiptDialog';
 import { toast } from '../../../utils/toast';
@@ -28,6 +30,15 @@ import { filterEnabledPaymentMethods } from '../../../utils/paymentMethods';
 import { isManagerOrAdminFromStorage } from '../../../utils/roleAccess';
 import { useModuleSettings } from '../../../hooks/useModuleSettings';
 import { canQuickAddCustomerAtPos } from '../../../utils/customerDisplay';
+import {
+  BILLING_AMOUNT_RECEIVED_CLASS,
+  BILLING_INVOICE_CARD_CLASS,
+  BILLING_PARTIAL_PAYMENT_BLOCK_CLASS,
+  BILLING_PAYMENT_METHODS_GRID_CLASS,
+  BILLING_PAYMENT_SECTION_CLASS,
+  BILLING_RIGHT_COLUMN_CLASS,
+  BILLING_TOTALS_SECTION_CLASS,
+} from './billingInvoiceLayout';
 
 export default function BillingPOSPage() {
   const state = useBillingPOSState();
@@ -37,6 +48,7 @@ export default function BillingPOSPage() {
     label: m.id === 'mpesa' ? 'UPI / M-PESA' : m.label,
   }));
   const searchRef = useRef(null);
+  const customerSearchRef = useRef(null);
   const [showNewCustomer, setShowNewCustomer] = React.useState(false);
   const { settings: customerModuleSettings } = useModuleSettings('customers');
   const canAddCustomer = canQuickAddCustomerAtPos(
@@ -75,7 +87,7 @@ export default function BillingPOSPage() {
           </Button>
         </div>
 
-        <div className="grid flex-1 gap-4 p-4 lg:grid-cols-[1fr_340px]">
+        <div className="grid flex-1 gap-4 p-4 lg:grid-cols-[1fr_minmax(300px,380px)]">
           {/* Left: search + cart */}
           <div className="flex flex-col gap-4">
             {/* Scan / search */}
@@ -277,7 +289,7 @@ export default function BillingPOSPage() {
           </div>
 
           {/* Right: customer + invoice */}
-          <div className="flex flex-col gap-4">
+          <div className={BILLING_RIGHT_COLUMN_CLASS}>
             {/* Customer */}
             <div className="rounded-xl border bg-white p-4 shadow-sm">
               <div className="mb-3 flex items-center justify-between">
@@ -317,10 +329,12 @@ export default function BillingPOSPage() {
                 )}
               </div>
               <Input
+                ref={customerSearchRef}
                 placeholder="Search by name or phone…"
                 value={state.customerQuery}
                 onChange={(e) => state.setCustomerQuery(e.target.value)}
                 className="h-10"
+                aria-label="Search customer by name or phone"
               />
               {state.customerQuery && (
                 <ul className="mt-2 max-h-32 overflow-y-auto rounded-lg border">
@@ -346,7 +360,10 @@ export default function BillingPOSPage() {
             </div>
 
             {/* Invoice details */}
-            <div className="flex flex-1 flex-col rounded-xl border bg-white p-4 shadow-sm">
+            <div
+              className={BILLING_INVOICE_CARD_CLASS}
+              data-testid="billing-invoice-details"
+            >
               <h2 className="mb-4 text-sm font-semibold text-slate-800">Invoice Details</h2>
 
               {state.showDiscount && (
@@ -401,26 +418,50 @@ export default function BillingPOSPage() {
               </div>
               )}
 
-              <div className="mb-3">
-                <Label className="mb-2 text-xs text-muted-foreground">Payment Mode</Label>
+              <section
+                className={BILLING_PAYMENT_SECTION_CLASS}
+                data-testid="billing-payment-section"
+              >
+                <Label className="block text-xs font-medium text-muted-foreground">
+                  Payment Mode
+                </Label>
+
                 {state.allowPartialPayment && (
-                <label className="mb-2 flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={state.partialPayment}
-                    onChange={(e) => state.setPartialPayment(e.target.checked)}
-                  />
-                  Partial payment (balance on customer account)
-                </label>
+                  <div className={BILLING_PARTIAL_PAYMENT_BLOCK_CLASS}>
+                    <label className="flex cursor-pointer items-start gap-2.5 text-sm leading-snug">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-4 w-4 shrink-0"
+                        checked={state.partialPayment}
+                        onChange={(e) => state.attemptSetPartialPayment(e.target.checked)}
+                        aria-describedby="partial-payment-hint"
+                      />
+                      <span>Partial payment (balance on customer account)</span>
+                    </label>
+                    {state.isWalkInCustomer(state.selectedCustomer) && (
+                      <p
+                        id="partial-payment-hint"
+                        className="text-xs leading-relaxed text-muted-foreground"
+                      >
+                        Select or add a customer to charge the balance to their account.
+                      </p>
+                    )}
+                  </div>
                 )}
-                <div className={cn('grid gap-2', paymentModes.length <= 2 ? 'grid-cols-2' : 'grid-cols-3')}>
+
+                <div
+                  className={cn(
+                    BILLING_PAYMENT_METHODS_GRID_CLASS,
+                    paymentModes.length <= 2 ? 'grid-cols-2' : 'grid-cols-3'
+                  )}
+                >
                   {paymentModes.map((m) => (
                     <button
                       key={m.id}
                       type="button"
                       onClick={() => state.setPaymentMethod(m.id)}
                       className={cn(
-                        'rounded-lg border-2 py-3 text-center text-sm font-medium transition-colors',
+                        'min-h-[2.75rem] rounded-lg border-2 px-2 py-3 text-center text-sm font-medium transition-colors',
                         state.paymentMethod === m.id
                           ? 'border-primary bg-primary/10 text-primary'
                           : 'border-slate-200 hover:border-slate-300'
@@ -430,25 +471,34 @@ export default function BillingPOSPage() {
                     </button>
                   ))}
                 </div>
-              </div>
 
-              {state.paymentMethod !== 'other' && (
-                <div className="mb-4">
-                  <Label className="mb-1.5 text-xs text-muted-foreground">Amount received</Label>
-                  <Input
-                    type="number"
-                    inputMode="decimal"
-                    min="0"
-                    step="0.01"
-                    value={state.amountPaid}
-                    onChange={(e) => state.setAmountPaid(e.target.value)}
-                    placeholder="0.00"
-                    className="h-11 text-right text-lg font-semibold tabular-nums"
-                  />
-                </div>
-              )}
+                {state.paymentMethod !== 'other' && (
+                  <div
+                    className={BILLING_AMOUNT_RECEIVED_CLASS}
+                    data-testid="billing-amount-received"
+                  >
+                    <Label
+                      htmlFor="billing-amount-received"
+                      className="block text-xs font-medium text-muted-foreground"
+                    >
+                      Amount received
+                    </Label>
+                    <Input
+                      id="billing-amount-received"
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      step="0.01"
+                      value={state.amountPaid}
+                      onChange={(e) => state.setAmountPaid(e.target.value)}
+                      placeholder="0.00"
+                      className="h-11 text-right text-lg font-semibold tabular-nums"
+                    />
+                  </div>
+                )}
+              </section>
 
-              <dl className="space-y-2 border-t pt-3 text-sm">
+              <dl className={BILLING_TOTALS_SECTION_CLASS}>
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">Subtotal</dt>
                   <dd className="tabular-nums">{formatCurrency(state.subtotal)}</dd>
@@ -489,6 +539,31 @@ export default function BillingPOSPage() {
           </div>
         </div>
       </div>
+
+      <PartialPaymentCustomerDialog
+        open={state.partialPaymentCustomerPrompt}
+        canAddCustomer={canAddCustomer}
+        onClose={state.closePartialPaymentCustomerPrompt}
+        onSelectCustomer={() => {
+          state.closePartialPaymentCustomerPrompt();
+          customerSearchRef.current?.focus();
+          customerSearchRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+        }}
+        onAddCustomer={() => {
+          state.closePartialPaymentCustomerPrompt();
+          if (canAddCustomer) setShowNewCustomer(true);
+        }}
+      />
+
+      <PosCartRecoveryDialog
+        open={Boolean(state.cartRecovery)}
+        source={state.cartRecovery?.source || 'holding'}
+        itemCount={state.cartRecovery?.itemCount || 0}
+        label={state.cartRecovery?.label}
+        onContinue={state.continueCartRecovery}
+        onStartNew={state.startNewSaleFromRecovery}
+        busy={state.recoveryBusy}
+      />
 
       {state.variantPickerProduct && (
         <VariantSelector

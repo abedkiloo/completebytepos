@@ -2,6 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { inventoryAPI, productsAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
 import SearchableSelect from '../Shared/SearchableSelect';
+import { useStoreSettings } from '../../hooks/useStoreSettings';
+import ChangeReasonField from '../Approvals/ChangeReasonField';
+import { toast } from '../../utils/toast';
+import {
+  isMakerCheckerEnabled,
+  isPendingApprovalResponse,
+  PENDING_APPROVAL_MESSAGE,
+} from '../../utils/makerChecker';
 
 const StockPurchaseModal = ({ product, onClose, onSave }) => {
   const defaultQuantity = (product?.reorder_quantity != null && product.reorder_quantity > 0)
@@ -17,6 +25,9 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [changeReason, setChangeReason] = useState('');
+  const { settings: storeSettings } = useStoreSettings();
+  const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
 
   useEffect(() => {
     if (!product) {
@@ -88,7 +99,19 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
     }
     setLoading(true);
     try {
-      await inventoryAPI.purchase({ ...formData, quantity: quantityNum });
+      const payload = { ...formData, quantity: quantityNum };
+      if (makerCheckerOn) {
+        if (!changeReason.trim()) {
+          setError('A reason is required for stock purchases.');
+          setLoading(false);
+          return;
+        }
+        payload.reason = changeReason.trim();
+      }
+      const res = await inventoryAPI.purchase(payload);
+      if (isPendingApprovalResponse(res.status)) {
+        toast.warning(PENDING_APPROVAL_MESSAGE);
+      }
       onSave();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to record purchase');
@@ -188,12 +211,24 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
             />
           </div>
 
+          {makerCheckerOn ? (
+            <ChangeReasonField
+              value={changeReason}
+              onChange={setChangeReason}
+              hint="Required for stock purchases when maker-checker is on."
+            />
+          ) : null}
+
           </form>
         </div>
         <div className="slide-in-panel-footer">
           <button type="button" onClick={onClose} className="btn btn-secondary">Cancel</button>
           <button type="submit" onClick={handleSubmit} disabled={loading} className="btn btn-primary">
-            {loading ? 'Recording...' : 'Record Purchase'}
+            {loading
+              ? 'Submitting…'
+              : makerCheckerOn
+                ? 'Submit for approval'
+                : 'Record Purchase'}
           </button>
         </div>
       </div>

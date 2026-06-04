@@ -3,7 +3,9 @@ import { AlertTriangle } from 'lucide-react';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
+import { useStoreSettings } from '../../hooks/useStoreSettings';
 import { toast } from '../../utils/toast';
+import { isMakerCheckerEnabled } from '../../utils/makerChecker';
 
 const HIGH_IMPACT_CONFIRM =
   'This setting affects checkout, permissions, stock rules, or data access. Continue?';
@@ -13,6 +15,8 @@ const HIGH_IMPACT_CONFIRM =
  */
 export default function ModuleSettingsCard({ module, title, description, icon: Icon, toastLabel }) {
   const { settings, meta, loading, patch } = useModuleSettings(module);
+  const { settings: storeSettings } = useStoreSettings();
+  const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
 
   const entries = meta?.settings
     ? Object.entries(meta.settings).sort(
@@ -25,8 +29,18 @@ export default function ModuleSettingsCard({ module, title, description, icon: I
       return;
     }
     try {
-      await patch({ [key]: checked });
-      toast.success(`${toastLabel} settings updated`);
+      let reason;
+      if (makerCheckerOn) {
+        reason = window.prompt('Reason for this module setting change (required):') || '';
+        if (!reason.trim()) {
+          toast.warning('A reason is required when maker-checker is on.');
+          return;
+        }
+      }
+      await patch({ [key]: checked }, { reason: reason?.trim() });
+      toast.success(
+        makerCheckerOn ? 'Submitted for approval' : `${toastLabel} settings updated`
+      );
     } catch (err) {
       toast.error(err.response?.data?.detail || `Could not update ${toastLabel.toLowerCase()} settings`);
     }

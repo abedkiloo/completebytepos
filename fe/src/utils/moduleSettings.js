@@ -2,6 +2,8 @@
  * Utility functions to check module and feature settings
  * These functions read from localStorage cache or can be used with module settings object
  */
+import { normalizeModuleSettings, isFeatureEnabledInSettings, registryFeatureDefault } from './moduleCache';
+import { localRegistryFeatureDefault } from '../config/moduleFeatureDefaults';
 
 /**
  * Get module settings from localStorage cache
@@ -10,7 +12,7 @@
 export const getModuleSettings = () => {
   try {
     const cached = localStorage.getItem('enabled_modules');
-    return cached ? JSON.parse(cached) : {};
+    return cached ? normalizeModuleSettings(JSON.parse(cached)) : {};
   } catch (error) {
     console.error('Error reading module settings from cache:', error);
     return {};
@@ -26,10 +28,10 @@ export const getModuleSettings = () => {
 export const isModuleEnabled = (moduleName, moduleSettings = null) => {
   const settings = moduleSettings || getModuleSettings();
   if (!settings || Object.keys(settings).length === 0) {
-    return true; // Default to enabled if not configured
+    return false;
   }
   const module = settings[moduleName];
-  return module ? module.is_enabled : true; // Default to enabled if not configured
+  return Boolean(module?.is_enabled);
 };
 
 /**
@@ -42,7 +44,7 @@ export const isModuleEnabled = (moduleName, moduleSettings = null) => {
 export const isFeatureEnabled = (moduleName, featureKey, moduleSettings = null) => {
   const settings = moduleSettings || getModuleSettings();
   if (!settings || Object.keys(settings).length === 0) {
-    return true; // Default to enabled if not configured
+    return localRegistryFeatureDefault(moduleName, featureKey);
   }
   const module = settings[moduleName];
   if (!module || !module.is_enabled) {
@@ -50,9 +52,12 @@ export const isFeatureEnabled = (moduleName, featureKey, moduleSettings = null) 
   }
   const features = module.features || {};
   const feature = features[featureKey];
-  // If feature doesn't exist, default to enabled (for backward compatibility)
-  // If feature exists, check its is_enabled status
-  return feature ? feature.is_enabled : true;
+  if (feature == null) {
+    return settings?.registry?.feature_defaults
+      ? registryFeatureDefault(settings, moduleName, featureKey)
+      : localRegistryFeatureDefault(moduleName, featureKey);
+  }
+  return Boolean(feature.is_enabled);
 };
 
 /**

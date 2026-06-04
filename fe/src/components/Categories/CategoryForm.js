@@ -2,6 +2,15 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { categoriesAPI } from '../../services/api';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { required, normalizeApiErrors } from '../../utils/formValidation';
+import { useStoreSettings } from '../../hooks/useStoreSettings';
+import ChangeReasonField from '../Approvals/ChangeReasonField';
+import {
+  isMakerCheckerEnabled,
+  isPendingApprovalResponse,
+  categoryEditNeedsReason,
+  PENDING_APPROVAL_MESSAGE,
+} from '../../utils/makerChecker';
+import { toast } from '../../utils/toast';
 
 const CategoryForm = ({
   category,
@@ -19,6 +28,9 @@ const CategoryForm = ({
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [changeReason, setChangeReason] = useState('');
+  const { settings: storeSettings } = useStoreSettings();
+  const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
 
   const isSubcategory = Boolean(category?.parent);
   const hasChildren = (category?.children_count || 0) > 0;
@@ -96,8 +108,21 @@ const CategoryForm = ({
         submitData.parent = null;
       }
 
+      const needsReason = makerCheckerOn && categoryEditNeedsReason(submitData, category);
+      if (needsReason && !changeReason.trim()) {
+        setError('A reason is required to deactivate this category.');
+        setLoading(false);
+        return;
+      }
+      if (needsReason) {
+        submitData.reason = changeReason.trim();
+      }
+
       if (category) {
-        await categoriesAPI.update(category.id, submitData);
+        const res = await categoriesAPI.update(category.id, submitData);
+        if (isPendingApprovalResponse(res.status)) {
+          toast.warning(PENDING_APPROVAL_MESSAGE);
+        }
       } else {
         await categoriesAPI.create(submitData);
       }
@@ -225,6 +250,16 @@ const CategoryForm = ({
                 </small>
               </div>
             )}
+
+            {makerCheckerOn &&
+            category &&
+            categoryEditNeedsReason(formData, category) ? (
+              <ChangeReasonField
+                value={changeReason}
+                onChange={setChangeReason}
+                hint="Required when deactivating a category with maker-checker on."
+              />
+            ) : null}
           </form>
         </div>
 

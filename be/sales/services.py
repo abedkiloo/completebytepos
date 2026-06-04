@@ -11,8 +11,8 @@ from django.utils import timezone
 from .models import Sale, SaleItem, Invoice, InvoiceItem, Payment, Customer, PaymentPlan, CustomerWalletTransaction
 from products.models import Product, ProductVariant
 from products.status_rules import get_operational_product, get_operational_variant
+from approvals.effective import approved_sellable_stock_quantity
 from products.stock_utils import (
-    sellable_stock_quantity,
     sellable_unit_price,
     sellable_unit_cost,
     variants_sold_as_simple,
@@ -114,6 +114,7 @@ class SaleService(BaseService):
         items_data: List[Dict[str, Any]],
         *,
         check_stock: bool = True,
+        user=None,
     ) -> List[Dict[str, Any]]:
         """Validate sale items; optionally enforce stock (checkout only)."""
         validated_items = []
@@ -150,14 +151,21 @@ class SaleService(BaseService):
             
             # Stock is enforced at checkout, not while saving holding drafts.
             if check_stock and product.track_stock:
-                stock_quantity = sellable_stock_quantity(product, variant)
+                stock_quantity = approved_sellable_stock_quantity(product, variant)
                 if stock_quantity < quantity:
                     stock_info = variant.sku if variant else product.name
                     raise ValidationError(
                         f"Insufficient stock for {stock_info}. Available: {stock_quantity}"
                     )
             
-            # Get unit price
+            from accounts.sensitive_edits import validate_sale_unit_price_override
+
+            validate_sale_unit_price_override(
+                user,
+                product=product,
+                variant=variant,
+                override=item_data.get('unit_price'),
+            )
             unit_price = sellable_unit_price(
                 product,
                 variant,
@@ -270,8 +278,15 @@ class SaleService(BaseService):
         Create or update a holding (draft) sale. Does NOT move stock or post
         accounting entries — those happen in ``complete_holding_sale``.
         """
+        from accounts.sensitive_edits import clamp_holding_financial_adjustments
+
+        tax_amount, discount_amount = clamp_holding_financial_adjustments(
+            user, tax_amount, discount_amount
+        )
         validated_items = (
-            self.validate_sale_items(items_data, check_stock=False) if items_data else []
+            self.validate_sale_items(items_data, check_stock=False, user=user)
+            if items_data
+            else []
         )
 
         subtotal = sum(item['subtotal'] for item in validated_items)
@@ -361,6 +376,7 @@ class SaleService(BaseService):
         validated_items = self.validate_sale_items(
             items_data,
             check_stock=sales_validate_stock_before_sale(),
+            user=user,
         )
 
         subtotal = sum(item['subtotal'] for item in validated_items)
@@ -437,12 +453,23 @@ class SaleService(BaseService):
             validated_items = self.validate_sale_items(
                 items_data,
                 check_stock=sales_validate_stock_before_sale(),
+                user=user,
             )
+
+        from accounts.sensitive_edits import clamp_holding_financial_adjustments, user_may_edit_financial_fields
+
+        tax_amount = sale_data.get('tax_amount', Decimal('0'))
+        discount_amount = sale_data.get('discount_amount', Decimal('0'))
+        if not user_may_edit_financial_fields(user):
+            tax_amount, discount_amount = clamp_holding_financial_adjustments(
+                user, tax_amount, discount_amount
+            )
+            sale_data['tax_amount'] = tax_amount
+            sale_data['discount_amount'] = discount_amount
+            sale_data['delivery_cost'] = Decimal('0')
 
         # Calculate totals
         subtotal = sum(item['subtotal'] for item in validated_items)
-        tax_amount = sale_data.get('tax_amount', Decimal('0'))
-        discount_amount = sale_data.get('discount_amount', Decimal('0'))
         delivery_cost = sale_data.get('delivery_cost', Decimal('0'))
         total = subtotal + tax_amount - discount_amount + delivery_cost
         
@@ -873,9 +900,21 @@ class SaleService(BaseService):
         delivery_cost = Decimal(str(validated_data.get('delivery_cost', 0)))
         sale_type = validated_data.get('sale_type', 'pos')
 
+        from accounts.sensitive_edits import (
+            clamp_holding_financial_adjustments,
+            user_may_edit_financial_fields,
+        )
+
+        tax_amount, discount_amount = clamp_holding_financial_adjustments(
+            user, tax_amount, discount_amount
+        )
+        if not user_may_edit_financial_fields(user):
+            delivery_cost = Decimal('0')
+
         validated_items = self.validate_sale_items(
             items_data,
             check_stock=sales_validate_stock_before_sale(),
+            user=user,
         )
         subtotal = sum(item['subtotal'] for item in validated_items)
         total = subtotal + tax_amount - discount_amount + delivery_cost

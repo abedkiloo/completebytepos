@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Image, Receipt, CreditCard, Package, Info } from 'lucide-react';
+import { Image, Receipt, CreditCard, Package, Info, ClipboardCheck } from 'lucide-react';
 
 import { PageShell, PageHeader } from '../page';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -10,6 +10,13 @@ import { storeSettingsAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import { PAYMENT_METHODS } from '../../utils/paymentMethods';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
+import ChangeReasonField from '../Approvals/ChangeReasonField';
+import {
+  isMakerCheckerEnabled,
+  isPendingApprovalResponse,
+  PENDING_APPROVAL_MESSAGE,
+  storeSettingsEditNeedsReason,
+} from '../../utils/makerChecker';
 import ModuleSettingsCard from './ModuleSettingsCard';
 import { MODULE_SETTINGS_CARDS } from './moduleSettingsCards';
 
@@ -18,6 +25,8 @@ export default function SystemSettings() {
   const [form, setForm] = useState(null);
   const [logoFile, setLogoFile] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [changeReason, setChangeReason] = useState('');
+  const makerCheckerOn = isMakerCheckerEnabled(settings);
 
   useEffect(() => {
     setForm({ ...settings });
@@ -39,6 +48,11 @@ export default function SystemSettings() {
       toast.warning('Select at least one payment method.');
       return;
     }
+    const needsReason = makerCheckerOn && storeSettingsEditNeedsReason(form, settings);
+    if (needsReason && !changeReason.trim()) {
+      toast.warning('Enter a reason for these store setting changes.');
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -51,7 +65,13 @@ export default function SystemSettings() {
         receipt_show_sku: form.receipt_show_sku,
         receipt_auto_print: form.receipt_auto_print,
         enabled_payment_methods: form.enabled_payment_methods || [],
+        maker_checker_enabled: form.maker_checker_enabled,
+        maker_checker_sales_controls: form.maker_checker_sales_controls,
+        emergency_stock_mode: form.emergency_stock_mode,
       };
+      if (needsReason) {
+        payload.reason = changeReason.trim();
+      }
 
       let res;
       if (logoFile) {
@@ -70,10 +90,16 @@ export default function SystemSettings() {
       } else {
         res = await storeSettingsAPI.update(payload);
       }
-      applyLocal(res.data);
+      const data = res.data?.settings || res.data;
+      applyLocal(data);
       setLogoFile(null);
-      window.dispatchEvent(new CustomEvent('storeSettingsUpdated', { detail: res.data }));
-      toast.success('System settings saved');
+      setChangeReason('');
+      window.dispatchEvent(new CustomEvent('storeSettingsUpdated', { detail: data }));
+      if (isPendingApprovalResponse(res.status)) {
+        toast.warning(PENDING_APPROVAL_MESSAGE);
+      } else {
+        toast.success('System settings saved');
+      }
     } catch (err) {
       const detail = err.response?.data;
       const msg =
@@ -145,6 +171,71 @@ export default function SystemSettings() {
               <code className="rounded bg-muted px-1 py-0.5 text-xs">python manage.py init_module_settings</code>{' '}
               once so new toggles exist in the database.
             </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <ClipboardCheck className="h-4 w-4 text-primary" />
+              Maker-checker (two-step approval)
+            </CardTitle>
+            <CardDescription>
+              Sensitive price, stock, and delete changes require manager approval before they affect POS and reports.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                checked={!!form.maker_checker_enabled}
+                onChange={(e) =>
+                  setForm({ ...form, maker_checker_enabled: e.target.checked })
+                }
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-medium">Enable maker-checker</span>
+                <span className="mt-0.5 block text-muted-foreground">
+                  Proposals return &quot;pending approval&quot; until a checker approves them in Pending approvals.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                checked={!!form.emergency_stock_mode}
+                onChange={(e) =>
+                  setForm({ ...form, emergency_stock_mode: e.target.checked })
+                }
+                className="mt-0.5"
+                disabled={!form.maker_checker_enabled}
+              />
+              <span>
+                <span className="font-medium">Emergency stock mode</span>
+                <span className="mt-0.5 block text-muted-foreground">
+                  Positive stock adjustments apply immediately (still logged). Use only for zero-stock emergencies.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 rounded-md border border-dashed border-border bg-muted/30 p-2">
+              <input
+                type="checkbox"
+                checked={!!form.maker_checker_sales_controls}
+                onChange={(e) =>
+                  setForm({ ...form, maker_checker_sales_controls: e.target.checked })
+                }
+                className="mt-0.5"
+                disabled={!form.maker_checker_enabled}
+              />
+              <span>
+                <span className="font-medium">Optional: post-completion sale edits</span>
+                <span className="mt-0.5 block text-muted-foreground">
+                  Future client feature — approval for notes/payment method only. Off by default;
+                  does not affect POS checkout. Refunds use the Sales history refund flow.
+                </span>
+              </span>
+            </label>
           </CardContent>
         </Card>
 
@@ -337,6 +428,11 @@ export default function SystemSettings() {
             </label>
           </CardContent>
         </Card>
+
+        {makerCheckerOn &&
+          storeSettingsEditNeedsReason(form, settings) && (
+            <ChangeReasonField value={changeReason} onChange={setChangeReason} />
+          )}
 
         <div className="flex flex-col items-end gap-1">
           <Button onClick={handleSave} disabled={saving}>

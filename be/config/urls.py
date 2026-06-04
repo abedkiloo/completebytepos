@@ -30,6 +30,7 @@ urlpatterns = [
     path('api/transfers/', include('transfers.urls')),
     path('api/suppliers/', include('suppliers.urls')),
     path('api/employees/', include('employees.urls')),
+    path('api/approvals/', include('approvals.urls')),
 ]
 
 # Uploaded files (product images). In production use nginx /media/ → backend or SERVE_MEDIA.

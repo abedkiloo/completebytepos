@@ -71,8 +71,29 @@ class Category(models.Model):
         return self.products.filter(is_active=True).count()
 
 
+class UnitOfMeasure(models.Model):
+    """Extensible units of measure for products (piece, kg, roll, etc.)."""
+
+    code = models.CharField(max_length=20, unique=True, db_index=True)
+    label = models.CharField(max_length=50)
+    is_active = models.BooleanField(default=True)
+    display_order = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['display_order', 'label']
+        verbose_name = 'Unit of measure'
+        verbose_name_plural = 'Units of measure'
+
+    def __str__(self):
+        return self.label
+
+
 class Product(models.Model):
     """Products in the system"""
+
+    # Legacy defaults — new units are added via UnitOfMeasure rows.
     UNIT_CHOICES = [
         ('piece', 'Piece'),
         ('kg', 'Kilogram'),
@@ -83,8 +104,9 @@ class Product(models.Model):
         ('pack', 'Pack'),
         ('bottle', 'Bottle'),
         ('can', 'Can'),
+        ('roll', 'Roll'),
     ]
-    
+
     name = models.CharField(max_length=200)
     sku = models.CharField(max_length=50, unique=True, db_index=True)
     barcode = models.CharField(max_length=50, blank=True, null=True, db_index=True, unique=True)
@@ -144,7 +166,11 @@ class Product(models.Model):
     stock_quantity = models.IntegerField(default=0, validators=[MinValueValidator(0)])
     low_stock_threshold = models.IntegerField(default=10, validators=[MinValueValidator(0)])
     reorder_quantity = models.IntegerField(default=50, validators=[MinValueValidator(0)], help_text='Quantity to order when restocking')
-    unit = models.CharField(max_length=20, choices=UNIT_CHOICES, default='piece')
+    unit = models.CharField(
+        max_length=20,
+        default='piece',
+        help_text='Unit code — must match an active UnitOfMeasure.code',
+    )
     image = models.ImageField(upload_to='products/', blank=True, null=True)
     description = models.TextField(blank=True)
     supplier = models.ForeignKey(

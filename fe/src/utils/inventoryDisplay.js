@@ -1,23 +1,31 @@
 import { isModuleFlagEnabled } from './moduleSettingsCache';
+import {
+  inventoryAdjustmentsAllowed,
+  inventoryLowStockAllowed,
+  inventoryMovementsAllowed,
+  inventoryPurchasesAllowed,
+  inventoryReportAllowed,
+  inventoryTransfersAllowed,
+} from './inventoryAccess';
 
 export function inventoryShowStockMovements(settings) {
-  return isModuleFlagEnabled(settings, 'show_stock_movements', true);
+  return inventoryMovementsAllowed(settings);
 }
 
 export function inventoryAdjustmentsEnabled(settings) {
-  return isModuleFlagEnabled(settings, 'enable_stock_adjustments', true);
+  return inventoryAdjustmentsAllowed(settings);
 }
 
 export function inventoryPurchasesEnabled(settings) {
-  return isModuleFlagEnabled(settings, 'enable_stock_purchases', true);
+  return inventoryPurchasesAllowed(settings);
 }
 
 export function inventoryTransfersEnabled(settings) {
-  return isModuleFlagEnabled(settings, 'enable_stock_transfers', true);
+  return inventoryTransfersAllowed(settings);
 }
 
 export function inventoryShowLowStockAlerts(settings) {
-  return isModuleFlagEnabled(settings, 'show_low_stock_alerts', true);
+  return inventoryLowStockAllowed(settings);
 }
 
 export function inventoryShowOutOfStockAlerts(settings) {
@@ -25,7 +33,7 @@ export function inventoryShowOutOfStockAlerts(settings) {
 }
 
 export function inventoryReportEnabled(settings) {
-  return isModuleFlagEnabled(settings, 'enable_inventory_report', true);
+  return inventoryReportAllowed(settings);
 }
 
 export function inventoryShowMovementCost(settings) {

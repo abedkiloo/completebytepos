@@ -3,6 +3,7 @@ import {
   flattenCategoryTree,
   filterCategoriesForSearch,
   filterByLevel,
+  normalizeCategorySearchText,
 } from './categoryTree';
 
 describe('categoryTree', () => {
@@ -31,6 +32,13 @@ describe('categoryTree', () => {
   it('search includes parent when child matches', () => {
     const filtered = filterCategoriesForSearch(sample, 'sofa');
     expect(filtered.map((c) => c.id).sort()).toEqual([1, 2]);
+  });
+
+  it('search is case-insensitive and ignores extra whitespace', () => {
+    const withSpaces = [{ id: 5, name: '  Home  Decor  ', parent: null }];
+    const filtered = filterCategoriesForSearch(withSpaces, '  home decor  ');
+    expect(filtered).toHaveLength(1);
+    expect(normalizeCategorySearchText('  Home  Decor  ')).toBe('home decor');
   });
 
   it('filterByLevel subcategories only', () => {

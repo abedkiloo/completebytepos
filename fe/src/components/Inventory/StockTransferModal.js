@@ -4,10 +4,20 @@ import { toast } from '../../utils/toast';
 import SearchableSelect from '../Shared/SearchableSelect';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
+import { useStoreSettings } from '../../hooks/useStoreSettings';
+import ChangeReasonField from '../Approvals/ChangeReasonField';
+import {
+  isMakerCheckerEnabled,
+  isPendingApprovalResponse,
+  PENDING_APPROVAL_MESSAGE,
+} from '../../utils/makerChecker';
 import { inventoryAllowMovementUndo } from '../../utils/inventoryDisplay';
 const StockTransferModal = ({ isOpen, onClose, onSuccess, product }) => {
   const { settings: inventorySettings } = useModuleSettings('inventory');
   const allowUndo = inventoryAllowMovementUndo(inventorySettings);
+  const { settings: storeSettings } = useStoreSettings();
+  const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
+  const [changeReason, setChangeReason] = useState('');
   const [products, setProducts] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -69,7 +79,11 @@ const StockTransferModal = ({ isOpen, onClose, onSuccess, product }) => {
       toast.error('Please fill in all required fields');
       return;
     }
-    
+    if (makerCheckerOn && !changeReason.trim()) {
+      toast.error('A reason is required for stock transfers.');
+      return;
+    }
+
     // Show confirmation dialog
     setShowConfirm(true);
   };
@@ -86,16 +100,26 @@ const StockTransferModal = ({ isOpen, onClose, onSuccess, product }) => {
         reference: formData.reference || '',
         notes: formData.notes || '',
       };
+      if (makerCheckerOn) {
+        transferData.reason = changeReason.trim();
+      }
 
       const response = await inventoryAPI.transfer(transferData);
+      if (isPendingApprovalResponse(response.status)) {
+        toast.warning(PENDING_APPROVAL_MESSAGE);
+        setLoading(false);
+        onSuccess();
+        handleClose();
+        return;
+      }
       const result = response.data;
-      
+
       // Store transfer result for undo option
       setTransferResult({
         movements: result.movements || [result.movement] || [],
-        message: result.message || 'Stock transferred successfully'
+        message: result.message || 'Stock transferred successfully',
       });
-      
+
       toast.success(result.message || 'Stock transferred successfully');
       setLoading(false);  // Reset loading state after successful transfer
       onSuccess();
@@ -267,6 +291,14 @@ const StockTransferModal = ({ isOpen, onClose, onSuccess, product }) => {
               placeholder="Optional notes about this transfer"
             />
           </div>
+
+          {makerCheckerOn ? (
+            <ChangeReasonField
+              value={changeReason}
+              onChange={setChangeReason}
+              hint="Required for stock transfers when maker-checker is on."
+            />
+          ) : null}
           </form>
         </div>
         <div className="slide-in-panel-footer">
@@ -300,7 +332,11 @@ const StockTransferModal = ({ isOpen, onClose, onSuccess, product }) => {
             <>
               <button type="button" onClick={handleClose} className="btn btn-secondary">Cancel</button>
               <button type="button" onClick={handleSubmit} disabled={loading || !formData.product_id || !formData.to_branch_id || !formData.quantity} className="btn btn-primary">
-                {loading ? 'Transferring...' : 'Transfer Stock'}
+                {loading
+                  ? 'Submitting…'
+                  : makerCheckerOn
+                    ? 'Submit for approval'
+                    : 'Transfer Stock'}
               </button>
             </>
           )}

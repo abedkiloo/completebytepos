@@ -41,7 +41,7 @@ export function useModuleSettings(module) {
   }, [module]);
 
   const patch = useCallback(
-    async (values) => patchModuleSettings(module, values),
+    async (values, options) => patchModuleSettings(module, values, options),
     [module]
   );
 

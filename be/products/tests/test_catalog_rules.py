@@ -6,7 +6,12 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 
 from accounts.models import UserProfile, Role
-from accounts.role_definitions import ROLE_SALES, ensure_permissions, sync_default_roles
+from accounts.role_definitions import (
+    ROLE_MANAGER,
+    ROLE_SALES,
+    ensure_permissions,
+    sync_default_roles,
+)
 from products.catalog_rules import apply_sales_catalog_rules, sales_catalog_mode_active
 from settings.models import StoreSettings
 
@@ -43,3 +48,20 @@ class CatalogRulesTests(TestCase):
         data = {'name': 'Renamed', 'price': Decimal('50')}
         apply_sales_catalog_rules(data, user=self.sales_user, is_create=False)
         self.assertNotIn('price', data)
+
+    def test_apply_rules_strips_inventory_on_update(self):
+        data = {'stock_quantity': 500, 'low_stock_threshold': 2}
+        apply_sales_catalog_rules(data, user=self.sales_user, is_create=False)
+        self.assertNotIn('stock_quantity', data)
+
+    def test_manager_user_keeps_pricing_fields(self):
+        manager = User.objects.create_user('catalog_mgr', password='pass')
+        UserProfile.objects.create(
+            user=manager,
+            role='manager',
+            custom_role=Role.objects.get(name=ROLE_MANAGER),
+            is_active=True,
+        )
+        data = {'price': Decimal('50')}
+        result = apply_sales_catalog_rules(data, user=manager, is_create=False)
+        self.assertEqual(result['price'], Decimal('50'))

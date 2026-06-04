@@ -147,6 +147,9 @@ class StoreSettingsSerializer(serializers.ModelSerializer):
             'receipt_show_logo',
             'receipt_show_sku',
             'receipt_auto_print',
+            'maker_checker_enabled',
+            'maker_checker_sales_controls',
+            'emergency_stock_mode',
             'updated_at',
         ]
         read_only_fields = ['updated_at']

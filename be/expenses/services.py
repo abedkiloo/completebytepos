@@ -127,6 +127,9 @@ class ExpenseService(BaseService):
     @transaction.atomic
     def approve_expense(self, expense: Expense, approved_by) -> Expense:
         """Approve an expense and create journal entry"""
+        from approvals.financial_workflow import validate_checker_not_maker
+
+        validate_checker_not_maker(approved_by, expense.created_by_id)
         if expense.status == 'approved':
             raise ValidationError('Expense is already approved')
         

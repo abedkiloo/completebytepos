@@ -42,6 +42,8 @@ jobs:
             transfers.tests.test_services \
             suppliers.tests.test_services \
             bankaccounts.tests.test_services \
+            sales.tests.test_active_holding_recovery \
+            sales.tests.test_billing_checkout \
             --verbosity=0
           coverage json -o coverage.json -q
           python3 testing/check_gates.py

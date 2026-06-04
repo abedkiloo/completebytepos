@@ -26,6 +26,7 @@ import StockAdjustmentModal from './StockAdjustmentModal';
 import StockPurchaseModal from './StockPurchaseModal';
 import StockHistoryModal from './StockHistoryModal';
 import StockTransferModal from './StockTransferModal';
+import StockBulkAdjustModal from './StockBulkAdjustModal';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
@@ -74,6 +75,7 @@ const Inventory = () => {
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
+  const [showBulkAdjustModal, setShowBulkAdjustModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [filters, setFilters] = useState({
     movement_type: '',
@@ -211,6 +213,10 @@ const Inventory = () => {
     setShowTransferModal(true);
   };
 
+  const handleBulkAdjust = () => {
+    setShowBulkAdjustModal(true);
+  };
+
   const handleViewHistory = (product) => {
     setSelectedProduct(product);
     setShowHistoryModal(true);
@@ -248,10 +254,16 @@ const Inventory = () => {
             </Button>
           )}
           {canAdjust && (
-            <Button variant="outline" onClick={handleAdjustment}>
-              <Scale className="h-4 w-4" />
-              Adjust
-            </Button>
+            <>
+              <Button variant="outline" onClick={handleAdjustment}>
+                <Scale className="h-4 w-4" />
+                Adjust
+              </Button>
+              <Button variant="outline" onClick={handleBulkAdjust}>
+                <Scale className="h-4 w-4" />
+                Bulk adjust
+              </Button>
+            </>
           )}
           {canTransfer && (
             <Button variant="outline" onClick={handleTransfer}>
@@ -525,6 +537,16 @@ const Inventory = () => {
           onSave={() => {
             setShowAdjustmentModal(false);
             setSelectedProduct(null);
+            loadData();
+          }}
+        />
+      )}
+
+      {showBulkAdjustModal && canAdjust && (
+        <StockBulkAdjustModal
+          onClose={() => setShowBulkAdjustModal(false)}
+          onSave={() => {
+            setShowBulkAdjustModal(false);
             loadData();
           }}
         />

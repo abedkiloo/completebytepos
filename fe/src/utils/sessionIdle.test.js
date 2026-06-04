@@ -36,8 +36,8 @@ describe('sessionIdle', () => {
     sessionStorage.clear();
   });
 
-  test('SESSION_IDLE_MS is five minutes', () => {
-    expect(SESSION_IDLE_MS).toBe(5 * 60 * 1000);
+  test('SESSION_IDLE_MS is fifteen minutes', () => {
+    expect(SESSION_IDLE_MS).toBe(15 * 60 * 1000);
   });
 
   test('markSessionActivity updates last_activity_at', () => {
@@ -63,6 +63,17 @@ describe('sessionIdle', () => {
     localStorage.setItem('last_activity_at', String(Date.now() - SESSION_IDLE_MS - 1000));
     jest.advanceTimersByTime(20_000);
     expect(logoutAndRedirect).toHaveBeenCalledWith({ reason: 'idle' });
+    stopIdleSessionWatch();
+  });
+
+  test('checkIdleTimeout does not logout before idle period ends', () => {
+    startIdleSessionWatch();
+    localStorage.setItem(
+      'last_activity_at',
+      String(Date.now() - SESSION_IDLE_MS + 60_000)
+    );
+    jest.advanceTimersByTime(20_000);
+    expect(logoutAndRedirect).not.toHaveBeenCalled();
     stopIdleSessionWatch();
   });
 });

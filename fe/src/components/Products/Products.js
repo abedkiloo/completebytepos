@@ -18,6 +18,14 @@ import {
 } from 'lucide-react';
 
 import { productsAPI, categoriesAPI } from '../../services/api';
+import { useStoreSettings } from '../../hooks/useStoreSettings';
+import {
+  isMakerCheckerEnabled,
+  isPendingApprovalResponse,
+  PENDING_APPROVAL_MESSAGE,
+} from '../../utils/makerChecker';
+import ChangeReasonField from '../Approvals/ChangeReasonField';
+import PendingApprovalBadges from '../Approvals/PendingApprovalBadges';
 import { formatCurrency } from '../../utils/formatters';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
 import ProductForm from './ProductForm';
@@ -38,10 +46,9 @@ import {
 } from '../ui/dropdown-menu';
 import { cn } from '../../lib/cn';
 import { PageShell, PageHeader } from '../page';
-import { useStoreSettings } from '../../hooks/useStoreSettings';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { getPersonaFromStorage } from '../../utils/navAccess';
-import { PERSONA } from '../../utils/roleAccess';
+import { PERSONA, userMayEditFinancialFieldsFromStorage } from '../../utils/roleAccess';
 import {
   SELLING_PRICE_CLASS,
   showProductStatus,
@@ -65,7 +72,9 @@ const Products = () => {
   const { settings: storeSettings } = useStoreSettings();
   const { settings: productModuleSettings } = useModuleSettings('products');
   const persona = getPersonaFromStorage();
+  const financialFieldsLocked = !userMayEditFinancialFieldsFromStorage();
   const catalogOnly =
+    financialFieldsLocked &&
     storeSettings.allow_sales_add_products &&
     storeSettings.sales_catalog_skip_pricing &&
     persona === PERSONA.SALES;
@@ -76,6 +85,7 @@ const Products = () => {
   const showLowStock = showProductLowStockBadges(productModuleSettings);
   const bulkEnabled = productBulkOperationsEnabled(productModuleSettings);
   const csvEnabled = productCsvImportExportEnabled(productModuleSettings);
+  const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
 
   // --- Data ---
   const [products, setProducts] = useState([]);
@@ -93,6 +103,7 @@ const Products = () => {
 
   // --- Confirms ---
   const [confirmDelete, setConfirmDelete] = useState(null); // product id
+  const [deleteReason, setDeleteReason] = useState('');
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -206,10 +217,19 @@ const Products = () => {
 
   const confirmDeleteAction = async () => {
     if (!confirmDelete) return;
+    if (makerCheckerOn && !deleteReason.trim()) {
+      toast.warning('Enter a reason for deleting this product.');
+      return;
+    }
     setBusy(true);
     try {
-      await productsAPI.delete(confirmDelete);
-      toast.success('Product deleted');
+      const payload = makerCheckerOn ? { reason: deleteReason.trim() } : {};
+      const res = await productsAPI.delete(confirmDelete, payload);
+      if (isPendingApprovalResponse(res.status)) {
+        toast.warning(PENDING_APPROVAL_MESSAGE);
+      } else {
+        toast.success('Product deleted');
+      }
       loadProducts();
       loadStatistics();
     } catch (error) {
@@ -217,6 +237,7 @@ const Products = () => {
     } finally {
       setBusy(false);
       setConfirmDelete(null);
+      setDeleteReason('');
     }
   };
 
@@ -609,6 +630,7 @@ const Products = () => {
                       onEdit={() => openEdit(product)}
                       onDelete={() => setConfirmDelete(product.id)}
                       catalogOnly={catalogOnly}
+          financialFieldsLocked={financialFieldsLocked}
                       showProductStatus={showStatus}
                       bulkEnabled={bulkEnabled}
                       showMrp={showMrp}
@@ -629,6 +651,7 @@ const Products = () => {
           product={editingProduct}
           categories={categories}
           catalogOnly={catalogOnly}
+          financialFieldsLocked={financialFieldsLocked}
           showProductStatus={showStatus}
           showCost={showCost}
           showMrp={showMrp}
@@ -644,14 +667,26 @@ const Products = () => {
       <ConfirmDialog
         isOpen={!!confirmDelete}
         title="Delete product"
-        message="Are you sure you want to delete this product? This action cannot be undone."
-        confirmText="Delete product"
+        message={
+          makerCheckerOn
+            ? 'Submit a delete proposal for checker approval. The product stays active until approved.'
+            : 'Are you sure you want to delete this product? This action cannot be undone.'
+        }
+        confirmText={makerCheckerOn ? 'Submit for approval' : 'Delete product'}
         cancelText="Cancel"
         type="danger"
         busy={busy}
         onConfirm={confirmDeleteAction}
-        onCancel={() => (busy ? null : setConfirmDelete(null))}
-      />
+        onCancel={() => {
+          if (busy) return;
+          setConfirmDelete(null);
+          setDeleteReason('');
+        }}
+      >
+        {makerCheckerOn && confirmDelete ? (
+          <ChangeReasonField value={deleteReason} onChange={setDeleteReason} />
+        ) : null}
+      </ConfirmDialog>
 
       <ConfirmDialog
         isOpen={confirmBulkDelete}
@@ -940,6 +975,7 @@ function ProductRow({
                   Low stock
                 </Badge>
               )}
+              <PendingApprovalBadges pendingApproval={product.pending_approval} />
             </div>
           </div>
         </div>

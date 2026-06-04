@@ -2,6 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { incomeAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import SearchableSelect from '../Shared/SearchableSelect';
+import ChangeReasonField from '../Approvals/ChangeReasonField';
+import { useStoreSettings } from '../../hooks/useStoreSettings';
+import {
+  financialSubmitSuccessMessage,
+  isMakerCheckerEnabled,
+} from '../../utils/makerChecker';
 
 const IncomeForm = ({ income, categories, onClose, onSave }) => {
   const [formData, setFormData] = useState({
@@ -17,6 +23,9 @@ const IncomeForm = ({ income, categories, onClose, onSave }) => {
   });
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+  const [proposalReason, setProposalReason] = useState('');
+  const { settings: storeSettings } = useStoreSettings();
+  const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
 
   useEffect(() => {
     if (income) {
@@ -61,7 +70,10 @@ const IncomeForm = ({ income, categories, onClose, onSave }) => {
     if (!formData.income_date) {
       newErrors.income_date = 'Income date is required';
     }
-    
+    if (makerCheckerOn && !proposalReason.trim()) {
+      newErrors.proposal_reason = 'A reason is required when maker-checker is enabled.';
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -75,11 +87,18 @@ const IncomeForm = ({ income, categories, onClose, onSave }) => {
     
     setLoading(true);
     try {
-      if (income) {
-        await incomeAPI.update(income.id, formData);
-      } else {
-        await incomeAPI.create(formData);
+      const payload = { ...formData };
+      if (makerCheckerOn) {
+        payload.proposal_reason = proposalReason.trim();
+        payload.status = 'pending';
       }
+      if (income) {
+        await incomeAPI.update(income.id, payload);
+      } else {
+        await incomeAPI.create(payload);
+      }
+      const mcMsg = financialSubmitSuccessMessage(storeSettings);
+      if (mcMsg) toast.warning(mcMsg);
       onSave();
     } catch (error) {
       const errorData = error.response?.data;
@@ -197,7 +216,16 @@ const IncomeForm = ({ income, categories, onClose, onSave }) => {
               />
             </div>
 
-            {income && (
+            {makerCheckerOn ? (
+              <ChangeReasonField
+                value={proposalReason}
+                onChange={setProposalReason}
+                error={errors.proposal_reason}
+                hint="Required for income when maker-checker is enabled."
+              />
+            ) : null}
+
+            {income && !makerCheckerOn && (
               <div className="form-group">
                 <label>Status</label>
                 <SearchableSelect

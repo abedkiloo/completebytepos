@@ -20,6 +20,9 @@ describe('billingCartLine', () => {
     };
     expect(resolveCartVariantId(5, payload)).toBe(12);
     expect(resolveCartVariantId(5, { id: 5 })).toBeNull();
+    expect(resolveCartVariantId(5, null)).toBeNull();
+    expect(resolveCartVariantId(5, { variant: { id: 99 } })).toBe(99);
+    expect(resolveCartVariantId(5, { id: 88 })).toBe(88);
   });
 
   it('buildBillingCartLine keeps product_id and correct variant_id for holding sync', () => {
@@ -36,5 +39,23 @@ describe('billingCartLine', () => {
     expect(line.price).toBe(500);
     expect(line.quantity).toBe(2);
     expect(line.stock_quantity).toBe(50);
+  });
+
+  it('buildBillingCartLine without variant uses product pricing', () => {
+    const line = buildBillingCartLine(product, null, { validateStock: false });
+    expect(line.variant_id).toBeNull();
+    expect(line.price).toBe(100);
+    expect(line.validateStock).toBe(false);
+    expect(line.mrp).toBe(100);
+  });
+
+  it('buildBillingCartLine reads effective_price from variant row when parent price empty', () => {
+    const line = buildBillingCartLine(
+      { id: 1, name: 'A' },
+      { variant: { effective_price: '55', effective_mrp: '60', cost: '20' } }
+    );
+    expect(line.selling_price).toBe(55);
+    expect(line.mrp).toBe(60);
+    expect(line.cost).toBe(20);
   });
 });

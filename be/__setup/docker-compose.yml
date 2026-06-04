@@ -65,7 +65,6 @@ services:
         python manage.py migrate --noinput &&
         python manage.py init_permissions --noinput || python manage.py init_permissions || true &&
         python manage.py init_modules || true &&
-        python -c \"import os; os.environ.setdefault('DJANGO_SETTINGS_MODULE','config.settings'); import django; django.setup(); from settings.models import ModuleSettings, ModuleFeature; m,_=ModuleSettings.objects.get_or_create(module_name='products', defaults={'description':'Product management module','is_enabled':True}); f,_=ModuleFeature.objects.get_or_create(module=m, feature_key='product_variants', defaults={'feature_name':'Product Variants (Sizes/Colors)','description':'Enable size/color variants on products and variant picker at POS','is_enabled':False,'display_order':3}); f.is_enabled=False; f.save(update_fields=['is_enabled'])\" || true &&
         python manage.py create_users || true &&
         python manage.py collectstatic --noinput || true &&
         gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 4 --threads 2 --timeout 120

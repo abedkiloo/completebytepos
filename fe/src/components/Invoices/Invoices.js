@@ -8,6 +8,15 @@ import { PageShell, PageHeader, PageLoading, EmptyState, FilterBar, SearchField,
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Plus, FileText } from 'lucide-react';
+import {
+  formatInvoiceItemsForApi,
+  formatPaymentPayload,
+} from '../../utils/invoicePayload';
+import {
+  invoiceCreationAllowed,
+  invoiceTrackingAllowed,
+  paymentTrackingAllowed,
+} from '../../utils/invoicingAccess';
 
 const Invoices = () => {
   const [invoices, setInvoices] = useState([]);
@@ -135,7 +144,15 @@ const Invoices = () => {
     }
   };
 
+  const canCreateInvoice = invoiceCreationAllowed();
+  const canRecordPayment = paymentTrackingAllowed();
+  const canSendInvoice = invoiceTrackingAllowed();
+
   const handleCreate = async () => {
+    if (!canCreateInvoice) {
+      toast.error('Invoice creation is disabled in module settings.');
+      return;
+    }
     setSelectedInvoice(null);
     setFormData({
       customer_id: '',
@@ -208,7 +225,25 @@ const Invoices = () => {
     }
   };
 
+  const handleSendInvoice = async (invoice) => {
+    if (!canSendInvoice) {
+      toast.error('Sending invoices is disabled in module settings.');
+      return;
+    }
+    try {
+      await invoicesAPI.send(invoice.id);
+      toast.success('Invoice sent — receivable recorded in accounting.');
+      loadInvoices();
+    } catch (error) {
+      toast.error('Failed to send invoice: ' + (error.response?.data?.error || error.message));
+    }
+  };
+
   const handleAddPayment = (invoice) => {
+    if (!canRecordPayment) {
+      toast.error('Recording payments is disabled in module settings.');
+      return;
+    }
     setSelectedInvoice(invoice);
     setPaymentData({
       amount: invoice.balance > 0 ? invoice.balance.toString() : '',
@@ -241,27 +276,25 @@ const Invoices = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
+    if (!selectedInvoice && !canCreateInvoice) {
+      toast.error('Invoice creation is disabled in module settings.');
+      return;
+    }
+
     try {
       // Format items for API - only include items with product_id
-      const formattedItems = (formData.items || [])
-        .filter(item => item.product_id && (parseInt(item.quantity, 10) || 0) > 0)
-        .map(item => ({
-          product: item.product_id || item.product,
-          quantity: Math.max(1, parseInt(item.quantity, 10) || 0),
-          unit_price: parseFloat(item.unit_price) || 0,
-          description: item.description || '',
-        }));
+      const formattedItems = formatInvoiceItemsForApi(formData.items);
       
+      const { status: _status, ...formWithoutStatus } = formData;
       const invoiceData = {
-        ...formData,
+        ...formWithoutStatus,
         subtotal: parseFloat(formData.subtotal) || 0,
         tax_amount: parseFloat(formData.tax_amount) || 0,
         discount_amount: parseFloat(formData.discount_amount) || 0,
         total: parseFloat(formData.total) || 0,
         customer_id: formData.customer_id || null,
         due_date: formData.due_date || null,
-        // Items should be provided when creating manually, or sale_id when creating from sale
         items: formattedItems,
         sale_id: formData.sale_id || null,
       };
@@ -403,15 +436,20 @@ const Invoices = () => {
     if (!selectedInvoice) return;
     
     try {
-      const paymentPayload = {
-        invoice: selectedInvoice.id,
-        amount: parseFloat(paymentData.amount),
+      if (!paymentTrackingAllowed()) {
+        toast.error('Recording payments is disabled in module settings.');
+        return;
+      }
+
+      const paymentPayload = formatPaymentPayload({
+        invoiceId: selectedInvoice.id,
+        amount: paymentData.amount,
         payment_method: paymentData.payment_method,
         payment_date: paymentData.payment_date,
         reference: paymentData.reference,
         notes: paymentData.notes,
-      };
-      
+      });
+
       await paymentsAPI.create(paymentPayload);
       toast.success('Payment recorded successfully');
       setShowPaymentModal(false);
@@ -478,10 +516,12 @@ const Invoices = () => {
   return (
     <PageShell>
         <PageHeader title="Invoices" description="Create invoices and track payments.">
-          <Button onClick={handleCreate}>
-            <Plus className="h-4 w-4" />
-            Create invoice
-          </Button>
+          {canCreateInvoice ? (
+            <Button onClick={handleCreate}>
+              <Plus className="h-4 w-4" />
+              Create invoice
+            </Button>
+          ) : null}
         </PageHeader>
 
         <FilterBar>
@@ -506,8 +546,8 @@ const Invoices = () => {
             icon={FileText}
             title="No invoices"
             description="Create an invoice from a sale or manually."
-            actionLabel="Create invoice"
-            onAction={handleCreate}
+            actionLabel={canCreateInvoice ? 'Create invoice' : undefined}
+            onAction={canCreateInvoice ? handleCreate : undefined}
           />
         ) : (
           <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
@@ -556,6 +596,11 @@ const Invoices = () => {
                         <Button type="button" variant="outline" size="sm" onClick={() => handleEdit(invoice)}>
                           View
                         </Button>
+                        {invoice.status === 'draft' && canSendInvoice ? (
+                          <Button type="button" size="sm" variant="secondary" onClick={() => handleSendInvoice(invoice)}>
+                            Send
+                          </Button>
+                        ) : null}
                         <Button
                           type="button"
                           variant="outline"
@@ -564,7 +609,7 @@ const Invoices = () => {
                         >
                           PDF
                         </Button>
-                        {invoice.balance > 0 ? (
+                        {invoice.balance > 0 && canRecordPayment ? (
                           <Button type="button" size="sm" onClick={() => handleAddPayment(invoice)}>
                             Payment
                           </Button>
@@ -821,22 +866,21 @@ const Invoices = () => {
                     />
                   </div>
                 </div>
-                <div className="form-group">
-                  <label>Status</label>
-                  <SearchableSelect
-                    value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                    options={[
-                      { id: 'draft', name: 'Draft' },
-                      { id: 'sent', name: 'Sent' },
-                      { id: 'partial', name: 'Partially Paid' },
-                      { id: 'paid', name: 'Paid' },
-                      { id: 'cancelled', name: 'Cancelled' }
-                    ]}
-                    placeholder="Select Status"
-                  />
-                </div>
-                
+                {selectedInvoice ? (
+                  <div className="form-group">
+                    <label>Status</label>
+                    <input
+                      type="text"
+                      value={formData.status}
+                      readOnly
+                      className="readonly capitalize"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Use Send on the list to recognize receivables. Record payments to settle.
+                    </p>
+                  </div>
+                ) : null}
+
                 {/* Address - Smaller field below invoice items, above notes */}
                 <div className="form-group">
                   <label>Address</label>

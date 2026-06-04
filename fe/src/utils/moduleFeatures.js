@@ -1,34 +1,48 @@
+import { catalogSellableStock } from './catalogStock';
+import {
+  normalizeModuleSettings,
+  readCachedModules,
+  isFeatureEnabledInSettings,
+  registryFeatureDefault,
+} from './moduleCache';
+import { localRegistryFeatureDefault } from '../config/moduleFeatureDefaults';
 import { withSellingPriceFields } from './productPricing';
 
 /**
  * Read module feature flags cached by Layout after login / refresh.
- * Defaults are conservative: unknown features are treated as disabled.
+ * Uses DB-backed cache plus registry defaults (same rules as the backend).
  */
 
-import { normalizeModuleSettings } from './moduleCache';
-
-export function isModuleFeatureEnabled(moduleName, featureKey, defaultValue = false) {
-  try {
-    const cached = normalizeModuleSettings(
-      JSON.parse(localStorage.getItem('enabled_modules') || '{}')
-    );
-    const mod = cached[moduleName];
-    if (!mod || mod.is_enabled === false) {
-      return defaultValue;
-    }
-    const feat = mod.features?.[featureKey];
-    if (feat == null) {
-      return defaultValue;
-    }
-    return Boolean(feat.is_enabled);
-  } catch {
-    return defaultValue;
+function resolveRegistryDefault(moduleName, featureKey) {
+  const settings = readCachedModules();
+  const fromApi = registryFeatureDefault(settings, moduleName, featureKey);
+  if (settings?.registry?.feature_defaults) {
+    return fromApi;
   }
+  return localRegistryFeatureDefault(moduleName, featureKey);
 }
 
-/** Product size/color variants — off by default until enabled in Module Settings. */
+/**
+ * @param {string} moduleName
+ * @param {string} featureKey
+ * @param {boolean} [explicitDefault] — only used when the feature row is absent from cache
+ */
+export function isModuleFeatureEnabled(moduleName, featureKey, explicitDefault) {
+  const registryDefault = resolveRegistryDefault(moduleName, featureKey);
+  const fallback =
+    explicitDefault !== undefined ? explicitDefault : registryDefault;
+  const settings = readCachedModules();
+  if (!settings || Object.keys(settings).length === 0) {
+    return fallback;
+  }
+  return isFeatureEnabledInSettings(settings, moduleName, featureKey, {
+    defaultWhenMissing: fallback,
+  });
+}
+
+/** Product size/color variants — registry default off until enabled in Module Settings. */
 export function isProductVariantsEnabled() {
-  return isModuleFeatureEnabled('products', 'product_variants', false);
+  return isModuleFeatureEnabled('products', 'product_variants');
 }
 
 /** Terminal POS (invoices, held carts) — off unless enabled in Module Settings. */
@@ -54,7 +68,8 @@ export function getDefaultPosRoute() {
 
 /**
  * When variants are disabled at POS, sell the parent product using
- * aggregated variant stock/price if the catalogue was set up with variants.
+ * sellable stock (max of parent and active variant rows) if the catalogue
+ * was set up with variants.
  */
 export function normalizeProductForSale(product) {
   if (!product) return product;
@@ -66,15 +81,11 @@ export function normalizeProductForSale(product) {
     ...base,
     variant_id: null,
     has_variants: false,
-    stock_quantity: base.stock_quantity,
+    stock_quantity: catalogSellableStock(base),
   };
   if (product.has_variants && Array.isArray(product.variants) && product.variants.length) {
     const active = product.variants.filter((v) => v.is_active !== false);
     if (active.length) {
-      normalized.stock_quantity = active.reduce(
-        (sum, v) => sum + (parseInt(v.stock_quantity, 10) || 0),
-        0
-      );
       if (!normalized.price) {
         const first = active.find((v) => v.price != null) || active[0];
         const selling = parseFloat(
@@ -92,4 +103,9 @@ export function normalizeProductForSale(product) {
     }
   }
   return normalized;
+}
+
+/** @deprecated Use readCachedModules + normalizeModuleSettings from moduleCache */
+export function getModuleSettingsFromCache() {
+  return readCachedModules();
 }

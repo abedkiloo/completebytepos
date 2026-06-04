@@ -21,6 +21,14 @@ from .utils import get_current_tenant, get_current_branch, set_current_tenant, s
 from .module_catalog import apply_module_preset, build_modules_response
 from .setup_status import get_setup_status
 from accounts.role_definitions import BOOTSTRAP_USERS
+from accounts.models import AuditLog
+from utils.audit_helpers import (
+    audited_perform_create,
+    audited_perform_destroy,
+    audited_perform_update,
+    log_domain_event,
+)
+from utils.audit_mixin import AuditedModelViewSetMixin
 import logging
 import os
 import sys
@@ -56,6 +64,12 @@ class ModuleSettingsViewSet(viewsets.ModelViewSet):
             data = apply_module_preset(preset_id, user=request.user)
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        log_domain_event(
+            request,
+            'apply_preset',
+            module='module_settings',
+            changes={'preset_id': preset_id},
+        )
         return Response(data)
     
     def update(self, request, *args, **kwargs):
@@ -65,7 +79,16 @@ class ModuleSettingsViewSet(viewsets.ModelViewSet):
         instance.description = request.data.get('description', instance.description)
         instance.updated_by = request.user
         instance.save()
-        
+        log_domain_event(
+            request,
+            AuditLog.ACTION_UPDATE,
+            instance,
+            module='module_settings',
+            changes={
+                'is_enabled': instance.is_enabled,
+                'module_name': instance.module_name,
+            },
+        )
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
     
@@ -74,11 +97,12 @@ class ModuleSettingsViewSet(viewsets.ModelViewSet):
         return self.update(request, *args, **kwargs)
 
 
-class ModuleFeatureViewSet(viewsets.ModelViewSet):
+class ModuleFeatureViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     """Module feature settings - only super admins can modify"""
     queryset = ModuleFeature.objects.all().select_related('module')
     serializer_class = ModuleFeatureSerializer
     permission_classes = [IsAuthenticated]
+    audit_module = 'module_features'
     ordering = ['module', 'display_order', 'feature_name']
     
     def get_permissions(self):
@@ -95,18 +119,22 @@ class ModuleFeatureViewSet(viewsets.ModelViewSet):
         return queryset
     
     def perform_create(self, serializer):
-        serializer.save(updated_by=self.request.user)
-    
+        audited_perform_create(self, serializer, updated_by=self.request.user)
+
     def perform_update(self, serializer):
-        serializer.save(updated_by=self.request.user)
-        logger.info(f"Feature updated: {serializer.instance.feature_name} (enabled: {serializer.instance.is_enabled}) by {self.request.user.username}")
+        audited_perform_update(self, serializer, updated_by=self.request.user)
+        logger.info(
+            f"Feature updated: {serializer.instance.feature_name} "
+            f"(enabled: {serializer.instance.is_enabled}) by {self.request.user.username}"
+        )
 
 
-class TenantViewSet(viewsets.ModelViewSet):
+class TenantViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     """Tenant (Business/Company) management - super admins can manage all"""
     queryset = Tenant.objects.all().select_related('owner', 'created_by')
     serializer_class = TenantSerializer
     permission_classes = [IsAuthenticated]
+    audit_module = 'tenants'
     ordering = ['name']
     
     def get_serializer_class(self):
@@ -138,16 +166,16 @@ class TenantViewSet(viewsets.ModelViewSet):
         return [IsSuperAdmin()]
     
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
-        logger.info(f"Tenant created: {serializer.instance.name} by {self.request.user.username}")
-    
+        instance = audited_perform_create(self, serializer, created_by=self.request.user)
+        logger.info(f"Tenant created: {instance.name} by {self.request.user.username}")
+
     def perform_update(self, serializer):
         logger.info(f"Tenant updated: {serializer.instance.name} by {self.request.user.username}")
-        super().perform_update(serializer)
-    
+        audited_perform_update(self, serializer)
+
     def perform_destroy(self, instance):
         logger.warning(f"Tenant deleted: {instance.name} by {self.request.user.username}")
-        super().perform_destroy(instance)
+        audited_perform_destroy(self, instance)
     
     @action(detail=False, methods=['get'])
     def active(self, request):
@@ -183,11 +211,12 @@ class TenantViewSet(viewsets.ModelViewSet):
         return Response({'message': 'Current tenant cleared.'})
 
 
-class BranchViewSet(viewsets.ModelViewSet):
+class BranchViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     """Branch management - filtered by current tenant"""
     queryset = Branch.objects.all().select_related('tenant', 'manager', 'created_by')
     serializer_class = BranchSerializer
     permission_classes = [IsAuthenticated]
+    audit_module = 'branches'
     ordering = ['name']
     
     def get_serializer_class(self):
@@ -261,17 +290,24 @@ class BranchViewSet(viewsets.ModelViewSet):
             from rest_framework.exceptions import ValidationError
             raise ValidationError("No tenant found. Please ensure a tenant is configured.")
         
-        # Save with tenant and created_by
-        serializer.save(tenant=tenant, created_by=self.request.user)
-        logger.info(f"Branch created: {serializer.instance.name} for tenant {tenant.name} by {self.request.user.username}")
-    
+        instance = audited_perform_create(
+            self,
+            serializer,
+            tenant=tenant,
+            created_by=self.request.user,
+        )
+        logger.info(
+            f"Branch created: {instance.name} for tenant {tenant.name} "
+            f"by {self.request.user.username}"
+        )
+
     def perform_update(self, serializer):
         logger.info(f"Branch updated: {serializer.instance.name} by {self.request.user.username}")
-        super().perform_update(serializer)
-    
+        audited_perform_update(self, serializer)
+
     def perform_destroy(self, instance):
         logger.warning(f"Branch deleted: {instance.name} by {self.request.user.username}")
-        super().perform_destroy(instance)
+        audited_perform_destroy(self, instance)
     
     @action(detail=False, methods=['get'])
     def active(self, request):
@@ -559,7 +595,45 @@ def module_settings_detail(request, module_name):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    from approvals.permissions import is_maker_checker_enabled
+    from approvals.serializers import PendingChangeSerializer
+    from approvals.settings_integration import queue_module_settings_patch
+
+    pending = None
+    if is_maker_checker_enabled():
+        reason = (
+            request.data.get('change_reason')
+            or request.data.get('reason')
+            or ''
+        )
+        if not str(reason).strip():
+            return Response(
+                {'reason': 'A reason is required for module settings changes.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        pending = queue_module_settings_patch(
+            request,
+            module_name=module_name,
+            updates=updates,
+            reason=str(reason).strip(),
+        )
+        if pending:
+            return Response(
+                {
+                    'message': 'Change submitted for approval, not yet active.',
+                    'pending_change': PendingChangeSerializer(pending).data,
+                    'module': module_name,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+
     SettingsService.set_many(module_name, updates, user=request.user)
+    log_domain_event(
+        request,
+        AuditLog.ACTION_UPDATE,
+        module='module_settings',
+        changes={'module_name': module_name, 'keys': sorted(updates.keys())},
+    )
     return Response(build_module_settings_response(module_name))
 
 
@@ -587,5 +661,66 @@ def store_settings(request):
         context={'request': request, 'clear_receipt_logo': clear_logo},
     )
     serializer.is_valid(raise_exception=True)
-    serializer.save(updated_by=request.user)
-    return Response(serializer.data)
+
+    from approvals.permissions import is_maker_checker_enabled
+    from approvals.serializers import PendingChangeSerializer
+    from approvals.settings_integration import (
+        STORE_SETTINGS_IMMEDIATE_FIELDS,
+        queue_store_settings_patch,
+    )
+
+    validated = dict(serializer.validated_data)
+    if hasattr(request.data, 'keys'):
+        submitted_keys = set(request.data.keys())
+    else:
+        submitted_keys = set(validated.keys())
+    submitted_keys.discard('clear_receipt_logo')
+
+    pending = None
+    if is_maker_checker_enabled():
+        reason = (
+            request.data.get('change_reason')
+            or request.data.get('reason')
+            or ''
+        )
+        sensitive_keys = submitted_keys - STORE_SETTINGS_IMMEDIATE_FIELDS
+        if sensitive_keys:
+            if not str(reason).strip():
+                return Response(
+                    {'reason': 'A reason is required for store settings changes.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            pending = queue_store_settings_patch(
+                request,
+                settings_obj,
+                validated,
+                submitted_keys=submitted_keys,
+                reason=str(reason).strip(),
+            )
+            if pending:
+                for key in list(validated.keys()):
+                    if key not in STORE_SETTINGS_IMMEDIATE_FIELDS and key in submitted_keys:
+                        validated.pop(key, None)
+                        serializer.validated_data.pop(key, None)
+
+    if serializer.validated_data:
+        serializer.save(updated_by=request.user)
+        log_domain_event(
+            request,
+            AuditLog.ACTION_UPDATE,
+            settings_obj,
+            module='store_settings',
+            changes=dict(serializer.validated_data),
+        )
+    settings_obj.refresh_from_db()
+    data = StoreSettingsSerializer(settings_obj, context={'request': request}).data
+    if pending:
+        return Response(
+            {
+                'message': 'Change submitted for approval, not yet active.',
+                'pending_change': PendingChangeSerializer(pending).data,
+                'settings': data,
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+    return Response(data)

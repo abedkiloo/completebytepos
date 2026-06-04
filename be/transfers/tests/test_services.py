@@ -4,12 +4,14 @@ from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from django.test import TestCase
 from django.utils import timezone
 
 from bankaccounts.models import BankAccount
 from transfers.models import MoneyTransfer
 from transfers.services import MoneyTransferService
+from settings.models import StoreSettings
 
 
 class MoneyTransferServiceTestCase(TestCase):
@@ -46,6 +48,28 @@ class MoneyTransferServiceTestCase(TestCase):
         )
         done = self.service.approve_transfer(transfer, self.user)
         self.assertEqual(done.status, 'completed')
+
+    def test_maker_checker_blocks_self_approve(self):
+        store = StoreSettings.load()
+        store.maker_checker_enabled = True
+        store.save(update_fields=['maker_checker_enabled'])
+        transfer = MoneyTransfer.objects.create(
+            transfer_type='bank_to_bank',
+            from_account=self.from_acct,
+            to_account=self.to_acct,
+            amount=Decimal('200.00'),
+            transfer_date=timezone.now().date(),
+            status='pending',
+            description='MC transfer',
+            created_by=self.user,
+        )
+        checker = User.objects.create_user(username='checker_xfer', password='x')
+        with self.assertRaises(DRFValidationError):
+            self.service.approve_transfer(transfer, self.user)
+        done = self.service.approve_transfer(transfer, checker)
+        self.assertEqual(done.status, 'completed')
+        store.maker_checker_enabled = False
+        store.save(update_fields=['maker_checker_enabled'])
 
     def test_approve_completed_raises(self):
         transfer = MoneyTransfer.objects.create(

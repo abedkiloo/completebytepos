@@ -15,6 +15,7 @@ from .module_registry import (
     get_preset_manifest,
     resolve_preset,
 )
+from .module_features import FEATURE_DEFAULTS
 from .utils import is_branch_support_enabled
 
 
@@ -108,9 +109,11 @@ def build_modules_response() -> dict:
         )
 
     flat = dict(by_name)
+    flat['registry'] = {'feature_defaults': FEATURE_DEFAULTS}
     flat['_meta'] = {
         'branch_support_enabled': is_branch_support_enabled(),
         'catalog_version': 2,
+        'feature_defaults': FEATURE_DEFAULTS,
         'presets': get_preset_manifest(),
         'domains': [
             {
@@ -128,11 +131,14 @@ def build_modules_response() -> dict:
 def get_enabled_modules_flat() -> dict:
     """Module map for login/me (no catalog/_meta) — full objects with features."""
     data = build_modules_response()
-    return {
+    out = {
         k: v
         for k, v in data.items()
         if k not in ('catalog',) and not str(k).startswith('_')
     }
+    # Lets every client resolve missing feature rows the same way as the backend.
+    out['registry'] = {'feature_defaults': FEATURE_DEFAULTS}
+    return out
 
 
 def apply_module_preset(preset_id: str, user: User | None = None) -> dict:

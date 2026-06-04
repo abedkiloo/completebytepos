@@ -127,6 +127,9 @@ class IncomeService(BaseService):
     @transaction.atomic
     def approve_income(self, income: Income, approved_by) -> Income:
         """Approve an income record and create journal entry"""
+        from approvals.financial_workflow import validate_checker_not_maker
+
+        validate_checker_not_maker(approved_by, income.created_by_id)
         if income.status == 'approved':
             raise ValidationError('Income is already approved')
         

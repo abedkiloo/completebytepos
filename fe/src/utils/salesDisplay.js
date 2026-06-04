@@ -1,10 +1,13 @@
 import { isModuleFlagEnabled } from './moduleSettingsCache';
+import { userMayEditFinancialFieldsFromStorage } from './roleAccess';
 
 export function salesShowDiscount(settings) {
+  if (!userMayEditFinancialFieldsFromStorage()) return false;
   return isModuleFlagEnabled(settings, 'show_discount', true);
 }
 
 export function salesShowTax(settings) {
+  if (!userMayEditFinancialFieldsFromStorage()) return false;
   return isModuleFlagEnabled(settings, 'show_tax', true);
 }
 

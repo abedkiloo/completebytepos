@@ -41,6 +41,6 @@ class ExpenseListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'expense_number', 'category_name',
             'amount', 'description', 'payment_method', 'status',
-            'vendor', 'expense_date', 'created_by_name', 'created_at'
+            'vendor', 'expense_date', 'created_by', 'created_by_name', 'created_at'
         ]
 

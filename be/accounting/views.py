@@ -18,6 +18,8 @@ from .serializers import (
 from .services import AccountTypeService, AccountService, JournalEntryService, TransactionService
 from .chart_setup import ensure_default_account_types, get_account_type
 from accounts.permissions import RequirePermPerAction
+from utils.audit_helpers import audited_perform_create
+from utils.audit_mixin import AuditedModelViewSetMixin
 from expenses.models import Expense
 from sales.models import Sale
 
@@ -227,10 +229,11 @@ def create_payment_journal_entry(payment):
     return txn
 
 
-class AccountTypeViewSet(viewsets.ModelViewSet):
+class AccountTypeViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = AccountType.objects.all()
     serializer_class = AccountTypeSerializer
     permission_classes = [IsAuthenticated, ACCOUNTING_PERMS]
+    audit_module = 'accounting'
     ordering = ['name']
     
     def __init__(self, *args, **kwargs):
@@ -242,10 +245,11 @@ class AccountTypeViewSet(viewsets.ModelViewSet):
         return self.account_type_service.build_queryset()
 
 
-class AccountViewSet(viewsets.ModelViewSet):
+class AccountViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = Account.objects.all().select_related('account_type', 'parent')
     serializer_class = AccountSerializer
     permission_classes = [IsAuthenticated, ACCOUNTING_PERMS]
+    audit_module = 'accounting'
     ordering = ['account_code']
     
     def __init__(self, *args, **kwargs):
@@ -273,10 +277,11 @@ class AccountViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class JournalEntryViewSet(viewsets.ModelViewSet):
+class JournalEntryViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = JournalEntry.objects.all().select_related('account', 'created_by')
     serializer_class = JournalEntrySerializer
     permission_classes = [IsAuthenticated, ACCOUNTING_PERMS]
+    audit_module = 'accounting'
     # Journal entries are an audit log - never delete-able via the API.
     http_method_names = ['get', 'post', 'head', 'options']
     ordering = ['-entry_date', '-created_at']
@@ -298,13 +303,14 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
         return self.journal_entry_service.build_queryset(filters)
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        audited_perform_create(self, serializer, created_by=self.request.user)
 
 
-class TransactionViewSet(viewsets.ModelViewSet):
+class TransactionViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = Transaction.objects.all().prefetch_related('journal_entries').select_related('created_by')
     serializer_class = TransactionSerializer
     permission_classes = [IsAuthenticated, ACCOUNTING_PERMS]
+    audit_module = 'accounting'
     # Accounting transactions are an audit log - never delete-able via the API.
     http_method_names = ['get', 'post', 'head', 'options']
     ordering = ['-transaction_date', '-created_at']
@@ -326,7 +332,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
         return self.transaction_service.build_queryset(filters)
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        audited_perform_create(self, serializer, created_by=self.request.user)
 
 
 class AccountingReportViewSet(viewsets.ViewSet):

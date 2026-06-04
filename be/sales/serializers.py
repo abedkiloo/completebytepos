@@ -1,5 +1,16 @@
 from rest_framework import serializers
-from .models import Sale, SaleItem, Invoice, InvoiceItem, Payment, Customer, PaymentPlan, PaymentReminder
+from .models import (
+    Sale,
+    SaleItem,
+    SaleRefund,
+    SaleRefundItem,
+    Invoice,
+    InvoiceItem,
+    Payment,
+    Customer,
+    PaymentPlan,
+    PaymentReminder,
+)
 from products.serializers import ProductSerializer
 
 
@@ -97,27 +108,99 @@ class SaleItemSerializer(serializers.ModelSerializer):
         read_only_fields = ['subtotal', 'created_at']
 
 
+class SaleRefundItemSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(source='product.name', read_only=True)
+
+    class Meta:
+        model = SaleRefundItem
+        fields = [
+            'id',
+            'sale_item',
+            'product',
+            'product_name',
+            'variant',
+            'quantity',
+            'unit_price',
+            'subtotal',
+        ]
+
+
+class SaleRefundSerializer(serializers.ModelSerializer):
+    items = SaleRefundItemSerializer(many=True, read_only=True)
+    sale_number = serializers.CharField(source='sale.sale_number', read_only=True)
+    refunded_by_name = serializers.CharField(source='refunded_by.username', read_only=True)
+
+    class Meta:
+        model = SaleRefund
+        fields = [
+            'id',
+            'sale',
+            'sale_number',
+            'refund_number',
+            'refund_type',
+            'amount',
+            'reason',
+            'refunded_by',
+            'refunded_by_name',
+            'items',
+            'created_at',
+        ]
+        read_only_fields = fields
+
+
+class SaleRefundCreateSerializer(serializers.Serializer):
+    reason = serializers.CharField()
+    full = serializers.BooleanField(default=False, required=False)
+    items = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        allow_empty=True,
+    )
+
+    def validate_reason(self, value):
+        if not value or not str(value).strip():
+            raise serializers.ValidationError('A reason is required for refunds.')
+        return str(value).strip()
+
+
 class SaleSerializer(serializers.ModelSerializer):
     items = SaleItemSerializer(many=True, read_only=True)
     cashier_name = serializers.CharField(source='cashier.username', read_only=True)
     customer_name = serializers.CharField(source='customer.name', read_only=True)
     item_count = serializers.SerializerMethodField()
+    amount_refunded = serializers.SerializerMethodField()
+    refundable_remaining = serializers.SerializerMethodField()
+    can_refund = serializers.SerializerMethodField()
     
     class Meta:
         model = Sale
         fields = [
-            'id', 'sale_number', 'sale_type', 'status', 'cashier', 'cashier_name',
+            'id', 'sale_number', 'sale_type', 'status', 'refund_status', 'cashier', 'cashier_name',
             'customer', 'customer_name',
             'subtotal', 'tax_amount', 'discount_amount', 'total',
             'delivery_method', 'delivery_cost',
             'shipping_address', 'shipping_location',
             'payment_method', 'amount_paid', 'change', 'notes',
-            'items', 'item_count', 'created_at', 'updated_at'
+            'items', 'item_count', 'amount_refunded', 'refundable_remaining', 'can_refund',
+            'created_at', 'updated_at'
         ]
-        read_only_fields = ['sale_number', 'created_at', 'updated_at']
+        read_only_fields = ['sale_number', 'created_at', 'updated_at', 'refund_status']
 
     def get_item_count(self, obj):
         return obj.item_count
+
+    def get_amount_refunded(self, obj):
+        return obj.amount_refunded
+
+    def get_refundable_remaining(self, obj):
+        return obj.refundable_remaining()
+
+    def get_can_refund(self, obj):
+        return (
+            obj.status == 'completed'
+            and obj.refund_status != 'refunded'
+            and obj.refundable_remaining() > 0
+        )
 
 
 class HoldingSaleSerializer(serializers.Serializer):

@@ -10,6 +10,8 @@ from .models import Supplier
 from .serializers import SupplierSerializer, SupplierListSerializer
 from .services import SupplierService
 from accounts.permissions import IsSuperAdmin, IsAdmin, HasPermission, HasModuleAccess
+from utils.audit_helpers import audited_perform_create, audited_perform_destroy, audited_perform_update
+from utils.audit_mixin import AuditedModelViewSetMixin
 from settings.models import ModuleSettings
 from suppliers.module_settings import (
     suppliers_enable_create,
@@ -46,11 +48,12 @@ class HasSupplierPermission(permissions.BasePermission):
         return False
 
 
-class SupplierViewSet(viewsets.ModelViewSet):
+class SupplierViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     """Supplier management viewset"""
     queryset = Supplier.objects.all()
     serializer_class = SupplierSerializer
     permission_classes = [IsAuthenticated]
+    audit_module = 'suppliers'
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'supplier_code', 'email', 'phone', 'contact_person', 'tax_id']
     ordering_fields = ['name', 'created_at', 'rating', 'account_balance']
@@ -111,8 +114,13 @@ class SupplierViewSet(viewsets.ModelViewSet):
         return queryset
     
     def perform_create(self, serializer):
-        """Set created_by when creating supplier"""
-        serializer.save(created_by=self.request.user)
+        audited_perform_create(self, serializer, created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        audited_perform_update(self, serializer)
+
+    def perform_destroy(self, instance):
+        audited_perform_destroy(self, instance)
 
     @staticmethod
     def _feature_disabled_response(feature_label: str):

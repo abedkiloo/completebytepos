@@ -7,17 +7,18 @@ from django.db.models import Q, F, Sum, Count, Avg
 from django.db import transaction
 from django.http import HttpResponse
 from django.core.exceptions import ValidationError
-from .models import Category, Product, Size, Color, ProductVariant
+from .models import Category, Product, Size, Color, ProductVariant, UnitOfMeasure
 from .serializers import (
     CategorySerializer, CategoryListSerializer,
     ProductSerializer, ProductListSerializer, ProductSearchSerializer,
     BulkProductUpdateSerializer, ProductStatisticsSerializer,
-    SizeSerializer, ColorSerializer, ProductVariantSerializer
+    SizeSerializer, ColorSerializer, ProductVariantSerializer,
+    UnitOfMeasureSerializer,
 )
 from .services import (
     ProductService, CategoryService, SizeService, ColorService, ProductVariantService
 )
-from accounts.permissions import RequirePermPerAction
+from accounts.permissions import HasPermission, RequirePermPerAction
 from settings.feature_flags import is_product_variants_enabled
 from products.module_settings import (
     products_bulk_operations_enabled,
@@ -63,11 +64,12 @@ CATEGORIES_PERMS = RequirePermPerAction('categories', {
 })
 
 
-class SizeViewSet(viewsets.ModelViewSet):
+class SizeViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     """ViewSet for managing product sizes"""
     queryset = Size.objects.all()
     serializer_class = SizeSerializer
     permission_classes = [IsAuthenticated, PRODUCTS_PERMS]
+    audit_module = 'product_sizes'
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'code']
     ordering_fields = ['display_order', 'name']
@@ -85,11 +87,40 @@ class SizeViewSet(viewsets.ModelViewSet):
         return self.size_service.build_queryset(filters)
 
 
-class ColorViewSet(viewsets.ModelViewSet):
+class UnitOfMeasureViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
+    """Units of measure — list for all users; create for super admins."""
+
+    queryset = UnitOfMeasure.objects.all()
+    serializer_class = UnitOfMeasureSerializer
+    permission_classes = [IsAuthenticated, PRODUCTS_PERMS]
+    audit_module = 'product_units'
+    ordering = ['display_order', 'label']
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAuthenticated()]
+        from accounts.permissions import IsSuperAdmin
+        return [IsAuthenticated(), IsSuperAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.request.query_params.get('is_active') == 'true':
+            qs = qs.filter(is_active=True)
+        return qs
+
+    def list(self, request, *args, **kwargs):
+        from products.units import list_active_units
+
+        if request.query_params.get('format') == 'options':
+            return Response({'results': list_active_units()})
+        return super().list(request, *args, **kwargs)
+
+class ColorViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     """ViewSet for managing product colors"""
     queryset = Color.objects.all()
     serializer_class = ColorSerializer
     permission_classes = [IsAuthenticated, PRODUCTS_PERMS]
+    audit_module = 'product_colors'
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name']
     ordering_fields = ['name']
@@ -107,11 +138,12 @@ class ColorViewSet(viewsets.ModelViewSet):
         return self.color_service.build_queryset(filters)
 
 
-class ProductVariantViewSet(viewsets.ModelViewSet):
+class ProductVariantViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     """ViewSet for managing product variants"""
     queryset = ProductVariant.objects.select_related('product', 'size', 'color').all()
     serializer_class = ProductVariantSerializer
     permission_classes = [IsAuthenticated, PRODUCTS_PERMS]
+    audit_module = 'product_variants'
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['sku', 'barcode', 'product__name']
     ordering_fields = ['product', 'size', 'color', 'sku']
@@ -120,6 +152,94 @@ class ProductVariantViewSet(viewsets.ModelViewSet):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.variant_service = ProductVariantService()
+
+    def get_permissions(self):
+        if getattr(self, 'action', None) == 'destroy':
+            from approvals.permissions import is_maker_checker_enabled
+
+            if is_maker_checker_enabled():
+                return [IsAuthenticated(), HasPermission('products', 'update')]
+        return [IsAuthenticated(), PRODUCTS_PERMS()]
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+
+        from approvals.variant_integration import (
+            queue_variant_sensitive_update,
+            split_variant_payload,
+        )
+        from approvals.serializers import PendingChangeSerializer
+        from approvals.permissions import is_maker_checker_enabled
+
+        validated = dict(serializer.validated_data)
+        submitted_keys = set(serializer.initial_data.keys())
+        sensitive, _immediate = split_variant_payload(
+            validated,
+            submitted_keys=submitted_keys,
+        )
+        try:
+            pending = queue_variant_sensitive_update(request, instance, sensitive)
+        except ValidationError as exc:
+            from rest_framework.exceptions import ValidationError as DRFValidationError
+
+            if hasattr(exc, 'message_dict'):
+                raise DRFValidationError(exc.message_dict)
+            raise DRFValidationError(str(exc))
+
+        if pending is not None:
+            for key in sensitive:
+                serializer.validated_data.pop(key, None)
+        elif is_maker_checker_enabled() and sensitive:
+            from rest_framework.exceptions import ValidationError as DRFValidationError
+
+            raise DRFValidationError(
+                {'reason': 'A reason is required for variant price, stock, or status changes.'}
+            )
+
+        if serializer.validated_data:
+            self.perform_update(serializer)
+        elif pending is None:
+            return Response(serializer.data)
+
+        instance.refresh_from_db()
+        data = self.get_serializer(instance).data
+        if pending:
+            return Response(
+                {
+                    'message': 'Change submitted for approval, not yet active.',
+                    'pending_change': PendingChangeSerializer(pending).data,
+                    'variant': data,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+        return Response(data)
+
+    def destroy(self, request, *args, **kwargs):
+        from approvals.variant_integration import queue_variant_delete
+        from approvals.permissions import is_maker_checker_enabled
+        from approvals.serializers import PendingChangeSerializer
+
+        if is_maker_checker_enabled():
+            instance = self.get_object()
+            try:
+                pending = queue_variant_delete(request, instance)
+            except ValidationError as exc:
+                from rest_framework.exceptions import ValidationError as DRFValidationError
+
+                if hasattr(exc, 'message_dict'):
+                    raise DRFValidationError(exc.message_dict)
+                raise DRFValidationError(str(exc))
+            return Response(
+                {
+                    'message': 'Change submitted for approval, not yet active.',
+                    'pending_change': PendingChangeSerializer(pending).data,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+        return super().destroy(request, *args, **kwargs)
     
     def get_queryset(self):
         """Get queryset using service layer"""
@@ -136,6 +256,8 @@ class CategoryViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     serializer_class = CategorySerializer
     permission_classes = [IsAuthenticated, CATEGORIES_PERMS]
     audit_module = 'categories'
+    # Categories are a small tree; paginating hid rows from the FE client-side search.
+    pagination_class = None
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'description']
     ordering_fields = ['name', 'created_at']
@@ -158,6 +280,84 @@ class CategoryViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         if self.action == 'list':
             return CategoryListSerializer
         return CategorySerializer
+
+    def get_permissions(self):
+        if getattr(self, 'action', None) == 'destroy':
+            from approvals.permissions import is_maker_checker_enabled
+
+            if is_maker_checker_enabled():
+                return [IsAuthenticated(), HasPermission('categories', 'update')]
+        return [IsAuthenticated(), CATEGORIES_PERMS()]
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+
+        from approvals.category_integration import queue_category_deactivate
+        from approvals.permissions import is_maker_checker_enabled
+        from approvals.serializers import PendingChangeSerializer
+
+        validated = dict(serializer.validated_data)
+        pending = None
+        if (
+            is_maker_checker_enabled()
+            and validated.get('is_active') is False
+            and instance.is_active
+            and 'is_active' in serializer.initial_data
+        ):
+            try:
+                pending = queue_category_deactivate(request, instance)
+            except ValidationError as exc:
+                from rest_framework.exceptions import ValidationError as DRFValidationError
+
+                if hasattr(exc, 'message_dict'):
+                    raise DRFValidationError(exc.message_dict)
+                raise DRFValidationError(str(exc))
+            serializer.validated_data.pop('is_active', None)
+
+        if serializer.validated_data:
+            self.perform_update(serializer)
+        elif pending is None:
+            return Response(serializer.data)
+
+        instance.refresh_from_db()
+        data = self.get_serializer(instance).data
+        if pending:
+            return Response(
+                {
+                    'message': 'Change submitted for approval, not yet active.',
+                    'pending_change': PendingChangeSerializer(pending).data,
+                    'category': data,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+        return Response(data)
+
+    def destroy(self, request, *args, **kwargs):
+        from approvals.category_integration import queue_category_delete
+        from approvals.permissions import is_maker_checker_enabled
+        from approvals.serializers import PendingChangeSerializer
+
+        if is_maker_checker_enabled():
+            instance = self.get_object()
+            try:
+                pending = queue_category_delete(request, instance)
+            except ValidationError as exc:
+                from rest_framework.exceptions import ValidationError as DRFValidationError
+
+                if hasattr(exc, 'message_dict'):
+                    raise DRFValidationError(exc.message_dict)
+                raise DRFValidationError(str(exc))
+            return Response(
+                {
+                    'message': 'Change submitted for approval, not yet active.',
+                    'pending_change': PendingChangeSerializer(pending).data,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+        return super().destroy(request, *args, **kwargs)
 
     @action(detail=True, methods=['get'])
     def products(self, request, pk=None):
@@ -182,6 +382,15 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.product_service = ProductService()
+
+    def get_permissions(self):
+        """With maker-checker, DELETE queues a proposal — ``update`` is enough for makers."""
+        if getattr(self, 'action', None) == 'destroy':
+            from approvals.permissions import is_maker_checker_enabled
+
+            if is_maker_checker_enabled():
+                return [IsAuthenticated(), HasPermission('products', 'update')]
+        return [IsAuthenticated(), PRODUCTS_PERMS()]
 
     @staticmethod
     def _feature_disabled_response(feature_label: str):
@@ -216,6 +425,12 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         try:
             # Let serializer create the product (handles ManyToMany fields)
             product = serializer.save()
+            from accounts.models import AuditLog
+            from utils.audit_events import log_product_write
+
+            log_product_write(
+                self.request, product, before=None, action=AuditLog.ACTION_CREATE
+            )
             
             # Variants only when the module feature is on
             if is_product_variants_enabled() and product.has_variants:
@@ -239,10 +454,75 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             # Re-raise to let DRF handle it properly
             raise
     
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+
+        from approvals.integration import queue_product_sensitive_update, split_product_payload
+        from approvals.serializers import PendingChangeSerializer
+
+        from approvals.permissions import is_maker_checker_enabled
+
+        validated = dict(serializer.validated_data)
+        submitted_keys = set(serializer.initial_data.keys())
+        sensitive, _immediate = split_product_payload(
+            validated,
+            submitted_keys=submitted_keys,
+        )
+        try:
+            pending = queue_product_sensitive_update(request, instance, sensitive)
+        except ValidationError as exc:
+            from rest_framework.exceptions import ValidationError as DRFValidationError
+
+            if hasattr(exc, 'message_dict'):
+                raise DRFValidationError(exc.message_dict)
+            raise DRFValidationError(str(exc))
+
+        if pending is not None:
+            for key in sensitive:
+                serializer.validated_data.pop(key, None)
+        elif is_maker_checker_enabled() and sensitive:
+            from rest_framework.exceptions import ValidationError as DRFValidationError
+
+            raise DRFValidationError(
+                {'reason': 'A reason is required for price, stock, or status changes.'}
+            )
+
+        if serializer.validated_data:
+            self.perform_update(serializer)
+        elif pending is None:
+            return Response(serializer.data)
+
+        instance.refresh_from_db()
+        data = self.get_serializer(instance).data
+        if pending:
+            return Response(
+                {
+                    'message': 'Change submitted for approval, not yet active.',
+                    'pending_change': PendingChangeSerializer(pending).data,
+                    'product': data,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+        return Response(data)
+
     def perform_update(self, serializer):
         """Update product - serializer handles update, service handles variant changes"""
-        # Let serializer update the product
+        from accounts.models import AuditLog
+        from utils.audit_events import log_product_write
+
+        if not serializer.validated_data:
+            return serializer.instance
+
+        before = None
+        if serializer.instance and serializer.instance.pk:
+            before = self.get_queryset().get(pk=serializer.instance.pk)
         product = serializer.save()
+        log_product_write(
+            self.request, product, before=before, action=AuditLog.ACTION_UPDATE
+        )
         
         # Handle variant updates if variant settings changed
         # Check if variants need to be recreated
@@ -265,6 +545,30 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 product.available_colors.clear()
                 product.save(update_fields=['has_variants'])
             ProductVariant.objects.filter(product=product).delete()
+
+    def destroy(self, request, *args, **kwargs):
+        from approvals.integration import queue_product_delete
+        from approvals.permissions import is_maker_checker_enabled
+        from approvals.serializers import PendingChangeSerializer
+
+        if is_maker_checker_enabled():
+            instance = self.get_object()
+            try:
+                pending = queue_product_delete(request, instance)
+            except ValidationError as exc:
+                from rest_framework.exceptions import ValidationError as DRFValidationError
+
+                if hasattr(exc, 'message_dict'):
+                    raise DRFValidationError(exc.message_dict)
+                raise DRFValidationError(str(exc))
+            return Response(
+                {
+                    'message': 'Change submitted for approval, not yet active.',
+                    'pending_change': PendingChangeSerializer(pending).data,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+        return super().destroy(request, *args, **kwargs)
 
     @action(detail=False, methods=['get'])
     def search(self, request):

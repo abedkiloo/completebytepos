@@ -2,6 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { expensesAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import SearchableSelect from '../Shared/SearchableSelect';
+import ChangeReasonField from '../Approvals/ChangeReasonField';
+import { useStoreSettings } from '../../hooks/useStoreSettings';
+import {
+  financialSubmitSuccessMessage,
+  isMakerCheckerEnabled,
+} from '../../utils/makerChecker';
 
 const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }) => {
   const [formData, setFormData] = useState({
@@ -20,6 +26,9 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [newCategory, setNewCategory] = useState({ name: '', description: '' });
   const [creatingCategory, setCreatingCategory] = useState(false);
+  const [proposalReason, setProposalReason] = useState('');
+  const { settings: storeSettings } = useStoreSettings();
+  const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
 
   useEffect(() => {
     if (expense) {
@@ -65,7 +74,10 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
     if (!formData.expense_date) {
       newErrors.expense_date = 'Expense date is required';
     }
-    
+    if (makerCheckerOn && !proposalReason.trim()) {
+      newErrors.proposal_reason = 'A reason is required when maker-checker is enabled.';
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -115,11 +127,18 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
     
     setLoading(true);
     try {
-      if (expense) {
-        await expensesAPI.update(expense.id, formData);
-      } else {
-        await expensesAPI.create(formData);
+      const payload = { ...formData };
+      if (makerCheckerOn) {
+        payload.proposal_reason = proposalReason.trim();
+        payload.status = 'pending';
       }
+      if (expense) {
+        await expensesAPI.update(expense.id, payload);
+      } else {
+        await expensesAPI.create(payload);
+      }
+      const mcMsg = financialSubmitSuccessMessage(storeSettings);
+      if (mcMsg) toast.warning(mcMsg);
       onSave();
     } catch (error) {
       const errorData = error.response?.data;
@@ -290,7 +309,16 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
               />
             </div>
 
-            {expense && (
+            {makerCheckerOn ? (
+              <ChangeReasonField
+                value={proposalReason}
+                onChange={setProposalReason}
+                error={errors.proposal_reason}
+                hint="Required for expenses when maker-checker is enabled."
+              />
+            ) : null}
+
+            {expense && !makerCheckerOn && (
               <div className="form-group">
                 <label>Status</label>
                 <SearchableSelect

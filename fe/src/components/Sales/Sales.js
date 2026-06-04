@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Receipt, ShoppingCart } from 'lucide-react';
+import { Receipt, RotateCcw, ShoppingCart } from 'lucide-react';
 import { salesAPI } from '../../services/api';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { toast } from '../../utils/toast';
+import { getStoredAuth, isManagerOrAdminFromStorage } from '../../utils/roleAccess';
+import { userCanRefundSales, saleIsRefundable, refundStatusLabel } from '../../utils/saleRefund';
+import RefundSaleDialog from './RefundSaleDialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
@@ -36,6 +39,12 @@ const Sales = () => {
   const [loading, setLoading] = useState(true);
   const [selectedSale, setSelectedSale] = useState(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [refundSale, setRefundSale] = useState(null);
+  const [refundSubmitting, setRefundSubmitting] = useState(false);
+  const { permissions } = getStoredAuth();
+  const canRefund = userCanRefundSales(permissions, {
+    isManagerOrAdmin: isManagerOrAdminFromStorage(),
+  });
   const [filters, setFilters] = useState({
     date_from: '',
     date_to: '',
@@ -92,6 +101,41 @@ const Sales = () => {
       setShowReceiptModal(true);
     } catch (error) {
       toast.error('Failed to load receipt: ' + (error.response?.data?.error || error.message));
+    }
+  };
+
+  const openRefundDialog = async (sale) => {
+    try {
+      const response = await salesAPI.get(sale.id);
+      setRefundSale(response.data);
+    } catch (error) {
+      toast.error('Failed to load sale: ' + (error.response?.data?.error || error.message));
+    }
+  };
+
+  const handleRefundSubmit = async (payload) => {
+    if (!refundSale) return;
+    setRefundSubmitting(true);
+    try {
+      const res = await salesAPI.refund(refundSale.id, payload);
+      toast.success(`Refund ${res.data.refund_number} recorded`);
+      setRefundSale(null);
+      if (selectedSale?.id === refundSale.id) {
+        setShowReceiptModal(false);
+        setSelectedSale(null);
+      }
+      loadSales();
+    } catch (error) {
+      const data = error.response?.data;
+      const msg =
+        data?.reason?.[0] ||
+        data?.items?.[0] ||
+        data?.error ||
+        data?.detail ||
+        error.message;
+      toast.error(typeof msg === 'string' ? msg : 'Refund failed');
+    } finally {
+      setRefundSubmitting(false);
     }
   };
 
@@ -340,16 +384,36 @@ const Sales = () => {
                       </Badge>
                     </DataTableCell>
                     <DataTableCell>
-                      <StatusBadge status={sale.status || 'completed'} />
+                      <div className="flex flex-col gap-1">
+                        <StatusBadge status={sale.status || 'completed'} />
+                        {refundStatusLabel(sale.refund_status) && (
+                          <Badge variant="secondary" className="w-fit text-xs">
+                            {refundStatusLabel(sale.refund_status)}
+                          </Badge>
+                        )}
+                      </div>
                     </DataTableCell>
                     <DataTableCell align="right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleViewReceipt(sale)}
-                      >
-                        Receipt
-                      </Button>
+                      <div className="flex justify-end gap-1">
+                        {canRefund && saleIsRefundable(sale) && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive"
+                            onClick={() => openRefundDialog(sale)}
+                          >
+                            <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                            Refund
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleViewReceipt(sale)}
+                        >
+                          Receipt
+                        </Button>
+                      </div>
                     </DataTableCell>
                   </DataTableRow>
                 ))}
@@ -509,14 +573,40 @@ const Sales = () => {
                 </div>
               </div>
             )}
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowReceiptModal(false)}>
-                Close
-              </Button>
-              <Button onClick={handlePrintReceipt}>Print receipt</Button>
+            <DialogFooter className="flex-wrap gap-2 sm:justify-between">
+              <div>
+                {canRefund && selectedSale && saleIsRefundable(selectedSale) && (
+                  <Button
+                    variant="destructive"
+                    onClick={() => {
+                      setShowReceiptModal(false);
+                      openRefundDialog(selectedSale);
+                    }}
+                  >
+                    <RotateCcw className="mr-1 h-4 w-4" />
+                    Refund
+                  </Button>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setShowReceiptModal(false)}>
+                  Close
+                </Button>
+                <Button onClick={handlePrintReceipt}>Print receipt</Button>
+              </div>
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <RefundSaleDialog
+          sale={refundSale}
+          open={Boolean(refundSale)}
+          onOpenChange={(open) => {
+            if (!open) setRefundSale(null);
+          }}
+          onSubmit={handleRefundSubmit}
+          submitting={refundSubmitting}
+        />
       </PageShell>
   );
 };

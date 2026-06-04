@@ -2,6 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { inventoryAPI, productsAPI } from '../../services/api';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { Button } from '../ui/button';
+import { useStoreSettings } from '../../hooks/useStoreSettings';
+import ChangeReasonField from '../Approvals/ChangeReasonField';
+import { toast } from '../../utils/toast';
+import {
+  isMakerCheckerEnabled,
+  isPendingApprovalResponse,
+  PENDING_APPROVAL_MESSAGE,
+} from '../../utils/makerChecker';
 
 const StockAdjustmentModal = ({ product, onClose, onSave }) => {
   const [formData, setFormData] = useState({
@@ -12,6 +20,9 @@ const StockAdjustmentModal = ({ product, onClose, onSave }) => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [changeReason, setChangeReason] = useState('');
+  const { settings: storeSettings } = useStoreSettings();
+  const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
 
   useEffect(() => {
     if (!product) {
@@ -58,7 +69,19 @@ const StockAdjustmentModal = ({ product, onClose, onSave }) => {
     setLoading(true);
 
     try {
-      await inventoryAPI.adjust(formData);
+      const payload = { ...formData };
+      if (makerCheckerOn) {
+        if (!changeReason.trim()) {
+          setError('A reason is required for stock changes.');
+          setLoading(false);
+          return;
+        }
+        payload.reason = changeReason.trim();
+      }
+      const res = await inventoryAPI.adjust(payload);
+      if (isPendingApprovalResponse(res.status)) {
+        toast.warning(PENDING_APPROVAL_MESSAGE);
+      }
       onSave();
     } catch (error) {
       setError(error.response?.data?.error || 'Failed to adjust stock');
@@ -117,12 +140,24 @@ const StockAdjustmentModal = ({ product, onClose, onSave }) => {
               />
             </div>
 
+            {makerCheckerOn ? (
+              <ChangeReasonField
+                value={changeReason}
+                onChange={setChangeReason}
+                hint="Required for stock adjustments when maker-checker is on."
+              />
+            ) : null}
+
             <div className="slide-in-panel-footer">
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
               </Button>
               <Button type="submit" disabled={loading}>
-                {loading ? 'Adjusting...' : 'Adjust Stock'}
+                {loading
+                  ? 'Submitting…'
+                  : makerCheckerOn
+                    ? 'Submit for approval'
+                    : 'Adjust Stock'}
               </Button>
             </div>
           </form>

@@ -8,10 +8,12 @@ import {
   hasPermission,
   getStoredAuth,
 } from './roleAccess';
+import { localRegistryFeatureDefault } from '../config/moduleFeatureDefaults';
 import {
   normalizeModuleSettings,
   isModuleEnabledInSettings,
   isFeatureEnabledInSettings,
+  registryFeatureDefault,
 } from './moduleCache';
 import { readCachedStoreSettings } from './storeSettingsCache';
 
@@ -85,6 +87,7 @@ export function canSeeNavItem(item, sectionId, ctx) {
   if (!sectionAllowedForPersona(sectionId, persona)) return false;
 
   if (item.requireSuperAdmin && !isSuperAdmin) return false;
+  if (item.managerOnly && persona === PERSONA.SALES) return false;
 
   if (persona === PERSONA.SALES) {
     const path = item.to.split('?')[0];
@@ -133,11 +136,15 @@ export function buildNavContext(moduleSettings, loadingModules) {
   const isModuleEnabled = (moduleName) =>
     isModuleEnabledInSettings(modules, moduleName, { loading: loadingModules });
 
-  const isFeatureEnabled = (moduleName, featureKey) =>
-    isFeatureEnabledInSettings(modules, moduleName, featureKey, {
+  const isFeatureEnabled = (moduleName, featureKey) => {
+    const defaultWhenMissing = modules?.registry?.feature_defaults
+      ? registryFeatureDefault(modules, moduleName, featureKey)
+      : localRegistryFeatureDefault(moduleName, featureKey);
+    return isFeatureEnabledInSettings(modules, moduleName, featureKey, {
       loading: loadingModules,
-      defaultWhenMissing: true,
+      defaultWhenMissing,
     });
+  };
 
   return {
     persona,

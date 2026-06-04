@@ -3,6 +3,8 @@
  */
 
 import { moduleSettingsAPI } from '../services/api';
+import { toast } from './toast';
+import { isPendingApprovalResponse, PENDING_APPROVAL_MESSAGE } from './makerChecker';
 import {
   cacheModuleSettings,
   flattenModuleSettings,
@@ -89,8 +91,16 @@ export async function ensureModuleSettingsLoaded(module) {
   return getModuleSettingsSnapshot(module);
 }
 
-export async function patchModuleSettings(module, values) {
-  const res = await moduleSettingsAPI.patch(module, values);
+export async function patchModuleSettings(module, values, options = {}) {
+  const payload = { ...values };
+  if (options.reason) {
+    payload.reason = options.reason;
+  }
+  const res = await moduleSettingsAPI.patch(module, payload);
+  if (isPendingApprovalResponse(res.status)) {
+    toast.warning(PENDING_APPROVAL_MESSAGE);
+    return getModuleSettingsSnapshot(module).settings;
+  }
   const flat = applyModuleSettingsPayload(module, res.data);
   window.dispatchEvent(new CustomEvent('moduleSettingsUpdated', { detail: res.data }));
   return flat;

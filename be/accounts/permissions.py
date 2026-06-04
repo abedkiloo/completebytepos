@@ -292,6 +292,17 @@ class IsAdmin(permissions.BasePermission):
 # get_permissions(). New code should prefer the class factories above.
 # ---------------------------------------------------------------------------
 
+class CanViewAuditLog(permissions.BasePermission):
+    """Managers and super admins may read the append-only audit log."""
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        from accounts.sensitive_edits import user_may_view_audit_log
+
+        return user_may_view_audit_log(request.user)
+
+
 class HasPermission(permissions.BasePermission):
     """Legacy: parametrized via __init__; only usable from get_permissions()."""
 

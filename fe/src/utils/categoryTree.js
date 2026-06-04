@@ -71,12 +71,16 @@ export function flattenCategoryTree(parents, childrenByParent, orphans = []) {
   return rows;
 }
 
+export function normalizeCategorySearchText(value) {
+  return (value || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
 function matchesSearch(category, query) {
-  const q = query.toLowerCase();
-  return (
-    category.name?.toLowerCase().includes(q) ||
-    (category.description && category.description.toLowerCase().includes(q))
-  );
+  const q = normalizeCategorySearchText(query);
+  if (!q) return true;
+  const name = normalizeCategorySearchText(category.name);
+  const description = normalizeCategorySearchText(category.description);
+  return name.includes(q) || (description && description.includes(q));
 }
 
 /**

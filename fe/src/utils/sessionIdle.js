@@ -2,10 +2,10 @@
  * Log out after a period of user inactivity (mouse, keyboard, touch, scroll).
  * Activity is shared across tabs via localStorage.
  */
+import { SESSION_IDLE_MS } from '../config/sessionConfig';
 import { isAuthenticated, logoutAndRedirect, isSessionTeardownActive } from './authSession';
 
-/** 5 minutes without interaction → session ends. */
-export const SESSION_IDLE_MS = 5 * 60 * 1000;
+export { SESSION_IDLE_MS };
 
 const CHECK_INTERVAL_MS = 15 * 1000;
 const ACTIVITY_THROTTLE_MS = 1000;

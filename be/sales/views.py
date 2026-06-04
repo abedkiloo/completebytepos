@@ -12,10 +12,12 @@ from .models import Sale, SaleItem, Invoice, InvoiceItem, Payment, Customer, Pay
 from .serializers import (
     SaleSerializer, SaleCreateSerializer,
     HoldingSaleSerializer, CheckoutHoldingSerializer,
+    SaleRefundCreateSerializer, SaleRefundSerializer,
     InvoiceSerializer, InvoiceCreateSerializer,
     PaymentSerializer, PaymentCreateSerializer,
     CustomerSerializer, CustomerListSerializer
 )
+from .refunds import SaleRefundService
 from products.models import Product, ProductVariant
 from products.status_rules import get_operational_product, get_operational_variant
 from inventory.models import StockMovement
@@ -45,6 +47,7 @@ SALES_PERMS = RequirePermPerAction('sales', {
     'save_holding': 'create',
     'checkout': 'create',
     'cancel_holding': 'update',
+    'refund': 'refund',
 })
 
 CUSTOMERS_PERMS = RequirePermPerAction('customers', {
@@ -90,6 +93,7 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         super().__init__(*args, **kwargs)
         self.sale_service = SaleService()
         self.invoice_service = InvoiceService()
+        self.refund_service = SaleRefundService()
 
     def get_queryset(self):
         """Get queryset using service layer - all query logic moved to service"""
@@ -145,7 +149,59 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 response_data['wallet_credit_added'] = str(result['wallet_credit_added'])
                 response_data['message'] = result.get('message', '')
 
+        from utils.audit_events import log_sale_completed
+
+        log_sale_completed(request, sale, source='create')
+
         return Response(response_data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        return self._update_sale(request, partial=False, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        return self._update_sale(request, partial=True, **kwargs)
+
+    def _update_sale(self, request, *, partial, **kwargs):
+        """Holding drafts use default update; completed sales are immutable unless optional P3 is on."""
+        sale = self.get_object()
+        if sale.status == 'completed':
+            from approvals.sales_policy import completed_sale_direct_edit_blocked
+            from approvals.sales_integration import queue_completed_sale_edit
+
+            if completed_sale_direct_edit_blocked():
+                return Response(
+                    {'error': 'Completed sales are immutable.'},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            serializer = self.get_serializer(sale, data=request.data, partial=partial)
+            serializer.is_valid(raise_exception=True)
+            proposed = dict(serializer.validated_data)
+            try:
+                change = queue_completed_sale_edit(
+                    request,
+                    sale,
+                    proposed,
+                    reason=request.data.get('reason') or request.data.get('change_reason') or '',
+                )
+            except ValidationError as e:
+                detail = validation_error_message(e)
+                return Response(
+                    e.message_dict if hasattr(e, 'message_dict') else {'error': detail},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            return Response(
+                {
+                    'message': 'Change submitted for approval — not yet active.',
+                    'pending_change': {
+                        'id': change.id,
+                        'action_type': change.action_type,
+                        'status': change.status,
+                    },
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+        kwargs['partial'] = partial
+        return super().update(request, **kwargs)
 
     @action(detail=True, methods=['get'])
     def receipt(self, request, pk=None):
@@ -212,6 +268,7 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 {'error': validation_error_message(e)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        created = not data.get('holding_id')
         try:
             holding = self.sale_service.save_holding_sale(
                 request.user,
@@ -228,6 +285,10 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 {'error': validation_error_message(e)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        from utils.audit_events import log_holding_saved
+
+        log_holding_saved(request, holding, created=created)
 
         return Response(SaleSerializer(holding).data)
 
@@ -265,7 +326,40 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        from utils.audit_events import log_sale_completed
+
+        log_sale_completed(request, sale, source='checkout')
+
         return Response(SaleSerializer(sale).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'])
+    @transaction.atomic
+    def refund(self, request, pk=None):
+        """Refund a completed sale (full or partial). Original sale row stays for audit."""
+        sale = self.get_object()
+        serializer = SaleRefundCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        try:
+            refund = self.refund_service.create_refund(
+                sale,
+                reason=data['reason'],
+                user=request.user,
+                items=data.get('items'),
+                full=data.get('full', False),
+            )
+        except ValidationError as e:
+            payload = getattr(e, 'message_dict', None) or {'error': validation_error_message(e)}
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+        from utils.audit_events import log_sale_refunded
+
+        sale.refresh_from_db()
+        log_sale_refunded(request, sale, refund)
+        return Response(
+            SaleRefundSerializer(refund).data,
+            status=status.HTTP_201_CREATED,
+        )
 
     @action(detail=True, methods=['post'], url_path='cancel-holding')
     @transaction.atomic
@@ -279,6 +373,9 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 {'error': validation_error_message(e)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        from utils.audit_events import log_holding_cancelled
+
+        log_holding_cancelled(request, holding)
         return Response({'message': 'Holding invoice cancelled.', 'sale_number': holding.sale_number})
 
 
@@ -301,6 +398,14 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             return CustomerListSerializer
         return CustomerSerializer
 
+    def perform_create(self, serializer):
+        from utils.audit_helpers import audited_perform_create
+
+        customer = audited_perform_create(self, serializer)
+        if self.request.user and self.request.user.is_authenticated:
+            customer.created_by = self.request.user
+            customer.save(update_fields=['created_by'])
+
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         """Create a customer with proper error handling"""
@@ -311,13 +416,7 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         try:
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
-            
-            # Set created_by if user is authenticated
-            customer = serializer.save()
-            if request.user and request.user.is_authenticated:
-                customer.created_by = request.user
-                customer.save()
-            
+            self.perform_create(serializer)
             headers = self.get_success_headers(serializer.data)
             return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
         except serializers.ValidationError:
@@ -457,6 +556,14 @@ class InvoiceViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         """Create an invoice from a sale or manually"""
+        from sales.invoicing_access import invoice_creation_allowed
+
+        if not invoice_creation_allowed():
+            return Response(
+                {'error': 'Invoice creation is disabled in module settings.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         serializer = InvoiceCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
@@ -615,10 +722,14 @@ class InvoiceViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 notes=serializer.validated_data.get('notes', '')
             )
             
+            from sales.invoice_items import normalize_invoice_items, resolve_product_id
+
+            items_data = normalize_invoice_items(items_data)
+
             # Create invoice items - validate each item
             created_items = []
             for item_data in items_data:
-                product_id = item_data.get('product_id')
+                product_id = resolve_product_id(item_data)
                 if not product_id:
                     return Response(
                         {'error': 'Each invoice item must have a product_id'},
@@ -681,24 +792,32 @@ class InvoiceViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
         
-        # Create journal entry for manually created invoices (not from sale)
-        if not invoice.sale:
-            try:
-                from accounting.views import create_invoice_journal_entry
-                create_invoice_journal_entry(invoice)
-            except Exception as e:
-                logger.error(f"Error creating journal entry for invoice: {e}")
-        
+        # Accounting: draft invoices do not post until sent (settlement is via payments).
         response_serializer = InvoiceSerializer(invoice)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
     
     @action(detail=True, methods=['post'])
     def send(self, request, pk=None):
-        """Mark invoice as sent"""
+        """Mark invoice as sent and recognize receivable in accounting."""
+        from sales.invoicing_access import invoice_tracking_allowed
+
+        if not invoice_tracking_allowed():
+            return Response(
+                {'error': 'Invoice tracking is disabled in module settings.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         invoice = self.get_object()
         if invoice.status == 'draft':
             invoice.status = 'sent'
             invoice.save()
+            if not invoice.sale:
+                try:
+                    from accounting.views import create_invoice_journal_entry
+
+                    create_invoice_journal_entry(invoice)
+                except Exception as e:
+                    logger.error(f"Error creating journal entry for invoice: {e}")
         return Response(InvoiceSerializer(invoice).data)
     
     @action(detail=True, methods=['get'])
@@ -752,8 +871,20 @@ class PaymentViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        """Create a payment against an invoice"""
-        serializer = PaymentCreateSerializer(data=request.data)
+        """Create a payment against an invoice (settlement)."""
+        from sales.invoicing_access import payment_tracking_allowed
+
+        if not payment_tracking_allowed():
+            return Response(
+                {'error': 'Payment tracking is disabled in module settings.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        payload = dict(request.data)
+        if 'invoice' in payload and 'invoice_id' not in payload:
+            payload['invoice_id'] = payload['invoice']
+
+        serializer = PaymentCreateSerializer(data=payload)
         serializer.is_valid(raise_exception=True)
         
         invoice_id = serializer.validated_data['invoice_id']

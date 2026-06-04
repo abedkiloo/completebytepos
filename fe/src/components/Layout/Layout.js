@@ -24,6 +24,8 @@ import {
   Calendar,
   Boxes,
   PieChart,
+  ScrollText,
+  ClipboardCheck,
   Receipt,
   TrendingDown,
   TrendingUp,
@@ -157,6 +159,8 @@ const NAV_SECTIONS = [
       { to: '/reports?report=daily-sales', label: 'Daily Sales', icon: Calendar, match: 'report=daily-sales' },
       { to: '/reports?report=products', label: 'Product Performance', icon: Boxes, match: 'report=products' },
       { to: '/reports?report=inventory', label: 'Inventory Overview', icon: PieChart, match: 'report=inventory' },
+      { to: '/audit-log', label: 'Audit log', icon: ScrollText, managerOnly: true },
+      { to: '/pending-approvals', label: 'Pending approvals', icon: ClipboardCheck, managerOnly: true },
     ],
   },
   {

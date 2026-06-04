@@ -2,12 +2,16 @@
 
 import json
 
+from decimal import Decimal
+
 from django.contrib.auth.models import User
 from django.http import QueryDict
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIRequestFactory
 
+from approvals.models import PendingChange
+from products.models import Category, Product
 from settings.models import StoreSettings
 from settings.serializers import StoreSettingsSerializer
 from settings.store_settings_helpers import (
@@ -159,6 +163,62 @@ class StoreSettingsAPITests(SuperAdminAPITestCase):
             format='json',
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_super_admin_can_toggle_maker_checker(self):
+        response = self.client.patch(
+            self.url,
+            {'maker_checker_enabled': True, 'emergency_stock_mode': False},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertTrue(response.data['maker_checker_enabled'])
+        self.assertFalse(response.data['emergency_stock_mode'])
+
+        stored = StoreSettings.load()
+        self.assertTrue(stored.maker_checker_enabled)
+
+        off = self.client.patch(
+            self.url,
+            {'maker_checker_enabled': False},
+            format='json',
+        )
+        self.assertEqual(off.status_code, status.HTTP_200_OK)
+        stored.refresh_from_db()
+        self.assertFalse(stored.maker_checker_enabled)
+
+
+class StoreSettingsMakerCheckerToggleTests(ManagerAPITestCase):
+    """F1: disabling maker-checker lets sensitive writes apply immediately."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cat = Category.objects.create(name='Toggle Cat', is_active=True)
+        cls.product = Product.objects.create(
+            name='Toggle Product',
+            sku='MC-TOG-1',
+            category=cat,
+            price=Decimal('40'),
+            is_active=True,
+        )
+
+    def setUp(self):
+        super().setUp()
+        store = StoreSettings.load()
+        store.maker_checker_enabled = False
+        store.emergency_stock_mode = False
+        store.save(update_fields=['maker_checker_enabled', 'emergency_stock_mode'])
+        PendingChange.objects.all().delete()
+
+    def test_price_patch_applies_immediately_when_maker_checker_disabled(self):
+        resp = self.client.patch(
+            f'/api/products/{self.product.id}/',
+            {'price': '55.00'},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.price, Decimal('55'))
 
 
 class StoreSettingsAPIPermissionTests(ManagerAPITestCase):

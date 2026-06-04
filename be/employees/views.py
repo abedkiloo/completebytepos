@@ -7,6 +7,8 @@ from accounts.permissions import HasPermission, HasModuleAccess
 from .models import Employee
 from .serializers import EmployeeSerializer
 from .services import EmployeeService
+from utils.audit_helpers import audited_perform_create
+from utils.audit_mixin import AuditedModelViewSetMixin
 from employees.module_settings import (
     employees_enable_create,
     employees_enable_edit,
@@ -15,13 +17,14 @@ from employees.module_settings import (
 )
 
 
-class EmployeeViewSet(viewsets.ModelViewSet):
+class EmployeeViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     """
     ViewSet for Employee Management
     """
     queryset = Employee.objects.all()
     serializer_class = EmployeeSerializer
     permission_classes = [IsAuthenticated]
+    audit_module = 'employees'
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -61,7 +64,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         )
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        audited_perform_create(self, serializer, created_by=self.request.user)
 
     def create(self, request, *args, **kwargs):
         if not employees_enable_create():

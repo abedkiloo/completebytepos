@@ -3,11 +3,15 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db.models import Sum, Count, Q
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ValidationError as DjangoValidationError
+from rest_framework.exceptions import ValidationError
 from .models import MoneyTransfer
 from .serializers import MoneyTransferSerializer
 from .services import MoneyTransferService
 from accounts.permissions import RequirePermPerAction
+from utils.audit_events import log_approval_event
+from utils.audit_helpers import audited_perform_create, audited_perform_update
+from approvals.financial_workflow import finalize_financial_create, prepare_financial_update
 from utils.audit_mixin import AuditedModelViewSetMixin
 
 
@@ -51,7 +55,12 @@ class MoneyTransferViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         return self.transfer_service.build_queryset(filters)
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        instance = audited_perform_create(self, serializer, created_by=self.request.user)
+        finalize_financial_create(self.request, instance)
+
+    def perform_update(self, serializer):
+        prepare_financial_update(self.request, serializer.instance)
+        audited_perform_update(self, serializer)
 
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
@@ -59,13 +68,12 @@ class MoneyTransferViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         transfer = self.get_object()
         try:
             approved_transfer = self.transfer_service.approve_transfer(transfer, request.user)
+            log_approval_event(request, approved_transfer, module='money_transfer')
             serializer = self.get_serializer(approved_transfer)
             return Response(serializer.data)
-        except ValidationError as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        except (ValidationError, DjangoValidationError) as e:
+            detail = getattr(e, 'detail', None) or str(e)
+            return Response({'error': detail}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['get'])
     def statistics(self, request):

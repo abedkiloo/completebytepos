@@ -6,6 +6,14 @@ import CategoryForm from './CategoryForm';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import { toast } from '../../utils/toast';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
+import ChangeReasonField from '../Approvals/ChangeReasonField';
+import PendingApprovalBadges from '../Approvals/PendingApprovalBadges';
+import {
+  isMakerCheckerEnabled,
+  isPendingApprovalResponse,
+  categoryDeactivateNeedsReason,
+  PENDING_APPROVAL_MESSAGE,
+} from '../../utils/makerChecker';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import {
@@ -46,6 +54,7 @@ const LEVEL_OPTIONS = [
 const Categories = () => {
   const { settings } = useStoreSettings();
   const hideStatusToggles = settings.hide_entity_status_toggles;
+  const makerCheckerOn = isMakerCheckerEnabled(settings);
 
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -56,17 +65,24 @@ const Categories = () => {
   const [filterActive, setFilterActive] = useState('all');
   const [levelFilter, setLevelFilter] = useState('all');
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [confirmDeactivate, setConfirmDeactivate] = useState(null);
+  const [deactivateReason, setDeactivateReason] = useState('');
 
   useEffect(() => {
     loadCategories();
-  }, [filterActive]);
+  }, [filterActive, searchQuery]);
 
   const loadCategories = async () => {
     setLoading(true);
     try {
-      const params = {};
+      const params = { page_size: 200 };
       if (filterActive !== 'all') {
         params.is_active = filterActive === 'active';
+      }
+      const q = searchQuery.trim();
+      if (q) {
+        params.search = q;
       }
       const response = await categoriesAPI.list(params);
       const categoriesData = response.data.results || response.data || [];
@@ -83,10 +99,19 @@ const Categories = () => {
 
   const confirmDeleteAction = async () => {
     if (!confirmDelete) return;
+    if (makerCheckerOn && !deleteReason.trim()) {
+      toast.warning('Enter a reason for deleting this category.');
+      return;
+    }
     try {
-      await categoriesAPI.delete(confirmDelete);
+      const payload = makerCheckerOn ? { reason: deleteReason.trim() } : {};
+      const res = await categoriesAPI.delete(confirmDelete, payload);
+      if (isPendingApprovalResponse(res.status)) {
+        toast.warning(PENDING_APPROVAL_MESSAGE);
+      } else {
+        toast.success('Category deleted successfully');
+      }
       loadCategories();
-      toast.success('Category deleted successfully');
     } catch (error) {
       toast.error(
         error.response?.data?.error ||
@@ -95,21 +120,61 @@ const Categories = () => {
       );
     } finally {
       setConfirmDelete(null);
+      setDeleteReason('');
     }
   };
 
   const handleToggleActive = async (category) => {
+    if (category.is_active && makerCheckerOn) {
+      setConfirmDeactivate(category);
+      return;
+    }
     try {
-      await categoriesAPI.update(category.id, {
-        ...category,
+      const res = await categoriesAPI.update(category.id, {
+        name: category.name,
+        description: category.description || '',
+        parent: category.parent,
         is_active: !category.is_active,
       });
+      if (isPendingApprovalResponse(res.status)) {
+        toast.warning(PENDING_APPROVAL_MESSAGE);
+      } else {
+        toast.success(
+          `Category ${!category.is_active ? 'activated' : 'deactivated'} successfully`
+        );
+      }
       loadCategories();
-      toast.success(
-        `Category ${!category.is_active ? 'activated' : 'deactivated'} successfully`
-      );
     } catch {
       toast.error('Failed to update category');
+    }
+  };
+
+  const confirmDeactivateAction = async () => {
+    if (!confirmDeactivate) return;
+    if (!deactivateReason.trim()) {
+      toast.warning('Enter a reason for deactivating this category.');
+      return;
+    }
+    try {
+      const cat = confirmDeactivate;
+      const res = await categoriesAPI.update(cat.id, {
+        name: cat.name,
+        description: cat.description || '',
+        parent: cat.parent,
+        is_active: false,
+        reason: deactivateReason.trim(),
+      });
+      if (isPendingApprovalResponse(res.status)) {
+        toast.warning(PENDING_APPROVAL_MESSAGE);
+      } else {
+        toast.success('Category deactivated');
+      }
+      loadCategories();
+    } catch {
+      toast.error('Failed to deactivate category');
+    } finally {
+      setConfirmDeactivate(null);
+      setDeactivateReason('');
     }
   };
 
@@ -194,7 +259,7 @@ const Categories = () => {
           title={searchQuery ? 'No matches' : 'No categories yet'}
           description={
             searchQuery
-              ? 'Try a different search term or level filter.'
+              ? 'Try a different search term, set filter to All or Inactive, or check level filter.'
               : 'Create a top-level category, then add subcategories under it.'
           }
           actionLabel={!searchQuery ? 'Add category' : undefined}
@@ -230,6 +295,7 @@ const Categories = () => {
                       <FolderTree className="h-4 w-4 shrink-0 text-primary" aria-hidden />
                     )}
                     <span>{category.name}</span>
+                    <PendingApprovalBadges pendingApproval={category.pending_approval} />
                   </div>
                 </DataTableCell>
                 <DataTableCell>
@@ -319,13 +385,46 @@ const Categories = () => {
       <ConfirmDialog
         isOpen={!!confirmDelete}
         title="Delete category"
-        message="Products linked to this category may be cleared. Subcategories under a parent must be deleted or moved first. This cannot be undone."
+        message={
+          makerCheckerOn
+            ? 'Submit a delete proposal for checker approval. The category stays until approved.'
+            : 'Products linked to this category may be cleared. Subcategories under a parent must be deleted or moved first. This cannot be undone.'
+        }
         onConfirm={confirmDeleteAction}
-        onCancel={() => setConfirmDelete(null)}
-        confirmText="Delete"
+        onCancel={() => {
+          setConfirmDelete(null);
+          setDeleteReason('');
+        }}
+        confirmText={makerCheckerOn ? 'Submit for approval' : 'Delete'}
         cancelText="Cancel"
         type="danger"
-      />
+      >
+        {makerCheckerOn && confirmDelete ? (
+          <ChangeReasonField value={deleteReason} onChange={setDeleteReason} />
+        ) : null}
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        isOpen={!!confirmDeactivate}
+        title="Deactivate category"
+        message="Submit deactivation for checker approval. The category stays active in pickers until approved."
+        onConfirm={confirmDeactivateAction}
+        onCancel={() => {
+          setConfirmDeactivate(null);
+          setDeactivateReason('');
+        }}
+        confirmText="Submit for approval"
+        cancelText="Cancel"
+        type="warning"
+      >
+        {confirmDeactivate ? (
+          <ChangeReasonField
+            value={deactivateReason}
+            onChange={setDeactivateReason}
+            hint="Required when deactivating with maker-checker on."
+          />
+        ) : null}
+      </ConfirmDialog>
     </PageShell>
   );
 };

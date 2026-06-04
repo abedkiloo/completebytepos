@@ -2,6 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Check, Pencil, Plus, Trash2, TrendingUp } from 'lucide-react';
 import { incomeAPI } from '../../services/api';
 import { formatCurrency, formatDate } from '../../utils/formatters';
+import { useStoreSettings } from '../../hooks/useStoreSettings';
+import {
+  canApproveFinancialRecord,
+  isMakerCheckerEnabled,
+} from '../../utils/makerChecker';
 import IncomeForm from './IncomeForm';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import SearchableSelect from '../Shared/SearchableSelect';
@@ -44,6 +49,8 @@ const Income = () => {
     page_size: 20,
     count: 0,
   });
+  const { settings: storeSettings } = useStoreSettings();
+  const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
 
   useEffect(() => {
     loadCategories();
@@ -165,7 +172,14 @@ const Income = () => {
 
   return (
     <PageShell>
-        <PageHeader title="Income" description="Track non-sales revenue and receipts.">
+        <PageHeader
+          title="Income"
+          description={
+            makerCheckerOn
+              ? 'Track non-sales revenue. New income needs checker approval before it affects reports.'
+              : 'Track non-sales revenue and receipts.'
+          }
+        >
           <Button onClick={handleAdd}>
             <Plus className="h-4 w-4" />
             Add income
@@ -272,7 +286,8 @@ const Income = () => {
                     </DataTableCell>
                     <DataTableCell align="right">
                       <div className="flex justify-end gap-1">
-                        {income.status === 'pending' && (
+                        {income.status === 'pending' &&
+                          canApproveFinancialRecord(income, storeSettings) && (
                           <Button variant="ghost" size="sm" onClick={() => handleApprove(income.id)}>
                             <Check className="h-4 w-4 text-success" />
                           </Button>

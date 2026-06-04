@@ -10,6 +10,7 @@ import { formatCurrency } from '../../../utils/formatters';
 import { cn } from '../../../lib/cn';
 import { isProductOutOfStock } from '../../../utils/productStock';
 import { resolveMediaUrl } from '../../../utils/mediaUrl';
+import PendingApprovalBadges from '../../Approvals/PendingApprovalBadges';
 
 /**
  * Left + centre region of the POS:
@@ -207,6 +208,12 @@ function ProductTile({ product, onClick, respectStockLimits = true }) {
 
       {/* Meta */}
       <div className="flex flex-1 flex-col gap-1 p-2.5">
+        <div className="flex flex-wrap items-start gap-1">
+          <PendingApprovalBadges
+            pendingApproval={product.pending_approval}
+            className="mb-0.5"
+          />
+        </div>
         <span
           className={cn(
             'line-clamp-2 text-sm font-medium leading-tight',

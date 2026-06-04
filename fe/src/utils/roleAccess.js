@@ -22,6 +22,8 @@ export const APP_ROUTE_PREFIXES = [
   '/inventory',
   '/barcodes',
   '/reports',
+  '/audit-log',
+  '/pending-approvals',
   '/expenses',
   '/accounting',
   '/income',
@@ -99,6 +101,12 @@ export function getPersonaFromStorage() {
 }
 
 /** Super admin or manager — not front-line sales/cashier. */
+/** Managers / super admins may edit prices, stock levels, discounts, and audit-sensitive data. */
+export function userMayEditFinancialFieldsFromStorage() {
+  const persona = getPersonaFromStorage();
+  return persona === PERSONA.SUPER_ADMIN || persona === PERSONA.MANAGER;
+}
+
 export function isManagerOrAdminFromStorage() {
   const persona = getPersonaFromStorage();
   return persona === PERSONA.SUPER_ADMIN || persona === PERSONA.MANAGER;

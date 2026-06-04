@@ -1,6 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { rolesAPI } from '../../services/api';
+import { useStoreSettings } from '../../hooks/useStoreSettings';
+import ChangeReasonField from '../Approvals/ChangeReasonField';
+import {
+  isMakerCheckerEnabled,
+  isPendingApprovalResponse,
+  PENDING_APPROVAL_MESSAGE,
+  rolePermissionsChanged,
+} from '../../utils/makerChecker';
 import { toast } from '../../utils/toast';
 import { cn } from '../../lib/cn';
 import { DOMAIN_ORDER, DOMAIN_LABELS } from '../../utils/moduleDomains';
@@ -76,6 +84,11 @@ const RoleForm = ({ role, permissions, permissionCatalog, showPermissionCatalog 
   const [errors, setErrors] = useState({});
   const [domainCatalog, setDomainCatalog] = useState([]);
   const [expandedDomains, setExpandedDomains] = useState({});
+  const [changeReason, setChangeReason] = useState('');
+  const { settings: storeSettings } = useStoreSettings();
+  const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
+  const permChangeNeedsReason =
+    Boolean(role) && makerCheckerOn && rolePermissionsChanged(formData.permission_ids, role);
 
   useEffect(() => {
     const catalog = permissionCatalog?.length
@@ -180,11 +193,23 @@ const RoleForm = ({ role, permissions, permissionCatalog, showPermissionCatalog 
       is_active: formData.is_active,
       permission_ids: formData.permission_ids,
     };
+    if (permChangeNeedsReason) {
+      if (!changeReason.trim()) {
+        toast.warning('Enter a reason for permission changes.');
+        setLoading(false);
+        return;
+      }
+      payload.reason = changeReason.trim();
+    }
 
     try {
       if (role) {
-        await rolesAPI.update(role.id, payload);
-        toast.success('Role updated successfully');
+        const res = await rolesAPI.update(role.id, payload);
+        if (isPendingApprovalResponse(res.status)) {
+          toast.warning(PENDING_APPROVAL_MESSAGE);
+        } else {
+          toast.success('Role updated successfully');
+        }
       } else {
         await rolesAPI.create(payload);
         toast.success('Role created successfully');
@@ -395,6 +420,10 @@ const RoleForm = ({ role, permissions, permissionCatalog, showPermissionCatalog 
               <p className="text-xs text-muted-foreground">
                 Permission catalog is hidden in store settings. Existing permissions on this role are preserved.
               </p>
+            )}
+
+            {permChangeNeedsReason && (
+              <ChangeReasonField value={changeReason} onChange={setChangeReason} />
             )}
           </form>
         </div>

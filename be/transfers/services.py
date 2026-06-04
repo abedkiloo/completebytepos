@@ -69,6 +69,9 @@ class MoneyTransferService(BaseService):
     @transaction.atomic
     def approve_transfer(self, transfer: 'MoneyTransfer', approved_by) -> 'MoneyTransfer':
         """Approve and complete a transfer"""
+        from approvals.financial_workflow import validate_checker_not_maker
+
+        validate_checker_not_maker(approved_by, transfer.created_by_id)
         if transfer.status == 'completed':
             raise ValidationError('Transfer is already completed')
         

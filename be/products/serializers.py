@@ -1,7 +1,6 @@
-from django.db.models import Min, Sum
 from rest_framework import serializers
-from settings.feature_flags import is_product_variants_enabled
-from .models import Category, Product, Size, Color, ProductVariant
+from products.stock_utils import apply_catalog_variant_representation
+from .models import Category, Product, Size, Color, ProductVariant, UnitOfMeasure
 
 
 def _map_selling_price_fields(data):
@@ -29,6 +28,29 @@ class ColorSerializer(serializers.ModelSerializer):
         model = Color
         fields = ['id', 'name', 'hex_code', 'is_active']
         read_only_fields = ['created_at', 'updated_at']
+
+
+class UnitOfMeasureSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UnitOfMeasure
+        fields = [
+            'id', 'code', 'label', 'is_active', 'display_order',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_code(self, value):
+        from products.units import normalize_unit_code
+
+        code = normalize_unit_code(value)
+        if not code:
+            raise serializers.ValidationError('Unit code is required.')
+        return code
+
+    def create(self, validated_data):
+        from products.units import create_unit
+
+        return create_unit(validated_data['code'], validated_data['label'])
 
 
 class ProductVariantSerializer(serializers.ModelSerializer):
@@ -69,6 +91,12 @@ class ProductVariantSerializer(serializers.ModelSerializer):
     def to_internal_value(self, data):
         return super().to_internal_value(_map_selling_price_fields(data))
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        from approvals.effective import apply_approved_variant_overlay
+
+        return apply_approved_variant_overlay(instance, data)
+
 
 class CategorySerializer(serializers.ModelSerializer):
     product_count = serializers.SerializerMethodField()
@@ -81,6 +109,24 @@ class CategorySerializer(serializers.ModelSerializer):
             'product_count', 'children_count', 'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at']
+
+    def validate_name(self, value):
+        from products.category_validation import normalize_category_name, find_duplicate_category
+
+        normalized = normalize_category_name(value)
+        if not normalized:
+            raise serializers.ValidationError('Category name is required.')
+        existing = find_duplicate_category(
+            normalized,
+            exclude_pk=self.instance.pk if self.instance else None,
+        )
+        if existing:
+            from products.category_validation import DuplicateCategoryInfo
+
+            raise serializers.ValidationError(
+                DuplicateCategoryInfo(existing).user_message(normalized)
+            )
+        return normalized
     
     def get_product_count(self, obj):
         # Use prefetched products if available, otherwise query
@@ -108,6 +154,12 @@ class CategorySerializer(serializers.ModelSerializer):
                 })
         return data
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        from approvals.effective import apply_approved_category_overlay
+
+        return apply_approved_category_overlay(instance, data)
+
 
 class CategoryListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for category lists"""
@@ -130,6 +182,12 @@ class CategoryListSerializer(serializers.ModelSerializer):
         if hasattr(obj, 'children'):
             return obj.children.count()
         return obj.children.all().count()
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        from approvals.effective import apply_approved_category_overlay
+
+        return apply_approved_category_overlay(instance, data)
 
 
 class ProductSerializer(serializers.ModelSerializer):
@@ -314,36 +372,42 @@ class ProductSerializer(serializers.ModelSerializer):
         return value
     
     def validate(self, data):
-        """Validate product data and apply store catalog rules for sales staff."""
-        from settings.models import StoreSettings
-        from settings.store_settings_helpers import user_may_edit_pricing
+        """Validate product data; sales staff cannot change pricing or stock levels."""
+        from accounts.sensitive_edits import (
+            sales_catalog_mode_active,
+            user_may_edit_financial_fields,
+        )
+        from products.catalog_rules import apply_sales_catalog_rules
 
         request = self.context.get('request')
-        catalog_skip = False
-        if request and not user_may_edit_pricing(request.user):
-            store = StoreSettings.load()
-            if store.allow_sales_add_products and store.sales_catalog_skip_pricing:
-                catalog_skip = True
-                data.pop('price', None)
-                data.pop('mrp', None)
-                data['cost'] = data.get('cost') or 0
-                if self.instance is None:
-                    data['price'] = 0
-                    data['mrp'] = 0
-                elif self.instance is not None:
-                    # Sales may edit catalog fields but not pricing on update
-                    data.pop('price', None)
-                    data.pop('mrp', None)
-                    data.pop('cost', None)
+        user = getattr(request, 'user', None) if request else None
+        catalog_skip = bool(user and sales_catalog_mode_active(user))
+        if user:
+            apply_sales_catalog_rules(
+                data,
+                user=user,
+                is_create=self.instance is None,
+                instance=self.instance,
+            )
 
-        if not catalog_skip and data.get('price', 0) < data.get('cost', 0):
-            raise serializers.ValidationError({
-                'price': 'Selling price should be greater than or equal to cost price.'
-            })
+        if user and not user_may_edit_financial_fields(user):
+            catalog_skip = True
 
         price = data.get('price')
         if price is None and self.instance is not None:
             price = self.instance.price
+        cost = data.get('cost')
+        if cost is None and self.instance is not None:
+            cost = self.instance.cost
+        if (
+            not catalog_skip
+            and price is not None
+            and cost is not None
+            and price < cost
+        ):
+            raise serializers.ValidationError({
+                'price': 'Selling price should be greater than or equal to cost price.'
+            })
         mrp = data.get('mrp')
         if mrp is None and self.instance is not None:
             mrp = self.instance.mrp
@@ -425,12 +489,20 @@ class ProductSerializer(serializers.ModelSerializer):
         if not products_show_mrp():
             data.pop('mrp', None)
 
+        if 'unit' in data:
+            from products.units import validate_unit_code
+
+            data['unit'] = validate_unit_code(data.get('unit'))
+
         return strip_product_status_from_write_data(data)
 
     def to_representation(self, instance):
+        from approvals.effective import apply_approved_product_overlay
         from products.module_settings import apply_product_list_representation_flags
 
         data = super().to_representation(instance)
+        data = apply_catalog_variant_representation(instance, data)
+        data = apply_approved_product_overlay(instance, data)
         return apply_product_list_representation_flags(data)
 
     def create(self, validated_data):
@@ -641,29 +713,15 @@ class ProductListSerializer(serializers.ModelSerializer):
             return absolute_media_url(self.context.get('request'), obj.image.url)
         return None
 
-    def _apply_catalog_variant_mode(self, instance, data):
-        """When variants are disabled, expose parent rows as simple sellable products."""
-        if not instance.has_variants:
-            return data
-        variants = instance.variants.filter(is_active=True)
-        if not variants.exists():
-            return data
-        if not is_product_variants_enabled():
-            data['has_variants'] = False
-            agg = variants.aggregate(total_stock=Sum('stock_quantity'), min_price=Min('price'))
-            if agg['total_stock'] is not None:
-                data['stock_quantity'] = agg['total_stock']
-            if (not data.get('price') or float(data['price'] or 0) == 0) and agg.get('min_price'):
-                data['price'] = str(agg['min_price'])
-        return data
-
     def to_representation(self, instance):
+        from approvals.effective import apply_approved_product_overlay
         from products.module_settings import apply_product_list_representation_flags
 
         data = super().to_representation(instance)
-        data = self._apply_catalog_variant_mode(instance, data)
+        data = apply_catalog_variant_representation(instance, data)
         if 'selling_price' not in data and data.get('price') is not None:
             data['selling_price'] = data['price']
+        data = apply_approved_product_overlay(instance, data)
         return apply_product_list_representation_flags(data)
 
 
@@ -686,23 +744,14 @@ class ProductSearchSerializer(serializers.ModelSerializer):
         return obj.category.name if obj.category else None
 
     def to_representation(self, instance):
+        from approvals.effective import apply_approved_product_overlay
         from products.module_settings import apply_product_list_representation_flags
 
         data = super().to_representation(instance)
-        if not instance.has_variants:
-            return apply_product_list_representation_flags(data)
-        variants = instance.variants.filter(is_active=True)
-        if not variants.exists() or is_product_variants_enabled():
-            return apply_product_list_representation_flags(data)
-        data['has_variants'] = False
-        agg = variants.aggregate(total_stock=Sum('stock_quantity'), min_price=Min('price'))
-        if agg['total_stock'] is not None:
-            data['stock_quantity'] = agg['total_stock']
-        if (not data.get('price') or float(data['price'] or 0) == 0) and agg.get('min_price'):
-            data['price'] = str(agg['min_price'])
-            data['selling_price'] = data['price']
+        data = apply_catalog_variant_representation(instance, data)
         if 'selling_price' not in data and data.get('price') is not None:
             data['selling_price'] = data['price']
+        data = apply_approved_product_overlay(instance, data)
         return apply_product_list_representation_flags(data)
 
 

@@ -1,3 +1,4 @@
+import { installLocalStorageMock } from '../test-utils';
 import {
   salesShowDiscount,
   salesShowTax,
@@ -9,7 +10,12 @@ import {
 } from './salesDisplay';
 
 describe('salesDisplay', () => {
-  test('checkout display flags default on', () => {
+  beforeEach(() => {
+    installLocalStorageMock();
+    localStorage.setItem('profile', JSON.stringify({ role: 'manager' }));
+  });
+
+  test('checkout display flags default on for managers', () => {
     expect(salesShowDiscount({})).toBe(true);
     expect(salesShowTax({})).toBe(true);
     expect(salesShowDelivery({})).toBe(true);

@@ -42,6 +42,7 @@ const ConfirmDialog = ({
   cancelText = 'Cancel',
   type = 'danger',
   busy = false,
+  children = null,
 }) => {
   const { Icon, tone, bg } = ICONS_BY_TYPE[type] || ICONS_BY_TYPE.danger;
   const buttonVariant = BUTTON_VARIANT_BY_TYPE[type] || 'destructive';
@@ -75,6 +76,8 @@ const ConfirmDialog = ({
             </div>
           </div>
         </DialogHeader>
+
+        {children}
 
         <DialogFooter className="gap-2 sm:gap-2">
           <Button variant="outline" onClick={onCancel} disabled={busy}>

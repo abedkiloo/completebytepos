@@ -5,6 +5,11 @@ import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { toast } from '../../utils/toast';
 import { formatCurrency, formatDate } from '../../utils/formatters';
+import { useStoreSettings } from '../../hooks/useStoreSettings';
+import {
+  canApproveFinancialRecord,
+  isMakerCheckerEnabled,
+} from '../../utils/makerChecker';
 import ExpenseForm from './ExpenseForm';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -44,6 +49,8 @@ const Expenses = () => {
     page_size: 20,
     count: 0,
   });
+  const { settings: storeSettings } = useStoreSettings();
+  const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
 
   useEffect(() => {
     loadCategories();
@@ -172,7 +179,11 @@ const Expenses = () => {
     <PageShell>
         <PageHeader
           title="Expenses"
-          description="Track spending, approvals, and payments."
+          description={
+            makerCheckerOn
+              ? 'Track spending. New expenses need checker approval before they affect reports.'
+              : 'Track spending, approvals, and payments.'
+          }
         >
           <Button variant="outline" onClick={() => loadCategories()}>
             <RefreshCw className="h-4 w-4" />
@@ -308,7 +319,8 @@ const Expenses = () => {
                     </DataTableCell>
                     <DataTableCell align="right">
                       <div className="flex justify-end gap-1">
-                        {expense.status === 'pending' && (
+                        {expense.status === 'pending' &&
+                          canApproveFinancialRecord(expense, storeSettings) && (
                           <Button
                             variant="ghost"
                             size="sm"

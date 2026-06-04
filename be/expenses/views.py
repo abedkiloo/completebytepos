@@ -2,7 +2,8 @@ from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ValidationError as DjangoValidationError
+from rest_framework.exceptions import ValidationError
 from django.db.models import Sum, Count, Q
 from django.utils import timezone
 from datetime import datetime, timedelta
@@ -12,6 +13,9 @@ from .serializers import (
 )
 from .services import ExpenseCategoryService, ExpenseService
 from accounts.permissions import RequirePermPerAction
+from utils.audit_events import log_approval_event
+from utils.audit_helpers import audited_perform_create, audited_perform_update
+from approvals.financial_workflow import finalize_financial_create, prepare_financial_update
 from utils.audit_mixin import AuditedModelViewSetMixin
 from settings.utils import get_current_branch, get_current_tenant, is_branch_support_enabled
 import logging
@@ -32,10 +36,11 @@ EXPENSES_PERMS = RequirePermPerAction('expenses', {
 })
 
 
-class ExpenseCategoryViewSet(viewsets.ModelViewSet):
+class ExpenseCategoryViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = ExpenseCategory.objects.all()
     serializer_class = ExpenseCategorySerializer
     permission_classes = [IsAuthenticated, EXPENSES_PERMS]
+    audit_module = 'expense_categories'
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'description']
     ordering_fields = ['name', 'created_at']
@@ -80,11 +85,20 @@ class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         return self.expense_service.build_queryset(filters, request=self.request)
 
     def perform_create(self, serializer):
-        # Get current branch only if branch support is enabled
         branch = None
         if is_branch_support_enabled():
             branch = get_current_branch(self.request)
-        serializer.save(created_by=self.request.user, branch=branch)
+        instance = audited_perform_create(
+            self,
+            serializer,
+            created_by=self.request.user,
+            branch=branch,
+        )
+        finalize_financial_create(self.request, instance)
+
+    def perform_update(self, serializer):
+        prepare_financial_update(self.request, serializer.instance)
+        audited_perform_update(self, serializer)
 
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
@@ -92,13 +106,12 @@ class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         expense = self.get_object()
         try:
             approved_expense = self.expense_service.approve_expense(expense, request.user)
+            log_approval_event(request, approved_expense, module='expenses')
             serializer = self.get_serializer(approved_expense)
             return Response(serializer.data)
-        except ValidationError as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        except (ValidationError, DjangoValidationError) as e:
+            detail = getattr(e, 'detail', None) or str(e)
+            return Response({'error': detail}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['get'])
     def statistics(self, request):

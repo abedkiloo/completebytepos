@@ -31,6 +31,7 @@ import { PartialPaymentConfirm, ExcessPaymentConfirm } from './PaymentConfirmDia
 import ReceiptDialog from './ReceiptDialog';
 
 import VariantSelector from '../VariantSelector';
+import PosCartRecoveryDialog from '../PosCartRecoveryDialog';
 import CustomerFormModal from '../../Customers/CustomerFormModal';
 import BranchSelector from '../../BranchSelector/BranchSelector';
 import { useStoreSettings } from '../../../hooks/useStoreSettings';
@@ -329,6 +330,16 @@ export default function POSPage() {
         submitting={state.submitting}
         allowWallet={state.allowExcessToWallet}
         onConfirm={(choice) => state.submitSale({ excessChoice: choice })}
+      />
+
+      <PosCartRecoveryDialog
+        open={Boolean(state.cartRecovery)}
+        source={state.cartRecovery?.source || 'local'}
+        itemCount={state.cartRecovery?.itemCount || 0}
+        label={state.cartRecovery?.label}
+        onContinue={state.continueCartRecovery}
+        onStartNew={state.startNewSaleFromRecovery}
+        busy={state.recoveryBusy}
       />
 
       {state.variantPickerProduct && (

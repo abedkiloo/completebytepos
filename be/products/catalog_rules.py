@@ -1,36 +1,27 @@
 """Catalog rules when sales staff add products without pricing."""
 
-from decimal import Decimal
+from accounts.sensitive_edits import (
+    PRICING_FIELDS,
+    sales_catalog_mode_active,
+    strip_sensitive_product_fields,
+    user_may_edit_financial_fields,
+)
 
-from settings.models import StoreSettings
-from settings.store_settings_helpers import user_may_edit_pricing
-
-PRICING_FIELDS = ('price', 'mrp', 'cost')
-
-
-def sales_catalog_mode_active(user):
-    if not user or not user.is_authenticated:
-        return False
-    if user_may_edit_pricing(user):
-        return False
-    store = StoreSettings.load()
-    return store.allow_sales_add_products and store.sales_catalog_skip_pricing
+# Re-export for existing imports
+__all__ = [
+    'PRICING_FIELDS',
+    'sales_catalog_mode_active',
+    'apply_sales_catalog_rules',
+]
 
 
-def apply_sales_catalog_rules(data, *, user, is_create=True):
+def apply_sales_catalog_rules(data, *, user, is_create=True, instance=None):
     """
-    Strip pricing from product payloads for sales staff in catalog mode.
-    ``data`` may be a dict of model field names (price/mrp/cost).
+    Strip sensitive product fields for sales staff.
+    Store catalog mode is an extra UI layer; financial fields are always blocked.
     """
-    if not sales_catalog_mode_active(user):
+    if user_may_edit_financial_fields(user):
         return data
-
-    for key in PRICING_FIELDS:
-        data.pop(key, None)
-
-    if is_create:
-        data['price'] = Decimal('0')
-        data['mrp'] = Decimal('0')
-        data['cost'] = Decimal('0')
-
-    return data
+    return strip_sensitive_product_fields(
+        data, user=user, instance=instance, is_create=is_create
+    )

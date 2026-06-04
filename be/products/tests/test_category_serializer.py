@@ -44,3 +44,19 @@ class CategorySerializerValidationTests(TestCase):
         )
         with self.assertRaises(ValidationError):
             serializer.is_valid(raise_exception=True)
+
+    def test_rejects_case_insensitive_duplicate_name(self):
+        Category.objects.create(name='Beverages', is_active=False)
+        serializer = CategorySerializer(
+            data={'name': 'beverages', 'is_active': True},
+        )
+        with self.assertRaises(ValidationError) as ctx:
+            serializer.is_valid(raise_exception=True)
+        self.assertIn('inactive', str(ctx.exception.detail).lower())
+
+    def test_strips_whitespace_on_create(self):
+        serializer = CategorySerializer(
+            data={'name': '  Outdoor   Gear  ', 'is_active': True},
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(serializer.validated_data['name'], 'Outdoor Gear')

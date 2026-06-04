@@ -105,6 +105,12 @@ class Sale(models.Model):
         ('completed', 'Completed'),
         ('cancelled', 'Cancelled'),
     ]
+
+    REFUND_STATUS_CHOICES = [
+        ('none', 'None'),
+        ('partial', 'Partially refunded'),
+        ('refunded', 'Fully refunded'),
+    ]
     
     PAYMENT_METHODS = [
         ('cash', 'Cash'),
@@ -208,6 +214,13 @@ class Sale(models.Model):
         help_text='Shipping location/area'
     )
     notes = models.TextField(blank=True)
+    refund_status = models.CharField(
+        max_length=20,
+        choices=REFUND_STATUS_CHOICES,
+        default='none',
+        db_index=True,
+        help_text='Whether this completed sale has been partially or fully refunded.',
+    )
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -218,6 +231,7 @@ class Sale(models.Model):
             models.Index(fields=['sale_number']),
             models.Index(fields=['cashier', 'created_at']),
             models.Index(fields=['status', 'cashier']),
+            models.Index(fields=['refund_status', 'created_at']),
         ]
 
     def save(self, *args, **kwargs):
@@ -233,6 +247,17 @@ class Sale(models.Model):
         """Get total number of items in sale"""
         from django.db.models import Sum
         return self.items.aggregate(total=Sum('quantity'))['total'] or 0
+
+    @property
+    def amount_refunded(self):
+        from django.db.models import Sum
+
+        total = self.refunds.aggregate(s=Sum('amount'))['s']
+        return total or Decimal('0')
+
+    def refundable_remaining(self):
+        """Amount that can still be refunded on this sale."""
+        return max(Decimal('0'), self.total - self.amount_refunded)
 
 
 class SaleItem(models.Model):
@@ -307,6 +332,63 @@ class SaleItem(models.Model):
             self.color = self.variant.color
         
         super().save(*args, **kwargs)
+
+
+class SaleRefund(models.Model):
+    """Refund record — original sale row stays immutable for audit/reporting."""
+
+    REFUND_TYPE_CHOICES = [
+        ('full', 'Full refund'),
+        ('partial', 'Partial refund'),
+    ]
+
+    sale = models.ForeignKey(Sale, on_delete=models.PROTECT, related_name='refunds')
+    refund_number = models.CharField(max_length=50, unique=True, editable=False, db_index=True)
+    refund_type = models.CharField(max_length=20, choices=REFUND_TYPE_CHOICES)
+    amount = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
+    reason = models.TextField()
+    refunded_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='sale_refunds_processed',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def save(self, *args, **kwargs):
+        if not self.refund_number:
+            self.refund_number = f"RF-{uuid.uuid4().hex[:8].upper()}"
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.refund_number} ({self.amount})"
+
+
+class SaleRefundItem(models.Model):
+    """Line-level refund detail."""
+
+    refund = models.ForeignKey(SaleRefund, on_delete=models.CASCADE, related_name='items')
+    sale_item = models.ForeignKey(
+        SaleItem,
+        on_delete=models.PROTECT,
+        related_name='refund_lines',
+    )
+    product = models.ForeignKey(Product, on_delete=models.PROTECT)
+    variant = models.ForeignKey(
+        ProductVariant,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    quantity = models.PositiveIntegerField()
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    subtotal = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        ordering = ['id']
 
 
 class Invoice(models.Model):

@@ -29,6 +29,24 @@ describe('useProductVariantsEnabled', () => {
     expect(result.current).toBe(true);
   });
 
+  it('updates when moduleSettingsUpdated fires in the same tab', async () => {
+    const { normalizeModuleSettings } = require('../utils/moduleCache');
+    isProductVariantsEnabled.mockReturnValueOnce(false).mockReturnValueOnce(true);
+    const { result } = renderHook(() => useProductVariantsEnabled());
+    expect(result.current).toBe(false);
+    window.dispatchEvent(
+      new CustomEvent('moduleSettingsUpdated', {
+        detail: normalizeModuleSettings({
+          products: {
+            is_enabled: true,
+            features: { product_variants: { is_enabled: true } },
+          },
+        }),
+      })
+    );
+    await waitFor(() => expect(result.current).toBe(true));
+  });
+
   it('updates when enabled_modules storage event fires', async () => {
     isProductVariantsEnabled.mockReturnValueOnce(false).mockReturnValueOnce(true);
     const { result } = renderHook(() => useProductVariantsEnabled());

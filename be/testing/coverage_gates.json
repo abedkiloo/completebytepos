@@ -12,7 +12,7 @@
     },
     {
       "name": "products",
-      "include": ["products/catalog_rules.py"]
+      "include": ["products/catalog_rules.py", "products/stock_utils.py"]
     },
     {
       "name": "inventory",
@@ -33,6 +33,18 @@
     {
       "name": "suppliers",
       "include": ["suppliers/services.py"]
+    },
+    {
+      "name": "approvals",
+      "include": [
+        "approvals/settings_integration.py",
+        "approvals/variant_integration.py",
+        "approvals/category_integration.py",
+        "approvals/registry.py",
+        "approvals/sales_policy.py",
+        "approvals/sales_integration.py",
+        "approvals/financial_workflow.py"
+      ]
     },
     {
       "name": "bankaccounts",

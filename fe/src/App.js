@@ -26,6 +26,8 @@ const Sales = lazy(() => import('./components/Sales/Sales'));
 const Inventory = lazy(() => import('./components/Inventory/Inventory'));
 const Barcodes = lazy(() => import('./components/Barcodes/Barcodes'));
 const Reports = lazy(() => import('./components/Reports/Reports'));
+const AuditLogPage = lazy(() => import('./components/AuditLog/AuditLogPage'));
+const PendingApprovalsPage = lazy(() => import('./components/Approvals/PendingApprovalsPage'));
 const Expenses = lazy(() => import('./components/Expenses/Expenses'));
 const Income = lazy(() => import('./components/Income/Income'));
 const Accounting = lazy(() => import('./components/Accounting/Accounting'));
@@ -151,6 +153,8 @@ function App() {
                 <Route path="/inventory" element={<Inventory />} />
                 <Route path="/barcodes" element={<Barcodes />} />
                 <Route path="/reports" element={<Reports />} />
+                <Route path="/audit-log" element={<AuditLogPage />} />
+                <Route path="/pending-approvals" element={<PendingApprovalsPage />} />
                 <Route path="/expenses" element={<Expenses />} />
                 <Route path="/accounting" element={<Accounting />} />
                 <Route path="/income" element={<Income />} />

@@ -11,7 +11,7 @@ from .serializers import (
     PermissionSerializer, RoleSerializer,
     RoleListSerializer, UserCreateSerializer, AuditLogSerializer
 )
-from .permissions import IsSuperAdmin, IsAdmin, HasPermission
+from .permissions import IsSuperAdmin, IsAdmin, HasPermission, CanViewAuditLog
 from accounts.module_settings import (
     users_enable_create,
     users_enable_edit,
@@ -27,6 +27,8 @@ from accounts.user_write import prepare_user_write_data, apply_profile_updates
 # Module settings moved to settings app
 from settings.models import ModuleSettings, ModuleFeature
 from settings.module_catalog import get_enabled_modules_flat
+from utils.audit_helpers import audited_perform_create, audited_perform_destroy, audited_perform_update, log_domain_event
+from utils.audit_mixin import AuditedModelViewSetMixin
 
 
 def _user_can_manage_permissions(user) -> bool:
@@ -181,11 +183,12 @@ class PermissionViewSet(viewsets.ReadOnlyModelViewSet):
         return Response({'catalog': catalog})
 
 
-class RoleViewSet(viewsets.ModelViewSet):
+class RoleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     """Manage roles - only super admins can create/edit/delete"""
     queryset = Role.objects.all().prefetch_related('permissions')
     serializer_class = RoleSerializer
     permission_classes = [IsAuthenticated]
+    audit_module = 'roles'
     ordering = ['name']
 
     @staticmethod
@@ -240,7 +243,7 @@ class RoleViewSet(viewsets.ModelViewSet):
             )
     
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        audited_perform_create(self, serializer, created_by=self.request.user)
 
     def create(self, request, *args, **kwargs):
         if not users_enable_role_create():
@@ -250,12 +253,62 @@ class RoleViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         if not users_enable_role_edit():
             return self._feature_disabled_response('Editing roles')
-        return super().update(request, *args, **kwargs)
+
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+
+        from approvals.permissions import is_maker_checker_enabled
+        from approvals.serializers import PendingChangeSerializer
+        from approvals.settings_integration import queue_role_permission_assign
+
+        validated = dict(serializer.validated_data)
+        pending = None
+        if is_maker_checker_enabled() and 'permissions' in validated:
+            reason = (
+                request.data.get('change_reason')
+                or request.data.get('reason')
+                or ''
+            )
+            if not str(reason).strip():
+                return Response(
+                    {'reason': 'A reason is required to change role permissions.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            perm_ids = [p.pk for p in validated['permissions']]
+            pending = queue_role_permission_assign(
+                request,
+                instance,
+                perm_ids,
+                reason=str(reason).strip(),
+            )
+            validated.pop('permissions', None)
+            serializer.validated_data.pop('permissions', None)
+
+        if validated:
+            self.perform_update(serializer)
+        elif pending is None:
+            return Response(serializer.data)
+
+        instance.refresh_from_db()
+        data = self.get_serializer(instance).data
+        if pending:
+            return Response(
+                {
+                    'message': 'Change submitted for approval, not yet active.',
+                    'pending_change': PendingChangeSerializer(pending).data,
+                    'role': data,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+        return Response(data)
 
     def partial_update(self, request, *args, **kwargs):
         if not users_enable_role_edit():
             return self._feature_disabled_response('Editing roles')
-        return super().partial_update(request, *args, **kwargs)
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
         if not users_enable_role_delete():
@@ -269,10 +322,47 @@ class RoleViewSet(viewsets.ModelViewSet):
             return self._feature_disabled_response('Editing roles')
         role = self.get_object()
         permission_ids = request.data.get('permission_ids', [])
-        
+
+        from approvals.permissions import is_maker_checker_enabled
+        from approvals.serializers import PendingChangeSerializer
+        from approvals.settings_integration import queue_role_permission_assign
+
+        if is_maker_checker_enabled():
+            reason = (
+                request.data.get('change_reason')
+                or request.data.get('reason')
+                or ''
+            )
+            if not str(reason).strip():
+                return Response(
+                    {'reason': 'A reason is required to change role permissions.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            pending = queue_role_permission_assign(
+                request,
+                role,
+                permission_ids,
+                reason=str(reason).strip(),
+            )
+            return Response(
+                {
+                    'message': 'Change submitted for approval, not yet active.',
+                    'pending_change': PendingChangeSerializer(pending).data,
+                    'role': RoleSerializer(role).data,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+
         permissions = Permission.objects.filter(id__in=permission_ids)
         role.permissions.set(permissions)
-        
+        log_domain_event(
+            request,
+            'assign_permissions',
+            role,
+            module='roles',
+            changes={'permission_ids': list(permission_ids)},
+        )
+
         return Response({
             'message': f'Permissions assigned to {role.name}',
             'role': RoleSerializer(role).data
@@ -374,6 +464,13 @@ class UserViewSet(viewsets.ModelViewSet):
         serializer = UserCreateSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        log_domain_event(
+            request,
+            AuditLog.ACTION_CREATE,
+            user,
+            module='users',
+            changes={'username': user.username},
+        )
         return Response(
             UserSerializer(user).data,
             status=status.HTTP_201_CREATED
@@ -644,6 +741,10 @@ class AuthViewSet(viewsets.ViewSet):
                 except Exception:
                     # Token might already be blacklisted or invalid, that's okay
                     pass
+            from utils.audit import log_audit
+            from accounts.models import AuditLog as _AuditLog
+
+            log_audit(request, _AuditLog.ACTION_LOGOUT, request.user, module='users')
             return Response({'message': 'Logout successful'})
         except Exception as e:
             return Response(
@@ -696,7 +797,7 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     """
     queryset = AuditLog.objects.all().select_related('user')
     serializer_class = AuditLogSerializer
-    permission_classes = [IsAuthenticated, IsSuperAdmin]
+    permission_classes = [IsAuthenticated, CanViewAuditLog]
     ordering = ['-created_at']
 
     def get_queryset(self):

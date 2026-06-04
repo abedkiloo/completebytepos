@@ -9,6 +9,16 @@ import {
 import { toast } from '../../../utils/toast';
 import { isProductVariantsEnabled, normalizeProductForSale } from '../../../utils/moduleFeatures';
 import { isProductOutOfStock } from '../../../utils/productStock';
+import {
+  posCartDraftKey,
+  serializeRetailCartDraft,
+  loadRetailCartDraft,
+  saveRetailCartDraft,
+  clearRetailCartDraft,
+  localDraftNeedsRecoveryPrompt,
+  countLocalDraftItems,
+  resolveBranchIdFromUser,
+} from '../../../utils/posCartRecovery';
 import { useModuleSettings } from '../../../hooks/useModuleSettings';
 import {
   salesShowDiscount,
@@ -119,6 +129,10 @@ export function usePOSState() {
   // --- Variant picker ---
   const [variantPickerProduct, setVariantPickerProduct] = useState(null);
 
+  const [cartRecovery, setCartRecovery] = useState(null);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const draftCheckedRef = useRef(false);
+
   // --- Bookkeeping ---
   const [orderNumber, setOrderNumber] = useState(
     () => `#ORD${Date.now().toString().slice(-6)}`
@@ -213,6 +227,111 @@ export function usePOSState() {
     loadCustomers();
     loadUser();
   }, [loadCategories, loadCustomers, loadUser]);
+
+  const cartDraftKey = useMemo(() => {
+    if (!user?.id) return null;
+    return posCartDraftKey(user.id, resolveBranchIdFromUser(user));
+  }, [user]);
+
+  useEffect(() => {
+    if (!cartDraftKey || draftCheckedRef.current) return;
+    draftCheckedRef.current = true;
+    const draft = loadRetailCartDraft(cartDraftKey);
+    if (localDraftNeedsRecoveryPrompt(draft)) {
+      setCartRecovery({
+        source: 'local',
+        draft,
+        itemCount: countLocalDraftItems(draft),
+      });
+    }
+  }, [cartDraftKey]);
+
+  useEffect(() => {
+    if (!cartDraftKey || cartRecovery) return;
+    if (cart.length === 0) {
+      clearRetailCartDraft(cartDraftKey);
+      return;
+    }
+    const timer = setTimeout(() => {
+      saveRetailCartDraft(
+        cartDraftKey,
+        serializeRetailCartDraft({
+          cart,
+          selectedCustomer,
+          taxPct,
+          discount,
+          discountType,
+          paymentMethod,
+        })
+      );
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [
+    cart,
+    cartDraftKey,
+    cartRecovery,
+    selectedCustomer,
+    taxPct,
+    discount,
+    discountType,
+    paymentMethod,
+  ]);
+
+  const continueCartRecovery = useCallback(() => {
+    const draft = cartRecovery?.draft;
+    if (!draft) return;
+    setRecoveryBusy(true);
+    try {
+      setCart(
+        (draft.cart || []).map((line) =>
+          normalizeProductForSale({
+            ...line,
+            price: parseFloat(line.price),
+          })
+        )
+      );
+      setTaxPct(parseFloat(draft.taxPct) || 0);
+      setDiscount(parseFloat(draft.discount) || 0);
+      setDiscountType(draft.discountType === 'flat' ? 'flat' : 'percentage');
+      if (draft.paymentMethod) setPaymentMethod(draft.paymentMethod);
+      if (draft.selectedCustomer) {
+        setSelectedCustomer((prev) => {
+          if (draft.selectedCustomer.id === 'walk-in') {
+            return (
+              customers.find((c) => c.id === 'walk-in') || draft.selectedCustomer
+            );
+          }
+          return (
+            customers.find((c) => c.id === draft.selectedCustomer.id) ||
+            draft.selectedCustomer
+          );
+        });
+      }
+      setCartRecovery(null);
+    } finally {
+      setRecoveryBusy(false);
+    }
+  }, [cartRecovery, customers]);
+
+  const startNewSaleFromRecovery = useCallback(() => {
+    setRecoveryBusy(true);
+    try {
+      if (cartDraftKey) clearRetailCartDraft(cartDraftKey);
+      setCart([]);
+      setCartRecovery(null);
+      setReceivedAmount('');
+      setDiscount(0);
+      setTaxPct(0);
+      setSelectedCustomer(
+        customers.find((c) => c.id === 'walk-in') || {
+          id: 'walk-in',
+          name: 'Walk-in customer',
+        }
+      );
+    } finally {
+      setRecoveryBusy(false);
+    }
+  }, [cartDraftKey, customers]);
 
   // Debounced product reload on filter/search changes. 200 ms is the sweet
   // spot for a cashier typing — fast enough to feel live, slow enough to
@@ -344,7 +463,10 @@ export function usePOSState() {
     setCart((prev) => prev.filter((i) => cartItemKey(i) !== cartItemKey(item)));
   }, []);
 
-  const clearCart = useCallback(() => setCart([]), []);
+  const clearCart = useCallback(() => {
+    if (cartDraftKey) clearRetailCartDraft(cartDraftKey);
+    setCart([]);
+  }, [cartDraftKey]);
 
   // ------------------------------------------------------------------
   // Totals
@@ -405,6 +527,7 @@ export function usePOSState() {
   // ------------------------------------------------------------------
 
   const resetAfterSale = useCallback(() => {
+    if (cartDraftKey) clearRetailCartDraft(cartDraftKey);
     setCart([]);
     setReceivedAmount('');
     setDiscount(0);
@@ -417,7 +540,7 @@ export function usePOSState() {
     setShowPartialPaymentConfirm(false);
     setShowExcessPaymentConfirm(false);
     setOrderNumber(`#ORD${Date.now().toString().slice(-6)}`);
-  }, []);
+  }, [cartDraftKey]);
 
   const buildSalePayload = useCallback(
     ({ confirmedReceived, allowPartial, excessChoice }) => {
@@ -661,6 +784,11 @@ export function usePOSState() {
 
     // variant picker
     variantPickerProduct, setVariantPickerProduct,
+
+    cartRecovery,
+    recoveryBusy,
+    continueCartRecovery,
+    startNewSaleFromRecovery,
 
     // reloads
     reloadProducts: loadProducts,

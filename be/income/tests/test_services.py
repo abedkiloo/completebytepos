@@ -5,11 +5,13 @@ from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
 from income.models import Income, IncomeCategory
-from income.services import IncomeService
+from income.services import IncomeCategoryService, IncomeService
+from settings.models import StoreSettings
 
 
 class IncomeServiceTestCase(TestCase):
@@ -29,6 +31,26 @@ class IncomeServiceTestCase(TestCase):
         )
         approved = self.service.approve_income(income, self.user)
         self.assertEqual(approved.status, 'approved')
+
+    def test_maker_checker_blocks_self_approve(self):
+        store = StoreSettings.load()
+        store.maker_checker_enabled = True
+        store.save(update_fields=['maker_checker_enabled'])
+        income = Income.objects.create(
+            category=self.cat,
+            description='Fee',
+            amount=Decimal('90.00'),
+            income_date=timezone.now().date(),
+            status='pending',
+            created_by=self.user,
+        )
+        checker = User.objects.create_user(username='checker_inc', password='x')
+        with self.assertRaises(DRFValidationError):
+            self.service.approve_income(income, self.user)
+        approved = self.service.approve_income(income, checker)
+        self.assertEqual(approved.status, 'approved')
+        store.maker_checker_enabled = False
+        store.save(update_fields=['maker_checker_enabled'])
 
     def test_double_approve_raises(self):
         income = Income.objects.create(
@@ -114,9 +136,13 @@ class IncomeServiceTestCase(TestCase):
         self.assertEqual(qs.count(), 1)
 
     def test_category_service_no_filters_returns_all(self):
-        from income.services import IncomeCategoryService
-
         self.assertGreaterEqual(IncomeCategoryService().build_queryset().count(), 1)
+
+    def test_category_service_is_active_true_string(self):
+        IncomeCategory.objects.create(name='Inactive', is_active=False)
+        qs = IncomeCategoryService().build_queryset({'is_active': 'true'})
+        self.assertTrue(qs.filter(name='Services').exists())
+        self.assertFalse(qs.filter(name='Inactive').exists())
 
     def test_build_queryset_resolves_branch_from_request(self):
         from settings.test_utils import enable_multi_branch_support
@@ -143,6 +169,23 @@ class IncomeServiceTestCase(TestCase):
     def test_build_queryset_invalid_branch_id_returns_empty(self):
         qs = self.service.build_queryset({'branch_id': 'bad'})
         self.assertEqual(qs.count(), 0)
+
+    def test_build_queryset_invalid_category_id_returns_empty(self):
+        qs = self.service.build_queryset({'category': 'bad'})
+        self.assertEqual(qs.count(), 0)
+
+    def test_build_queryset_payment_method_filter(self):
+        Income.objects.create(
+            category=self.cat,
+            description='Mpesa',
+            amount=Decimal('50.00'),
+            income_date=timezone.now().date(),
+            status='approved',
+            payment_method='mpesa',
+            created_by=self.user,
+        )
+        qs = self.service.build_queryset({'payment_method': 'mpesa'})
+        self.assertEqual(qs.count(), 1)
 
     def test_approve_journal_failure_is_non_fatal(self):
         income = Income.objects.create(

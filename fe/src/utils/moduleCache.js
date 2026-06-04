@@ -21,12 +21,23 @@ export function normalizeModuleEntry(entry) {
 export function normalizeModuleSettings(raw) {
   if (!raw || typeof raw !== 'object') return {};
   const out = {};
+  if (raw.registry && typeof raw.registry === 'object') {
+    out.registry = raw.registry;
+  }
   Object.entries(raw).forEach(([key, value]) => {
-    if (key === 'catalog' || key.startsWith('_')) return;
+    if (key === 'catalog' || key === 'registry' || key.startsWith('_')) return;
     const normalized = normalizeModuleEntry(value);
     if (normalized) out[key] = normalized;
   });
   return out;
+}
+
+/** Registry default for a feature when the row is missing from cache (mirrors backend). */
+export function registryFeatureDefault(moduleSettings, moduleName, featureKey) {
+  const fromApi =
+    moduleSettings?.registry?.feature_defaults?.[moduleName]?.[featureKey];
+  if (fromApi !== undefined) return Boolean(fromApi);
+  return true;
 }
 
 export function isRichModulePayload(modules) {

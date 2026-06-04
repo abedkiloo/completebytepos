@@ -24,6 +24,11 @@ import {
   salesValidateStock,
 } from '../../../utils/salesDisplay';
 import { buildBillingCartLine } from '../../../utils/billingCartLine';
+import {
+  shouldPromptForHoldingRecovery,
+  countHoldingItems,
+} from '../../../utils/posCartRecovery';
+import { evaluatePartialPaymentToggle } from '../../../utils/billingPartialPayment';
 
 const HOLDING_SYNC_MS = 600;
 
@@ -81,12 +86,15 @@ export function useBillingPOSState() {
   const [holdingNumber, setHoldingNumber] = useState('');
   const [syncingHolding, setSyncingHolding] = useState(false);
   const [loadingHolding, setLoadingHolding] = useState(true);
+  const [cartRecovery, setCartRecovery] = useState(null);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
 
   const [taxPct, setTaxPct] = useState(0);
   const [discount, setDiscount] = useState(0);
   const [discountType, setDiscountType] = useState('flat'); // flat | percentage
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [partialPayment, setPartialPayment] = useState(false);
+  const [partialPaymentCustomerPrompt, setPartialPaymentCustomerPrompt] = useState(false);
   const [amountPaid, setAmountPaid] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -149,6 +157,28 @@ export function useBillingPOSState() {
   const selectWalkInCustomer = useCallback(() => {
     setSelectedCustomer(WALK_IN_CUSTOMER);
     setCustomerQuery('');
+    setPartialPayment(false);
+  }, []);
+
+  useEffect(() => {
+    if (partialPayment && isWalkInCustomer(selectedCustomer)) {
+      setPartialPayment(false);
+    }
+  }, [selectedCustomer, partialPayment]);
+
+  const attemptSetPartialPayment = useCallback((checked) => {
+    const { allow } = evaluatePartialPaymentToggle(checked, selectedCustomer);
+    if (allow) {
+      setPartialPayment(checked);
+      if (!checked) setPartialPaymentCustomerPrompt(false);
+      return true;
+    }
+    setPartialPaymentCustomerPrompt(true);
+    return false;
+  }, [selectedCustomer]);
+
+  const closePartialPaymentCustomerPrompt = useCallback(() => {
+    setPartialPaymentCustomerPrompt(false);
   }, []);
 
   const hydrateFromHolding = useCallback((holding) => {
@@ -183,6 +213,15 @@ export function useBillingPOSState() {
     try {
       const res = await salesAPI.activeHolding();
       const holding = res.data?.holding;
+      if (shouldPromptForHoldingRecovery(holding)) {
+        setCartRecovery({
+          source: 'holding',
+          holding,
+          itemCount: countHoldingItems(holding),
+          label: holding.sale_number,
+        });
+        return;
+      }
       if (holding?.items?.length) {
         skipNextSyncRef.current = true;
         hydrateFromHolding(holding);
@@ -196,6 +235,40 @@ export function useBillingPOSState() {
       setLoadingHolding(false);
     }
   }, [hydrateFromHolding]);
+
+  const continueCartRecovery = useCallback(() => {
+    if (!cartRecovery?.holding) return;
+    setRecoveryBusy(true);
+    try {
+      skipNextSyncRef.current = true;
+      hydrateFromHolding(cartRecovery.holding);
+      setCartRecovery(null);
+    } finally {
+      setRecoveryBusy(false);
+    }
+  }, [cartRecovery, hydrateFromHolding]);
+
+  const startNewSaleFromRecovery = useCallback(async () => {
+    setRecoveryBusy(true);
+    try {
+      const holding = cartRecovery?.holding;
+      if (holding?.id) {
+        try {
+          await salesAPI.cancelHolding(holding.id);
+        } catch {
+          /* best effort */
+        }
+      }
+      setCart([]);
+      setHoldingId(null);
+      setHoldingNumber('');
+      setCartRecovery(null);
+      setSelectedCustomer(WALK_IN_CUSTOMER);
+      setCustomerQuery('');
+    } finally {
+      setRecoveryBusy(false);
+    }
+  }, [cartRecovery]);
 
   useEffect(() => {
     loadCustomers();
@@ -263,7 +336,7 @@ export function useBillingPOSState() {
   }, [buildHoldingPayload]);
 
   useEffect(() => {
-    if (loadingHolding) return;
+    if (loadingHolding || cartRecovery) return;
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     syncTimerRef.current = setTimeout(() => {
       if (cart.length === 0 && !holdingId) return;
@@ -272,7 +345,7 @@ export function useBillingPOSState() {
     return () => {
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     };
-  }, [cart, selectedCustomer, taxAmount, discountAmount, loadingHolding, holdingId, syncHolding]);
+  }, [cart, selectedCustomer, taxAmount, discountAmount, loadingHolding, holdingId, cartRecovery, syncHolding]);
 
   const addToCart = useCallback((product, variant = null) => {
     if (validateStock && isProductOutOfStock(product)) {
@@ -501,6 +574,9 @@ export function useBillingPOSState() {
     setPaymentMethod,
     partialPayment,
     setPartialPayment,
+    attemptSetPartialPayment,
+    partialPaymentCustomerPrompt,
+    closePartialPaymentCustomerPrompt,
     amountPaid,
     setAmountPaid,
     selectedCustomer,
@@ -530,5 +606,9 @@ export function useBillingPOSState() {
     allowPartialPayment,
     requireCustomer,
     validateStock,
+    cartRecovery,
+    recoveryBusy,
+    continueCartRecovery,
+    startNewSaleFromRecovery,
   };
 }

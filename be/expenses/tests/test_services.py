@@ -5,11 +5,13 @@ from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
 from expenses.models import Expense, ExpenseCategory
 from expenses.services import ExpenseCategoryService, ExpenseService
+from settings.models import StoreSettings
 
 
 class ExpenseServiceTestCase(TestCase):
@@ -30,6 +32,26 @@ class ExpenseServiceTestCase(TestCase):
         approved = self.service.approve_expense(expense, self.user)
         self.assertEqual(approved.status, 'approved')
         self.assertEqual(approved.approved_by, self.user)
+
+    def test_maker_checker_blocks_self_approve(self):
+        store = StoreSettings.load()
+        store.maker_checker_enabled = True
+        store.save(update_fields=['maker_checker_enabled'])
+        expense = Expense.objects.create(
+            category=self.cat,
+            description='Fuel',
+            amount=Decimal('80.00'),
+            expense_date=timezone.now().date(),
+            status='pending',
+            created_by=self.user,
+        )
+        checker = User.objects.create_user(username='checker_exp', password='x')
+        with self.assertRaises(DRFValidationError):
+            self.service.approve_expense(expense, self.user)
+        approved = self.service.approve_expense(expense, checker)
+        self.assertEqual(approved.status, 'approved')
+        store.maker_checker_enabled = False
+        store.save(update_fields=['maker_checker_enabled'])
 
     def test_approve_already_approved_raises(self):
         expense = Expense.objects.create(
@@ -121,6 +143,23 @@ class ExpenseServiceTestCase(TestCase):
         qs = ExpenseCategoryService().build_queryset({'is_active': 'false'})
         self.assertFalse(qs.filter(name='Rent').exists())
 
+    def test_category_service_is_active_true_string(self):
+        qs = ExpenseCategoryService().build_queryset({'is_active': 'true'})
+        self.assertTrue(qs.filter(name='Rent').exists())
+
+    def test_build_queryset_payment_method_filter(self):
+        Expense.objects.create(
+            category=self.cat,
+            description='Mpesa pay',
+            amount=Decimal('30.00'),
+            expense_date=timezone.now().date(),
+            status='approved',
+            payment_method='mpesa',
+            created_by=self.user,
+        )
+        qs = self.service.build_queryset({'payment_method': 'mpesa'})
+        self.assertEqual(qs.count(), 1)
+
     def test_build_queryset_resolves_branch_from_request(self):
         from settings.test_utils import enable_multi_branch_support
         from utils.tests.api_test_base import ManagerAPITestCase
@@ -145,6 +184,10 @@ class ExpenseServiceTestCase(TestCase):
 
     def test_build_queryset_invalid_branch_id_returns_empty(self):
         qs = self.service.build_queryset({'branch_id': 'not-int'})
+        self.assertEqual(qs.count(), 0)
+
+    def test_build_queryset_invalid_category_id_returns_empty(self):
+        qs = self.service.build_queryset({'category': 'not-int'})
         self.assertEqual(qs.count(), 0)
 
     def test_approve_journal_failure_is_non_fatal(self):
