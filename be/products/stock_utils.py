@@ -13,6 +13,16 @@ from django.db.models import Min, Sum
 from settings.feature_flags import is_product_variants_enabled
 
 
+def active_variant_stock_sum(product) -> int:
+    """Total on-hand quantity across active variant rows."""
+    if not product.has_variants:
+        return 0
+    total = product.variants.filter(is_active=True).aggregate(
+        total=Sum('stock_quantity')
+    )['total']
+    return int(total or 0)
+
+
 def variants_sold_as_simple(product) -> bool:
     """True when the product has variants in DB but the feature is turned off."""
     return bool(product.has_variants and not is_product_variants_enabled())
@@ -41,12 +51,19 @@ def apply_catalog_variant_representation(product, data: Dict[str, Any]) -> Dict[
 
 def sellable_stock_quantity(product, variant=None) -> int:
     if variant is not None:
-        return variant.stock_quantity
+        v_qty = int(variant.stock_quantity or 0)
+        if v_qty > 0:
+            return v_qty
+        if not product.has_variants:
+            return v_qty
+        parent_qty = int(product.stock_quantity or 0)
+        # Stock on the parent only when no variant row holds quantity (common
+        # when variants were added after stocking the parent SKU).
+        if parent_qty > 0 and active_variant_stock_sum(product) == 0:
+            return parent_qty
+        return v_qty
     if product.has_variants:
-        variant_total = product.variants.filter(is_active=True).aggregate(
-            total=Sum('stock_quantity')
-        )['total']
-        variant_total = int(variant_total or 0)
+        variant_total = active_variant_stock_sum(product)
         # Many catalogs keep quantity on the parent row, on variant rows, or
         # both. Taking the max avoids false "0 available" when the list/POS
         # shows parent stock but variants are empty (or vice versa).

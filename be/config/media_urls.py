@@ -20,7 +20,11 @@ def _fix_internal_hostname(absolute_url: str) -> str:
 
     public = (getattr(settings, 'PUBLIC_HOST', None) or '').strip()
     if not public:
-        return absolute_url
+        # Browser cannot resolve docker service names; FE uses same-origin /media/.
+        path = parsed.path or '/'
+        if parsed.query:
+            path = f'{path}?{parsed.query}'
+        return path
 
     port = parsed.port
     base_port = getattr(settings, 'MEDIA_PUBLIC_PORT', None)

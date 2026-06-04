@@ -167,6 +167,60 @@ class BillingCheckoutAPITestCase(APITestCase):
         self.assertEqual(len(response.data['items']), 1)
         self.assertEqual(response.data['items'][0]['variant'], variant.id)
 
+    def test_checkout_variant_uses_parent_stock_when_variant_rows_empty(self):
+        """POS size/color checkout when stock lives on the parent row only."""
+        enable_product_variants()
+        size = Size.objects.create(name='Large', code='L', is_active=True)
+        color = Color.objects.create(name='Blue', hex_code='#0000ff', is_active=True)
+        variant_product = Product.objects.create(
+            name='Parent pool item',
+            sku='WEB-PARENT',
+            category=self.product.category,
+            mrp=Decimal('100'),
+            price=Decimal('80'),
+            cost=Decimal('40'),
+            stock_quantity=20,
+            track_stock=True,
+            has_variants=True,
+            is_active=True,
+        )
+        variant_product.available_sizes.add(size)
+        variant_product.available_colors.add(color)
+        variant = ProductVariant.objects.create(
+            product=variant_product,
+            size=size,
+            color=color,
+            sku='WEB-PARENT-L-B',
+            stock_quantity=0,
+            is_active=True,
+        )
+        holding = self.sale_service.save_holding_sale(
+            self.user,
+            [
+                {
+                    'product_id': variant_product.id,
+                    'variant_id': variant.id,
+                    'quantity': 2,
+                    'unit_price': '80.00',
+                }
+            ],
+            branch=self.branch,
+        )
+        resp = self.client.post(
+            f'/api/sales/{holding.id}/checkout/',
+            {
+                'payment_method': 'cash',
+                'amount_paid': '200.00',
+                'allow_partial_payment': False,
+            },
+            format='json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
+        variant_product.refresh_from_db()
+        self.assertEqual(variant_product.stock_quantity, 18)
+        variant.refresh_from_db()
+        self.assertEqual(variant.stock_quantity, 0)
+
     def test_save_holding_rejects_product_id_as_variant_id(self):
         enable_product_variants()
         response = self.client.post(

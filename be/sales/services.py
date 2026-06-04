@@ -13,6 +13,7 @@ from products.models import Product, ProductVariant
 from products.status_rules import get_operational_product, get_operational_variant
 from approvals.effective import approved_sellable_stock_quantity
 from products.stock_utils import (
+    active_variant_stock_sum,
     sellable_unit_price,
     sellable_unit_cost,
     variants_sold_as_simple,
@@ -237,6 +238,48 @@ class SaleService(BaseService):
                     notes=notes,
                 )
             return
+
+        if (
+            variant is not None
+            and is_product_variants_enabled()
+            and product.has_variants
+        ):
+            remaining = int(quantity)
+            v_qty = int(variant.stock_quantity or 0)
+            if v_qty > 0:
+                take = min(remaining, v_qty)
+                StockMovement.objects.create(
+                    branch=branch,
+                    product=product,
+                    variant=variant,
+                    movement_type='sale',
+                    quantity=take,
+                    unit_cost=unit_cost,
+                    total_cost=take * unit_cost,
+                    reference=reference,
+                    user=user,
+                    notes=notes,
+                )
+                remaining -= take
+            parent_qty = int(product.stock_quantity or 0)
+            if (
+                remaining > 0
+                and parent_qty > 0
+                and active_variant_stock_sum(product) == 0
+            ):
+                StockMovement.objects.create(
+                    branch=branch,
+                    product=product,
+                    variant=None,
+                    movement_type='sale',
+                    quantity=remaining,
+                    unit_cost=unit_cost,
+                    total_cost=remaining * unit_cost,
+                    reference=reference,
+                    user=user,
+                    notes=notes,
+                )
+                return
 
         StockMovement.objects.create(
             branch=branch,

@@ -162,7 +162,9 @@ SERVE_MEDIA = env_bool('SERVE_MEDIA', True)
 # Browser-facing base for image_url (nginx on FRONTEND_PORT proxies /media/ → backend).
 MEDIA_PUBLIC_BASE_URL = env_str('MEDIA_PUBLIC_BASE_URL')
 MEDIA_PUBLIC_PORT = env_int('MEDIA_PUBLIC_PORT', 0) or None
-if not MEDIA_PUBLIC_BASE_URL and PUBLIC_HOST:
+# In DEBUG, CRA serves the app on :3000 without /media unless setupProxy is used;
+# prefer relative /media/ URLs from the API (absolute base is set in production).
+if not MEDIA_PUBLIC_BASE_URL and PUBLIC_HOST and not DEBUG:
     _fe_port = env_str('FRONTEND_PORT', '3000')
     MEDIA_PUBLIC_BASE_URL = f'http://{PUBLIC_HOST}:{_fe_port}'
     if MEDIA_PUBLIC_PORT is None:

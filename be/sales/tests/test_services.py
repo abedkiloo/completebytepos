@@ -276,6 +276,35 @@ class SaleServiceTestCase(TestCase):
         self.assertEqual(validated[0]['variant'], variant)
         self.assertEqual(validated[0]['unit_price'], Decimal('110.00'))
 
+    def test_validate_sale_items_variant_zero_parent_stock_pool(self):
+        """Checkout must see parent qty when variant rows exist but hold no stock."""
+        from settings.test_utils import enable_product_variants
+        from products.models import Size, Color, ProductVariant
+
+        enable_product_variants()
+        size = Size.objects.create(name='Large', code='L', is_active=True)
+        color = Color.objects.create(name='Blue', is_active=True)
+        self.product.has_variants = True
+        self.product.stock_quantity = 400
+        self.product.save()
+        variant = ProductVariant.objects.create(
+            product=self.product,
+            size=size,
+            color=color,
+            sku='TEST-001-L-B',
+            stock_quantity=0,
+            is_active=True,
+        )
+
+        validated = self.service.validate_sale_items([
+            {
+                'product_id': self.product.id,
+                'variant_id': variant.id,
+                'quantity': 2,
+            }
+        ])
+        self.assertEqual(validated[0]['variant'], variant)
+
     def test_validate_sale_items_variant_product_without_feature(self):
         """Legacy variant products sell as simple items when the feature is off."""
         from settings.test_utils import disable_product_variants

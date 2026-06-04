@@ -10,32 +10,18 @@ describe('resolveMediaUrl', () => {
     });
   });
 
-  test('rewrites backend hostname to page host', () => {
+  test('rewrites backend hostname to same-origin media path', () => {
     Object.defineProperty(window, 'location', {
       value: { hostname: '193.37.213.177', port: '3000', protocol: 'http:' },
       writable: true,
     });
     expect(
       resolveMediaUrl('http://backend:8000/media/products/x.jpg')
-    ).toBe('http://193.37.213.177:3000/media/products/x.jpg');
+    ).toBe('/media/products/x.jpg');
   });
 
-  test('resolves relative media path in dev', () => {
-    const prev = process.env.NODE_ENV;
-    process.env.NODE_ENV = 'development';
-    Object.defineProperty(window, 'location', {
-      value: { hostname: 'localhost', port: '3000', protocol: 'http:' },
-      writable: true,
-    });
-    expect(resolveMediaUrl('/media/x.jpg')).toBe('http://localhost:8000/media/x.jpg');
-    process.env.NODE_ENV = prev;
-  });
-
-  test('returns relative path in production', () => {
-    const prev = process.env.NODE_ENV;
-    process.env.NODE_ENV = 'production';
+  test('keeps relative media paths', () => {
     expect(resolveMediaUrl('/media/x.jpg')).toBe('/media/x.jpg');
-    process.env.NODE_ENV = prev;
   });
 
   test('returns invalid urls unchanged', () => {
@@ -43,7 +29,7 @@ describe('resolveMediaUrl', () => {
     expect(resolveMediaUrl('')).toBe('');
   });
 
-  test('maps port 8000 media to 3000 in production', () => {
+  test('maps port 8000 media to same-origin path in production', () => {
     const prev = process.env.NODE_ENV;
     process.env.NODE_ENV = 'production';
     Object.defineProperty(window, 'location', {
@@ -52,7 +38,33 @@ describe('resolveMediaUrl', () => {
     });
     expect(
       resolveMediaUrl('http://193.37.213.177:8000/media/products/x.jpg')
-    ).toBe('http://193.37.213.177:3000/media/products/x.jpg');
+    ).toBe('/media/products/x.jpg');
+    process.env.NODE_ENV = prev;
+  });
+
+  test('rewrites dev :3000 media base to same-origin path', () => {
+    const prev = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'development';
+    Object.defineProperty(window, 'location', {
+      value: { hostname: 'localhost', port: '3000', protocol: 'http:' },
+      writable: true,
+    });
+    expect(
+      resolveMediaUrl('http://localhost:3000/media/products/x.jpg')
+    ).toBe('/media/products/x.jpg');
+    process.env.NODE_ENV = prev;
+  });
+
+  test('aligns localhost vs 127.0.0.1 for direct :8000 in dev', () => {
+    const prev = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'development';
+    Object.defineProperty(window, 'location', {
+      value: { hostname: 'localhost', port: '3000', protocol: 'http:' },
+      writable: true,
+    });
+    expect(
+      resolveMediaUrl('http://127.0.0.1:8000/media/products/x.jpg')
+    ).toBe('http://localhost:8000/media/products/x.jpg');
     process.env.NODE_ENV = prev;
   });
 });

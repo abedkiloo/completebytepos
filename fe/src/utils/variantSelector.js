@@ -84,8 +84,22 @@ export function findVariantForSelection(
  * Effective sellable quantity for the picker (mirrors backend sellable_stock_quantity).
  * Returns null when stock is not tracked.
  */
-export function getSellableStockForVariant(product, selectedVariant) {
+function sumActiveVariantStock(variantsList) {
+  const list = Array.isArray(variantsList) ? variantsList : [];
+  return list
+    .filter((v) => v.is_active !== false)
+    .reduce((sum, v) => sum + (parseInt(v.stock_quantity, 10) || 0), 0);
+}
+
+export function getSellableStockForVariant(
+  product,
+  selectedVariant,
+  variantsList = null
+) {
   if (!product || product.track_stock === false) return null;
+
+  const allVariants =
+    variantsList ?? (Array.isArray(product.variants) ? product.variants : null);
 
   if (!selectedVariant) {
     const base = getSellableStock(product);
@@ -94,11 +108,23 @@ export function getSellableStockForVariant(product, selectedVariant) {
 
   const variantStock = parseInt(selectedVariant.stock_quantity, 10);
   const variantQty = Number.isFinite(variantStock) ? variantStock : 0;
+  if (variantQty > 0) {
+    return variantQty;
+  }
+
   const parentRaw = parseInt(product.stock_quantity, 10);
   const parentQty = Number.isFinite(parentRaw) ? parentRaw : 0;
+  if (!product.has_variants) {
+    return variantQty;
+  }
 
-  if (product.has_variants) {
+  const variantTotal = allVariants ? sumActiveVariantStock(allVariants) : null;
+  if (variantTotal === null) {
     return Math.max(parentQty, variantQty);
+  }
+
+  if (parentQty > 0 && variantTotal === 0) {
+    return parentQty;
   }
   return variantQty;
 }
@@ -158,17 +184,31 @@ export function isVariantAddToCartDisabled({
   selectedVariant,
   canAdd,
   validateStock = true,
+  variantsList = null,
 }) {
   if (!canAdd) return true;
   if (!validateStock) return false;
-  const stock = getSellableStockForVariant(product, selectedVariant);
+  const stock = getSellableStockForVariant(
+    product,
+    selectedVariant,
+    variantsList
+  );
   if (stock === null) return false;
   return stock <= 0;
 }
 
-export function buildVariantCartPayload(product, selectedVariant, quantity) {
+export function buildVariantCartPayload(
+  product,
+  selectedVariant,
+  quantity,
+  variantsList = null
+) {
   const qty = Math.max(1, parseInt(quantity, 10) || 1);
-  const stock = getSellableStockForVariant(product, selectedVariant);
+  const stock = getSellableStockForVariant(
+    product,
+    selectedVariant,
+    variantsList
+  );
 
   if (selectedVariant) {
     return {

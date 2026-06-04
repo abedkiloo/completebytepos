@@ -1089,7 +1089,7 @@ function ProductRow({
 }
 
 function ProductThumb({ product }) {
-  const imageSrc = resolveMediaUrl(product.image_url);
+  const imageSrc = resolveMediaUrl(product.image_url || product.image);
   if (imageSrc) {
     return (
       <img

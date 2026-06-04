@@ -108,7 +108,11 @@ const VariantSelector = ({ product, onSelect, onClose, validateStock = true }) =
     setSelectedVariant(variant);
   }, [selectedSize, selectedColor, variants, availableSizes, availableColors]);
 
-  const effectiveStock = getSellableStockForVariant(product, selectedVariant);
+  const effectiveStock = getSellableStockForVariant(
+    product,
+    selectedVariant,
+    variants
+  );
   const canAdd = canAddVariantToCart({
     product,
     variants,
@@ -123,11 +127,17 @@ const VariantSelector = ({ product, onSelect, onClose, validateStock = true }) =
     selectedVariant,
     canAdd,
     validateStock,
+    variantsList: variants,
   });
 
   const handleAddToCart = () => {
     if (addDisabled) return;
-    const payload = buildVariantCartPayload(product, selectedVariant, quantity);
+    const payload = buildVariantCartPayload(
+      product,
+      selectedVariant,
+      quantity,
+      variants
+    );
     onSelect(payload);
   };
 

@@ -58,17 +58,44 @@ describe('variantSelector utils', () => {
     expect(found?.id).toBe(10);
   });
 
-  it('uses parent stock when variant row is zero but product has stock', () => {
-    const variant = findVariantForSelection(variants, 2, 5, sizes, colors);
-    expect(getSellableStockForVariant(product, variant)).toBe(50);
+  it('uses parent stock when variant rows are all zero but product has stock', () => {
+    const parentOnly = {
+      ...product,
+      stock_quantity: 50,
+      variants: variants.map((v) => ({ ...v, stock_quantity: 0 })),
+    };
+    const variant = findVariantForSelection(
+      parentOnly.variants,
+      2,
+      5,
+      sizes,
+      colors
+    );
+    expect(
+      getSellableStockForVariant(parentOnly, variant, parentOnly.variants)
+    ).toBe(50);
   });
 
-  it('allows add when effective stock > 0 via parent quantity', () => {
+  it('does not use parent stock for a variant row when other variants hold stock', () => {
     const variant = findVariantForSelection(variants, 2, 5, sizes, colors);
+    expect(getSellableStockForVariant(product, variant, variants)).toBe(0);
+    expect(
+      isVariantAddToCartDisabled({
+        product,
+        selectedVariant: variant,
+        canAdd: true,
+        validateStock: true,
+        variantsList: variants,
+      })
+    ).toBe(true);
+  });
+
+  it('allows add when the selected variant row has stock', () => {
+    const variant = findVariantForSelection(variants, 3, 5, sizes, colors);
     const canAdd = canAddVariantToCart({
       product,
       variants,
-      selectedSize: 2,
+      selectedSize: 3,
       selectedColor: 5,
       selectedVariant: variant,
       availableSizes: sizes,
@@ -126,11 +153,11 @@ describe('variantSelector utils', () => {
   });
 
   it('buildVariantCartPayload includes effective stock on the line', () => {
-    const variant = findVariantForSelection(variants, 2, 5, sizes, colors);
-    const line = buildVariantCartPayload(product, variant, 2);
-    expect(line.variant_id).toBe(10);
+    const variant = findVariantForSelection(variants, 3, 5, sizes, colors);
+    const line = buildVariantCartPayload(product, variant, 2, variants);
+    expect(line.variant_id).toBe(11);
     expect(line.quantity).toBe(2);
-    expect(line.stock_quantity).toBe(50);
-    expect(line.price).toBe(1700);
+    expect(line.stock_quantity).toBe(5);
+    expect(line.price).toBe(1600);
   });
 });

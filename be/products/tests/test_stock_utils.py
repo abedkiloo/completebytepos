@@ -6,6 +6,7 @@ from django.test import TestCase
 
 from products.models import Category, Product, ProductVariant, Size, Color
 from products.stock_utils import (
+    active_variant_stock_sum,
     apply_catalog_variant_representation,
     sellable_stock_quantity,
     sellable_unit_cost,
@@ -150,3 +151,43 @@ class SellableStockQuantityTests(TestCase):
             is_active=True,
         )
         self.assertEqual(sellable_stock_quantity(self.product, variant=variant), 7)
+
+    def test_variant_zero_uses_parent_when_no_variant_stock_allocated(self):
+        size = Size.objects.create(name='S', code='S', is_active=True)
+        color = Color.objects.create(name='Red', is_active=True)
+        variant = ProductVariant.objects.create(
+            product=self.product,
+            size=size,
+            color=color,
+            sku='SOFA-1-S-R',
+            stock_quantity=0,
+            is_active=True,
+        )
+        self.product.stock_quantity = 400
+        self.product.save(update_fields=['stock_quantity'])
+        self.assertEqual(active_variant_stock_sum(self.product), 0)
+        self.assertEqual(sellable_stock_quantity(self.product, variant=variant), 400)
+
+    def test_variant_zero_not_parent_when_other_variants_hold_stock(self):
+        size_a = Size.objects.create(name='A', code='A', is_active=True)
+        size_b = Size.objects.create(name='B', code='B', is_active=True)
+        color = Color.objects.create(name='Red', is_active=True)
+        ProductVariant.objects.create(
+            product=self.product,
+            size=size_a,
+            color=color,
+            sku='SOFA-A',
+            stock_quantity=10,
+            is_active=True,
+        )
+        variant_b = ProductVariant.objects.create(
+            product=self.product,
+            size=size_b,
+            color=color,
+            sku='SOFA-B',
+            stock_quantity=0,
+            is_active=True,
+        )
+        self.product.stock_quantity = 5
+        self.product.save(update_fields=['stock_quantity'])
+        self.assertEqual(sellable_stock_quantity(self.product, variant=variant_b), 0)
