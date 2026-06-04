@@ -3,7 +3,7 @@
 Single checklist for two-step approval: what exists, what’s next, and how we avoid gaps.  
 **Rule:** add or extend a test in `be/approvals/tests/test_maker_checker.py` (or a focused module test) **before** wiring a new action.
 
-**Enable:** `StoreSettings.maker_checker_enabled` (API: store settings PATCH / System Settings UI when built).  
+**Enable:** `StoreSettings.maker_checker_enabled` (default **on**; toggle in System Settings → Maker-checker card).  
 **Emergency stock bypass:** `StoreSettings.emergency_stock_mode` (positive adjusts only).
 
 **API (checker):**
@@ -178,7 +178,7 @@ cd be && USE_SQLITE=true venv/bin/python manage.py test approvals.tests.test_mak
 | `products.approve` | Checker for product actions |
 | `inventory.approve` | Checker for stock actions |
 | `settings.approve` | Checker for store settings + API queue |
-| Manager role | Gets approve on products/inventory via `sync_default_roles` (not settings until in `_manager_queryset`) |
+| Manager role | Gets approve on **products/inventory** only; **not** expenses/income/transfers/invoicing approve (run `sync_default_roles` after upgrade) |
 
 **Gap:** Manager may need `settings.view` + `settings.approve` for queue API — verify when building FE (super admin always OK).
 

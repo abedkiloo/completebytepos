@@ -287,7 +287,12 @@ const Income = () => {
                     <DataTableCell align="right">
                       <div className="flex justify-end gap-1">
                         {income.status === 'pending' &&
-                          canApproveFinancialRecord(income, storeSettings) && (
+                          canApproveFinancialRecord(
+                            income,
+                            storeSettings,
+                            undefined,
+                            'income',
+                          ) && (
                           <Button variant="ghost" size="sm" onClick={() => handleApprove(income.id)}>
                             <Check className="h-4 w-4 text-success" />
                           </Button>

@@ -21,6 +21,7 @@ import {
   financialSubmitSuccessMessage,
   financialRecordNeedsReason,
   getCurrentUserId,
+  userMayApproveModule,
 } from './makerChecker';
 
 describe('makerChecker', () => {
@@ -28,6 +29,7 @@ describe('makerChecker', () => {
     expect(isMakerCheckerEnabled({ maker_checker_enabled: true })).toBe(true);
     expect(isMakerCheckerEnabled({ maker_checker_enabled: false })).toBe(false);
     expect(isMakerCheckerEnabled(null)).toBe(false);
+    expect(isMakerCheckerEnabled({})).toBe(false);
     expect(
       isSalesMakerCheckerActive({
         maker_checker_enabled: true,
@@ -40,6 +42,12 @@ describe('makerChecker', () => {
         maker_checker_sales_controls: false,
       })
     ).toBe(true);
+  });
+
+  it('userMayApproveModule checks permissions list', () => {
+    const perms = [{ name: 'income.approve', module: 'income', action: 'approve' }];
+    expect(userMayApproveModule('income', perms)).toBe(true);
+    expect(userMayApproveModule('expenses', perms)).toBe(false);
   });
 
   it('detects 202 pending responses', () => {
@@ -179,12 +187,25 @@ describe('makerChecker', () => {
     ).toEqual(['Deactivation', 'Delete']);
   });
 
+  it('requires module approve permission on financial records', () => {
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([{ name: 'expenses.create', module: 'expenses', action: 'create' }]),
+    );
+    const settings = { maker_checker_enabled: true };
+    expect(canApproveFinancialRecord({ created_by: 5 }, settings, 6, 'expenses')).toBe(false);
+  });
+
   it('blocks self-approval for financial records when maker-checker on', () => {
     localStorage.setItem('user', JSON.stringify({ id: 5 }));
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([{ name: 'expenses.approve', module: 'expenses', action: 'approve' }]),
+    );
     const settings = { maker_checker_enabled: true };
-    expect(canApproveFinancialRecord({ created_by: 5 }, settings, 5)).toBe(false);
-    expect(canApproveFinancialRecord({ created_by: 5 }, settings, 6)).toBe(true);
-    expect(canApproveFinancialRecord({ created_by: 5 }, { maker_checker_enabled: false }, 5)).toBe(
+    expect(canApproveFinancialRecord({ created_by: 5 }, settings, 5, 'expenses')).toBe(false);
+    expect(canApproveFinancialRecord({ created_by: 5 }, settings, 6, 'expenses')).toBe(true);
+    expect(canApproveFinancialRecord({ created_by: 5 }, { maker_checker_enabled: false }, 5, 'expenses')).toBe(
       true
     );
     expect(getCurrentUserId()).toBe(5);

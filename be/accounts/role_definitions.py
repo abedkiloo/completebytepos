@@ -220,15 +220,31 @@ def ensure_permissions():
     return created
 
 
+# Managers operate day-to-day but must not approve major financial records by default.
+_MANAGER_NO_APPROVE_MODULES = frozenset({
+    'expenses',
+    'income',
+    'money_transfer',
+    'invoicing',
+})
+
+
 def _manager_queryset():
-    return Permission.objects.filter(
-        module__in=[
-            'products', 'categories', 'suppliers', 'inventory',
-            'sales', 'pos', 'barcodes', 'reports', 'expenses',
-            'income', 'customers', 'invoicing', 'bank_accounts',
-            'money_transfer', 'accounting',
-        ],
-    ).exclude(action='delete')
+    return (
+        Permission.objects.filter(
+            module__in=[
+                'products', 'categories', 'suppliers', 'inventory',
+                'sales', 'pos', 'barcodes', 'reports', 'expenses',
+                'income', 'customers', 'invoicing', 'bank_accounts',
+                'money_transfer', 'accounting',
+            ],
+        )
+        .exclude(action='delete')
+        .exclude(
+            action='approve',
+            module__in=_MANAGER_NO_APPROVE_MODULES,
+        )
+    )
 
 
 def _sales_queryset():

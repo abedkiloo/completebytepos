@@ -11,6 +11,8 @@ import { Plus, FileText } from 'lucide-react';
 import {
   formatInvoiceItemsForApi,
   formatPaymentPayload,
+  parseInvoiceBalance,
+  validatePaymentAmount,
 } from '../../utils/invoicePayload';
 import {
   invoiceCreationAllowed,
@@ -225,6 +227,15 @@ const Invoices = () => {
     }
   };
 
+  const handleDownloadPdf = async (invoice) => {
+    try {
+      await invoicesAPI.downloadPDF(invoice.id, invoice.invoice_number);
+      toast.success('Invoice PDF downloaded');
+    } catch (error) {
+      toast.error(error.message || 'Failed to download PDF');
+    }
+  };
+
   const handleSendInvoice = async (invoice) => {
     if (!canSendInvoice) {
       toast.error('Sending invoices is disabled in module settings.');
@@ -246,7 +257,7 @@ const Invoices = () => {
     }
     setSelectedInvoice(invoice);
     setPaymentData({
-      amount: invoice.balance > 0 ? invoice.balance.toString() : '',
+      amount: '',
       payment_method: 'cash',
       payment_date: new Date().toISOString().split('T')[0],
       reference: '',
@@ -441,9 +452,15 @@ const Invoices = () => {
         return;
       }
 
+      const validation = validatePaymentAmount(paymentData.amount, selectedInvoice);
+      if (!validation.ok) {
+        toast.error(validation.error);
+        return;
+      }
+
       const paymentPayload = formatPaymentPayload({
         invoiceId: selectedInvoice.id,
-        amount: paymentData.amount,
+        amount: validation.amount,
         payment_method: paymentData.payment_method,
         payment_date: paymentData.payment_date,
         reference: paymentData.reference,
@@ -451,7 +468,12 @@ const Invoices = () => {
       });
 
       await paymentsAPI.create(paymentPayload);
-      toast.success('Payment recorded successfully');
+      const balanceAfter = parseInvoiceBalance(selectedInvoice) - validation.amount;
+      const msg =
+        balanceAfter > 0.01
+          ? `Partial payment recorded. Remaining balance: ${formatCurrency(balanceAfter)}`
+          : 'Payment recorded — invoice fully settled.';
+      toast.success(msg);
       setShowPaymentModal(false);
       loadInvoices();
       setSelectedInvoice(null);
@@ -605,7 +627,7 @@ const Invoices = () => {
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => invoicesAPI.downloadPDF(invoice.id)}
+                          onClick={() => handleDownloadPdf(invoice)}
                         >
                           PDF
                         </Button>
@@ -932,15 +954,36 @@ const Invoices = () => {
                 </div>
                 <form onSubmit={handlePaymentSubmit}>
                 <div className="form-group">
-                  <label>Amount *</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={paymentData.amount}
-                    onChange={(e) => setPaymentData({ ...paymentData, amount: e.target.value })}
-                    max={selectedInvoice.balance}
-                    required
-                  />
+                  <label>Payment amount *</label>
+                  <div className="flex flex-wrap gap-2">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      value={paymentData.amount}
+                      onChange={(e) => setPaymentData({ ...paymentData, amount: e.target.value })}
+                      placeholder="Enter amount (partial or full)"
+                      className="min-w-[12rem] flex-1"
+                      required
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setPaymentData({
+                          ...paymentData,
+                          amount: String(parseInvoiceBalance(selectedInvoice)),
+                        })
+                      }
+                    >
+                      Pay full balance
+                    </Button>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    You can pay any amount up to the remaining balance. Leave blank and enter a
+                    partial amount, or use Pay full balance to settle in one step.
+                  </p>
                 </div>
                 <div className="form-row">
                   <div className="form-group">

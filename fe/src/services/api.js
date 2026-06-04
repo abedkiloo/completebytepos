@@ -1,6 +1,10 @@
 import axios from 'axios';
 import { resolveApiBaseUrl } from '../config/apiBaseUrl';
 import {
+  buildPdfFilename,
+  downloadAuthenticatedPdf,
+} from '../utils/pdfDownload';
+import {
   isSessionTeardownActive,
   logoutAndRedirect,
 } from '../utils/authSession';
@@ -303,33 +307,12 @@ export const invoicesAPI = {
   delete: (id) => api.delete(`/sales/invoices/${id}/`),
   send: (id) => api.post(`/sales/invoices/${id}/send/`),
   statistics: (id) => api.get(`/sales/invoices/${id}/statistics/`),
-  downloadPDF: (id) => {
-    const token = localStorage.getItem('access_token');
-    const headers = {
-      'Authorization': `Bearer ${token}`,
-    };
-    if (isNgrokUrl) {
-      headers['ngrok-skip-browser-warning'] = 'true';
-    }
-    return fetch(`${api.defaults.baseURL}/sales/invoices/${id}/download_pdf/`, {
-      method: 'GET',
-      headers,
-    }).then(response => {
-      if (response.ok) {
-        return response.blob().then(blob => {
-          const url = window.URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `Invoice_${id}.pdf`;
-          document.body.appendChild(a);
-          a.click();
-          window.URL.revokeObjectURL(url);
-          document.body.removeChild(a);
-        });
-      }
-      throw new Error('Failed to download PDF');
-    });
-  },
+  downloadPDF: (id, invoiceNumber) =>
+    downloadAuthenticatedPdf(
+      api,
+      `/sales/invoices/${id}/download_pdf/`,
+      buildPdfFilename('Invoice', invoiceNumber || id),
+    ),
 };
 
 export const paymentsAPI = {
@@ -458,92 +441,32 @@ export const accountingAPI = {
     cashFlow: (params) => api.get('/accounting/reports/cash_flow/', { params }),
     accountStatement: (params) => api.get('/accounting/reports/account_statement/', { params }),
     downloadBalanceSheet: (params) => {
-      const token = localStorage.getItem('access_token');
       const queryString = new URLSearchParams({ ...params, format: 'pdf' }).toString();
-      const headers = {
-        'Authorization': `Bearer ${token}`,
-      };
-      if (isNgrokUrl) {
-        headers['ngrok-skip-browser-warning'] = 'true';
-      }
-      return fetch(`${api.defaults.baseURL}/accounting/reports/balance_sheet/?${queryString}`, {
-        method: 'GET',
-        headers,
-      }).then(response => {
-        if (response.ok) {
-          return response.blob().then(blob => {
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            const date = params.date || new Date().toISOString().split('T')[0];
-            a.download = `BalanceSheet_${date}.pdf`;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-          });
-        }
-        throw new Error('Failed to download PDF');
-      });
+      const date = params.date || new Date().toISOString().split('T')[0];
+      return downloadAuthenticatedPdf(
+        api,
+        `/accounting/reports/balance_sheet/?${queryString}`,
+        buildPdfFilename('BalanceSheet', date),
+      );
     },
     downloadIncomeStatement: (params) => {
-      const token = localStorage.getItem('access_token');
       const queryString = new URLSearchParams({ ...params, format: 'pdf' }).toString();
-      const headers = {
-        'Authorization': `Bearer ${token}`,
-      };
-      if (isNgrokUrl) {
-        headers['ngrok-skip-browser-warning'] = 'true';
-      }
-      return fetch(`${api.defaults.baseURL}/accounting/reports/income_statement/?${queryString}`, {
-        method: 'GET',
-        headers,
-      }).then(response => {
-        if (response.ok) {
-          return response.blob().then(blob => {
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            const dateFrom = params.date_from || new Date().toISOString().split('T')[0];
-            const dateTo = params.date_to || new Date().toISOString().split('T')[0];
-            a.download = `IncomeStatement_${dateFrom}_to_${dateTo}.pdf`;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-          });
-        }
-        throw new Error('Failed to download PDF');
-      });
+      const dateFrom = params.date_from || new Date().toISOString().split('T')[0];
+      const dateTo = params.date_to || new Date().toISOString().split('T')[0];
+      return downloadAuthenticatedPdf(
+        api,
+        `/accounting/reports/income_statement/?${queryString}`,
+        buildPdfFilename('IncomeStatement', `${dateFrom}_to_${dateTo}`),
+      );
     },
     downloadTrialBalance: (params) => {
-      const token = localStorage.getItem('access_token');
       const queryString = new URLSearchParams({ ...params, format: 'pdf' }).toString();
-      const headers = {
-        'Authorization': `Bearer ${token}`,
-      };
-      if (isNgrokUrl) {
-        headers['ngrok-skip-browser-warning'] = 'true';
-      }
-      return fetch(`${api.defaults.baseURL}/accounting/reports/trial_balance/?${queryString}`, {
-        method: 'GET',
-        headers,
-      }).then(response => {
-        if (response.ok) {
-          return response.blob().then(blob => {
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            const date = params.date || new Date().toISOString().split('T')[0];
-            a.download = `TrialBalance_${date}.pdf`;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-          });
-        }
-        throw new Error('Failed to download PDF');
-      });
+      const date = params.date || new Date().toISOString().split('T')[0];
+      return downloadAuthenticatedPdf(
+        api,
+        `/accounting/reports/trial_balance/?${queryString}`,
+        buildPdfFilename('TrialBalance', date),
+      );
     },
   },
 };

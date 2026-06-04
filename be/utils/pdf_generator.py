@@ -96,7 +96,12 @@ def create_invoice_pdf(invoice):
     elements.append(Paragraph("Items:", heading_style))
     
     items_data = [['Description', 'Qty', 'Unit Price', 'Total']]
-    for item in invoice.items.all():
+    line_items = invoice.items.select_related(
+        'product', 'variant', 'size', 'color'
+    ).all()
+    if not line_items:
+        items_data.append(['No line items', '-', '-', '-'])
+    for item in line_items:
         variant_info = ""
         if item.variant:
             variant_parts = []
@@ -107,8 +112,13 @@ def create_invoice_pdf(invoice):
             if variant_parts:
                 variant_info = f" ({', '.join(variant_parts)})"
         
-        description = f"{item.product.name}{variant_info}"
-        if item.description:
+        product_label = (
+            item.product.name
+            if item.product
+            else (item.description or 'Item')
+        )
+        description = f"{product_label}{variant_info}"
+        if item.description and item.product:
             description += f" - {item.description}"
         
         items_data.append([

@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework import status
 
 from income.models import IncomeCategory
-from utils.tests.api_test_base import ManagerAPITestCase, SalesAPITestCase
+from utils.tests.api_test_base import ManagerAPITestCase, SalesAPITestCase, SuperAdminAPITestCase
 
 
 class IncomeViewsTestCase(ManagerAPITestCase):
@@ -15,7 +15,7 @@ class IncomeViewsTestCase(ManagerAPITestCase):
         super().setUpTestData()
         cls.cat = IncomeCategory.objects.create(name='Fees', is_active=True)
 
-    def test_create_and_approve_income(self):
+    def test_manager_can_create_but_not_approve_income(self):
         create = self.client.post(
             '/api/income/',
             {
@@ -29,6 +29,30 @@ class IncomeViewsTestCase(ManagerAPITestCase):
             format='json',
         )
         self.assertEqual(create.status_code, status.HTTP_201_CREATED, create.data)
+        approve = self.client.post(f'/api/income/{create.data["id"]}/approve/')
+        self.assertEqual(approve.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class IncomeApproveSuperAdminTests(SuperAdminAPITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.cat = IncomeCategory.objects.create(name='Fees SA', is_active=True)
+
+    def test_super_admin_can_approve_income(self):
+        create = self.client.post(
+            '/api/income/',
+            {
+                'category': self.cat.id,
+                'description': 'Grant',
+                'amount': '100.00',
+                'income_date': timezone.now().date().isoformat(),
+                'payment_method': 'cash',
+                'status': 'pending',
+            },
+            format='json',
+        )
+        self.assertEqual(create.status_code, status.HTTP_201_CREATED)
         approve = self.client.post(f'/api/income/{create.data["id"]}/approve/')
         self.assertEqual(approve.status_code, status.HTTP_200_OK)
 

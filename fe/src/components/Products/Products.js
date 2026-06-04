@@ -15,6 +15,7 @@ import {
   X,
   Loader2,
   MoreHorizontal,
+  Scale,
 } from 'lucide-react';
 
 import { productsAPI, categoriesAPI } from '../../services/api';
@@ -29,6 +30,8 @@ import PendingApprovalBadges from '../Approvals/PendingApprovalBadges';
 import { formatCurrency } from '../../utils/formatters';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
 import ProductForm from './ProductForm';
+import StockAdjustmentModal from '../Inventory/StockAdjustmentModal';
+import { inventoryAdjustmentsEnabled } from '../../utils/inventoryDisplay';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import { toast } from '../../utils/toast';
 
@@ -71,6 +74,7 @@ const EMPTY_FILTERS = {
 const Products = () => {
   const { settings: storeSettings } = useStoreSettings();
   const { settings: productModuleSettings } = useModuleSettings('products');
+  const { settings: inventoryModuleSettings } = useModuleSettings('inventory');
   const persona = getPersonaFromStorage();
   const financialFieldsLocked = !userMayEditFinancialFieldsFromStorage();
   const catalogOnly =
@@ -78,6 +82,8 @@ const Products = () => {
     storeSettings.allow_sales_add_products &&
     storeSettings.sales_catalog_skip_pricing &&
     persona === PERSONA.SALES;
+  const canAdjustStock =
+    !catalogOnly && inventoryAdjustmentsEnabled(inventoryModuleSettings);
   const showStatus = showProductStatus(productModuleSettings, storeSettings);
   const showCost = showProductCostPrice(productModuleSettings);
   const showMrp = showProductMrp(productModuleSettings);
@@ -106,6 +112,7 @@ const Products = () => {
   const [deleteReason, setDeleteReason] = useState('');
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [adjustStockProduct, setAdjustStockProduct] = useState(null);
 
   // --- CSV import file input ---
   const fileInputRef = useRef(null);
@@ -451,7 +458,9 @@ const Products = () => {
           description={
             catalogOnly
               ? 'Add products or import a list. Your manager will set prices before items go on sale.'
-              : 'Add, edit, and bulk-manage your catalog.'
+              : canAdjustStock
+                ? 'Manage your catalog. Stock changes use Adjust stock (audited); the Stock column is not edited inline.'
+                : 'Add, edit, and bulk-manage your catalog.'
           }
         >
           <div className="flex flex-wrap items-center gap-2">
@@ -629,8 +638,12 @@ const Products = () => {
                       onToggle={() => toggleProductSelection(product.id)}
                       onEdit={() => openEdit(product)}
                       onDelete={() => setConfirmDelete(product.id)}
+                      onAdjustStock={
+                        canAdjustStock && product.track_stock
+                          ? () => setAdjustStockProduct(product)
+                          : undefined
+                      }
                       catalogOnly={catalogOnly}
-          financialFieldsLocked={financialFieldsLocked}
                       showProductStatus={showStatus}
                       bulkEnabled={bulkEnabled}
                       showMrp={showMrp}
@@ -646,6 +659,18 @@ const Products = () => {
         </div>
 
       {/* --- Form modal (legacy, untouched) --- */}
+      {adjustStockProduct && (
+        <StockAdjustmentModal
+          product={adjustStockProduct}
+          onClose={() => setAdjustStockProduct(null)}
+          onSave={() => {
+            setAdjustStockProduct(null);
+            loadProducts();
+            loadStatistics();
+          }}
+        />
+      )}
+
       {showForm && (
         <ProductForm
           product={editingProduct}
@@ -922,6 +947,7 @@ function ProductRow({
   onToggle,
   onEdit,
   onDelete,
+  onAdjustStock,
   catalogOnly = false,
   showProductStatus: showStatus = true,
   bulkEnabled = true,
@@ -1017,7 +1043,7 @@ function ProductRow({
         </td>
       )}
       <td className="px-4 py-3 text-right">
-        <StockCell product={product} />
+        <StockCell product={product} onAdjustStock={onAdjustStock} />
       </td>
       {showStatus && (
       <td className="px-4 py-3">
@@ -1040,6 +1066,12 @@ function ProductRow({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {onAdjustStock ? (
+                <DropdownMenuItem onClick={onAdjustStock}>
+                  <Scale className="mr-2 h-3.5 w-3.5" />
+                  Adjust stock
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuItem
                 onClick={onDelete}
                 className="text-destructive focus:text-destructive"
@@ -1075,7 +1107,7 @@ function ProductThumb({ product }) {
   );
 }
 
-function StockCell({ product }) {
+function StockCell({ product, onAdjustStock }) {
   if (!product.track_stock) {
     return <span className="text-xs text-muted-foreground">Not tracked</span>;
   }
@@ -1087,7 +1119,25 @@ function StockCell({ product }) {
       : lowThreshold > 0 && qty <= lowThreshold
       ? 'text-warning'
       : 'text-foreground';
-  return <span className={cn('font-semibold tabular-nums', tone)}>{qty}</span>;
+  const qtyEl = (
+    <span className={cn('font-semibold tabular-nums', tone)}>{qty}</span>
+  );
+  if (!onAdjustStock) {
+    return qtyEl;
+  }
+  return (
+    <button
+      type="button"
+      onClick={onAdjustStock}
+      className="group inline-flex flex-col items-end rounded-md px-1 py-0.5 text-right hover:bg-muted/80"
+      title="Adjust stock (+/- quantity with audit trail)"
+    >
+      {qtyEl}
+      <span className="text-[10px] font-normal text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+        Adjust
+      </span>
+    </button>
+  );
 }
 
 function EmptyProducts({ onCreate, hasFilters }) {

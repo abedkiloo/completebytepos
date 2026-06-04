@@ -13,7 +13,7 @@ export const DEFAULT_STORE_SETTINGS = {
   receipt_show_logo: true,
   receipt_show_sku: false,
   receipt_auto_print: false,
-  maker_checker_enabled: false,
+  maker_checker_enabled: true,
   maker_checker_sales_controls: false,
   emergency_stock_mode: false,
 };

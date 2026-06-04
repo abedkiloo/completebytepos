@@ -18,7 +18,7 @@ jest.mock('../../services/api', () => ({
 jest.mock('../../hooks/useStoreSettings', () => ({
   useStoreSettings: jest.fn(() => ({
     settings: {
-      maker_checker_enabled: false,
+      maker_checker_enabled: true,
       allow_sales_add_products: true,
       sales_catalog_skip_pricing: false,
     },

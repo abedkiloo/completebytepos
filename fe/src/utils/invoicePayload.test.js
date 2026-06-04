@@ -1,7 +1,9 @@
 import {
   formatInvoiceItemsForApi,
   formatPaymentPayload,
+  parseInvoiceBalance,
   resolveLineProductId,
+  validatePaymentAmount,
 } from './invoicePayload';
 
 describe('invoicePayload', () => {
@@ -26,6 +28,23 @@ describe('invoicePayload', () => {
         variant_id: null,
       },
     ]);
+  });
+
+  test('validatePaymentAmount allows partial payment', () => {
+    const invoice = { balance: 100 };
+    expect(validatePaymentAmount('25', invoice)).toEqual({ ok: true, amount: 25 });
+    expect(validatePaymentAmount('100', invoice)).toEqual({ ok: true, amount: 100 });
+  });
+
+  test('validatePaymentAmount rejects overpay and zero', () => {
+    const invoice = { balance: 50 };
+    expect(validatePaymentAmount('75', invoice).ok).toBe(false);
+    expect(validatePaymentAmount('0', invoice).ok).toBe(false);
+    expect(validatePaymentAmount('', invoice).ok).toBe(false);
+  });
+
+  test('parseInvoiceBalance handles strings', () => {
+    expect(parseInvoiceBalance({ balance: '42.5' })).toBe(42.5);
   });
 
   test('formatPaymentPayload uses invoice_id', () => {

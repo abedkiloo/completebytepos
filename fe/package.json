@@ -69,6 +69,7 @@
       "src/utils/productPricing.js",
       "src/utils/setupStatus.js",
       "src/utils/storeSettingsCache.js",
+      "src/utils/pdfDownload.js",
       "src/utils/makerChecker.js",
       "src/utils/saleRefund.js",
       "src/utils/posCartRecovery.js",

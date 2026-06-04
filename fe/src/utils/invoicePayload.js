@@ -25,10 +25,38 @@ export function formatInvoiceItemsForApi(items = []) {
     }));
 }
 
+export function parseInvoiceBalance(invoice) {
+  const balance = parseFloat(invoice?.balance);
+  return Number.isFinite(balance) ? Math.max(0, balance) : 0;
+}
+
+/**
+ * Parse and validate a partial (or full) payment amount against invoice balance.
+ * @returns {{ ok: true, amount: number } | { ok: false, error: string }}
+ */
+export function validatePaymentAmount(rawAmount, invoice) {
+  const balance = parseInvoiceBalance(invoice);
+  if (balance <= 0) {
+    return { ok: false, error: 'This invoice has no remaining balance.' };
+  }
+
+  const amount = parseFloat(String(rawAmount ?? '').trim());
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { ok: false, error: 'Enter a payment amount greater than zero.' };
+  }
+  if (amount > balance + 0.001) {
+    return {
+      ok: false,
+      error: `Amount cannot exceed the remaining balance (${balance.toFixed(2)}).`,
+    };
+  }
+  return { ok: true, amount: Math.round(amount * 100) / 100 };
+}
+
 export function formatPaymentPayload({ invoiceId, amount, payment_method, payment_date, reference, notes }) {
   return {
     invoice_id: invoiceId,
-    amount: parseFloat(amount),
+    amount: typeof amount === 'number' ? amount : parseFloat(amount),
     payment_method,
     payment_date,
     reference: reference || '',

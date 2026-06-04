@@ -151,3 +151,43 @@ class InvoicingGateAPITests(ManagerAPITestCase):
         self.assertEqual(pay.status_code, status.HTTP_201_CREATED)
         invoice = Invoice.objects.get(id=invoice_id)
         self.assertEqual(float(invoice.amount_paid), 25.0)
+
+    def test_partial_payment_then_remainder(self):
+        create = self.client.post(
+            '/api/sales/invoices/',
+            self._manual_invoice_payload(),
+            format='json',
+        )
+        invoice_id = create.data['id']
+        self.client.post(f'/api/sales/invoices/{invoice_id}/send/')
+
+        partial = self.client.post(
+            '/api/sales/payments/',
+            {
+                'invoice_id': invoice_id,
+                'amount': '20.00',
+                'payment_method': 'cash',
+                'payment_date': '2026-05-31',
+            },
+            format='json',
+        )
+        self.assertEqual(partial.status_code, status.HTTP_201_CREATED)
+        invoice = Invoice.objects.get(id=invoice_id)
+        self.assertEqual(float(invoice.amount_paid), 20.0)
+        self.assertEqual(invoice.status, 'partial')
+        self.assertGreater(float(invoice.balance), 0)
+
+        remainder = self.client.post(
+            '/api/sales/payments/',
+            {
+                'invoice_id': invoice_id,
+                'amount': str(invoice.balance),
+                'payment_method': 'cash',
+                'payment_date': '2026-05-31',
+            },
+            format='json',
+        )
+        self.assertEqual(remainder.status_code, status.HTTP_201_CREATED)
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.status, 'paid')
+        self.assertEqual(float(invoice.balance), 0.0)

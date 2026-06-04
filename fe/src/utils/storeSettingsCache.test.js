@@ -12,6 +12,7 @@ describe('storeSettingsCache', () => {
 
   test('readCachedStoreSettings returns defaults when empty', () => {
     expect(readCachedStoreSettings()).toEqual(DEFAULT_STORE_SETTINGS);
+    expect(readCachedStoreSettings().maker_checker_enabled).toBe(true);
   });
 
   test('cacheStoreSettings merges and persists', () => {

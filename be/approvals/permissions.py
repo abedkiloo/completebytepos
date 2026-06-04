@@ -9,7 +9,7 @@ def is_maker_checker_enabled() -> bool:
     from settings.models import StoreSettings
 
     store = StoreSettings.load()
-    return bool(getattr(store, 'maker_checker_enabled', False))
+    return bool(getattr(store, 'maker_checker_enabled', True))
 
 
 def is_sales_maker_checker_active() -> bool:

@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework import status
 
 from expenses.models import Expense, ExpenseCategory
-from utils.tests.api_test_base import ManagerAPITestCase, SalesAPITestCase
+from utils.tests.api_test_base import ManagerAPITestCase, SalesAPITestCase, SuperAdminAPITestCase
 
 
 class ExpenseViewsTestCase(ManagerAPITestCase):
@@ -15,7 +15,7 @@ class ExpenseViewsTestCase(ManagerAPITestCase):
         super().setUpTestData()
         cls.cat = ExpenseCategory.objects.create(name='Utilities', is_active=True)
 
-    def test_create_and_approve_expense(self):
+    def test_manager_can_create_but_not_approve_expense(self):
         create = self.client.post(
             '/api/expenses/',
             {
@@ -29,6 +29,31 @@ class ExpenseViewsTestCase(ManagerAPITestCase):
             format='json',
         )
         self.assertEqual(create.status_code, status.HTTP_201_CREATED, create.data)
+        expense_id = create.data['id']
+        approve = self.client.post(f'/api/expenses/{expense_id}/approve/')
+        self.assertEqual(approve.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class ExpenseApproveSuperAdminTests(SuperAdminAPITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.cat = ExpenseCategory.objects.create(name='Ops', is_active=True)
+
+    def test_super_admin_can_approve_expense(self):
+        create = self.client.post(
+            '/api/expenses/',
+            {
+                'category': self.cat.id,
+                'description': 'Rent',
+                'amount': '1200.00',
+                'expense_date': timezone.now().date().isoformat(),
+                'payment_method': 'cash',
+                'status': 'pending',
+            },
+            format='json',
+        )
+        self.assertEqual(create.status_code, status.HTTP_201_CREATED)
         expense_id = create.data['id']
         approve = self.client.post(f'/api/expenses/{expense_id}/approve/')
         self.assertEqual(approve.status_code, status.HTTP_200_OK)

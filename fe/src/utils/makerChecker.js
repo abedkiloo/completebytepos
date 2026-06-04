@@ -2,6 +2,8 @@
  * Maker-checker UX helpers (align with be/approvals).
  */
 
+import { hasPermission } from './roleAccess';
+
 export const PENDING_APPROVAL_MESSAGE =
   'Change submitted for approval — not yet active.';
 
@@ -180,6 +182,19 @@ export function financialRecordNeedsReason() {
   return true;
 }
 
+export function getPermissionsFromStorage() {
+  try {
+    const raw = localStorage.getItem('permissions');
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function userMayApproveModule(module, permissions = getPermissionsFromStorage()) {
+  return hasPermission(permissions, module, 'approve');
+}
+
 export function getCurrentUserId() {
   try {
     const user = JSON.parse(localStorage.getItem('user') || '{}');
@@ -193,10 +208,26 @@ export function getCurrentUserId() {
   }
 }
 
-export function canApproveFinancialRecord(record, settings, currentUserId = getCurrentUserId()) {
-  if (!isMakerCheckerEnabled(settings)) return true;
+/**
+ * @param {'expenses'|'income'|'money_transfer'} module
+ */
+export function canApproveFinancialRecord(
+  record,
+  settings,
+  currentUserId = getCurrentUserId(),
+  module = 'expenses',
+  permissions = getPermissionsFromStorage(),
+) {
+  if (!userMayApproveModule(module, permissions)) {
+    return false;
+  }
+  if (!isMakerCheckerEnabled(settings)) {
+    return true;
+  }
   const makerId = record?.created_by;
-  if (makerId == null || currentUserId == null) return true;
+  if (makerId == null || currentUserId == null) {
+    return true;
+  }
   return Number(makerId) !== Number(currentUserId);
 }
 

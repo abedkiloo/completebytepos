@@ -320,7 +320,12 @@ const Expenses = () => {
                     <DataTableCell align="right">
                       <div className="flex justify-end gap-1">
                         {expense.status === 'pending' &&
-                          canApproveFinancialRecord(expense, storeSettings) && (
+                          canApproveFinancialRecord(
+                            expense,
+                            storeSettings,
+                            undefined,
+                            'expenses',
+                          ) && (
                           <Button
                             variant="ghost"
                             size="sm"

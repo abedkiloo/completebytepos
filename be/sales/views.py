@@ -838,10 +838,19 @@ class InvoiceViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     def download_pdf(self, request, pk=None):
         """Download invoice as PDF"""
         invoice = self.get_object()
-        pdf_buffer = create_invoice_pdf(invoice)
-        
+        try:
+            pdf_buffer = create_invoice_pdf(invoice)
+        except Exception as e:
+            logger.exception('Invoice PDF generation failed for %s', invoice.invoice_number)
+            return Response(
+                {'error': f'Could not generate PDF: {e}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
         response = HttpResponse(pdf_buffer.read(), content_type='application/pdf')
-        response['Content-Disposition'] = f'attachment; filename="Invoice_{invoice.invoice_number}.pdf"'
+        response['Content-Disposition'] = (
+            f'attachment; filename="Invoice_{invoice.invoice_number}.pdf"'
+        )
         return response
 
 
@@ -898,7 +907,13 @@ class PaymentViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        # Check if payment exceeds balance
+        if amount <= 0:
+            return Response(
+                {'error': 'Payment amount must be greater than zero.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Check if payment exceeds balance (partial payments allowed)
         if amount > invoice.balance:
             return Response(
                 {'error': f'Payment amount ({amount}) exceeds invoice balance ({invoice.balance})'},
