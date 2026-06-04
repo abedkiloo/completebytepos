@@ -7,7 +7,8 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any, Dict, Optional
 
-from django.apps import apps
+from django.db import ProgrammingError
+from django.db.utils import OperationalError
 
 from approvals.models import PendingChange
 from approvals.permissions import is_maker_checker_enabled
@@ -26,8 +27,36 @@ _PENDING_INVENTORY_STOCK_ACTIONS = (
     ACTION_STOCK_TRANSFER,
 )
 
+_pending_schema_ready: bool | None = None
+
+
+def pending_schema_ready() -> bool:
+    """False when maker-checker migrations have not been applied yet."""
+    global _pending_schema_ready
+    if _pending_schema_ready is not None:
+        return _pending_schema_ready
+    try:
+        from django.db import connection
+
+        table = PendingChange._meta.db_table
+        _pending_schema_ready = table in connection.introspection.table_names()
+    except Exception:
+        _pending_schema_ready = False
+    return _pending_schema_ready
+
+
+def _pending_query_safe(exists_callable) -> bool:
+    if not pending_schema_ready():
+        return False
+    try:
+        return exists_callable()
+    except (ProgrammingError, OperationalError):
+        return False
+
 
 def _pending_for_entity(entity_type: str, entity_id, action_types: tuple[str, ...] | None = None):
+    if not pending_schema_ready():
+        return PendingChange.objects.none()
     qs = PendingChange.objects.filter(
         entity_type=entity_type,
         entity_id=str(entity_id),
@@ -43,27 +72,37 @@ def has_pending_product_price(product_id) -> bool:
         return False
     from approvals.registry import ACTION_PRODUCT_PRICE, ACTION_PRODUCT_TAX
 
-    return _pending_for_entity(
-        'products.Product',
-        product_id,
-        (ACTION_PRODUCT_PRICE, ACTION_PRODUCT_TAX),
-    ).exists()
+    return _pending_query_safe(
+        lambda: _pending_for_entity(
+            'products.Product',
+            product_id,
+            (ACTION_PRODUCT_PRICE, ACTION_PRODUCT_TAX),
+        ).exists()
+    )
 
 
 def has_pending_product_stock(product_id) -> bool:
     if not is_maker_checker_enabled():
         return False
 
-    return _pending_for_entity(
-        'products.Product',
-        product_id,
-        (ACTION_PRODUCT_STOCK,) + _PENDING_INVENTORY_STOCK_ACTIONS,
-    ).exists()
+    return _pending_query_safe(
+        lambda: _pending_for_entity(
+            'products.Product',
+            product_id,
+            (ACTION_PRODUCT_STOCK,) + _PENDING_INVENTORY_STOCK_ACTIONS,
+        ).exists()
+    )
 
 
 def _collect_stock_caps(qs) -> list[int]:
+    if not pending_schema_ready():
+        return []
     caps: list[int] = []
-    for change in qs.only('proposed_values'):
+    try:
+        rows = qs.only('proposed_values')
+    except (ProgrammingError, OperationalError):
+        return []
+    for change in rows:
         raw = (change.proposed_values or {}).get('stock_quantity')
         if raw is not None and raw != '':
             caps.append(int(raw))
@@ -99,11 +138,13 @@ def has_pending_product_deactivation(product_id) -> bool:
         return False
     from approvals.registry import ACTION_PRODUCT_DEACTIVATE
 
-    return _pending_for_entity(
-        'products.Product',
-        product_id,
-        (ACTION_PRODUCT_DEACTIVATE,),
-    ).exists()
+    return _pending_query_safe(
+        lambda: _pending_for_entity(
+            'products.Product',
+            product_id,
+            (ACTION_PRODUCT_DEACTIVATE,),
+        ).exists()
+    )
 
 
 def has_pending_variant_price(variant_id) -> bool:
@@ -111,22 +152,26 @@ def has_pending_variant_price(variant_id) -> bool:
         return False
     from approvals.registry import ACTION_PRODUCT_PRICE
 
-    return _pending_for_entity(
-        'products.ProductVariant',
-        variant_id,
-        (ACTION_PRODUCT_PRICE,),
-    ).exists()
+    return _pending_query_safe(
+        lambda: _pending_for_entity(
+            'products.ProductVariant',
+            variant_id,
+            (ACTION_PRODUCT_PRICE,),
+        ).exists()
+    )
 
 
 def has_pending_variant_stock(variant_id) -> bool:
     if not is_maker_checker_enabled():
         return False
 
-    return _pending_for_entity(
-        'products.ProductVariant',
-        variant_id,
-        (ACTION_PRODUCT_STOCK,),
-    ).exists()
+    return _pending_query_safe(
+        lambda: _pending_for_entity(
+            'products.ProductVariant',
+            variant_id,
+            (ACTION_PRODUCT_STOCK,),
+        ).exists()
+    )
 
 
 def has_pending_variant_deactivation(variant_id) -> bool:
@@ -134,11 +179,13 @@ def has_pending_variant_deactivation(variant_id) -> bool:
         return False
     from approvals.registry import ACTION_PRODUCT_DEACTIVATE
 
-    return _pending_for_entity(
-        'products.ProductVariant',
-        variant_id,
-        (ACTION_PRODUCT_DEACTIVATE,),
-    ).exists()
+    return _pending_query_safe(
+        lambda: _pending_for_entity(
+            'products.ProductVariant',
+            variant_id,
+            (ACTION_PRODUCT_DEACTIVATE,),
+        ).exists()
+    )
 
 
 def variant_pending_flags(variant_id) -> Dict[str, bool]:
@@ -154,11 +201,13 @@ def has_pending_category_deactivation(category_id) -> bool:
         return False
     from approvals.registry import ACTION_CATEGORY_DEACTIVATE
 
-    return _pending_for_entity(
-        'products.Category',
-        category_id,
-        (ACTION_CATEGORY_DEACTIVATE,),
-    ).exists()
+    return _pending_query_safe(
+        lambda: _pending_for_entity(
+            'products.Category',
+            category_id,
+            (ACTION_CATEGORY_DEACTIVATE,),
+        ).exists()
+    )
 
 
 def category_pending_flags(category_id) -> Dict[str, bool]:
