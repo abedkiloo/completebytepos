@@ -62,27 +62,27 @@ describe('makerChecker', () => {
     expect(extractPendingChange(null)).toBeNull();
   });
 
-  it('flags price edits as needing reason', () => {
+  it('flags price edits as needing reason only when changing existing values', () => {
     expect(
       productEditNeedsReason({ price: '150' }, { price: '100' })
     ).toBe(true);
     expect(
       productEditNeedsReason({ name: 'X' }, { name: 'Y', price: '100' })
     ).toBe(false);
-    expect(
-      productEditNeedsReason({ price: '10' }, null)
-    ).toBe(true);
-    expect(
-      productEditNeedsReason({ is_active: false }, null)
-    ).toBe(true);
-    expect(
-      productEditNeedsReason({ price: '0' }, null)
-    ).toBe(false);
+    expect(productEditNeedsReason({ price: '10' }, null)).toBe(false);
+    expect(productEditNeedsReason({ is_active: false }, null)).toBe(false);
+    expect(productEditNeedsReason({ price: '0' }, null)).toBe(false);
     expect(
       productEditNeedsReason({ price: '5' }, { price: '5' }, { financialFieldsLocked: true })
     ).toBe(false);
     expect(
       productEditNeedsReason({ is_active: true }, { is_active: true })
+    ).toBe(false);
+    expect(
+      productEditNeedsReason({ price: '80' }, { price: '0' })
+    ).toBe(false);
+    expect(
+      productEditNeedsReason({ stock_quantity: 10 }, { stock_quantity: 0 })
     ).toBe(false);
   });
 
@@ -170,6 +170,12 @@ describe('makerChecker', () => {
       variantEditNeedsReason({ is_active: false }, { is_active: true })
     ).toBe(true);
     expect(variantEditNeedsReason({}, { price: '1' })).toBe(false);
+    expect(
+      variantEditNeedsReason({ price: '50' }, { price: '0', stock_quantity: 0 })
+    ).toBe(false);
+    expect(
+      variantEditNeedsReason({ stock_quantity: 5 }, { price: '10', stock_quantity: 0 })
+    ).toBe(false);
     expect(
       categoryEditNeedsReason({ is_active: false }, { is_active: true })
     ).toBe(true);

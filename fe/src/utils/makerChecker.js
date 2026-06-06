@@ -53,17 +53,47 @@ const SENSITIVE_VARIANT_KEYS = new Set([
   'is_active',
 ]);
 
+function isUnsetFinancialValue(val) {
+  if (val == null || val === '') return true;
+  const n = parseFloat(val);
+  return Number.isFinite(n) && n === 0;
+}
+
+/** True when setting a first non-zero price/stock value (not changing an existing one). */
+function isInitialSensitiveSet(key, prev, next) {
+  if (key === 'is_active') return false;
+  const numericKeys = [
+    'price',
+    'selling_price',
+    'mrp',
+    'cost',
+    'stock_quantity',
+    'low_stock_threshold',
+  ];
+  if (!numericKeys.includes(key)) return false;
+  return isUnsetFinancialValue(prev) && !isUnsetFinancialValue(next);
+}
+
+function sensitiveFieldNeedsReason(key, prev, next) {
+  if (key === 'is_active') {
+    return Boolean(next) !== Boolean(prev);
+  }
+  if (isInitialSensitiveSet(key, prev, next)) {
+    return false;
+  }
+  return String(next ?? '') !== String(prev ?? '');
+}
+
 export function variantEditNeedsReason(formData, variant) {
   if (!formData || variant == null) return false;
   for (const key of SENSITIVE_VARIANT_KEYS) {
     if (!(key in formData)) continue;
     const next = formData[key];
-    const prev = variant[key];
-    if (key === 'is_active') {
-      if (Boolean(next) !== Boolean(prev)) return true;
-    } else if (String(next ?? '') !== String(prev ?? '')) {
-      return true;
-    }
+    const prev =
+      key === 'selling_price'
+        ? variant.price ?? variant.selling_price
+        : variant[key];
+    if (sensitiveFieldNeedsReason(key, prev, next)) return true;
   }
   return false;
 }
@@ -125,23 +155,16 @@ export function rolePermissionsChanged(nextIds, role) {
 export function productEditNeedsReason(formData, product, { financialFieldsLocked = false } = {}) {
   if (financialFieldsLocked) return false;
   if (!formData) return false;
+  // First-time create: setting opening price/stock is not a "change".
+  if (product == null) return false;
   for (const key of SENSITIVE_PRODUCT_KEYS) {
     if (!(key in formData)) continue;
     const next = formData[key];
-    if (product == null) {
-      if (key === 'is_active' && next === false) return true;
-      if (['price', 'selling_price', 'mrp', 'cost', 'stock_quantity'].includes(key)) {
-        const num = parseFloat(next);
-        if (!Number.isNaN(num) && num !== 0) return true;
-      }
-      continue;
-    }
-    const prev = product[key];
-    if (key === 'is_active') {
-      if (Boolean(next) !== Boolean(prev)) return true;
-    } else if (String(next ?? '') !== String(prev ?? '')) {
-      return true;
-    }
+    const prev =
+      key === 'selling_price'
+        ? product.price ?? product.selling_price
+        : product[key];
+    if (sensitiveFieldNeedsReason(key, prev, next)) return true;
   }
   return false;
 }

@@ -10,6 +10,7 @@ from approvals.models import PendingChange
 from approvals.permissions import is_maker_checker_enabled
 from approvals.registry import PRODUCT_SENSITIVE_FIELDS
 from approvals.registry import ACTION_PRODUCT_DELETE
+from approvals.reason_rules import split_initial_vs_change_sensitive
 from approvals.service import route_product_sensitive_update, snapshot_model, submit_change
 
 
@@ -37,6 +38,9 @@ def queue_product_sensitive_update(
     product,
     sensitive: Dict[str, Any],
 ) -> Optional[PendingChange]:
+    if not sensitive:
+        return None
+    _initial, sensitive = split_initial_vs_change_sensitive(product, sensitive)
     if not sensitive or not is_maker_checker_enabled():
         return None
     reason = (

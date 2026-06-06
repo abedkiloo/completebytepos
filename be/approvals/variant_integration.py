@@ -13,6 +13,7 @@ from approvals.registry import (
     VARIANT_SENSITIVE_FIELDS,
     classify_variant_field_changes,
 )
+from approvals.reason_rules import split_initial_vs_change_sensitive
 from approvals.service import route_variant_sensitive_update, snapshot_model, submit_change
 
 
@@ -37,6 +38,9 @@ def queue_variant_sensitive_update(
     variant,
     sensitive: Dict[str, Any],
 ) -> Optional[PendingChange]:
+    if not sensitive:
+        return None
+    _initial, sensitive = split_initial_vs_change_sensitive(variant, sensitive)
     if not sensitive or not is_maker_checker_enabled():
         return None
     reason = (

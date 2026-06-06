@@ -885,7 +885,11 @@ const ProductForm = ({
           financialFieldsLocked: hideFinancialFields,
         }) ? (
           <div className="border-t px-4 py-3">
-            <ChangeReasonField value={changeReason} onChange={setChangeReason} />
+            <ChangeReasonField
+              value={changeReason}
+              onChange={setChangeReason}
+              hint="Required when changing an existing price, cost, stock level, or status — not when creating a product or setting a value for the first time."
+            />
           </div>
         ) : null}
 

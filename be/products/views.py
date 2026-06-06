@@ -171,6 +171,7 @@ class ProductVariantViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             queue_variant_sensitive_update,
             split_variant_payload,
         )
+        from approvals.reason_rules import split_initial_vs_change_sensitive
         from approvals.serializers import PendingChangeSerializer
         from approvals.permissions import is_maker_checker_enabled
 
@@ -180,8 +181,9 @@ class ProductVariantViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             validated,
             submitted_keys=submitted_keys,
         )
+        _initial, change_sensitive = split_initial_vs_change_sensitive(instance, sensitive)
         try:
-            pending = queue_variant_sensitive_update(request, instance, sensitive)
+            pending = queue_variant_sensitive_update(request, instance, change_sensitive)
         except ValidationError as exc:
             from rest_framework.exceptions import ValidationError as DRFValidationError
 
@@ -190,9 +192,9 @@ class ProductVariantViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             raise DRFValidationError(str(exc))
 
         if pending is not None:
-            for key in sensitive:
+            for key in change_sensitive:
                 serializer.validated_data.pop(key, None)
-        elif is_maker_checker_enabled() and sensitive:
+        elif is_maker_checker_enabled() and change_sensitive:
             from rest_framework.exceptions import ValidationError as DRFValidationError
 
             raise DRFValidationError(
@@ -461,6 +463,7 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
 
         from approvals.integration import queue_product_sensitive_update, split_product_payload
+        from approvals.reason_rules import split_initial_vs_change_sensitive
         from approvals.serializers import PendingChangeSerializer
 
         from approvals.permissions import is_maker_checker_enabled
@@ -471,8 +474,9 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             validated,
             submitted_keys=submitted_keys,
         )
+        _initial, change_sensitive = split_initial_vs_change_sensitive(instance, sensitive)
         try:
-            pending = queue_product_sensitive_update(request, instance, sensitive)
+            pending = queue_product_sensitive_update(request, instance, change_sensitive)
         except ValidationError as exc:
             from rest_framework.exceptions import ValidationError as DRFValidationError
 
@@ -481,9 +485,9 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             raise DRFValidationError(str(exc))
 
         if pending is not None:
-            for key in sensitive:
+            for key in change_sensitive:
                 serializer.validated_data.pop(key, None)
-        elif is_maker_checker_enabled() and sensitive:
+        elif is_maker_checker_enabled() and change_sensitive:
             from rest_framework.exceptions import ValidationError as DRFValidationError
 
             raise DRFValidationError(

@@ -372,3 +372,6 @@ cython_debug/
 # yarn.lock
 # poetry.lock
 # Pipfile.lock
+
+# Local deps for doc generation scripts
+.manual_deps/

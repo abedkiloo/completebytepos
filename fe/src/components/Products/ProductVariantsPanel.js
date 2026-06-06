@@ -183,7 +183,7 @@ export default function ProductVariantsPanel({ productId }) {
                     onChange={(v) =>
                       setReasons((prev) => ({ ...prev, [variant.id]: v }))
                     }
-                    hint="Required for variant price, stock, or status changes."
+                    hint="Required when changing an existing variant price, stock, or status — not for the first value on a new variant row."
                   />
                 </div>
               ) : null}
