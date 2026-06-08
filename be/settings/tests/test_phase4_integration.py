@@ -22,6 +22,13 @@ def _seed_products_settings():
         ('show_low_stock_badges', True),
         ('enable_bulk_operations', True),
         ('enable_csv_import_export', True),
+        ('allow_sales_catalog_access', True),
+        ('allow_sales_edit_catalog_details', True),
+        ('allow_sales_edit_pricing', False),
+        ('allow_sales_edit_cost', False),
+        ('allow_sales_edit_stock', False),
+        ('allow_manager_edit_pricing', True),
+        ('allow_manager_edit_cost', False),
     ):
         ModuleSetting.objects.update_or_create(
             module='products',

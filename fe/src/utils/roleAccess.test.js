@@ -5,6 +5,7 @@ import {
   canAccessRoute,
   isManagerOrAdminFromStorage,
 } from './roleAccess';
+import { cacheModuleSettings } from './moduleSettingsCache';
 import { cacheStoreSettings } from './storeSettingsCache';
 
 describe('roleAccess', () => {
@@ -79,6 +80,11 @@ describe('roleAccess', () => {
         profile: { role: 'cashier' },
       })
     ).toBe(PERSONA.SUPER_ADMIN);
+  });
+
+  test('sales can access daily notes when module allows sales access', () => {
+    cacheModuleSettings('daily_notes', { allow_sales_access: true });
+    expect(canAccessRoute(PERSONA.SALES, '/daily-notes')).toBe(true);
   });
 
   test('sales can access products when store setting allows catalog add', () => {

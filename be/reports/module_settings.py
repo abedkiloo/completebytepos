@@ -136,10 +136,12 @@ def apply_report_response_flags(data: dict) -> dict:
         data.pop('profit_margin', None)
         data.pop('total_purchase', None)
         data.pop('total_purchases', None)
+        data.pop('total_expenses', None)
         if isinstance(data.get('growth'), dict):
             growth = dict(data['growth'])
             growth.pop('profit', None)
             growth.pop('purchase', None)
+            growth.pop('expenses', None)
             data['growth'] = growth
         if isinstance(data.get('monthly_breakdown'), list):
             data['monthly_breakdown'] = [

@@ -55,6 +55,25 @@ describe('resolveMediaUrl', () => {
     process.env.NODE_ENV = prev;
   });
 
+  test('leaves non-media absolute URLs unchanged', () => {
+    expect(resolveMediaUrl('https://cdn.example.com/logo.png')).toBe(
+      'https://cdn.example.com/logo.png'
+    );
+  });
+
+  test('rewrites dev media without standard ports to same-origin path', () => {
+    const prev = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'development';
+    Object.defineProperty(window, 'location', {
+      value: { hostname: 'localhost', port: '3000', protocol: 'http:' },
+      writable: true,
+    });
+    expect(
+      resolveMediaUrl('http://shop.example.com/media/products/x.jpg')
+    ).toBe('/media/products/x.jpg');
+    process.env.NODE_ENV = prev;
+  });
+
   test('aligns localhost vs 127.0.0.1 for direct :8000 in dev', () => {
     const prev = process.env.NODE_ENV;
     process.env.NODE_ENV = 'development';

@@ -1,18 +1,51 @@
 """
-Seed a minimal catalog: one category and three demo products with stock.
+Optional demo catalog: one category and three sample products.
 
-Idempotent — safe to run on every Docker start.
+Not run automatically — use only for local demos:
+  python manage.py seed_demo_catalog
 """
 from decimal import Decimal
 
 from django.core.management.base import BaseCommand
 
-from accounts.role_definitions import DEMO_PRODUCTS
 from products.models import Category, Product
+
+DEMO_PRODUCTS = [
+    {
+        'name': 'Bottled Water 500ml',
+        'sku': 'DEMO-WATER-500',
+        'barcode': '8901000000001',
+        'mrp': '50.00',
+        'price': '40.00',
+        'cost': '25.00',
+        'stock': 100,
+        'unit': 'bottle',
+    },
+    {
+        'name': 'Bread Loaf White',
+        'sku': 'DEMO-BREAD-WHT',
+        'barcode': '8901000000002',
+        'mrp': '80.00',
+        'price': '70.00',
+        'cost': '45.00',
+        'stock': 50,
+        'unit': 'piece',
+    },
+    {
+        'name': 'Cooking Oil 1L',
+        'sku': 'DEMO-OIL-1L',
+        'barcode': '8901000000003',
+        'mrp': '350.00',
+        'price': '320.00',
+        'cost': '260.00',
+        'stock': 30,
+        'unit': 'bottle',
+    },
+]
 
 
 class Command(BaseCommand):
-    help = 'Seed 1 category and 3 demo products (no bulk test data)'
+    help = 'Optional: seed 1 category and 3 demo products (not run on install)'
 
     def handle(self, *args, **options):
         category, _ = Category.objects.get_or_create(

@@ -258,6 +258,15 @@ export const suppliersAPI = {
   products: (id) => api.get(`/suppliers/suppliers/${id}/products/`),
 };
 
+export const dailyNotesAPI = {
+  list: (params) => api.get('/daily-notes/notes/', { params }),
+  get: (id) => api.get(`/daily-notes/notes/${id}/`),
+  create: (data) => api.post('/daily-notes/notes/', data),
+  update: (id, data) => api.put(`/daily-notes/notes/${id}/`, data),
+  delete: (id) => api.delete(`/daily-notes/notes/${id}/`),
+  recentDates: () => api.get('/daily-notes/notes/recent-dates/'),
+};
+
 export const employeesAPI = {
   list: (params) => api.get('/employees/employees/', { params }),
   get: (id) => api.get(`/employees/employees/${id}/`),

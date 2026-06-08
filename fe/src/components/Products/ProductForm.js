@@ -22,12 +22,21 @@ import {
   PENDING_APPROVAL_MESSAGE,
 } from '../../utils/makerChecker';
 
+const defaultFieldAccess = (catalogOnly, financialFieldsLocked) => ({
+  catalog: true,
+  pricing: !catalogOnly && !financialFieldsLocked,
+  cost: !catalogOnly && !financialFieldsLocked,
+  stock: !catalogOnly && !financialFieldsLocked,
+  catalogOnly,
+});
+
 const ProductForm = ({
   product,
   categories = [],
   onClose,
   onSave,
   catalogOnly = false,
+  fieldAccess: fieldAccessProp = null,
   financialFieldsLocked = false,
   showProductStatus = true,
   showCost = true,
@@ -38,7 +47,13 @@ const ProductForm = ({
   const { settings: storeSettings } = useStoreSettings();
   const { options: unitOptions } = useProductUnits();
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
-  const hideFinancialFields = catalogOnly || financialFieldsLocked;
+  const fieldAccess =
+    fieldAccessProp ?? defaultFieldAccess(catalogOnly, financialFieldsLocked);
+  const showPricingFields = fieldAccess.pricing;
+  const showCostField = fieldAccess.cost && showCost;
+  const showStockFields = fieldAccess.stock;
+  const makerCheckerFinancialLocked =
+    !fieldAccess.pricing && !fieldAccess.cost && !fieldAccess.stock;
   const [changeReason, setChangeReason] = useState('');
   const [formData, setFormData] = useState({
     name: '',
@@ -324,7 +339,7 @@ const ProductForm = ({
       newErrors.name = 'Product name is required';
     }
     
-    if (!catalogOnly) {
+    if (showPricingFields) {
       if (!formData.selling_price || parseFloat(formData.selling_price) < 0) {
         newErrors.selling_price = 'Selling price is required';
       }
@@ -342,16 +357,16 @@ const ProductForm = ({
         newErrors.mrp = 'MRP should be at least the selling price';
       }
 
-      if (showCost && formData.cost && parseFloat(formData.cost) < 0) {
-        newErrors.cost = 'Cost must be positive';
-      }
-
       if (
-        showCost &&
+        showCostField &&
         parseFloat(formData.selling_price) < parseFloat(formData.cost || 0)
       ) {
         newErrors.selling_price = 'Selling price should be greater than or equal to cost';
       }
+    }
+
+    if (showCostField && formData.cost && parseFloat(formData.cost) < 0) {
+      newErrors.cost = 'Cost must be positive';
     }
     
     setErrors(newErrors);
@@ -368,10 +383,30 @@ const ProductForm = ({
     setLoading(true);
     try {
       const payload = { ...formData };
-      if (catalogOnly) {
-        payload.selling_price = 0;
-        payload.mrp = 0;
-        payload.cost = 0;
+      if (!fieldAccess.pricing) {
+        delete payload.selling_price;
+        delete payload.mrp;
+        delete payload.tax_rate;
+        delete payload.is_taxable;
+        if (!product) {
+          payload.selling_price = 0;
+          payload.mrp = 0;
+        }
+      }
+      if (!fieldAccess.cost) {
+        delete payload.cost;
+        if (!product) {
+          payload.cost = 0;
+        }
+      }
+      if (!fieldAccess.stock) {
+        delete payload.stock_quantity;
+        delete payload.low_stock_threshold;
+        delete payload.reorder_quantity;
+        delete payload.track_stock;
+        if (!product) {
+          payload.stock_quantity = 0;
+        }
       }
       if (!variantsEnabled) {
         payload.has_variants = false;
@@ -401,7 +436,7 @@ const ProductForm = ({
       }
 
       const needsReason = makerCheckerOn && productEditNeedsReason(payload, product, {
-        financialFieldsLocked: hideFinancialFields,
+        financialFieldsLocked: makerCheckerFinancialLocked,
       });
       if (needsReason) {
         if (!changeReason.trim()) {
@@ -653,7 +688,7 @@ const ProductForm = ({
             </>
           )}
 
-          {!hideFinancialFields && (
+          {showPricingFields && (
           <div className="form-row">
             {showMrp && (
             <div className="form-group">
@@ -690,7 +725,7 @@ const ProductForm = ({
           </div>
           )}
 
-          {!hideFinancialFields && showCost && (
+          {showCostField && (
           <div className="form-row">
             <div className="form-group">
               <label>Cost (KES)</label>
@@ -707,7 +742,7 @@ const ProductForm = ({
           </div>
           )}
 
-          {!hideFinancialFields && (
+          {showStockFields && (
           <div className="form-row">
             <div className="form-group">
               <label>Stock Quantity</label>
@@ -802,7 +837,7 @@ const ProductForm = ({
             </div>
           </div>
 
-          {!hideFinancialFields && (
+          {showPricingFields && (
           <div className="form-row">
             <div className="form-group">
               <label>Tax Rate (%)</label>
@@ -845,6 +880,7 @@ const ProductForm = ({
           </div>
 
           <div className="form-checkboxes">
+            {showStockFields && (
             <label>
               <input
                 type="checkbox"
@@ -854,7 +890,8 @@ const ProductForm = ({
               />
               Track Stock
             </label>
-            {!hideFinancialFields && (
+            )}
+            {showPricingFields && (
             <label>
               <input
                 type="checkbox"
@@ -882,7 +919,7 @@ const ProductForm = ({
         </div>
         {makerCheckerOn &&
         productEditNeedsReason(formData, product, {
-          financialFieldsLocked: hideFinancialFields,
+          financialFieldsLocked: makerCheckerFinancialLocked,
         }) ? (
           <div className="border-t px-4 py-3">
             <ChangeReasonField

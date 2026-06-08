@@ -75,6 +75,8 @@
       "src/utils/posCartRecovery.js",
       "src/utils/billingCartLine.js",
       "src/utils/billingPartialPayment.js",
+      "src/utils/dailyNotesAccess.js",
+      "src/utils/productAccess.js",
       "src/hooks/useStoreSettings.js",
       "src/hooks/useProductVariantsEnabled.js"
     ],
@@ -111,6 +113,18 @@
         "functions": 85,
         "lines": 95,
         "statements": 93
+      },
+      "./src/utils/dailyNotesAccess.js": {
+        "branches": 98,
+        "functions": 98,
+        "lines": 98,
+        "statements": 98
+      },
+      "./src/utils/productAccess.js": {
+        "branches": 98,
+        "functions": 98,
+        "lines": 98,
+        "statements": 98
       }
     }
   },

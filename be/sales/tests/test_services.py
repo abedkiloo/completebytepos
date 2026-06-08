@@ -13,6 +13,7 @@ from sales.services import (
 from settings.models import Tenant, Branch
 from django.contrib.auth.models import User
 from django.utils import timezone
+from accounts.models import UserProfile
 
 
 class CustomerServiceTestCase(TestCase):
@@ -156,6 +157,7 @@ class SaleServiceTestCase(TestCase):
     def setUp(self):
         self.service = SaleService()
         self.user = User.objects.create_user(username='testuser', password='testpass')
+        UserProfile.objects.create(user=self.user, role='manager')
         self.tenant = Tenant.objects.create(
             name='Test Tenant', code='TEST', owner=self.user, created_by=self.user
         )

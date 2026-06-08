@@ -12,8 +12,8 @@ Commands (Docker runs these on start):
 
 ```bash
 python manage.py init_permissions
-python manage.py create_users          # includes seed_demo_catalog
-python manage.py seed_demo_catalog     # 3 SKUs only
+python manage.py create_users          # bootstrap users only (no products)
+python manage.py seed_demo_catalog     # optional: 3 demo SKUs for local testing
 ```
 
 **Do not** run `populate_test_data` in production — it creates hundreds of users and thousands of products. Use it only in dev when you explicitly need load testing:
@@ -22,15 +22,9 @@ python manage.py seed_demo_catalog     # 3 SKUs only
 python manage.py populate_test_data --users 5 --products 50
 ```
 
-## Demo catalog (3 products)
+## Demo catalog (optional)
 
-| SKU | Product | Purpose |
-|-----|---------|---------|
-| DEMO-WATER-500 | Bottled Water 500ml | Low-ticket, high qty |
-| DEMO-BREAD-WHT | Bread Loaf White | Per-piece retail |
-| DEMO-OIL-1L | Cooking Oil 1L | Higher value item |
-
-Replace these via **Products** once you know your real assortment.
+Fresh installs do **not** seed products or categories. Add your assortment under **Products** / **Categories**, or run `python manage.py seed_demo_catalog` locally for three sample SKUs.
 
 ## POS UX principles (applied to dashboard)
 

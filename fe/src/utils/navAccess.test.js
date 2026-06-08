@@ -7,6 +7,7 @@ import {
   getPersonaFromStorage,
   VISIBLE_SECTIONS,
 } from './navAccess';
+import { cacheModuleSettings } from './moduleSettingsCache';
 import { cacheStoreSettings } from './storeSettingsCache';
 
 const ctx = (persona, overrides = {}) => ({
@@ -170,6 +171,15 @@ describe('navAccess', () => {
 
   test('sales hides inventory nav when catalog add disabled', () => {
     cacheStoreSettings({ allow_sales_add_products: false });
+    const salesCtx = ctx(PERSONA.SALES);
+    expect(
+      canSeeNavItem({ to: '/products', label: 'Products' }, 'inventory', salesCtx)
+    ).toBe(false);
+  });
+
+  test('sales hides products nav when module catalog access is off', () => {
+    cacheStoreSettings({ allow_sales_add_products: true });
+    cacheModuleSettings('products', { allow_sales_catalog_access: false });
     const salesCtx = ctx(PERSONA.SALES);
     expect(
       canSeeNavItem({ to: '/products', label: 'Products' }, 'inventory', salesCtx)

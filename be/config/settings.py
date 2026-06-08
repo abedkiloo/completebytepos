@@ -63,6 +63,7 @@ INSTALLED_APPS = [
     'transfers',
     'suppliers',
     'employees',
+    'daily_notes',
     'settings',
     'approvals',
 ]

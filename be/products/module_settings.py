@@ -33,6 +33,10 @@ def products_csv_import_export_enabled() -> bool:
     return _enabled('enable_csv_import_export', True)
 
 
+def products_allow_sales_catalog_access() -> bool:
+    return _enabled('allow_sales_catalog_access', True)
+
+
 def apply_product_list_representation_flags(data: dict) -> dict:
     """Strip fields hidden by module settings (read serializers)."""
     from products.status_rules import products_show_status_enabled

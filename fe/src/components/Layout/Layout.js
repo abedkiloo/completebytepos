@@ -36,6 +36,7 @@ import {
   SlidersHorizontal,
   UserCog,
   Palette,
+  NotebookPen,
 } from 'lucide-react';
 
 import { modulesAPI, storeSettingsAPI } from '../../services/api';
@@ -79,6 +80,13 @@ const NAV_SECTIONS = [
     label: 'Main',
     items: [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+      {
+        to: '/daily-notes',
+        label: 'Daily notes',
+        icon: NotebookPen,
+        module: 'daily_notes',
+        permission: ['daily_notes', 'view'],
+      },
     ],
   },
   {

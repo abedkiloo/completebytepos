@@ -74,7 +74,7 @@ class ExpenseMakerCheckerAPITests(ManagerAPITestCase):
         expense_id = resp.data['id']
 
         self_approve = self.client.post(f'/api/expenses/{expense_id}/approve/')
-        self.assertEqual(self_approve.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(self_approve.status_code, status.HTTP_403_FORBIDDEN)
 
         sync_default_roles()
         checker = User.objects.create_user('exp_checker', password='x', is_staff=True)
@@ -256,7 +256,7 @@ class IncomeMakerCheckerAPITests(ManagerAPITestCase):
         )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED, resp.data)
         again = self.client.post(f'/api/income/{resp.data["id"]}/approve/')
-        self.assertEqual(again.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(again.status_code, status.HTTP_403_FORBIDDEN)
 
 
 class TransferMakerCheckerAPITests(ManagerAPITestCase):

@@ -2,6 +2,8 @@ import {
   reportsEnableSalesReports,
   reportsShowDiscount,
   reportsShowCostAndProfit,
+  userMayViewDashboardProfit,
+  userMayViewDashboardRevenue,
 } from './reportDisplay';
 
 describe('reportDisplay', () => {
@@ -15,5 +17,18 @@ describe('reportDisplay', () => {
 
   test('profit metrics hidden when flag off', () => {
     expect(reportsShowCostAndProfit({ show_cost_and_profit: false })).toBe(false);
+  });
+
+  test('dashboard revenue requires reports.view', () => {
+    const perms = [{ module: 'reports', action: 'view' }];
+    expect(userMayViewDashboardRevenue(perms)).toBe(true);
+    expect(userMayViewDashboardRevenue([])).toBe(false);
+  });
+
+  test('dashboard profit requires reports.view and store toggle', () => {
+    const perms = [{ module: 'reports', action: 'view' }];
+    expect(userMayViewDashboardProfit(perms, {})).toBe(true);
+    expect(userMayViewDashboardProfit(perms, { show_cost_and_profit: false })).toBe(false);
+    expect(userMayViewDashboardProfit([], {})).toBe(false);
   });
 });

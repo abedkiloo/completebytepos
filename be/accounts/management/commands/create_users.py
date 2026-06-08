@@ -1,5 +1,5 @@
 """
-Create exactly three bootstrap users and optionally seed a minimal demo catalog.
+Create exactly three bootstrap users (no product/category seeding).
 
 Users (default passwords):
   - admin / admin123     → Super Admin (all rights)
@@ -22,13 +22,6 @@ from accounts.role_definitions import (
 
 class Command(BaseCommand):
     help = 'Create three bootstrap users (Super Admin, Manager, Sales Personnel)'
-
-    def add_arguments(self, parser):
-        parser.add_argument(
-            '--no-seed-products',
-            action='store_true',
-            help='Skip seeding the 3 demo products',
-        )
 
     def handle(self, *args, **options):
         ensure_permissions()
@@ -77,10 +70,6 @@ class Command(BaseCommand):
                 superuser = user
 
             summary_lines.append(f'   {spec["label"]}: {spec["username"]} / {spec["password"]}')
-
-        if not options['no_seed_products']:
-            from django.core.management import call_command
-            call_command('seed_demo_catalog', verbosity=1)
 
         self.stdout.write(self.style.SUCCESS(
             '\n✅ Bootstrap users ready!\n' + '\n'.join(summary_lines)

@@ -3,7 +3,13 @@
  * Data comes from GET /api/accounts/auth/me/ (stored after login).
  */
 import { normalizeModuleSettings, isRichModulePayload } from './moduleCache';
+import { readCachedModuleSettings } from './moduleSettingsCache';
 import { readCachedStoreSettings } from './storeSettingsCache';
+import {
+  salesCatalogAccessEnabled,
+  userMayEditAnyProductFinancialFieldFromStorage,
+} from './productAccess';
+import { salesDailyNotesAccessEnabled } from './dailyNotesAccess';
 
 export const PERSONA = {
   SUPER_ADMIN: 'super_admin',
@@ -32,6 +38,7 @@ export const APP_ROUTE_PREFIXES = [
   '/customers',
   '/suppliers',
   '/employees',
+  '/daily-notes',
   '/normal-sale',
   '/module-settings',
   '/system-settings',
@@ -100,11 +107,14 @@ export function getPersonaFromStorage() {
   });
 }
 
-/** Super admin or manager — not front-line sales/cashier. */
-/** Managers / super admins may edit prices, stock levels, discounts, and audit-sensitive data. */
+/** May edit at least one product pricing, cost, or stock field (module settings apply). */
 export function userMayEditFinancialFieldsFromStorage() {
   const persona = getPersonaFromStorage();
-  return persona === PERSONA.SUPER_ADMIN || persona === PERSONA.MANAGER;
+  return userMayEditAnyProductFinancialFieldFromStorage(
+    persona,
+    readCachedModuleSettings('products'),
+    readCachedStoreSettings()
+  );
 }
 
 export function isManagerOrAdminFromStorage() {
@@ -134,6 +144,7 @@ export const ROUTE_MODULE_MAP = {
   '/inventory': 'stock',
   '/suppliers': 'suppliers',
   '/employees': 'employees',
+  '/daily-notes': 'daily_notes',
   '/pos': 'sales',
   '/pos/billing': 'sales',
   '/normal-sale': 'sales',
@@ -154,10 +165,15 @@ export const ROUTE_MODULE_MAP = {
 function salesRoutePrefixes() {
   const base = ALLOWED_ROUTE_PREFIXES[PERSONA.SALES];
   const store = readCachedStoreSettings();
-  if (store.allow_sales_add_products) {
-    return [...base, '/products', '/categories', '/product-attributes'];
+  const productsSettings = readCachedModuleSettings('products');
+  let routes = [...base];
+  if (salesCatalogAccessEnabled(productsSettings, store)) {
+    routes = [...routes, '/products', '/categories', '/product-attributes'];
   }
-  return base;
+  if (salesDailyNotesAccessEnabled(readCachedModuleSettings('daily_notes'))) {
+    routes = [...routes, '/daily-notes'];
+  }
+  return routes;
 }
 
 export function canAccessRoute(persona, pathname, options = {}) {

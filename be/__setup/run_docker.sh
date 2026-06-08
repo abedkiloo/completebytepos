@@ -228,9 +228,9 @@ show_status() {
     if curl -s http://localhost:8000/api/accounts/auth/me/ > /dev/null 2>&1; then
         print_success "Backend is responding"
         
-        # Bootstrap uses create_users + seed_demo_catalog (3 users, 3 products).
+        # Bootstrap uses create_users (3 users only; no demo catalog).
         # Heavy populate_test_data is opt-in only — see docs/POS_UX_ROLES_AND_TESTING.md
-        print_info "Bootstrap: admin/manager/sales + 3 demo products (via create_users on container start)"
+        print_info "Bootstrap: admin/manager/sales (via create_users on container start)"
     else
         print_warning "Backend may still be starting. Check logs if issues persist."
     fi

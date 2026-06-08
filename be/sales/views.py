@@ -212,24 +212,28 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='dashboard-summary')
     def dashboard_summary(self, request):
-        """Lightweight today/month totals for the home screen (sales personnel)."""
+        """Lightweight today totals for the home screen; month only with reports.view."""
+        from accounts.permissions import _has_permission
+
         today = timezone.now().date()
         start_of_day = timezone.make_aware(datetime.combine(today, datetime.min.time()))
         start_of_month = timezone.make_aware(datetime(today.year, today.month, 1))
 
         base = self.sale_service.build_queryset({}, request=request).filter(status='completed')
         today_sales = base.filter(created_at__gte=start_of_day)
-        month_sales = base.filter(created_at__gte=start_of_month)
 
-        return Response({
+        payload = {
             'today': {
                 'sales_count': today_sales.count(),
                 'total': float(today_sales.aggregate(total=Sum('total'))['total'] or 0),
             },
-            'month': {
+        }
+        if _has_permission(request, 'reports', 'view'):
+            month_sales = base.filter(created_at__gte=start_of_month)
+            payload['month'] = {
                 'total': float(month_sales.aggregate(total=Sum('total'))['total'] or 0),
-            },
-        })
+            }
+        return Response(payload)
 
     def _resolve_branch(self, request, branch_id=None):
         try:

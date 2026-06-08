@@ -103,6 +103,11 @@ PERMISSIONS_DATA = [
     ('modules', 'view', 'View module settings'),
     ('modules', 'update', 'Update module settings'),
     ('modules', 'manage', 'Manage module settings'),
+    ('daily_notes', 'view', 'View daily notes'),
+    ('daily_notes', 'create', 'Create daily notes'),
+    ('daily_notes', 'update', 'Update daily notes'),
+    ('daily_notes', 'delete', 'Delete daily notes'),
+    ('daily_notes', 'view_all', 'View all staff daily notes'),
 ]
 
 # profile_role maps to UserProfile.role (legacy enum).
@@ -136,39 +141,6 @@ BOOTSTRAP_USERS = [
         'is_superuser': False,
         'is_staff': False,
         'label': 'Sales Personnel',
-    },
-]
-
-DEMO_PRODUCTS = [
-    {
-        'name': 'Bottled Water 500ml',
-        'sku': 'DEMO-WATER-500',
-        'barcode': '8901000000001',
-        'mrp': '50.00',
-        'price': '40.00',
-        'cost': '25.00',
-        'stock': 100,
-        'unit': 'bottle',
-    },
-    {
-        'name': 'Bread Loaf White',
-        'sku': 'DEMO-BREAD-WHT',
-        'barcode': '8901000000002',
-        'mrp': '80.00',
-        'price': '70.00',
-        'cost': '45.00',
-        'stock': 50,
-        'unit': 'piece',
-    },
-    {
-        'name': 'Cooking Oil 1L',
-        'sku': 'DEMO-OIL-1L',
-        'barcode': '8901000000003',
-        'mrp': '350.00',
-        'price': '320.00',
-        'cost': '260.00',
-        'stock': 30,
-        'unit': 'bottle',
     },
 ]
 
@@ -236,7 +208,7 @@ def _manager_queryset():
                 'products', 'categories', 'suppliers', 'inventory',
                 'sales', 'pos', 'barcodes', 'reports', 'expenses',
                 'income', 'customers', 'invoicing', 'bank_accounts',
-                'money_transfer', 'accounting',
+                'money_transfer', 'accounting', 'daily_notes',
             ],
         )
         .exclude(action='delete')
@@ -251,7 +223,7 @@ def _sales_queryset():
     return Permission.objects.filter(
         module__in=[
             'products', 'categories', 'sales', 'pos', 'barcodes',
-            'customers', 'invoicing',
+            'customers', 'invoicing', 'daily_notes',
         ],
         action__in=['view', 'create', 'update', 'import'],
     )

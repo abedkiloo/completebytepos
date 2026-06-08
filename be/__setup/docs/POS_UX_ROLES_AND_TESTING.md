@@ -12,8 +12,8 @@ Commands (Docker runs these on start):
 
 ```bash
 python manage.py init_permissions
-python manage.py create_users          # includes seed_demo_catalog
-python manage.py seed_demo_catalog     # 3 SKUs only
+python manage.py create_users          # bootstrap users only (no products)
+python manage.py seed_demo_catalog     # optional: 3 demo SKUs for local testing
 ```
 
 **Do not** run `populate_test_data` in production — it creates hundreds of users and thousands of products. Use it only in dev when you explicitly need load testing:

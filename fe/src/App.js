@@ -36,6 +36,7 @@ const Roles = lazy(() => import('./components/Roles/Roles'));
 const Customers = lazy(() => import('./components/Customers/Customers'));
 const Suppliers = lazy(() => import('./components/Suppliers/Suppliers'));
 const Employees = lazy(() => import('./components/Employees/Employees'));
+const DailyNotes = lazy(() => import('./components/DailyNotes/DailyNotes'));
 const NormalSale = lazy(() => import('./components/NormalSale/NormalSale'));
 const ModuleSettings = lazy(() => import('./components/ModuleSettings/ModuleSettings'));
 const Invoices = lazy(() => import('./components/Invoices/Invoices'));
@@ -163,6 +164,7 @@ function App() {
                 <Route path="/customers" element={<Customers />} />
                 <Route path="/suppliers" element={<Suppliers />} />
                 <Route path="/employees" element={<Employees />} />
+                <Route path="/daily-notes" element={<DailyNotes />} />
                 <Route path="/normal-sale" element={<NormalSale />} />
                 <Route path="/module-settings" element={<ModuleSettings />} />
                 <Route path="/system-settings" element={<SystemSettings />} />

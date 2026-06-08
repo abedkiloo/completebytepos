@@ -21,6 +21,7 @@ import {
   financialSubmitSuccessMessage,
   financialRecordNeedsReason,
   getCurrentUserId,
+  getPermissionsFromStorage,
   userMayApproveModule,
 } from './makerChecker';
 
@@ -84,6 +85,16 @@ describe('makerChecker', () => {
     expect(
       productEditNeedsReason({ stock_quantity: 10 }, { stock_quantity: 0 })
     ).toBe(false);
+    expect(
+      productEditNeedsReason({ selling_price: '90' }, { price: '80' })
+    ).toBe(true);
+    expect(
+      productEditNeedsReason({ track_stock: false }, { track_stock: true })
+    ).toBe(true);
+    expect(
+      productEditNeedsReason({ unit: 'kg' }, { unit: 'piece' })
+    ).toBe(true);
+    expect(variantEditNeedsReason(null, { price: '1' })).toBe(false);
   });
 
   it('builds pending approval labels', () => {
@@ -234,5 +245,23 @@ describe('makerChecker', () => {
   it('getCurrentUserId returns null on invalid storage', () => {
     localStorage.setItem('user', 'not-json');
     expect(getCurrentUserId()).toBeNull();
+  });
+
+  it('getPermissionsFromStorage returns empty on invalid JSON', () => {
+    localStorage.setItem('permissions', 'not-json');
+    expect(getPermissionsFromStorage()).toEqual([]);
+  });
+
+  it('allows financial approve when maker or checker id is unknown', () => {
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([{ name: 'expenses.approve', module: 'expenses', action: 'approve' }]),
+    );
+    expect(
+      canApproveFinancialRecord({}, { maker_checker_enabled: true }, null, 'expenses')
+    ).toBe(true);
+    expect(
+      canApproveFinancialRecord({ created_by: null }, { maker_checker_enabled: true }, 5, 'expenses')
+    ).toBe(true);
   });
 });

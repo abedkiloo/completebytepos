@@ -49,6 +49,17 @@
     {
       "name": "bankaccounts",
       "include": ["bankaccounts/services.py"]
+    },
+    {
+      "name": "daily_notes",
+      "include": [
+        "daily_notes/access.py",
+        "daily_notes/module_settings.py",
+        "daily_notes/services.py",
+        "daily_notes/serializers.py",
+        "daily_notes/views.py"
+      ],
+      "minimum_percent": 98
     }
   ],
   "ramp_up": [

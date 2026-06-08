@@ -51,7 +51,8 @@ import { cn } from '../../lib/cn';
 import { PageShell, PageHeader } from '../page';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { getPersonaFromStorage } from '../../utils/navAccess';
-import { PERSONA, userMayEditFinancialFieldsFromStorage } from '../../utils/roleAccess';
+import { PERSONA } from '../../utils/roleAccess';
+import { resolveProductFieldAccess } from '../../utils/productAccess';
 import {
   SELLING_PRICE_CLASS,
   showProductStatus,
@@ -76,12 +77,14 @@ const Products = () => {
   const { settings: productModuleSettings } = useModuleSettings('products');
   const { settings: inventoryModuleSettings } = useModuleSettings('inventory');
   const persona = getPersonaFromStorage();
-  const financialFieldsLocked = !userMayEditFinancialFieldsFromStorage();
-  const catalogOnly =
-    financialFieldsLocked &&
-    storeSettings.allow_sales_add_products &&
-    storeSettings.sales_catalog_skip_pricing &&
-    persona === PERSONA.SALES;
+  const fieldAccess = resolveProductFieldAccess(
+    persona,
+    productModuleSettings,
+    storeSettings
+  );
+  const catalogOnly = fieldAccess.catalogOnly;
+  const financialFieldsLocked =
+    !fieldAccess.pricing && !fieldAccess.cost && !fieldAccess.stock;
   const canAdjustStock =
     !catalogOnly && inventoryAdjustmentsEnabled(inventoryModuleSettings);
   const showStatus = showProductStatus(productModuleSettings, storeSettings);
@@ -676,6 +679,7 @@ const Products = () => {
           product={editingProduct}
           categories={categories}
           catalogOnly={catalogOnly}
+          fieldAccess={fieldAccess}
           financialFieldsLocked={financialFieldsLocked}
           showProductStatus={showStatus}
           showCost={showCost}

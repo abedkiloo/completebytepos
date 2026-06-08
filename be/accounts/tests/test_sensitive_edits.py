@@ -77,6 +77,14 @@ class SensitiveEditsPolicyTests(TestCase):
             override=Decimal('99'),
         )
 
+    def test_manager_update_strips_cost_but_keeps_pricing(self):
+        data = {'cost': Decimal('99'), 'price': Decimal('150')}
+        strip_sensitive_product_fields(
+            data, user=self.manager, instance=self.product, is_create=False
+        )
+        self.assertNotIn('cost', data)
+        self.assertIn('price', data)
+
     def test_sales_holding_tax_discount_clamped(self):
         tax, disc = clamp_holding_financial_adjustments(
             self.sales, Decimal('10'), Decimal('5')

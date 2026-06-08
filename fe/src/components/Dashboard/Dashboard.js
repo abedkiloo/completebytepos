@@ -27,7 +27,8 @@ import {
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import {
   reportsEnableDashboardSummary,
-  reportsShowCostAndProfit,
+  userMayViewDashboardProfit,
+  userMayViewDashboardRevenue,
 } from '../../utils/reportDisplay';
 import {
   getStoredAuth,
@@ -67,7 +68,9 @@ const Dashboard = () => {
   const [me, setMe] = useState(null);
   const { settings: reportSettings } = useModuleSettings('reports');
   const dashboardReportsEnabled = reportsEnableDashboardSummary(reportSettings);
-  const showProfitMetrics = reportsShowCostAndProfit(reportSettings);
+  const { permissions } = getStoredAuth();
+  const canViewMonthRevenue = userMayViewDashboardRevenue(permissions);
+  const canViewProfit = userMayViewDashboardProfit(permissions, reportSettings);
 
   useEffect(() => {
     const load = async () => {
@@ -114,47 +117,50 @@ const Dashboard = () => {
     overall: { customers: 0, orders: 0 },
   };
 
-  const kpis =
-    persona === 'sales'
-      ? [
-          {
-            label: "Today's sales",
-            value: formatCurrency(data.today?.total || 0),
-            hint: `${data.today?.sales_count || 0} orders`,
-          },
-          {
-            label: 'This month',
-            value: formatCurrency(data.month?.total || 0),
-            hint: 'Completed sales',
-          },
-        ]
-      : [
-          {
-            label: "Today's sales",
-            value: formatCurrency(data.today?.total || 0),
-            hint: `${data.today?.sales_count || 0} orders today`,
-          },
-          {
-            label: 'Month revenue',
-            value: formatCurrency(data.month?.total || data.total_sales || 0),
-            hint: 'Completed sales',
-          },
-          ...(showProfitMetrics
-            ? [
-                {
-                  label: 'Profit (est.)',
-                  value: formatCurrency(data.profit || 0),
-                  hint: 'From dashboard report',
-                },
-              ]
-            : []),
-          {
-            label: 'Low stock SKUs',
-            value: formatNumber(data.low_stock_count || lowStockProducts.length),
-            hint: 'Needs attention',
-            alert: (data.low_stock_count || lowStockProducts.length) > 0,
-          },
-        ];
+  const kpis = useMemo(() => {
+    const items = [
+      {
+        label: "Today's sales",
+        value: formatCurrency(data.today?.total || 0),
+        hint: `${data.today?.sales_count || 0} order${data.today?.sales_count === 1 ? '' : 's'}${
+          persona !== 'sales' ? ' today' : ''
+        }`,
+      },
+    ];
+
+    if (canViewMonthRevenue) {
+      items.push({
+        label: persona === 'sales' ? 'This month' : 'Month revenue',
+        value: formatCurrency(data.month?.total || data.total_sales || 0),
+        hint: 'Completed sales',
+      });
+    }
+
+    if (canViewProfit) {
+      items.push({
+        label: 'Profit (est.)',
+        value: formatCurrency(data.profit || 0),
+        hint: 'From dashboard report',
+      });
+    }
+
+    if (persona !== 'sales') {
+      items.push({
+        label: 'Low stock SKUs',
+        value: formatNumber(data.low_stock_count || lowStockProducts.length),
+        hint: 'Needs attention',
+        alert: (data.low_stock_count || lowStockProducts.length) > 0,
+      });
+    }
+
+    return items;
+  }, [
+    persona,
+    data,
+    canViewMonthRevenue,
+    canViewProfit,
+    lowStockProducts.length,
+  ]);
 
   const actions = useMemo(() => {
     const base = QUICK_ACTIONS[persona] || QUICK_ACTIONS.sales;

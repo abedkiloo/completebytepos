@@ -20,20 +20,10 @@ INVENTORY_REPORT_FIELDS = (
 
 
 def user_may_edit_financial_fields(user) -> bool:
-    """Managers and super admins may edit pricing, costs, and stock quantities."""
-    if not user or not getattr(user, 'is_authenticated', False):
-        return False
-    if user.is_superuser or user.is_staff:
-        return True
-    profile = getattr(user, 'profile', None)
-    if profile is None:
-        return False
-    if profile.role in ('super_admin', 'manager'):
-        return True
-    custom = getattr(profile, 'custom_role', None)
-    if custom and custom.name in ('Super Admin', 'Manager'):
-        return True
-    return False
+    """True when the user may edit at least one pricing, cost, or stock field."""
+    from products.catalog_access import user_may_edit_any_product_financial_field
+
+    return user_may_edit_any_product_financial_field(user)
 
 
 def user_may_view_audit_log(user) -> bool:
@@ -48,32 +38,25 @@ def strip_sensitive_product_fields(
     instance=None,
     is_create: bool = True,
 ) -> Dict[str, Any]:
-    """Remove pricing and inventory fields sales staff must not write."""
-    if user_may_edit_financial_fields(user):
-        return data
+    """Remove product fields the user is not permitted to write (per module settings)."""
+    from products.catalog_access import strip_product_fields_by_access
 
-    for key in PRICING_FIELDS:
-        data.pop(key, None)
-
-    if is_create:
-        data['price'] = Decimal('0')
-        data['mrp'] = Decimal('0')
-        data['cost'] = Decimal('0')
-    else:
-        for key in INVENTORY_REPORT_FIELDS:
-            data.pop(key, None)
-
-    return data
+    return strip_product_fields_by_access(
+        data, user=user, instance=instance, is_create=is_create
+    )
 
 
 def sales_catalog_mode_active(user) -> bool:
-    """True when store flags ask the UI to hide pricing for sales (optional layer)."""
-    from settings.models import StoreSettings
+    """True when the user edits catalog details only (no pricing/cost/stock fields)."""
+    from products.catalog_access import (
+        products_sales_catalog_access_enabled,
+        user_may_edit_catalog_details,
+        user_may_edit_product_pricing,
+    )
 
-    if user_may_edit_financial_fields(user):
+    if user_may_edit_product_pricing(user):
         return False
-    store = StoreSettings.load()
-    return bool(store.allow_sales_add_products and store.sales_catalog_skip_pricing)
+    return user_may_edit_catalog_details(user) and products_sales_catalog_access_enabled()
 
 
 def validate_sale_unit_price_override(
@@ -90,7 +73,9 @@ def validate_sale_unit_price_override(
 
     if override is None:
         return
-    if user_may_edit_financial_fields(user):
+    from products.catalog_access import user_may_edit_product_pricing
+
+    if user_may_edit_product_pricing(user):
         return
     catalog_price = sellable_unit_price(product, variant)
     try:

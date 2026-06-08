@@ -48,6 +48,18 @@ export function reportsShowCostAndProfit(settings) {
   return isModuleFlagEnabled(settings, 'show_cost_and_profit', true);
 }
 
+/** Month revenue on the home dashboard (requires reports.view). */
+export function userMayViewDashboardRevenue(permissions = []) {
+  return permissions.some(
+    (p) => p.module === 'reports' && p.action === 'view'
+  );
+}
+
+/** Estimated profit on the home dashboard (reports.view + store toggle). */
+export function userMayViewDashboardProfit(permissions = [], settings = {}) {
+  return userMayViewDashboardRevenue(permissions) && reportsShowCostAndProfit(settings);
+}
+
 export function reportsShowLegacyCatalog(settings) {
   return isModuleFlagEnabled(settings, 'show_legacy_report_catalog', true);
 }

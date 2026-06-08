@@ -3,6 +3,7 @@ import {
   Boxes,
   Briefcase,
   Factory,
+  NotebookPen,
   Package,
   ShoppingCart,
   Users,
@@ -41,6 +42,14 @@ export const MODULE_SETTINGS_CARDS = [
       'Optional display and workflow for the customer directory. Wallet usage at checkout is also controlled under Sales settings.',
     icon: Users,
     toastLabel: 'Customer',
+  },
+  {
+    module: 'daily_notes',
+    title: 'Daily notes',
+    description:
+      'Staff day journal — who can write notes and who can read everyone’s entries. Install the module under Module Settings.',
+    icon: NotebookPen,
+    toastLabel: 'Daily notes',
   },
   {
     module: 'employees',
