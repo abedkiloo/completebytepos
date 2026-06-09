@@ -15,6 +15,8 @@ ROLE_SALES = 'Sales Personnel'
 # Legacy names kept for migrations / existing DB rows; not created on fresh install.
 LEGACY_ROLE_NAMES = ('Admin', 'Administrator', 'Cashier')
 
+# When adding modules with UI routes, also update fe/src/utils/permissionRoutes.js
+# (PERMISSION_MODULE_ROUTES) and be/accounts/tests/test_permission_matrix.py.
 PERMISSIONS_DATA = [
     ('products', 'view', 'View products'),
     ('products', 'create', 'Create products'),

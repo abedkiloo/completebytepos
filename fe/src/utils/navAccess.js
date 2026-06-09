@@ -6,7 +6,6 @@ import {
   PERSONA,
   resolvePersona,
   hasPermission,
-  hasAnyPermissionForModule,
   getStoredAuth,
 } from './roleAccess';
 import { localRegistryFeatureDefault } from '../config/moduleFeatureDefaults';
@@ -19,6 +18,7 @@ import {
 import { readCachedModuleSettings } from './moduleSettingsCache';
 import { readCachedStoreSettings } from './storeSettingsCache';
 import { salesCatalogAccessEnabled } from './productAccess';
+import { NAV_SECTION_MODULES, navSectionGrantedByPermissions } from './permissionRoutes';
 
 /** Section ids visible per persona (`null` = all sections). */
 export const VISIBLE_SECTIONS = {
@@ -40,16 +40,6 @@ export const VISIBLE_SECTIONS = {
 
 /** Sales nav: cashiers only need fast checkout paths. */
 const SALES_ONLY_PATHS = new Set(['/pos', '/pos/billing']);
-
-/** Nav sections unlocked for sales when their role includes module permissions. */
-const SECTION_PERMISSION_MODULE = {
-  invoicing: 'invoicing',
-  reports: 'reports',
-  accounting: ['accounting', 'expenses', 'income'],
-  stock: 'stock',
-  suppliers: 'suppliers',
-  employees: 'employees',
-};
 
 export function getPersonaFromStorage() {
   const { user, profile } = getStoredAuth();
@@ -75,10 +65,15 @@ export function isSuperAdminFromStorage() {
 
 function sectionAllowedForPersona(sectionId, persona, permissions = []) {
   if (persona === PERSONA.SALES && sectionId === 'inventory') {
-    return salesCatalogAccessEnabled(
-      readCachedModuleSettings('products'),
-      readCachedStoreSettings()
-    );
+    if (
+      salesCatalogAccessEnabled(
+        readCachedModuleSettings('products'),
+        readCachedStoreSettings()
+      )
+    ) {
+      return true;
+    }
+    return navSectionGrantedByPermissions(sectionId, permissions, NAV_SECTION_MODULES);
   }
   if (persona === PERSONA.SALES && sectionId === 'sales') {
     return true;
@@ -86,8 +81,8 @@ function sectionAllowedForPersona(sectionId, persona, permissions = []) {
   const allowed = VISIBLE_SECTIONS[persona];
   if (allowed === null) return true;
   if (allowed.includes(sectionId)) return true;
-  if (persona === PERSONA.SALES && SECTION_PERMISSION_MODULE[sectionId]) {
-    return hasAnyPermissionForModule(permissions, SECTION_PERMISSION_MODULE[sectionId]);
+  if (persona === PERSONA.SALES) {
+    return navSectionGrantedByPermissions(sectionId, permissions, NAV_SECTION_MODULES);
   }
   return false;
 }
@@ -115,18 +110,28 @@ export function canSeeNavItem(item, sectionId, ctx) {
       readCachedModuleSettings('products'),
       readCachedStoreSettings()
     );
-    if (item.salesCatalogItem) {
-      return salesCatalog;
-    }
-    if (path === '/products' || path === '/categories') {
-      return salesCatalog;
-    }
-    if (sectionId === 'inventory') return false;
-    if (sectionId === 'sales' && !SALES_ONLY_PATHS.has(path)) return false;
-    if (sectionId === 'settings') return false;
-    if (sectionId === 'reports' || sectionId === 'accounting') return false;
-    if (sectionId === 'inventory' || sectionId === 'stock' || sectionId === 'suppliers') {
-      return false;
+    const permissionSection = navSectionGrantedByPermissions(
+      sectionId,
+      permissions,
+      NAV_SECTION_MODULES
+    );
+
+    if (permissionSection) {
+      if (item.managerOnly) return false;
+    } else {
+      if (item.salesCatalogItem) {
+        return salesCatalog;
+      }
+      if (path === '/products' || path === '/categories') {
+        return salesCatalog;
+      }
+      if (sectionId === 'inventory') return false;
+      if (sectionId === 'sales' && !SALES_ONLY_PATHS.has(path)) {
+        if (!hasPermission(permissions, 'sales', 'view')) return false;
+      }
+      if (sectionId === 'settings') return false;
+      if (sectionId === 'reports' || sectionId === 'accounting') return false;
+      if (sectionId === 'stock' || sectionId === 'suppliers') return false;
     }
   }
 

@@ -10,6 +10,11 @@ import {
   userMayEditAnyProductFinancialFieldFromStorage,
 } from './productAccess';
 import { salesDailyNotesAccessEnabled } from './dailyNotesAccess';
+import {
+  ROUTE_MODULE_MAP,
+  PERMISSION_MODULE_ROUTES,
+  routesFromPermissionList,
+} from './permissionRoutes';
 
 export const PERSONA = {
   SUPER_ADMIN: 'super_admin',
@@ -135,52 +140,7 @@ function pathMatchesPrefix(pathname, prefix) {
   return pathname === prefix || pathname.startsWith(`${prefix}/`);
 }
 
-/** Nav path → module that must be enabled (manager/sales). Super admin ignores. */
-export const ROUTE_MODULE_MAP = {
-  '/products': 'products',
-  '/categories': 'products',
-  '/product-attributes': 'products',
-  '/barcodes': 'barcodes',
-  '/inventory': 'stock',
-  '/suppliers': 'suppliers',
-  '/employees': 'employees',
-  '/daily-notes': 'daily_notes',
-  '/pos': 'sales',
-  '/pos/billing': 'sales',
-  '/normal-sale': 'sales',
-  '/sales': 'sales',
-  '/customers': 'customers',
-  '/invoices': 'invoicing',
-  '/reports': 'reports',
-  '/accounting': 'accounting',
-  '/expenses': 'expenses',
-  '/income': 'income',
-  '/users': 'settings',
-  '/roles': 'settings',
-  '/module-settings': 'settings',
-  '/branches': 'settings',
-  '/system-settings': 'settings',
-};
-
-/** Module → route prefix when the user has any permission on that module. */
-export const MODULE_ROUTE_PREFIXES = {
-  invoicing: '/invoices',
-  sales: '/sales',
-  pos: '/pos',
-  reports: '/reports',
-  products: '/products',
-  categories: '/categories',
-  inventory: '/inventory',
-  stock: '/inventory',
-  barcodes: '/barcodes',
-  expenses: '/expenses',
-  income: '/income',
-  accounting: '/accounting',
-  daily_notes: '/daily-notes',
-  suppliers: '/suppliers',
-  employees: '/employees',
-  customers: '/customers',
-};
+export { ROUTE_MODULE_MAP, PERMISSION_MODULE_ROUTES as MODULE_ROUTE_PREFIXES } from './permissionRoutes';
 
 export function hasAnyPermissionForModule(permissions, moduleOrModules) {
   if (!Array.isArray(permissions)) return false;
@@ -190,13 +150,7 @@ export function hasAnyPermissionForModule(permissions, moduleOrModules) {
 
 /** Extra routes granted by stored role permissions (custom roles / edited system roles). */
 export function routesFromPermissions(permissions) {
-  if (!Array.isArray(permissions)) return [];
-  const routes = new Set();
-  for (const perm of permissions) {
-    const prefix = MODULE_ROUTE_PREFIXES[perm.module];
-    if (prefix) routes.add(prefix);
-  }
-  return [...routes];
+  return routesFromPermissionList(permissions);
 }
 
 function salesRoutePrefixes() {
