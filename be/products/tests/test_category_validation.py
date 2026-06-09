@@ -4,10 +4,12 @@ from django.test import TestCase
 
 from products.category_validation import (
     DuplicateCategoryInfo,
+    category_linked_product_count,
     find_duplicate_category,
     normalize_category_name,
+    subcategory_parent_movable,
 )
-from products.models import Category
+from products.models import Category, Product
 
 
 class CategoryValidationTests(TestCase):
@@ -53,6 +55,20 @@ class CategoryValidationTests(TestCase):
         )
         self.assertIn('Sofa Stand', msg)
         self.assertIn('unique across the store', msg)
+
+    def test_linked_product_count_includes_subcategory_usage(self):
+        parent = Category.objects.create(name='Parent', is_active=True)
+        sub = Category.objects.create(name='Child', parent=parent, is_active=True)
+        Product.objects.create(
+            name='Item',
+            sku='L-1',
+            category=parent,
+            subcategory=sub,
+            selling_price=10,
+            is_active=True,
+        )
+        self.assertEqual(category_linked_product_count(sub), 1)
+        self.assertFalse(subcategory_parent_movable(sub))
 
     def test_duplicate_message_top_level_blocks_subcategory(self):
         Category.objects.create(name='SLANDING', is_active=True)

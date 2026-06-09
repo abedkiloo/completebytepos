@@ -15,6 +15,23 @@ def normalize_category_name(name: str) -> str:
     return re.sub(r'\s+', ' ', str(name)).strip()
 
 
+def category_linked_product_count(category: Category) -> int:
+    """Products using this row as main category or as subcategory."""
+    from products.models import Product
+
+    return (
+        Product.objects.filter(category_id=category.pk).count()
+        + Product.objects.filter(subcategory_id=category.pk).count()
+    )
+
+
+def subcategory_parent_movable(category: Category) -> bool:
+    """Subcategories may move to another parent only when no products reference them."""
+    if not category.parent_id:
+        return False
+    return category_linked_product_count(category) == 0
+
+
 def find_duplicate_category(
     name: str,
     *,

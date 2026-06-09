@@ -101,12 +101,15 @@ class ProductVariantSerializer(serializers.ModelSerializer):
 class CategorySerializer(serializers.ModelSerializer):
     product_count = serializers.SerializerMethodField()
     children_count = serializers.SerializerMethodField()
+    linked_product_count = serializers.SerializerMethodField()
+    can_move_parent = serializers.SerializerMethodField()
     
     class Meta:
         model = Category
         fields = [
             'id', 'name', 'description', 'parent', 'is_active',
-            'product_count', 'children_count', 'created_at', 'updated_at'
+            'product_count', 'children_count', 'linked_product_count',
+            'can_move_parent', 'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at']
 
@@ -156,6 +159,16 @@ class CategorySerializer(serializers.ModelSerializer):
             return obj.children.count()
         return obj.children.all().count()
 
+    def get_linked_product_count(self, obj):
+        from products.category_validation import category_linked_product_count
+
+        return category_linked_product_count(obj)
+
+    def get_can_move_parent(self, obj):
+        from products.category_validation import subcategory_parent_movable
+
+        return subcategory_parent_movable(obj)
+
     def validate(self, data):
         parent = data.get('parent', getattr(self.instance, 'parent', None))
         if parent is not None and hasattr(parent, 'parent_id') and parent.parent_id:
@@ -167,6 +180,19 @@ class CategorySerializer(serializers.ModelSerializer):
             if new_parent and new_parent != self.instance.parent_id:
                 raise serializers.ValidationError({
                     'parent': 'Cannot change parent on a category that already has subcategories.',
+                })
+        if self.instance and self.instance.parent_id is not None and 'parent' in data:
+            from products.category_validation import subcategory_parent_movable
+
+            new_parent = data.get('parent')
+            if new_parent != self.instance.parent_id and not subcategory_parent_movable(
+                self.instance
+            ):
+                raise serializers.ValidationError({
+                    'parent': (
+                        'Cannot move this subcategory — products are already linked. '
+                        'Reassign or remove those products first.'
+                    ),
                 })
         return data
 
@@ -181,12 +207,15 @@ class CategoryListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for category lists"""
     product_count = serializers.SerializerMethodField()
     children_count = serializers.SerializerMethodField()
+    linked_product_count = serializers.SerializerMethodField()
+    can_move_parent = serializers.SerializerMethodField()
 
     class Meta:
         model = Category
         fields = [
             'id', 'name', 'description', 'parent', 'is_active',
-            'product_count', 'children_count',
+            'product_count', 'children_count', 'linked_product_count',
+            'can_move_parent',
         ]
 
     def get_product_count(self, obj):
@@ -198,6 +227,16 @@ class CategoryListSerializer(serializers.ModelSerializer):
         if hasattr(obj, 'children'):
             return obj.children.count()
         return obj.children.all().count()
+
+    def get_linked_product_count(self, obj):
+        from products.category_validation import category_linked_product_count
+
+        return category_linked_product_count(obj)
+
+    def get_can_move_parent(self, obj):
+        from products.category_validation import subcategory_parent_movable
+
+        return subcategory_parent_movable(obj)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
