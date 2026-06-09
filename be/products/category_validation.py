@@ -34,11 +34,49 @@ class DuplicateCategoryInfo:
     def __init__(self, category: Category):
         self.category = category
 
-    def user_message(self, attempted_name: str) -> str:
+    def user_message(
+        self,
+        attempted_name: str,
+        *,
+        attempted_parent_id: Optional[int] = None,
+    ) -> str:
         cat = self.category
-        status = 'inactive' if not cat.is_active else 'active'
-        level = 'subcategory' if cat.parent_id else 'top-level category'
+        display_name = cat.name
+
+        if not cat.is_active:
+            level = 'subcategory' if cat.parent_id else 'top-level category'
+            parent_hint = ''
+            if cat.parent_id and cat.parent:
+                parent_hint = f' under {cat.parent.name}'
+            return (
+                f'A category named "{display_name}" already exists{parent_hint} '
+                f'but is inactive ({level}). '
+                f'Open Categories, set the filter to All or Inactive to find it, '
+                f'or choose a different name.'
+            )
+
+        if cat.parent_id:
+            parent_name = cat.parent.name if cat.parent else 'another category'
+            if (
+                attempted_parent_id is not None
+                and cat.parent_id == attempted_parent_id
+            ):
+                return (
+                    f'"{display_name}" is already a subcategory under {parent_name}. '
+                    f'Select it from the subcategory list instead of creating a new one.'
+                )
+            return (
+                f'"{display_name}" already exists as a subcategory under {parent_name}. '
+                f'Category names must be unique across the store — choose a different name.'
+            )
+
+        if attempted_parent_id:
+            return (
+                f'"{display_name}" already exists as a top-level category. '
+                f'You cannot reuse that name for a subcategory.'
+            )
+
         return (
-            f'A category named "{cat.name}" already exists ({status} {level}). '
-            f'Set the list filter to All or Inactive to find it, or choose a different name.'
+            f'"{display_name}" already exists as a top-level category. '
+            f'Choose a different name.'
         )

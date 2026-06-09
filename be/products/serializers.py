@@ -110,6 +110,19 @@ class CategorySerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['created_at', 'updated_at']
 
+    def _attempted_parent_id(self):
+        if 'parent' in self.initial_data:
+            raw = self.initial_data.get('parent')
+            if raw in (None, ''):
+                return None
+            try:
+                return int(raw)
+            except (TypeError, ValueError):
+                return None
+        if self.instance is not None:
+            return self.instance.parent_id
+        return None
+
     def validate_name(self, value):
         from products.category_validation import normalize_category_name, find_duplicate_category
 
@@ -124,7 +137,10 @@ class CategorySerializer(serializers.ModelSerializer):
             from products.category_validation import DuplicateCategoryInfo
 
             raise serializers.ValidationError(
-                DuplicateCategoryInfo(existing).user_message(normalized)
+                DuplicateCategoryInfo(existing).user_message(
+                    normalized,
+                    attempted_parent_id=self._attempted_parent_id(),
+                )
             )
         return normalized
     

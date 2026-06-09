@@ -54,6 +54,20 @@ class CategorySerializerValidationTests(TestCase):
             serializer.is_valid(raise_exception=True)
         self.assertIn('inactive', str(ctx.exception.detail).lower())
 
+    def test_duplicate_subcategory_under_same_parent_message(self):
+        serializer = CategorySerializer(
+            data={
+                'name': 'sofas',
+                'parent': self.parent.id,
+                'is_active': True,
+            },
+        )
+        with self.assertRaises(ValidationError) as ctx:
+            serializer.is_valid(raise_exception=True)
+        detail = str(ctx.exception.detail)
+        self.assertIn('Furniture', detail)
+        self.assertIn('Select it from the subcategory list', detail)
+
     def test_strips_whitespace_on_create(self):
         serializer = CategorySerializer(
             data={'name': '  Outdoor   Gear  ', 'is_active': True},

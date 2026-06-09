@@ -8,6 +8,7 @@ from django.db import transaction
 from django.db.models import Q, Sum, Count, Avg, F, QuerySet
 from django.core.exceptions import ValidationError
 from .models import Product, Category, Size, Color, ProductVariant
+from .category_validation import normalize_category_name
 from .status_rules import (
     apply_operational_product_filter,
     products_show_status_enabled,
@@ -79,6 +80,14 @@ class CategoryService(BaseService):
                 parent_id = int(parent)
                 queryset = queryset.filter(parent_id=parent_id)
             except (ValueError, TypeError):
+                queryset = queryset.none()
+
+        exact_name = filters.get('exact_name')
+        if exact_name:
+            normalized = normalize_category_name(exact_name)
+            if normalized:
+                queryset = queryset.filter(name__iexact=normalized)
+            else:
                 queryset = queryset.none()
         
         return queryset

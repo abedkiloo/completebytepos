@@ -24,3 +24,39 @@ class CategoryValidationTests(TestCase):
         cat = Category.objects.create(name='Hidden', is_active=False)
         msg = DuplicateCategoryInfo(cat).user_message('hidden')
         self.assertIn('inactive', msg.lower())
+
+    def test_duplicate_message_same_parent_subcategory(self):
+        parent = Category.objects.create(name='Sofa Stand', is_active=True)
+        existing = Category.objects.create(
+            name='SLANDING',
+            parent=parent,
+            is_active=True,
+        )
+        msg = DuplicateCategoryInfo(existing).user_message(
+            'slanding',
+            attempted_parent_id=parent.id,
+        )
+        self.assertIn('Sofa Stand', msg)
+        self.assertIn('Select it from the subcategory list', msg)
+
+    def test_duplicate_message_different_parent_subcategory(self):
+        parent_a = Category.objects.create(name='Sofa Stand', is_active=True)
+        parent_b = Category.objects.create(name='Tables', is_active=True)
+        existing = Category.objects.create(
+            name='SLANDING',
+            parent=parent_a,
+            is_active=True,
+        )
+        msg = DuplicateCategoryInfo(existing).user_message(
+            'slanding',
+            attempted_parent_id=parent_b.id,
+        )
+        self.assertIn('Sofa Stand', msg)
+        self.assertIn('unique across the store', msg)
+
+    def test_duplicate_message_top_level_blocks_subcategory(self):
+        Category.objects.create(name='SLANDING', is_active=True)
+        msg = DuplicateCategoryInfo(
+            find_duplicate_category('slanding')
+        ).user_message('slanding', attempted_parent_id=99)
+        self.assertIn('top-level category', msg.lower())

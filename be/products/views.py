@@ -276,6 +276,8 @@ class CategoryViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             filters['is_active'] = self.request.query_params.get('is_active')
         if 'parent' in self.request.query_params:
             filters['parent'] = self.request.query_params.get('parent')
+        if 'exact_name' in self.request.query_params:
+            filters['exact_name'] = self.request.query_params.get('exact_name')
         return self.category_service.build_queryset(filters)
 
     def get_serializer_class(self):
