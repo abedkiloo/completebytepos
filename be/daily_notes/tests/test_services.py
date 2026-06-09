@@ -5,8 +5,8 @@ from datetime import date, timedelta
 from django.contrib.auth.models import User
 from django.test import TestCase
 
-from daily_notes.models import DailyNote
-from daily_notes.services import DailyNoteService
+from daily_notes.models import DailyNote, DailyTask
+from daily_notes.services import DailyNoteService, DailyTaskService, recent_activity_dates
 
 
 class DailyNoteServiceTests(TestCase):
@@ -81,3 +81,42 @@ class DailyNoteServiceTests(TestCase):
         dates = self.service.recent_dates(user=self.alice, view_all=True)
         self.assertEqual(len(dates), 2)
         self.assertEqual(dates[0], self.today)
+
+
+class DailyTaskServiceTests(TestCase):
+    def setUp(self):
+        self.service = DailyTaskService()
+        self.alice = User.objects.create_user('alice_t', password='x')
+        self.bob = User.objects.create_user('bob_t', password='x')
+        self.today = date.today()
+        DailyTask.objects.create(
+            task_date=self.today,
+            title='Alice open',
+            author=self.alice,
+        )
+        DailyTask.objects.create(
+            task_date=self.today,
+            title='Bob done',
+            is_done=True,
+            author=self.bob,
+        )
+
+    def test_build_queryset_open_filter(self):
+        qs = self.service.build_queryset(
+            user=self.alice,
+            view_all=True,
+            filters={'task_date': str(self.today), 'status': 'open'},
+        )
+        self.assertEqual(qs.count(), 1)
+        self.assertEqual(qs.first().author_id, self.alice.id)
+
+    def test_recent_activity_dates_merges_notes_and_tasks(self):
+        yesterday = self.today - timedelta(days=1)
+        DailyNote.objects.create(
+            note_date=yesterday,
+            content='Note only day',
+            author=self.alice,
+        )
+        dates = recent_activity_dates(user=self.alice, view_all=True)
+        self.assertIn(self.today, dates)
+        self.assertIn(yesterday, dates)

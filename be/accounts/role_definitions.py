@@ -231,7 +231,8 @@ def _sales_queryset():
 
 def sync_default_roles(created_by=None):
     """
-    Upsert the three system roles and refresh their permission sets every run.
+    Upsert the three system roles. Default permission sets are applied only when
+    a role is first created so admin edits in the Roles UI are preserved.
     """
     all_perms = Permission.objects.all()
 
@@ -246,7 +247,7 @@ def sync_default_roles(created_by=None):
     )
     super_admin.permissions.set(all_perms)
 
-    manager, _ = Role.objects.update_or_create(
+    manager, manager_created = Role.objects.update_or_create(
         name=ROLE_MANAGER,
         defaults={
             'description': 'Store operations — inventory, reports, finance (no user/role admin)',
@@ -255,9 +256,10 @@ def sync_default_roles(created_by=None):
             'created_by': created_by,
         },
     )
-    manager.permissions.set(_manager_queryset())
+    if manager_created:
+        manager.permissions.set(_manager_queryset())
 
-    sales, _ = Role.objects.update_or_create(
+    sales, sales_created = Role.objects.update_or_create(
         name=ROLE_SALES,
         defaults={
             'description': 'Front-line sales — POS, customers, catalog add (pricing set by manager)',
@@ -266,7 +268,8 @@ def sync_default_roles(created_by=None):
             'created_by': created_by,
         },
     )
-    sales.permissions.set(_sales_queryset())
+    if sales_created:
+        sales.permissions.set(_sales_queryset())
 
     # Deactivate legacy duplicate roles so the UI shows a clean trio.
     Role.objects.filter(name__in=LEGACY_ROLE_NAMES).update(is_active=False)

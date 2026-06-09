@@ -30,3 +30,13 @@ class RoleDefinitionsTestCase(TestCase):
         Role.objects.create(name='Cashier', is_system_role=True, is_active=True)
         sync_default_roles()
         self.assertFalse(Role.objects.get(name='Cashier').is_active)
+
+    def test_sync_default_roles_preserves_edited_permissions(self):
+        ensure_permissions()
+        sync_default_roles()
+        sales = Role.objects.get(name=ROLE_SALES)
+        inv_view = Permission.objects.get(module='invoicing', action='view')
+        sales.permissions.add(inv_view)
+        sync_default_roles()
+        sales.refresh_from_db()
+        self.assertTrue(sales.permissions.filter(module='invoicing', action='view').exists())

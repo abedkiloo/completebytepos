@@ -267,6 +267,15 @@ export const dailyNotesAPI = {
   recentDates: () => api.get('/daily-notes/notes/recent-dates/'),
 };
 
+export const dailyTasksAPI = {
+  list: (params) => api.get('/daily-notes/tasks/', { params }),
+  get: (id) => api.get(`/daily-notes/tasks/${id}/`),
+  create: (data) => api.post('/daily-notes/tasks/', data),
+  update: (id, data) => api.patch(`/daily-notes/tasks/${id}/`, data),
+  delete: (id) => api.delete(`/daily-notes/tasks/${id}/`),
+  toggleDone: (id) => api.post(`/daily-notes/tasks/${id}/toggle-done/`),
+};
+
 export const employeesAPI = {
   list: (params) => api.get('/employees/employees/', { params }),
   get: (id) => api.get(`/employees/employees/${id}/`),

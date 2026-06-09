@@ -162,7 +162,45 @@ export const ROUTE_MODULE_MAP = {
   '/system-settings': 'settings',
 };
 
+/** Module → route prefix when the user has any permission on that module. */
+export const MODULE_ROUTE_PREFIXES = {
+  invoicing: '/invoices',
+  sales: '/sales',
+  pos: '/pos',
+  reports: '/reports',
+  products: '/products',
+  categories: '/categories',
+  inventory: '/inventory',
+  stock: '/inventory',
+  barcodes: '/barcodes',
+  expenses: '/expenses',
+  income: '/income',
+  accounting: '/accounting',
+  daily_notes: '/daily-notes',
+  suppliers: '/suppliers',
+  employees: '/employees',
+  customers: '/customers',
+};
+
+export function hasAnyPermissionForModule(permissions, moduleOrModules) {
+  if (!Array.isArray(permissions)) return false;
+  const modules = Array.isArray(moduleOrModules) ? moduleOrModules : [moduleOrModules];
+  return permissions.some((p) => modules.includes(p.module));
+}
+
+/** Extra routes granted by stored role permissions (custom roles / edited system roles). */
+export function routesFromPermissions(permissions) {
+  if (!Array.isArray(permissions)) return [];
+  const routes = new Set();
+  for (const perm of permissions) {
+    const prefix = MODULE_ROUTE_PREFIXES[perm.module];
+    if (prefix) routes.add(prefix);
+  }
+  return [...routes];
+}
+
 function salesRoutePrefixes() {
+  const { permissions } = getStoredAuth();
   const base = ALLOWED_ROUTE_PREFIXES[PERSONA.SALES];
   const store = readCachedStoreSettings();
   const productsSettings = readCachedModuleSettings('products');
@@ -172,6 +210,9 @@ function salesRoutePrefixes() {
   }
   if (salesDailyNotesAccessEnabled(readCachedModuleSettings('daily_notes'))) {
     routes = [...routes, '/daily-notes'];
+  }
+  for (const prefix of routesFromPermissions(permissions)) {
+    if (!routes.includes(prefix)) routes.push(prefix);
   }
   return routes;
 }

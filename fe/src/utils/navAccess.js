@@ -6,6 +6,7 @@ import {
   PERSONA,
   resolvePersona,
   hasPermission,
+  hasAnyPermissionForModule,
   getStoredAuth,
 } from './roleAccess';
 import { localRegistryFeatureDefault } from '../config/moduleFeatureDefaults';
@@ -40,6 +41,16 @@ export const VISIBLE_SECTIONS = {
 /** Sales nav: cashiers only need fast checkout paths. */
 const SALES_ONLY_PATHS = new Set(['/pos', '/pos/billing']);
 
+/** Nav sections unlocked for sales when their role includes module permissions. */
+const SECTION_PERMISSION_MODULE = {
+  invoicing: 'invoicing',
+  reports: 'reports',
+  accounting: ['accounting', 'expenses', 'income'],
+  stock: 'stock',
+  suppliers: 'suppliers',
+  employees: 'employees',
+};
+
 export function getPersonaFromStorage() {
   const { user, profile } = getStoredAuth();
   return resolvePersona({
@@ -62,7 +73,7 @@ export function isSuperAdminFromStorage() {
   );
 }
 
-function sectionAllowedForPersona(sectionId, persona) {
+function sectionAllowedForPersona(sectionId, persona, permissions = []) {
   if (persona === PERSONA.SALES && sectionId === 'inventory') {
     return salesCatalogAccessEnabled(
       readCachedModuleSettings('products'),
@@ -74,7 +85,11 @@ function sectionAllowedForPersona(sectionId, persona) {
   }
   const allowed = VISIBLE_SECTIONS[persona];
   if (allowed === null) return true;
-  return allowed.includes(sectionId);
+  if (allowed.includes(sectionId)) return true;
+  if (persona === PERSONA.SALES && SECTION_PERMISSION_MODULE[sectionId]) {
+    return hasAnyPermissionForModule(permissions, SECTION_PERMISSION_MODULE[sectionId]);
+  }
+  return false;
 }
 
 /**
@@ -89,7 +104,7 @@ export function canSeeNavItem(item, sectionId, ctx) {
     isFeatureEnabled,
   } = ctx;
 
-  if (!sectionAllowedForPersona(sectionId, persona)) return false;
+  if (!sectionAllowedForPersona(sectionId, persona, permissions)) return false;
 
   if (item.requireSuperAdmin && !isSuperAdmin) return false;
   if (item.managerOnly && persona === PERSONA.SALES) return false;

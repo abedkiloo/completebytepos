@@ -154,7 +154,7 @@ const NAV_SECTIONS = [
     label: 'Invoicing',
     module: 'invoicing',
     items: [
-      { to: '/invoices', label: 'Invoices', icon: FileText },
+      { to: '/invoices', label: 'Invoices', icon: FileText, permission: ['invoicing', 'view'] },
     ],
   },
   {

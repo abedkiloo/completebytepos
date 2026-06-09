@@ -185,4 +185,40 @@ describe('navAccess', () => {
       canSeeNavItem({ to: '/products', label: 'Products' }, 'inventory', salesCtx)
     ).toBe(false);
   });
+
+  test('sales sees invoices nav when role grants invoicing.view', () => {
+    const invoicingPerms = [
+      { name: 'invoicing.view', module: 'invoicing', action: 'view' },
+      { name: 'invoicing.create', module: 'invoicing', action: 'create' },
+    ];
+    const salesCtx = ctx(PERSONA.SALES, { permissions: invoicingPerms });
+    expect(
+      canSeeNavItem(
+        {
+          to: '/invoices',
+          label: 'Invoices',
+          module: 'invoicing',
+          permission: ['invoicing', 'view'],
+        },
+        'invoicing',
+        salesCtx
+      )
+    ).toBe(true);
+  });
+
+  test('sales hides invoices nav without invoicing.view', () => {
+    const salesCtx = ctx(PERSONA.SALES, { permissions: [] });
+    expect(
+      canSeeNavItem(
+        {
+          to: '/invoices',
+          label: 'Invoices',
+          module: 'invoicing',
+          permission: ['invoicing', 'view'],
+        },
+        'invoicing',
+        salesCtx
+      )
+    ).toBe(false);
+  });
 });

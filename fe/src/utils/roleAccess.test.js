@@ -127,4 +127,20 @@ describe('roleAccess', () => {
     expect(canAccessRoute(PERSONA.MANAGER, '/system-settings')).toBe(false);
     expect(canAccessRoute(PERSONA.SALES, '/system-settings')).toBe(false);
   });
+
+  test('sales can access invoices when role grants invoicing permissions', () => {
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([
+        { name: 'invoicing.view', module: 'invoicing', action: 'view' },
+        { name: 'invoicing.create', module: 'invoicing', action: 'create' },
+      ])
+    );
+    expect(canAccessRoute(PERSONA.SALES, '/invoices')).toBe(true);
+  });
+
+  test('sales cannot access invoices without invoicing permissions', () => {
+    localStorage.setItem('permissions', JSON.stringify([]));
+    expect(canAccessRoute(PERSONA.SALES, '/invoices')).toBe(false);
+  });
 });
