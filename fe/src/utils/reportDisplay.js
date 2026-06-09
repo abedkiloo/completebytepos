@@ -68,6 +68,7 @@ export function reportsShowLegacyCatalog(settings) {
 export function reportsLegacyReportEnabled(settings, reportId) {
   switch (reportId) {
     case 'sales':
+    case 'sales-by-person':
       return reportsEnableSalesReports(settings);
     case 'products':
       return reportsEnableProductReports(settings);

@@ -5,7 +5,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import { toast } from '../../utils/toast';
-import { isMakerCheckerEnabled } from '../../utils/makerChecker';
+import {
+  isMakerCheckerEnabled,
+  makerCheckerPromptMessage,
+  pendingApprovalToastMessage,
+} from '../../utils/makerChecker';
 
 const HIGH_IMPACT_CONFIRM =
   'This setting affects checkout, permissions, stock rules, or data access. Continue?';
@@ -31,15 +35,15 @@ export default function ModuleSettingsCard({ module, title, description, icon: I
     try {
       let reason;
       if (makerCheckerOn) {
-        reason = window.prompt('Reason for this module setting change (required):') || '';
+        reason = window.prompt(makerCheckerPromptMessage('settings')) || '';
         if (!reason.trim()) {
-          toast.warning('A reason is required when maker-checker is on.');
+          toast.warning('Please enter a reason so a manager can review this change.');
           return;
         }
       }
       await patch({ [key]: checked }, { reason: reason?.trim() });
       toast.success(
-        makerCheckerOn ? 'Submitted for approval' : `${toastLabel} settings updated`
+        makerCheckerOn ? pendingApprovalToastMessage() : `${toastLabel} settings updated`
       );
     } catch (err) {
       toast.error(err.response?.data?.detail || `Could not update ${toastLabel.toLowerCase()} settings`);

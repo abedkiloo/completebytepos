@@ -13,6 +13,9 @@ from inventory.models import StockMovement
 from expenses.models import Expense
 from income.models import Income
 from accounts.permissions import RequirePermPerAction
+from django.http import HttpResponse
+
+from .sales_person_report import SalesPersonReportService
 from .services import ReportDashboardService, resolve_period
 from .module_settings import (
     reports_action_enabled,
@@ -40,6 +43,7 @@ REPORTS_PERMS = RequirePermPerAction('reports', {
     'cash_and_payments': 'view',
     'inventory_health': 'view',
     'customer_outstanding': 'view',
+    'sales_by_person': 'view',
 })
 
 
@@ -942,3 +946,27 @@ class ReportViewSet(viewsets.ViewSet):
             ],
             'invoices': invoices_list[:20],
         })
+
+    @action(detail=False, methods=['get'])
+    @gated_report_action('sales_by_person')
+    def sales_by_person(self, request):
+        """
+        Sales totals per staff member (cashier) for commission / reward proof.
+
+        Query params:
+          month=YYYY-MM   — calendar month (recommended for month-end)
+          period=today|week|month|year — alternative window
+          date_from, date_to — custom range
+          cashier_id      — filter to one person (+ transaction detail)
+          format=csv      — downloadable spreadsheet
+        """
+        payload = SalesPersonReportService.build(request)
+        if (request.query_params.get('format') or '').lower() == 'csv':
+            csv_body = SalesPersonReportService.to_csv(payload)
+            filename = f"sales_staff_{payload.get('period', 'report')}.csv"
+            response = HttpResponse(content_type='text/csv; charset=utf-8')
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            response.write('\ufeff')
+            response.write(csv_body)
+            return response
+        return Response(payload)

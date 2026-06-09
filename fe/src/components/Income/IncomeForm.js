@@ -218,10 +218,10 @@ const IncomeForm = ({ income, categories, onClose, onSave }) => {
 
             {makerCheckerOn ? (
               <ChangeReasonField
+                context="financial"
                 value={proposalReason}
                 onChange={setProposalReason}
                 error={errors.proposal_reason}
-                hint="Required for income when maker-checker is enabled."
               />
             ) : null}
 

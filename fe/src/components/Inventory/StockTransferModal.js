@@ -293,11 +293,7 @@ const StockTransferModal = ({ isOpen, onClose, onSuccess, product }) => {
           </div>
 
           {makerCheckerOn ? (
-            <ChangeReasonField
-              value={changeReason}
-              onChange={setChangeReason}
-              hint="Required for stock transfers when maker-checker is on."
-            />
+            <ChangeReasonField context="stock" value={changeReason} onChange={setChangeReason} />
           ) : null}
           </form>
         </div>

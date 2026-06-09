@@ -713,7 +713,7 @@ const Products = () => {
         }}
       >
         {makerCheckerOn && confirmDelete ? (
-          <ChangeReasonField value={deleteReason} onChange={setDeleteReason} />
+          <ChangeReasonField context="catalog" value={deleteReason} onChange={setDeleteReason} />
         ) : null}
       </ConfirmDialog>
 

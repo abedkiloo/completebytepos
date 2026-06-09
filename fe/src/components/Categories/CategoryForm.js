@@ -255,9 +255,9 @@ const CategoryForm = ({
             category &&
             categoryEditNeedsReason(formData, category) ? (
               <ChangeReasonField
+                context="catalog"
                 value={changeReason}
                 onChange={setChangeReason}
-                hint="Required when deactivating a category with maker-checker on."
               />
             ) : null}
           </form>

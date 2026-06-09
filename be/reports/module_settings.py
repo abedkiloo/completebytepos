@@ -9,6 +9,7 @@ REPORT_ACTION_GATES: dict[str, tuple[str, str]] = {
     'dashboard': ('enable_dashboard_summary', 'Dashboard summary'),
     'sales': ('enable_sales_reports', 'Sales reports'),
     'sales_overview': ('enable_sales_reports', 'Sales reports'),
+    'sales_by_person': ('enable_sales_reports', 'Sales reports'),
     'products': ('enable_product_reports', 'Product reports'),
     'top_products': ('enable_product_reports', 'Product reports'),
     'inventory': ('enable_inventory_reports', 'Inventory reports'),

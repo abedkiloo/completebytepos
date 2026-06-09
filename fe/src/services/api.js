@@ -385,6 +385,12 @@ export const reportsAPI = {
   cashAndPayments: (params) => api.get('/reports/cash_and_payments/', { params }),
   inventoryHealth: (params) => api.get('/reports/inventory_health/', { params }),
   customerOutstanding: (params) => api.get('/reports/customer_outstanding/', { params }),
+  salesByPerson: (params) => api.get('/reports/sales_by_person/', { params }),
+  salesByPersonCsv: (params) =>
+    api.get('/reports/sales_by_person/', {
+      params: { ...params, format: 'csv' },
+      responseType: 'blob',
+    }),
 };
 
 // Audit log — super-admin only on the backend (IsSuperAdmin).

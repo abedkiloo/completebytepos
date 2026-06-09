@@ -179,11 +179,11 @@ export default function ProductVariantsPanel({ productId }) {
               {needsReason ? (
                 <div className="sm:col-span-2 lg:col-span-4">
                   <ChangeReasonField
+                    context="catalog"
                     value={reasons[variant.id] || ''}
                     onChange={(v) =>
                       setReasons((prev) => ({ ...prev, [variant.id]: v }))
                     }
-                    hint="Required when changing an existing variant price, stock, or status — not for the first value on a new variant row."
                   />
                 </div>
               ) : null}

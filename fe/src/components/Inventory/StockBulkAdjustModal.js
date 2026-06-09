@@ -178,11 +178,7 @@ const StockBulkAdjustModal = ({ onClose, onSave }) => {
             </Button>
 
             {makerCheckerOn ? (
-              <ChangeReasonField
-                value={changeReason}
-                onChange={setChangeReason}
-                hint="Required for bulk adjustments when maker-checker is on."
-              />
+              <ChangeReasonField context="stock" value={changeReason} onChange={setChangeReason} />
             ) : null}
           </form>
         </div>

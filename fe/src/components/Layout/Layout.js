@@ -163,6 +163,7 @@ const NAV_SECTIONS = [
     module: 'reports',
     items: [
       { to: '/reports?report=sales', label: 'Sales Summary', icon: BarChart3, match: 'report=sales' },
+      { to: '/reports?report=sales-by-person', label: 'Sales by staff', icon: UsersIcon, match: 'report=sales-by-person' },
       { to: '/reports?report=sales-by-method', label: 'Sales by Payment', icon: CreditCard, match: 'report=sales-by-method' },
       { to: '/reports?report=daily-sales', label: 'Daily Sales', icon: Calendar, match: 'report=daily-sales' },
       { to: '/reports?report=products', label: 'Product Performance', icon: Boxes, match: 'report=products' },

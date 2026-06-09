@@ -1,5 +1,6 @@
 import {
   reportsEnableSalesReports,
+  reportsLegacyReportEnabled,
   reportsShowDiscount,
   reportsShowCostAndProfit,
   userMayViewDashboardProfit,
@@ -9,6 +10,13 @@ import {
 describe('reportDisplay', () => {
   test('sales reports default on', () => {
     expect(reportsEnableSalesReports({})).toBe(true);
+  });
+
+  test('sales-by-person follows sales reports toggle', () => {
+    expect(reportsLegacyReportEnabled({}, 'sales-by-person')).toBe(true);
+    expect(
+      reportsLegacyReportEnabled({ enable_sales_reports: false }, 'sales-by-person')
+    ).toBe(false);
   });
 
   test('discount hidden when flag off', () => {

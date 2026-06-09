@@ -6,7 +6,7 @@ import ChangeReasonField from '../Approvals/ChangeReasonField';
 import {
   isMakerCheckerEnabled,
   isPendingApprovalResponse,
-  PENDING_APPROVAL_MESSAGE,
+  pendingApprovalToastMessage,
   rolePermissionsChanged,
 } from '../../utils/makerChecker';
 import { toast } from '../../utils/toast';
@@ -195,7 +195,7 @@ const RoleForm = ({ role, permissions, permissionCatalog, showPermissionCatalog 
     };
     if (permChangeNeedsReason) {
       if (!changeReason.trim()) {
-        toast.warning('Enter a reason for permission changes.');
+        toast.warning('Please add a short reason so a manager can review this permission change.');
         setLoading(false);
         return;
       }
@@ -206,7 +206,7 @@ const RoleForm = ({ role, permissions, permissionCatalog, showPermissionCatalog 
       if (role) {
         const res = await rolesAPI.update(role.id, payload);
         if (isPendingApprovalResponse(res.status)) {
-          toast.warning(PENDING_APPROVAL_MESSAGE);
+          toast.warning(pendingApprovalToastMessage());
         } else {
           toast.success('Role updated successfully');
         }
@@ -423,7 +423,11 @@ const RoleForm = ({ role, permissions, permissionCatalog, showPermissionCatalog 
             )}
 
             {permChangeNeedsReason && (
-              <ChangeReasonField value={changeReason} onChange={setChangeReason} />
+              <ChangeReasonField
+                context="role_permissions"
+                value={changeReason}
+                onChange={setChangeReason}
+              />
             )}
           </form>
         </div>

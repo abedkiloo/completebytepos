@@ -23,8 +23,12 @@ import {
   getCurrentUserId,
   getPermissionsFromStorage,
   userMayApproveModule,
+  userMayReviewPendingApprovals,
+  makerCheckerReasonCopy,
+  makerCheckerPromptMessage,
+  pendingApprovalToastMessage,
+  PENDING_APPROVALS_NAV,
 } from './makerChecker';
-
 describe('makerChecker', () => {
   it('detects maker-checker enabled from store settings', () => {
     expect(isMakerCheckerEnabled({ maker_checker_enabled: true })).toBe(true);
@@ -42,6 +46,46 @@ describe('makerChecker', () => {
         maker_checker_enabled: true,
         maker_checker_sales_controls: false,
       })
+    ).toBe(true);
+  });
+
+  it('makerCheckerReasonCopy explains approval and guides checkers', () => {
+    localStorage.clear();
+    localStorage.setItem(
+      'profile',
+      JSON.stringify({ role: 'cashier', custom_role: { name: 'Sales Personnel' } })
+    );
+    const salesCopy = makerCheckerReasonCopy('role_permissions');
+    expect(salesCopy.summary).toMatch(/manager approval/i);
+    expect(salesCopy.approverHint).toBeNull();
+
+    localStorage.setItem(
+      'profile',
+      JSON.stringify({ role: 'manager', custom_role: { name: 'Manager' } })
+    );
+    const managerCopy = makerCheckerReasonCopy('role_permissions');
+    expect(managerCopy.approverHint).toContain(PENDING_APPROVALS_NAV);
+    expect(pendingApprovalToastMessage()).toContain(PENDING_APPROVALS_NAV);
+    expect(makerCheckerPromptMessage('settings')).toContain('Enter your reason');
+  });
+
+  it('userMayReviewPendingApprovals allows managers and settings approvers', () => {
+    localStorage.clear();
+    localStorage.setItem(
+      'profile',
+      JSON.stringify({ role: 'manager', custom_role: { name: 'Manager' } })
+    );
+    expect(userMayReviewPendingApprovals([])).toBe(true);
+
+    localStorage.setItem(
+      'profile',
+      JSON.stringify({ role: 'cashier', custom_role: { name: 'Sales Personnel' } })
+    );
+    expect(userMayReviewPendingApprovals([])).toBe(false);
+    expect(
+      userMayReviewPendingApprovals([
+        { name: 'settings.approve', module: 'settings', action: 'approve' },
+      ])
     ).toBe(true);
   });
 

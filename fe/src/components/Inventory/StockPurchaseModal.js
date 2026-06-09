@@ -212,11 +212,7 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
           </div>
 
           {makerCheckerOn ? (
-            <ChangeReasonField
-              value={changeReason}
-              onChange={setChangeReason}
-              hint="Required for stock purchases when maker-checker is on."
-            />
+            <ChangeReasonField context="stock" value={changeReason} onChange={setChangeReason} />
           ) : null}
 
           </form>

@@ -431,7 +431,7 @@ export default function SystemSettings() {
 
         {makerCheckerOn &&
           storeSettingsEditNeedsReason(form, settings) && (
-            <ChangeReasonField value={changeReason} onChange={setChangeReason} />
+            <ChangeReasonField context="settings" value={changeReason} onChange={setChangeReason} />
           )}
 
         <div className="flex flex-col items-end gap-1">

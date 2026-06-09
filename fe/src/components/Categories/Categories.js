@@ -400,7 +400,7 @@ const Categories = () => {
         type="danger"
       >
         {makerCheckerOn && confirmDelete ? (
-          <ChangeReasonField value={deleteReason} onChange={setDeleteReason} />
+          <ChangeReasonField context="catalog" value={deleteReason} onChange={setDeleteReason} />
         ) : null}
       </ConfirmDialog>
 
@@ -419,9 +419,9 @@ const Categories = () => {
       >
         {confirmDeactivate ? (
           <ChangeReasonField
+            context="catalog"
             value={deactivateReason}
             onChange={setDeactivateReason}
-            hint="Required when deactivating with maker-checker on."
           />
         ) : null}
       </ConfirmDialog>

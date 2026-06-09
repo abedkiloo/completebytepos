@@ -141,11 +141,7 @@ const StockAdjustmentModal = ({ product, onClose, onSave }) => {
             </div>
 
             {makerCheckerOn ? (
-              <ChangeReasonField
-                value={changeReason}
-                onChange={setChangeReason}
-                hint="Required for stock adjustments when maker-checker is on."
-              />
+              <ChangeReasonField context="stock" value={changeReason} onChange={setChangeReason} />
             ) : null}
 
             <div className="slide-in-panel-footer">

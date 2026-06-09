@@ -15,6 +15,13 @@ const ALL_REPORTS = [
     description: 'View sales performance and revenue analytics',
   },
   {
+    id: 'sales-by-person',
+    name: 'Sales by staff',
+    icon: '👥',
+    hasDetail: true,
+    description: 'Month-end performance per sales person — download for commission proof',
+  },
+  {
     id: 'purchase',
     name: 'Purchase report',
     icon: '🕐',

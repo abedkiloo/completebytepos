@@ -11,6 +11,7 @@ import {
 import { formatCurrency, formatNumber, formatDateTime, formatCompactCurrency } from '../../utils/formatters';
 import ReportsList from './ReportsList';
 import ReportsHub from './ReportsHub';
+import SalesPersonReportView from './SalesPersonReportView';
 import { PageShell, PageHeader, FilterBar, FilterField, PageLoading, EmptyState } from '../page';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -99,8 +100,7 @@ const Reports = () => {
   }, [reportParam, filters, reportSettings]);
 
   useEffect(() => {
-    // Only load report if reportParam exists
-    if (reportParam) {
+    if (reportParam && reportParam !== 'sales-by-person') {
       loadReport();
     }
   }, [loadReport, reportParam]);
@@ -146,6 +146,10 @@ const Reports = () => {
   };
 
   const renderReport = () => {
+    if (reportParam === 'sales-by-person') {
+      return <SalesPersonReportView />;
+    }
+
     if (loading) {
       return <PageLoading rows={8} showStats />;
     }
@@ -873,6 +877,7 @@ const Reports = () => {
       'tax': 'Tax Report',
       'profit-loss': 'Profit & Loss',
       'annual': 'Annual Report',
+      'sales-by-person': 'Sales by staff',
     };
     return titles[reportParam] || 'Report';
   };
@@ -884,7 +889,11 @@ const Reports = () => {
     <PageShell>
         <PageHeader
           title={getReportTitle()}
-          description={`Analytics for ${getReportTitle().toLowerCase()}.`}
+          description={
+            reportParam === 'sales-by-person'
+              ? 'Month-end totals per sales person — filter, print, or download CSV for commission records.'
+              : `Analytics for ${getReportTitle().toLowerCase()}.`
+          }
         >
           <Button variant="outline" onClick={() => navigate('/reports')}>
             <ArrowLeft className="h-4 w-4" />

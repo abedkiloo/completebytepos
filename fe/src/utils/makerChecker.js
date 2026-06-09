@@ -2,10 +2,113 @@
  * Maker-checker UX helpers (align with be/approvals).
  */
 
-import { hasPermission } from './roleAccess';
+import { hasPermission, getPersonaFromStorage, PERSONA } from './roleAccess';
+
+export const PENDING_APPROVALS_NAV = 'Reports → Pending approvals';
 
 export const PENDING_APPROVAL_MESSAGE =
-  'Change submitted for approval — not yet active.';
+  'Submitted for approval — the change is not active yet. A manager will review it shortly.';
+
+const REASON_CONTEXT_COPY = {
+  default: {
+    label: 'Reason for this change',
+    placeholder: 'e.g. Supplier price list update, cycle count correction',
+    summary:
+      'This change will be sent to a manager for approval and will not take effect until it is approved.',
+  },
+  role_permissions: {
+    label: 'Reason for permission changes',
+    placeholder: 'e.g. Sales team needs invoice access for credit customers',
+    summary:
+      'These permission updates require manager approval. Users will not receive the new access until the change is approved.',
+  },
+  catalog: {
+    label: 'Reason for this catalog change',
+    placeholder: 'e.g. New supplier price list, seasonal deactivation',
+    summary:
+      'This catalog change will be submitted for approval and will not appear in POS or reports until it is approved.',
+  },
+  stock: {
+    label: 'Reason for this stock change',
+    placeholder: 'e.g. Cycle count correction, received shipment',
+    summary:
+      'This stock change will be submitted for approval. Quantities on hand stay unchanged until a manager approves it.',
+  },
+  settings: {
+    label: 'Reason for this settings change',
+    placeholder: 'e.g. Enable card payments for month-end promotion',
+    summary:
+      'This settings change will be submitted for approval and will not apply to the store until it is approved.',
+  },
+  financial: {
+    label: 'Reason for this entry',
+    placeholder: 'e.g. Monthly rent payment, supplier invoice #1042',
+    summary:
+      'This entry will be submitted for approval and will not affect accounts until a manager approves it.',
+  },
+};
+
+/** True when the signed-in user can open the pending-approvals queue. */
+export function userMayReviewPendingApprovals(permissions = getPermissionsFromStorage()) {
+  const persona = getPersonaFromStorage();
+  if (persona === PERSONA.SUPER_ADMIN || persona === PERSONA.MANAGER) {
+    return true;
+  }
+  if (hasPermission(permissions, 'settings', 'approve')) {
+    return true;
+  }
+  const approveModules = [
+    'products',
+    'categories',
+    'inventory',
+    'invoicing',
+    'roles',
+    'settings',
+  ];
+  return approveModules.some((module) => hasPermission(permissions, module, 'approve'));
+}
+
+/**
+ * Friendly copy for maker-checker reason fields and prompts.
+ * @param {'default'|'role_permissions'|'catalog'|'stock'|'settings'|'financial'} context
+ */
+export function makerCheckerReasonCopy(
+  context = 'default',
+  permissions = getPermissionsFromStorage()
+) {
+  const base = REASON_CONTEXT_COPY[context] || REASON_CONTEXT_COPY.default;
+  const approverHint = userMayReviewPendingApprovals(permissions)
+    ? `You can review and approve this request under ${PENDING_APPROVALS_NAV} in the sidebar.`
+    : null;
+  return {
+    label: base.label,
+    placeholder: base.placeholder,
+    summary: base.summary,
+    approverHint,
+  };
+}
+
+/** Toast after HTTP 202 — includes approve path when the user is a checker. */
+export function pendingApprovalToastMessage(permissions = getPermissionsFromStorage()) {
+  if (userMayReviewPendingApprovals(permissions)) {
+    return `Submitted for approval — not active yet. Open ${PENDING_APPROVALS_NAV} to approve it.`;
+  }
+  return PENDING_APPROVAL_MESSAGE;
+}
+
+/** Text for window.prompt when a reason is required (module settings toggles). */
+export function makerCheckerPromptMessage(
+  context = 'default',
+  permissions = getPermissionsFromStorage()
+) {
+  const copy = makerCheckerReasonCopy(context, permissions);
+  const lines = [copy.summary];
+  if (copy.approverHint) {
+    lines.push('', copy.approverHint);
+  }
+  lines.push('', 'Enter your reason:');
+  return lines.join('\n');
+}
 
 const SENSITIVE_PRODUCT_KEYS = new Set([
   'price',
