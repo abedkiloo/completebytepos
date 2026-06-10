@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { Factory, Plus } from 'lucide-react';
 import { suppliersAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
@@ -57,6 +58,7 @@ const Suppliers = () => {
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebouncedValue(searchQuery);
   const [showForm, setShowForm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState(null);
@@ -70,14 +72,14 @@ const Suppliers = () => {
   useEffect(() => {
     loadSuppliers();
     loadStatistics();
-  }, [searchQuery, filters]);
+  }, [debouncedSearch, filters]);
 
   const loadSuppliers = async () => {
     setLoading(true);
     try {
       const params = {};
-      if (searchQuery) {
-        params.search = searchQuery;
+      if (debouncedSearch) {
+        params.search = debouncedSearch;
       }
       if (filters.is_active !== '') {
         params.is_active = filters.is_active;

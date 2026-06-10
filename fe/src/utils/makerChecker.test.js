@@ -6,6 +6,7 @@ import {
   productEditNeedsReason,
   pendingApprovalLabels,
   extractPendingChange,
+  extractApiReasonError,
   priceChangeExceedsFiftyPercent,
   needsExtremePriceConfirm,
   variantEditNeedsReason,
@@ -100,6 +101,16 @@ describe('makerChecker', () => {
     expect(isPendingApprovalResponse(200)).toBe(false);
   });
 
+  it('extractApiReasonError handles string and array reason', () => {
+    expect(
+      extractApiReasonError({ reason: 'A reason is required.' })
+    ).toBe('A reason is required.');
+    expect(
+      extractApiReasonError({ reason: ['First error'] })
+    ).toBe('First error');
+    expect(extractApiReasonError({})).toBe('');
+  });
+
   it('extracts pending_change from response body', () => {
     const body = { pending_change: { id: 3, action_type: 'product_price' } };
     expect(extractPendingChange(body)?.id).toBe(3);
@@ -134,10 +145,13 @@ describe('makerChecker', () => {
     ).toBe(true);
     expect(
       productEditNeedsReason({ track_stock: false }, { track_stock: true })
-    ).toBe(true);
+    ).toBe(false);
     expect(
       productEditNeedsReason({ unit: 'kg' }, { unit: 'piece' })
-    ).toBe(true);
+    ).toBe(false);
+    expect(
+      productEditNeedsReason({ selling_price: '30.00' }, { price: '30' })
+    ).toBe(false);
     expect(variantEditNeedsReason(null, { price: '1' })).toBe(false);
   });
 
@@ -230,6 +244,9 @@ describe('makerChecker', () => {
     ).toBe(false);
     expect(
       variantEditNeedsReason({ stock_quantity: 5 }, { price: '10', stock_quantity: 0 })
+    ).toBe(false);
+    expect(
+      variantEditNeedsReason({ price: '30.00' }, { price: 30 })
     ).toBe(false);
     expect(
       categoryEditNeedsReason({ is_active: false }, { is_active: true })

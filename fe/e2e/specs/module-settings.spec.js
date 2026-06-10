@@ -17,7 +17,7 @@ test.describe('Module settings immediate UI', () => {
     const testId = 'setting-reports-enable_sales_reports';
 
     await ensureModuleSetting(page, testId, true);
-    await clickModuleSetting(page, testId);
+    await clickModuleSetting(page, testId, { module: 'reports' });
     await expectSettingsToast(page, 'Report');
 
     await page.goto('/reports');

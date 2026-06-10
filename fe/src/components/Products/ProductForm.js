@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { Link } from 'react-router-dom';
 import { productsAPI, categoriesAPI, sizesAPI, colorsAPI, suppliersAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
@@ -16,11 +17,19 @@ import { useProductUnits } from '../../hooks/useProductUnits';
 import ChangeReasonField from '../Approvals/ChangeReasonField';
 import ProductVariantsPanel from './ProductVariantsPanel';
 import {
+  extractApiReasonError,
   isMakerCheckerEnabled,
   isPendingApprovalResponse,
+  pendingApprovalToastMessage,
   productEditNeedsReason,
-  PENDING_APPROVAL_MESSAGE,
 } from '../../utils/makerChecker';
+import {
+  crossParentSubcategoryHint,
+  fetchSubcategories,
+  findCategoryByExactName,
+  mergeCategoryOptions,
+  resolveSubcategoryDuplicate,
+} from '../../utils/categorySelect';
 
 const defaultFieldAccess = (catalogOnly, financialFieldsLocked) => ({
   catalog: true,
@@ -85,6 +94,10 @@ const ProductForm = ({
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
   const [subcategories, setSubcategories] = useState([]);
+  const [subcategorySearchTerm, setSubcategorySearchTerm] = useState('');
+  const debouncedSubcategorySearch = useDebouncedValue(subcategorySearchTerm);
+  const [subcategoryHint, setSubcategoryHint] = useState('');
+  const [subcategoryFormInitialName, setSubcategoryFormInitialName] = useState('');
   const [sizes, setSizes] = useState([]);
   const [colors, setColors] = useState([]);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
@@ -143,51 +156,84 @@ const ProductForm = ({
   }, []);
 
   useEffect(() => {
-    // Load subcategories when category changes - filter by parent category
-    const loadSubcategories = async () => {
-      if (formData.category) {
-        try {
-          // Clear subcategories first to show loading state
-          setSubcategories([]);
-          
-          // Ensure category ID is a number for the API call
-          const categoryId = parseInt(formData.category);
-          if (isNaN(categoryId)) {
-            console.error('Invalid category ID:', formData.category);
-            setSubcategories([]);
-            return;
-          }
-          
-          const response = await categoriesAPI.list({ parent: categoryId, is_active: 'true' });
-          const newSubcategories = response.data.results || response.data || [];
-          const validSubcategories = Array.isArray(newSubcategories) ? newSubcategories : [];
-          setSubcategories(validSubcategories);
-          
-          // Clear subcategory if current one is not in the new list (category changed)
-          if (formData.subcategory) {
-            const subcategoryId = parseInt(formData.subcategory);
-            const subcategoryExists = validSubcategories.some(sub => sub.id === subcategoryId);
-            if (!subcategoryExists) {
-              setFormData(prev => ({ ...prev, subcategory: '' }));
-            }
-          }
-        } catch (error) {
-          console.error('Error loading subcategories:', error);
-          setSubcategories([]);
-          // Only clear subcategory if category was actually changed (not on initial load)
-          if (formData.subcategory) {
-            setFormData(prev => ({ ...prev, subcategory: '' }));
+    if (!formData.category) {
+      setSubcategories([]);
+      setSubcategorySearchTerm('');
+      setSubcategoryHint('');
+      if (formData.subcategory) {
+        setFormData((prev) => ({ ...prev, subcategory: '' }));
+      }
+      return undefined;
+    }
+
+    const categoryId = parseInt(formData.category, 10);
+    if (Number.isNaN(categoryId)) {
+      setSubcategories([]);
+      return undefined;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await fetchSubcategories(categoryId);
+        if (cancelled) return;
+        setSubcategories(rows);
+
+        if (formData.subcategory) {
+          const subcategoryId = parseInt(formData.subcategory, 10);
+          const subcategoryExists = rows.some((sub) => sub.id === subcategoryId);
+          if (!subcategoryExists) {
+            setFormData((prev) => ({ ...prev, subcategory: '' }));
           }
         }
-      } else {
-        setSubcategories([]);
-        if (formData.subcategory) {
-          setFormData((prev) => ({ ...prev, subcategory: '' }));
+      } catch (error) {
+        console.error('Error loading subcategories:', error);
+        if (!cancelled) {
+          setSubcategories([]);
         }
       }
+    })();
+
+    return () => {
+      cancelled = true;
     };
-    loadSubcategories();
   }, [formData.category]);
+
+  useEffect(() => {
+    const term = debouncedSubcategorySearch.trim();
+    if (!term || !formData.category) {
+      setSubcategoryHint('');
+      return undefined;
+    }
+
+    const localMatch = subcategories.some((sub) =>
+      sub.name?.toLowerCase().includes(term.toLowerCase())
+    );
+    if (localMatch) {
+      setSubcategoryHint('');
+      return undefined;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const exact = await findCategoryByExactName(term);
+        if (cancelled) return;
+        const parent = allCategories.find(
+          (c) => String(c.id) === String(formData.category)
+        );
+        setSubcategoryHint(
+          crossParentSubcategoryHint(exact, formData.category, parent?.name)
+        );
+      } catch {
+        if (!cancelled) setSubcategoryHint('');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedSubcategorySearch, formData.category, subcategories, allCategories]);
 
   useEffect(() => {
     if (product) {
@@ -276,26 +322,53 @@ const ProductForm = ({
   };
 
   const handleSubcategoryCreated = (newSubcategory) => {
-    // Reload all categories first
     const loadAllCategories = async () => {
       try {
         const response = await categoriesAPI.list({ is_active: 'true' });
         const categoriesData = response.data.results || response.data || [];
         const updatedCategories = Array.isArray(categoriesData) ? categoriesData : [];
         setAllCategories(updatedCategories);
-        
-        // Reload subcategories for the current category
-        const subcatResponse = await categoriesAPI.list({ parent: formData.category, is_active: 'true' });
-        const newSubcategories = subcatResponse.data.results || subcatResponse.data || [];
-        setSubcategories(newSubcategories);
-        
-        // Select the newly created subcategory
-        setFormData(prev => ({ ...prev, subcategory: String(newSubcategory.id) }));
+
+        const rows = await fetchSubcategories(formData.category);
+        setSubcategories(rows);
+        setSubcategorySearchTerm('');
+        setSubcategoryHint('');
+        setSubcategoryFormInitialName('');
+        setFormData((prev) => ({ ...prev, subcategory: String(newSubcategory.id) }));
       } catch (error) {
         console.error('Error reloading categories/subcategories:', error);
       }
     };
     loadAllCategories();
+  };
+
+  const handleResolveSubcategoryDuplicate = async (name) => {
+    const result = await resolveSubcategoryDuplicate(name, formData.category);
+    if (!result) return false;
+
+    if (result.sameParent) {
+      const rows = await fetchSubcategories(formData.category);
+      setSubcategories((prev) => mergeCategoryOptions(prev, rows));
+      setFormData((prev) => ({ ...prev, subcategory: String(result.existing.id) }));
+      setShowSubcategoryForm(false);
+      setSubcategoryFormInitialName('');
+      toast.info(
+        `"${result.existing.name}" is already under this category — selected it for you.`
+      );
+      return true;
+    }
+
+    const otherParent = allCategories.find(
+      (c) => String(c.id) === String(result.existing.parent)
+    );
+    toast.error(
+      crossParentSubcategoryHint(
+        result.existing,
+        formData.category,
+        otherParent?.name
+      )
+    );
+    return false;
   };
 
   const handleSupplierCreated = (newSupplier) => {
@@ -339,7 +412,7 @@ const ProductForm = ({
       newErrors.name = 'Product name is required';
     }
     
-    if (showPricingFields) {
+    if (showPricingFields && !formData.has_variants) {
       if (!formData.selling_price || parseFloat(formData.selling_price) < 0) {
         newErrors.selling_price = 'Selling price is required';
       }
@@ -373,6 +446,17 @@ const ProductForm = ({
     return Object.keys(newErrors).length === 0;
   };
 
+  const sensitiveProductEdit = useMemo(
+    () =>
+      makerCheckerOn &&
+      product &&
+      !formData.has_variants &&
+      productEditNeedsReason(formData, product, {
+        financialFieldsLocked: makerCheckerFinancialLocked,
+      }),
+    [makerCheckerOn, product, formData, makerCheckerFinancialLocked]
+  );
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -383,6 +467,14 @@ const ProductForm = ({
     setLoading(true);
     try {
       const payload = { ...formData };
+      if (product && payload.has_variants) {
+        delete payload.selling_price;
+        delete payload.mrp;
+        delete payload.cost;
+        delete payload.stock_quantity;
+        delete payload.low_stock_threshold;
+        delete payload.reorder_quantity;
+      }
       if (!fieldAccess.pricing) {
         delete payload.selling_price;
         delete payload.mrp;
@@ -435,12 +527,18 @@ const ProductForm = ({
         submitData.append('image', image);
       }
 
-      const needsReason = makerCheckerOn && productEditNeedsReason(payload, product, {
-        financialFieldsLocked: makerCheckerFinancialLocked,
-      });
+      const needsReason =
+        makerCheckerOn &&
+        product &&
+        !payload.has_variants &&
+        productEditNeedsReason(payload, product, {
+          financialFieldsLocked: makerCheckerFinancialLocked,
+        });
       if (needsReason) {
         if (!changeReason.trim()) {
-          toast.warning('Enter a reason for this sensitive change.');
+          toast.warning(
+            'Enter a reason below — price, cost, or stock changes need manager approval.'
+          );
           setLoading(false);
           return;
         }
@@ -451,7 +549,7 @@ const ProductForm = ({
       if (product) {
         response = await productsAPI.update(product.id, submitData);
         if (isPendingApprovalResponse(response.status)) {
-          toast.warning(PENDING_APPROVAL_MESSAGE);
+          toast.warning(pendingApprovalToastMessage());
         } else {
           toast.success('Product updated successfully');
         }
@@ -466,8 +564,10 @@ const ProductForm = ({
     } catch (error) {
       if (error.response?.data) {
         setErrors(error.response.data);
-        const errorMessage = error.response.data.error || 
-          Object.values(error.response.data).flat().join(', ') || 
+        const errorMessage =
+          extractApiReasonError(error.response.data) ||
+          error.response.data.error ||
+          Object.values(error.response.data).flat().join(', ') ||
           'Failed to save product';
         toast.error(errorMessage);
       } else {
@@ -544,9 +644,14 @@ const ProductForm = ({
                   }
                   searchable={true}
                   disabled={!formData.category}
+                  onSearchTermChange={setSubcategorySearchTerm}
+                  noResultsHint={subcategoryHint}
                   onAddNew={
                     formData.category
-                      ? () => setShowSubcategoryForm(true)
+                      ? () => {
+                          setSubcategoryFormInitialName(subcategorySearchTerm.trim());
+                          setShowSubcategoryForm(true);
+                        }
                       : () => {
                           toast.error('Select a category before adding a subcategory');
                         }
@@ -688,7 +793,7 @@ const ProductForm = ({
             </>
           )}
 
-          {showPricingFields && (
+          {showPricingFields && !formData.has_variants && (
           <div className="form-row">
             {showMrp && (
             <div className="form-group">
@@ -725,7 +830,7 @@ const ProductForm = ({
           </div>
           )}
 
-          {showCostField && (
+          {showCostField && !formData.has_variants && (
           <div className="form-row">
             <div className="form-group">
               <label>Cost (KES)</label>
@@ -742,7 +847,7 @@ const ProductForm = ({
           </div>
           )}
 
-          {showStockFields && (
+          {showStockFields && !formData.has_variants && (
           <div className="form-row">
             <div className="form-group">
               <label>Stock Quantity</label>
@@ -917,11 +1022,8 @@ const ProductForm = ({
 
           </form>
         </div>
-        {makerCheckerOn &&
-        productEditNeedsReason(formData, product, {
-          financialFieldsLocked: makerCheckerFinancialLocked,
-        }) ? (
-          <div className="border-t px-4 py-3">
+        {sensitiveProductEdit ? (
+          <div className="border-t border-amber-200/80 bg-amber-50/30 px-4 py-3 dark:border-amber-900 dark:bg-amber-950/20">
             <ChangeReasonField
               context="catalog"
               value={changeReason}
@@ -949,8 +1051,13 @@ const ProductForm = ({
       {/* Subcategory Form - Nested Slide-in Panel */}
       <CategoryForm
         isOpen={showSubcategoryForm}
-        onClose={() => setShowSubcategoryForm(false)}
+        onClose={() => {
+          setShowSubcategoryForm(false);
+          setSubcategoryFormInitialName('');
+        }}
         onSave={handleSubcategoryCreated}
+        onResolveDuplicate={handleResolveSubcategoryDuplicate}
+        initialName={subcategoryFormInitialName}
         parentCategory={formData.category}
         categories={allCategories}
       />

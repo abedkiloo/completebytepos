@@ -13,6 +13,8 @@ const SearchableSelect = ({
   className = '',
   name = '',
   invalid = false,
+  onSearchTermChange,
+  noResultsHint = '',
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -106,7 +108,11 @@ const SearchableSelect = ({
                 type="text"
                 placeholder="Search..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  const term = e.target.value;
+                  setSearchTerm(term);
+                  onSearchTermChange?.(term);
+                }}
                 onClick={(e) => e.stopPropagation()}
                 className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
               />
@@ -133,7 +139,12 @@ const SearchableSelect = ({
               })
             ) : (
               <div className="cursor-default px-3 py-4 text-center text-sm text-muted-foreground">
-                {searchTerm ? `No results found for "${searchTerm}"` : 'No options available'}
+                <p>{searchTerm ? `No results found for "${searchTerm}"` : 'No options available'}</p>
+                {searchTerm && noResultsHint ? (
+                  <p className="mt-2 text-left text-xs text-amber-800 dark:text-amber-200">
+                    {noResultsHint}
+                  </p>
+                ) : null}
               </div>
             )}
           </div>

@@ -110,18 +110,14 @@ export function makerCheckerPromptMessage(
   return lines.join('\n');
 }
 
+/** Price, cost, stock, and status — not catalog metadata like unit or track_stock. */
 const SENSITIVE_PRODUCT_KEYS = new Set([
   'price',
   'selling_price',
   'mrp',
   'cost',
-  'tax_rate',
   'stock_quantity',
-  'low_stock_threshold',
-  'reorder_quantity',
-  'track_stock',
   'is_active',
-  'unit',
 ]);
 
 export function isMakerCheckerEnabled(settings) {
@@ -152,14 +148,27 @@ const SENSITIVE_VARIANT_KEYS = new Set([
   'mrp',
   'cost',
   'stock_quantity',
-  'low_stock_threshold',
   'is_active',
 ]);
 
-function isUnsetFinancialValue(val) {
+export function isUnsetFinancialValue(val) {
   if (val == null || val === '') return true;
   const n = parseFloat(val);
   return Number.isFinite(n) && n === 0;
+}
+
+function parseSensitiveNumber(val) {
+  if (val == null || val === '') return null;
+  const n = parseFloat(val);
+  return Number.isFinite(n) ? n : null;
+}
+
+function sensitiveNumericValuesEqual(prev, next) {
+  if (isUnsetFinancialValue(prev) && isUnsetFinancialValue(next)) return true;
+  const a = parseSensitiveNumber(prev);
+  const b = parseSensitiveNumber(next);
+  if (a != null && b != null) return a === b;
+  return String(prev ?? '') === String(next ?? '');
 }
 
 /** True when setting a first non-zero price/stock value (not changing an existing one). */
@@ -171,7 +180,6 @@ function isInitialSensitiveSet(key, prev, next) {
     'mrp',
     'cost',
     'stock_quantity',
-    'low_stock_threshold',
   ];
   if (!numericKeys.includes(key)) return false;
   return isUnsetFinancialValue(prev) && !isUnsetFinancialValue(next);
@@ -179,12 +187,31 @@ function isInitialSensitiveSet(key, prev, next) {
 
 function sensitiveFieldNeedsReason(key, prev, next) {
   if (key === 'is_active') {
-    return Boolean(next) !== Boolean(prev);
+    return Boolean(prev) !== Boolean(next);
   }
   if (isInitialSensitiveSet(key, prev, next)) {
     return false;
   }
+  const numericKeys = [
+    'price',
+    'selling_price',
+    'mrp',
+    'cost',
+    'stock_quantity',
+  ];
+  if (numericKeys.includes(key)) {
+    return !sensitiveNumericValuesEqual(prev, next);
+  }
   return String(next ?? '') !== String(prev ?? '');
+}
+
+/** Extract maker-checker reason error from an API error body. */
+export function extractApiReasonError(data) {
+  if (!data || typeof data !== 'object') return '';
+  const reason = data.reason;
+  if (Array.isArray(reason)) return reason[0] || '';
+  if (typeof reason === 'string') return reason;
+  return '';
 }
 
 export function variantEditNeedsReason(formData, variant) {

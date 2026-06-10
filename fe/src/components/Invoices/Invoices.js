@@ -24,7 +24,13 @@ const Invoices = () => {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 450);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
   const [showModal, setShowModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -60,7 +66,7 @@ const Invoices = () => {
     loadCustomers();
     loadSales();
     loadProducts();
-  }, [searchQuery, statusFilter]);
+  }, [debouncedSearch, statusFilter]);
 
   // Reload customers when modal opens to ensure we have the latest customers
   useEffect(() => {
@@ -97,8 +103,8 @@ const Invoices = () => {
     setLoading(true);
     try {
       const params = {};
-      if (searchQuery) {
-        params.search = searchQuery;
+      if (debouncedSearch) {
+        params.search = debouncedSearch;
       }
       if (statusFilter !== 'all') {
         params.status = statusFilter;

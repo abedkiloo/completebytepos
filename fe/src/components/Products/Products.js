@@ -173,7 +173,7 @@ const Products = () => {
 
   // Debounced reload so typing in the search box doesn't hammer the API.
   useEffect(() => {
-    const t = setTimeout(loadProducts, 200);
+    const t = setTimeout(loadProducts, 450);
     return () => clearTimeout(t);
   }, [loadProducts]);
 

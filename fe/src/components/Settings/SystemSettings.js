@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Image, Receipt, CreditCard, Package, Info, ClipboardCheck } from 'lucide-react';
+import { Image, Receipt, CreditCard, Package, ClipboardCheck, SlidersHorizontal } from 'lucide-react';
 
 import { PageShell, PageHeader } from '../page';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { storeSettingsAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import { PAYMENT_METHODS } from '../../utils/paymentMethods';
@@ -14,11 +15,25 @@ import ChangeReasonField from '../Approvals/ChangeReasonField';
 import {
   isMakerCheckerEnabled,
   isPendingApprovalResponse,
-  PENDING_APPROVAL_MESSAGE,
+  pendingApprovalToastMessage,
   storeSettingsEditNeedsReason,
 } from '../../utils/makerChecker';
 import ModuleSettingsCard from './ModuleSettingsCard';
 import { MODULE_SETTINGS_CARDS } from './moduleSettingsCards';
+import SettingToggleRow from './SettingToggleRow';
+
+function StoreCheckboxRow({ id, checked, onChange, disabled, label, description }) {
+  return (
+    <SettingToggleRow
+      settingKey={id}
+      item={{ label, description }}
+      checked={checked}
+      disabled={disabled}
+      onRequestChange={(_, next) => onChange(next)}
+      testId={id}
+    />
+  );
+}
 
 export default function SystemSettings() {
   const { settings, applyLocal } = useStoreSettings();
@@ -26,6 +41,7 @@ export default function SystemSettings() {
   const [logoFile, setLogoFile] = useState(null);
   const [saving, setSaving] = useState(false);
   const [changeReason, setChangeReason] = useState('');
+  const [openModule, setOpenModule] = useState('products');
   const makerCheckerOn = isMakerCheckerEnabled(settings);
 
   useEffect(() => {
@@ -96,7 +112,7 @@ export default function SystemSettings() {
       setChangeReason('');
       window.dispatchEvent(new CustomEvent('storeSettingsUpdated', { detail: data }));
       if (isPendingApprovalResponse(res.status)) {
-        toast.warning(PENDING_APPROVAL_MESSAGE);
+        toast.warning(pendingApprovalToastMessage());
       } else {
         toast.success('System settings saved');
       }
@@ -140,309 +156,224 @@ export default function SystemSettings() {
     <PageShell narrow>
       <PageHeader
         title="System Settings"
-        description="Store-wide POS rules, receipt branding, and per-module feature toggles."
+        description="Store rules save together on the Store & receipt tab. Module features save when you confirm each change."
       />
 
-      <div className="space-y-3">
-        <Card className="border-primary/20 bg-primary/5">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Info className="h-4 w-4 text-primary" />
-              How settings are organised
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm text-muted-foreground">
-            <p>
-              <span className="font-medium text-foreground">Store rules</span> (top section, receipt,
-              payments) apply to the whole business. Click <span className="font-medium text-foreground">Save settings</span>{' '}
-              to persist them.
-            </p>
-            <p>
-              <span className="font-medium text-foreground">Module toggles</span> below save immediately
-              when you check or uncheck them. They gate UI and API behaviour without deleting data.
-            </p>
-            <p>
-              <span className="font-medium text-foreground">Module Settings</span> (separate page) controls
-              which modules and install-level features are enabled. Both layers must allow something before
-              it appears in the app.
-            </p>
-            <p>
-              After upgrading, run{' '}
-              <code className="rounded bg-muted px-1 py-0.5 text-xs">python manage.py init_module_settings</code>{' '}
-              once so new toggles exist in the database.
-            </p>
-          </CardContent>
-        </Card>
+      <Tabs defaultValue="store" className="space-y-4">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="store">Store & receipt</TabsTrigger>
+          <TabsTrigger value="modules" data-testid="system-settings-tab-modules">
+            Module features
+          </TabsTrigger>
+        </TabsList>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <ClipboardCheck className="h-4 w-4 text-primary" />
-              Maker-checker (two-step approval)
-            </CardTitle>
-            <CardDescription>
-              Sensitive price, stock, and delete changes require manager approval before they affect POS and reports.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <label className="flex items-start gap-2">
-              <input
-                type="checkbox"
+        <TabsContent value="store" className="space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <ClipboardCheck className="h-4 w-4 text-primary" />
+                Maker-checker
+              </CardTitle>
+              <CardDescription>
+                Sensitive price, stock, and delete changes can require approval before they affect
+                POS and reports.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <StoreCheckboxRow
+                id="maker_checker_enabled"
                 checked={!!form.maker_checker_enabled}
-                onChange={(e) =>
-                  setForm({ ...form, maker_checker_enabled: e.target.checked })
-                }
-                className="mt-0.5"
+                onChange={(v) => setForm({ ...form, maker_checker_enabled: v })}
+                label="Enable maker-checker"
+                description='Proposals show as "pending approval" until a checker approves them in Reports → Pending approvals.'
               />
-              <span>
-                <span className="font-medium">Enable maker-checker</span>
-                <span className="mt-0.5 block text-muted-foreground">
-                  Proposals return &quot;pending approval&quot; until a checker approves them in Pending approvals.
-                </span>
-              </span>
-            </label>
-            <label className="flex items-start gap-2">
-              <input
-                type="checkbox"
+              <StoreCheckboxRow
+                id="emergency_stock_mode"
                 checked={!!form.emergency_stock_mode}
-                onChange={(e) =>
-                  setForm({ ...form, emergency_stock_mode: e.target.checked })
-                }
-                className="mt-0.5"
                 disabled={!form.maker_checker_enabled}
+                onChange={(v) => setForm({ ...form, emergency_stock_mode: v })}
+                label="Emergency stock mode"
+                description="Positive stock adjustments apply immediately (still logged). Use only for zero-stock emergencies."
               />
-              <span>
-                <span className="font-medium">Emergency stock mode</span>
-                <span className="mt-0.5 block text-muted-foreground">
-                  Positive stock adjustments apply immediately (still logged). Use only for zero-stock emergencies.
-                </span>
-              </span>
-            </label>
-            <label className="flex items-start gap-2 rounded-md border border-dashed border-border bg-muted/30 p-2">
-              <input
-                type="checkbox"
+              <StoreCheckboxRow
+                id="maker_checker_sales_controls"
                 checked={!!form.maker_checker_sales_controls}
-                onChange={(e) =>
-                  setForm({ ...form, maker_checker_sales_controls: e.target.checked })
-                }
-                className="mt-0.5"
                 disabled={!form.maker_checker_enabled}
+                onChange={(v) => setForm({ ...form, maker_checker_sales_controls: v })}
+                label="Optional: post-completion sale edits"
+                description="Future feature — approval for notes/payment method only. Off by default; refunds use Sales history."
               />
-              <span>
-                <span className="font-medium">Optional: post-completion sale edits</span>
-                <span className="mt-0.5 block text-muted-foreground">
-                  Future client feature — approval for notes/payment method only. Off by default;
-                  does not affect POS checkout. Refunds use the Sales history refund flow.
-                </span>
-              </span>
-            </label>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Package className="h-4 w-4 text-primary" />
-              Store POS rules
-            </CardTitle>
-            <CardDescription>
-              Cross-cutting checkout and catalog behaviour. Saved with the button at the bottom of this page.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <label className="flex items-start gap-2">
-              <input
-                type="checkbox"
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Package className="h-4 w-4 text-primary" />
+                Store POS rules
+              </CardTitle>
+              <CardDescription>Cross-cutting checkout and catalog behaviour.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <StoreCheckboxRow
+                id="allow_sales_add_products"
                 checked={form.allow_sales_add_products}
-                onChange={(e) =>
-                  setForm({ ...form, allow_sales_add_products: e.target.checked })
-                }
-                className="mt-0.5"
+                onChange={(v) => setForm({ ...form, allow_sales_add_products: v })}
+                label="Allow sales to add products"
+                description="Shows Products and Categories in the sales navigation when the products module is on."
               />
-              <span>
-                <span className="font-medium">Allow sales to add products</span>
-                <span className="mt-0.5 block text-muted-foreground">
-                  Shows Products and Categories in the sales navigation when the products module is on.
-                </span>
-              </span>
-            </label>
-            <label className="flex items-start gap-2">
-              <input
-                type="checkbox"
+              <StoreCheckboxRow
+                id="sales_catalog_skip_pricing"
                 checked={form.sales_catalog_skip_pricing}
-                onChange={(e) =>
-                  setForm({ ...form, sales_catalog_skip_pricing: e.target.checked })
-                }
-                className="mt-0.5"
+                onChange={(v) => setForm({ ...form, sales_catalog_skip_pricing: v })}
+                label="Sales skip pricing fields"
+                description="Managers and super admins still set MRP, cost, and selling price."
               />
-              <span>
-                <span className="font-medium">Sales skip pricing fields</span>
-                <span className="mt-0.5 block text-muted-foreground">
-                  Managers and super admins still set MRP, cost, and selling price.
-                </span>
-              </span>
-            </label>
-            <label className="flex items-start gap-2">
-              <input
-                type="checkbox"
+              <StoreCheckboxRow
+                id="hide_entity_status_toggles"
                 checked={form.hide_entity_status_toggles}
-                onChange={(e) =>
-                  setForm({ ...form, hide_entity_status_toggles: e.target.checked })
-                }
-                className="mt-0.5"
+                onChange={(v) => setForm({ ...form, hide_entity_status_toggles: v })}
+                label="Hide all active / inactive controls"
+                description="Store-wide override: hides status badges, filters, and toggles across catalog entities."
               />
-              <span>
-                <span className="font-medium">Hide all active / inactive controls</span>
-                <span className="mt-0.5 block text-muted-foreground">
-                  Store-wide override: hides status badges, filters, and toggles for products,
-                  customers, employees, suppliers, users, and categories — even when a module&apos;s
-                  status toggle is on.
-                </span>
-              </span>
-            </label>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        {MODULE_SETTINGS_CARDS.map((card) => (
-          <ModuleSettingsCard key={card.module} {...card} />
-        ))}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <CreditCard className="h-4 w-4 text-primary" />
+                Payment methods
+              </CardTitle>
+              <CardDescription>Only selected methods appear at POS checkout.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {PAYMENT_METHODS.map((m) => {
+                  const on = (form.enabled_payment_methods || []).includes(m.id);
+                  const Icon = m.icon;
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => togglePayment(m.id)}
+                      className={`flex flex-col items-center gap-1 rounded-md border px-2 py-2.5 text-xs font-medium transition-colors ${
+                        on
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border text-muted-foreground hover:bg-accent'
+                      }`}
+                    >
+                      <Icon className="h-5 w-5" />
+                      {m.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <CreditCard className="h-4 w-4 text-primary" />
-              Payment methods
-            </CardTitle>
-            <CardDescription>Only selected methods appear at POS checkout.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {PAYMENT_METHODS.map((m) => {
-                const on = (form.enabled_payment_methods || []).includes(m.id);
-                const Icon = m.icon;
-                return (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => togglePayment(m.id)}
-                    className={`flex flex-col items-center gap-1 rounded-md border px-2 py-2.5 text-xs font-medium transition-colors ${
-                      on
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-border text-muted-foreground hover:bg-accent'
-                    }`}
-                  >
-                    <Icon className="h-5 w-5" />
-                    {m.label}
-                  </button>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Receipt className="h-4 w-4 text-primary" />
-              Receipt
-            </CardTitle>
-            <CardDescription>Logo and messages printed on thermal receipts.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                <Image className="h-4 w-4" />
-                Logo
-              </Label>
-              {form.receipt_logo_url && (
-                <img
-                  src={form.receipt_logo_url}
-                  alt="Receipt logo"
-                  className="h-16 w-auto rounded border object-contain"
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Receipt className="h-4 w-4 text-primary" />
+                Receipt
+              </CardTitle>
+              <CardDescription>Logo and messages printed on thermal receipts.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <Image className="h-4 w-4" />
+                  Logo
+                </Label>
+                {form.receipt_logo_url && (
+                  <img
+                    src={form.receipt_logo_url}
+                    alt="Receipt logo"
+                    className="h-16 w-auto rounded border object-contain"
+                  />
+                )}
+                <Input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setLogoFile(e.target.files?.[0] || null)}
                 />
-              )}
-              <Input
-                type="file"
-                accept="image/*"
-                onChange={(e) => setLogoFile(e.target.files?.[0] || null)}
-              />
-              {form.receipt_logo_url && (
-                <Button type="button" variant="outline" size="sm" onClick={clearLogo} disabled={saving}>
-                  Remove logo
-                </Button>
-              )}
-            </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
+                {form.receipt_logo_url && (
+                  <Button type="button" variant="outline" size="sm" onClick={clearLogo} disabled={saving}>
+                    Remove logo
+                  </Button>
+                )}
+              </div>
+              <StoreCheckboxRow
+                id="receipt_show_logo"
                 checked={form.receipt_show_logo}
-                onChange={(e) => setForm({ ...form, receipt_show_logo: e.target.checked })}
+                onChange={(v) => setForm({ ...form, receipt_show_logo: v })}
+                label="Show logo on receipt"
               />
-              Show logo on receipt
-            </label>
-            <label className="flex items-start gap-2 text-sm">
-              <input
-                type="checkbox"
+              <StoreCheckboxRow
+                id="receipt_show_sku"
                 checked={form.receipt_show_sku}
-                onChange={(e) => setForm({ ...form, receipt_show_sku: e.target.checked })}
-                className="mt-0.5"
+                onChange={(v) => setForm({ ...form, receipt_show_sku: v })}
+                label="Show SKU on receipt"
+                description="Off by default — line items show product name only."
               />
-              <span>
-                <span className="font-medium">Show SKU on receipt</span>
-                <span className="mt-0.5 block text-muted-foreground">
-                  Off by default — line items show product name only.
-                </span>
-              </span>
-            </label>
-            <div className="space-y-1">
-              <Label htmlFor="receipt_header">Header message</Label>
-              <Input
-                id="receipt_header"
-                value={form.receipt_header_text || ''}
-                onChange={(e) => setForm({ ...form, receipt_header_text: e.target.value })}
-                placeholder="e.g. Welcome to our store"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="receipt_footer">Footer message</Label>
-              <Input
-                id="receipt_footer"
-                value={form.receipt_footer_text || ''}
-                onChange={(e) => setForm({ ...form, receipt_footer_text: e.target.value })}
-                placeholder="Thank you for your business!"
-              />
-            </div>
-            <label className="flex items-start gap-2 text-sm">
-              <input
-                type="checkbox"
+              <div className="space-y-1">
+                <Label htmlFor="receipt_header">Header message</Label>
+                <Input
+                  id="receipt_header"
+                  value={form.receipt_header_text || ''}
+                  onChange={(e) => setForm({ ...form, receipt_header_text: e.target.value })}
+                  placeholder="e.g. Welcome to our store"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="receipt_footer">Footer message</Label>
+                <Input
+                  id="receipt_footer"
+                  value={form.receipt_footer_text || ''}
+                  onChange={(e) => setForm({ ...form, receipt_footer_text: e.target.value })}
+                  placeholder="Thank you for your business!"
+                />
+              </div>
+              <StoreCheckboxRow
+                id="receipt_auto_print"
                 checked={form.receipt_auto_print}
-                onChange={(e) => setForm({ ...form, receipt_auto_print: e.target.checked })}
-                className="mt-0.5"
+                onChange={(v) => setForm({ ...form, receipt_auto_print: v })}
+                label="Auto-print after sale"
+                description="Off by default — cashier taps Print after reviewing the receipt."
               />
-              <span>
-                <span className="font-medium">Auto-print after sale</span>
-                <span className="mt-0.5 block text-muted-foreground">
-                  Off by default — cashier taps Print after reviewing the receipt.
-                </span>
-              </span>
-            </label>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        {makerCheckerOn &&
-          storeSettingsEditNeedsReason(form, settings) && (
+          {makerCheckerOn && storeSettingsEditNeedsReason(form, settings) ? (
             <ChangeReasonField context="settings" value={changeReason} onChange={setChangeReason} />
-          )}
+          ) : null}
 
-        <div className="flex flex-col items-end gap-1">
-          <Button onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving…' : 'Save store settings'}
-          </Button>
-          <p className="text-xs text-muted-foreground">
-            Module toggles above save automatically when changed.
+          <div className="sticky bottom-2 z-10 flex justify-end rounded-lg border bg-background/95 p-3 shadow-sm backdrop-blur">
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? 'Saving…' : 'Save store settings'}
+            </Button>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="modules" className="space-y-3">
+          <p className="flex items-start gap-2 text-sm text-muted-foreground">
+            <SlidersHorizontal className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            Expand a module to review toggles. Sensitive rules ask for confirmation; with maker-checker
+            on, changes may need manager approval.
           </p>
-        </div>
-      </div>
+          {MODULE_SETTINGS_CARDS.map((card) => (
+            <ModuleSettingsCard
+              key={card.module}
+              {...card}
+              expanded={openModule === card.module}
+              onToggleExpand={() =>
+                setOpenModule((prev) => (prev === card.module ? null : card.module))
+              }
+            />
+          ))}
+        </TabsContent>
+      </Tabs>
     </PageShell>
   );
 }

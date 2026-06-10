@@ -9,6 +9,8 @@ const CategoryForm = ({
   onSave,
   parentCategory = null,
   categories = [],
+  initialName = '',
+  onResolveDuplicate,
 }) => {
   const [formData, setFormData] = useState({
     name: '',
@@ -33,14 +35,14 @@ const CategoryForm = ({
   useEffect(() => {
     if (isOpen) {
       setFormData({
-        name: '',
+        name: initialName || '',
         description: '',
         parent: parentCategory ? String(parentCategory) : '',
         is_active: true,
       });
       setErrors({});
     }
-  }, [isOpen, parentCategory]);
+  }, [isOpen, parentCategory, initialName]);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -93,11 +95,27 @@ const CategoryForm = ({
     } catch (error) {
       if (error.response?.data) {
         setErrors(error.response.data);
+        const nameErrors = error.response.data.name;
+        const nameMsg = Array.isArray(nameErrors) ? nameErrors[0] : nameErrors;
         const errorMessage =
           error.response.data.error ||
+          nameMsg ||
           error.response.data.parent?.[0] ||
           Object.values(error.response.data).flat().join(', ') ||
           'Failed to create category';
+
+        if (
+          isSubcategory &&
+          onResolveDuplicate &&
+          nameMsg &&
+          /already exists|already a subcategory/i.test(String(nameMsg))
+        ) {
+          const resolved = await onResolveDuplicate(formData.name.trim());
+          if (resolved) {
+            return;
+          }
+        }
+
         toast.error(errorMessage);
       } else {
         toast.error('Failed to create category: ' + (error.message || 'Unknown error'));

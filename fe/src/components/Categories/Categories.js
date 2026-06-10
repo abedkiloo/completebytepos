@@ -71,18 +71,14 @@ const Categories = () => {
 
   useEffect(() => {
     loadCategories();
-  }, [filterActive, searchQuery]);
+  }, [filterActive]);
 
   const loadCategories = async () => {
     setLoading(true);
     try {
-      const params = { page_size: 200 };
+      const params = {};
       if (filterActive !== 'all') {
         params.is_active = filterActive === 'active';
-      }
-      const q = searchQuery.trim();
-      if (q) {
-        params.search = q;
       }
       const response = await categoriesAPI.list(params);
       const categoriesData = response.data.results || response.data || [];

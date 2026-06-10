@@ -33,11 +33,18 @@ const CategoryForm = ({
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
 
   const isSubcategory = Boolean(category?.parent);
+  const isCreateSubcategory = !category && initialParentId != null;
   const hasChildren = (category?.children_count || 0) > 0;
-  const lockedParentId =
-    initialParentId != null
-      ? String(initialParentId)
-      : isSubcategory
+  const canMoveParent =
+    isSubcategory &&
+    category &&
+    (category.can_move_parent === true ||
+      (category.linked_product_count ?? 0) === 0);
+  const lockedParentId = isCreateSubcategory
+    ? String(initialParentId)
+    : canMoveParent
+      ? ''
+      : isSubcategory && category
         ? String(category.parent)
         : '';
 
@@ -101,9 +108,12 @@ const CategoryForm = ({
         is_active: formData.is_active,
       };
 
-      const parentToUse = lockedParentId || formData.parent;
-      if (parentToUse) {
-        submitData.parent = parseInt(parentToUse, 10);
+      if (canMoveParent && formData.parent) {
+        submitData.parent = parseInt(formData.parent, 10);
+      } else if (lockedParentId) {
+        submitData.parent = parseInt(lockedParentId, 10);
+      } else if (formData.parent) {
+        submitData.parent = parseInt(formData.parent, 10);
       } else if (category && category.parent) {
         submitData.parent = null;
       }
@@ -139,7 +149,7 @@ const CategoryForm = ({
   };
 
   const showParentPicker =
-    !lockedParentId && !hasChildren && !isSubcategory;
+    canMoveParent || (!lockedParentId && !hasChildren && !isSubcategory);
 
   const title = category
     ? isSubcategory
@@ -161,7 +171,7 @@ const CategoryForm = ({
 
         <div className="slide-in-panel-body">
           <form onSubmit={handleSubmit} className="category-form">
-            {lockedParentId && (
+            {lockedParentId && !canMoveParent && (
               <div className="form-group">
                 <label>Parent category</label>
                 <input
@@ -171,7 +181,9 @@ const CategoryForm = ({
                   className="readonly bg-muted"
                 />
                 <small className="form-text text-muted">
-                  Subcategories belong to one top-level category.
+                  {isSubcategory && (category?.linked_product_count ?? 0) > 0
+                    ? 'Products are linked to this subcategory — its parent cannot be changed.'
+                    : 'Subcategories belong to one top-level category.'}
                 </small>
               </div>
             )}
@@ -208,22 +220,31 @@ const CategoryForm = ({
 
             {showParentPicker && (
               <div className="form-group">
-                <label>Parent category (optional)</label>
+                <label>
+                  {canMoveParent ? 'Move to parent category *' : 'Parent category (optional)'}
+                </label>
                 <SearchableSelect
                   name="parent"
                   value={formData.parent || ''}
                   onChange={handleChange}
-                  options={[
-                    { id: '', name: 'None — top-level category' },
-                    ...topLevelParents
-                      .filter((cat) => cat.is_active !== false)
-                      .map((cat) => ({ id: cat.id, name: cat.name })),
-                  ]}
-                  placeholder="Top-level category only"
+                  options={
+                    canMoveParent
+                      ? topLevelParents
+                          .filter((cat) => cat.is_active !== false)
+                          .map((cat) => ({ id: cat.id, name: cat.name }))
+                      : [
+                          { id: '', name: 'None — top-level category' },
+                          ...topLevelParents
+                            .filter((cat) => cat.is_active !== false)
+                            .map((cat) => ({ id: cat.id, name: cat.name })),
+                        ]
+                  }
+                  placeholder={canMoveParent ? 'Select parent category' : 'Top-level category only'}
                 />
                 <small className="form-text text-muted">
-                  Only top-level categories can be parents. You cannot nest subcategories
-                  under other subcategories.
+                  {canMoveParent
+                    ? 'No products use this subcategory yet — you can place it under the correct parent.'
+                    : 'Only top-level categories can be parents. You cannot nest subcategories under other subcategories.'}
                 </small>
               </div>
             )}

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import {
   Plus,
   Search,
@@ -78,6 +79,7 @@ const Customers = () => {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebouncedValue(searchQuery);
 
   // --- Editor / delete confirm state ---
   const [showModal, setShowModal] = useState(false);
@@ -94,7 +96,7 @@ const Customers = () => {
     setLoading(true);
     try {
       const params = { is_active: 'true' };
-      if (searchQuery.trim()) params.search = searchQuery.trim();
+      if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
       const response = await customersAPI.list(params);
       if (signal?.aborted) return;
       const data = response.data.results || response.data || [];
@@ -106,15 +108,12 @@ const Customers = () => {
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [searchQuery]);
+  }, [debouncedSearch]);
 
   useEffect(() => {
     const controller = new AbortController();
-    const t = setTimeout(() => loadCustomers(controller.signal), 200);
-    return () => {
-      controller.abort();
-      clearTimeout(t);
-    };
+    loadCustomers(controller.signal);
+    return () => controller.abort();
   }, [loadCustomers]);
 
   // --- Derived ---

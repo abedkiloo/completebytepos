@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { variantsAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
@@ -7,9 +7,10 @@ import PendingApprovalBadges from '../Approvals/PendingApprovalBadges';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import {
+  extractApiReasonError,
   isMakerCheckerEnabled,
   isPendingApprovalResponse,
-  PENDING_APPROVAL_MESSAGE,
+  pendingApprovalToastMessage,
   variantEditNeedsReason,
 } from '../../utils/makerChecker';
 
@@ -20,6 +21,14 @@ function variantLabel(variant) {
   return parts.length ? parts.join(' / ') : variant.sku || `Variant #${variant.id}`;
 }
 
+function buildVariantPayload(draft) {
+  return {
+    price: draft.price === '' ? null : draft.price,
+    stock_quantity: parseInt(draft.stock_quantity, 10) || 0,
+    is_active: draft.is_active,
+  };
+}
+
 export default function ProductVariantsPanel({ productId }) {
   const { settings: storeSettings } = useStoreSettings();
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
@@ -28,6 +37,8 @@ export default function ProductVariantsPanel({ productId }) {
   const [edits, setEdits] = useState({});
   const [reasons, setReasons] = useState({});
   const [busyId, setBusyId] = useState(null);
+  const [reasonFocusId, setReasonFocusId] = useState(null);
+  const reasonRefs = useRef({});
 
   const load = useCallback(async () => {
     if (!productId) return;
@@ -57,6 +68,12 @@ export default function ProductVariantsPanel({ productId }) {
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (reasonFocusId && reasonRefs.current[reasonFocusId]) {
+      reasonRefs.current[reasonFocusId].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [reasonFocusId]);
+
   const updateEdit = (id, field, value) => {
     setEdits((prev) => ({
       ...prev,
@@ -67,15 +84,12 @@ export default function ProductVariantsPanel({ productId }) {
   const saveVariant = async (variant) => {
     const draft = edits[variant.id];
     if (!draft) return;
-    const payload = {
-      price: draft.price === '' ? null : draft.price,
-      stock_quantity: parseInt(draft.stock_quantity, 10) || 0,
-      is_active: draft.is_active,
-    };
+    const payload = buildVariantPayload(draft);
     const needsReason = makerCheckerOn && variantEditNeedsReason(payload, variant);
     const reason = (reasons[variant.id] || '').trim();
     if (needsReason && !reason) {
-      toast.warning('Enter a reason for this variant change.');
+      setReasonFocusId(variant.id);
+      toast.warning('Enter a reason below — price, stock, or status changes need approval.');
       return;
     }
     if (needsReason) {
@@ -85,18 +99,22 @@ export default function ProductVariantsPanel({ productId }) {
     try {
       const res = await variantsAPI.update(variant.id, payload);
       if (isPendingApprovalResponse(res.status)) {
-        toast.warning(PENDING_APPROVAL_MESSAGE);
+        toast.warning(pendingApprovalToastMessage());
       } else {
         toast.success('Variant updated');
       }
       setReasons((prev) => ({ ...prev, [variant.id]: '' }));
+      setReasonFocusId(null);
       load();
     } catch (err) {
       const msg =
-        err.response?.data?.reason?.[0] ||
+        extractApiReasonError(err.response?.data) ||
         err.response?.data?.error ||
         'Failed to update variant';
       toast.error(msg);
+      if (/reason/i.test(msg)) {
+        setReasonFocusId(variant.id);
+      }
     } finally {
       setBusyId(null);
     }
@@ -117,19 +135,21 @@ export default function ProductVariantsPanel({ productId }) {
     <div className="space-y-3 rounded-md border border-border p-3">
       <p className="text-sm font-medium">Variant prices &amp; stock</p>
       <p className="text-xs text-muted-foreground">
-        Edit each size/color row separately. Sensitive changes require approval when maker-checker is on.
+        Edit each size/color row separately. Changing price, stock, or active status may require
+        approval when maker-checker is on.
       </p>
       <div className="space-y-4">
         {variants.map((variant) => {
           const draft = edits[variant.id] || {};
+          const payload = buildVariantPayload(draft);
           const needsReason =
-            makerCheckerOn && variantEditNeedsReason(draft, variant);
+            makerCheckerOn && variantEditNeedsReason(payload, variant);
           return (
             <div
               key={variant.id}
-              className="grid gap-2 rounded border border-border/80 bg-muted/20 p-3 sm:grid-cols-2 lg:grid-cols-4"
+              className="space-y-3 rounded border border-border/80 bg-muted/20 p-3"
             >
-              <div className="sm:col-span-2 lg:col-span-4">
+              <div>
                 <span className="text-sm font-medium">{variantLabel(variant)}</span>
                 <span className="ml-2 text-xs text-muted-foreground">{variant.sku}</span>
                 <PendingApprovalBadges
@@ -137,47 +157,46 @@ export default function ProductVariantsPanel({ productId }) {
                   className="ml-2"
                 />
               </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Price (KES)</label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={draft.price ?? ''}
-                  onChange={(e) => updateEdit(variant.id, 'price', e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Stock</label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={draft.stock_quantity ?? 0}
-                  onChange={(e) => updateEdit(variant.id, 'stock_quantity', e.target.value)}
-                />
-              </div>
-              <div className="flex items-end">
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={draft.is_active !== false}
-                    onChange={(e) => updateEdit(variant.id, 'is_active', e.target.checked)}
+
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                <div>
+                  <label className="text-xs text-muted-foreground">Price (KES)</label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={draft.price ?? ''}
+                    onChange={(e) => updateEdit(variant.id, 'price', e.target.value)}
                   />
-                  Active
-                </label>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">Stock</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={draft.stock_quantity ?? 0}
+                    onChange={(e) => updateEdit(variant.id, 'stock_quantity', e.target.value)}
+                  />
+                </div>
+                <div className="flex items-end">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={draft.is_active !== false}
+                      onChange={(e) => updateEdit(variant.id, 'is_active', e.target.checked)}
+                    />
+                    Active
+                  </label>
+                </div>
               </div>
-              <div className="flex items-end justify-end">
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={busyId === variant.id}
-                  onClick={() => saveVariant(variant)}
-                >
-                  {busyId === variant.id ? 'Saving…' : needsReason ? 'Submit' : 'Save'}
-                </Button>
-              </div>
+
               {needsReason ? (
-                <div className="sm:col-span-2 lg:col-span-4">
+                <div
+                  ref={(el) => {
+                    reasonRefs.current[variant.id] = el;
+                  }}
+                  className="rounded-md border border-amber-200/80 bg-amber-50/30 p-1 dark:border-amber-900 dark:bg-amber-950/20"
+                >
                   <ChangeReasonField
                     context="catalog"
                     value={reasons[variant.id] || ''}
@@ -187,6 +206,21 @@ export default function ProductVariantsPanel({ productId }) {
                   />
                 </div>
               ) : null}
+
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={busyId === variant.id}
+                  onClick={() => saveVariant(variant)}
+                >
+                  {busyId === variant.id
+                    ? 'Saving…'
+                    : needsReason
+                      ? 'Submit for approval'
+                      : 'Save variant'}
+                </Button>
+              </div>
             </div>
           );
         })}

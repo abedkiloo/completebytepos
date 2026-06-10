@@ -1,5 +1,5 @@
-import React from 'react';
-import { AlertTriangle } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
@@ -7,20 +7,33 @@ import { useStoreSettings } from '../../hooks/useStoreSettings';
 import { toast } from '../../utils/toast';
 import {
   isMakerCheckerEnabled,
-  makerCheckerPromptMessage,
   pendingApprovalToastMessage,
+  userMayReviewPendingApprovals,
 } from '../../utils/makerChecker';
-
-const HIGH_IMPACT_CONFIRM =
-  'This setting affects checkout, permissions, stock rules, or data access. Continue?';
+import { groupModuleSettings } from '../../utils/moduleSettingGroups';
+import { cn } from '../../lib/cn';
+import SettingToggleRow from './SettingToggleRow';
+import ModuleSettingChangeDialog from './ModuleSettingChangeDialog';
 
 /**
- * Shared System Settings card for one module's ModuleSetting toggles.
+ * Collapsible module settings — in-app confirm dialog instead of browser alert/prompt.
  */
-export default function ModuleSettingsCard({ module, title, description, icon: Icon, toastLabel }) {
+export default function ModuleSettingsCard({
+  module,
+  title,
+  description,
+  icon: Icon,
+  toastLabel,
+  expanded = false,
+  onToggleExpand,
+}) {
   const { settings, meta, loading, patch } = useModuleSettings(module);
   const { settings: storeSettings } = useStoreSettings();
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
+  const userMayApprove = userMayReviewPendingApprovals();
+
+  const [pending, setPending] = useState(null);
+  const [busy, setBusy] = useState(false);
 
   const entries = meta?.settings
     ? Object.entries(meta.settings).sort(
@@ -28,68 +41,128 @@ export default function ModuleSettingsCard({ module, title, description, icon: I
       )
     : [];
 
-  const onToggle = async (key, checked, item) => {
-    if (item.impact === 'high' && !window.confirm(HIGH_IMPACT_CONFIRM)) {
-      return;
-    }
+  const groups = useMemo(() => groupModuleSettings(entries), [entries]);
+  const enabledCount = entries.filter(([key]) => settings[key] !== false).length;
+
+  const needsDialog = (item) => item?.impact === 'high' || makerCheckerOn;
+
+  const applyChange = async (key, checked, item, reason) => {
+    setBusy(true);
     try {
-      let reason;
-      if (makerCheckerOn) {
-        reason = window.prompt(makerCheckerPromptMessage('settings')) || '';
-        if (!reason.trim()) {
-          toast.warning('Please enter a reason so a manager can review this change.');
-          return;
-        }
-      }
-      await patch({ [key]: checked }, { reason: reason?.trim() });
+      await patch({ [key]: checked }, { reason: reason?.trim() || undefined });
       toast.success(
         makerCheckerOn ? pendingApprovalToastMessage() : `${toastLabel} settings updated`
       );
+      setPending(null);
     } catch (err) {
-      toast.error(err.response?.data?.detail || `Could not update ${toastLabel.toLowerCase()} settings`);
+      toast.error(
+        err.response?.data?.detail || `Could not update ${toastLabel.toLowerCase()} settings`
+      );
+    } finally {
+      setBusy(false);
     }
   };
 
+  const handleRequestChange = (key, checked, item) => {
+    if (needsDialog(item)) {
+      setPending({ key, checked, item });
+      return;
+    }
+    applyChange(key, checked, item);
+  };
+
+  const handleConfirm = (reason) => {
+    if (!pending) return;
+    applyChange(pending.key, pending.checked, pending.item, reason);
+  };
+
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-base">
-          {Icon ? <Icon className="h-4 w-4 text-primary" /> : null}
-          {title}
-        </CardTitle>
-        {description ? <CardDescription>{description}</CardDescription> : null}
-      </CardHeader>
-      <CardContent className="space-y-3 text-sm">
-        {entries.length === 0 && !loading && (
-          <p className="text-muted-foreground">No settings loaded.</p>
-        )}
-        {entries.map(([key, item]) => (
-          <label key={key} className="flex items-start gap-2">
-            <input
-              type="checkbox"
-              disabled={loading}
-              checked={settings[key] !== false}
-              onChange={(e) => onToggle(key, e.target.checked, item)}
-              className="mt-0.5"
-              data-testid={`setting-${module}-${key}`}
-            />
-            <span>
-              <span className="inline-flex flex-wrap items-center gap-1.5">
-                <span className="font-medium">{item.label || key}</span>
-                {item.impact === 'high' ? (
-                  <span className="inline-flex items-center gap-0.5 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
-                    <AlertTriangle className="h-3 w-3" aria-hidden />
-                    High impact
-                  </span>
-                ) : null}
+    <>
+      <Card className={cn('overflow-hidden', expanded && 'ring-1 ring-primary/20')}>
+        <button
+          type="button"
+          className="flex w-full items-start gap-3 px-6 py-4 text-left transition-colors hover:bg-muted/30"
+          onClick={onToggleExpand}
+          aria-expanded={expanded}
+          data-testid={`module-settings-card-${module}`}
+        >
+          <div className="rounded-md bg-primary/10 p-2 text-primary">
+            {Icon ? <Icon className="h-4 w-4" /> : null}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <CardTitle className="text-base">{title}</CardTitle>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                {enabledCount}/{entries.length || '—'} on
               </span>
-              {item.description ? (
-                <span className="mt-0.5 block text-muted-foreground">{item.description}</span>
-              ) : null}
-            </span>
-          </label>
-        ))}
-      </CardContent>
-    </Card>
+            </div>
+            {description ? (
+              <CardDescription className="mt-1 text-left">{description}</CardDescription>
+            ) : null}
+          </div>
+          <ChevronDown
+            className={cn(
+              'mt-1 h-5 w-5 shrink-0 text-muted-foreground transition-transform',
+              expanded && 'rotate-180'
+            )}
+            aria-hidden
+          />
+        </button>
+
+        {expanded ? (
+          <CardContent className="space-y-4 border-t pt-4">
+            {entries.length === 0 && !loading ? (
+              <p className="text-sm text-muted-foreground">No settings loaded.</p>
+            ) : null}
+            {loading && entries.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            ) : null}
+
+            {groups.map((group) => (
+              <div key={group.id} className="space-y-2">
+                {groups.length > 1 ? (
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {group.label}
+                  </p>
+                ) : null}
+                <div className="space-y-2">
+                  {group.items.map(([key, item]) => (
+                    <SettingToggleRow
+                      key={key}
+                      settingKey={key}
+                      item={item}
+                      checked={settings[key] !== false}
+                      disabled={loading || busy}
+                      requiresApproval={makerCheckerOn && item.impact === 'high'}
+                      onRequestChange={handleRequestChange}
+                      testId={`setting-${module}-${key}`}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            {makerCheckerOn ? (
+              <p className="text-xs text-muted-foreground">
+                Changes here may require manager approval before they affect POS and permissions.
+              </p>
+            ) : null}
+          </CardContent>
+        ) : null}
+      </Card>
+
+      <ModuleSettingChangeDialog
+        open={Boolean(pending)}
+        onOpenChange={(open) => {
+          if (!open && !busy) setPending(null);
+        }}
+        setting={pending?.item}
+        enabling={pending?.checked}
+        makerCheckerOn={makerCheckerOn}
+        userMayApprove={userMayApprove}
+        onConfirm={handleConfirm}
+        busy={busy}
+      />
+    </>
   );
 }

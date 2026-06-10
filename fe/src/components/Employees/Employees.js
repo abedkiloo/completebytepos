@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import {
   Loader2,
   Pencil,
@@ -92,6 +93,7 @@ export default function Employees() {
   const [statistics, setStatistics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebouncedValue(searchQuery);
   const [statusFilter, setStatusFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -104,7 +106,7 @@ export default function Employees() {
     setLoading(true);
     try {
       const params = {};
-      if (searchQuery.trim()) params.search = searchQuery.trim();
+      if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
       if (statusFilter) params.status = statusFilter;
       const res = await employeesAPI.list(params);
       const data = res.data.results || res.data || [];
@@ -115,7 +117,7 @@ export default function Employees() {
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, statusFilter]);
+  }, [debouncedSearch, statusFilter]);
 
   const loadStatistics = useCallback(async () => {
     if (!showStats) {
@@ -131,11 +133,8 @@ export default function Employees() {
   }, [showStats]);
 
   useEffect(() => {
-    const t = setTimeout(() => {
-      loadEmployees();
-      loadStatistics();
-    }, 200);
-    return () => clearTimeout(t);
+    loadEmployees();
+    loadStatistics();
   }, [loadEmployees, loadStatistics]);
 
   const openCreate = () => {

@@ -333,13 +333,11 @@ export function usePOSState() {
     }
   }, [cartDraftKey, customers]);
 
-  // Debounced product reload on filter/search changes. 200 ms is the sweet
-  // spot for a cashier typing — fast enough to feel live, slow enough to
-  // not hammer the API on every keystroke.
+  // Debounced product reload on filter/search changes.
   useEffect(() => {
     const t = setTimeout(() => {
       loadProducts();
-    }, 200);
+    }, 450);
     return () => clearTimeout(t);
   }, [loadProducts]);
 

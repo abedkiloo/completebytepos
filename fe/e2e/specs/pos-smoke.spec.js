@@ -1,7 +1,12 @@
 // @ts-check
 const { test, expect } = require('@playwright/test');
 const { login, gotoSystemSettings } = require('../helpers/auth');
-const { clickModuleSetting, expectSettingsToast } = require('../helpers/moduleSettings');
+const {
+  clickModuleSetting,
+  expectSettingsToast,
+  isModuleSettingOn,
+  openModuleSettingsCard,
+} = require('../helpers/moduleSettings');
 
 test.describe('POS checkout smoke', () => {
   test.beforeEach(async ({ page }) => {
@@ -22,11 +27,11 @@ test.describe('POS checkout smoke', () => {
   test('pos_respects_sales_discount_module_toggle', async ({ page }) => {
     await gotoSystemSettings(page);
     const testId = 'setting-sales-show_discount';
-    const checkbox = page.getByTestId(testId);
-    await expect(checkbox).toBeVisible({ timeout: 10000 });
+    await openModuleSettingsCard(page, 'sales');
+    await expect(page.getByTestId(testId)).toBeVisible({ timeout: 10000 });
 
-    if (await checkbox.isChecked()) {
-      await clickModuleSetting(page, testId, { confirm: 'accept' });
+    if (await isModuleSettingOn(page, testId)) {
+      await clickModuleSetting(page, testId, { module: 'sales' });
       await expectSettingsToast(page, 'Sales');
     }
 
@@ -34,8 +39,8 @@ test.describe('POS checkout smoke', () => {
     await expect(page.getByRole('button', { name: /add discount/i })).toHaveCount(0);
 
     await gotoSystemSettings(page);
-    if (!(await checkbox.isChecked())) {
-      await clickModuleSetting(page, testId, { confirm: 'accept' });
+    if (!(await isModuleSettingOn(page, testId))) {
+      await clickModuleSetting(page, testId, { module: 'sales' });
       await expectSettingsToast(page, 'Sales');
     }
 
