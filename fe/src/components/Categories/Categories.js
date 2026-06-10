@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { FolderTree, Layers, Pencil, Plus, Trash2 } from 'lucide-react';
 import { categoriesAPI } from '../../services/api';
 import { formatNumber } from '../../utils/formatters';
@@ -19,7 +20,6 @@ import { Badge } from '../ui/badge';
 import {
   partitionCategories,
   flattenCategoryTree,
-  filterCategoriesForSearch,
   filterByLevel,
 } from '../../utils/categoryTree';
 import {
@@ -62,6 +62,7 @@ const Categories = () => {
   const [editingCategory, setEditingCategory] = useState(null);
   const [initialParentId, setInitialParentId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebouncedValue(searchQuery);
   const [filterActive, setFilterActive] = useState('all');
   const [levelFilter, setLevelFilter] = useState('all');
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -69,27 +70,58 @@ const Categories = () => {
   const [confirmDeactivate, setConfirmDeactivate] = useState(null);
   const [deactivateReason, setDeactivateReason] = useState('');
 
-  useEffect(() => {
-    loadCategories();
-  }, [filterActive]);
-
-  const loadCategories = async () => {
+  const loadCategories = useCallback(async () => {
     setLoading(true);
     try {
       const params = {};
       if (filterActive !== 'all') {
         params.is_active = filterActive === 'active';
       }
+      const q = debouncedSearch.trim();
+      if (q) {
+        params.search = q;
+      }
       const response = await categoriesAPI.list(params);
-      const categoriesData = response.data.results || response.data || [];
-      setCategories(Array.isArray(categoriesData) ? categoriesData : []);
+      let categoriesData = response.data.results || response.data || [];
+      categoriesData = Array.isArray(categoriesData) ? categoriesData : [];
+
+      if (q && categoriesData.length === 0) {
+        const exactParams = { exact_name: q };
+        if (filterActive !== 'all') {
+          exactParams.is_active = filterActive === 'active';
+        }
+        const exactRes = await categoriesAPI.list(exactParams);
+        const exactRows = exactRes.data.results || exactRes.data || [];
+        if (Array.isArray(exactRows) && exactRows.length > 0) {
+          const byId = new Map(exactRows.map((row) => [row.id, row]));
+          for (const row of exactRows) {
+            if (row.parent && !byId.has(row.parent)) {
+              try {
+                const parentRes = await categoriesAPI.get(row.parent);
+                if (parentRes?.data) {
+                  byId.set(parentRes.data.id, parentRes.data);
+                }
+              } catch {
+                // Parent may be inactive or deleted — still show the match.
+              }
+            }
+          }
+          categoriesData = Array.from(byId.values());
+        }
+      }
+
+      setCategories(categoriesData);
     } catch (error) {
       console.error('Error loading categories:', error);
       setCategories([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [filterActive, debouncedSearch]);
+
+  useEffect(() => {
+    loadCategories();
+  }, [loadCategories]);
 
   const handleDelete = (id) => setConfirmDelete(id);
 
@@ -183,12 +215,10 @@ const Categories = () => {
   }, [categories]);
 
   const displayRows = useMemo(() => {
-    let list = categories;
-    list = filterByLevel(list, levelFilter);
-    list = filterCategoriesForSearch(list, searchQuery);
+    const list = filterByLevel(categories, levelFilter);
     const { parents, childrenByParent, orphans } = partitionCategories(list);
     return flattenCategoryTree(parents, childrenByParent, orphans);
-  }, [categories, searchQuery, levelFilter]);
+  }, [categories, levelFilter]);
 
   const stats = useMemo(() => {
     const parents = categories.filter((c) => !c.parent).length;
