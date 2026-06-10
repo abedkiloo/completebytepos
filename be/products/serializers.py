@@ -86,6 +86,7 @@ class ProductVariantSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'updated_at']
         extra_kwargs = {
             'sku': {'required': False, 'allow_blank': True},
+            'price': {'required': False, 'allow_null': True},
         }
 
     def to_internal_value(self, data):
@@ -287,6 +288,9 @@ class ProductSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'updated_at']
         extra_kwargs = {
             'sku': {'required': False, 'allow_blank': True},
+            'price': {'required': False},
+            'mrp': {'required': False},
+            'cost': {'required': False},
         }
     
     def to_internal_value(self, data):

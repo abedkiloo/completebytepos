@@ -83,7 +83,8 @@ describe('useModuleSettings', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     await act(async () => {
-      await result.current.patch({ show_discount: false });
+      const patchResult = await result.current.patch({ show_discount: false });
+      expect(patchResult.pending).toBe(false);
     });
 
     expect(result.current.settings.show_discount).toBe(false);

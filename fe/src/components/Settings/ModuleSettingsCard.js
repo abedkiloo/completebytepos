@@ -6,6 +6,7 @@ import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import { toast } from '../../utils/toast';
 import {
+  extractApiReasonError,
   isMakerCheckerEnabled,
   pendingApprovalToastMessage,
   userMayReviewPendingApprovals,
@@ -49,14 +50,22 @@ export default function ModuleSettingsCard({
   const applyChange = async (key, checked, item, reason) => {
     setBusy(true);
     try {
-      await patch({ [key]: checked }, { reason: reason?.trim() || undefined });
-      toast.success(
-        makerCheckerOn ? pendingApprovalToastMessage() : `${toastLabel} settings updated`
+      const result = await patch(
+        { [key]: checked },
+        { reason: reason?.trim() || undefined }
       );
+      if (result?.pending) {
+        toast.warning(pendingApprovalToastMessage());
+      } else {
+        toast.success(`${toastLabel} settings updated`);
+      }
       setPending(null);
     } catch (err) {
+      const detail = err.response?.data;
       toast.error(
-        err.response?.data?.detail || `Could not update ${toastLabel.toLowerCase()} settings`
+        extractApiReasonError(detail) ||
+          detail?.detail ||
+          `Could not update ${toastLabel.toLowerCase()} settings`
       );
     } finally {
       setBusy(false);

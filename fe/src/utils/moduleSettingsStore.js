@@ -3,8 +3,10 @@
  */
 
 import { moduleSettingsAPI } from '../services/api';
-import { toast } from './toast';
-import { isPendingApprovalResponse, PENDING_APPROVAL_MESSAGE } from './makerChecker';
+import {
+  isAppliedModuleSettingsResponse,
+  isPendingApprovalResponse,
+} from './makerChecker';
 import {
   cacheModuleSettings,
   flattenModuleSettings,
@@ -91,19 +93,49 @@ export async function ensureModuleSettingsLoaded(module) {
   return getModuleSettingsSnapshot(module);
 }
 
+function applyOptimisticModuleSettings(module, values) {
+  const store = getStore(module);
+  const flat = { ...store.settings, ...values };
+  cacheModuleSettings(module, flat);
+  store.settings = flat;
+  notify(module);
+  return flat;
+}
+
+function rejectModuleSettingsResponse(res) {
+  const error = new Error('Module settings patch failed');
+  error.response = res;
+  throw error;
+}
+
+/**
+ * PATCH /api/settings/{module}/ — returns applied vs pending state for UI toasts.
+ * @returns {Promise<{ settings: object, pending: boolean, status: number }>}
+ */
 export async function patchModuleSettings(module, values, options = {}) {
   const payload = { ...values };
   if (options.reason) {
     payload.reason = options.reason;
   }
   const res = await moduleSettingsAPI.patch(module, payload);
-  if (isPendingApprovalResponse(res.status)) {
-    toast.warning(PENDING_APPROVAL_MESSAGE);
-    return getModuleSettingsSnapshot(module).settings;
+  const { status } = res;
+
+  if (isPendingApprovalResponse(status)) {
+    const settings = applyOptimisticModuleSettings(module, values);
+    return { settings, pending: true, status };
   }
+
+  if (!isAppliedModuleSettingsResponse(status)) {
+    rejectModuleSettingsResponse(res);
+  }
+
+  if (!res.data?.settings) {
+    rejectModuleSettingsResponse(res);
+  }
+
   const flat = applyModuleSettingsPayload(module, res.data);
   window.dispatchEvent(new CustomEvent('moduleSettingsUpdated', { detail: res.data }));
-  return flat;
+  return { settings: flat, pending: false, status };
 }
 
 /** Test helper — reset in-memory state between tests. */

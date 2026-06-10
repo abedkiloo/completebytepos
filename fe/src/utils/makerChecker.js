@@ -137,6 +137,11 @@ export function isPendingApprovalResponse(status) {
   return status === 202;
 }
 
+/** True when a module-settings PATCH was applied immediately (not queued for approval). */
+export function isAppliedModuleSettingsResponse(status) {
+  return status >= 200 && status < 300 && status !== 202;
+}
+
 export function extractPendingChange(responseData) {
   if (!responseData) return null;
   return responseData.pending_change || responseData.pending_changes?.[0] || null;

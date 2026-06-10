@@ -3,6 +3,7 @@ import {
   isSalesMakerCheckerActive,
   completedSaleDirectEditBlocked,
   isPendingApprovalResponse,
+  isAppliedModuleSettingsResponse,
   productEditNeedsReason,
   pendingApprovalLabels,
   extractPendingChange,
@@ -99,6 +100,12 @@ describe('makerChecker', () => {
   it('detects 202 pending responses', () => {
     expect(isPendingApprovalResponse(202)).toBe(true);
     expect(isPendingApprovalResponse(200)).toBe(false);
+  });
+
+  it('detects applied module settings responses', () => {
+    expect(isAppliedModuleSettingsResponse(200)).toBe(true);
+    expect(isAppliedModuleSettingsResponse(202)).toBe(false);
+    expect(isAppliedModuleSettingsResponse(400)).toBe(false);
   });
 
   it('extractApiReasonError handles string and array reason', () => {

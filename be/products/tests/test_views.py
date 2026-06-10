@@ -282,6 +282,23 @@ class ProductViewSetTestCase(APITestCase):
         self.assertEqual(self.test_product.price, Decimal('110.00'))
         # Other fields should remain unchanged
         self.assertEqual(self.test_product.name, 'Test Product')
+
+    def test_partial_update_without_price_keeps_selling_price(self):
+        """Catalog edits that omit price must not fail validation."""
+        token = self.get_auth_token(self.superuser)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+        original_price = self.test_product.price
+
+        response = self.client.patch(
+            f'/api/products/{self.test_product.id}/',
+            {'name': 'Renamed without price'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.test_product.refresh_from_db()
+        self.assertEqual(self.test_product.name, 'Renamed without price')
+        self.assertEqual(self.test_product.price, original_price)
     
     def test_delete_product(self):
         """Test product deletion"""

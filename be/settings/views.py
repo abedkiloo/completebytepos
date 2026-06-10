@@ -14,7 +14,11 @@ from .serializers import (
     StoreSettingsSerializer,
     build_module_settings_response,
 )
-from .settings_service import SettingsService
+from .settings_service import (
+    SETTING_META_KEYS,
+    SettingsService,
+    coerce_module_setting_value,
+)
 from .module_settings_registry import MODULE_SETTING_DEFINITIONS
 from accounts.permissions import IsSuperAdmin
 from .utils import get_current_tenant, get_current_branch, set_current_tenant, set_current_branch, is_branch_support_enabled
@@ -586,8 +590,10 @@ def module_settings_detail(request, module_name):
     )
     updates = {}
     for key, value in request.data.items():
+        if key in SETTING_META_KEYS:
+            continue
         if key in allowed_keys:
-            updates[key] = value
+            updates[key] = coerce_module_setting_value(value)
 
     if not updates:
         return Response(

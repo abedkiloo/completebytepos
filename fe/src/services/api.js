@@ -200,7 +200,7 @@ export const productsAPI = {
   create: (data) => api.post('/products/', data, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
-  update: (id, data) => api.put(`/products/${id}/`, data, {
+  update: (id, data) => api.patch(`/products/${id}/`, data, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
   delete: (id, data) => api.delete(`/products/${id}/`, { data: data || {} }),

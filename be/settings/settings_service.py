@@ -13,6 +13,21 @@ CACHE_TTL_SECONDS = 30
 _MODULE_CACHE_PREFIX = 'module_settings:module:'
 _KEY_CACHE_PREFIX = 'module_settings:key:'
 
+SETTING_META_KEYS = frozenset({'reason', 'change_reason'})
+
+
+def coerce_module_setting_value(value: Any) -> Any:
+    """Normalize boolean toggles from JSON or multipart bodies."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in ('true', '1', 'yes', 'on'):
+            return True
+        if lowered in ('false', '0', 'no', 'off'):
+            return False
+    return value
+
 
 class SettingsService:
     """Single entry point for module-scoped feature flags."""
