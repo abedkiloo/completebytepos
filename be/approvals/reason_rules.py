@@ -42,6 +42,20 @@ def is_initial_sensitive_set(field: str, previous: Any, proposed: Any) -> bool:
     return is_unset_financial_value(previous) and not is_unset_financial_value(proposed)
 
 
+def sensitive_values_equal(field: str, previous: Any, proposed: Any) -> bool:
+    """True when the client re-submitted the same value (no real change)."""
+    if field == 'is_active':
+        return bool(previous) == bool(proposed)
+    if field in INITIAL_SET_NUMERIC_FIELDS:
+        if is_unset_financial_value(previous) and is_unset_financial_value(proposed):
+            return True
+        try:
+            return Decimal(str(previous)) == Decimal(str(proposed))
+        except (InvalidOperation, ValueError, TypeError):
+            return str(previous) == str(proposed)
+    return previous == proposed
+
+
 def split_initial_vs_change_sensitive(
     instance,
     sensitive: Dict[str, Any],
@@ -50,6 +64,8 @@ def split_initial_vs_change_sensitive(
     change: Dict[str, Any] = {}
     for key, value in sensitive.items():
         prev = _previous_field_value(instance, key)
+        if sensitive_values_equal(key, prev, value):
+            continue
         if is_initial_sensitive_set(key, prev, value):
             initial[key] = value
         else:

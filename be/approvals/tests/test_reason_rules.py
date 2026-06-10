@@ -44,3 +44,20 @@ class ReasonRulesTests(SimpleTestCase):
         )
         self.assertEqual(initial, {})
         self.assertEqual(change, {'price': Decimal('80')})
+
+    def test_unchanged_sensitive_fields_are_ignored(self):
+        product = _FakeProduct()
+        product.price = Decimal('30')
+        product.stock_quantity = 0
+        product.is_active = True
+        initial, change = split_initial_vs_change_sensitive(
+            product,
+            {
+                'price': Decimal('30.00'),
+                'stock_quantity': 0,
+                'is_active': True,
+                'track_stock': True,
+            },
+        )
+        self.assertEqual(initial, {})
+        self.assertEqual(change, {})

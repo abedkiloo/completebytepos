@@ -41,13 +41,8 @@ PRODUCT_SENSITIVE_FIELDS: FrozenSet[str] = frozenset({
     'mrp',
     'cost',
     'selling_price',
-    'tax_rate',
     'stock_quantity',
-    'low_stock_threshold',
-    'reorder_quantity',
-    'track_stock',
     'is_active',
-    'unit',
 })
 
 PRICE_FIELDS: FrozenSet[str] = frozenset({'price', 'mrp', 'cost', 'selling_price', 'tax_rate'})
@@ -65,7 +60,6 @@ VARIANT_SENSITIVE_FIELDS: FrozenSet[str] = frozenset({
     'cost',
     'selling_price',
     'stock_quantity',
-    'low_stock_threshold',
     'is_active',
 })
 
