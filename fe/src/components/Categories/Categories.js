@@ -12,7 +12,6 @@ import PendingApprovalBadges from '../Approvals/PendingApprovalBadges';
 import {
   isMakerCheckerEnabled,
   isPendingApprovalResponse,
-  categoryDeactivateNeedsReason,
   PENDING_APPROVAL_MESSAGE,
 } from '../../utils/makerChecker';
 import { Button } from '../ui/button';
