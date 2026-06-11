@@ -14,6 +14,25 @@ def _map_selling_price_fields(data):
     return data
 
 
+def _apply_product_financial_defaults(data, *, instance=None):
+    """
+    ``Product.price`` is NOT NULL — default omitted values on create.
+    On partial update, drop explicit nulls so we do not clear existing amounts.
+    """
+    from decimal import Decimal
+
+    zero = Decimal('0')
+    if instance is None:
+        for field in ('price', 'mrp', 'cost'):
+            if data.get(field) is None:
+                data[field] = zero
+        return data
+    for field in ('price', 'mrp', 'cost'):
+        if field in data and data[field] is None:
+            data.pop(field)
+    return data
+
+
 class SizeSerializer(serializers.ModelSerializer):
     """Serializer for Size model"""
     class Meta:
@@ -553,6 +572,7 @@ class ProductSerializer(serializers.ModelSerializer):
 
             data['unit'] = validate_unit_code(data.get('unit'))
 
+        data = _apply_product_financial_defaults(data, instance=self.instance)
         return strip_product_status_from_write_data(data)
 
     def to_representation(self, instance):

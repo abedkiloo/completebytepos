@@ -299,6 +299,26 @@ class ProductViewSetTestCase(APITestCase):
         self.test_product.refresh_from_db()
         self.assertEqual(self.test_product.name, 'Renamed without price')
         self.assertEqual(self.test_product.price, original_price)
+
+    def test_create_without_price_defaults_to_zero(self):
+        """Variant catalog and quick-add flows may omit price on create."""
+        token = self.get_auth_token(self.superuser)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+        response = self.client.post(
+            '/api/products/',
+            {
+                'name': 'Bottled Water 500ml',
+                'category': self.main_category.id,
+                'has_variants': True,
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        product = Product.objects.get(pk=response.data['id'])
+        self.assertEqual(product.price, Decimal('0'))
+        self.assertEqual(product.mrp, Decimal('0'))
+        self.assertEqual(product.cost, Decimal('0'))
     
     def test_delete_product(self):
         """Test product deletion"""
