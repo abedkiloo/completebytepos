@@ -7,7 +7,8 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from inventory.models import StockMovement
-from products.models import Category, Product
+from products.models import Category, Color, Product, ProductVariant, Size
+from settings.test_utils import disable_maker_checker
 from utils.tests.api_test_base import ManagerAPITestCase, SalesAPITestCase
 from utils.tests.module_setting_helpers import enable_inventory_api_features, enable_products_list_api_fields
 
@@ -53,6 +54,7 @@ class InventoryViewsTestCase(ManagerAPITestCase):
 
     def setUp(self):
         super().setUp()
+        disable_maker_checker()
         enable_products_list_api_fields()
         enable_inventory_api_features()
 
@@ -108,6 +110,57 @@ class InventoryViewsTestCase(ManagerAPITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('error', response.data)
+
+    def test_adjust_variant_stock_via_api(self):
+        """Per-variant adjustments update variant qty and record cost on the movement."""
+        size = Size.objects.create(name='Medium', code='M', is_active=True)
+        color = Color.objects.create(name='Blue', hex_code='#0000FF', is_active=True)
+        product = Product.objects.create(
+            name='Variant Tee',
+            sku='INV-VAR-TEE',
+            category=self.product.category,
+            price=Decimal('100.00'),
+            cost=Decimal('40.00'),
+            stock_quantity=0,
+            has_variants=True,
+            track_stock=True,
+            is_active=True,
+        )
+        variant = ProductVariant.objects.create(
+            product=product,
+            size=size,
+            color=color,
+            sku='INV-VAR-TEE-M-BLU',
+            price=Decimal('100.00'),
+            cost=Decimal('45.00'),
+            stock_quantity=6,
+            is_active=True,
+        )
+        product.refresh_from_db()
+
+        response = self.client.post(
+            '/api/inventory/adjust/',
+            {
+                'product_id': product.id,
+                'variant_id': variant.id,
+                'quantity': 2,
+                'notes': 'Cycle count +2',
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+        variant.refresh_from_db()
+        product.refresh_from_db()
+        self.assertEqual(variant.stock_quantity, 8)
+        self.assertEqual(product.stock_quantity, 8)
+
+        movement = StockMovement.objects.filter(
+            product=product, variant=variant, movement_type='adjustment'
+        ).latest('created_at')
+        self.assertEqual(movement.quantity, 2)
+        self.assertEqual(movement.unit_cost, Decimal('45.00'))
+        self.assertEqual(movement.total_cost, Decimal('90.00'))
 
     def test_purchase_invalid_product_returns_400(self):
         response = self.client.post(

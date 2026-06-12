@@ -13,7 +13,12 @@ import { Label } from '../../ui/label';
 import { Separator } from '../../ui/separator';
 import { formatCurrency } from '../../../utils/formatters';
 import { cn } from '../../../lib/cn';
-import { filterEnabledPaymentMethods } from '../../../utils/paymentMethods';
+import {
+  filterEnabledPaymentMethods,
+  paymentReferenceLabel,
+  paymentReferencePlaceholder,
+  paymentReferenceRequired,
+} from '../../../utils/paymentMethods';
 
 export function CheckoutPanel({
   // totals
@@ -40,6 +45,8 @@ export function CheckoutPanel({
   setPaymentMethod,
   receivedAmount,
   setReceivedAmount,
+  paymentReference,
+  setPaymentReference,
 
   // submit
   submitting,
@@ -65,13 +72,22 @@ export function CheckoutPanel({
     }
   }, [methods, paymentMethod, setPaymentMethod]);
 
+  useEffect(() => {
+    if (!paymentReferenceRequired(paymentMethod)) {
+      setPaymentReference('');
+    }
+  }, [paymentMethod, setPaymentReference]);
+
   const method = methods.find((m) => m.id === paymentMethod) || methods[0];
 
   const isCashLike = method.requiresAmount;
+  const needsReference = paymentReferenceRequired(paymentMethod);
+  const referenceOk = !needsReference || String(paymentReference || '').trim().length > 0;
   const canPay =
     !hasOversell &&
     itemCount > 0 &&
     total > 0 &&
+    referenceOk &&
     (!isCashLike || parseFloat(receivedAmount) > 0);
 
   return (
@@ -208,6 +224,26 @@ export function CheckoutPanel({
           })}
         </div>
       </div>
+
+      {needsReference ? (
+        <div className="px-3 pt-2">
+          <Label
+            htmlFor="payment-reference"
+            className="mb-1 block text-xs uppercase tracking-wide text-muted-foreground"
+          >
+            {paymentReferenceLabel(paymentMethod)} *
+          </Label>
+          <Input
+            id="payment-reference"
+            type="text"
+            value={paymentReference}
+            onChange={(e) => setPaymentReference(e.target.value)}
+            placeholder={paymentReferencePlaceholder(paymentMethod)}
+            className="h-10 font-mono text-sm"
+            autoComplete="off"
+          />
+        </div>
+      ) : null}
 
       {/* Cash / M-Pesa: amount tendered + quick-cash */}
       {isCashLike && (

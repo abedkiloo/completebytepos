@@ -84,13 +84,6 @@ export function findVariantForSelection(
  * Effective sellable quantity for the picker (mirrors backend sellable_stock_quantity).
  * Returns null when stock is not tracked.
  */
-function sumActiveVariantStock(variantsList) {
-  const list = Array.isArray(variantsList) ? variantsList : [];
-  return list
-    .filter((v) => v.is_active !== false)
-    .reduce((sum, v) => sum + (parseInt(v.stock_quantity, 10) || 0), 0);
-}
-
 export function getSellableStockForVariant(
   product,
   selectedVariant,
@@ -98,35 +91,13 @@ export function getSellableStockForVariant(
 ) {
   if (!product || product.track_stock === false) return null;
 
-  const allVariants =
-    variantsList ?? (Array.isArray(product.variants) ? product.variants : null);
-
   if (!selectedVariant) {
     const base = getSellableStock(product);
     return base === null ? null : Math.max(0, base);
   }
 
   const variantStock = parseInt(selectedVariant.stock_quantity, 10);
-  const variantQty = Number.isFinite(variantStock) ? variantStock : 0;
-  if (variantQty > 0) {
-    return variantQty;
-  }
-
-  const parentRaw = parseInt(product.stock_quantity, 10);
-  const parentQty = Number.isFinite(parentRaw) ? parentRaw : 0;
-  if (!product.has_variants) {
-    return variantQty;
-  }
-
-  const variantTotal = allVariants ? sumActiveVariantStock(allVariants) : null;
-  if (variantTotal === null) {
-    return Math.max(parentQty, variantQty);
-  }
-
-  if (parentQty > 0 && variantTotal === 0) {
-    return parentQty;
-  }
-  return variantQty;
+  return Number.isFinite(variantStock) ? Math.max(0, variantStock) : 0;
 }
 
 export function getVariantDisplayPrice(product, selectedVariant) {

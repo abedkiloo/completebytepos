@@ -1,6 +1,8 @@
 import {
   PAYMENT_METHODS,
   filterEnabledPaymentMethods,
+  paymentReferenceRequired,
+  paymentReferenceLabel,
 } from './paymentMethods';
 
 describe('paymentMethods', () => {
@@ -23,5 +25,16 @@ describe('paymentMethods', () => {
   test('filterEnabledPaymentMethods is case insensitive', () => {
     const result = filterEnabledPaymentMethods(['CASH', 'Card']);
     expect(result.map((m) => m.id)).toEqual(['cash', 'card']);
+  });
+
+  test('paymentReferenceRequired for non-cash methods', () => {
+    expect(paymentReferenceRequired('cash')).toBe(false);
+    expect(paymentReferenceRequired('wallet')).toBe(false);
+    expect(paymentReferenceRequired('mpesa')).toBe(true);
+    expect(paymentReferenceRequired('card')).toBe(true);
+  });
+
+  test('paymentReferenceLabel for mpesa', () => {
+    expect(paymentReferenceLabel('mpesa')).toBe('M-Pesa code');
   });
 });

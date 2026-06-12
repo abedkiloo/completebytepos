@@ -9,6 +9,7 @@ from products.models import Category, Product
 from settings.models import ModuleSetting, StoreSettings
 from settings.module_settings_registry import MODULE_SETTING_DEFINITIONS
 from settings.settings_service import SettingsService
+from settings.test_utils import disable_maker_checker
 from utils.tests.api_test_base import ManagerAPITestCase, SuperAdminAPITestCase
 
 
@@ -89,6 +90,7 @@ class ModuleSettingsRegistryIntegrationTests(SuperAdminAPITestCase):
 
     def setUp(self):
         super().setUp()
+        disable_maker_checker()
         cache.clear()
         for module, definitions in MODULE_SETTING_DEFINITIONS.items():
             for definition in definitions:

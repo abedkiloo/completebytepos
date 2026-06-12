@@ -1,6 +1,6 @@
 /**
  * Catalogue sellable quantity (mirrors backend ``sellable_stock_quantity``).
- * Use for list/POS normalization when stock may live on parent, variant rows, or both.
+ * Variant products use the sum of active variant rows; simple products use parent stock.
  */
 
 export function aggregateActiveVariantStock(variants) {
@@ -12,9 +12,10 @@ export function aggregateActiveVariantStock(variants) {
 
 export function catalogSellableStock(product) {
   if (!product) return 0;
-  const parent = parseInt(product.stock_quantity, 10) || 0;
-  if (!product.has_variants) return parent;
+  if (!product.has_variants) {
+    return parseInt(product.stock_quantity, 10) || 0;
+  }
   const variants = product.variants;
-  if (!Array.isArray(variants) || variants.length === 0) return parent;
-  return Math.max(parent, aggregateActiveVariantStock(variants));
+  if (!Array.isArray(variants) || variants.length === 0) return 0;
+  return aggregateActiveVariantStock(variants);
 }

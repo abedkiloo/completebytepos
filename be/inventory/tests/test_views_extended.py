@@ -8,7 +8,7 @@ from rest_framework import status
 
 from inventory.models import StockMovement
 from products.models import Category, Product
-from settings.test_utils import enable_multi_branch_support
+from settings.test_utils import disable_maker_checker, enable_multi_branch_support
 from utils.tests.api_test_base import ManagerAPITestCase, SuperAdminAPITestCase
 from utils.tests.module_setting_helpers import enable_inventory_api_features
 
@@ -41,6 +41,7 @@ class InventoryViewsExtendedTestCase(ManagerAPITestCase):
 
     def setUp(self):
         super().setUp()
+        disable_maker_checker()
         enable_inventory_api_features()
 
     def test_retrieve_single_movement(self):
@@ -109,6 +110,10 @@ class InventoryViewsExtendedTestCase(ManagerAPITestCase):
 
 
 class InventoryBranchQuerysetTestCase(ManagerAPITestCase):
+    def setUp(self):
+        super().setUp()
+        disable_maker_checker()
+
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
@@ -146,6 +151,10 @@ class InventoryBranchQuerysetTestCase(ManagerAPITestCase):
 
 
 class InventorySuperAdminAccessTestCase(SuperAdminAPITestCase):
+    def setUp(self):
+        super().setUp()
+        disable_maker_checker()
+
     def test_super_admin_can_purchase(self):
         cat = Category.objects.create(name='SA Cat')
         product = Product.objects.create(

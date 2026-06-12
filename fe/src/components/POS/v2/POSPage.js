@@ -298,6 +298,8 @@ export default function POSPage() {
             setPaymentMethod={state.setPaymentMethod}
             receivedAmount={state.receivedAmount}
             setReceivedAmount={state.setReceivedAmount}
+            paymentReference={state.paymentReference}
+            setPaymentReference={state.setPaymentReference}
             // submit
             submitting={state.submitting}
             onPay={state.requestPayment}

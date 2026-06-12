@@ -180,7 +180,7 @@ class SaleSerializer(serializers.ModelSerializer):
             'subtotal', 'tax_amount', 'discount_amount', 'total',
             'delivery_method', 'delivery_cost',
             'shipping_address', 'shipping_location',
-            'payment_method', 'amount_paid', 'change', 'notes',
+            'payment_method', 'payment_reference', 'amount_paid', 'change', 'notes',
             'items', 'item_count', 'amount_refunded', 'refundable_remaining', 'can_refund',
             'created_at', 'updated_at'
         ]
@@ -222,6 +222,7 @@ class HoldingSaleSerializer(serializers.Serializer):
 class CheckoutHoldingSerializer(serializers.Serializer):
     """Complete a holding sale and print receipt."""
     payment_method = serializers.ChoiceField(choices=Sale.PAYMENT_METHODS, default='cash')
+    payment_reference = serializers.CharField(required=False, allow_blank=True, default='')
     amount_paid = serializers.DecimalField(max_digits=10, decimal_places=2, default=0)
     allow_partial_payment = serializers.BooleanField(default=False)
     excess_payment_choice = serializers.ChoiceField(
@@ -234,8 +235,19 @@ class CheckoutHoldingSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         from sales.module_settings import apply_sale_module_settings
+        from sales.payment_reference import validate_sale_payment_reference
 
-        return apply_sale_module_settings(attrs)
+        attrs = apply_sale_module_settings(attrs)
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        try:
+            attrs['payment_reference'] = validate_sale_payment_reference(
+                attrs.get('payment_method', 'cash'),
+                attrs.get('payment_reference'),
+            )
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({'payment_reference': str(exc)})
+        return attrs
 
 
 class SaleCreateSerializer(serializers.Serializer):
@@ -246,6 +258,7 @@ class SaleCreateSerializer(serializers.Serializer):
     )
     sale_type = serializers.ChoiceField(choices=Sale.SALE_TYPES, default='pos')
     payment_method = serializers.ChoiceField(choices=Sale.PAYMENT_METHODS, default='cash')
+    payment_reference = serializers.CharField(required=False, allow_blank=True, default='')
     amount_paid = serializers.DecimalField(
         max_digits=10, 
         decimal_places=2, 
@@ -400,7 +413,18 @@ class SaleCreateSerializer(serializers.Serializer):
             # Warn but don't fail - allow installments without customer for walk-in sales
             pass
 
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
         from sales.module_settings import apply_sale_module_settings
+        from sales.payment_reference import validate_sale_payment_reference
+
+        try:
+            attrs['payment_reference'] = validate_sale_payment_reference(
+                payment_method,
+                attrs.get('payment_reference'),
+            )
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({'payment_reference': str(exc)})
 
         return apply_sale_module_settings(attrs)
 

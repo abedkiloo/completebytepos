@@ -58,22 +58,22 @@ describe('variantSelector utils', () => {
     expect(found?.id).toBe(10);
   });
 
-  it('uses parent stock when variant rows are all zero but product has stock', () => {
-    const parentOnly = {
+  it('uses variant row stock only (not stale parent quantity)', () => {
+    const staleParent = {
       ...product,
       stock_quantity: 50,
       variants: variants.map((v) => ({ ...v, stock_quantity: 0 })),
     };
     const variant = findVariantForSelection(
-      parentOnly.variants,
+      staleParent.variants,
       2,
       5,
       sizes,
       colors
     );
     expect(
-      getSellableStockForVariant(parentOnly, variant, parentOnly.variants)
-    ).toBe(50);
+      getSellableStockForVariant(staleParent, variant, staleParent.variants)
+    ).toBe(0);
   });
 
   it('does not use parent stock for a variant row when other variants hold stock', () => {

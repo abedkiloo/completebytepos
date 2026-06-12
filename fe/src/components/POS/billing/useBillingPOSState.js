@@ -29,6 +29,7 @@ import {
   countHoldingItems,
 } from '../../../utils/posCartRecovery';
 import { evaluatePartialPaymentToggle } from '../../../utils/billingPartialPayment';
+import { paymentReferenceRequired } from '../../../utils/paymentMethods';
 
 const HOLDING_SYNC_MS = 600;
 
@@ -93,6 +94,7 @@ export function useBillingPOSState() {
   const [discount, setDiscount] = useState(0);
   const [discountType, setDiscountType] = useState('flat'); // flat | percentage
   const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [paymentReference, setPaymentReference] = useState('');
   const [partialPayment, setPartialPayment] = useState(false);
   const [partialPaymentCustomerPrompt, setPartialPaymentCustomerPrompt] = useState(false);
   const [amountPaid, setAmountPaid] = useState('');
@@ -472,6 +474,10 @@ export function useBillingPOSState() {
     }
 
     const paid = parseFloat(amountPaid) || 0;
+    if (paymentReferenceRequired(paymentMethod) && !String(paymentReference || '').trim()) {
+      toast.warning('Enter the payment reference (e.g. M-Pesa code or card details).');
+      return;
+    }
     if (paymentMethod !== 'other' && paid <= 0) {
       toast.warning('Enter amount received');
       return;
@@ -495,6 +501,9 @@ export function useBillingPOSState() {
     try {
       const res = await salesAPI.checkout(id, {
         payment_method: paymentMethod,
+        payment_reference: paymentReferenceRequired(paymentMethod)
+          ? String(paymentReference || '').trim()
+          : '',
         amount_paid: paymentMethod === 'other' ? total : paid,
         allow_partial_payment: partialPayment,
         excess_payment_choice: 'change',
@@ -509,6 +518,7 @@ export function useBillingPOSState() {
       setHoldingId(null);
       setHoldingNumber('');
       setAmountPaid('');
+      setPaymentReference('');
       setDiscount(0);
       setTaxPct(0);
       setSelectedCustomer(WALK_IN_CUSTOMER);
@@ -530,6 +540,7 @@ export function useBillingPOSState() {
     holdingId,
     buildHoldingPayload,
     amountPaid,
+    paymentReference,
     paymentMethod,
     partialPayment,
     allowPartialPayment,
@@ -579,6 +590,8 @@ export function useBillingPOSState() {
     closePartialPaymentCustomerPrompt,
     amountPaid,
     setAmountPaid,
+    paymentReference,
+    setPaymentReference,
     selectedCustomer,
     setSelectedCustomer,
     selectWalkInCustomer,

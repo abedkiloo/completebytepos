@@ -21,6 +21,7 @@ from products.serializers import (
 from products.stock_utils import (
     apply_catalog_variant_representation,
     sellable_stock_quantity,
+    sync_product_stock_from_variants,
     variants_sold_as_simple,
 )
 from settings.test_utils import disable_product_variants
@@ -49,9 +50,11 @@ def _variant_product_fixture():
         size=size,
         color=color,
         sku='VAR-STOCK-1-DEF',
-        stock_quantity=0,
+        stock_quantity=400,
         is_active=True,
     )
+    sync_product_stock_from_variants(product)
+    product.refresh_from_db()
     return product
 
 
@@ -66,7 +69,7 @@ class CatalogStockSerializerContractTests(TestCase):
     def test_variants_sold_as_simple(self):
         self.assertTrue(variants_sold_as_simple(self.product))
 
-    def test_sellable_stock_matches_parent_when_variant_rows_zero(self):
+    def test_sellable_stock_is_variant_sum(self):
         self.assertEqual(sellable_stock_quantity(self.product), 400)
 
     def test_list_search_and_detail_expose_same_sellable_stock(self):
@@ -93,13 +96,16 @@ class CatalogStockSerializerContractTests(TestCase):
         self.assertEqual(int(out['stock_quantity']), 400)
         self.assertFalse(out['has_variants'])
 
-    def test_sellable_stock_is_max_of_parent_and_variant_sum(self):
+    def test_sellable_stock_is_variant_sum_and_syncs_parent(self):
         self.product.stock_quantity = 5
         self.product.save()
         variant = self.product.variants.first()
         variant.stock_quantity = 10
         variant.save()
+        sync_product_stock_from_variants(self.product)
+        self.product.refresh_from_db()
         self.assertEqual(sellable_stock_quantity(self.product), 10)
+        self.assertEqual(self.product.stock_quantity, 10)
         self.assertEqual(
             int(ProductListSerializer(self.product).data['stock_quantity']),
             10,

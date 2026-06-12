@@ -96,14 +96,12 @@ def audited_perform_update(
 def audited_perform_destroy(view, instance: Model) -> None:
     """Delete instance and append an audit row (delete)."""
     from accounts.models import AuditLog
+    from rest_framework.mixins import DestroyModelMixin
 
     snapshot = _snapshot(instance)
     object_repr = snapshot.get('__str__', str(instance)[:255])
     module = _module_for(view, instance)
-    if hasattr(view, 'perform_destroy'):
-        super(type(view), view).perform_destroy(instance)
-    else:
-        instance.delete()
+    DestroyModelMixin.perform_destroy(view, instance)
     log_audit(
         view.request,
         AuditLog.ACTION_DELETE,

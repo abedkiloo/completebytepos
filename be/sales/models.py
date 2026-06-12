@@ -178,6 +178,11 @@ class Sale(models.Model):
         validators=[MinValueValidator(0)]
     )
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHODS, default='cash')
+    payment_reference = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text='M-Pesa confirmation code, card auth/last-4, or other non-cash reference',
+    )
     amount_paid = models.DecimalField(
         max_digits=10, 
         decimal_places=2,

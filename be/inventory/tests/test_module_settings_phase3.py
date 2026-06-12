@@ -7,6 +7,7 @@ from rest_framework import status
 
 from products.models import Category, Product
 from settings.models import ModuleSetting
+from settings.test_utils import disable_maker_checker
 from settings.settings_service import SettingsService
 from utils.tests.api_test_base import ManagerAPITestCase
 
@@ -55,6 +56,7 @@ class InventoryModuleSettingsAPITests(ManagerAPITestCase):
 
     def setUp(self):
         super().setUp()
+        disable_maker_checker()
         _seed_inventory_settings()
 
     def test_list_movements_forbidden_when_disabled(self):

@@ -159,6 +159,20 @@ describe('makerChecker', () => {
     expect(
       productEditNeedsReason({ selling_price: '30.00' }, { price: '30' })
     ).toBe(false);
+    expect(
+      productEditNeedsReason(
+        { cost: '50', selling_price: '120' },
+        { cost: '40', price: '100' },
+        { variantProduct: true }
+      )
+    ).toBe(true);
+    expect(
+      productEditNeedsReason(
+        { cost: '40', selling_price: '150' },
+        { cost: '40', price: '100' },
+        { variantProduct: true }
+      )
+    ).toBe(false);
     expect(variantEditNeedsReason(null, { price: '1' })).toBe(false);
   });
 

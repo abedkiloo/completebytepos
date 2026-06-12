@@ -1,6 +1,21 @@
 """Test helpers for module feature flags."""
 
-from settings.models import ModuleSettings, ModuleFeature
+from settings.models import ModuleSettings, ModuleFeature, StoreSettings
+
+
+def disable_maker_checker() -> None:
+    """Turn off maker-checker so stock/catalog API tests apply changes immediately."""
+    store = StoreSettings.load()
+    if store.maker_checker_enabled:
+        store.maker_checker_enabled = False
+        store.save(update_fields=['maker_checker_enabled'])
+
+
+def enable_maker_checker(*, emergency_stock_mode: bool = False) -> None:
+    store = StoreSettings.load()
+    store.maker_checker_enabled = True
+    store.emergency_stock_mode = emergency_stock_mode
+    store.save(update_fields=['maker_checker_enabled', 'emergency_stock_mode'])
 
 
 def enable_product_variants() -> None:

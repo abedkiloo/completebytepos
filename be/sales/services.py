@@ -222,21 +222,6 @@ class SaleService(BaseService):
                     notes=notes,
                 )
                 remaining -= take
-            # Remaining quantity often lives on the parent row when variants
-            # were turned off or stock was never split across variant SKUs.
-            if remaining > 0:
-                StockMovement.objects.create(
-                    branch=branch,
-                    product=product,
-                    variant=None,
-                    movement_type='sale',
-                    quantity=remaining,
-                    unit_cost=unit_cost,
-                    total_cost=remaining * unit_cost,
-                    reference=reference,
-                    user=user,
-                    notes=notes,
-                )
             return
 
         if (
@@ -261,16 +246,11 @@ class SaleService(BaseService):
                     notes=notes,
                 )
                 remaining -= take
-            parent_qty = int(product.stock_quantity or 0)
-            if (
-                remaining > 0
-                and parent_qty > 0
-                and active_variant_stock_sum(product) == 0
-            ):
+            if remaining > 0:
                 StockMovement.objects.create(
                     branch=branch,
                     product=product,
-                    variant=None,
+                    variant=variant,
                     movement_type='sale',
                     quantity=remaining,
                     unit_cost=unit_cost,
@@ -279,7 +259,7 @@ class SaleService(BaseService):
                     user=user,
                     notes=notes,
                 )
-                return
+            return
 
         StockMovement.objects.create(
             branch=branch,
@@ -397,6 +377,7 @@ class SaleService(BaseService):
         excess_payment_choice: str = 'change',
         use_wallet: bool = False,
         wallet_amount: Decimal = Decimal('0'),
+        payment_reference: str = '',
     ) -> Sale:
         """Finalise a holding sale: stock, journal entry, status=completed."""
         if holding.status != 'holding':
@@ -472,6 +453,7 @@ class SaleService(BaseService):
         holding.subtotal = subtotal
         holding.total = total
         holding.payment_method = payment_method
+        holding.payment_reference = payment_reference
         holding.status = 'completed'
         holding.save()
 
@@ -542,6 +524,7 @@ class SaleService(BaseService):
             shipping_address=sale_data.get('shipping_address'),
             shipping_location=sale_data.get('shipping_location'),
             payment_method=payment_method,
+            payment_reference=sale_data.get('payment_reference', ''),
             amount_paid=amount_paid,
             change=change,
             notes=sale_data.get('notes', ''),
@@ -976,6 +959,7 @@ class SaleService(BaseService):
         sale_data = {
             'sale_type': sale_type,
             'payment_method': payment_method,
+            'payment_reference': validated_data.get('payment_reference', ''),
             'amount_paid': amount_paid,
             'notes': validated_data.get('notes', ''),
             'tax_amount': tax_amount,

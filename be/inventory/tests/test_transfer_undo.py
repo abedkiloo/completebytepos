@@ -8,7 +8,7 @@ from rest_framework import status
 from inventory.models import StockMovement
 from inventory.services import StockMovementService
 from products.models import Category, Product
-from settings.test_utils import enable_multi_branch_support
+from settings.test_utils import disable_maker_checker, enable_multi_branch_support
 from utils.tests.api_test_base import ManagerAPITestCase
 
 
@@ -74,6 +74,10 @@ class InventoryTransferServiceTestCase(ManagerAPITestCase):
 
 
 class InventoryTransferAPITestCase(ManagerAPITestCase):
+    def setUp(self):
+        super().setUp()
+        disable_maker_checker()
+
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()

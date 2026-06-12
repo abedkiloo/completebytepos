@@ -19,6 +19,7 @@ from settings.store_settings_helpers import (
     normalize_payment_methods,
     user_may_edit_pricing,
 )
+from settings.test_utils import disable_maker_checker
 from utils.tests.api_test_base import (
     ManagerAPITestCase,
     SalesAPITestCase,
@@ -106,6 +107,10 @@ class StoreSettingsSerializerTests(TestCase):
 
 class StoreSettingsAPITests(SuperAdminAPITestCase):
     url = '/api/settings/store-settings/'
+
+    def setUp(self):
+        super().setUp()
+        disable_maker_checker()
 
     def test_get_requires_authentication(self):
         self.client.credentials()

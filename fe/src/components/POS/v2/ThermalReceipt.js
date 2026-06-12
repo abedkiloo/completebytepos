@@ -166,6 +166,9 @@ export const ThermalReceipt = forwardRef(function ThermalReceipt(
           right={formatCurrency(sale.amount_paid)}
           price
         />
+        {sale.payment_reference ? (
+          <ReceiptRow left="Ref" right={sale.payment_reference} />
+        ) : null}
         {(isPaymentCash || isPaymentMpesa) && change > 0 && (
           <ReceiptRow left="Change" right={formatCurrency(change)} bold price />
         )}

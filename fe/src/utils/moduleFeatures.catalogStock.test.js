@@ -23,16 +23,16 @@ describe('normalizeProductForSale stock', () => {
     cacheVariantsDisabled();
   });
 
-  it('keeps parent stock when variant rows sum to zero', () => {
+  it('uses variant sum for sellable stock when variants feature is off', () => {
     const out = normalizeProductForSale({
       id: 1,
       name: 'Variant',
       has_variants: true,
       stock_quantity: 400,
       price: 500,
-      variants: [{ id: 10, stock_quantity: 0, is_active: true, price: 500 }],
+      variants: [{ id: 10, stock_quantity: 200, is_active: true, price: 500 }],
     });
     expect(out.has_variants).toBe(false);
-    expect(out.stock_quantity).toBe(400);
+    expect(out.stock_quantity).toBe(200);
   });
 });

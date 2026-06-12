@@ -289,7 +289,7 @@ export const variantsAPI = {
   list: (params) => api.get('/products/variants/', { params }),
   get: (id) => api.get(`/products/variants/${id}/`),
   create: (data) => api.post('/products/variants/', data),
-  update: (id, data) => api.put(`/products/variants/${id}/`, data),
+  update: (id, data) => api.patch(`/products/variants/${id}/`, data),
   delete: (id, data) => api.delete(`/products/variants/${id}/`, { data: data || {} }),
   getByProduct: (productId) => api.get(`/products/variants/?product=${productId}`),
 };

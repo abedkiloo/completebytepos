@@ -20,6 +20,7 @@ import {
   resolveBranchIdFromUser,
 } from '../../../utils/posCartRecovery';
 import { useModuleSettings } from '../../../hooks/useModuleSettings';
+import { paymentReferenceRequired } from '../../../utils/paymentMethods';
 import {
   salesShowDiscount,
   salesShowTax,
@@ -115,6 +116,7 @@ export function usePOSState() {
   // --- Checkout ---
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [receivedAmount, setReceivedAmount] = useState('');
+  const [paymentReference, setPaymentReference] = useState('');
   const [submitting, setSubmitting] = useState(false);     // double-submit guard
 
   // --- Pending confirmation state (lifted so dialogs can read it) ---
@@ -528,6 +530,7 @@ export function usePOSState() {
     if (cartDraftKey) clearRetailCartDraft(cartDraftKey);
     setCart([]);
     setReceivedAmount('');
+    setPaymentReference('');
     setDiscount(0);
     setTaxPct(0);
     setDeliveryEnabled(false);
@@ -569,6 +572,9 @@ export function usePOSState() {
         delivery_cost: parseFloat((deliveryEnabled ? deliveryCost : 0).toFixed(2)),
         shipping_address: deliveryEnabled && shippingAddress ? shippingAddress : null,
         payment_method: paymentMethod,
+        payment_reference: paymentReferenceRequired(paymentMethod)
+          ? String(paymentReference || '').trim()
+          : '',
         amount_paid: isTendered ? formatAmountPaid(received) : formatAmountPaid(total),
         customer_id:
           selectedCustomer?.id && selectedCustomer.id !== 'walk-in'
@@ -588,6 +594,7 @@ export function usePOSState() {
       deliveryCost,
       shippingAddress,
       paymentMethod,
+      paymentReference,
       receivedAmount,
       selectedCustomer,
       total,
@@ -668,6 +675,11 @@ export function usePOSState() {
     const isTendered = paymentMethod === 'cash' || paymentMethod === 'mpesa';
     const received = parseFloat(receivedAmount) || 0;
 
+    if (paymentReferenceRequired(paymentMethod) && !String(paymentReference || '').trim()) {
+      toast.warning('Enter the payment reference (e.g. M-Pesa code or card details).');
+      return;
+    }
+
     if (isTendered) {
       if (!receivedAmount || received <= 0) {
         toast.warning('Enter the amount received from the customer.');
@@ -708,6 +720,7 @@ export function usePOSState() {
     requireCustomer,
     hasOversell,
     paymentMethod,
+    paymentReference,
     receivedAmount,
     total,
     selectedCustomer,
@@ -767,6 +780,7 @@ export function usePOSState() {
     // checkout
     paymentMethod, setPaymentMethod,
     receivedAmount, setReceivedAmount,
+    paymentReference, setPaymentReference,
     submitting,
     requestPayment,
     submitSale,

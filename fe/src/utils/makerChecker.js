@@ -287,12 +287,17 @@ export function rolePermissionsChanged(nextIds, role) {
   return JSON.stringify(prev) !== JSON.stringify(next);
 }
 
-export function productEditNeedsReason(formData, product, { financialFieldsLocked = false } = {}) {
+export function productEditNeedsReason(
+  formData,
+  product,
+  { financialFieldsLocked = false, variantProduct = false } = {},
+) {
   if (financialFieldsLocked) return false;
   if (!formData) return false;
   // First-time create: setting opening price/stock is not a "change".
   if (product == null) return false;
-  for (const key of SENSITIVE_PRODUCT_KEYS) {
+  const keysToCheck = variantProduct ? new Set(['cost']) : SENSITIVE_PRODUCT_KEYS;
+  for (const key of keysToCheck) {
     if (!(key in formData)) continue;
     const next = formData[key];
     const prev =

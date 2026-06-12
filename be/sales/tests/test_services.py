@@ -278,8 +278,9 @@ class SaleServiceTestCase(TestCase):
         self.assertEqual(validated[0]['variant'], variant)
         self.assertEqual(validated[0]['unit_price'], Decimal('110.00'))
 
-    def test_validate_sale_items_variant_zero_parent_stock_pool(self):
-        """Checkout must see parent qty when variant rows exist but hold no stock."""
+    def test_validate_sale_items_rejects_variant_with_zero_stock(self):
+        """Sellable stock for a variant row is that row's quantity only."""
+        from django.core.exceptions import ValidationError
         from settings.test_utils import enable_product_variants
         from products.models import Size, Color, ProductVariant
 
@@ -298,14 +299,14 @@ class SaleServiceTestCase(TestCase):
             is_active=True,
         )
 
-        validated = self.service.validate_sale_items([
-            {
-                'product_id': self.product.id,
-                'variant_id': variant.id,
-                'quantity': 2,
-            }
-        ])
-        self.assertEqual(validated[0]['variant'], variant)
+        with self.assertRaises(ValidationError):
+            self.service.validate_sale_items([
+                {
+                    'product_id': self.product.id,
+                    'variant_id': variant.id,
+                    'quantity': 2,
+                }
+            ])
 
     def test_validate_sale_items_variant_product_without_feature(self):
         """Legacy variant products sell as simple items when the feature is off."""

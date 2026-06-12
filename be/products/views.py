@@ -438,14 +438,20 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             
             # Variants only when the module feature is on
             if is_product_variants_enabled() and product.has_variants:
-                sizes = product.available_sizes.all()
-                colors = product.available_colors.all()
-                if sizes.exists() or colors.exists():
-                    self.product_service.variant_service.create_variants_for_product(
-                        product,
-                        sizes=[s.id for s in sizes] if sizes.exists() else None,
-                        colors=[c.id for c in colors] if colors.exists() else None
-                    )
+                combinations = getattr(serializer, '_variant_combinations', None)
+                if combinations is not None:
+                    from products.variant_combinations import sync_product_variant_combinations
+
+                    sync_product_variant_combinations(product, combinations)
+                else:
+                    sizes = product.available_sizes.all()
+                    colors = product.available_colors.all()
+                    if sizes.exists() or colors.exists():
+                        self.product_service.variant_service.create_variants_for_product(
+                            product,
+                            sizes=[s.id for s in sizes] if sizes.exists() else None,
+                            colors=[c.id for c in colors] if colors.exists() else None,
+                        )
             elif product.has_variants:
                 product.has_variants = False
                 product.available_sizes.clear()
@@ -522,27 +528,53 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         if not serializer.validated_data:
             return serializer.instance
 
+        instance = serializer.instance
+        old_has_variants = instance.has_variants
+        old_size_ids = set(instance.available_sizes.values_list('id', flat=True))
+        old_color_ids = set(instance.available_colors.values_list('id', flat=True))
+
         before = None
-        if serializer.instance and serializer.instance.pk:
-            before = self.get_queryset().get(pk=serializer.instance.pk)
+        if instance and instance.pk:
+            before = self.get_queryset().get(pk=instance.pk)
         product = serializer.save()
         log_product_write(
             self.request, product, before=before, action=AuditLog.ACTION_UPDATE
         )
         
-        # Handle variant updates if variant settings changed
-        # Check if variants need to be recreated
         sizes = product.available_sizes.all()
         colors = product.available_colors.all()
-        
-        if is_product_variants_enabled() and product.has_variants and (sizes.exists() or colors.exists()):
-            # Delete existing variants and recreate
+        new_size_ids = set(sizes.values_list('id', flat=True))
+        new_color_ids = set(colors.values_list('id', flat=True))
+        variant_matrix_changed = (
+            old_has_variants != product.has_variants
+            or old_size_ids != new_size_ids
+            or old_color_ids != new_color_ids
+        )
+
+        combinations = getattr(serializer, '_variant_combinations', None)
+        if (
+            is_product_variants_enabled()
+            and product.has_variants
+            and combinations is not None
+        ):
+            from products.variant_combinations import sync_product_variant_combinations
+
+            sync_product_variant_combinations(product, combinations)
+        elif (
+            is_product_variants_enabled()
+            and product.has_variants
+            and variant_matrix_changed
+            and (new_size_ids or new_color_ids)
+        ):
             ProductVariant.objects.filter(product=product).delete()
             self.product_service.variant_service.create_variants_for_product(
                 product,
-                sizes=[s.id for s in sizes] if sizes.exists() else None,
-                colors=[c.id for c in colors] if colors.exists() else None
+                sizes=list(new_size_ids) if new_size_ids else None,
+                colors=list(new_color_ids) if new_color_ids else None,
             )
+            from products.stock_utils import sync_product_stock_from_variants
+
+            sync_product_stock_from_variants(product)
         elif not product.has_variants or not is_product_variants_enabled():
             # Feature off or flag cleared — sell as a simple product
             if product.has_variants:

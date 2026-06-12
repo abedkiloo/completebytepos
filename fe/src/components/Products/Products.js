@@ -30,6 +30,7 @@ import PendingApprovalBadges from '../Approvals/PendingApprovalBadges';
 import { formatCurrency } from '../../utils/formatters';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
 import ProductForm from './ProductForm';
+import ProductDetailPanel from './ProductDetailPanel';
 import StockAdjustmentModal from '../Inventory/StockAdjustmentModal';
 import { inventoryAdjustmentsEnabled } from '../../utils/inventoryDisplay';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
@@ -116,6 +117,7 @@ const Products = () => {
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [busy, setBusy] = useState(false);
   const [adjustStockProduct, setAdjustStockProduct] = useState(null);
+  const [viewProductId, setViewProductId] = useState(null);
 
   // --- CSV import file input ---
   const fileInputRef = useRef(null);
@@ -204,11 +206,16 @@ const Products = () => {
     setShowForm(true);
   };
 
+  const openView = (product) => {
+    setViewProductId(product.id);
+  };
+
   const openEdit = async (product) => {
     try {
       const full = await productsAPI.get(product.id);
       setEditingProduct(full.data);
       setShowForm(true);
+      setViewProductId(null);
     } catch (error) {
       console.error('Error loading product details:', error);
       toast.error('Failed to load product details');
@@ -597,7 +604,7 @@ const Products = () => {
                       <th className="px-4 py-2.5 text-right font-medium">MRP</th>
                       )}
                       <th className="px-4 py-2.5 text-right font-medium">Selling</th>
-                      {showCost && (
+                      {showCost && fieldAccess.cost && (
                       <th className="px-4 py-2.5 text-right font-medium">Cost</th>
                       )}
                     </>
@@ -639,6 +646,7 @@ const Products = () => {
                       product={product}
                       selected={selectedProductIds.includes(product.id)}
                       onToggle={() => toggleProductSelection(product.id)}
+                      onView={() => openView(product)}
                       onEdit={() => openEdit(product)}
                       onDelete={() => setConfirmDelete(product.id)}
                       onAdjustStock={
@@ -650,7 +658,7 @@ const Products = () => {
                       showProductStatus={showStatus}
                       bulkEnabled={bulkEnabled}
                       showMrp={showMrp}
-                      showCost={showCost}
+                      showCost={showCost && fieldAccess.cost}
                       showSku={showSku}
                       showLowStock={showLowStock}
                     />
@@ -673,6 +681,20 @@ const Products = () => {
           }}
         />
       )}
+
+      {viewProductId ? (
+        <ProductDetailPanel
+          productId={viewProductId}
+          fieldAccess={fieldAccess}
+          productModuleSettings={productModuleSettings}
+          storeSettings={storeSettings}
+          onClose={() => setViewProductId(null)}
+          onEdit={(fullProduct) => {
+            setViewProductId(null);
+            openEdit(fullProduct);
+          }}
+        />
+      ) : null}
 
       {showForm && (
         <ProductForm
@@ -949,6 +971,7 @@ function ProductRow({
   product,
   selected,
   onToggle,
+  onView,
   onEdit,
   onDelete,
   onAdjustStock,
@@ -986,9 +1009,13 @@ function ProductRow({
         <div className="flex items-center gap-3">
           <ProductThumb product={product} />
           <div className="min-w-0">
-            <div className="line-clamp-1 font-medium text-foreground">
+            <button
+              type="button"
+              onClick={onView}
+              className="line-clamp-1 text-left font-medium text-foreground underline-offset-2 hover:text-primary hover:underline"
+            >
               {product.name}
-            </div>
+            </button>
             <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
               {showSku && product.sku && (
                 <span className="font-mono text-[11px]">{product.sku}</span>

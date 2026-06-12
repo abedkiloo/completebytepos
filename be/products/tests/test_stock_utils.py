@@ -11,6 +11,7 @@ from products.stock_utils import (
     sellable_stock_quantity,
     sellable_unit_cost,
     sellable_unit_price,
+    sync_product_stock_from_variants,
     variants_sold_as_simple,
 )
 from settings.test_utils import disable_product_variants
@@ -32,11 +33,10 @@ class SellableStockQuantityTests(TestCase):
             is_active=True,
         )
 
-    def test_parent_stock_when_variant_rows_empty(self):
-        """Checkout must see parent quantity when no variant stock rows exist."""
-        self.assertEqual(sellable_stock_quantity(self.product, variant=None), 435)
+    def test_variant_product_with_no_rows_has_zero_sellable(self):
+        self.assertEqual(sellable_stock_quantity(self.product, variant=None), 0)
 
-    def test_max_of_parent_and_variant_sum(self):
+    def test_sellable_stock_is_sum_of_variant_rows(self):
         size = Size.objects.create(name='S', code='S', is_active=True)
         color = Color.objects.create(name='Red', is_active=True)
         ProductVariant.objects.create(
@@ -59,9 +59,10 @@ class SellableStockQuantityTests(TestCase):
             size=size,
             color=color,
             sku='SOFA-1-S-R',
-            stock_quantity=0,
+            stock_quantity=435,
             is_active=True,
         )
+        sync_product_stock_from_variants(self.product)
         data = apply_catalog_variant_representation(
             self.product,
             {'stock_quantity': 0, 'has_variants': True, 'price': '80'},
@@ -152,7 +153,7 @@ class SellableStockQuantityTests(TestCase):
         )
         self.assertEqual(sellable_stock_quantity(self.product, variant=variant), 7)
 
-    def test_variant_zero_uses_parent_when_no_variant_stock_allocated(self):
+    def test_variant_zero_is_zero_even_when_parent_has_stale_stock(self):
         size = Size.objects.create(name='S', code='S', is_active=True)
         color = Color.objects.create(name='Red', is_active=True)
         variant = ProductVariant.objects.create(
@@ -166,7 +167,7 @@ class SellableStockQuantityTests(TestCase):
         self.product.stock_quantity = 400
         self.product.save(update_fields=['stock_quantity'])
         self.assertEqual(active_variant_stock_sum(self.product), 0)
-        self.assertEqual(sellable_stock_quantity(self.product, variant=variant), 400)
+        self.assertEqual(sellable_stock_quantity(self.product, variant=variant), 0)
 
     def test_variant_zero_not_parent_when_other_variants_hold_stock(self):
         size_a = Size.objects.create(name='A', code='A', is_active=True)
@@ -191,3 +192,64 @@ class SellableStockQuantityTests(TestCase):
         self.product.stock_quantity = 5
         self.product.save(update_fields=['stock_quantity'])
         self.assertEqual(sellable_stock_quantity(self.product, variant=variant_b), 0)
+
+
+class SyncProductStockFromVariantsTests(TestCase):
+    def setUp(self):
+        self.cat = Category.objects.create(name='Cat', is_active=True)
+        self.product = Product.objects.create(
+            name='Shirt',
+            sku='SHIRT-1',
+            category=self.cat,
+            price=Decimal('50'),
+            stock_quantity=999,
+            track_stock=True,
+            has_variants=True,
+            is_active=True,
+        )
+        self.size = Size.objects.create(name='M', code='M', is_active=True)
+        self.color_a = Color.objects.create(name='White', is_active=True)
+        self.color_b = Color.objects.create(name='Blue', is_active=True)
+
+    def test_sync_sets_parent_to_variant_sum(self):
+        ProductVariant.objects.create(
+            product=self.product,
+            size=self.size,
+            color=self.color_a,
+            sku='SHIRT-W',
+            stock_quantity=200,
+            is_active=True,
+        )
+        ProductVariant.objects.create(
+            product=self.product,
+            size=self.size,
+            color=self.color_b,
+            sku='SHIRT-B',
+            stock_quantity=40,
+            is_active=True,
+        )
+        total = sync_product_stock_from_variants(self.product)
+        self.assertEqual(total, 240)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 240)
+
+    def test_sync_ignores_inactive_variants(self):
+        ProductVariant.objects.create(
+            product=self.product,
+            size=self.size,
+            color=self.color_a,
+            sku='SHIRT-W',
+            stock_quantity=10,
+            is_active=True,
+        )
+        ProductVariant.objects.create(
+            product=self.product,
+            size=self.size,
+            color=self.color_b,
+            sku='SHIRT-B',
+            stock_quantity=100,
+            is_active=False,
+        )
+        sync_product_stock_from_variants(self.product)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 10)

@@ -10,13 +10,15 @@ from settings.settings_service import SettingsService
 class SettingsServiceUnitTests(TestCase):
     def setUp(self):
         cache.clear()
-        ModuleSetting.objects.create(
+        ModuleSetting.objects.update_or_create(
             module='products',
             key='show_status',
-            label='Show product status',
-            description='',
-            default_value=True,
-            value=True,
+            defaults={
+                'label': 'Show product status',
+                'description': '',
+                'default_value': True,
+                'value': True,
+            },
         )
 
     def test_get_returns_value_when_set(self):

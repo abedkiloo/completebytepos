@@ -68,6 +68,7 @@ describe('useModuleSettings', () => {
       },
     });
     moduleSettingsAPI.patch.mockResolvedValue({
+      status: 200,
       data: {
         module: 'sales',
         settings: {

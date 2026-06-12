@@ -375,7 +375,12 @@ def route_stock_movement(
 
     product_id = apply_payload.get('product_id')
     Product = __import__('products.models', fromlist=['Product']).Product
-    product = Product.objects.get(pk=product_id)
+    try:
+        product = Product.objects.get(pk=product_id)
+    except Product.DoesNotExist:
+        from rest_framework.exceptions import ValidationError
+
+        raise ValidationError({'product_id': 'Product not found'})
     original_stock = product.stock_quantity
     proposed_stock = original_stock
     qty = int(apply_payload.get('quantity', 0))

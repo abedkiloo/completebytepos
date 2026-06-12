@@ -83,6 +83,9 @@ class InventoryDualGateAPITests(ManagerAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_adjust_allowed_when_both_gates_on(self):
+        from settings.test_utils import disable_maker_checker
+
+        disable_maker_checker()
         _set_catalog_feature('inventory', 'stock_adjustments', True)
         response = self.client.post(
             '/api/inventory/adjust/',

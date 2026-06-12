@@ -1,37 +1,34 @@
 import { aggregateActiveVariantStock, catalogSellableStock } from './catalogStock';
 
 describe('catalogSellableStock', () => {
-  it('returns parent quantity when there are no variant rows', () => {
+  it('returns zero for variant products with no variant rows', () => {
     expect(
       catalogSellableStock({
         has_variants: true,
         stock_quantity: 400,
         variants: [],
       })
-    ).toBe(400);
+    ).toBe(0);
   });
 
-  it('uses max of parent and variant sum (regression: list showed 0, edit showed 400)', () => {
+  it('sums active variant rows (parent stock is not sold separately)', () => {
     expect(
       catalogSellableStock({
         has_variants: true,
         stock_quantity: 400,
         variants: [{ stock_quantity: 0, is_active: true }],
       })
-    ).toBe(400);
-  });
-
-  it('uses variant sum when it exceeds parent', () => {
+    ).toBe(0);
     expect(
       catalogSellableStock({
         has_variants: true,
         stock_quantity: 5,
         variants: [
-          { stock_quantity: 3, is_active: true },
-          { stock_quantity: 4, is_active: true },
+          { stock_quantity: 200, is_active: true },
+          { stock_quantity: 40, is_active: true },
         ],
       })
-    ).toBe(7);
+    ).toBe(240);
   });
 
   it('returns parent stock when has_variants is false', () => {

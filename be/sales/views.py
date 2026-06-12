@@ -316,6 +316,7 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             sale = self.sale_service.complete_holding_sale(
                 holding,
                 payment_method=serializer.validated_data['payment_method'],
+                payment_reference=serializer.validated_data.get('payment_reference', ''),
                 amount_paid=Decimal(str(serializer.validated_data.get('amount_paid', 0))),
                 user=request.user,
                 branch=branch,

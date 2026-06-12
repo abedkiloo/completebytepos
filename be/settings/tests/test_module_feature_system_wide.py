@@ -112,9 +112,13 @@ class ProductVariantsCatalogModeTests(TestCase):
             size=size,
             color=color,
             sku='VAR-FLAG-1-DEF',
-            stock_quantity=0,
+            stock_quantity=400,
             is_active=True,
         )
+        from products.stock_utils import sync_product_stock_from_variants
+
+        sync_product_stock_from_variants(self.product)
+        self.product.refresh_from_db()
 
     def test_list_hides_variants_when_feature_off_but_keeps_sellable_stock(self):
         disable_product_variants()

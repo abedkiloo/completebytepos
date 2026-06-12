@@ -68,7 +68,7 @@ export function getDefaultPosRoute() {
 
 /**
  * When variants are disabled at POS, sell the parent product using
- * sellable stock (max of parent and active variant rows) if the catalogue
+ * sellable stock (sum of active variant rows) if the catalogue
  * was set up with variants.
  */
 export function normalizeProductForSale(product) {

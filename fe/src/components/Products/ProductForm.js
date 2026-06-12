@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { Link } from 'react-router-dom';
 import { productsAPI, categoriesAPI, sizesAPI, colorsAPI, suppliersAPI } from '../../services/api';
@@ -16,6 +16,11 @@ import { useStoreSettings } from '../../hooks/useStoreSettings';
 import { useProductUnits } from '../../hooks/useProductUnits';
 import ChangeReasonField from '../Approvals/ChangeReasonField';
 import ProductVariantsPanel from './ProductVariantsPanel';
+import VariantDraftSummary from './VariantDraftSummary';
+import {
+  combinationsPayloadFromKeys,
+  unionSizeColorIdsFromKeys,
+} from '../../utils/variantCombinations';
 import {
   extractApiReasonError,
   isMakerCheckerEnabled,
@@ -30,6 +35,7 @@ import {
   mergeCategoryOptions,
   resolveSubcategoryDuplicate,
 } from '../../utils/categorySelect';
+import { applyVariantDraftsAfterProductSave } from '../../utils/variantDrafts';
 
 const defaultFieldAccess = (catalogOnly, financialFieldsLocked) => ({
   catalog: true,
@@ -64,6 +70,24 @@ const ProductForm = ({
   const makerCheckerFinancialLocked =
     !fieldAccess.pricing && !fieldAccess.cost && !fieldAccess.stock;
   const [changeReason, setChangeReason] = useState('');
+  const variantDraftsRef = useRef({});
+  const [variantDrafts, setVariantDrafts] = useState({});
+  const [variantCombinationKeys, setVariantCombinationKeys] = useState([]);
+  const handleVariantDraftsChange = useCallback((drafts) => {
+    const next = drafts || {};
+    variantDraftsRef.current = next;
+    setVariantDrafts(next);
+  }, []);
+  const handleVariantCombinationKeysChange = useCallback((keys) => {
+    const list = Array.isArray(keys) ? keys : [];
+    setVariantCombinationKeys(list);
+    const { sizeIds, colorIds } = unionSizeColorIdsFromKeys(list);
+    setFormData((prev) => ({
+      ...prev,
+      available_sizes: sizeIds,
+      available_colors: colorIds,
+    }));
+  }, []);
   const [formData, setFormData] = useState({
     name: '',
     sku: '',
@@ -105,8 +129,6 @@ const ProductForm = ({
   const [showSupplierForm, setShowSupplierForm] = useState(false);
   const [allCategories, setAllCategories] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
-  const [sizeSearch, setSizeSearch] = useState('');
-  const [colorSearch, setColorSearch] = useState('');
 
   useEffect(() => {
     // Load sizes and colors
@@ -450,9 +472,9 @@ const ProductForm = ({
     () =>
       makerCheckerOn &&
       product &&
-      !formData.has_variants &&
       productEditNeedsReason(formData, product, {
         financialFieldsLocked: makerCheckerFinancialLocked,
+        variantProduct: formData.has_variants,
       }),
     [makerCheckerOn, product, formData, makerCheckerFinancialLocked]
   );
@@ -464,13 +486,17 @@ const ProductForm = ({
       return;
     }
 
+    if (variantsEnabled && formData.has_variants && variantCombinationKeys.length === 0) {
+      toast.warning('Add at least one variant combination (size and/or color) before saving.');
+      return;
+    }
+
     setLoading(true);
     try {
       const payload = { ...formData };
       if (product && payload.has_variants) {
         delete payload.selling_price;
         delete payload.mrp;
-        delete payload.cost;
         delete payload.stock_quantity;
         delete payload.low_stock_threshold;
         delete payload.reorder_quantity;
@@ -527,12 +553,19 @@ const ProductForm = ({
         submitData.append('image', image);
       }
 
+      if (payload.has_variants && variantCombinationKeys.length) {
+        submitData.append(
+          'variant_combinations',
+          JSON.stringify(combinationsPayloadFromKeys(variantCombinationKeys))
+        );
+      }
+
       const needsReason =
         makerCheckerOn &&
         product &&
-        !payload.has_variants &&
         productEditNeedsReason(payload, product, {
           financialFieldsLocked: makerCheckerFinancialLocked,
+          variantProduct: payload.has_variants,
         });
       if (needsReason) {
         if (!changeReason.trim()) {
@@ -546,6 +579,7 @@ const ProductForm = ({
       }
 
       let response;
+      let savedProductId = product?.id;
       if (product) {
         response = await productsAPI.update(product.id, submitData);
         if (isPendingApprovalResponse(response.status)) {
@@ -555,7 +589,24 @@ const ProductForm = ({
         }
       } else {
         response = await productsAPI.create(submitData);
+        savedProductId = response.data?.id;
         toast.success('Product created successfully');
+      }
+
+      if (payload.has_variants && savedProductId && Object.keys(variantDraftsRef.current).length) {
+        try {
+          const { applied } = await applyVariantDraftsAfterProductSave(
+            savedProductId,
+            variantDraftsRef.current
+          );
+          if (applied > 0) {
+            toast.success(`Updated price and stock for ${applied} variant row(s)`);
+          }
+        } catch (err) {
+          toast.warning(
+            'Product saved, but some variant price or stock values could not be applied. Edit variants and try again.'
+          );
+        }
       }
 
       setTimeout(() => {
@@ -704,90 +755,38 @@ const ProductForm = ({
                 {' '}(or Sales → Sizes &amp; colors), then return here and select from the lists below.
               </div>
             )}
-            <div className="form-row">
-              <div className="form-group">
-                <label>Available Sizes</label>
-                <input
-                  type="text"
-                  placeholder="Search sizes..."
-                  value={sizeSearch}
-                  onChange={(e) => setSizeSearch(e.target.value)}
-                  style={{ marginBottom: '0.5rem', padding: '0.5rem', width: '100%', border: '1px solid #e5e7eb', borderRadius: '4px' }}
-                />
-                <select
-                  name="available_sizes"
-                  multiple
-                  value={Array.isArray(formData.available_sizes) ? formData.available_sizes.map(id => String(id)) : []}
-                  onChange={(e) => {
-                    const selected = Array.from(e.target.selectedOptions, option => parseInt(option.value));
-                    setFormData(prev => ({ ...prev, available_sizes: selected }));
-                  }}
-                  style={{ minHeight: '100px', width: '100%' }}
-                >
-                  {sizes
-                    .filter(size => 
-                      !sizeSearch || 
-                      size.name.toLowerCase().includes(sizeSearch.toLowerCase()) ||
-                      size.code.toLowerCase().includes(sizeSearch.toLowerCase())
-                    )
-                    .map(size => (
-                      <option key={size.id} value={String(size.id)}>{size.name} ({size.code})</option>
-                    ))}
-                </select>
-                <small>
-                  {Array.isArray(formData.available_sizes) && formData.available_sizes.length > 0 
-                    ? `Selected: ${formData.available_sizes.map(id => {
-                        const size = sizes.find(s => s.id === id);
-                        return size ? size.name : '';
-                      }).filter(Boolean).join(', ')}`
-                    : 'Hold Ctrl/Cmd to select multiple sizes'}
-                </small>
-              </div>
-
-              <div className="form-group">
-                <label>Available Colors</label>
-                <input
-                  type="text"
-                  placeholder="Search colors..."
-                  value={colorSearch}
-                  onChange={(e) => setColorSearch(e.target.value)}
-                  style={{ marginBottom: '0.5rem', padding: '0.5rem', width: '100%', border: '1px solid #e5e7eb', borderRadius: '4px' }}
-                />
-                <select
-                  name="available_colors"
-                  multiple
-                  value={Array.isArray(formData.available_colors) ? formData.available_colors.map(id => String(id)) : []}
-                  onChange={(e) => {
-                    const selected = Array.from(e.target.selectedOptions, option => parseInt(option.value));
-                    setFormData(prev => ({ ...prev, available_colors: selected }));
-                  }}
-                  style={{ minHeight: '100px', width: '100%' }}
-                >
-                  {colors
-                    .filter(color => 
-                      !colorSearch || 
-                      color.name.toLowerCase().includes(colorSearch.toLowerCase()) ||
-                      (color.hex_code && color.hex_code.toLowerCase().includes(colorSearch.toLowerCase()))
-                    )
-                    .map(color => (
-                      <option key={color.id} value={String(color.id)}>
-                        {color.name}{color.hex_code ? ` (${color.hex_code})` : ''}
-                      </option>
-                    ))}
-                </select>
-                <small>
-                  {Array.isArray(formData.available_colors) && formData.available_colors.length > 0 
-                    ? `Selected: ${formData.available_colors.map(id => {
-                        const color = colors.find(c => c.id === id);
-                        return color ? color.name : '';
-                      }).filter(Boolean).join(', ')}`
-                    : 'Hold Ctrl/Cmd to select multiple colors'}
-                </small>
-              </div>
+            <div className="mt-2">
+              <p className="mb-2 text-sm text-muted-foreground">
+                Build variants one at a time — pick a size and color, click{' '}
+                <strong>Add variant</strong>, then enter price and stock for that row.
+              </p>
+              <ProductVariantsPanel
+                productId={product?.id}
+                sizes={sizes}
+                colors={colors}
+                canEditPrice={showPricingFields}
+                canEditStock={showStockFields}
+                onDraftsChange={handleVariantDraftsChange}
+                onCombinationKeysChange={handleVariantCombinationKeysChange}
+              />
             </div>
-            {product?.id && formData.has_variants ? (
-              <div className="mt-3">
-                <ProductVariantsPanel productId={product.id} />
+            {showCostField && formData.has_variants ? (
+              <div className="form-row mt-3">
+                <div className="form-group">
+                  <label>Product cost (KES)</label>
+                  <input
+                    type="number"
+                    name="cost"
+                    value={formData.cost}
+                    onChange={handleChange}
+                    step="0.01"
+                    min="0"
+                  />
+                  {errors.cost && <span className="error">{errors.cost}</span>}
+                  <small className="text-muted">
+                    One cost for the whole product — set selling price per variant below.
+                  </small>
+                </div>
               </div>
             ) : null}
             </>
@@ -1028,6 +1027,17 @@ const ProductForm = ({
               context="catalog"
               value={changeReason}
               onChange={setChangeReason}
+            />
+          </div>
+        ) : null}
+
+        {variantsEnabled && formData.has_variants ? (
+          <div className="border-t border-border px-4 py-3">
+            <VariantDraftSummary
+              productName={formData.name}
+              draftsByKey={variantDrafts}
+              sizes={sizes}
+              colors={colors}
             />
           </div>
         ) : null}

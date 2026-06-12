@@ -3,6 +3,11 @@
  */
 import { PERSONA } from './roleAccess';
 import { isModuleFlagEnabled } from './moduleSettingsCache';
+import {
+  showProductCostPrice,
+  showProductMrp,
+  showProductStatus,
+} from './productDisplay';
 
 export function salesCatalogAccessEnabled(productSettings, storeSettings) {
   const moduleOn = isModuleFlagEnabled(productSettings, 'allow_sales_catalog_access', true);
@@ -91,4 +96,36 @@ export function userMayEditAnyProductFinancialFieldFromStorage(
 ) {
   const access = resolveProductFieldAccess(persona, productSettings, storeSettings);
   return access.pricing || access.cost || access.stock;
+}
+
+/**
+ * Read-only product detail visibility (module flags × role field access).
+ * @param {{ catalog: boolean, pricing: boolean, cost: boolean, stock: boolean, catalogOnly: boolean }} fieldAccess
+ * @param {object} productModuleSettings
+ * @param {object} [storeSettings]
+ */
+export function resolveProductDetailVisibility(
+  fieldAccess,
+  productModuleSettings = {},
+  storeSettings = {}
+) {
+  const showStatus = showProductStatus(productModuleSettings, storeSettings);
+  const showPricing = Boolean(fieldAccess?.pricing);
+  const showCost = Boolean(fieldAccess?.cost) && showProductCostPrice(productModuleSettings);
+  const showMrp = showPricing && showProductMrp(productModuleSettings);
+  const showStock = Boolean(fieldAccess?.stock);
+  const showProfit = showPricing && showCost;
+  const catalogOnly = Boolean(fieldAccess?.catalogOnly);
+
+  return {
+    showStatus,
+    showPricing,
+    showCost,
+    showMrp,
+    showStock,
+    showProfit,
+    catalogOnly,
+    canViewCatalog: Boolean(fieldAccess?.catalog),
+    canEdit: Boolean(fieldAccess?.catalog),
+  };
 }

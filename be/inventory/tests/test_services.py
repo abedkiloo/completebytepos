@@ -130,6 +130,73 @@ class StockMovementServiceTestCase(TestCase):
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock_quantity, 13)
 
+    def test_adjust_stock_records_cost_on_movement(self):
+        """Adjustment movements carry unit/total cost for inventory valuation reports."""
+        movement = self.service.adjust_stock(
+            product_id=self.product.id,
+            variant_id=None,
+            quantity=4,
+            notes='found stock',
+            user=self.user,
+        )
+        self.assertEqual(movement.unit_cost, Decimal('5.00'))
+        self.assertEqual(movement.total_cost, Decimal('20.00'))
+        report = self.service.get_inventory_report(product_id=self.product.id)
+        # 10 + 4 units @ 5.00 cost each
+        self.assertEqual(report['total_inventory_value'], Decimal('70.00'))
+
+    def test_adjust_variant_stock_syncs_parent_total(self):
+        size = Size.objects.create(name='M', code='M', is_active=True)
+        self.product.has_variants = True
+        self.product.stock_quantity = 0
+        self.product.save(update_fields=['has_variants', 'stock_quantity'])
+        variant = ProductVariant.objects.create(
+            product=self.product,
+            size=size,
+            sku='ADJ-VAR-1',
+            price=Decimal('12.00'),
+            cost=Decimal('8.00'),
+            stock_quantity=5,
+            is_active=True,
+        )
+        self.product.refresh_from_db()
+        movement = self.service.adjust_stock(
+            product_id=self.product.id,
+            variant_id=variant.id,
+            quantity=3,
+            notes='variant count',
+            user=self.user,
+        )
+        variant.refresh_from_db()
+        self.product.refresh_from_db()
+        self.assertEqual(variant.stock_quantity, 8)
+        self.assertEqual(self.product.stock_quantity, 8)
+        self.assertEqual(movement.variant_id, variant.id)
+        self.assertEqual(movement.unit_cost, Decimal('8.00'))
+        self.assertEqual(movement.total_cost, Decimal('24.00'))
+
+    def test_adjust_variant_falls_back_to_product_cost(self):
+        size = Size.objects.create(name='S', code='S', is_active=True)
+        variant = ProductVariant.objects.create(
+            product=self.product,
+            size=size,
+            sku='ADJ-VAR-2',
+            price=Decimal('10.00'),
+            cost=None,
+            stock_quantity=2,
+            is_active=True,
+        )
+        movement = self.service.adjust_stock(
+            product_id=self.product.id,
+            variant_id=variant.id,
+            quantity=-1,
+            user=self.user,
+        )
+        self.assertEqual(movement.unit_cost, Decimal('5.00'))
+        self.assertEqual(movement.total_cost, Decimal('5.00'))
+        variant.refresh_from_db()
+        self.assertEqual(variant.stock_quantity, 1)
+
     def test_purchase_product_not_found(self):
         with self.assertRaises(ValidationError):
             self.service.purchase_stock(

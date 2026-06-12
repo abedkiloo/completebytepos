@@ -26,7 +26,12 @@ import ReceiptDialog from '../v2/ReceiptDialog';
 import { toast } from '../../../utils/toast';
 import { getSellableStock, isProductOutOfStock } from '../../../utils/productStock';
 import { useStoreSettings } from '../../../hooks/useStoreSettings';
-import { filterEnabledPaymentMethods } from '../../../utils/paymentMethods';
+import {
+  filterEnabledPaymentMethods,
+  paymentReferenceLabel,
+  paymentReferencePlaceholder,
+  paymentReferenceRequired,
+} from '../../../utils/paymentMethods';
 import { isManagerOrAdminFromStorage } from '../../../utils/roleAccess';
 import { useModuleSettings } from '../../../hooks/useModuleSettings';
 import { canQuickAddCustomerAtPos } from '../../../utils/customerDisplay';
@@ -471,6 +476,26 @@ export default function BillingPOSPage() {
                     </button>
                   ))}
                 </div>
+
+                {paymentReferenceRequired(state.paymentMethod) ? (
+                  <div className="mt-3 space-y-1">
+                    <Label
+                      htmlFor="billing-payment-reference"
+                      className="block text-xs font-medium text-muted-foreground"
+                    >
+                      {paymentReferenceLabel(state.paymentMethod)} *
+                    </Label>
+                    <Input
+                      id="billing-payment-reference"
+                      type="text"
+                      value={state.paymentReference}
+                      onChange={(e) => state.setPaymentReference(e.target.value)}
+                      placeholder={paymentReferencePlaceholder(state.paymentMethod)}
+                      className="h-10 font-mono text-sm"
+                      autoComplete="off"
+                    />
+                  </div>
+                ) : null}
 
                 {state.paymentMethod !== 'other' && (
                   <div

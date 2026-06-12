@@ -1,8 +1,8 @@
 """Stock helpers when selling products with or without the variants feature.
 
-All catalogue surfaces (list, search, detail read, POS) must use
-``sellable_stock_quantity`` or ``apply_catalog_variant_representation`` so
-parent-only stock is not hidden when variant rows exist but sum to zero.
+Variant products store quantity on variant rows; parent ``stock_quantity`` is
+kept in sync as the sum of active variants. Catalogue surfaces must use
+``sellable_stock_quantity`` or ``apply_catalog_variant_representation``.
 """
 
 from decimal import Decimal
@@ -21,6 +21,22 @@ def active_variant_stock_sum(product) -> int:
         total=Sum('stock_quantity')
     )['total']
     return int(total or 0)
+
+
+def sync_product_stock_from_variants(product) -> int:
+    """
+    Keep parent ``stock_quantity`` equal to the sum of active variant rows.
+    Variant products never hold separate parent-only stock in reports/POS.
+    """
+    from products.models import Product
+
+    if not product.has_variants or not product.track_stock:
+        return int(product.stock_quantity or 0)
+    total = active_variant_stock_sum(product)
+    if int(product.stock_quantity or 0) != total:
+        Product.objects.filter(pk=product.pk).update(stock_quantity=total)
+        product.stock_quantity = total
+    return total
 
 
 def variants_sold_as_simple(product) -> bool:
@@ -51,24 +67,10 @@ def apply_catalog_variant_representation(product, data: Dict[str, Any]) -> Dict[
 
 def sellable_stock_quantity(product, variant=None) -> int:
     if variant is not None:
-        v_qty = int(variant.stock_quantity or 0)
-        if v_qty > 0:
-            return v_qty
-        if not product.has_variants:
-            return v_qty
-        parent_qty = int(product.stock_quantity or 0)
-        # Stock on the parent only when no variant row holds quantity (common
-        # when variants were added after stocking the parent SKU).
-        if parent_qty > 0 and active_variant_stock_sum(product) == 0:
-            return parent_qty
-        return v_qty
+        return int(variant.stock_quantity or 0)
     if product.has_variants:
-        variant_total = active_variant_stock_sum(product)
-        # Many catalogs keep quantity on the parent row, on variant rows, or
-        # both. Taking the max avoids false "0 available" when the list/POS
-        # shows parent stock but variants are empty (or vice versa).
-        return max(int(product.stock_quantity or 0), variant_total)
-    return product.stock_quantity
+        return active_variant_stock_sum(product)
+    return int(product.stock_quantity or 0)
 
 
 def sellable_unit_price(product, variant=None, override=None) -> Decimal:

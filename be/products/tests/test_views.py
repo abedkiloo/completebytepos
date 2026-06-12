@@ -14,6 +14,7 @@ from suppliers.models import Supplier
 import json
 import io
 
+from settings.test_utils import disable_maker_checker
 from utils.tests.module_setting_helpers import enable_products_list_api_fields
 
 
@@ -22,6 +23,7 @@ class ProductViewSetTestCase(APITestCase):
     
     def setUp(self):
         """Set up test data"""
+        disable_maker_checker()
         enable_products_list_api_fields()
         # Create superuser
         self.superuser = User.objects.create_superuser(
@@ -947,6 +949,106 @@ class ProductVariantViewSetTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(ProductVariant.objects.filter(sku='TEST-001-S-RED').exists())
     
+    def test_patch_product_cost_preserves_existing_variant_rows(self):
+        """Unrelated product updates must not wipe variant price/stock."""
+        from settings.models import StoreSettings
+        from settings.test_utils import enable_product_variants
+
+        store = StoreSettings.load()
+        store.maker_checker_enabled = False
+        store.save(update_fields=['maker_checker_enabled'])
+        enable_product_variants()
+        self.product.available_sizes.set([self.size])
+        self.product.available_colors.set([self.color])
+        variant = ProductVariant.objects.create(
+            product=self.product,
+            size=self.size,
+            color=self.color,
+            sku='KEEP-VAR-PRICE',
+            price=Decimal('99.00'),
+            stock_quantity=7,
+        )
+
+        response = self.client.patch(
+            f'/api/products/{self.product.id}/',
+            {'cost': '25.00'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(ProductVariant.objects.filter(product=self.product).count(), 1)
+        variant.refresh_from_db()
+        self.assertEqual(variant.price, Decimal('99.00'))
+        self.assertEqual(variant.stock_quantity, 7)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.cost, Decimal('25.00'))
+
+    def test_patch_variant_stock_only_preserves_price(self):
+        """PATCH one field must not rewrite other variant data."""
+        from settings.models import StoreSettings
+
+        store = StoreSettings.load()
+        store.maker_checker_enabled = False
+        store.save(update_fields=['maker_checker_enabled'])
+
+        variant = ProductVariant.objects.create(
+            product=self.product,
+            size=self.size,
+            color=self.color,
+            sku='TEST-PATCH-VAR',
+            price=Decimal('100.00'),
+            stock_quantity=10,
+        )
+
+        response = self.client.patch(
+            f'/api/products/variants/{variant.id}/',
+            {'stock_quantity': 25},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        variant.refresh_from_db()
+        self.assertEqual(variant.price, Decimal('100.00'))
+        self.assertEqual(variant.stock_quantity, 25)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 25)
+
+    def test_update_variant_with_full_payload(self):
+        """PUT still accepts a complete variant row."""
+        from settings.models import StoreSettings
+
+        store = StoreSettings.load()
+        store.maker_checker_enabled = False
+        store.save(update_fields=['maker_checker_enabled'])
+
+        variant = ProductVariant.objects.create(
+            product=self.product,
+            size=self.size,
+            color=self.color,
+            sku='TEST-PUT-VAR',
+            price=Decimal('100.00'),
+            stock_quantity=10,
+        )
+
+        response = self.client.put(
+            f'/api/products/variants/{variant.id}/',
+            {
+                'product': self.product.id,
+                'size': self.size.id,
+                'color': self.color.id,
+                'sku': variant.sku,
+                'price': '125.00',
+                'stock_quantity': 15,
+                'is_active': True,
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        variant.refresh_from_db()
+        self.assertEqual(variant.price, Decimal('125.00'))
+        self.assertEqual(variant.stock_quantity, 15)
+        self.assertEqual(variant.product_id, self.product.id)
+
     def test_filter_variants_by_product(self):
         """Test filtering variants by product"""
         variant = ProductVariant.objects.create(

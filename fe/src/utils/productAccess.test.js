@@ -1,6 +1,7 @@
 import { PERSONA } from './roleAccess';
 import {
   resolveProductFieldAccess,
+  resolveProductDetailVisibility,
   salesCatalogAccessEnabled,
   managerMayEditCost,
   managerMayEditPricing,
@@ -147,5 +148,50 @@ describe('productAccess', () => {
     expect(
       userMayEditAnyProductFinancialFieldFromStorage(PERSONA.MANAGER, {}, store)
     ).toBe(true);
+  });
+
+  test('resolveProductDetailVisibility hides cost for manager by default', () => {
+    const access = resolveProductFieldAccess(PERSONA.MANAGER, {}, store);
+    const vis = resolveProductDetailVisibility(access, { show_cost_price: true }, store);
+    expect(vis.showPricing).toBe(true);
+    expect(vis.showCost).toBe(false);
+    expect(vis.showStock).toBe(true);
+  });
+
+  test('resolveProductDetailVisibility shows full financials for super admin', () => {
+    const access = resolveProductFieldAccess(PERSONA.SUPER_ADMIN, {}, store);
+    const vis = resolveProductDetailVisibility(access, {}, store);
+    expect(vis.showPricing).toBe(true);
+    expect(vis.showCost).toBe(true);
+    expect(vis.showStock).toBe(true);
+    expect(vis.showProfit).toBe(true);
+    expect(vis.canEdit).toBe(true);
+  });
+
+  test('resolveProductDetailVisibility respects module cost flag', () => {
+    const access = resolveProductFieldAccess(PERSONA.SUPER_ADMIN, {}, store);
+    const vis = resolveProductDetailVisibility(
+      access,
+      { show_cost_price: false },
+      store
+    );
+    expect(vis.showCost).toBe(false);
+    expect(vis.showProfit).toBe(false);
+  });
+
+  test('resolveProductDetailVisibility catalog-only sales see price not cost', () => {
+    const access = resolveProductFieldAccess(
+      PERSONA.SALES,
+      {
+        allow_sales_catalog_access: true,
+        allow_sales_edit_catalog_details: true,
+      },
+      store
+    );
+    const vis = resolveProductDetailVisibility(access, {}, store);
+    expect(vis.catalogOnly).toBe(true);
+    expect(vis.showPricing).toBe(false);
+    expect(vis.showCost).toBe(false);
+    expect(vis.showStock).toBe(false);
   });
 });

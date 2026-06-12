@@ -284,7 +284,8 @@ class ProductSerializer(serializers.ModelSerializer):
     selling_price = serializers.DecimalField(
         source='price', max_digits=10, decimal_places=2, required=False
     )
-    
+    variant_combinations = serializers.JSONField(required=False, write_only=True)
+
     class Meta:
         model = Product
         fields = [
@@ -292,7 +293,7 @@ class ProductSerializer(serializers.ModelSerializer):
             'category', 'category_name', 'category_detail',
             'subcategory', 'subcategory_name', 'subcategory_detail',
             'has_variants', 'available_sizes', 'available_sizes_detail',
-            'available_colors', 'available_colors_detail', 'variants',
+            'available_colors', 'available_colors_detail', 'variant_combinations', 'variants',
             'mrp', 'price', 'selling_price', 'cost', 'stock_quantity', 'low_stock_threshold', 'reorder_quantity',
             'unit', 'image', 'image_url', 'description', 
             'supplier', 'supplier_name', 'supplier_name_display', 'supplier_detail', 'supplier_contact',
@@ -394,6 +395,17 @@ class ProductSerializer(serializers.ModelSerializer):
             else:
                 data['supplier'] = None
         
+        if 'variant_combinations' in data:
+            from products.variant_combinations import normalize_variant_combinations
+
+            self._variant_combinations = normalize_variant_combinations(
+                data.get('variant_combinations')
+            )
+            data = data.copy() if hasattr(data, 'copy') else dict(data)
+            data.pop('variant_combinations', None)
+        elif not hasattr(self, '_variant_combinations'):
+            self._variant_combinations = None
+
         return super().to_internal_value(data)
     
     def get_category_name(self, obj):
@@ -586,6 +598,7 @@ class ProductSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         """Create product instance, handling ManyToMany fields separately"""
+        validated_data.pop('variant_combinations', None)
         # Extract ManyToMany fields
         available_sizes = validated_data.pop('available_sizes', [])
         available_colors = validated_data.pop('available_colors', [])
@@ -667,6 +680,7 @@ class ProductSerializer(serializers.ModelSerializer):
     
     def update(self, instance, validated_data):
         """Update product instance, handling ManyToMany fields separately"""
+        validated_data.pop('variant_combinations', None)
         # Extract ManyToMany fields
         available_sizes = validated_data.pop('available_sizes', None)
         available_colors = validated_data.pop('available_colors', None)

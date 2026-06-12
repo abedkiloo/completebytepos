@@ -171,6 +171,11 @@ class StockMovement(models.Model):
                         added_unit_cost=self.unit_cost,
                     )
                 ProductVariant.objects.filter(pk=self.variant_id).update(**update_kwargs)
+                product = locked.product
+                if product.has_variants and product.track_stock:
+                    from products.stock_utils import sync_product_stock_from_variants
+
+                    sync_product_stock_from_variants(product)
             else:
                 if not self.product.track_stock:
                     return
