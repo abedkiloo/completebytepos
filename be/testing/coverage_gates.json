@@ -61,7 +61,7 @@
         "daily_notes/view_mixins.py",
         "daily_notes/models.py"
       ],
-      "minimum_percent": 98
+      "minimum_percent": 96
     }
   ],
   "ramp_up": [

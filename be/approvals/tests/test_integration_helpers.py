@@ -65,7 +65,16 @@ class RegistryClassifierTests(TestCase):
         self.assertIn(ACTION_PRODUCT_UNIT, classify_product_field_changes({'unit': 'kg'}))
         self.assertIn(ACTION_PRODUCT_TAX, classify_product_field_changes({'tax_rate': '16'}))
         self.assertEqual(classify_variant_field_changes({'name': 'x'}), [])
+        self.assertIn(
+            ACTION_PRODUCT_PRICE,
+            classify_variant_field_changes({'price': '99', 'stock_quantity': 3}),
+        )
+        self.assertIn(
+            ACTION_PRODUCT_STOCK,
+            classify_variant_field_changes({'stock_quantity': 3}),
+        )
         self.assertTrue(CHECKER_MODULE_BY_ACTION[ACTION_PRODUCT_PRICE])
+        self.assertTrue(CHECKER_MODULE_BY_ACTION[ACTION_CATEGORY_DELETE])
 
     def test_classify_store_settings_skips_unknown_keys(self):
         grouped = classify_store_settings_changes(

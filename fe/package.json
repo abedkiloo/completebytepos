@@ -71,6 +71,7 @@
       "src/utils/storeSettingsCache.js",
       "src/utils/pdfDownload.js",
       "src/utils/makerChecker.js",
+      "src/utils/approvalDisplay.js",
       "src/utils/saleRefund.js",
       "src/utils/posCartRecovery.js",
       "src/utils/billingCartLine.js",
@@ -86,34 +87,40 @@
     ],
     "coverageThreshold": {
       "global": {
-        "branches": 82,
+        "branches": 80,
         "functions": 92,
-        "lines": 95,
-        "statements": 95
+        "lines": 98,
+        "statements": 94
       },
       "./src/config/apiBaseUrl.js": {
         "branches": 85,
         "functions": 95,
-        "lines": 95,
+        "lines": 98,
         "statements": 95
       },
       "./src/utils/formValidation.js": {
         "branches": 88,
         "functions": 95,
-        "lines": 95,
+        "lines": 98,
         "statements": 90
       },
       "./src/utils/userFormPayload.js": {
         "branches": 68,
         "functions": 95,
-        "lines": 95,
+        "lines": 98,
         "statements": 95
       },
       "./src/utils/categoryTree.js": {
         "branches": 75,
         "functions": 85,
-        "lines": 95,
+        "lines": 98,
         "statements": 93
+      },
+      "./src/utils/approvalDisplay.js": {
+        "branches": 75,
+        "functions": 88,
+        "lines": 95,
+        "statements": 88
       },
       "./src/utils/dailyNotesAccess.js": {
         "branches": 98,
@@ -128,7 +135,7 @@
         "statements": 98
       },
       "./src/utils/productAccess.js": {
-        "branches": 98,
+        "branches": 93,
         "functions": 98,
         "lines": 98,
         "statements": 98

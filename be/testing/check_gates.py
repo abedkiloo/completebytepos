@@ -63,15 +63,16 @@ def main() -> int:
     for pkg in gates.get('packages', []):
         name = pkg['name']
         includes = pkg.get('include', [])
+        pkg_minimum = float(pkg.get('minimum_percent', minimum))
         pct = package_percent(coverage_data, includes)
         if pct is None:
             skipped.append(name)
             print(f'  ⚠ {name}: no lines measured ({", ".join(includes)})')
             continue
-        status = 'OK' if pct >= minimum else 'FAIL'
-        print(f'  {status} {name}: {pct:.1f}%')
-        if pct < minimum:
-            failed.append((name, pct, includes))
+        status = 'OK' if pct >= pkg_minimum else 'FAIL'
+        print(f'  {status} {name}: {pct:.1f}% (min {pkg_minimum}%)')
+        if pct < pkg_minimum:
+            failed.append((name, pct, includes, pkg_minimum))
 
     if skipped:
         print(f'\nSkipped {len(skipped)} package(s) with no coverage data.')
@@ -88,12 +89,12 @@ def main() -> int:
                 print(f'  {status} {rel}: {pct:.1f}%')
 
     if failed:
-        print(f'\n{len(failed)} package(s) below {minimum}%:', file=sys.stderr)
-        for name, pct, includes in failed:
-            print(f'  - {name}: {pct:.1f}% → {includes}', file=sys.stderr)
+        print(f'\n{len(failed)} package(s) below their minimum:', file=sys.stderr)
+        for name, pct, includes, pkg_minimum in failed:
+            print(f'  - {name}: {pct:.1f}% (need {pkg_minimum}%) → {includes}', file=sys.stderr)
         return 1
 
-    print(f'\nAll measured gates ≥ {minimum}%.')
+    print(f'\nAll measured gates met (default minimum {minimum}%).')
     return 0
 
 

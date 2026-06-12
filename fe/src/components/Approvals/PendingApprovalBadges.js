@@ -1,6 +1,6 @@
 import React from 'react';
 import { Badge } from '../ui/badge';
-import { pendingApprovalLabels } from '../../utils/makerChecker';
+import { formatPendingApprovalHint, pendingApprovalLabels } from '../../utils/makerChecker';
 
 export default function PendingApprovalBadges({ pendingApproval, className = '' }) {
   const labels = pendingApprovalLabels(pendingApproval);

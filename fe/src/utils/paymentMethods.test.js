@@ -1,6 +1,8 @@
 import {
   PAYMENT_METHODS,
   filterEnabledPaymentMethods,
+  getPaymentMethodMeta,
+  paymentReferencePlaceholder,
   paymentReferenceRequired,
   paymentReferenceLabel,
 } from './paymentMethods';
@@ -36,5 +38,15 @@ describe('paymentMethods', () => {
 
   test('paymentReferenceLabel for mpesa', () => {
     expect(paymentReferenceLabel('mpesa')).toBe('M-Pesa code');
+  });
+
+  test('getPaymentMethodMeta falls back to cash', () => {
+    expect(getPaymentMethodMeta('unknown').id).toBe('cash');
+    expect(getPaymentMethodMeta('card').referenceLabel).toBe('Card reference');
+  });
+
+  test('paymentReferencePlaceholder', () => {
+    expect(paymentReferencePlaceholder('mpesa')).toContain('QHX');
+    expect(paymentReferencePlaceholder('cash')).toBe('Enter reference');
   });
 });

@@ -32,6 +32,13 @@ class SalesPolicyUnitTests(TestCase):
             {'notes': 'x'},
         )
 
+    def test_sale_edit_has_unsupported_fields(self):
+        from approvals.sales_policy import sale_edit_has_unsupported_fields
+
+        self.assertFalse(sale_edit_has_unsupported_fields({}))
+        self.assertFalse(sale_edit_has_unsupported_fields({'notes': 'ok'}))
+        self.assertTrue(sale_edit_has_unsupported_fields({'total': 100}))
+
     def test_queue_requires_optional_flag(self):
         _enable_maker_checker(enabled=True)
         store = StoreSettings.load()

@@ -31,6 +31,17 @@ class VariantCombinationsTests(TestCase):
             is_active=True,
         )
 
+    def test_normalize_variant_combinations_parses_json_string(self):
+        import json
+
+        raw = json.dumps(
+            [
+                {'size': self.size_l.id, 'color': self.color_white.id},
+            ]
+        )
+        out = normalize_variant_combinations(raw)
+        self.assertEqual(len(out), 1)
+
     def test_normalize_variant_combinations_parses_json_pairs(self):
         raw = [
             {'size': self.size_l.id, 'color': self.color_white.id},

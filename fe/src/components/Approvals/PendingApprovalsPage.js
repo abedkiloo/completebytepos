@@ -12,24 +12,8 @@ import { toast } from '../../utils/toast';
 import { formatDateTime } from '../../utils/formatters';
 import { userMayEditFinancialFieldsFromStorage } from '../../utils/roleAccess';
 import { needsExtremePriceConfirm } from '../../utils/makerChecker';
-
-function DiffBlock({ title, values }) {
-  if (!values || !Object.keys(values).length) {
-    return (
-      <p className="text-xs text-muted-foreground">
-        {title}: (none)
-      </p>
-    );
-  }
-  return (
-    <div>
-      <p className="mb-1 text-xs font-medium text-muted-foreground">{title}</p>
-      <pre className="max-h-40 overflow-auto rounded bg-muted p-2 text-xs">
-        {JSON.stringify(values, null, 2)}
-      </pre>
-    </div>
-  );
-}
+import { describeApprovalSummary, formatApprovalValue } from '../../utils/approvalDisplay';
+import ApprovalChangeTable from './ApprovalChangeTable';
 
 function PendingRow({ row, onResolved }) {
   const [rejectReason, setRejectReason] = useState('');
@@ -37,10 +21,11 @@ function PendingRow({ row, onResolved }) {
   const [extremeConfirm, setExtremeConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const extremeRequired = needsExtremePriceConfirm(row);
+  const { headline, action, item } = describeApprovalSummary(row);
 
   const approve = async () => {
     if (extremeRequired && !extremeConfirm) {
-      toast.warning('Confirm the large price change before approving.');
+      toast.warning('Please confirm the large price change before approving.');
       return;
     }
     setBusy(true);
@@ -48,14 +33,14 @@ function PendingRow({ row, onResolved }) {
       await pendingChangesAPI.approve(row.id, {
         extreme_price_confirmed: extremeRequired ? extremeConfirm : false,
       });
-      toast.success('Change approved and applied');
+      toast.success('Approved — the change is now live');
       onResolved();
     } catch (err) {
       const data = err.response?.data;
       const msg =
         (typeof data === 'object' && (data.error || Object.values(data).flat().join(', '))) ||
         data?.detail ||
-        'Could not approve';
+        'Could not approve this change';
       toast.error(msg);
     } finally {
       setBusy(false);
@@ -64,16 +49,16 @@ function PendingRow({ row, onResolved }) {
 
   const reject = async () => {
     if (!rejectReason.trim()) {
-      toast.warning('Enter a rejection reason');
+      toast.warning('Please say why you are rejecting this change');
       return;
     }
     setBusy(true);
     try {
       await pendingChangesAPI.reject(row.id, { rejection_reason: rejectReason.trim() });
-      toast.success('Change rejected');
+      toast.success('Rejected — nothing was changed');
       onResolved();
-    } catch (err) {
-      toast.error('Could not reject');
+    } catch {
+      toast.error('Could not reject this change');
     } finally {
       setBusy(false);
     }
@@ -81,38 +66,46 @@ function PendingRow({ row, onResolved }) {
 
   return (
     <Card className="border-l-4 border-l-amber-400">
-      <CardContent className="space-y-3 pt-6">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline">{row.action_type}</Badge>
-              {row.batch_id ? (
-                <Badge variant="secondary" className="text-[10px]">
-                  Batch
-                </Badge>
-              ) : null}
-            </div>
-            <p className="mt-1 font-medium">{row.entity_repr || row.entity_type}</p>
-            <p className="text-xs text-muted-foreground">
-              Proposed by {row.made_by_username || '—'} · {formatDateTime(row.made_at)}
-            </p>
+      <CardContent className="space-y-4 pt-6">
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="secondary">{action}</Badge>
+            {row.batch_id ? (
+              <Badge variant="outline" className="text-[10px]">
+                Grouped request
+              </Badge>
+            ) : null}
           </div>
+          <h3 className="text-base font-semibold leading-snug">{item}</h3>
+          <p className="text-xs text-muted-foreground">
+            Requested by {row.made_by_username || 'a team member'} ·{' '}
+            {formatDateTime(row.made_at)}
+          </p>
         </div>
-        <p className="text-sm">
-          <span className="font-medium">Reason:</span> {row.reason}
-        </p>
-        <div className="grid gap-3 md:grid-cols-2">
-          <DiffBlock title="Before (approved)" values={row.original_values} />
-          <DiffBlock title="Proposed" values={row.proposed_values} />
+
+        <div className="rounded-md bg-muted/30 px-3 py-2 text-sm">
+          <span className="font-medium">Why they asked: </span>
+          {row.reason || 'No reason provided'}
         </div>
+
+        <div>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Review the change
+          </p>
+          <ApprovalChangeTable
+            originalValues={row.original_values}
+            proposedValues={row.proposed_values}
+          />
+        </div>
+
         {extremeRequired ? (
           <div className="rounded-md border border-amber-300 bg-amber-50/90 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/40">
             <p className="font-medium text-amber-900 dark:text-amber-100">
-              Large price change (&gt;50% from approved price)
+              Large price change (more than 50% from the current price)
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Approved: {row.original_values?.price ?? '—'} → Proposed:{' '}
-              {row.proposed_values?.price ?? '—'}
+            <p className="mt-1 text-muted-foreground">
+              Current: {formatApprovalValue('price', row.original_values?.price)} → Requested:{' '}
+              {formatApprovalValue('price', row.proposed_values?.price)}
             </p>
             <label className="mt-2 flex items-center gap-2">
               <input
@@ -120,25 +113,26 @@ function PendingRow({ row, onResolved }) {
                 checked={extremeConfirm}
                 onChange={(e) => setExtremeConfirm(e.target.checked)}
               />
-              I confirm this price change is intentional
+              I have verified this price change is correct
             </label>
           </div>
         ) : row.action_type === 'product_price' ? (
           <p className="text-xs text-muted-foreground">
-            Price change is within the normal approval threshold.
+            Price change is within the normal approval range.
           </p>
         ) : null}
+
         {showReject ? (
           <div className="space-y-2">
-            <Label>Rejection reason</Label>
+            <Label>Why are you rejecting this?</Label>
             <Input
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
-              placeholder="Why this change is not acceptable"
+              placeholder="e.g. Price is too low for this season"
             />
             <div className="flex gap-2">
               <Button type="button" variant="destructive" size="sm" onClick={reject} disabled={busy}>
-                Confirm reject
+                Confirm rejection
               </Button>
               <Button type="button" variant="ghost" size="sm" onClick={() => setShowReject(false)}>
                 Cancel
@@ -154,7 +148,7 @@ function PendingRow({ row, onResolved }) {
               disabled={busy || (extremeRequired && !extremeConfirm)}
             >
               <Check className="mr-1 h-4 w-4" />
-              Approve
+              Approve change
             </Button>
             <Button
               type="button"
@@ -168,6 +162,8 @@ function PendingRow({ row, onResolved }) {
             </Button>
           </div>
         )}
+
+        <p className="sr-only">{headline}</p>
       </CardContent>
     </Card>
   );
@@ -202,13 +198,13 @@ export default function PendingApprovalsPage() {
   return (
     <PageShell>
       <PageHeader
-        title="Pending approvals"
-        description="Review and approve sensitive price, stock, and catalog changes before they go live."
+        title="Approvals waiting for you"
+        description="Review price, stock, and catalog changes from your team before they go live in the shop."
         icon={ClipboardCheck}
       />
       <div className="mb-4 flex justify-end">
         <Button type="button" variant="outline" onClick={load} disabled={loading}>
-          Refresh
+          Refresh list
         </Button>
       </div>
       {loading ? (
@@ -216,7 +212,7 @@ export default function PendingApprovalsPage() {
       ) : rows.length === 0 ? (
         <Card>
           <CardContent className="py-10 text-center text-muted-foreground">
-            No changes waiting for approval.
+            All clear — no changes waiting for your approval.
           </CardContent>
         </Card>
       ) : (
