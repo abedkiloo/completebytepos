@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Receipt, RotateCcw, ShoppingCart } from 'lucide-react';
 import { salesAPI } from '../../services/api';
+import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { toast } from '../../utils/toast';
@@ -53,7 +54,7 @@ const Sales = () => {
   });
   const [pagination, setPagination] = useState({
     page: 1,
-    page_size: 20,
+    page_size: DEFAULT_PAGE_SIZE,
     count: 0,
   });
 

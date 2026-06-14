@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { inventoryAPI, productsAPI, variantsAPI } from '../../services/api';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { Button } from '../ui/button';
@@ -8,12 +8,16 @@ import ChangeReasonField from '../Approvals/ChangeReasonField';
 import { toast } from '../../utils/toast';
 import { variantDisplayLabel } from '../../utils/variantCombinations';
 import {
+  formatStockProductOptionLabel,
+  findProductById,
+} from '../../utils/stockProductOptions';
+import {
   isMakerCheckerEnabled,
   isPendingApprovalResponse,
   PENDING_APPROVAL_MESSAGE,
 } from '../../utils/makerChecker';
 
-const StockAdjustmentModal = ({ product, onClose, onSave }) => {
+const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
   const [formData, setFormData] = useState({
     product_id: product?.id || '',
     quantity: 0,
@@ -29,23 +33,30 @@ const StockAdjustmentModal = ({ product, onClose, onSave }) => {
   const { settings: storeSettings } = useStoreSettings();
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
 
-  const variantMode = Boolean(product?.has_variants);
+  const pickedProduct = useMemo(
+    () => (product ? product : findProductById(products, formData.product_id)),
+    [product, products, formData.product_id]
+  );
+
+  const contextProductId = pickedProduct?.id || formData.product_id || null;
+  const variantMode = Boolean(pickedProduct?.has_variants);
 
   useEffect(() => {
     if (!product) {
       loadProducts();
+    } else {
+      setFormData((prev) => ({ ...prev, product_id: product.id }));
+    }
+  }, [product]);
+
+  useEffect(() => {
+    if (!contextProductId || !variantMode) {
       setVariants([]);
       setVariantAdjustments({});
       return;
     }
-    setFormData((prev) => ({ ...prev, product_id: product.id }));
-    if (product.has_variants) {
-      loadVariants(product.id);
-    } else {
-      setVariants([]);
-      setVariantAdjustments({});
-    }
-  }, [product]);
+    loadVariants(contextProductId);
+  }, [contextProductId, variantMode]);
 
   const loadProducts = async () => {
     try {
@@ -83,7 +94,7 @@ const StockAdjustmentModal = ({ product, onClose, onSave }) => {
 
   const productOptions = products.map((prod) => ({
     id: prod.id,
-    name: `${prod.name}${prod.sku ? ` (${prod.sku})` : ''} - Stock: ${prod.stock_quantity || 0}`,
+    name: formatStockProductOptionLabel(prod),
   }));
 
   const handleProductChange = (e) => {
@@ -91,7 +102,9 @@ const StockAdjustmentModal = ({ product, onClose, onSave }) => {
     setFormData((prev) => ({
       ...prev,
       product_id: productId ? parseInt(productId, 10) : '',
+      quantity: 0,
     }));
+    setError('');
   };
 
   const handleChange = (e) => {
@@ -143,7 +156,7 @@ const StockAdjustmentModal = ({ product, onClose, onSave }) => {
     setLoading(true);
 
     try {
-      const productId = product?.id || formData.product_id;
+      const productId = contextProductId;
       if (!productId) {
         setError('Select a product.');
         setLoading(false);
@@ -185,14 +198,13 @@ const StockAdjustmentModal = ({ product, onClose, onSave }) => {
         ];
       }
 
-      const { lastResponse, pendingCount } = await submitAdjustments(lines);
+      const { pendingCount } = await submitAdjustments(lines);
       if (pendingCount > 0) {
         toast.warning(PENDING_APPROVAL_MESSAGE);
       } else if (lines.length > 1) {
         toast.success(`Adjusted stock for ${lines.length} variant rows`);
-      }
-      if (lastResponse && !pendingCount && lines.length === 1) {
-        // single immediate adjust — no extra toast (parent may refresh list)
+      } else if (variantMode) {
+        toast.success('Variant stock adjusted');
       }
       onSave();
     } catch (err) {
@@ -203,8 +215,14 @@ const StockAdjustmentModal = ({ product, onClose, onSave }) => {
   };
 
   return (
-    <div className="slide-in-overlay" onClick={onClose}>
-      <div className="slide-in-panel" onClick={(e) => e.stopPropagation()}>
+    <div
+      className={nested ? 'slide-in-overlay nested' : 'slide-in-overlay'}
+      onClick={onClose}
+    >
+      <div
+        className={nested ? 'slide-in-panel nested' : 'slide-in-panel'}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="slide-in-panel-header">
           <h2>Stock adjustment</h2>
           <button type="button" onClick={onClose} className="slide-in-panel-close">
@@ -216,10 +234,12 @@ const StockAdjustmentModal = ({ product, onClose, onSave }) => {
           <form onSubmit={handleSubmit}>
             {error ? <p className="mb-3 text-sm text-destructive">{error}</p> : null}
 
-            {product ? (
+            {pickedProduct ? (
               <p className="mb-3 text-sm text-muted-foreground">
-                <span className="font-medium text-foreground">{product.name}</span>
-                {variantMode ? ' — adjust each variant below.' : null}
+                <span className="font-medium text-foreground">{pickedProduct.name}</span>
+                {variantMode
+                  ? ' — enter +/- quantity for each variant row below.'
+                  : null}
               </p>
             ) : null}
 
@@ -234,6 +254,9 @@ const StockAdjustmentModal = ({ product, onClose, onSave }) => {
                   name="product_id"
                   searchable
                 />
+                <small className="form-text">
+                  Variant products show a per-variant adjustment form after you select them.
+                </small>
               </div>
             )}
 
@@ -244,25 +267,26 @@ const StockAdjustmentModal = ({ product, onClose, onSave }) => {
                   <p className="text-sm text-muted-foreground">Loading variants…</p>
                 ) : variants.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    No variant rows found. Save size/color on the product first.
+                    No variant rows found. Add size/color variants on the product first.
                   </p>
                 ) : (
                   <div className="space-y-2">
                     {variants.map((variant) => (
                       <div
                         key={variant.id}
-                        className="grid grid-cols-[1fr_auto_auto] items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-3 py-2"
+                        className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-3 py-2"
                       >
-                        <div className="min-w-0 text-sm">
+                        <div className="min-w-0 flex-1 text-sm">
                           <p className="font-medium">{variantDisplayLabel(variant)}</p>
                           <p className="text-xs text-muted-foreground">
-                            On hand: {variant.stock_quantity ?? 0}
+                            Stock: {variant.stock_quantity ?? 0}
+                            {variant.sku ? ` · ${variant.sku}` : ''}
                           </p>
                         </div>
-                        <span className="text-xs text-muted-foreground">+ / −</span>
+                        <span className="shrink-0 text-xs text-muted-foreground">+ / −</span>
                         <Input
                           type="number"
-                          className="w-24"
+                          className="h-9 w-24 shrink-0"
                           value={variantAdjustments[variant.id] ?? 0}
                           onChange={(e) => updateVariantAdjustment(variant.id, e.target.value)}
                           placeholder="0"
@@ -276,20 +300,22 @@ const StockAdjustmentModal = ({ product, onClose, onSave }) => {
                 </small>
               </div>
             ) : (
-              <div className="form-group">
-                <label>Adjustment quantity *</label>
-                <input
-                  type="number"
-                  name="quantity"
-                  value={formData.quantity}
-                  onChange={handleChange}
-                  required
-                  placeholder="Positive to add, negative to remove"
-                />
-                <small className="form-text">
-                  Enter positive number to add stock, negative to remove
-                </small>
-              </div>
+              contextProductId ? (
+                <div className="form-group">
+                  <label>Adjustment quantity *</label>
+                  <input
+                    type="number"
+                    name="quantity"
+                    value={formData.quantity}
+                    onChange={handleChange}
+                    required
+                    placeholder="Positive to add, negative to remove"
+                  />
+                  <small className="form-text">
+                    Enter positive number to add stock, negative to remove
+                  </small>
+                </div>
+              ) : null
             )}
 
             <div className="form-group">
@@ -299,7 +325,7 @@ const StockAdjustmentModal = ({ product, onClose, onSave }) => {
                 value={formData.notes}
                 onChange={handleChange}
                 rows="3"
-                placeholder="Reason for adjustment..."
+                placeholder="Optional notes for this adjustment..."
               />
             </div>
 

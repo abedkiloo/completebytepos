@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
-import { FolderTree, Layers, Pencil, Plus, Trash2 } from 'lucide-react';
+import { FolderTree, Layers, Pencil, Plus, Trash2, ChevronDown } from 'lucide-react';
 import { categoriesAPI } from '../../services/api';
 import { formatNumber } from '../../utils/formatters';
 import CategoryForm from './CategoryForm';
@@ -16,9 +16,11 @@ import {
 } from '../../utils/makerChecker';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { cn } from '../../lib/cn';
 import {
   partitionCategories,
   flattenCategoryTree,
+  buildCollapsibleCategoryRows,
   filterByLevel,
 } from '../../utils/categoryTree';
 import {
@@ -68,6 +70,13 @@ const Categories = () => {
   const [deleteReason, setDeleteReason] = useState('');
   const [confirmDeactivate, setConfirmDeactivate] = useState(null);
   const [deactivateReason, setDeactivateReason] = useState('');
+  const [expandedParentIds, setExpandedParentIds] = useState([]);
+
+  const toggleParentExpanded = useCallback((parentId) => {
+    setExpandedParentIds((prev) =>
+      prev.includes(parentId) ? prev.filter((id) => id !== parentId) : [...prev, parentId]
+    );
+  }, []);
 
   const loadCategories = useCallback(async () => {
     setLoading(true);
@@ -216,8 +225,22 @@ const Categories = () => {
   const displayRows = useMemo(() => {
     const list = filterByLevel(categories, levelFilter);
     const { parents, childrenByParent, orphans } = partitionCategories(list);
-    return flattenCategoryTree(parents, childrenByParent, orphans);
-  }, [categories, levelFilter]);
+
+    if (levelFilter !== 'all') {
+      return flattenCategoryTree(parents, childrenByParent, orphans);
+    }
+
+    const expanded = new Set(expandedParentIds);
+    if (debouncedSearch.trim()) {
+      for (const parent of parents) {
+        if ((childrenByParent[parent.id] || []).length > 0) {
+          expanded.add(parent.id);
+        }
+      }
+    }
+
+    return buildCollapsibleCategoryRows(parents, childrenByParent, orphans, expanded);
+  }, [categories, levelFilter, expandedParentIds, debouncedSearch]);
 
   const stats = useMemo(() => {
     const parents = categories.filter((c) => !c.parent).length;
@@ -303,7 +326,15 @@ const Categories = () => {
             <DataTableHead align="right">Actions</DataTableHead>
           </DataTableHeader>
           <DataTableBody>
-            {displayRows.map(({ category, depth, isParent, parentName, isOrphan }) => (
+            {displayRows.map(({
+              category,
+              depth,
+              isParent,
+              parentName,
+              isOrphan,
+              canToggle = false,
+              isExpanded = true,
+            }) => (
               <DataTableRow
                 key={category.id}
                 inactive={!category.is_active}
@@ -312,8 +343,27 @@ const Categories = () => {
                 <DataTableCell className="font-medium">
                   <div
                     className="flex items-center gap-2"
-                    style={{ paddingLeft: depth > 0 ? '1.5rem' : 0 }}
+                    style={{ paddingLeft: depth > 0 ? '1.25rem' : 0 }}
                   >
+                    {isParent && canToggle ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleParentExpanded(category.id)}
+                        className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+                        aria-label={isExpanded ? 'Collapse subcategories' : 'Expand subcategories'}
+                        aria-expanded={isExpanded}
+                      >
+                        <ChevronDown
+                          className={cn(
+                            'h-4 w-4 transition-transform',
+                            isExpanded && 'rotate-180'
+                          )}
+                          aria-hidden
+                        />
+                      </button>
+                    ) : isParent ? (
+                      <span className="inline-block w-5 shrink-0" aria-hidden />
+                    ) : null}
                     {depth > 0 ? (
                       <Layers className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                     ) : (

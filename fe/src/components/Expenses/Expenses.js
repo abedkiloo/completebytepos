@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Check, Pencil, Plus, RefreshCw, Trash2, TrendingDown } from 'lucide-react';
 import { expensesAPI } from '../../services/api';
+import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { toast } from '../../utils/toast';
@@ -46,7 +47,7 @@ const Expenses = () => {
   });
   const [pagination, setPagination] = useState({
     page: 1,
-    page_size: 20,
+    page_size: DEFAULT_PAGE_SIZE,
     count: 0,
   });
   const { settings: storeSettings } = useStoreSettings();

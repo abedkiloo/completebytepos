@@ -71,6 +71,60 @@ export function flattenCategoryTree(parents, childrenByParent, orphans = []) {
   return rows;
 }
 
+/**
+ * Build table rows with subcategories hidden until the parent is expanded.
+ */
+export function buildCollapsibleCategoryRows(
+  parents,
+  childrenByParent,
+  orphans = [],
+  expandedParentIds = []
+) {
+  const expanded = expandedParentIds instanceof Set
+    ? expandedParentIds
+    : new Set(expandedParentIds);
+  const rows = [];
+
+  for (const parent of parents) {
+    const children = childrenByParent[parent.id] || [];
+    const hasChildren = children.length > 0;
+    const isExpanded = !hasChildren || expanded.has(parent.id);
+
+    rows.push({
+      category: parent,
+      depth: 0,
+      isParent: true,
+      hasChildren,
+      isExpanded,
+      canToggle: hasChildren,
+    });
+
+    if (isExpanded) {
+      for (const child of children) {
+        rows.push({
+          category: child,
+          depth: 1,
+          isParent: false,
+          parentName: parent.name,
+          parentId: parent.id,
+        });
+      }
+    }
+  }
+
+  for (const orphan of orphans) {
+    rows.push({
+      category: orphan,
+      depth: 1,
+      isParent: false,
+      parentName: null,
+      isOrphan: true,
+    });
+  }
+
+  return rows;
+}
+
 export function normalizeCategorySearchText(value) {
   return (value || '').toLowerCase().replace(/\s+/g, ' ').trim();
 }

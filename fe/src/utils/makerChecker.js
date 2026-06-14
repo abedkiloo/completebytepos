@@ -32,7 +32,7 @@ const REASON_CONTEXT_COPY = {
     label: 'Reason for this stock change',
     placeholder: 'e.g. Cycle count correction, received shipment',
     summary:
-      'This stock change will be submitted for approval. Quantities on hand stay unchanged until a manager approves it.',
+      'This stock change will be submitted for approval. Stock quantities stay unchanged until a manager approves it.',
   },
   settings: {
     label: 'Reason for this settings change',
@@ -287,16 +287,42 @@ export function rolePermissionsChanged(nextIds, role) {
   return JSON.stringify(prev) !== JSON.stringify(next);
 }
 
+/** Sensitive keys the current user may edit (mirrors catalog field access). */
+export function productEditableSensitiveKeys(fieldAccess, variantProduct = false) {
+  if (variantProduct) {
+    // Per-variant cost is edited in ProductVariantsPanel, not on the product row.
+    return [];
+  }
+  if (!fieldAccess) {
+    return [...SENSITIVE_PRODUCT_KEYS];
+  }
+  const keys = [];
+  if (fieldAccess.pricing) {
+    keys.push('selling_price', 'mrp');
+  }
+  if (fieldAccess.cost) keys.push('cost');
+  if (fieldAccess.stock) keys.push('stock_quantity');
+  if (fieldAccess.pricing || fieldAccess.stock) keys.push('is_active');
+  return keys;
+}
+
+export function proposedPendingCost(pendingApproval) {
+  const raw = pendingApproval?.proposed_values?.cost;
+  if (raw == null || raw === '') return null;
+  const n = parseFloat(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function productEditNeedsReason(
   formData,
   product,
-  { financialFieldsLocked = false, variantProduct = false } = {},
+  { financialFieldsLocked = false, variantProduct = false, fieldAccess = null } = {},
 ) {
   if (financialFieldsLocked) return false;
   if (!formData) return false;
   // First-time create: setting opening price/stock is not a "change".
   if (product == null) return false;
-  const keysToCheck = variantProduct ? new Set(['cost']) : SENSITIVE_PRODUCT_KEYS;
+  const keysToCheck = productEditableSensitiveKeys(fieldAccess, variantProduct);
   for (const key of keysToCheck) {
     if (!(key in formData)) continue;
     const next = formData[key];

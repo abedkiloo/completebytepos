@@ -1,13 +1,18 @@
 import { variantsAPI } from '../services/api';
-import { variantCombinationKey } from './variantCombinations';
+import { variantCombinationKey, variantDisplayLabel } from './variantCombinations';
 import { buildVariantDraftPatchPayload } from './variantPayload';
+import { formatApiError } from './apiErrors';
 
 /**
  * After product save creates/regenerates variant rows, apply price/stock the user entered.
  * @param {number} productId
  * @param {Record<string, { price?: string|number|null, stock_quantity?: string|number, is_active?: boolean }>} draftsByKey
  */
-export async function applyVariantDraftsAfterProductSave(productId, draftsByKey) {
+export async function applyVariantDraftsAfterProductSave(
+  productId,
+  draftsByKey,
+  { includeStock = true } = {}
+) {
   if (!productId || !draftsByKey || !Object.keys(draftsByKey).length) {
     return { applied: 0 };
   }
@@ -25,9 +30,18 @@ export async function applyVariantDraftsAfterProductSave(productId, draftsByKey)
     if (!draft) continue;
 
     const payload = buildVariantDraftPatchPayload(draft);
+    if (!includeStock) {
+      delete payload.stock_quantity;
+    }
     if (!Object.keys(payload).length) continue;
-    await variantsAPI.update(variant.id, payload);
-    applied += 1;
+    try {
+      await variantsAPI.update(variant.id, payload);
+      applied += 1;
+    } catch (err) {
+      const label = variantDisplayLabel(variant);
+      const detail = formatApiError(err, 'Failed to update variant');
+      throw new Error(`${label}: ${detail}`);
+    }
   }
 
   return { applied };

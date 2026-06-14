@@ -23,11 +23,15 @@ import {
 } from '../../utils/variantCombinations';
 import {
   extractApiReasonError,
+  extractPendingChange,
   isMakerCheckerEnabled,
   isPendingApprovalResponse,
   pendingApprovalToastMessage,
   productEditNeedsReason,
+  proposedPendingCost,
 } from '../../utils/makerChecker';
+import { formatCurrency } from '../../utils/formatters';
+import PendingApprovalBadges from '../Approvals/PendingApprovalBadges';
 import {
   crossParentSubcategoryHint,
   fetchSubcategories,
@@ -70,6 +74,7 @@ const ProductForm = ({
   const makerCheckerFinancialLocked =
     !fieldAccess.pricing && !fieldAccess.cost && !fieldAccess.stock;
   const [changeReason, setChangeReason] = useState('');
+  const [pendingApproval, setPendingApproval] = useState(null);
   const variantDraftsRef = useRef({});
   const [variantDrafts, setVariantDrafts] = useState({});
   const [variantCombinationKeys, setVariantCombinationKeys] = useState([]);
@@ -280,7 +285,7 @@ const ProductForm = ({
         available_colors: colorIds,
         mrp: product.mrp ?? product.price ?? '',
         selling_price: product.selling_price ?? product.price ?? '',
-        cost: product.cost || '',
+        cost: product.cost ?? '',
         stock_quantity: product.stock_quantity || 0,
         low_stock_threshold: product.low_stock_threshold || 10,
         reorder_quantity: product.reorder_quantity || 50,
@@ -297,6 +302,7 @@ const ProductForm = ({
       if (product.image_url) {
         setImagePreview(resolveMediaUrl(product.image_url));
       }
+      setPendingApproval(product.pending_approval || null);
     }
   }, [product]);
 
@@ -460,7 +466,7 @@ const ProductForm = ({
       }
     }
 
-    if (showCostField && formData.cost && parseFloat(formData.cost) < 0) {
+    if (showCostField && !formData.has_variants && formData.cost && parseFloat(formData.cost) < 0) {
       newErrors.cost = 'Cost must be positive';
     }
     
@@ -475,9 +481,12 @@ const ProductForm = ({
       productEditNeedsReason(formData, product, {
         financialFieldsLocked: makerCheckerFinancialLocked,
         variantProduct: formData.has_variants,
+        fieldAccess,
       }),
-    [makerCheckerOn, product, formData, makerCheckerFinancialLocked]
+    [makerCheckerOn, product, formData, makerCheckerFinancialLocked, fieldAccess]
   );
+
+  const pendingCost = proposedPendingCost(pendingApproval);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -494,12 +503,19 @@ const ProductForm = ({
     setLoading(true);
     try {
       const payload = { ...formData };
-      if (product && payload.has_variants) {
+      if (payload.has_variants) {
         delete payload.selling_price;
         delete payload.mrp;
+        delete payload.cost;
         delete payload.stock_quantity;
         delete payload.low_stock_threshold;
         delete payload.reorder_quantity;
+      }
+      if (product) {
+        delete payload.stock_quantity;
+        delete payload.low_stock_threshold;
+        delete payload.reorder_quantity;
+        delete payload.track_stock;
       }
       if (!fieldAccess.pricing) {
         delete payload.selling_price;
@@ -566,6 +582,7 @@ const ProductForm = ({
         productEditNeedsReason(payload, product, {
           financialFieldsLocked: makerCheckerFinancialLocked,
           variantProduct: payload.has_variants,
+          fieldAccess,
         });
       if (needsReason) {
         if (!changeReason.trim()) {
@@ -584,8 +601,19 @@ const ProductForm = ({
         response = await productsAPI.update(product.id, submitData);
         if (isPendingApprovalResponse(response.status)) {
           toast.warning(pendingApprovalToastMessage());
+          const refreshed = response.data?.product;
+          if (refreshed?.pending_approval) {
+            setPendingApproval(refreshed.pending_approval);
+          } else if (extractPendingChange(response.data)) {
+            setPendingApproval((prev) => ({
+              ...(prev || {}),
+              pending_price: true,
+              message: 'Pending approval — changes not yet active',
+            }));
+          }
         } else {
           toast.success('Product updated successfully');
+          setPendingApproval(response.data?.pending_approval || null);
         }
       } else {
         response = await productsAPI.create(submitData);
@@ -597,14 +625,22 @@ const ProductForm = ({
         try {
           const { applied } = await applyVariantDraftsAfterProductSave(
             savedProductId,
-            variantDraftsRef.current
+            variantDraftsRef.current,
+            { includeStock: !product }
           );
           if (applied > 0) {
-            toast.success(`Updated price and stock for ${applied} variant row(s)`);
+            toast.success(
+              product
+                ? `Updated price and cost for ${applied} variant row(s)`
+                : `Updated price and stock for ${applied} variant row(s)`
+            );
           }
         } catch (err) {
+          const detail = err?.message || 'Edit variants and try again.';
           toast.warning(
-            'Product saved, but some variant price or stock values could not be applied. Edit variants and try again.'
+            product
+              ? `Product saved, but some variant price or cost values could not be applied. ${detail}`
+              : `Product saved, but some variant price or stock values could not be applied. ${detail}`
           );
         }
       }
@@ -758,37 +794,24 @@ const ProductForm = ({
             <div className="mt-2">
               <p className="mb-2 text-sm text-muted-foreground">
                 Build variants one at a time — pick a size and color, click{' '}
-                <strong>Add variant</strong>, then enter price and stock for that row.
+                <strong>Add variant</strong>, then enter
+                {showMrp && showPricingFields ? ' MRP,' : ''} price
+                {showCostField ? ', cost' : ''}
+                {product ? '' : showStockFields ? ', and opening stock' : ''}
+                {' '}for that row.
               </p>
               <ProductVariantsPanel
                 productId={product?.id}
                 sizes={sizes}
                 colors={colors}
                 canEditPrice={showPricingFields}
-                canEditStock={showStockFields}
+                canEditMrp={showMrp && showPricingFields}
+                canEditStock={showStockFields && !product}
+                canEditCost={showCostField}
                 onDraftsChange={handleVariantDraftsChange}
                 onCombinationKeysChange={handleVariantCombinationKeysChange}
               />
             </div>
-            {showCostField && formData.has_variants ? (
-              <div className="form-row mt-3">
-                <div className="form-group">
-                  <label>Product cost (KES)</label>
-                  <input
-                    type="number"
-                    name="cost"
-                    value={formData.cost}
-                    onChange={handleChange}
-                    step="0.01"
-                    min="0"
-                  />
-                  {errors.cost && <span className="error">{errors.cost}</span>}
-                  <small className="text-muted">
-                    One cost for the whole product — set selling price per variant below.
-                  </small>
-                </div>
-              </div>
-            ) : null}
             </>
           )}
 
@@ -832,7 +855,10 @@ const ProductForm = ({
           {showCostField && !formData.has_variants && (
           <div className="form-row">
             <div className="form-group">
-              <label>Cost (KES)</label>
+              <label className="inline-flex flex-wrap items-center gap-2">
+                Cost (KES)
+                <PendingApprovalBadges pendingApproval={pendingApproval} />
+              </label>
               <input
                 type="number"
                 name="cost"
@@ -842,11 +868,17 @@ const ProductForm = ({
                 min="0"
               />
               {errors.cost && <span className="error">{errors.cost}</span>}
+              {pendingCost != null && (
+                <small className="mt-1 block text-amber-700">
+                  Pending approval: {formatCurrency(pendingCost)} (current live cost:{' '}
+                  {formatCurrency(product?.cost ?? 0)})
+                </small>
+              )}
             </div>
           </div>
           )}
 
-          {showStockFields && !formData.has_variants && (
+          {showStockFields && !formData.has_variants && !product && (
           <div className="form-row">
             <div className="form-group">
               <label>Stock Quantity</label>
@@ -984,7 +1016,7 @@ const ProductForm = ({
           </div>
 
           <div className="form-checkboxes">
-            {showStockFields && (
+            {showStockFields && !product && (
             <label>
               <input
                 type="checkbox"

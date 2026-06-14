@@ -1,6 +1,7 @@
 import {
   partitionCategories,
   flattenCategoryTree,
+  buildCollapsibleCategoryRows,
   filterCategoriesForSearch,
   filterByLevel,
   normalizeCategorySearchText,
@@ -85,5 +86,28 @@ describe('categoryTree', () => {
     ];
     const filtered = filterCategoriesForSearch(data, 'alpha');
     expect(filtered.map((c) => c.id)).toContain(1);
+  });
+
+  it('collapsible rows hide children until parent expanded', () => {
+    const { parents, childrenByParent } = partitionCategories(sample);
+    const collapsed = buildCollapsibleCategoryRows(parents, childrenByParent, [], []);
+    expect(collapsed.map((r) => r.category.name)).toEqual(['Electronics', 'Furniture']);
+    expect(collapsed.every((r) => r.depth === 0)).toBe(true);
+
+    const expanded = buildCollapsibleCategoryRows(parents, childrenByParent, [], [1, 3]);
+    expect(expanded.map((r) => r.category.name)).toEqual([
+      'Electronics',
+      'Phones',
+      'Furniture',
+      'Sofas',
+    ]);
+  });
+
+  it('marks parents with children as toggleable', () => {
+    const { parents, childrenByParent } = partitionCategories(sample);
+    const rows = buildCollapsibleCategoryRows(parents, childrenByParent, [], []);
+    const furniture = rows.find((r) => r.category.name === 'Furniture');
+    expect(furniture?.canToggle).toBe(true);
+    expect(furniture?.isExpanded).toBe(false);
   });
 });

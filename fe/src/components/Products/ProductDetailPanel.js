@@ -7,6 +7,7 @@ import { resolveMediaUrl } from '../../utils/mediaUrl';
 import { variantDisplayLabel } from '../../utils/variantCombinations';
 import { SELLING_PRICE_CLASS } from '../../utils/productDisplay';
 import { resolveProductDetailVisibility } from '../../utils/productAccess';
+import { proposedPendingCost } from '../../utils/makerChecker';
 import PendingApprovalBadges from '../Approvals/PendingApprovalBadges';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -69,6 +70,7 @@ export default function ProductDetailPanel({
   const sellingPrice = parseFloat(product?.selling_price ?? product?.price ?? 0);
   const pricePending = visibility.catalogOnly && sellingPrice <= 0;
   const variantTotalStock = variantStockTotal(variants);
+  const pendingCost = proposedPendingCost(product?.pending_approval);
 
   const showVariantFinancialCols =
     visibility.showPricing || visibility.showCost || visibility.showStock;
@@ -169,11 +171,16 @@ export default function ProductDetailPanel({
                 ) : null}
 
                 {!visibility.catalogOnly && visibility.showCost && !product.has_variants ? (
-                  <DetailRow label="Cost">{formatCurrency(product.cost)}</DetailRow>
-                ) : null}
-
-                {!visibility.catalogOnly && product.has_variants && visibility.showCost ? (
-                  <DetailRow label="Product cost">{formatCurrency(product.cost)}</DetailRow>
+                  <DetailRow label="Cost">
+                    <span className="inline-flex flex-col items-end gap-1">
+                      <span>{formatCurrency(product.cost)}</span>
+                      {pendingCost != null ? (
+                        <span className="text-xs text-amber-700">
+                          Pending: {formatCurrency(pendingCost)}
+                        </span>
+                      ) : null}
+                    </span>
+                  </DetailRow>
                 ) : null}
 
                 {!visibility.catalogOnly && visibility.showProfit && !product.has_variants ? (
@@ -194,11 +201,9 @@ export default function ProductDetailPanel({
                   <>
                     <DetailRow label="Stock">
                       {product.track_stock
-                        ? `${
-                            product.has_variants
-                              ? variantTotalStock
-                              : product.stock_quantity ?? 0
-                          } on hand`
+                        ? product.has_variants
+                          ? variantTotalStock
+                          : product.stock_quantity ?? 0
                         : 'Not tracked'}
                     </DetailRow>
                     <DetailRow label="Track stock">

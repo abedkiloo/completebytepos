@@ -11,6 +11,7 @@ import {
   isPendingApprovalResponse,
   PENDING_APPROVAL_MESSAGE,
 } from '../../utils/makerChecker';
+import { formatStockProductOptionLabel } from '../../utils/stockProductOptions';
 
 const emptyLine = () => ({ product_id: '', quantity: '', notes: '' });
 
@@ -41,10 +42,12 @@ const StockBulkAdjustModal = ({ onClose, onSave }) => {
     }
   };
 
-  const productOptions = products.map((prod) => ({
-    id: prod.id,
-    name: `${prod.name}${prod.sku ? ` (${prod.sku})` : ''} — stock ${prod.stock_quantity ?? 0}`,
-  }));
+  const productOptions = products
+    .filter((prod) => !prod.has_variants)
+    .map((prod) => ({
+      id: prod.id,
+      name: formatStockProductOptionLabel(prod),
+    }));
 
   const updateLine = (index, field, value) => {
     setLines((prev) =>
@@ -120,6 +123,8 @@ const StockBulkAdjustModal = ({ onClose, onSave }) => {
             {error ? <div className="error-message">{error}</div> : null}
             <p className="text-sm text-muted-foreground">
               Submit several quantity changes in one request. Use negative quantities to reduce stock.
+              Variant products are not listed here — use <strong>Stock adjustment</strong> to adjust each
+              variant row.
             </p>
 
             {lines.map((line, index) => (

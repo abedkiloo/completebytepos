@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { variantsAPI } from '../../services/api';
+import { formatApiError } from '../../utils/apiErrors';
 import { toast } from '../../utils/toast';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import ChangeReasonField from '../Approvals/ChangeReasonField';
@@ -19,7 +20,7 @@ import {
   pendingApprovalToastMessage,
   variantEditNeedsReason,
 } from '../../utils/makerChecker';
-import { buildVariantPatchPayload } from '../../utils/variantPayload';
+import { buildVariantPatchPayload, variantFinancialValidationMessage } from '../../utils/variantPayload';
 import VariantDraftSummary from './VariantDraftSummary';
 
 export default function ProductVariantsPanel({
@@ -27,12 +28,16 @@ export default function ProductVariantsPanel({
   sizes = [],
   colors = [],
   canEditPrice = true,
+  canEditMrp = false,
   canEditStock = true,
+  canEditCost = false,
   onDraftsChange,
   onCombinationKeysChange,
 }) {
   const { settings: storeSettings } = useStoreSettings();
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
+  const isProductEdit = Boolean(productId);
+  const allowStockInput = canEditStock && !isProductEdit;
   const [variants, setVariants] = useState([]);
   const [loading, setLoading] = useState(Boolean(productId));
   const [combinationKeys, setCombinationKeys] = useState([]);
@@ -93,7 +98,8 @@ export default function ProductVariantsPanel({
         const key = variantCombinationKey(v);
         next[key] = {
           price: v.price ?? v.selling_price ?? '',
-          stock_quantity: v.stock_quantity ?? 0,
+          mrp: v.mrp ?? '',
+          cost: v.cost ?? '',
           is_active: v.is_active !== false,
         };
       });
@@ -153,6 +159,8 @@ export default function ProductVariantsPanel({
       ...prev,
       [key]: prev[key] || {
         price: '',
+        mrp: '',
+        cost: '',
         stock_quantity: '',
         is_active: true,
       },
@@ -180,7 +188,21 @@ export default function ProductVariantsPanel({
     if (!variant) return;
     const draft = edits[row.key];
     if (!draft) return;
+
+    const rowLabel = combinationRowLabel(row);
+    const financialError = variantFinancialValidationMessage(draft, {
+      label: rowLabel,
+      canEditMrp,
+    });
+    if (financialError) {
+      toast.warning(financialError);
+      return;
+    }
+
     const payload = buildVariantPatchPayload(variant, draft);
+    if (isProductEdit) {
+      delete payload.stock_quantity;
+    }
     if (!Object.keys(payload).length) {
       toast.warning('No changes to save for this variant.');
       return;
@@ -189,7 +211,7 @@ export default function ProductVariantsPanel({
     const reason = (reasons[row.key] || '').trim();
     if (needsReason && !reason) {
       setReasonFocusId(row.key);
-      toast.warning('Enter a reason below — price, stock, or status changes need approval.');
+      toast.warning('Enter a reason below — price, cost, or status changes need approval.');
       return;
     }
     if (needsReason) {
@@ -207,10 +229,7 @@ export default function ProductVariantsPanel({
       setReasonFocusId(null);
       load();
     } catch (err) {
-      const msg =
-        extractApiReasonError(err.response?.data) ||
-        err.response?.data?.error ||
-        'Failed to update variant';
+      const msg = formatApiError(err, 'Failed to update variant');
       toast.error(msg);
       if (/reason/i.test(msg)) {
         setReasonFocusId(row.key);
@@ -277,8 +296,9 @@ export default function ProductVariantsPanel({
           </Button>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
-          Example: pick Large + White, click Add variant, enter stock — then add Medium + Blue as
-          another row. Remove any row before saving if you change your mind.
+          {isProductEdit
+            ? 'Price and cost save per row below. Stock is managed under Inventory.'
+            : 'Example: pick Large + White, click Add variant, enter opening stock — then add more rows as needed.'}
         </p>
       </div>
 
@@ -306,9 +326,9 @@ export default function ProductVariantsPanel({
             return (
               <div
                 key={row.key}
-                className="space-y-3 rounded border border-border/80 bg-muted/20 p-3"
+                className="space-y-2 rounded border border-border/80 bg-muted/20 p-3"
               >
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center justify-between gap-2">
                   <p className="text-sm font-medium">{label}</p>
                   <Button
                     type="button"
@@ -321,41 +341,84 @@ export default function ProductVariantsPanel({
                   </Button>
                 </div>
 
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="flex flex-wrap items-end gap-2">
+                  {canEditMrp ? (
+                    <div className="w-[6.75rem] shrink-0">
+                      <label className="text-xs text-muted-foreground">MRP (KES)</label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className="h-9"
+                        value={draft.mrp ?? ''}
+                        onChange={(e) => updateEdit(row.key, 'mrp', e.target.value)}
+                        placeholder="List price"
+                      />
+                    </div>
+                  ) : null}
                   {canEditPrice ? (
-                    <div>
+                    <div className="w-[6.75rem] shrink-0">
                       <label className="text-xs text-muted-foreground">Price (KES)</label>
                       <Input
                         type="number"
                         step="0.01"
                         min="0"
+                        className="h-9"
                         value={draft.price ?? ''}
                         onChange={(e) => updateEdit(row.key, 'price', e.target.value)}
                       />
                     </div>
                   ) : null}
-                  {canEditStock ? (
-                    <div>
-                      <label className="text-xs text-muted-foreground">Stock</label>
+                  {canEditCost ? (
+                    <div className="w-[6.75rem] shrink-0">
+                      <label className="text-xs text-muted-foreground">Cost (KES)</label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className="h-9"
+                        value={draft.cost ?? ''}
+                        onChange={(e) => updateEdit(row.key, 'cost', e.target.value)}
+                      />
+                    </div>
+                  ) : null}
+                  {allowStockInput ? (
+                    <div className="w-[5rem] shrink-0">
+                      <label className="text-xs text-muted-foreground">Opening stock</label>
                       <Input
                         type="number"
                         min="0"
+                        className="h-9"
                         value={draft.stock_quantity ?? ''}
                         onChange={(e) => updateEdit(row.key, 'stock_quantity', e.target.value)}
                       />
                     </div>
                   ) : null}
                   {variant ? (
-                    <div className="flex items-end">
-                      <label className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={draft.is_active !== false}
-                          onChange={(e) => updateEdit(row.key, 'is_active', e.target.checked)}
-                        />
-                        Active
-                      </label>
-                    </div>
+                    <label className="form-inline-checkbox shrink-0 self-end">
+                      <input
+                        type="checkbox"
+                        className="form-inline-checkbox__input"
+                        checked={draft.is_active !== false}
+                        onChange={(e) => updateEdit(row.key, 'is_active', e.target.checked)}
+                      />
+                      <span>Active</span>
+                    </label>
+                  ) : null}
+                  {variant ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-9 shrink-0"
+                      disabled={busyId === row.key}
+                      onClick={() => saveVariant(row)}
+                    >
+                      {busyId === row.key
+                        ? 'Saving…'
+                        : needsReason
+                          ? 'Submit for approval'
+                          : 'Save variant'}
+                    </Button>
                   ) : null}
                 </div>
 
@@ -381,23 +444,6 @@ export default function ProductVariantsPanel({
                       value={reasons[row.key] || ''}
                       onChange={(v) => setReasons((prev) => ({ ...prev, [row.key]: v }))}
                     />
-                  </div>
-                ) : null}
-
-                {variant ? (
-                  <div className="flex justify-end">
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={busyId === row.key}
-                      onClick={() => saveVariant(row)}
-                    >
-                      {busyId === row.key
-                        ? 'Saving…'
-                        : needsReason
-                          ? 'Submit for approval'
-                          : 'Save variant'}
-                    </Button>
                   </div>
                 ) : null}
               </div>

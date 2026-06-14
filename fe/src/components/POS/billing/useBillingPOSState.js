@@ -288,7 +288,7 @@ export function useBillingPOSState() {
     }
     setSearching(true);
     try {
-      const res = await productsAPI.list({ search: term, is_active: 'true', page_size: 20 });
+      const res = await productsAPI.list({ search: term, is_active: 'true', page_size: 10 });
       const data = res.data.results || res.data || [];
       const rows = Array.isArray(data) ? data : [];
       setSearchResults(rows.map((p) => normalizeProductForSale(p)));

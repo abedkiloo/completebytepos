@@ -13,6 +13,8 @@ describe('storeSettingsCache', () => {
   test('readCachedStoreSettings returns defaults when empty', () => {
     expect(readCachedStoreSettings()).toEqual(DEFAULT_STORE_SETTINGS);
     expect(readCachedStoreSettings().maker_checker_enabled).toBe(true);
+    expect(readCachedStoreSettings().maker_checker_sales_controls).toBe(false);
+    expect(readCachedStoreSettings().emergency_stock_mode).toBe(false);
   });
 
   test('cacheStoreSettings merges and persists', () => {
@@ -42,5 +44,22 @@ describe('storeSettingsCache', () => {
     cacheStoreSettings({ receipt_auto_print: true });
     clearStoreSettingsCache();
     expect(readCachedStoreSettings()).toEqual(DEFAULT_STORE_SETTINGS);
+  });
+
+  test('partial cache patch keeps unrelated default keys', () => {
+    cacheStoreSettings({ receipt_footer_text: 'Asante' });
+    const stored = readCachedStoreSettings();
+    expect(stored.receipt_footer_text).toBe('Asante');
+    expect(stored.enabled_payment_methods).toEqual(DEFAULT_STORE_SETTINGS.enabled_payment_methods);
+    expect(stored.allow_sales_add_products).toBe(true);
+  });
+
+  test('cacheStoreSettings replaces cache merged only with defaults', () => {
+    cacheStoreSettings({ receipt_auto_print: true, maker_checker_enabled: false });
+    cacheStoreSettings({ receipt_footer_text: 'New footer' });
+    const stored = readCachedStoreSettings();
+    expect(stored.receipt_footer_text).toBe('New footer');
+    expect(stored.receipt_auto_print).toBe(false);
+    expect(stored.maker_checker_enabled).toBe(true);
   });
 });

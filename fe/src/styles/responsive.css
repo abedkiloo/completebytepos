@@ -240,7 +240,7 @@
   /* All interactive elements */
   button,
   a,
-  input[type="checkbox"]:not(.variant-attribute-checklist__checkbox),
+  input[type="checkbox"]:not(.variant-attribute-checklist__checkbox):not(.form-inline-checkbox__input),
   input[type="radio"],
   select,
   .clickable {

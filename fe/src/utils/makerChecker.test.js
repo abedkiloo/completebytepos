@@ -5,6 +5,7 @@ import {
   isPendingApprovalResponse,
   isAppliedModuleSettingsResponse,
   productEditNeedsReason,
+  proposedPendingCost,
   pendingApprovalLabels,
   extractPendingChange,
   extractApiReasonError,
@@ -165,7 +166,7 @@ describe('makerChecker', () => {
         { cost: '40', price: '100' },
         { variantProduct: true }
       )
-    ).toBe(true);
+    ).toBe(false);
     expect(
       productEditNeedsReason(
         { cost: '40', selling_price: '150' },
@@ -174,6 +175,37 @@ describe('makerChecker', () => {
       )
     ).toBe(false);
     expect(variantEditNeedsReason(null, { price: '1' })).toBe(false);
+  });
+
+  it('respects field access when deciding if cost needs a reason', () => {
+    const costOnlyAccess = { pricing: false, cost: true, stock: false };
+    expect(
+      productEditNeedsReason(
+        { cost: '60' },
+        { cost: '50' },
+        { fieldAccess: costOnlyAccess }
+      )
+    ).toBe(true);
+    expect(
+      productEditNeedsReason(
+        { cost: '60', selling_price: '200' },
+        { cost: '50', price: '100' },
+        { fieldAccess: costOnlyAccess }
+      )
+    ).toBe(true);
+    expect(
+      productEditNeedsReason(
+        { selling_price: '200' },
+        { price: '100' },
+        { fieldAccess: costOnlyAccess }
+      )
+    ).toBe(false);
+  });
+
+  it('reads proposed pending cost from approval metadata', () => {
+    expect(proposedPendingCost({ proposed_values: { cost: '88.50' } })).toBe(88.5);
+    expect(proposedPendingCost({ pending_price: true })).toBeNull();
+    expect(proposedPendingCost(null)).toBeNull();
   });
 
   it('builds pending approval labels', () => {
@@ -270,6 +302,15 @@ describe('makerChecker', () => {
       variantEditNeedsReason({ price: '30.00' }, { price: 30 })
     ).toBe(false);
     expect(
+      variantEditNeedsReason({ mrp: '150' }, { mrp: '120' })
+    ).toBe(true);
+    expect(
+      variantEditNeedsReason({ cost: '50' }, { cost: '40' })
+    ).toBe(true);
+    expect(
+      variantEditNeedsReason({ mrp: '120' }, { mrp: null })
+    ).toBe(false);
+    expect(
       categoryEditNeedsReason({ is_active: false }, { is_active: true })
     ).toBe(true);
     expect(
@@ -345,5 +386,50 @@ describe('makerChecker', () => {
     expect(
       canApproveFinancialRecord({ created_by: null }, { maker_checker_enabled: true }, 5, 'expenses')
     ).toBe(true);
+  });
+
+  it('userMayReviewPendingApprovals allows module-scoped approve', () => {
+    localStorage.clear();
+    localStorage.setItem(
+      'profile',
+      JSON.stringify({ role: 'cashier', custom_role: { name: 'Sales Personnel' } })
+    );
+    expect(
+      userMayReviewPendingApprovals([
+        { name: 'products.approve', module: 'products', action: 'approve' },
+      ])
+    ).toBe(true);
+  });
+
+  it('makerCheckerReasonCopy returns distinct catalog and stock labels', () => {
+    const catalog = makerCheckerReasonCopy('catalog');
+    const stock = makerCheckerReasonCopy('stock');
+    expect(catalog.label).not.toEqual(stock.label);
+    expect(catalog.placeholder).toBeTruthy();
+    expect(stock.placeholder).toBeTruthy();
+  });
+
+  it('pendingApprovalToastMessage without nav hint when user cannot review', () => {
+    localStorage.clear();
+    localStorage.setItem(
+      'profile',
+      JSON.stringify({ role: 'cashier', custom_role: { name: 'Sales Personnel' } })
+    );
+    expect(pendingApprovalToastMessage([])).toBe(PENDING_APPROVAL_MESSAGE);
+  });
+
+  it('isSalesMakerCheckerActive gates completed sale direct edits', () => {
+    expect(
+      isSalesMakerCheckerActive({
+        maker_checker_enabled: true,
+        maker_checker_sales_controls: true,
+      })
+    ).toBe(true);
+    expect(
+      completedSaleDirectEditBlocked({
+        maker_checker_enabled: true,
+        maker_checker_sales_controls: true,
+      })
+    ).toBe(false);
   });
 });

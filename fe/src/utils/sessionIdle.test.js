@@ -76,4 +76,23 @@ describe('sessionIdle', () => {
     expect(logoutAndRedirect).not.toHaveBeenCalled();
     stopIdleSessionWatch();
   });
+
+  test('markSessionActivity skips when not authenticated', () => {
+    localStorage.removeItem('access_token');
+    markSessionActivity();
+    expect(localStorage.getItem('last_activity_at')).toBeNull();
+  });
+
+  test('storage event clearing access_token triggers idle logout', () => {
+    startIdleSessionWatch();
+    window.dispatchEvent(
+      new StorageEvent('storage', {
+        key: 'access_token',
+        newValue: null,
+        oldValue: 'test-token',
+      })
+    );
+    expect(logoutAndRedirect).toHaveBeenCalledWith({ reason: 'idle' });
+    stopIdleSessionWatch();
+  });
 });

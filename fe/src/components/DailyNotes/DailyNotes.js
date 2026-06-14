@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Calendar, CheckSquare, NotebookPen, Pencil, Plus, Trash2 } from 'lucide-react';
 import { dailyNotesAPI, dailyTasksAPI } from '../../services/api';
+import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { toast } from '../../utils/toast';
 import { getPersonaFromStorage, getStoredAuth } from '../../utils/roleAccess';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
@@ -83,7 +84,7 @@ const DailyNotes = () => {
   const loadDay = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { page_size: 100 };
+      const params = { page_size: DEFAULT_PAGE_SIZE };
       const noteParams = { ...params, note_date: selectedDate };
       const taskParams = { ...params, task_date: selectedDate };
       const [notesRes, tasksRes] = await Promise.all([

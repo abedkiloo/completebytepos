@@ -204,7 +204,7 @@ export const productsAPI = {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
   delete: (id, data) => api.delete(`/products/${id}/`, { data: data || {} }),
-  search: (query, limit = 20) => api.get('/products/search/', { params: { q: query, limit } }),
+  search: (query, limit = 10) => api.get('/products/search/', { params: { q: query, limit } }),
   lowStock: () => api.get('/products/low_stock/'),
   outOfStock: () => api.get('/products/out_of_stock/'),
   bulkUpdate: (data) => api.post('/products/bulk_update/', data),

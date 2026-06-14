@@ -2,10 +2,12 @@
 
 export function hasVariantDraftContent(draft) {
   if (!draft || typeof draft !== 'object') return false;
-  const { stock_quantity: stock, price } = draft;
+  const { stock_quantity: stock, price, mrp, cost } = draft;
   const hasStock = stock !== '' && stock !== undefined && stock !== null;
   const hasPrice = price !== '' && price !== undefined && price !== null;
-  return hasStock || hasPrice;
+  const hasMrp = mrp !== '' && mrp !== undefined && mrp !== null;
+  const hasCost = cost !== '' && cost !== undefined && cost !== null;
+  return hasStock || hasPrice || hasMrp || hasCost;
 }
 
 export function combinationKeyLabel(key, sizes = [], colors = []) {
@@ -28,6 +30,12 @@ export function buildVariantDraftSummary(draftsByKey, { sizes = [], colors = [] 
       const details = [];
       if (draft.price !== '' && draft.price != null) {
         details.push(`price KES ${draft.price}`);
+      }
+      if (draft.mrp !== '' && draft.mrp != null) {
+        details.push(`MRP KES ${draft.mrp}`);
+      }
+      if (draft.cost !== '' && draft.cost != null) {
+        details.push(`cost KES ${draft.cost}`);
       }
       if (draft.stock_quantity !== '' && draft.stock_quantity != null) {
         details.push(`stock ${draft.stock_quantity}`);

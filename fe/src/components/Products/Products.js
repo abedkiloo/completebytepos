@@ -15,9 +15,11 @@ import {
   X,
   Loader2,
   MoreHorizontal,
+  ChevronDown,
   Scale,
 } from 'lucide-react';
 
+import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { productsAPI, categoriesAPI } from '../../services/api';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import {
@@ -102,6 +104,9 @@ const Products = () => {
   const [categories, setCategories] = useState([]);
   const [statistics, setStatistics] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [hasNextPage, setHasNextPage] = useState(false);
 
   // --- Filters ---
   const [filters, setFilters] = useState(EMPTY_FILTERS);
@@ -110,6 +115,7 @@ const Products = () => {
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [selectedProductIds, setSelectedProductIds] = useState([]);
+  const [expandedProductIds, setExpandedProductIds] = useState([]);
 
   // --- Confirms ---
   const [confirmDelete, setConfirmDelete] = useState(null); // product id
@@ -149,7 +155,7 @@ const Products = () => {
   const loadProducts = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { page_size: 1000 };
+      const params = { page_size: pageSize, page };
       if (filters.search.trim()) params.search = filters.search.trim();
       if (filters.category) params.category = filters.category;
       if (showStatus && filters.is_active) params.is_active = filters.is_active;
@@ -158,7 +164,11 @@ const Products = () => {
 
       const response = await productsAPI.list(params);
       const data = response.data.results || response.data || [];
-      setProducts(Array.isArray(data) ? data : []);
+      const items = Array.isArray(data) ? data : [];
+      // If page==1 replace, otherwise append
+      setProducts((prev) => (page === 1 ? items : [...prev, ...items]));
+      // Detect if there is a next page from DRF pagination
+      setHasNextPage(Boolean(response.data && response.data.next));
     } catch (error) {
       console.error('Error loading products:', error);
       toast.error('Failed to load products');
@@ -166,7 +176,7 @@ const Products = () => {
     } finally {
       setLoading(false);
     }
-  }, [filters, showStatus]);
+  }, [filters, showStatus, page, pageSize]);
 
   useEffect(() => {
     loadCategories();
@@ -175,9 +185,17 @@ const Products = () => {
 
   // Debounced reload so typing in the search box doesn't hammer the API.
   useEffect(() => {
+    // Reset to first page when filters change
+    setPage(1);
     const t = setTimeout(loadProducts, 450);
     return () => clearTimeout(t);
   }, [loadProducts]);
+
+  // Load additional pages when `page` changes (page>1)
+  useEffect(() => {
+    if (page === 1) return;
+    loadProducts();
+  }, [page]);
 
   // ------------------------------------------------------------------
   // Derived
@@ -306,6 +324,10 @@ const Products = () => {
 
   const toggleSelectAll = () => {
     setSelectedProductIds(allSelected ? [] : products.map((p) => p.id));
+  };
+
+  const toggleExpand = (id) => {
+    setExpandedProductIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
   // --- CSV ---
@@ -576,6 +598,14 @@ const Products = () => {
           </div>
         )}
 
+        {hasNextPage && (
+          <div className="my-3 flex justify-center">
+            <Button onClick={() => setPage((p) => p + 1)}>
+              Load more
+            </Button>
+          </div>
+        )}
+
         {/* --- Table --- */}
         <div className="overflow-hidden rounded-lg border bg-background">
           <div className="overflow-x-auto">
@@ -641,27 +671,45 @@ const Products = () => {
                   </tr>
                 ) : (
                   products.map((product) => (
-                    <ProductRow
-                      key={product.id}
-                      product={product}
-                      selected={selectedProductIds.includes(product.id)}
-                      onToggle={() => toggleProductSelection(product.id)}
-                      onView={() => openView(product)}
-                      onEdit={() => openEdit(product)}
-                      onDelete={() => setConfirmDelete(product.id)}
-                      onAdjustStock={
-                        canAdjustStock && product.track_stock
-                          ? () => setAdjustStockProduct(product)
-                          : undefined
-                      }
-                      catalogOnly={catalogOnly}
-                      showProductStatus={showStatus}
-                      bulkEnabled={bulkEnabled}
-                      showMrp={showMrp}
-                      showCost={showCost && fieldAccess.cost}
-                      showSku={showSku}
-                      showLowStock={showLowStock}
-                    />
+                    <React.Fragment key={product.id}>
+                      <ProductRow
+                        product={product}
+                        selected={selectedProductIds.includes(product.id)}
+                        onToggle={() => toggleProductSelection(product.id)}
+                        onView={() => openView(product)}
+                        onEdit={() => openEdit(product)}
+                        onDelete={() => setConfirmDelete(product.id)}
+                        onAdjustStock={
+                          canAdjustStock && product.track_stock
+                            ? () => setAdjustStockProduct(product)
+                            : undefined
+                        }
+                        catalogOnly={catalogOnly}
+                        showProductStatus={showStatus}
+                        bulkEnabled={bulkEnabled}
+                        showMrp={showMrp}
+                        showCost={showCost && fieldAccess.cost}
+                        showSku={showSku}
+                        showLowStock={showLowStock}
+                        expanded={expandedProductIds.includes(product.id)}
+                        onToggleExpand={() => toggleExpand(product.id)}
+                      />
+                      {expandedProductIds.includes(product.id) && (
+                        <VariantRows
+                          product={product}
+                          showMrp={showMrp}
+                          showCost={showCost && fieldAccess.cost}
+                          showSku={showSku}
+                          catalogOnly={catalogOnly}
+                          onEdit={() => openEdit(product)}
+                          onAdjustStock={
+                            canAdjustStock && product.track_stock
+                              ? () => setAdjustStockProduct(product)
+                              : undefined
+                          }
+                        />
+                      )}
+                    </React.Fragment>
                   ))
                 )}
               </tbody>
@@ -982,9 +1030,13 @@ function ProductRow({
   showCost = true,
   showSku = false,
   showLowStock = true,
+  expanded = false,
+  onToggleExpand = () => {},
 }) {
   const sellingPrice = parseFloat(product.selling_price ?? product.price ?? 0);
   const pricePending = catalogOnly && sellingPrice <= 0;
+
+  const isExpanded = !!expanded;
 
   return (
     <tr
@@ -1007,6 +1059,23 @@ function ProductRow({
       )}
       <td className="px-4 py-3">
         <div className="flex items-center gap-3">
+          {product.has_variants && (
+            <button
+              type="button"
+              onClick={onToggleExpand}
+              className="mr-1 rounded p-1 text-muted-foreground hover:text-foreground"
+              aria-label={isExpanded ? 'Collapse variants' : 'Expand variants'}
+              aria-expanded={isExpanded}
+            >
+              <ChevronDown
+                className={cn(
+                  'h-4 w-4 transition-transform',
+                  isExpanded && 'rotate-180'
+                )}
+                aria-hidden
+              />
+            </button>
+          )}
           <ProductThumb product={product} />
           <div className="min-w-0">
             <button
@@ -1169,6 +1238,102 @@ function StockCell({ product, onAdjustStock }) {
       </span>
     </button>
   );
+}
+
+function VariantRows({
+  product,
+  showMrp = true,
+  showCost = true,
+  showSku = false,
+  catalogOnly = false,
+  onEdit,
+  onAdjustStock,
+}) {
+  const [variants, setVariants] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const res = await productsAPI.get(product.id);
+        if (!mounted) return;
+        setVariants(res.data.variants || []);
+      } catch (e) {
+        console.error('Failed to load variants', e);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, [product.id]);
+
+  if (loading) {
+    return (
+      <tr>
+        <td colSpan={8} className="px-4 py-2 text-sm text-muted-foreground">Loading variants…</td>
+      </tr>
+    );
+  }
+
+  if (!variants.length) {
+    return (
+      <tr>
+        <td colSpan={8} className="px-4 py-2 text-sm text-muted-foreground">No variants</td>
+      </tr>
+    );
+  }
+
+  return variants.map((v) => (
+    <tr key={v.id} className="bg-muted/20">
+      <td className="px-4 py-2" />
+      <td className="px-4 py-2">
+        <div className="ml-8 text-sm">
+          <div className="font-medium">{v.sku || `${product.name} variant`}</div>
+          <div className="text-xs text-muted-foreground">{v.size_name || ''} {v.color_name ? `• ${v.color_name}` : ''}</div>
+        </div>
+      </td>
+      <td className="px-4 py-2">{product.category_name || '—'}</td>
+      {!catalogOnly && (
+        <>
+          {showMrp && <td className="px-4 py-2 text-right text-muted-foreground">{formatCurrency(v.effective_mrp)}</td>}
+          <td className={cn('px-4 py-2 text-right', SELLING_PRICE_CLASS)}>{formatCurrency(v.selling_price ?? v.price)}</td>
+          {showCost && <td className="px-4 py-2 text-right text-muted-foreground">{formatCurrency(v.effective_cost)}</td>}
+        </>
+      )}
+      {catalogOnly && (
+        <td className="px-4 py-2 text-right text-sm"><span className={SELLING_PRICE_CLASS}>{formatCurrency(v.selling_price ?? v.price)}</span></td>
+      )}
+      <td className="px-4 py-2 text-right">{v.stock_quantity}</td>
+      <td className="px-4 py-2">
+        <Badge variant={v.is_active ? 'success' : 'outline'}>{v.is_active ? 'Active' : 'Inactive'}</Badge>
+      </td>
+      <td className="px-4 py-2">
+        <div className="flex items-center justify-end gap-1">
+          {onEdit ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onEdit}
+              aria-label="Edit product variants"
+              title="Edit product and variants"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+          ) : null}
+          {onAdjustStock ? (
+            <Button variant="ghost" size="sm" onClick={onAdjustStock} aria-label="Adjust stock">
+              <Scale className="h-3.5 w-3.5" />
+            </Button>
+          ) : null}
+        </div>
+      </td>
+    </tr>
+  ));
 }
 
 function EmptyProducts({ onCreate, hasFilters }) {

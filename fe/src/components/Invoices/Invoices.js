@@ -123,7 +123,7 @@ const Invoices = () => {
   const loadCustomers = async () => {
     try {
       // Load all active customers - request a large page size to get all customers
-      // The API is paginated with PAGE_SIZE: 20, so we need to request more
+      // The API is paginated (default 10 per page), so we need to request more
       const response = await customersAPI.list({ is_active: 'true', page_size: 1000 });
       const customersData = response.data.results || response.data || [];
       setCustomers(Array.isArray(customersData) ? customersData : []);

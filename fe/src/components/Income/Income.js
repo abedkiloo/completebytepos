@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Check, Pencil, Plus, Trash2, TrendingUp } from 'lucide-react';
 import { incomeAPI } from '../../services/api';
+import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import {
@@ -46,7 +47,7 @@ const Income = () => {
   });
   const [pagination, setPagination] = useState({
     page: 1,
-    page_size: 20,
+    page_size: DEFAULT_PAGE_SIZE,
     count: 0,
   });
   const { settings: storeSettings } = useStoreSettings();

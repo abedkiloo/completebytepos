@@ -49,4 +49,18 @@ describe('authSession', () => {
     await logoutAndRedirect();
     expect(replace).not.toHaveBeenCalled();
   });
+
+  it('logoutAndRedirect with idle reason redirects to login with expired flag', async () => {
+    const replace = jest.fn();
+    delete window.location;
+    window.location = { pathname: '/dashboard', replace };
+    await logoutAndRedirect({ reason: 'idle' });
+    expect(replace).toHaveBeenCalledWith('/login?expired=idle');
+    expect(sessionStorage.getItem('session_expired_reason')).toBe('idle');
+  });
+
+  it('isAuthenticated is false during session teardown', () => {
+    beginSessionTeardown();
+    expect(isAuthenticated()).toBe(false);
+  });
 });
