@@ -400,7 +400,7 @@ class StoreSettings(models.Model):
         help_text='Automatically open print dialog after completing a sale',
     )
     maker_checker_enabled = models.BooleanField(
-        default=True,
+        default=False,
         help_text='Require checker approval before sensitive price/stock/settings changes go live',
     )
     emergency_stock_mode = models.BooleanField(

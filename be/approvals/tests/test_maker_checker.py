@@ -121,6 +121,20 @@ class MakerCheckerProductTests(ManagerAPITestCase):
         self.assertEqual(pending.action_type, ACTION_PRODUCT_PRICE)
         self.assertEqual(pending.proposed_values.get('price'), '150.00')
 
+    def test_maker_cost_change_exposes_proposed_value_in_product_payload(self):
+        response = self.client.patch(
+            f'/api/products/{self.product.id}/',
+            {'cost': '72.00', 'reason': 'Supplier invoice'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED, response.data)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.cost, Decimal('50'))
+        product_payload = response.data.get('product') or {}
+        pending = product_payload.get('pending_approval') or {}
+        self.assertTrue(pending.get('pending_price'))
+        self.assertEqual(pending.get('proposed_values', {}).get('cost'), '72.00')
+
     def test_checker_approves_updates_live_price(self):
         self.client.patch(
             f'/api/products/{self.product.id}/',
@@ -787,6 +801,52 @@ class MakerCheckerVariantTests(ManagerAPITestCase):
             action_type=ACTION_PRODUCT_PRICE,
         )
         self.assertEqual(pending.proposed_values.get('price'), '140.00')
+
+    def test_variant_mrp_pending_leaves_live_unchanged(self):
+        self.variant.mrp = Decimal('120')
+        self.variant.save(update_fields=['mrp'])
+        resp = self.client.patch(
+            f'/api/products/variants/{self.variant.id}/',
+            {'mrp': '150.00', 'reason': 'List price update'},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_202_ACCEPTED, resp.data)
+        self.variant.refresh_from_db()
+        self.assertEqual(self.variant.mrp, Decimal('120'))
+        pending = PendingChange.objects.get(
+            entity_type='products.ProductVariant',
+            action_type=ACTION_PRODUCT_PRICE,
+        )
+        self.assertEqual(pending.proposed_values.get('mrp'), '150.00')
+
+    def test_variant_cost_pending_leaves_live_unchanged(self):
+        from settings.models import ModuleSetting
+
+        ModuleSetting.objects.update_or_create(
+            module='products',
+            key='allow_manager_edit_cost',
+            defaults={
+                'label': 'allow_manager_edit_cost',
+                'description': '',
+                'default_value': True,
+                'value': True,
+            },
+        )
+        self.variant.cost = Decimal('40')
+        self.variant.save(update_fields=['cost'])
+        resp = self.client.patch(
+            f'/api/products/variants/{self.variant.id}/',
+            {'cost': '55.00', 'reason': 'Supplier increase'},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_202_ACCEPTED, resp.data)
+        self.variant.refresh_from_db()
+        self.assertEqual(self.variant.cost, Decimal('40'))
+        pending = PendingChange.objects.filter(
+            entity_type='products.ProductVariant',
+            action_type=ACTION_PRODUCT_PRICE,
+        ).latest('id')
+        self.assertEqual(pending.proposed_values.get('cost'), '55.00')
 
     def test_variant_stock_pending_caps_sellable(self):
         self.client.patch(

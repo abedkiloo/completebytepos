@@ -32,7 +32,7 @@ class DailyAuthorScopedViewSetMixin(AuditedModelViewSetMixin):
 
     def _parse_filters(self):
         filters = {}
-        params = self.request.query_params
+        params = getattr(self.request, 'query_params', self.request.GET)
         if self.date_param in params:
             filters[self.date_param] = params.get(self.date_param)
         if 'author' in params:

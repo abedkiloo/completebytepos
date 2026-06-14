@@ -8,6 +8,7 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 from datetime import datetime, timedelta
 from decimal import Decimal
+from django.http import HttpResponse
 from .models import Sale, SaleItem, Invoice, InvoiceItem, Payment, Customer, PaymentPlan, PaymentReminder, CustomerWalletTransaction
 from .serializers import (
     SaleSerializer, SaleCreateSerializer,
@@ -27,6 +28,7 @@ from .module_settings import sales_validate_stock_before_sale
 from accounts.permissions import RequirePermPerAction
 from utils.audit_mixin import AuditedModelViewSetMixin
 from utils.validation_errors import validation_error_message
+from utils.pdf_generator import create_invoice_pdf
 import logging
 
 logger = logging.getLogger(__name__)

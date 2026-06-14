@@ -22,7 +22,8 @@ def resolve_sales_person_period(request) -> Tuple[Optional[datetime], Optional[d
     """
     Prefer ``?month=YYYY-MM`` for month-end reports; fall back to resolve_period().
     """
-    month = (request.query_params.get('month') or '').strip()
+    params = getattr(request, 'query_params', None) or getattr(request, 'GET', {})
+    month = (params.get('month') or '').strip()
     if month:
         try:
             year_str, month_str = month.split('-', 1)
@@ -63,7 +64,8 @@ class SalesPersonReportService:
     @staticmethod
     def build(request) -> dict[str, Any]:
         start, end, label = resolve_sales_person_period(request)
-        cashier_id = request.query_params.get('cashier_id') or request.query_params.get('user_id')
+        params = getattr(request, 'query_params', None) or getattr(request, 'GET', {})
+        cashier_id = params.get('cashier_id') or params.get('user_id')
         try:
             cashier_id_int = int(cashier_id) if cashier_id not in (None, '', 'all') else None
         except (TypeError, ValueError):

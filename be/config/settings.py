@@ -187,7 +187,7 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_PAGINATION_CLASS': 'utils.pagination.StandardResultsSetPagination',
-    'PAGE_SIZE': env_int('API_PAGE_SIZE', 20),
+    'PAGE_SIZE': env_int('API_PAGE_SIZE', 10),
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
     ],

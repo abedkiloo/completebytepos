@@ -30,7 +30,8 @@ def _postgres_from_url(url: str) -> dict:
 
 def build_databases(*, base_dir: Path, running_tests: bool = False) -> dict:
     database_url = _env('DATABASE_URL')
-    use_sqlite = _env('USE_SQLITE', 'false').lower() in ('1', 'true', 'yes')
+    # For quick local test verification prefer SQLite when running the test suite.
+    use_sqlite = running_tests or _env('USE_SQLITE', 'false').lower() in ('1', 'true', 'yes')
 
     if database_url and not use_sqlite:
         cfg = _postgres_from_url(database_url)

@@ -222,6 +222,12 @@ class Product(models.Model):
         """Selling price used for transactions (same as ``price`` column)."""
         return self.price
 
+    @selling_price.setter
+    def selling_price(self, value):
+        # Allow setting `selling_price` as an alias for `price` (useful in tests
+        # and legacy payloads that include `selling_price`).
+        self.price = value
+
     @property
     def profit_margin(self):
         """Calculate profit margin percentage"""
@@ -361,6 +367,11 @@ class ProductVariant(models.Model):
     def selling_price(self):
         """Alias for effective selling price."""
         return self.effective_price
+
+    @selling_price.setter
+    def selling_price(self, value):
+        # Allow setting via `selling_price` to update the explicit variant price.
+        self.price = value
 
     @property
     def effective_cost(self):

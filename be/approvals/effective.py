@@ -224,6 +224,24 @@ def product_pending_flags(product_id) -> Dict[str, bool]:
     }
 
 
+def _merge_pending_proposed_values(
+    entity_type: str,
+    entity_id,
+    action_types: tuple[str, ...],
+) -> Dict[str, Any]:
+    """Merge proposed_values from all pending changes for an entity (latest wins per key)."""
+    merged: Dict[str, Any] = {}
+    if not pending_schema_ready():
+        return merged
+    try:
+        qs = _pending_for_entity(entity_type, entity_id, action_types).only('proposed_values')
+        for change in qs:
+            merged.update(change.proposed_values or {})
+    except (ProgrammingError, OperationalError):
+        pass
+    return merged
+
+
 def apply_approved_product_overlay(product, data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Keep live (approved) price/stock in API payloads when a pending change exists.
@@ -236,11 +254,21 @@ def apply_approved_product_overlay(product, data: Dict[str, Any]) -> Dict[str, A
     if not any(flags.values()):
         return data
 
+    from approvals.registry import ACTION_PRODUCT_PRICE, ACTION_PRODUCT_TAX
+
     out = dict(data)
     out['pending_approval'] = {
         **flags,
         'message': 'Pending approval — changes not yet active',
     }
+    if flags.get('pending_price'):
+        proposed = _merge_pending_proposed_values(
+            'products.Product',
+            product.pk,
+            (ACTION_PRODUCT_PRICE, ACTION_PRODUCT_TAX),
+        )
+        if proposed:
+            out['pending_approval']['proposed_values'] = proposed
     if flags.get('pending_stock'):
         out['stock_quantity'] = approved_sellable_stock_quantity(product)
     return out
@@ -254,11 +282,21 @@ def apply_approved_variant_overlay(variant, data: Dict[str, Any]) -> Dict[str, A
     if not any(flags.values()):
         return data
 
+    from approvals.registry import ACTION_PRODUCT_PRICE
+
     out = dict(data)
     out['pending_approval'] = {
         **flags,
         'message': 'Pending approval — changes not yet active',
     }
+    if flags.get('pending_price'):
+        proposed = _merge_pending_proposed_values(
+            'products.ProductVariant',
+            variant.pk,
+            (ACTION_PRODUCT_PRICE,),
+        )
+        if proposed:
+            out['pending_approval']['proposed_values'] = proposed
     if flags.get('pending_stock'):
         caps = _pending_proposed_stock_caps(variant.product_id, variant_id=variant.pk)
         if caps:

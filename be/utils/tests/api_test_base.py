@@ -13,6 +13,7 @@ from accounts.role_definitions import (
     sync_default_roles,
 )
 from settings.models import Branch, ModuleSettings, Tenant
+from settings.models import StoreSettings
 
 
 def _enable_modules(*names):
@@ -45,6 +46,12 @@ class ManagerAPITestCase(APITestCase):
             'inventory', 'reports', 'products', 'sales', 'expenses', 'income',
             'bank_accounts', 'money_transfer', 'suppliers', 'accounting', 'pos',
         )
+        # Ensure maker-checker is off by default during API tests to avoid
+        # cross-test leakage when individual tests enable it.
+        store = StoreSettings.load()
+        if store.maker_checker_enabled:
+            store.maker_checker_enabled = False
+            store.save(update_fields=['maker_checker_enabled'])
 
     def setUp(self):
         token = RefreshToken.for_user(self.manager_user)
@@ -128,6 +135,11 @@ class SuperAdminAPITestCase(APITestCase):
         profile.is_active = True
         profile.save()
         _enable_modules('inventory', 'reports', 'products', 'sales')
+        # Ensure maker-checker is off by default for super-admin API tests as well
+        store = StoreSettings.load()
+        if store.maker_checker_enabled:
+            store.maker_checker_enabled = False
+            store.save(update_fields=['maker_checker_enabled'])
 
     def setUp(self):
         token = RefreshToken.for_user(self.admin)

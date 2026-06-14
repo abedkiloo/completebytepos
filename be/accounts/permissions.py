@@ -216,6 +216,11 @@ def RequirePermPerAction(module, action_map=None, default=None):
                     f"No permission rule configured for {module}.{view_action!r}."
                 )
                 return False
+            # 'approve' is a distinct permission action and should be checked
+            # explicitly. Do not remap 'approve' to 'create' here; permission
+            # requirements should be enforced consistently regardless of the
+            # maker-checker setting at the view layer or test fixtures.
+
             self.message = f"You do not have permission: {module}.{perm_action}"
             return _has_permission(request, module, perm_action)
 

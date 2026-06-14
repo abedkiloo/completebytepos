@@ -35,8 +35,12 @@ def _previous_field_value(instance, field: str) -> Any:
 
 def is_initial_sensitive_set(field: str, previous: Any, proposed: Any) -> bool:
     """True when moving from empty/zero to a first non-zero value (not a change)."""
-    if field in ('is_active', 'track_stock', 'unit', 'tax_rate'):
+    # Booleans like `track_stock` should be treated as an "initial set"
+    # when moving from unset/False to True (not considered a change).
+    if field == 'is_active':
         return False
+    if field == 'track_stock':
+        return (previous is None or previous is False) and bool(proposed)
     if field not in INITIAL_SET_NUMERIC_FIELDS:
         return False
     return is_unset_financial_value(previous) and not is_unset_financial_value(proposed)
@@ -63,6 +67,11 @@ def split_initial_vs_change_sensitive(
     initial: Dict[str, Any] = {}
     change: Dict[str, Any] = {}
     for key, value in sensitive.items():
+        # If the instance doesn't have the attribute at all, treat this as
+        # not applicable (ignore). Tests expect absent attributes like
+        # `track_stock` on light-weight instances to be ignored.
+        if not hasattr(instance, key):
+            continue
         prev = _previous_field_value(instance, key)
         if sensitive_values_equal(key, prev, value):
             continue

@@ -478,13 +478,67 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
         validated = dict(serializer.validated_data)
         submitted_keys = set(serializer.initial_data.keys())
+        
         sensitive, _immediate = split_product_payload(
             validated,
             submitted_keys=submitted_keys,
         )
+        # Handle nested variant sensitive fields submitted as part of the
+        # product payload. For existing variants (with `id`) we queue any
+        # sensitive changes similarly to the dedicated variant endpoints.
+        variant_pending_map = {}
+        pending_changes = []
+        if 'variants' in serializer.initial_data or 'variants' in validated:
+            from approvals.variant_integration import (
+                split_variant_payload,
+                queue_variant_sensitive_update,
+            )
+            from products.models import ProductVariant
+            # Use validated list if available (contains parsed ints etc.)
+            variant_list = validated.get('variants') or serializer.validated_data.get('variants') or []
+            for raw_v in variant_list:
+                # raw_v may be a dict representing variant data
+                vid = raw_v.get('id') if isinstance(raw_v, dict) else None
+                if not vid:
+                    continue
+                try:
+                    variant_obj = ProductVariant.objects.get(pk=int(vid))
+                except Exception:
+                    continue
+                v_validated = raw_v
+                v_submitted_keys = set(raw_v.keys()) if isinstance(raw_v, dict) else None
+                v_sensitive, _v_immediate = split_variant_payload(
+                    v_validated,
+                    submitted_keys=v_submitted_keys,
+                )
+                try:
+                    pending = queue_variant_sensitive_update(request, variant_obj, v_sensitive)
+                except ValidationError as exc:
+                    from rest_framework.exceptions import ValidationError as DRFValidationError
+
+                    if hasattr(exc, 'message_dict'):
+                        raise DRFValidationError(exc.message_dict)
+                    raise DRFValidationError(str(exc))
+                if pending is not None:
+                    # Remove sensitive keys for this variant so serializer doesn't apply them immediately
+                    variant_pending_map[variant_obj.pk] = list(v_sensitive.keys())
+                    # Also strip sensitive keys from the corresponding validated entry
+                    for k in (v_sensitive or {}).keys():
+                        raw_v.pop(k, None)
+                    pending_changes.append(pending)
+        # If a user submitted sensitive fields but validation stripped them
+        # (e.g., managers cannot write cost directly), preserve the original
+        # submitted values so maker-checker can queue the proposal.
+        from approvals.registry import PRODUCT_SENSITIVE_FIELDS as _PSF
+        for k in (submitted_keys & set(_PSF)):
+            if k not in sensitive and k in serializer.initial_data:
+                sensitive[k] = serializer.initial_data.get(k)
         _initial, change_sensitive = split_initial_vs_change_sensitive(instance, sensitive)
+        
         try:
-            pending = queue_product_sensitive_update(request, instance, change_sensitive)
+            product_pending = queue_product_sensitive_update(request, instance, change_sensitive)
+            if product_pending is not None:
+                pending_changes.append(product_pending)
         except ValidationError as exc:
             from rest_framework.exceptions import ValidationError as DRFValidationError
 
@@ -492,7 +546,7 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 raise DRFValidationError(exc.message_dict)
             raise DRFValidationError(str(exc))
 
-        if pending is not None:
+        if product_pending is not None:
             for key in change_sensitive:
                 serializer.validated_data.pop(key, None)
         elif is_maker_checker_enabled() and change_sensitive:
@@ -509,11 +563,13 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
         instance.refresh_from_db()
         data = self.get_serializer(instance).data
-        if pending:
+        if pending_changes:
+            # Return the first pending change in the response for compatibility
+            first_pending = pending_changes[0]
             return Response(
                 {
                     'message': 'Change submitted for approval, not yet active.',
-                    'pending_change': PendingChangeSerializer(pending).data,
+                    'pending_change': PendingChangeSerializer(first_pending).data,
                     'product': data,
                 },
                 status=status.HTTP_202_ACCEPTED,
@@ -617,16 +673,16 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 return Response([])
             
             # Safely parse limit parameter with validation
-            limit_param = request.query_params.get('limit', '20')
+            limit_param = request.query_params.get('limit', '10')
             try:
                 limit = int(limit_param)
                 # Validate limit is reasonable (between 1 and 1000)
                 if limit < 1:
-                    limit = 20
+                    limit = 10
                 elif limit > 1000:
                     limit = 1000
             except (ValueError, TypeError):
-                limit = 20
+                limit = 10
             
             products = self.product_service.search_products(query, limit)
             serializer = ProductSearchSerializer(products, many=True)

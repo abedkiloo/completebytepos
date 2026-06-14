@@ -4,7 +4,7 @@ Moved from be/services/products_service.py to be/products/services.py
 """
 from typing import Optional, List, Dict, Any
 from decimal import Decimal
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.db.models import Q, Sum, Count, Avg, F, QuerySet
 from django.core.exceptions import ValidationError
 from .models import Product, Category, Size, Color, ProductVariant
@@ -183,27 +183,90 @@ class ProductVariantService(BaseService):
         """Create all variants for a product based on sizes and colors"""
         if not product.has_variants:
             return []
-        
-        variants = []
-        size_objs = Size.objects.filter(id__in=sizes) if sizes else []
-        color_objs = Color.objects.filter(id__in=colors) if colors else []
-        
-        # Create variants for each size/color combination
+
+        size_objs = list(Size.objects.filter(id__in=sizes)) if sizes else []
+        color_objs = list(Color.objects.filter(id__in=colors)) if colors else []
+
+        # Build variant instances to bulk_create where possible
+        to_create = []
         if size_objs and color_objs:
             for size in size_objs:
                 for color in color_objs:
-                    variant = self._create_variant(product, size, color)
-                    variants.append(variant)
+                    pv = ProductVariant(
+                        product=product,
+                        size=size,
+                        color=color,
+                        sku=self._build_variant_sku(product, size, color),
+                        price=product.price,
+                        mrp=product.mrp or product.price,
+                        cost=product.cost,
+                        stock_quantity=0,
+                        low_stock_threshold=product.low_stock_threshold,
+                        is_active=True,
+                    )
+                    to_create.append(pv)
         elif size_objs:
             for size in size_objs:
-                variant = self._create_variant(product, size, None)
-                variants.append(variant)
+                pv = ProductVariant(
+                    product=product,
+                    size=size,
+                    color=None,
+                    sku=self._build_variant_sku(product, size, None),
+                    price=product.price,
+                    mrp=product.mrp or product.price,
+                    cost=product.cost,
+                    stock_quantity=0,
+                    low_stock_threshold=product.low_stock_threshold,
+                    is_active=True,
+                )
+                to_create.append(pv)
         elif color_objs:
             for color in color_objs:
-                variant = self._create_variant(product, None, color)
-                variants.append(variant)
-        
-        return variants
+                pv = ProductVariant(
+                    product=product,
+                    size=None,
+                    color=color,
+                    sku=self._build_variant_sku(product, None, color),
+                    price=product.price,
+                    mrp=product.mrp or product.price,
+                    cost=product.cost,
+                    stock_quantity=0,
+                    low_stock_threshold=product.low_stock_threshold,
+                    is_active=True,
+                )
+                to_create.append(pv)
+
+        created_variants: List[ProductVariant] = []
+        if not to_create:
+            return created_variants
+
+        try:
+            # Attempt bulk create for performance. If this fails due to
+            # integrity constraints (duplicate SKU / unique_together),
+            # fall back to creating one-by-one so we can report useful
+            # errors or skip duplicates.
+            ProductVariant.objects.bulk_create(to_create)
+            # Refresh created items from DB
+            created_variants = list(ProductVariant.objects.filter(product=product))
+            return created_variants
+        except IntegrityError:
+            created = []
+            for pv in to_create:
+                try:
+                    pv.save()
+                    created.append(pv)
+                except IntegrityError:
+                    # Skip duplicates or conflicting variants
+                    continue
+            return created
+
+    def _build_variant_sku(self, product: Product, size: Optional[Size], color: Optional[Color]) -> str:
+        sku_parts = [product.sku]
+        if size:
+            sku_parts.append(size.code)
+        if color:
+            sku_parts.append(color.name[:3].upper())
+        return '-'.join(sku_parts)
     
     def _create_variant(self, product: Product, size: Optional[Size], 
                        color: Optional[Color]) -> ProductVariant:
@@ -270,6 +333,64 @@ class ProductVariantService(BaseService):
         
         return queryset
 
+    @transaction.atomic
+    def regenerate_variants_atomic(self, product: Product,
+                                   sizes: Optional[List[int]] = None,
+                                   colors: Optional[List[int]] = None) -> List[ProductVariant]:
+        """Regenerate all variants for a product inside a single transaction.
+
+        This does the following atomically:
+        - Locks the product row with select_for_update()
+        - Updates the product.available_sizes / available_colors M2M
+        - Deletes existing variants
+        - Bulk-creates new variants (with IntegrityError fallback)
+        - Syncs parent product stock from variant rows
+
+        Returns the list of created variants.
+        """
+        # Lock product row to avoid concurrent updates
+        # Note: this service's `self.model` is `ProductVariant`, so use the
+        # `Product` model directly to lock the product row.
+        locked = Product.objects.select_for_update().get(pk=product.pk)
+
+        # Apply M2M selections
+        size_ids = sizes or []
+        color_ids = colors or []
+        if size_ids:
+            locked.available_sizes.set(Size.objects.filter(id__in=size_ids))
+        else:
+            locked.available_sizes.clear()
+        if color_ids:
+            locked.available_colors.set(Color.objects.filter(id__in=color_ids))
+        else:
+            locked.available_colors.clear()
+
+        # If the product doesn't want variants, clear and return
+        if not locked.has_variants:
+            ProductVariant.objects.filter(product=locked).delete()
+            # Ensure parent stock remains as-is (no variant stock to sum)
+            from products.stock_utils import sync_product_stock_from_variants
+
+            sync_product_stock_from_variants(locked)
+            return []
+
+        # Delete existing variants and create new ones using the service method
+        ProductVariant.objects.filter(product=locked).delete()
+
+        created = []
+        try:
+            created = self.create_variants_for_product(locked, sizes=size_ids or None, colors=color_ids or None)
+        except Exception:
+            # create_variants_for_product already handles IntegrityError; re-raise other exceptions
+            raise
+
+        # Ensure parent stock is synced to variant sums
+        from products.stock_utils import sync_product_stock_from_variants
+
+        sync_product_stock_from_variants(locked)
+
+        return created
+
 
 class ProductService(BaseService):
     """Service for product operations"""
@@ -291,6 +412,17 @@ class ProductService(BaseService):
             elif limit > 1000:
                 limit = 1000
             
+            # Prefer exact matches for SKU or barcode (fast for scans). If
+            # exact matches exist, return them immediately. Otherwise
+            # fallback to substring search for name/sku/barcode.
+            exact_qs = apply_operational_product_filter(
+                self.model.objects.filter(
+                    Q(sku__iexact=query) | Q(barcode__iexact=query) | Q(name__iexact=query)
+                )
+            )
+            if exact_qs.exists():
+                return list(exact_qs[:limit])
+
             queryset = apply_operational_product_filter(
                 self.model.objects.filter(
                     Q(name__icontains=query) |
@@ -524,7 +656,11 @@ class ProductService(BaseService):
         data['has_variants'] = has_variants
         
         # Create product
-        product = self.model.objects.create(**data)
+        try:
+            product = self.model.objects.create(**data)
+        except IntegrityError as exc:
+            # Translate DB integrity errors to validation errors for caller
+            raise ValidationError(str(exc))
         
         # Set ManyToMany fields if provided
         if available_sizes:
@@ -804,17 +940,25 @@ class ProductService(BaseService):
                             colors.append(color.id)
                     
                     # Check if product exists
-                    product, created = self.model.objects.get_or_create(
-                        sku=sku,
-                        defaults=parsed_data
-                    )
-                    
+                    try:
+                        product, created = self.model.objects.get_or_create(
+                            sku=sku,
+                            defaults=parsed_data
+                        )
+                    except IntegrityError as exc:
+                        results['errors'].append(f"Row {row_num}: DB error creating product: {str(exc)}")
+                        continue
+
                     if not created:
                         # Update existing product
-                        for key, value in parsed_data.items():
-                            setattr(product, key, value)
-                        product.save()
-                        results['updated'] += 1
+                        try:
+                            for key, value in parsed_data.items():
+                                setattr(product, key, value)
+                            product.save()
+                            results['updated'] += 1
+                        except IntegrityError as exc:
+                            results['errors'].append(f"Row {row_num}: DB error updating product: {str(exc)}")
+                            continue
                     else:
                         results['created'] += 1
                     

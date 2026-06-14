@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from accounts.sensitive_edits import PRICING_FIELDS, INVENTORY_REPORT_FIELDS
+from accounts.sensitive_edits import INVENTORY_REPORT_FIELDS
 from settings.settings_service import SettingsService
 
 
@@ -136,8 +136,10 @@ def strip_product_fields_by_access(
     """Remove fields the user is not allowed to write."""
     from decimal import Decimal
 
+    # Cost is not pricing — managers may edit cost without price access (and vice versa).
+    pricing_only_fields = ('price', 'mrp', 'selling_price')
     if not user_may_edit_product_pricing(user):
-        for key in PRICING_FIELDS:
+        for key in pricing_only_fields:
             data.pop(key, None)
         if is_create:
             data['price'] = Decimal('0')

@@ -3,6 +3,23 @@
 import django.core.validators
 from django.db import migrations, models
 import django.db.models.deletion
+import inspect
+
+
+def _make_check_constraint(q, name):
+    """Compatibility helper: construct a CheckConstraint across Django versions."""
+    cls = models.CheckConstraint
+    try:
+        params = inspect.signature(cls.__init__).parameters
+    except Exception:
+        # Fallback: try calling with keyword 'check'
+        return cls(check=q, name=name)
+    if 'condition' in params:
+        return cls(condition=q, name=name)
+    if 'check' in params:
+        return cls(check=q, name=name)
+    # Positional fallback
+    return cls(q, name=name)
 
 
 class Migration(migrations.Migration):
@@ -117,7 +134,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='productvariant',
-            constraint=models.CheckConstraint(check=models.Q(('stock_quantity__gte', 0)), name='productvariant_stock_quantity_non_negative'),
+            constraint=_make_check_constraint(models.Q(('stock_quantity__gte', 0)), 'productvariant_stock_quantity_non_negative'),
         ),
         migrations.AlterUniqueTogether(
             name='productvariant',
@@ -145,6 +162,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='product',
-            constraint=models.CheckConstraint(check=models.Q(('stock_quantity__gte', 0)), name='product_stock_quantity_non_negative'),
+            constraint=_make_check_constraint(models.Q(('stock_quantity__gte', 0)), 'product_stock_quantity_non_negative'),
         ),
     ]

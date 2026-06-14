@@ -598,16 +598,16 @@ class UserViewSet(viewsets.ModelViewSet):
                 return Response([])
             
             # Safely parse limit parameter with validation
-            limit_param = request.query_params.get('limit', '20')
+            limit_param = request.query_params.get('limit', '10')
             try:
                 limit = int(limit_param)
                 # Validate limit is reasonable (between 1 and 1000)
                 if limit < 1:
-                    limit = 20
+                    limit = 10
                 elif limit > 1000:
                     limit = 1000
             except (ValueError, TypeError):
-                limit = 20
+                limit = 10
             
             users = User.objects.filter(
                 Q(username__icontains=query) |

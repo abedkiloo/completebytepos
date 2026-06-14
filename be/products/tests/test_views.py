@@ -1012,6 +1012,61 @@ class ProductVariantViewSetTestCase(APITestCase):
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock_quantity, 25)
 
+    def test_patch_variant_price_below_cost_names_variant(self):
+        """PATCH with price below cost returns a variant-specific error."""
+        from settings.models import StoreSettings
+
+        store = StoreSettings.load()
+        store.maker_checker_enabled = False
+        store.save(update_fields=['maker_checker_enabled'])
+
+        variant = ProductVariant.objects.create(
+            product=self.product,
+            size=self.size,
+            color=self.color,
+            sku='TEST-COST-VAR',
+            price=Decimal('100.00'),
+            cost=Decimal('50.00'),
+            stock_quantity=10,
+        )
+
+        response = self.client.patch(
+            f'/api/products/variants/{variant.id}/',
+            {'price': '40.00'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+        self.assertIn('Small / Red', str(response.data['price']))
+
+    def test_patch_variant_mrp_persists(self):
+        """PATCH variant MRP without rewriting price or stock."""
+        from settings.models import StoreSettings
+
+        store = StoreSettings.load()
+        store.maker_checker_enabled = False
+        store.save(update_fields=['maker_checker_enabled'])
+
+        variant = ProductVariant.objects.create(
+            product=self.product,
+            size=self.size,
+            color=self.color,
+            sku='TEST-MRP-VAR',
+            price=Decimal('100.00'),
+            stock_quantity=10,
+        )
+
+        response = self.client.patch(
+            f'/api/products/variants/{variant.id}/',
+            {'mrp': '130.00'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        variant.refresh_from_db()
+        self.assertEqual(variant.mrp, Decimal('130.00'))
+        self.assertEqual(variant.price, Decimal('100.00'))
+        self.assertEqual(variant.stock_quantity, 10)
+
     def test_update_variant_with_full_payload(self):
         """PUT still accepts a complete variant row."""
         from settings.models import StoreSettings

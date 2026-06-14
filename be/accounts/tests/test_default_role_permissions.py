@@ -19,6 +19,7 @@ class DefaultRolePermissionTests(TestCase):
         ensure_permissions()
         sync_default_roles()
         cls.manager_role = Role.objects.get(name=ROLE_MANAGER)
+        cls.sales_role = Role.objects.get(name=ROLE_SALES)
         cls.super_role = Role.objects.get(name=ROLE_SUPER_ADMIN)
 
     def _has(self, role, module, action):
@@ -53,3 +54,40 @@ class DefaultRolePermissionTests(TestCase):
         self.assertFalse(user.profile.has_permission('expenses', 'approve'))
         self.assertTrue(user.profile.has_permission('expenses', 'create'))
         self.assertTrue(user.profile.has_permission('products', 'approve'))
+
+    def test_sales_role_lacks_approve_permissions(self):
+        for module in ('products', 'inventory', 'settings'):
+            self.assertFalse(
+                self._has(self.sales_role, module, 'approve'),
+                f'Sales should not have {module}.approve',
+            )
+
+    def test_sales_role_has_catalog_create_import_only(self):
+        self.assertTrue(self._has(self.sales_role, 'products', 'create'))
+        self.assertTrue(self._has(self.sales_role, 'products', 'import'))
+        self.assertFalse(self._has(self.sales_role, 'products', 'delete'))
+
+    def test_manager_lacks_users_roles_settings_modules(self):
+        for module in ('users', 'roles', 'settings', 'modules'):
+            self.assertFalse(
+                self.manager_role.permissions.filter(module=module).exists(),
+                f'Manager should not have {module} permissions',
+            )
+
+    def test_manager_lacks_delete_on_operational_modules(self):
+        for module in ('products', 'inventory', 'sales', 'customers'):
+            self.assertFalse(
+                self._has(self.manager_role, module, 'delete'),
+                f'Manager should not have {module}.delete',
+            )
+
+    def test_only_super_admin_has_settings_approve(self):
+        self.assertTrue(self._has(self.super_role, 'settings', 'approve'))
+        self.assertFalse(self._has(self.manager_role, 'settings', 'approve'))
+        self.assertFalse(self._has(self.sales_role, 'settings', 'approve'))
+
+    def test_ensure_permissions_creates_settings_approve_row(self):
+        ensure_permissions()
+        self.assertTrue(
+            Permission.objects.filter(module='settings', action='approve').exists()
+        )

@@ -19,7 +19,8 @@ def resolve_period(request):
     """
     now = timezone.now()
     today = now.date()
-    period = (request.query_params.get('period') or '').lower().strip()
+    params = getattr(request, 'query_params', request.GET)
+    period = (params.get('period') or '').lower().strip()
 
     if period == 'today':
         start = timezone.make_aware(datetime.combine(today, datetime.min.time()))
@@ -34,8 +35,8 @@ def resolve_period(request):
         start = timezone.make_aware(datetime(today.year, 1, 1))
         return start, now, 'year'
 
-    date_from = request.query_params.get('date_from')
-    date_to = request.query_params.get('date_to')
+    date_from = params.get('date_from')
+    date_to = params.get('date_to')
     start = None
     end = None
     if date_from:

@@ -57,9 +57,13 @@ class StoreSettingsModelTests(TestCase):
         self.assertEqual(StoreSettings.objects.count(), 1)
         self.assertEqual(first.enabled_payment_methods, list(DEFAULT_PAYMENT_METHODS))
 
-    def test_maker_checker_enabled_by_default(self):
+    def test_maker_checker_disabled_by_default(self):
         store = StoreSettings.load()
-        self.assertTrue(store.maker_checker_enabled)
+        self.assertFalse(store.maker_checker_enabled)
+
+    def test_maker_checker_sales_controls_default_off(self):
+        store = StoreSettings.load()
+        self.assertFalse(store.maker_checker_sales_controls)
 
 
 class StoreSettingsSerializerTests(TestCase):
