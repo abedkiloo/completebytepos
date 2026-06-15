@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 
 import { customersAPI } from '../../services/api';
+import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { formatCurrency } from '../../utils/formatters';
 import { toast } from '../../utils/toast';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
@@ -31,7 +32,7 @@ import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
 import { Skeleton } from '../ui/skeleton';
 import { cn } from '../../lib/cn';
-import { PageShell, PageHeader } from '../page';
+import { PageShell, PageHeader, ListPagination } from '../page';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import {
@@ -90,17 +91,30 @@ const Customers = () => {
 
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    page_size: DEFAULT_PAGE_SIZE,
+    count: 0,
+  });
 
   // --- Data loading (debounced search) ---
   const loadCustomers = useCallback(async (signal) => {
     setLoading(true);
     try {
-      const params = { is_active: 'true' };
+      const params = {
+        is_active: 'true',
+        page: pagination.page,
+        page_size: pagination.page_size,
+      };
       if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
       const response = await customersAPI.list(params);
       if (signal?.aborted) return;
       const data = response.data.results || response.data || [];
       setCustomers(Array.isArray(data) ? data : []);
+      setPagination((prev) => ({
+        ...prev,
+        count: response.data?.count ?? (Array.isArray(data) ? data.length : 0),
+      }));
     } catch (error) {
       if (signal?.aborted) return;
       console.error('Error loading customers:', error);
@@ -108,6 +122,10 @@ const Customers = () => {
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
+  }, [debouncedSearch, pagination.page, pagination.page_size]);
+
+  useEffect(() => {
+    setPagination((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
   }, [debouncedSearch]);
 
   useEffect(() => {
@@ -394,6 +412,16 @@ const Customers = () => {
             </table>
           </div>
         </div>
+
+        <ListPagination
+          page={pagination.page}
+          pageSize={pagination.page_size}
+          totalCount={pagination.count}
+          suffix={`${pagination.count} customers`}
+          onPageChange={(nextPage) =>
+            setPagination((prev) => ({ ...prev, page: nextPage }))
+          }
+        />
 
       {/* --- Editor dialog --- */}
       <CustomerFormDialog

@@ -23,4 +23,23 @@ describe('productStock', () => {
     expect(isProductOutOfStock({ track_stock: true, stock_quantity: 0 })).toBe(true);
     expect(isProductOutOfStock({ track_stock: true, stock_quantity: 3 })).toBe(false);
   });
+
+  it('uses aggregated parent stock for variant products without nested rows', () => {
+    expect(
+      isProductOutOfStock({
+        track_stock: true,
+        has_variants: true,
+        stock_quantity: 25,
+        variants: [],
+      })
+    ).toBe(false);
+    expect(
+      isProductOutOfStock({
+        track_stock: true,
+        has_variants: true,
+        stock_quantity: 0,
+        variants: [],
+      })
+    ).toBe(true);
+  });
 });

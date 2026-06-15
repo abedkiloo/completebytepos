@@ -33,6 +33,7 @@ import {
   DataTableRow,
   DataTableCell,
   StatusBadge,
+  ListPagination,
 } from '../page';
 
 const Sales = () => {
@@ -273,8 +274,6 @@ const Sales = () => {
     }
   };
 
-  const totalPages = Math.ceil(pagination.count / pagination.page_size) || 1;
-
   if (loading && sales.length === 0) {
     return (
       <PageLoading rows={8} />
@@ -421,35 +420,15 @@ const Sales = () => {
               </DataTableBody>
             </DataTable>
 
-            {pagination.count > pagination.page_size && (
-              <div className="flex items-center justify-between gap-4 rounded-lg border bg-card px-4 py-3 text-sm">
-                <span className="text-muted-foreground">
-                  Page {pagination.page} of {totalPages} · {pagination.count} sales
-                </span>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={pagination.page === 1}
-                    onClick={() =>
-                      setPagination((prev) => ({ ...prev, page: prev.page - 1 }))
-                    }
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={pagination.page >= totalPages}
-                    onClick={() =>
-                      setPagination((prev) => ({ ...prev, page: prev.page + 1 }))
-                    }
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
-            )}
+            <ListPagination
+              page={pagination.page}
+              pageSize={pagination.page_size}
+              totalCount={pagination.count}
+              suffix={`${pagination.count} sales`}
+              onPageChange={(nextPage) =>
+                setPagination((prev) => ({ ...prev, page: nextPage }))
+              }
+            />
           </>
         )}
 

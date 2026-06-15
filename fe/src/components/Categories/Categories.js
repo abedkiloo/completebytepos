@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { FolderTree, Layers, Pencil, Plus, Trash2, ChevronDown } from 'lucide-react';
+import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { categoriesAPI } from '../../services/api';
 import { formatNumber } from '../../utils/formatters';
 import CategoryForm from './CategoryForm';
@@ -38,6 +39,7 @@ import {
   DataTableRow,
   DataTableCell,
   ActiveStatusBadge,
+  ListPagination,
 } from '../page';
 
 const FILTER_OPTIONS = [
@@ -71,6 +73,7 @@ const Categories = () => {
   const [confirmDeactivate, setConfirmDeactivate] = useState(null);
   const [deactivateReason, setDeactivateReason] = useState('');
   const [expandedParentIds, setExpandedParentIds] = useState([]);
+  const [page, setPage] = useState(1);
 
   const toggleParentExpanded = useCallback((parentId) => {
     setExpandedParentIds((prev) =>
@@ -222,7 +225,7 @@ const Categories = () => {
     return map;
   }, [categories]);
 
-  const displayRows = useMemo(() => {
+  const allDisplayRows = useMemo(() => {
     const list = filterByLevel(categories, levelFilter);
     const { parents, childrenByParent, orphans } = partitionCategories(list);
 
@@ -241,6 +244,15 @@ const Categories = () => {
 
     return buildCollapsibleCategoryRows(parents, childrenByParent, orphans, expanded);
   }, [categories, levelFilter, expandedParentIds, debouncedSearch]);
+
+  const displayRows = useMemo(() => {
+    const start = (page - 1) * DEFAULT_PAGE_SIZE;
+    return allDisplayRows.slice(start, start + DEFAULT_PAGE_SIZE);
+  }, [allDisplayRows, page]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filterActive, debouncedSearch, levelFilter]);
 
   const stats = useMemo(() => {
     const parents = categories.filter((c) => !c.parent).length;
@@ -442,6 +454,14 @@ const Categories = () => {
           </DataTableBody>
         </DataTable>
       )}
+
+      <ListPagination
+        page={page}
+        pageSize={DEFAULT_PAGE_SIZE}
+        totalCount={allDisplayRows.length}
+        suffix={`${allDisplayRows.length} rows`}
+        onPageChange={setPage}
+      />
 
       {showForm && (
         <CategoryForm

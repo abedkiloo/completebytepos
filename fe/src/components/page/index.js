@@ -13,3 +13,4 @@ export {
   DataTableCell,
 } from './DataTable';
 export { ActiveStatusBadge, StatusBadge } from './StatusBadge';
+export { ListPagination } from './ListPagination';

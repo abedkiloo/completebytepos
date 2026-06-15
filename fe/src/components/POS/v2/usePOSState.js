@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CATALOG_FETCH_PAGE_SIZE } from '../../../config/pagination';
 import {
   productsAPI,
   categoriesAPI,
@@ -165,7 +166,7 @@ export function usePOSState() {
     const seq = ++requestSeqRef.current;
     setLoading(true);
     try {
-      const params = { is_active: 'true' };
+      const params = { is_active: 'true', page_size: CATALOG_FETCH_PAGE_SIZE };
       if (selectedCategory !== 'all') params.category = selectedCategory;
       if (selectedSubcategory) params.subcategory = selectedSubcategory;
       if (searchQuery.trim()) params.search = searchQuery.trim();

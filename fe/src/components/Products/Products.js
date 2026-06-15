@@ -51,7 +51,7 @@ import {
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 import { cn } from '../../lib/cn';
-import { PageShell, PageHeader } from '../page';
+import { PageShell, PageHeader, ListPagination } from '../page';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { getPersonaFromStorage } from '../../utils/navAccess';
 import { PERSONA } from '../../utils/roleAccess';
@@ -104,9 +104,11 @@ const Products = () => {
   const [categories, setCategories] = useState([]);
   const [statistics, setStatistics] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [pageSize] = useState(DEFAULT_PAGE_SIZE);
-  const [hasNextPage, setHasNextPage] = useState(false);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    page_size: DEFAULT_PAGE_SIZE,
+    count: 0,
+  });
 
   // --- Filters ---
   const [filters, setFilters] = useState(EMPTY_FILTERS);
@@ -155,7 +157,7 @@ const Products = () => {
   const loadProducts = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { page_size: pageSize, page };
+      const params = { page_size: pagination.page_size, page: pagination.page };
       if (filters.search.trim()) params.search = filters.search.trim();
       if (filters.category) params.category = filters.category;
       if (showStatus && filters.is_active) params.is_active = filters.is_active;
@@ -165,10 +167,11 @@ const Products = () => {
       const response = await productsAPI.list(params);
       const data = response.data.results || response.data || [];
       const items = Array.isArray(data) ? data : [];
-      // If page==1 replace, otherwise append
-      setProducts((prev) => (page === 1 ? items : [...prev, ...items]));
-      // Detect if there is a next page from DRF pagination
-      setHasNextPage(Boolean(response.data && response.data.next));
+      setProducts(items);
+      setPagination((prev) => ({
+        ...prev,
+        count: response.data?.count ?? items.length,
+      }));
     } catch (error) {
       console.error('Error loading products:', error);
       toast.error('Failed to load products');
@@ -176,26 +179,29 @@ const Products = () => {
     } finally {
       setLoading(false);
     }
-  }, [filters, showStatus, page, pageSize]);
+  }, [filters, showStatus, pagination.page, pagination.page_size]);
 
   useEffect(() => {
     loadCategories();
     loadStatistics();
   }, [loadCategories, loadStatistics]);
 
+  useEffect(() => {
+    setPagination((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
+  }, [
+    filters.search,
+    filters.category,
+    filters.is_active,
+    filters.low_stock,
+    filters.out_of_stock,
+    showStatus,
+  ]);
+
   // Debounced reload so typing in the search box doesn't hammer the API.
   useEffect(() => {
-    // Reset to first page when filters change
-    setPage(1);
     const t = setTimeout(loadProducts, 450);
     return () => clearTimeout(t);
   }, [loadProducts]);
-
-  // Load additional pages when `page` changes (page>1)
-  useEffect(() => {
-    if (page === 1) return;
-    loadProducts();
-  }, [page]);
 
   // ------------------------------------------------------------------
   // Derived
@@ -598,14 +604,6 @@ const Products = () => {
           </div>
         )}
 
-        {hasNextPage && (
-          <div className="my-3 flex justify-center">
-            <Button onClick={() => setPage((p) => p + 1)}>
-              Load more
-            </Button>
-          </div>
-        )}
-
         {/* --- Table --- */}
         <div className="overflow-hidden rounded-lg border bg-background">
           <div className="overflow-x-auto">
@@ -716,6 +714,16 @@ const Products = () => {
             </table>
           </div>
         </div>
+
+        <ListPagination
+          page={pagination.page}
+          pageSize={pagination.page_size}
+          totalCount={pagination.count}
+          suffix={`${pagination.count} products`}
+          onPageChange={(nextPage) =>
+            setPagination((prev) => ({ ...prev, page: nextPage }))
+          }
+        />
 
       {/* --- Form modal (legacy, untouched) --- */}
       {adjustStockProduct && (

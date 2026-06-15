@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 
 import { employeesAPI } from '../../services/api';
+import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { formatCurrency } from '../../utils/formatters';
 import { toast } from '../../utils/toast';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
@@ -41,7 +42,7 @@ import {
   DialogTitle,
 } from '../ui/dialog';
 import { cn } from '../../lib/cn';
-import { PageShell, PageHeader } from '../page';
+import { PageShell, PageHeader, ListPagination } from '../page';
 
 const DEPARTMENTS = [
   { value: 'production', label: 'Production' },
@@ -101,22 +102,38 @@ export default function Employees() {
   const [saving, setSaving] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    page_size: DEFAULT_PAGE_SIZE,
+    count: 0,
+  });
 
   const loadEmployees = useCallback(async () => {
     setLoading(true);
     try {
-      const params = {};
+      const params = {
+        page: pagination.page,
+        page_size: pagination.page_size,
+      };
       if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
       if (statusFilter) params.status = statusFilter;
       const res = await employeesAPI.list(params);
       const data = res.data.results || res.data || [];
       setEmployees(Array.isArray(data) ? data : []);
+      setPagination((prev) => ({
+        ...prev,
+        count: res.data?.count ?? (Array.isArray(data) ? data.length : 0),
+      }));
     } catch {
       toast.error('Failed to load employees');
       setEmployees([]);
     } finally {
       setLoading(false);
     }
+  }, [debouncedSearch, statusFilter, pagination.page, pagination.page_size]);
+
+  useEffect(() => {
+    setPagination((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
   }, [debouncedSearch, statusFilter]);
 
   const loadStatistics = useCallback(async () => {
@@ -387,6 +404,16 @@ export default function Employees() {
           </tbody>
         </table>
       </div>
+
+      <ListPagination
+        page={pagination.page}
+        pageSize={pagination.page_size}
+        totalCount={pagination.count}
+        suffix={`${pagination.count} employees`}
+        onPageChange={(nextPage) =>
+          setPagination((prev) => ({ ...prev, page: nextPage }))
+        }
+      />
 
       <Dialog open={showModal} onOpenChange={(o) => !saving && setShowModal(o)}>
         <DialogContent className="sm:max-w-lg">

@@ -16,6 +16,9 @@ export function catalogSellableStock(product) {
     return parseInt(product.stock_quantity, 10) || 0;
   }
   const variants = product.variants;
-  if (!Array.isArray(variants) || variants.length === 0) return 0;
-  return aggregateActiveVariantStock(variants);
+  if (Array.isArray(variants) && variants.length > 0) {
+    return aggregateActiveVariantStock(variants);
+  }
+  // List/detail API often exposes aggregated variant stock on the parent row only.
+  return parseInt(product.stock_quantity, 10) || 0;
 }

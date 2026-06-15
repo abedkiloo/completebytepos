@@ -74,7 +74,14 @@ export function getDefaultPosRoute() {
 export function normalizeProductForSale(product) {
   if (!product) return product;
   if (isProductVariantsEnabled()) {
-    return withSellingPriceFields(product);
+    const base = withSellingPriceFields(product);
+    if (base.has_variants) {
+      return {
+        ...base,
+        stock_quantity: catalogSellableStock(base),
+      };
+    }
+    return base;
   }
   const base = withSellingPriceFields(product);
   const normalized = {

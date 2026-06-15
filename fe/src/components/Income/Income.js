@@ -28,6 +28,7 @@ import {
   DataTableRow,
   DataTableCell,
   StatusBadge,
+  ListPagination,
 } from '../page';
 
 const Income = () => {
@@ -162,8 +163,6 @@ const Income = () => {
     handleFormClose();
     loadIncomes();
   };
-
-  const totalPages = Math.ceil(pagination.count / pagination.page_size) || 1;
 
   if (loading && incomes.length === 0) {
     return (
@@ -315,31 +314,14 @@ const Income = () => {
                 ))}
               </DataTableBody>
             </DataTable>
-            {pagination.count > pagination.page_size && (
-              <div className="flex items-center justify-between gap-4 rounded-lg border bg-card px-4 py-3 text-sm">
-                <span className="text-muted-foreground">
-                  Page {pagination.page} of {totalPages}
-                </span>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={pagination.page === 1}
-                    onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={pagination.page >= totalPages}
-                    onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
-            )}
+            <ListPagination
+              page={pagination.page}
+              pageSize={pagination.page_size}
+              totalCount={pagination.count}
+              onPageChange={(nextPage) =>
+                setPagination((prev) => ({ ...prev, page: nextPage }))
+              }
+            />
           </>
         )}
 

@@ -1,14 +1,14 @@
 import { aggregateActiveVariantStock, catalogSellableStock } from './catalogStock';
 
 describe('catalogSellableStock', () => {
-  it('returns zero for variant products with no variant rows', () => {
+  it('uses parent stock when variant rows are not embedded in the payload', () => {
     expect(
       catalogSellableStock({
         has_variants: true,
         stock_quantity: 400,
         variants: [],
       })
-    ).toBe(0);
+    ).toBe(400);
   });
 
   it('sums active variant rows (parent stock is not sold separately)', () => {
