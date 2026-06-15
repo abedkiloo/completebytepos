@@ -11,6 +11,8 @@ import SupplierForm from '../Suppliers/SupplierForm';
 import {
   SELLING_PRICE_CLASS,
   productImagesEnabled,
+  STOCK_OPENING_LABEL,
+  STOCK_OPENING_HINT,
 } from '../../utils/productDisplay';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import { useProductUnits } from '../../hooks/useProductUnits';
@@ -659,12 +661,12 @@ const ProductForm = ({
           const { applied } = await applyVariantDraftsAfterProductSave(
             savedProductId,
             variantDraftsRef.current,
-            { includeStock: !product }
+            { includeStock: !product && showStockFields && fieldAccess.stock }
           );
           if (applied > 0) {
             toast.success(
               product
-                ? `Updated price and cost for ${applied} variant row(s)`
+                ? `Updated ${applied} variant row(s)`
                 : `Updated price and stock for ${applied} variant row(s)`
             );
           }
@@ -830,8 +832,8 @@ const ProductForm = ({
                 <strong>Add variant</strong>, then enter
                 {showMrp && showPricingFields ? ' MRP,' : ''} price
                 {showCostField ? ', cost' : ''}
-                {product ? '' : showStockFields ? ', and opening stock' : ''}
-                {' '}for that row.
+                {showStockFields && !product ? ', and opening stock' : ''}{' '}
+                for that row.
               </p>
               <ProductVariantsPanel
                 productId={product?.id}
@@ -914,8 +916,10 @@ const ProductForm = ({
           {showStockFields && !formData.has_variants && !product && (
           <div className="form-row">
             <div className="form-group">
-              <label>Stock Quantity</label>
+              <label htmlFor="product-opening-stock">{STOCK_OPENING_LABEL}</label>
+              <small className="form-text">{STOCK_OPENING_HINT}</small>
               <input
+                id="product-opening-stock"
                 type="number"
                 name="stock_quantity"
                 value={formData.stock_quantity}
@@ -923,7 +927,6 @@ const ProductForm = ({
                 min="0"
               />
             </div>
-
             <div className="form-group">
               <label>Low Stock Threshold</label>
               <input

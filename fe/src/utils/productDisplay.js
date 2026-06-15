@@ -9,6 +9,20 @@ export const SELLING_PRICE_CLASS = 'text-success font-medium tabular-nums';
 /** Shown on parent rows for products that sell via variants (prices live on variant rows). */
 export const VARIANT_PARENT_PRICE_MASK = '***';
 
+export const STOCK_ON_HAND_LABEL = 'Stock on hand';
+export const STOCK_OPENING_LABEL = 'Opening stock';
+export const STOCK_COUNT_LABEL = 'Stock count';
+
+/** Sets exact on-hand from the Products list (click stock on a product row). */
+export const STOCK_COUNT_HINT =
+  'Replaces the system quantity with what you counted. Use Stock → Stock adjustment only to add or remove units without a full count.';
+
+export const STOCK_ADJUST_HINT =
+  'Adds to or subtracts from on-hand stock. Example: 10 on hand and you enter +3 → 13. To set the correct count after a physical count, click the stock quantity on the product in Products.';
+
+export const STOCK_OPENING_HINT =
+  'Starting quantity when this product or variant is first saved.';
+
 export function showProductStatus(productModuleSettings, storeSettings) {
   if (storeSettings?.hide_entity_status_toggles) return false;
   return isModuleFlagEnabled(productModuleSettings, 'show_status', true);

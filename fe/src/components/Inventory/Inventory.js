@@ -257,7 +257,7 @@ const Inventory = () => {
             <>
               <Button variant="outline" onClick={handleAdjustment}>
                 <Scale className="h-4 w-4" />
-                Adjust
+                Stock adjustment
               </Button>
               <Button variant="outline" onClick={handleBulkAdjust}>
                 <Scale className="h-4 w-4" />

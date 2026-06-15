@@ -48,6 +48,7 @@ export function variantDraftNumericValidationMessage(
     canEditMrp = false,
     canEditCost = false,
     allowStockInput = false,
+    stockLabel = 'stock on hand',
   } = {}
 ) {
   if (draft.price !== undefined && draft.price !== '' && !isValidOptionalDecimal(draft.price)) {
@@ -65,7 +66,7 @@ export function variantDraftNumericValidationMessage(
     draft.stock_quantity !== '' &&
     !isValidOptionalInteger(draft.stock_quantity)
   ) {
-    return `Enter a valid whole number for opening stock on variant ${label}.`;
+    return `Enter a valid whole number for ${stockLabel} on variant ${label}.`;
   }
   return null;
 }

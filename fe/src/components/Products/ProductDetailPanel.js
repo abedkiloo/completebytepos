@@ -1,12 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pencil } from 'lucide-react';
+import { Pencil, ClipboardList } from 'lucide-react';
 
 import { productsAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
 import { catalogSellableStock } from '../../utils/catalogStock';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
 import { variantDisplayLabel } from '../../utils/variantCombinations';
-import { SELLING_PRICE_CLASS, VARIANT_PARENT_PRICE_MASK } from '../../utils/productDisplay';
+import {
+  SELLING_PRICE_CLASS,
+  VARIANT_PARENT_PRICE_MASK,
+  STOCK_ON_HAND_LABEL,
+  STOCK_COUNT_HINT,
+} from '../../utils/productDisplay';
 import { resolveProductDetailVisibility } from '../../utils/productAccess';
 import { proposedPendingCost } from '../../utils/makerChecker';
 import PendingApprovalBadges from '../Approvals/PendingApprovalBadges';
@@ -30,6 +35,7 @@ export default function ProductDetailPanel({
   productId,
   onClose,
   onEdit,
+  onSetStock,
   fieldAccess,
   productModuleSettings = {},
   storeSettings = {},
@@ -197,13 +203,18 @@ export default function ProductDetailPanel({
 
                 {!visibility.catalogOnly && visibility.showStock ? (
                   <>
-                    <DetailRow label="Stock">
+                    <DetailRow label={STOCK_ON_HAND_LABEL}>
                       {product.track_stock
                         ? product.has_variants
                           ? catalogSellableStock(product)
                           : product.stock_quantity ?? 0
                         : 'Not tracked'}
                     </DetailRow>
+                    {product.track_stock ? (
+                      <p className="text-xs text-muted-foreground">
+                        {STOCK_COUNT_HINT}
+                      </p>
+                    ) : null}
                     <DetailRow label="Track stock">
                       {product.track_stock ? 'Yes' : 'No'}
                     </DetailRow>
@@ -372,15 +383,23 @@ export default function ProductDetailPanel({
           ) : null}
         </div>
 
-        {product && onEdit && visibility.canEdit ? (
+        {product && (onEdit || onSetStock) ? (
           <div className="slide-in-panel-footer">
             <Button type="button" variant="outline" onClick={onClose}>
               Close
             </Button>
-            <Button type="button" onClick={() => onEdit(product)}>
-              <Pencil className="mr-2 h-4 w-4" />
-              Edit product
-            </Button>
+            {onSetStock && visibility.showStock && product.track_stock ? (
+              <Button type="button" variant="outline" onClick={() => onSetStock(product)}>
+                <ClipboardList className="mr-2 h-4 w-4" />
+                Set {STOCK_ON_HAND_LABEL.toLowerCase()}
+              </Button>
+            ) : null}
+            {onEdit && visibility.canEdit ? (
+              <Button type="button" onClick={() => onEdit(product)}>
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit product
+              </Button>
+            ) : null}
           </div>
         ) : (
           <div className="slide-in-panel-footer">

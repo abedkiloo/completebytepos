@@ -13,10 +13,9 @@ import {
   FileText,
   ImageIcon,
   X,
-  Loader2,
   MoreHorizontal,
   ChevronDown,
-  Scale,
+  ClipboardList,
 } from 'lucide-react';
 
 import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
@@ -34,8 +33,8 @@ import { catalogSellableStock } from '../../utils/catalogStock';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
 import ProductForm from './ProductForm';
 import ProductDetailPanel from './ProductDetailPanel';
-import StockAdjustmentModal from '../Inventory/StockAdjustmentModal';
-import { inventoryAdjustmentsEnabled } from '../../utils/inventoryDisplay';
+import StockCountModal from '../Inventory/StockCountModal';
+import { STOCK_ON_HAND_LABEL } from '../../utils/productDisplay';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import { toast } from '../../utils/toast';
 
@@ -80,7 +79,6 @@ const EMPTY_FILTERS = {
 const Products = () => {
   const { settings: storeSettings } = useStoreSettings();
   const { settings: productModuleSettings } = useModuleSettings('products');
-  const { settings: inventoryModuleSettings } = useModuleSettings('inventory');
   const persona = getPersonaFromStorage();
   const fieldAccess = resolveProductFieldAccess(
     persona,
@@ -90,8 +88,7 @@ const Products = () => {
   const catalogOnly = fieldAccess.catalogOnly;
   const financialFieldsLocked =
     !fieldAccess.pricing && !fieldAccess.cost && !fieldAccess.stock;
-  const canAdjustStock =
-    !catalogOnly && inventoryAdjustmentsEnabled(inventoryModuleSettings);
+  const canSetStock = !catalogOnly && fieldAccess.stock;
   const showStatus = showProductStatus(productModuleSettings, storeSettings);
   const showCost = showProductCostPrice(productModuleSettings);
   const showMrp = showProductMrp(productModuleSettings);
@@ -126,7 +123,7 @@ const Products = () => {
   const [deleteReason, setDeleteReason] = useState('');
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [adjustStockProduct, setAdjustStockProduct] = useState(null);
+  const [stockCountProduct, setStockCountProduct] = useState(null);
   const [viewProductId, setViewProductId] = useState(null);
 
   // --- CSV import file input ---
@@ -498,8 +495,8 @@ const Products = () => {
           description={
             catalogOnly
               ? 'Add products or import a list. Your manager will set prices before items go on sale.'
-              : canAdjustStock
-                ? 'Manage your catalog. Stock changes use Adjust stock (audited); the Stock column is not edited inline.'
+              : canSetStock
+                ? `Manage your catalog. Click a stock quantity to set ${STOCK_ON_HAND_LABEL.toLowerCase()}; use Stock → Stock adjustment to add or remove units.`
                 : 'Add, edit, and bulk-manage your catalog.'
           }
         >
@@ -688,9 +685,9 @@ const Products = () => {
                         onView={() => openView(product)}
                         onEdit={() => openEdit(product)}
                         onDelete={() => setConfirmDelete(product.id)}
-                        onAdjustStock={
-                          canAdjustStock && product.track_stock
-                            ? () => setAdjustStockProduct(product)
+                        onSetStock={
+                          canSetStock && product.track_stock
+                            ? () => setStockCountProduct(product)
                             : undefined
                         }
                         catalogOnly={catalogOnly}
@@ -711,9 +708,9 @@ const Products = () => {
                           showSku={showSku}
                           catalogOnly={catalogOnly}
                           onEdit={() => openEdit(product)}
-                          onAdjustStock={
-                            canAdjustStock && product.track_stock
-                              ? () => setAdjustStockProduct(product)
+                          onSetStock={
+                            canSetStock && product.track_stock
+                              ? () => setStockCountProduct(product)
                               : undefined
                           }
                         />
@@ -728,12 +725,12 @@ const Products = () => {
         </ListPaginationRail>
 
       {/* --- Form modal (legacy, untouched) --- */}
-      {adjustStockProduct && (
-        <StockAdjustmentModal
-          product={adjustStockProduct}
-          onClose={() => setAdjustStockProduct(null)}
+      {stockCountProduct && (
+        <StockCountModal
+          product={stockCountProduct}
+          onClose={() => setStockCountProduct(null)}
           onSave={() => {
-            setAdjustStockProduct(null);
+            setStockCountProduct(null);
             loadProducts();
             loadStatistics();
           }}
@@ -747,6 +744,14 @@ const Products = () => {
           productModuleSettings={productModuleSettings}
           storeSettings={storeSettings}
           onClose={() => setViewProductId(null)}
+          onSetStock={
+            canSetStock
+              ? (fullProduct) => {
+                  setViewProductId(null);
+                  setStockCountProduct(fullProduct);
+                }
+              : undefined
+          }
           onEdit={(fullProduct) => {
             setViewProductId(null);
             openEdit(fullProduct);
@@ -1032,7 +1037,7 @@ function ProductRow({
   onView,
   onEdit,
   onDelete,
-  onAdjustStock,
+  onSetStock,
   catalogOnly = false,
   showProductStatus: showStatus = true,
   bulkEnabled = true,
@@ -1159,7 +1164,7 @@ function ProductRow({
         </td>
       )}
       <td className="px-4 py-3 text-right">
-        <StockCell product={product} onAdjustStock={onAdjustStock} />
+        <StockCell product={product} onSetStock={onSetStock} />
       </td>
       {showStatus && (
       <td className="px-4 py-3">
@@ -1182,10 +1187,10 @@ function ProductRow({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {onAdjustStock ? (
-                <DropdownMenuItem onClick={onAdjustStock}>
-                  <Scale className="mr-2 h-3.5 w-3.5" />
-                  Adjust stock
+              {onSetStock ? (
+                <DropdownMenuItem onClick={onSetStock}>
+                  <ClipboardList className="mr-2 h-3.5 w-3.5" />
+                  Set stock on hand
                 </DropdownMenuItem>
               ) : null}
               <DropdownMenuItem
@@ -1223,7 +1228,7 @@ function ProductThumb({ product }) {
   );
 }
 
-function StockCell({ product, onAdjustStock }) {
+function StockCell({ product, onSetStock }) {
   if (!product.track_stock) {
     return <span className="text-xs text-muted-foreground">Not tracked</span>;
   }
@@ -1240,19 +1245,19 @@ function StockCell({ product, onAdjustStock }) {
   const qtyEl = (
     <span className={cn('font-semibold tabular-nums', tone)}>{qty}</span>
   );
-  if (!onAdjustStock) {
+  if (!onSetStock) {
     return qtyEl;
   }
   return (
     <button
       type="button"
-      onClick={onAdjustStock}
+      onClick={onSetStock}
       className="group inline-flex flex-col items-end rounded-md px-1 py-0.5 text-right hover:bg-muted/80"
-      title="Adjust stock (+/- quantity with audit trail)"
+      title={`Set ${STOCK_ON_HAND_LABEL.toLowerCase()} (replaces current count)`}
     >
       {qtyEl}
       <span className="text-[10px] font-normal text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
-        Adjust
+        Set count
       </span>
     </button>
   );
@@ -1265,7 +1270,7 @@ function VariantRows({
   showSku = false,
   catalogOnly = false,
   onEdit,
-  onAdjustStock,
+  onSetStock,
 }) {
   const [variants, setVariants] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1326,7 +1331,20 @@ function VariantRows({
       {catalogOnly && (
         <td className="px-4 py-2 text-right text-sm"><span className={SELLING_PRICE_CLASS}>{formatCurrency(v.selling_price ?? v.price)}</span></td>
       )}
-      <td className="px-4 py-2 text-right">{v.stock_quantity}</td>
+      <td className="px-4 py-2 text-right">
+        {onSetStock ? (
+          <button
+            type="button"
+            onClick={onSetStock}
+            className="rounded px-1 py-0.5 font-semibold tabular-nums hover:bg-muted/80"
+            title={`Set ${STOCK_ON_HAND_LABEL.toLowerCase()}`}
+          >
+            {v.stock_quantity}
+          </button>
+        ) : (
+          v.stock_quantity
+        )}
+      </td>
       <td className="px-4 py-2">
         <Badge variant={v.is_active ? 'success' : 'outline'}>{v.is_active ? 'Active' : 'Inactive'}</Badge>
       </td>
@@ -1343,9 +1361,9 @@ function VariantRows({
               <Pencil className="h-3.5 w-3.5" />
             </Button>
           ) : null}
-          {onAdjustStock ? (
-            <Button variant="ghost" size="sm" onClick={onAdjustStock} aria-label="Adjust stock">
-              <Scale className="h-3.5 w-3.5" />
+          {onSetStock ? (
+            <Button variant="ghost" size="sm" onClick={onSetStock} aria-label="Set stock on hand">
+              <ClipboardList className="h-3.5 w-3.5" />
             </Button>
           ) : null}
         </div>

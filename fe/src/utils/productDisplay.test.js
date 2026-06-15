@@ -6,6 +6,8 @@ import {
   showProductSkuInList,
   productBulkOperationsEnabled,
   productCsvImportExportEnabled,
+  STOCK_ADJUST_HINT,
+  STOCK_COUNT_HINT,
 } from './productDisplay';
 
 describe('productDisplay', () => {
@@ -41,5 +43,15 @@ describe('productDisplay', () => {
     expect(showProductCostPrice(off)).toBe(false);
     expect(showProductMrp(off)).toBe(false);
     expect(productBulkOperationsEnabled(off)).toBe(false);
+  });
+
+  test('STOCK_COUNT_HINT describes set-count from Products', () => {
+    expect(STOCK_COUNT_HINT).toMatch(/replaces the system quantity/i);
+    expect(STOCK_COUNT_HINT).toContain('Stock adjustment');
+  });
+
+  test('STOCK_ADJUST_HINT points to Products for physical counts', () => {
+    expect(STOCK_ADJUST_HINT).toMatch(/adds to or subtracts/i);
+    expect(STOCK_ADJUST_HINT).toContain('Products');
   });
 });

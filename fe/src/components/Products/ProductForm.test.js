@@ -222,6 +222,32 @@ describe('ProductForm integration', () => {
     );
   });
 
+  test('edit simple product does not show stock field', async () => {
+    const product = {
+      id: 3,
+      name: 'Simple Widget',
+      category: 1,
+      has_variants: false,
+      price: '50',
+      selling_price: '50',
+      stock_quantity: 12,
+      is_active: true,
+      track_stock: true,
+    };
+
+    render(
+      <ProductForm
+        product={product}
+        categories={categories}
+        onClose={jest.fn()}
+        onSave={jest.fn()}
+      />
+    );
+
+    expect(screen.queryByLabelText(/Stock on hand/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Opening stock/i)).not.toBeInTheDocument();
+  });
+
   test('blocks save when variants enabled but no combinations', async () => {
     mockVariantSetup = { keys: [], drafts: {} };
 

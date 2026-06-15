@@ -14,7 +14,7 @@ from suppliers.models import Supplier
 import json
 import io
 
-from settings.test_utils import disable_maker_checker
+from settings.test_utils import disable_maker_checker, enable_maker_checker
 from utils.tests.module_setting_helpers import enable_products_list_api_fields
 
 
@@ -301,6 +301,38 @@ class ProductViewSetTestCase(APITestCase):
         self.test_product.refresh_from_db()
         self.assertEqual(self.test_product.name, 'Renamed without price')
         self.assertEqual(self.test_product.price, original_price)
+
+    def test_patch_stock_quantity_only(self):
+        """Stock count modal sends a JSON PATCH with stock_quantity only."""
+        disable_maker_checker()
+        token = self.get_auth_token(self.superuser)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+        response = self.client.patch(
+            f'/api/products/{self.test_product.id}/',
+            {'stock_quantity': 42},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.test_product.refresh_from_db()
+        self.assertEqual(self.test_product.stock_quantity, 42)
+
+    def test_patch_stock_quantity_queues_when_maker_checker_enabled(self):
+        """Stock on hand with maker-checker queues approval instead of 500."""
+        enable_maker_checker()
+        token = self.get_auth_token(self.superuser)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+        response = self.client.patch(
+            f'/api/products/{self.test_product.id}/',
+            {'stock_quantity': 99, 'reason': 'Physical count'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+
+        self.test_product.refresh_from_db()
+        self.assertNotEqual(self.test_product.stock_quantity, 99)
 
     def test_create_without_price_defaults_to_zero(self):
         """Variant catalog and quick-add flows may omit price on create."""

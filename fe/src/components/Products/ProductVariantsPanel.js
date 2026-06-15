@@ -14,13 +14,21 @@ import {
   variantCombinationKey,
 } from '../../utils/variantCombinations';
 import {
-  extractApiReasonError,
   isMakerCheckerEnabled,
   isPendingApprovalResponse,
   pendingApprovalToastMessage,
   variantEditNeedsReason,
 } from '../../utils/makerChecker';
-import { buildVariantPatchPayload, editableNumericString, variantDraftNumericValidationMessage, variantFinancialValidationMessage } from '../../utils/variantPayload';
+import {
+  buildVariantPatchPayload,
+  editableNumericString,
+  variantDraftNumericValidationMessage,
+  variantFinancialValidationMessage,
+} from '../../utils/variantPayload';
+import {
+  STOCK_OPENING_LABEL,
+  STOCK_OPENING_HINT,
+} from '../../utils/productDisplay';
 import VariantDraftSummary from './VariantDraftSummary';
 
 export default function ProductVariantsPanel({
@@ -196,6 +204,7 @@ export default function ProductVariantsPanel({
       canEditMrp,
       canEditCost,
       allowStockInput,
+      stockLabel: isProductEdit ? 'stock on hand' : 'opening stock',
     });
     if (numericError) {
       toast.warning(numericError);
@@ -222,7 +231,7 @@ export default function ProductVariantsPanel({
     const reason = (reasons[row.key] || '').trim();
     if (needsReason && !reason) {
       setReasonFocusId(row.key);
-      toast.warning('Enter a reason below — price, cost, or status changes need approval.');
+      toast.warning('Enter a reason below — price, cost, stock, or status changes need approval.');
       return;
     }
     if (needsReason) {
@@ -308,8 +317,8 @@ export default function ProductVariantsPanel({
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
           {isProductEdit
-            ? 'Price and cost save per row below. Stock is managed under Inventory.'
-            : 'Example: pick Large + White, click Add variant, enter opening stock — then add more rows as needed.'}
+            ? 'Price and cost save per row below. To set stock on hand, click the stock quantity on the product row in Products.'
+            : `Example: pick Large + White, click Add variant, enter ${STOCK_OPENING_LABEL.toLowerCase()} — then add more rows as needed.`}
         </p>
       </div>
 
@@ -368,8 +377,14 @@ export default function ProductVariantsPanel({
                   ) : null}
                   {canEditPrice ? (
                     <div className="w-[6.75rem] shrink-0">
-                      <label className="text-xs text-muted-foreground">Price (KES)</label>
+                      <label
+                        className="text-xs text-muted-foreground"
+                        htmlFor={`variant-price-${row.key}`}
+                      >
+                        Price (KES)
+                      </label>
                       <Input
+                        id={`variant-price-${row.key}`}
                         type="text"
                         inputMode="decimal"
                         className="h-9"
@@ -391,14 +406,21 @@ export default function ProductVariantsPanel({
                     </div>
                   ) : null}
                   {allowStockInput ? (
-                    <div className="w-[5rem] shrink-0">
-                      <label className="text-xs text-muted-foreground">Opening stock</label>
+                    <div className="w-[5.5rem] shrink-0">
+                      <label
+                        className="text-xs text-muted-foreground"
+                        htmlFor={`variant-stock-${row.key}`}
+                      >
+                        {STOCK_OPENING_LABEL}
+                      </label>
                       <Input
+                        id={`variant-stock-${row.key}`}
                         type="text"
                         inputMode="numeric"
                         className="h-9"
                         value={editableNumericString(draft.stock_quantity)}
                         onChange={(e) => updateEdit(row.key, 'stock_quantity', e.target.value)}
+                        title={STOCK_OPENING_HINT}
                       />
                     </div>
                   ) : null}

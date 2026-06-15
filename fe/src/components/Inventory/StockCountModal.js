@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { inventoryAPI, productsAPI, variantsAPI } from '../../services/api';
+import { productsAPI, variantsAPI } from '../../services/api';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -16,18 +16,21 @@ import {
   isPendingApprovalResponse,
   PENDING_APPROVAL_MESSAGE,
 } from '../../utils/makerChecker';
-import { isValidStockAdjustmentQuantity } from '../../utils/variantPayload';
-import { STOCK_ADJUST_HINT } from '../../utils/productDisplay';
+import { isValidOptionalInteger } from '../../utils/variantPayload';
+import {
+  STOCK_COUNT_HINT,
+  STOCK_COUNT_LABEL,
+  STOCK_ON_HAND_LABEL,
+} from '../../utils/productDisplay';
 
-const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
+const StockCountModal = ({ product, onClose, onSave, nested = false }) => {
   const [formData, setFormData] = useState({
     product_id: product?.id || '',
-    quantity: 0,
-    notes: '',
+    stock_quantity: '',
   });
   const [products, setProducts] = useState([]);
   const [variants, setVariants] = useState([]);
-  const [variantAdjustments, setVariantAdjustments] = useState({});
+  const [variantCounts, setVariantCounts] = useState({});
   const [variantsLoading, setVariantsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -47,18 +50,31 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
     if (!product) {
       loadProducts();
     } else {
-      setFormData((prev) => ({ ...prev, product_id: product.id }));
+      setFormData((prev) => ({
+        ...prev,
+        product_id: product.id,
+        stock_quantity: String(product.stock_quantity ?? 0),
+      }));
     }
   }, [product]);
 
   useEffect(() => {
     if (!contextProductId || !variantMode) {
       setVariants([]);
-      setVariantAdjustments({});
+      setVariantCounts({});
       return;
     }
     loadVariants(contextProductId);
   }, [contextProductId, variantMode]);
+
+  useEffect(() => {
+    if (!variantMode && pickedProduct && !product) {
+      setFormData((prev) => ({
+        ...prev,
+        stock_quantity: String(pickedProduct.stock_quantity ?? 0),
+      }));
+    }
+  }, [pickedProduct, variantMode, product]);
 
   const loadProducts = async () => {
     try {
@@ -83,9 +99,9 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
       setVariants(list);
       const next = {};
       list.forEach((v) => {
-        next[v.id] = '';
+        next[v.id] = String(v.stock_quantity ?? 0);
       });
-      setVariantAdjustments(next);
+      setVariantCounts(next);
     } catch {
       setVariants([]);
       setError('Could not load variant stock rows.');
@@ -104,7 +120,7 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
     setFormData((prev) => ({
       ...prev,
       product_id: productId ? parseInt(productId, 10) : '',
-      quantity: 0,
+      stock_quantity: '',
     }));
     setError('');
   };
@@ -113,43 +129,15 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
       ...prev,
-      [name]: name === 'quantity' || name === 'product_id' ? parseInt(value, 10) || 0 : value,
+      [name]: value,
     }));
   };
 
-  const updateVariantAdjustment = (variantId, value) => {
-    setVariantAdjustments((prev) => ({
+  const updateVariantCount = (variantId, value) => {
+    setVariantCounts((prev) => ({
       ...prev,
       [variantId]: value,
     }));
-  };
-
-  const submitAdjustments = async (lines) => {
-    const notes = formData.notes;
-    const reason = makerCheckerOn ? changeReason.trim() : '';
-    let lastResponse = null;
-    let pendingCount = 0;
-
-    for (const line of lines) {
-      const payload = {
-        product_id: line.product_id,
-        quantity: line.quantity,
-        notes,
-      };
-      if (line.variant_id) {
-        payload.variant_id = line.variant_id;
-      }
-      if (makerCheckerOn) {
-        payload.reason = reason;
-      }
-      const res = await inventoryAPI.adjust(payload);
-      lastResponse = res;
-      if (isPendingApprovalResponse(res.status)) {
-        pendingCount += 1;
-      }
-    }
-
-    return { lastResponse, pendingCount };
   };
 
   const handleSubmit = async (e) => {
@@ -171,62 +159,77 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
         return;
       }
 
-      let lines = [];
+      const reason = makerCheckerOn ? changeReason.trim() : undefined;
+      let pendingCount = 0;
+      let updatedCount = 0;
+
       if (variantMode) {
+        const lines = [];
         for (const v of variants) {
-          const raw = variantAdjustments[v.id];
-          if (raw === '' || raw === undefined || raw === null) continue;
-          if (!isValidStockAdjustmentQuantity(raw)) {
-            setError(
-              `Enter a valid whole number for ${variantDisplayLabel(v)} (digits only, + or -).`
-            );
+          const raw = variantCounts[v.id];
+          if (!isValidOptionalInteger(raw)) {
+            setError(`Enter a valid whole number for ${variantDisplayLabel(v)}.`);
             setLoading(false);
             return;
           }
+          const next = parseInt(raw, 10) || 0;
+          const prev = parseInt(v.stock_quantity, 10) || 0;
+          if (next !== prev) {
+            lines.push({ variant: v, stock_quantity: next });
+          }
         }
-        lines = variants
-          .filter((v) => {
-            const raw = variantAdjustments[v.id];
-            if (raw === '' || raw === undefined || raw === null) return false;
-            const qty = parseInt(raw, 10);
-            return !Number.isNaN(qty) && qty !== 0;
-          })
-          .map((v) => ({
-            product_id: productId,
-            variant_id: v.id,
-            quantity: parseInt(variantAdjustments[v.id], 10),
-          }));
         if (!lines.length) {
-          setError('Enter an adjustment for at least one variant.');
+          setError('Change at least one variant count or cancel.');
           setLoading(false);
           return;
+        }
+        for (const line of lines) {
+          const payload = { stock_quantity: line.stock_quantity };
+          if (reason) payload.reason = reason;
+          const res = await variantsAPI.update(line.variant.id, payload);
+          if (isPendingApprovalResponse(res.status)) {
+            pendingCount += 1;
+          }
+          updatedCount += 1;
         }
       } else {
-        if (!formData.quantity) {
-          setError('Enter a non-zero adjustment quantity.');
+        if (!isValidOptionalInteger(formData.stock_quantity)) {
+          setError('Enter a valid whole number for stock on hand.');
           setLoading(false);
           return;
         }
-        lines = [
-          {
-            product_id: productId,
-            variant_id: null,
-            quantity: formData.quantity,
-          },
-        ];
+        const next = parseInt(formData.stock_quantity, 10) || 0;
+        const prev = parseInt(pickedProduct?.stock_quantity, 10) || 0;
+        if (next === prev) {
+          setError('Stock on hand is unchanged.');
+          setLoading(false);
+          return;
+        }
+        const payload = { stock_quantity: next };
+        if (reason) payload.reason = reason;
+        const res = await productsAPI.update(productId, payload);
+        if (isPendingApprovalResponse(res.status)) {
+          pendingCount += 1;
+        }
+        updatedCount = 1;
       }
 
-      const { pendingCount } = await submitAdjustments(lines);
       if (pendingCount > 0) {
         toast.warning(PENDING_APPROVAL_MESSAGE);
-      } else if (lines.length > 1) {
-        toast.success(`Adjusted stock for ${lines.length} variant rows`);
-      } else if (variantMode) {
-        toast.success('Variant stock adjusted');
+      } else if (updatedCount > 1) {
+        toast.success(`Updated stock count for ${updatedCount} variant rows`);
+      } else {
+        toast.success('Stock count saved');
       }
       onSave();
     } catch (err) {
-      setError(err.response?.data?.error || err.response?.data?.detail || 'Failed to adjust stock');
+      const detail =
+        err.response?.data?.error ||
+        err.response?.data?.detail ||
+        (typeof err.response?.data === 'object'
+          ? Object.values(err.response.data).flat().join(', ')
+          : null);
+      setError(detail || 'Failed to save stock count');
     } finally {
       setLoading(false);
     }
@@ -243,9 +246,9 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
       >
         <div className="slide-in-panel-header">
           <div>
-            <h2>Stock adjustment</h2>
+            <h2>{STOCK_COUNT_LABEL}</h2>
             <p className="mt-0.5 text-sm font-normal text-muted-foreground">
-              Add or remove units on top of current stock
+              Set the correct quantity on hand after a physical count
             </p>
           </div>
           <button type="button" onClick={onClose} className="slide-in-panel-close">
@@ -261,8 +264,8 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
               <p className="mb-3 text-sm text-muted-foreground">
                 <span className="font-medium text-foreground">{pickedProduct.name}</span>
                 {variantMode
-                  ? ' — enter how many units to add (+) or remove (−) for each variant.'
-                  : ' — enter how many units to add (+) or remove (−).'}
+                  ? ` — enter the counted ${STOCK_ON_HAND_LABEL.toLowerCase()} for each variant.`
+                  : ` — enter the counted ${STOCK_ON_HAND_LABEL.toLowerCase()}.`}
               </p>
             ) : null}
 
@@ -278,14 +281,14 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
                   searchable
                 />
                 <small className="form-text">
-                  Variant products show per-variant add/remove fields after you select them.
+                  Variant products show a row for each size/color combination.
                 </small>
               </div>
             )}
 
             {variantMode ? (
               <div className="form-group space-y-3">
-                <label>Add or remove by variant *</label>
+                <label>{STOCK_ON_HAND_LABEL} by variant *</label>
                 {variantsLoading ? (
                   <p className="text-sm text-muted-foreground">Loading variants…</p>
                 ) : variants.length === 0 ? (
@@ -302,52 +305,47 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
                         <div className="min-w-0 flex-1 text-sm">
                           <p className="font-medium">{variantDisplayLabel(variant)}</p>
                           <p className="text-xs text-muted-foreground">
-                            On hand: {variant.stock_quantity ?? 0}
+                            System shows: {variant.stock_quantity ?? 0}
                             {variant.sku ? ` · ${variant.sku}` : ''}
                           </p>
                         </div>
                         <Input
                           type="text"
                           inputMode="numeric"
-                          className="h-9 w-28 shrink-0"
-                          value={variantAdjustments[variant.id] ?? ''}
-                          onChange={(e) => updateVariantAdjustment(variant.id, e.target.value)}
-                          placeholder="+5 or −2"
-                          title="Units to add (+) or remove (−)"
+                          className="h-9 w-24 shrink-0"
+                          value={variantCounts[variant.id] ?? ''}
+                          onChange={(e) => updateVariantCount(variant.id, e.target.value)}
+                          placeholder="Count"
+                          title="Exact units on hand after your count"
+                          aria-label={`${STOCK_ON_HAND_LABEL} for ${variantDisplayLabel(variant)}`}
                         />
                       </div>
                     ))}
                   </div>
                 )}
-                <small className="form-text">{STOCK_ADJUST_HINT}</small>
+                <small className="form-text">{STOCK_COUNT_HINT}</small>
               </div>
             ) : (
               contextProductId ? (
                 <div className="form-group">
-                  <label>Add or remove *</label>
+                  <label htmlFor="stock-count-quantity">{STOCK_ON_HAND_LABEL} *</label>
+                  <p className="mb-1.5 text-xs text-muted-foreground">
+                    System shows: {pickedProduct?.stock_quantity ?? 0}
+                  </p>
                   <input
-                    type="number"
-                    name="quantity"
-                    value={formData.quantity}
+                    id="stock-count-quantity"
+                    type="text"
+                    inputMode="numeric"
+                    name="stock_quantity"
+                    value={formData.stock_quantity}
                     onChange={handleChange}
                     required
-                    placeholder="e.g. +5 to add, −2 to remove"
+                    placeholder="Counted quantity"
                   />
-                  <small className="form-text">{STOCK_ADJUST_HINT}</small>
+                  <small className="form-text">{STOCK_COUNT_HINT}</small>
                 </div>
               ) : null
             )}
-
-            <div className="form-group">
-              <label>Notes</label>
-              <textarea
-                name="notes"
-                value={formData.notes}
-                onChange={handleChange}
-                rows="3"
-                placeholder="Optional notes for this adjustment..."
-              />
-            </div>
 
             {makerCheckerOn ? (
               <ChangeReasonField context="stock" value={changeReason} onChange={setChangeReason} />
@@ -362,7 +360,7 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
                   ? 'Submitting…'
                   : makerCheckerOn
                     ? 'Submit for approval'
-                    : 'Apply adjustment'}
+                    : 'Save stock count'}
               </Button>
             </div>
           </form>
@@ -372,4 +370,4 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
   );
 };
 
-export default StockAdjustmentModal;
+export default StockCountModal;

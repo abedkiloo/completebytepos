@@ -137,7 +137,7 @@ const NAV_SECTIONS = [
     module: 'stock',
     items: [
       { to: '/inventory?view=movements', label: 'Manage Stock', icon: BarChart3, feature: ['stock', 'manage_stock'] },
-      { to: '/inventory?action=adjust', label: 'Stock Adjustment', icon: Scale, feature: ['stock', 'stock_adjustments'] },
+      { to: '/inventory?action=adjust', label: 'Stock adjustment', icon: Scale, feature: ['stock', 'stock_adjustments'] },
       { to: '/inventory?action=transfer', label: 'Stock Transfer', icon: ArrowLeftRight, feature: ['stock', 'stock_transfers'] },
     ],
   },

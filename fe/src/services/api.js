@@ -200,9 +200,13 @@ export const productsAPI = {
   create: (data) => api.post('/products/', data, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
-  update: (id, data) => api.patch(`/products/${id}/`, data, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  }),
+  update: (id, data) => api.patch(
+    `/products/${id}/`,
+    data,
+    data instanceof FormData
+      ? { headers: { 'Content-Type': 'multipart/form-data' } }
+      : undefined,
+  ),
   delete: (id, data) => api.delete(`/products/${id}/`, { data: data || {} }),
   search: (query, limit = 10) => api.get('/products/search/', { params: { q: query, limit } }),
   lowStock: () => api.get('/products/low_stock/'),

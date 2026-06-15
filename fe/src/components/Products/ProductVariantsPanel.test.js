@@ -107,6 +107,7 @@ describe('ProductVariantsPanel', () => {
 
     await screen.findByRole('button', { name: /save variant/i });
     expect(screen.queryByLabelText(/Opening stock/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Stock on hand/i)).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByDisplayValue('100.00'), {
       target: { value: '110.00' },
@@ -195,7 +196,7 @@ describe('ProductVariantsPanel', () => {
     );
 
     await screen.findByRole('button', { name: /save variant/i });
-    const priceInput = screen.getByDisplayValue('0');
+    const priceInput = screen.getByLabelText(/Price \(KES\)/i);
     fireEvent.change(priceInput, { target: { value: '' } });
     expect(priceInput).toHaveValue('');
     fireEvent.change(priceInput, { target: { value: '150' } });
@@ -274,7 +275,7 @@ describe('ProductVariantsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /submit for approval/i }));
 
     expect(toast.warning).toHaveBeenCalledWith(
-      'Enter a reason below — price, cost, or status changes need approval.'
+      'Enter a reason below — price, cost, stock, or status changes need approval.'
     );
     expect(variantsAPI.update).not.toHaveBeenCalled();
   });

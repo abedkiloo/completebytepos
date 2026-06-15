@@ -534,7 +534,8 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             if k not in sensitive and k in serializer.initial_data:
                 sensitive[k] = serializer.initial_data.get(k)
         _initial, change_sensitive = split_initial_vs_change_sensitive(instance, sensitive)
-        
+
+        product_pending = None
         try:
             product_pending = queue_product_sensitive_update(request, instance, change_sensitive)
             if product_pending is not None:
@@ -558,8 +559,8 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
         if serializer.validated_data:
             self.perform_update(serializer)
-        elif pending is None:
-            return Response(serializer.data)
+        elif not pending_changes:
+            return Response(self.get_serializer(instance).data)
 
         instance.refresh_from_db()
         data = self.get_serializer(instance).data
