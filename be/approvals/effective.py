@@ -109,10 +109,40 @@ def _collect_stock_caps(qs) -> list[int]:
     return caps
 
 
+def _pending_variant_inventory_movements(variant_id):
+    if not pending_schema_ready():
+        return PendingChange.objects.none()
+    return PendingChange.objects.filter(
+        status=PendingChange.STATUS_PENDING,
+        action_type__in=_PENDING_INVENTORY_STOCK_ACTIONS,
+        apply_payload__variant_id=variant_id,
+    )
+
+
 def _pending_proposed_stock_caps(product_id, variant_id=None) -> list[int]:
     """Proposed stock_quantity values from pending catalog or movement changes."""
     if not is_maker_checker_enabled():
         return []
+    if variant_id is not None:
+        caps = _collect_stock_caps(
+            _pending_for_entity(
+                'products.ProductVariant',
+                variant_id,
+                (ACTION_PRODUCT_STOCK,) + _PENDING_INVENTORY_STOCK_ACTIONS,
+            )
+        )
+        caps.extend(_collect_stock_caps(_pending_variant_inventory_movements(variant_id)))
+        caps.extend(
+            _collect_stock_caps(
+                _pending_for_entity(
+                    'products.Product',
+                    product_id,
+                    (ACTION_PRODUCT_STOCK,),
+                )
+            )
+        )
+        return caps
+
     caps = _collect_stock_caps(
         _pending_for_entity(
             'products.Product',
@@ -120,16 +150,6 @@ def _pending_proposed_stock_caps(product_id, variant_id=None) -> list[int]:
             (ACTION_PRODUCT_STOCK,) + _PENDING_INVENTORY_STOCK_ACTIONS,
         )
     )
-    if variant_id is not None:
-        caps.extend(
-            _collect_stock_caps(
-                _pending_for_entity(
-                    'products.ProductVariant',
-                    variant_id,
-                    (ACTION_PRODUCT_STOCK,),
-                )
-            )
-        )
     return caps
 
 
@@ -166,11 +186,14 @@ def has_pending_variant_stock(variant_id) -> bool:
         return False
 
     return _pending_query_safe(
-        lambda: _pending_for_entity(
-            'products.ProductVariant',
-            variant_id,
-            (ACTION_PRODUCT_STOCK,),
-        ).exists()
+        lambda: (
+            _pending_for_entity(
+                'products.ProductVariant',
+                variant_id,
+                (ACTION_PRODUCT_STOCK,) + _PENDING_INVENTORY_STOCK_ACTIONS,
+            ).exists()
+            or _pending_variant_inventory_movements(variant_id).exists()
+        )
     )
 
 

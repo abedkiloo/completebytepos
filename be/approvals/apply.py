@@ -31,6 +31,9 @@ def apply_pending_change(change: PendingChange) -> None:
         else:
             _apply_product_delete(change)
         return
+    if change.action_type in (ACTION_STOCK_ADJUST, ACTION_STOCK_PURCHASE, ACTION_STOCK_TRANSFER):
+        _apply_stock_movement(change)
+        return
     if change.entity_type == 'products.ProductVariant':
         _apply_variant(change)
         return
@@ -39,9 +42,6 @@ def apply_pending_change(change: PendingChange) -> None:
         return
     if change.entity_type == 'products.Category':
         _apply_category(change)
-        return
-    if change.action_type in (ACTION_STOCK_ADJUST, ACTION_STOCK_PURCHASE, ACTION_STOCK_TRANSFER):
-        _apply_stock_movement(change)
         return
     if change.entity_type == 'settings.StoreSettings':
         _apply_store_settings(change)

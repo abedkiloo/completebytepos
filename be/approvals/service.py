@@ -153,12 +153,21 @@ def validate_before_approval(change: PendingChange, *, extreme_price_confirmed: 
         if qty is not None and int(qty) < 0:
             product_id = payload.get('product_id')
             if product_id:
-                Product = __import__('products.models', fromlist=['Product']).Product
+                Product = __import__('products.models', fromlist=['Product', 'ProductVariant']).Product
+                ProductVariant = __import__(
+                    'products.models', fromlist=['ProductVariant']
+                ).ProductVariant
                 product = Product.objects.get(pk=product_id)
                 if product.track_stock:
                     from products.stock_utils import sellable_stock_quantity
 
-                    after = sellable_stock_quantity(product) + int(qty)
+                    variant = None
+                    variant_id = payload.get('variant_id')
+                    if variant_id:
+                        variant = ProductVariant.objects.filter(
+                            pk=variant_id, product=product
+                        ).first()
+                    after = sellable_stock_quantity(product, variant=variant) + int(qty)
                     if after < 0:
                         raise ValidationError(
                             'Approval would result in negative stock; adjust quantity or reject.'
@@ -374,14 +383,33 @@ def route_stock_movement(
             return None
 
     product_id = apply_payload.get('product_id')
-    Product = __import__('products.models', fromlist=['Product']).Product
+    variant_id = apply_payload.get('variant_id')
+    Product = __import__('products.models', fromlist=['Product', 'ProductVariant']).Product
+    ProductVariant = __import__('products.models', fromlist=['ProductVariant']).ProductVariant
     try:
         product = Product.objects.get(pk=product_id)
     except Product.DoesNotExist:
         from rest_framework.exceptions import ValidationError
 
         raise ValidationError({'product_id': 'Product not found'})
-    original_stock = product.stock_quantity
+
+    entity_type = 'products.Product'
+    entity_id = product.pk
+    entity_repr = str(product)
+    if variant_id:
+        try:
+            variant = ProductVariant.objects.get(pk=variant_id, product=product)
+        except ProductVariant.DoesNotExist:
+            from rest_framework.exceptions import ValidationError
+
+            raise ValidationError({'variant_id': 'Variant not found for this product'})
+        original_stock = variant.stock_quantity
+        entity_type = 'products.ProductVariant'
+        entity_id = variant.pk
+        entity_repr = str(variant)
+    else:
+        original_stock = product.stock_quantity
+
     proposed_stock = original_stock
     qty = int(apply_payload.get('quantity', 0))
     if action_type == ACTION_STOCK_ADJUST:
@@ -394,9 +422,9 @@ def route_stock_movement(
     return submit_change(
         request=request,
         action_type=action_type,
-        entity_type='products.Product',
-        entity_id=product.pk,
-        entity_repr=str(product),
+        entity_type=entity_type,
+        entity_id=entity_id,
+        entity_repr=entity_repr,
         original_values={'stock_quantity': original_stock},
         proposed_values={'stock_quantity': proposed_stock},
         reason=reason,

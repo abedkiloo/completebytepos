@@ -861,6 +861,64 @@ class MakerCheckerVariantTests(ManagerAPITestCase):
             5,
         )
 
+    def test_variant_inventory_adjust_pending_shows_variant_stock_and_applies_on_approve(self):
+        """Variant +/- adjustments must not use parent aggregate stock in approvals."""
+        from products.stock_utils import sync_product_stock_from_variants
+
+        other = ProductVariant.objects.create(
+            product=self.product,
+            size=self.size,
+            color=Color.objects.create(name='Silver', is_active=True),
+            sku='MC-VAR-2',
+            price=Decimal('100'),
+            stock_quantity=10010,
+            is_active=True,
+        )
+        self.variant.stock_quantity = 0
+        self.variant.save(update_fields=['stock_quantity'])
+        sync_product_stock_from_variants(self.product)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 10010)
+
+        resp = self.client.post(
+            '/api/inventory/adjust/',
+            {
+                'product_id': self.product.id,
+                'variant_id': self.variant.id,
+                'quantity': 6000,
+                'notes': 'Update slider',
+                'reason': 'Update slider stock',
+            },
+            format='json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_202_ACCEPTED, resp.data)
+        self.variant.refresh_from_db()
+        self.assertEqual(self.variant.stock_quantity, 0)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 10010)
+
+        pending = PendingChange.objects.get(action_type=ACTION_STOCK_ADJUST)
+        self.assertEqual(pending.entity_type, 'products.ProductVariant')
+        self.assertEqual(pending.entity_id, str(self.variant.id))
+        self.assertEqual(pending.original_values['stock_quantity'], 0)
+        self.assertEqual(pending.proposed_values['stock_quantity'], 6000)
+
+        approve = self._checker_client().post(
+            f'/api/approvals/pending-changes/{pending.id}/approve/',
+            {},
+            format='json',
+        )
+        self.assertEqual(approve.status_code, status.HTTP_200_OK, approve.data)
+        self.variant.refresh_from_db()
+        self.assertEqual(self.variant.stock_quantity, 6000)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 16010)
+        self.assertEqual(
+            approved_sellable_stock_quantity(self.product, self.variant),
+            6000,
+        )
+        self.assertIsNotNone(other)
+
     def test_variant_delete_pending_keeps_row_until_approved(self):
         variant_id = self.variant.id
         resp = self.client.delete(
