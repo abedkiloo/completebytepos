@@ -22,6 +22,7 @@ class NestedVariantsAPITests(TestCase):
         self.category = Category.objects.create(name='API Cat', is_active=True)
         self.size = Size.objects.create(name='Default', code='DEF', is_active=True)
         self.color = Color.objects.create(name='Default', is_active=True)
+        self.alt_color = Color.objects.create(name='Alt', is_active=True)
 
     def test_create_product_with_nested_variants_creates_variants_and_syncs_stock(self):
         payload = {
@@ -84,7 +85,7 @@ class NestedVariantsAPITests(TestCase):
                 },
                 {
                     'size': self.size.id,
-                    'color': self.color.id,
+                    'color': self.alt_color.id,
                     'sku': 'API-VAR-2-DEF-NEW',
                     'stock_quantity': 4,
                     'price': '60.00',

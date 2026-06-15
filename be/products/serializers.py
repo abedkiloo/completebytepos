@@ -14,6 +14,27 @@ def _map_selling_price_fields(data):
     return data
 
 
+def _coerce_boolish(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in ('true', '1', 'yes')
+    return bool(value)
+
+
+def _price_cost_validation_errors(submitted_keys, price, cost):
+    """Return field-keyed errors when selling price is below cost."""
+    detail = (
+        f'Selling price ({price}) must be greater than or equal to cost ({cost}). '
+        'Increase the selling price or reduce the cost.'
+    )
+    cost_changed = 'cost' in submitted_keys
+    price_changed = 'price' in submitted_keys or 'selling_price' in submitted_keys
+    if cost_changed and not price_changed:
+        return {'cost': detail}
+    return {'price': detail, 'selling_price': detail}
+
+
 def _apply_product_financial_defaults(data, *, instance=None):
     """
     ``Product.price`` is NOT NULL — default omitted values on create.
@@ -72,8 +93,79 @@ class UnitOfMeasureSerializer(serializers.ModelSerializer):
         return create_unit(validated_data['code'], validated_data['label'])
 
 
+class ProductVariantListSerializer(serializers.ListSerializer):
+    """Allow partial nested variant dicts (by id) on product create/update."""
+
+    def to_internal_value(self, data):
+        if not isinstance(data, list):
+            raise serializers.ValidationError('Expected a list of variant objects.')
+
+        ret = []
+        errors = []
+        for item in data:
+            if not isinstance(item, dict):
+                errors.append('Each variant entry must be an object.')
+                continue
+            instance = None
+            variant_id = item.get('id')
+            if variant_id:
+                try:
+                    instance = ProductVariant.objects.get(pk=int(variant_id))
+                except (ProductVariant.DoesNotExist, ValueError, TypeError):
+                    instance = None
+            child = ProductVariantSerializer(
+                instance=instance,
+                data=item,
+                partial=instance is not None,
+                context=self.context,
+            )
+            try:
+                ret.append(child.run_validation(item))
+            except serializers.ValidationError as exc:
+                errors.append(exc.detail)
+
+        if errors:
+            raise serializers.ValidationError(errors)
+        return ret
+
+
+def _validate_nested_variant_writes(data, context):
+    """Accept nested variant dicts on product writes; validated when saved."""
+    if data is None:
+        return None
+    if not isinstance(data, list):
+        raise serializers.ValidationError('Expected a list of variant objects.')
+
+    cleaned = []
+    for item in data:
+        if not isinstance(item, dict):
+            raise serializers.ValidationError('Each variant entry must be an object.')
+        cleaned.append(dict(item))
+    return cleaned
+
+
+class ProductVariantsField(serializers.Field):
+    """Read nested variants; validate writes without requiring parent product on each row."""
+
+    def get_attribute(self, instance):
+        return instance.variants.all()
+
+    def to_representation(self, value):
+        if value is None:
+            return []
+        return ProductVariantSerializer(value, many=True, context=self.context).data
+
+    def to_internal_value(self, data):
+        return _validate_nested_variant_writes(data, self.context)
+
+
 class ProductVariantSerializer(serializers.ModelSerializer):
     """Serializer for ProductVariant model"""
+    product = serializers.PrimaryKeyRelatedField(
+        queryset=Product.objects.all(),
+        required=False,
+        allow_null=True,
+    )
     size_name = serializers.CharField(source='size.name', read_only=True)
     size_code = serializers.CharField(source='size.code', read_only=True)
     color_name = serializers.CharField(source='color.name', read_only=True)
@@ -88,6 +180,7 @@ class ProductVariantSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = ProductVariant
+        list_serializer_class = ProductVariantListSerializer
         fields = [
             'id', 'product', 'size', 'size_name', 'size_code',
             'color', 'color_name', 'color_hex',
@@ -106,7 +199,47 @@ class ProductVariantSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'sku': {'required': False, 'allow_blank': True},
             'price': {'required': False, 'allow_null': True},
+            'product': {'required': False},
+            'size': {'required': False},
+            'color': {'required': False},
         }
+
+    def _variant_display_label(self):
+        if self.instance is None:
+            return 'variant'
+        parts = []
+        if getattr(self.instance.size, 'name', None):
+            parts.append(self.instance.size.name)
+        if getattr(self.instance.color, 'name', None):
+            parts.append(self.instance.color.name)
+        if parts:
+            return ' / '.join(parts)
+        return self.instance.sku or 'variant'
+
+    def validate(self, data):
+        price = data.get('price')
+        if price is None and self.instance is not None:
+            price = self.instance.price
+        cost = data.get('cost')
+        if cost is None and self.instance is not None:
+            cost = self.instance.cost
+        if price is not None and cost is not None and price < cost:
+            submitted = set(getattr(self, 'initial_data', {}) or {})
+            cost_changed = 'cost' in submitted
+            price_changed = 'price' in submitted or 'selling_price' in submitted
+            detail = (
+                f'Selling price ({price}) must be greater than or equal to cost ({cost}). '
+                'Increase the selling price or reduce the cost.'
+            )
+            if cost_changed and not price_changed:
+                raise serializers.ValidationError({'cost': detail})
+            label = self._variant_display_label()
+            raise serializers.ValidationError({
+                'price': (
+                    f'{detail} (variant {label}).'
+                ),
+            })
+        return data
 
     def to_internal_value(self, data):
         return super().to_internal_value(_map_selling_price_fields(data))
@@ -118,7 +251,10 @@ class ProductVariantSerializer(serializers.ModelSerializer):
         return apply_approved_variant_overlay(instance, data)
 
     def create(self, validated_data):
-        variant = super().create(validated_data)
+        product = validated_data.pop('product', None) or self.context.get('parent_product')
+        if product is None:
+            raise serializers.ValidationError({'product': 'Product is required.'})
+        variant = super().create({**validated_data, 'product': product})
         # Ensure parent product stock and cost stay in sync when variants change
         try:
             from products.stock_utils import sync_product_stock_from_variants, sync_product_cost_from_variants
@@ -298,7 +434,7 @@ class ProductSerializer(serializers.ModelSerializer):
     subcategory_detail = serializers.SerializerMethodField()
     available_sizes_detail = SizeSerializer(source='available_sizes', many=True, read_only=True)
     available_colors_detail = ColorSerializer(source='available_colors', many=True, read_only=True)
-    variants = ProductVariantSerializer(many=True, required=False)
+    variants = ProductVariantsField(required=False)
     is_low_stock = serializers.BooleanField(read_only=True)
     profit_margin = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
     profit_amount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
@@ -515,15 +651,23 @@ class ProductSerializer(serializers.ModelSerializer):
         cost = data.get('cost')
         if cost is None and self.instance is not None:
             cost = self.instance.cost
+
+        has_variants = data.get('has_variants')
+        if has_variants is None and self.instance is not None:
+            has_variants = self.instance.has_variants
+        has_variants = _coerce_boolish(has_variants)
+
         if (
-            not catalog_skip
+            not has_variants
+            and not catalog_skip
             and price is not None
             and cost is not None
             and price < cost
         ):
-            raise serializers.ValidationError({
-                'price': 'Selling price should be greater than or equal to cost price.'
-            })
+            submitted = set(getattr(self, 'initial_data', {}) or {})
+            raise serializers.ValidationError(
+                _price_cost_validation_errors(submitted, price, cost)
+            )
         mrp = data.get('mrp')
         if mrp is None and self.instance is not None:
             mrp = self.instance.mrp
@@ -633,7 +777,7 @@ class ProductSerializer(serializers.ModelSerializer):
         # Prevent editing parent-level stock fields directly when this product
         # has variants. Stock for variant products is derived from variants
         # and must be updated via variant-level movements or variant edits.
-        if instance and instance.has_variants:
+        if validated_data.get('has_variants'):
             for _f in ('stock_quantity', 'low_stock_threshold', 'reorder_quantity'):
                 validated_data.pop(_f, None)
         
@@ -703,9 +847,26 @@ class ProductSerializer(serializers.ModelSerializer):
                 # Create nested variants if provided
                 if variants_payload:
                     for v in variants_payload:
-                        serializer = ProductVariantSerializer(data=v, context=self.context)
-                        serializer.is_valid(raise_exception=True)
-                        serializer.save(product=product)
+                        vid = v.get('id')
+                        if vid:
+                            try:
+                                variant_obj = ProductVariant.objects.get(pk=int(vid))
+                                ser = ProductVariantSerializer(
+                                    instance=variant_obj,
+                                    data=v,
+                                    partial=True,
+                                    context=self.context,
+                                )
+                                ser.is_valid(raise_exception=True)
+                                ser.save()
+                                continue
+                            except (ProductVariant.DoesNotExist, ValueError, TypeError):
+                                pass
+                        v_data = dict(v)
+                        v_data.setdefault('product', product.pk)
+                        ser = ProductVariantSerializer(data=v_data, context=self.context)
+                        ser.is_valid(raise_exception=True)
+                        ser.save()
                 # After creating variants, sync parent stock and cost
                 try:
                     from products.stock_utils import sync_product_stock_from_variants, sync_product_cost_from_variants
@@ -840,23 +1001,27 @@ class ProductSerializer(serializers.ModelSerializer):
 
             with transaction.atomic():
                 for v in variants_payload:
-                    if 'id' in v and v.get('id'):
+                    vid = v.get('id') if isinstance(v, dict) else None
+                    if vid:
                         try:
-                            variant_obj = ProductVariant.objects.get(id=int(v.get('id')))
-                        except (ProductVariant.DoesNotExist, ValueError, TypeError):
-                            variant_obj = None
-                        if variant_obj:
-                            ser = ProductVariantSerializer(instance=variant_obj, data=v, partial=True, context=self.context)
+                            variant_obj = ProductVariant.objects.get(pk=int(vid))
+                            ser = ProductVariantSerializer(
+                                instance=variant_obj,
+                                data=v,
+                                partial=True,
+                                context=self.context,
+                            )
                             ser.is_valid(raise_exception=True)
                             ser.save()
-                        else:
-                            ser = ProductVariantSerializer(data=v, context=self.context)
-                            ser.is_valid(raise_exception=True)
-                            ser.save(product=instance)
-                        else:
-                            ser = ProductVariantSerializer(data=v, context=self.context)
-                            ser.is_valid(raise_exception=True)
-                            ser.save(product=instance)
+                            continue
+                        except (ProductVariant.DoesNotExist, ValueError, TypeError):
+                            variant_obj = None
+                    ser = ProductVariantSerializer(
+                        data={**dict(v), 'product': instance.pk},
+                        context=self.context,
+                    )
+                    ser.is_valid(raise_exception=True)
+                    ser.save()
             # After processing nested variants, ensure cost is synced
             try:
                 from products.stock_utils import sync_product_cost_from_variants

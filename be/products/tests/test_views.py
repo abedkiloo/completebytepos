@@ -334,6 +334,57 @@ class ProductViewSetTestCase(APITestCase):
         self.test_product.refresh_from_db()
         self.assertNotEqual(self.test_product.stock_quantity, 99)
 
+    def test_patch_variant_product_skips_parent_price_cost_validation(self):
+        """Parent price/cost on variant products are derived; edits must not block saves."""
+        disable_maker_checker()
+        token = self.get_auth_token(self.superuser)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+        product = Product.objects.create(
+            name='Bottled Water',
+            sku='WATER-500',
+            category=self.main_category,
+            price=Decimal('10.00'),
+            cost=Decimal('80.00'),
+            has_variants=True,
+            track_stock=True,
+            stock_quantity=0,
+            is_active=True,
+        )
+        ProductVariant.objects.create(
+            product=product,
+            size=self.size_small,
+            color=self.color_red,
+            sku='WATER-S-R',
+            price=Decimal('100.00'),
+            cost=Decimal('50.00'),
+            stock_quantity=5,
+            is_active=True,
+        )
+
+        response = self.client.patch(
+            f'/api/products/{product.id}/',
+            {'name': 'Bottled Water 500ml', 'has_variants': True},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+    def test_patch_cost_above_selling_price_returns_cost_field_error(self):
+        """When only cost rises above selling price, error targets cost with amounts."""
+        disable_maker_checker()
+        token = self.get_auth_token(self.superuser)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+        response = self.client.patch(
+            f'/api/products/{self.test_product.id}/',
+            {'cost': '150.00'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('cost', response.data)
+        self.assertIn('150', str(response.data['cost']))
+        self.assertIn('100', str(response.data['cost']))
+
     def test_create_without_price_defaults_to_zero(self):
         """Variant catalog and quick-add flows may omit price on create."""
         token = self.get_auth_token(self.superuser)

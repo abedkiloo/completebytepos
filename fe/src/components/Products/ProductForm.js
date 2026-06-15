@@ -470,7 +470,9 @@ const ProductForm = ({
         showCostField &&
         parseFloat(formData.selling_price) < parseFloat(formData.cost || 0)
       ) {
-        newErrors.selling_price = 'Selling price should be greater than or equal to cost';
+        const selling = parseFloat(formData.selling_price) || 0;
+        const cost = parseFloat(formData.cost) || 0;
+        newErrors.cost = `Cost (${cost}) cannot be higher than selling price (${selling}). Increase selling price or lower cost.`;
       }
     }
 
@@ -685,11 +687,24 @@ const ProductForm = ({
       }, 200);
     } catch (error) {
       if (error.response?.data) {
-        setErrors(error.response.data);
+        const raw = error.response.data;
+        const mapped = {};
+        Object.entries(raw).forEach(([key, val]) => {
+          const msg = Array.isArray(val) ? val.join(' ') : String(val);
+          if (key === 'price') {
+            mapped.selling_price = msg;
+          } else {
+            mapped[key] = msg;
+          }
+        });
+        setErrors(mapped);
         const errorMessage =
-          extractApiReasonError(error.response.data) ||
-          error.response.data.error ||
-          Object.values(error.response.data).flat().join(', ') ||
+          extractApiReasonError(raw) ||
+          raw.error ||
+          mapped.cost ||
+          mapped.selling_price ||
+          mapped.price ||
+          Object.values(mapped).join(', ') ||
           'Failed to save product';
         toast.error(errorMessage);
       } else {
