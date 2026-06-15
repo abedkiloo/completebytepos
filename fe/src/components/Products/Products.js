@@ -123,7 +123,7 @@ const Products = () => {
   const [deleteReason, setDeleteReason] = useState('');
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [stockCountProduct, setStockCountProduct] = useState(null);
+  const [stockCountContext, setStockCountContext] = useState(null);
   const [viewProductId, setViewProductId] = useState(null);
 
   // --- CSV import file input ---
@@ -687,7 +687,7 @@ const Products = () => {
                         onDelete={() => setConfirmDelete(product.id)}
                         onSetStock={
                           canSetStock && product.track_stock
-                            ? () => setStockCountProduct(product)
+                            ? () => setStockCountContext({ product, variant: null })
                             : undefined
                         }
                         catalogOnly={catalogOnly}
@@ -710,7 +710,7 @@ const Products = () => {
                           onEdit={() => openEdit(product)}
                           onSetStock={
                             canSetStock && product.track_stock
-                              ? () => setStockCountProduct(product)
+                              ? (variantRow) => setStockCountContext({ product, variant: variantRow })
                               : undefined
                           }
                         />
@@ -725,12 +725,13 @@ const Products = () => {
         </ListPaginationRail>
 
       {/* --- Form modal (legacy, untouched) --- */}
-      {stockCountProduct && (
+      {stockCountContext && (
         <StockCountModal
-          product={stockCountProduct}
-          onClose={() => setStockCountProduct(null)}
+          product={stockCountContext.product}
+          variant={stockCountContext.variant}
+          onClose={() => setStockCountContext(null)}
           onSave={() => {
-            setStockCountProduct(null);
+            setStockCountContext(null);
             loadProducts();
             loadStatistics();
           }}
@@ -748,7 +749,7 @@ const Products = () => {
             canSetStock
               ? (fullProduct) => {
                   setViewProductId(null);
-                  setStockCountProduct(fullProduct);
+                  setStockCountContext({ product: fullProduct, variant: null });
                 }
               : undefined
           }
@@ -1335,7 +1336,7 @@ function VariantRows({
         {onSetStock ? (
           <button
             type="button"
-            onClick={onSetStock}
+            onClick={() => onSetStock(v)}
             className="rounded px-1 py-0.5 font-semibold tabular-nums hover:bg-muted/80"
             title={`Set ${STOCK_ON_HAND_LABEL.toLowerCase()}`}
           >
@@ -1362,7 +1363,7 @@ function VariantRows({
             </Button>
           ) : null}
           {onSetStock ? (
-            <Button variant="ghost" size="sm" onClick={onSetStock} aria-label="Set stock on hand">
+            <Button variant="ghost" size="sm" onClick={() => onSetStock(v)} aria-label="Set stock on hand">
               <ClipboardList className="h-3.5 w-3.5" />
             </Button>
           ) : null}

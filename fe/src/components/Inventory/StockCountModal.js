@@ -23,7 +23,7 @@ import {
   STOCK_ON_HAND_LABEL,
 } from '../../utils/productDisplay';
 
-const StockCountModal = ({ product, onClose, onSave, nested = false }) => {
+const StockCountModal = ({ product, variant = null, onClose, onSave, nested = false }) => {
   const [formData, setFormData] = useState({
     product_id: product?.id || '',
     stock_quantity: '',
@@ -45,6 +45,7 @@ const StockCountModal = ({ product, onClose, onSave, nested = false }) => {
 
   const contextProductId = pickedProduct?.id || formData.product_id || null;
   const variantMode = Boolean(pickedProduct?.has_variants);
+  const singleVariantMode = Boolean(variantMode && variant?.id);
 
   useEffect(() => {
     if (!product) {
@@ -64,8 +65,14 @@ const StockCountModal = ({ product, onClose, onSave, nested = false }) => {
       setVariantCounts({});
       return;
     }
+    if (singleVariantMode) {
+      setVariants([variant]);
+      setVariantCounts({ [variant.id]: String(variant.stock_quantity ?? 0) });
+      setVariantsLoading(false);
+      return;
+    }
     loadVariants(contextProductId);
-  }, [contextProductId, variantMode]);
+  }, [contextProductId, variantMode, singleVariantMode, variant]);
 
   useEffect(() => {
     if (!variantMode && pickedProduct && !product) {
@@ -264,7 +271,9 @@ const StockCountModal = ({ product, onClose, onSave, nested = false }) => {
               <p className="mb-3 text-sm text-muted-foreground">
                 <span className="font-medium text-foreground">{pickedProduct.name}</span>
                 {variantMode
-                  ? ` — enter the counted ${STOCK_ON_HAND_LABEL.toLowerCase()} for each variant.`
+                  ? singleVariantMode
+                    ? ` — enter the counted ${STOCK_ON_HAND_LABEL.toLowerCase()} for ${variantDisplayLabel(variant)}.`
+                    : ` — enter the counted ${STOCK_ON_HAND_LABEL.toLowerCase()} for each variant.`
                   : ` — enter the counted ${STOCK_ON_HAND_LABEL.toLowerCase()}.`}
               </p>
             ) : null}
@@ -288,7 +297,9 @@ const StockCountModal = ({ product, onClose, onSave, nested = false }) => {
 
             {variantMode ? (
               <div className="form-group space-y-3">
-                <label>{STOCK_ON_HAND_LABEL} by variant *</label>
+                <label>
+                  {singleVariantMode ? STOCK_ON_HAND_LABEL : `${STOCK_ON_HAND_LABEL} by variant`} *
+                </label>
                 {variantsLoading ? (
                   <p className="text-sm text-muted-foreground">Loading variants…</p>
                 ) : variants.length === 0 ? (
