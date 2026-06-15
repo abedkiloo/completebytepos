@@ -2,8 +2,58 @@ import {
   buildVariantDraftPatchPayload,
   buildVariantPatchPayload,
   buildVariantUpdatePayload,
+  editableNumericString,
+  isValidOptionalDecimal,
+  isValidOptionalInteger,
+  isValidStockAdjustmentQuantity,
+  variantDraftNumericValidationMessage,
   variantFinancialValidationMessage,
 } from './variantPayload';
+
+describe('editableNumericString', () => {
+  test('returns empty string for nullish values', () => {
+    expect(editableNumericString(null)).toBe('');
+    expect(editableNumericString(undefined)).toBe('');
+    expect(editableNumericString('')).toBe('');
+  });
+
+  test('stringifies numbers including zero', () => {
+    expect(editableNumericString(0)).toBe('0');
+    expect(editableNumericString('120.50')).toBe('120.50');
+  });
+});
+
+describe('numeric field validators', () => {
+  test('isValidOptionalDecimal allows empty and rejects junk', () => {
+    expect(isValidOptionalDecimal('')).toBe(true);
+    expect(isValidOptionalDecimal('12.50')).toBe(true);
+    expect(isValidOptionalDecimal('abc')).toBe(false);
+    expect(isValidOptionalDecimal('12.5.1')).toBe(false);
+  });
+
+  test('isValidOptionalInteger allows empty and rejects junk', () => {
+    expect(isValidOptionalInteger('')).toBe(true);
+    expect(isValidOptionalInteger('45')).toBe(true);
+    expect(isValidOptionalInteger('4.5')).toBe(false);
+    expect(isValidOptionalInteger('x')).toBe(false);
+  });
+
+  test('isValidStockAdjustmentQuantity allows signed integers only', () => {
+    expect(isValidStockAdjustmentQuantity('')).toBe(true);
+    expect(isValidStockAdjustmentQuantity('-12')).toBe(true);
+    expect(isValidStockAdjustmentQuantity('12.5')).toBe(false);
+    expect(isValidStockAdjustmentQuantity('abc')).toBe(false);
+  });
+
+  test('variantDraftNumericValidationMessage flags invalid price', () => {
+    expect(
+      variantDraftNumericValidationMessage(
+        { price: 'ten' },
+        { label: 'Large / Blue' }
+      )
+    ).toBe('Enter a valid number for price on variant Large / Blue.');
+  });
+});
 
 describe('buildVariantUpdatePayload', () => {
   const variant = {

@@ -20,7 +20,7 @@ import {
   pendingApprovalToastMessage,
   variantEditNeedsReason,
 } from '../../utils/makerChecker';
-import { buildVariantPatchPayload, variantFinancialValidationMessage } from '../../utils/variantPayload';
+import { buildVariantPatchPayload, editableNumericString, variantDraftNumericValidationMessage, variantFinancialValidationMessage } from '../../utils/variantPayload';
 import VariantDraftSummary from './VariantDraftSummary';
 
 export default function ProductVariantsPanel({
@@ -97,9 +97,10 @@ export default function ProductVariantsPanel({
       variants.forEach((v) => {
         const key = variantCombinationKey(v);
         next[key] = {
-          price: v.price ?? v.selling_price ?? '',
-          mrp: v.mrp ?? '',
-          cost: v.cost ?? '',
+          price: editableNumericString(v.price ?? v.selling_price),
+          mrp: editableNumericString(v.mrp),
+          cost: editableNumericString(v.cost),
+          stock_quantity: editableNumericString(v.stock_quantity),
           is_active: v.is_active !== false,
         };
       });
@@ -190,6 +191,16 @@ export default function ProductVariantsPanel({
     if (!draft) return;
 
     const rowLabel = combinationRowLabel(row);
+    const numericError = variantDraftNumericValidationMessage(draft, {
+      label: rowLabel,
+      canEditMrp,
+      canEditCost,
+      allowStockInput,
+    });
+    if (numericError) {
+      toast.warning(numericError);
+      return;
+    }
     const financialError = variantFinancialValidationMessage(draft, {
       label: rowLabel,
       canEditMrp,
@@ -346,11 +357,10 @@ export default function ProductVariantsPanel({
                     <div className="w-[6.75rem] shrink-0">
                       <label className="text-xs text-muted-foreground">MRP (KES)</label>
                       <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
+                        type="text"
+                        inputMode="decimal"
                         className="h-9"
-                        value={draft.mrp ?? ''}
+                        value={editableNumericString(draft.mrp)}
                         onChange={(e) => updateEdit(row.key, 'mrp', e.target.value)}
                         placeholder="List price"
                       />
@@ -360,11 +370,10 @@ export default function ProductVariantsPanel({
                     <div className="w-[6.75rem] shrink-0">
                       <label className="text-xs text-muted-foreground">Price (KES)</label>
                       <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
+                        type="text"
+                        inputMode="decimal"
                         className="h-9"
-                        value={draft.price ?? ''}
+                        value={editableNumericString(draft.price)}
                         onChange={(e) => updateEdit(row.key, 'price', e.target.value)}
                       />
                     </div>
@@ -373,11 +382,10 @@ export default function ProductVariantsPanel({
                     <div className="w-[6.75rem] shrink-0">
                       <label className="text-xs text-muted-foreground">Cost (KES)</label>
                       <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
+                        type="text"
+                        inputMode="decimal"
                         className="h-9"
-                        value={draft.cost ?? ''}
+                        value={editableNumericString(draft.cost)}
                         onChange={(e) => updateEdit(row.key, 'cost', e.target.value)}
                       />
                     </div>
@@ -386,10 +394,10 @@ export default function ProductVariantsPanel({
                     <div className="w-[5rem] shrink-0">
                       <label className="text-xs text-muted-foreground">Opening stock</label>
                       <Input
-                        type="number"
-                        min="0"
+                        type="text"
+                        inputMode="numeric"
                         className="h-9"
-                        value={draft.stock_quantity ?? ''}
+                        value={editableNumericString(draft.stock_quantity)}
                         onChange={(e) => updateEdit(row.key, 'stock_quantity', e.target.value)}
                       />
                     </div>

@@ -20,7 +20,13 @@ import VariantDraftSummary from './VariantDraftSummary';
 import {
   combinationsPayloadFromKeys,
   unionSizeColorIdsFromKeys,
+  buildRowFromKey,
+  combinationRowLabel,
 } from '../../utils/variantCombinations';
+import {
+  variantDraftNumericValidationMessage,
+  variantFinancialValidationMessage,
+} from '../../utils/variantPayload';
 import {
   extractApiReasonError,
   extractPendingChange,
@@ -498,6 +504,33 @@ const ProductForm = ({
     if (variantsEnabled && formData.has_variants && variantCombinationKeys.length === 0) {
       toast.warning('Add at least one variant combination (size and/or color) before saving.');
       return;
+    }
+
+    if (variantsEnabled && formData.has_variants) {
+      for (const key of variantCombinationKeys) {
+        const draft = variantDraftsRef.current[key];
+        if (!draft) continue;
+        const row = buildRowFromKey(key, [], sizes, colors);
+        const label = combinationRowLabel(row);
+        const numericError = variantDraftNumericValidationMessage(draft, {
+          label,
+          canEditMrp: showMrp && showPricingFields,
+          canEditCost: showCostField,
+          allowStockInput: showStockFields && !product,
+        });
+        if (numericError) {
+          toast.warning(numericError);
+          return;
+        }
+        const financialError = variantFinancialValidationMessage(draft, {
+          label,
+          canEditMrp: showMrp && showPricingFields,
+        });
+        if (financialError) {
+          toast.warning(financialError);
+          return;
+        }
+      }
     }
 
     setLoading(true);

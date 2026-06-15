@@ -16,6 +16,7 @@ import {
   isPendingApprovalResponse,
   PENDING_APPROVAL_MESSAGE,
 } from '../../utils/makerChecker';
+import { isValidStockAdjustmentQuantity } from '../../utils/variantPayload';
 
 const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
   const [formData, setFormData] = useState({
@@ -81,7 +82,7 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
       setVariants(list);
       const next = {};
       list.forEach((v) => {
-        next[v.id] = 0;
+        next[v.id] = '';
       });
       setVariantAdjustments(next);
     } catch {
@@ -118,7 +119,7 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
   const updateVariantAdjustment = (variantId, value) => {
     setVariantAdjustments((prev) => ({
       ...prev,
-      [variantId]: parseInt(value, 10) || 0,
+      [variantId]: value,
     }));
   };
 
@@ -171,12 +172,28 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
 
       let lines = [];
       if (variantMode) {
+        for (const v of variants) {
+          const raw = variantAdjustments[v.id];
+          if (raw === '' || raw === undefined || raw === null) continue;
+          if (!isValidStockAdjustmentQuantity(raw)) {
+            setError(
+              `Enter a valid whole number for ${variantDisplayLabel(v)} (digits only, + or -).`
+            );
+            setLoading(false);
+            return;
+          }
+        }
         lines = variants
-          .filter((v) => (variantAdjustments[v.id] || 0) !== 0)
+          .filter((v) => {
+            const raw = variantAdjustments[v.id];
+            if (raw === '' || raw === undefined || raw === null) return false;
+            const qty = parseInt(raw, 10);
+            return !Number.isNaN(qty) && qty !== 0;
+          })
           .map((v) => ({
             product_id: productId,
             variant_id: v.id,
-            quantity: variantAdjustments[v.id],
+            quantity: parseInt(variantAdjustments[v.id], 10),
           }));
         if (!lines.length) {
           setError('Enter an adjustment for at least one variant.');
@@ -285,9 +302,10 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
                         </div>
                         <span className="shrink-0 text-xs text-muted-foreground">+ / −</span>
                         <Input
-                          type="number"
+                          type="text"
+                          inputMode="numeric"
                           className="h-9 w-24 shrink-0"
-                          value={variantAdjustments[variant.id] ?? 0}
+                          value={variantAdjustments[variant.id] ?? ''}
                           onChange={(e) => updateVariantAdjustment(variant.id, e.target.value)}
                           placeholder="0"
                         />

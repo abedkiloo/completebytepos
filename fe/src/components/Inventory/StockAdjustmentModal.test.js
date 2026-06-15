@@ -57,7 +57,7 @@ describe('StockAdjustmentModal', () => {
     await screen.findByText(/Large/);
     expect(screen.getByText(/Medium/)).toBeInTheDocument();
     expect(screen.queryByLabelText(/Product \*/i)).not.toBeInTheDocument();
-    expect(screen.getAllByRole('spinbutton').length).toBe(2);
+    expect(screen.getAllByPlaceholderText('0').length).toBe(2);
   });
 
   test('requires reason when maker-checker is on', async () => {
@@ -68,11 +68,24 @@ describe('StockAdjustmentModal', () => {
     render(<StockAdjustmentModal product={variantProduct} onClose={jest.fn()} onSave={jest.fn()} />);
     await screen.findByText(/Large/);
 
-    const inputs = screen.getAllByRole('spinbutton');
+    const inputs = screen.getAllByPlaceholderText('0');
     fireEvent.change(inputs[0], { target: { value: '3' } });
     fireEvent.click(screen.getByRole('button', { name: /submit for approval/i }));
 
     expect(screen.getByText('A reason is required for stock changes.')).toBeInTheDocument();
+    expect(inventoryAPI.adjust).not.toHaveBeenCalled();
+  });
+
+  test('variant mode rejects non-numeric adjustment', async () => {
+    render(<StockAdjustmentModal product={variantProduct} onClose={jest.fn()} onSave={jest.fn()} />);
+    await screen.findByText(/Large/);
+
+    fireEvent.change(screen.getAllByPlaceholderText('0')[0], { target: { value: 'abc' } });
+    fireEvent.click(screen.getByRole('button', { name: /adjust stock/i }));
+
+    expect(
+      screen.getByText(/Enter a valid whole number for Large \/ Blue/i)
+    ).toBeInTheDocument();
     expect(inventoryAPI.adjust).not.toHaveBeenCalled();
   });
 
@@ -91,7 +104,7 @@ describe('StockAdjustmentModal', () => {
     render(<StockAdjustmentModal product={variantProduct} onClose={jest.fn()} onSave={onSave} />);
     await screen.findByText(/Large/);
 
-    const inputs = screen.getAllByRole('spinbutton');
+    const inputs = screen.getAllByPlaceholderText('0');
     fireEvent.change(inputs[0], { target: { value: '2' } });
     fireEvent.change(inputs[1], { target: { value: '-1' } });
     fireEvent.click(screen.getByRole('button', { name: /adjust stock/i }));
@@ -112,7 +125,7 @@ describe('StockAdjustmentModal', () => {
     render(<StockAdjustmentModal product={variantProduct} onClose={jest.fn()} onSave={jest.fn()} />);
     await screen.findByText(/Large/);
 
-    fireEvent.change(screen.getAllByRole('spinbutton')[0], { target: { value: '5' } });
+    fireEvent.change(screen.getAllByPlaceholderText('0')[0], { target: { value: '5' } });
     fireEvent.click(screen.getByRole('button', { name: /adjust stock/i }));
 
     await waitFor(() => {

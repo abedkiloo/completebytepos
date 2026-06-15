@@ -68,7 +68,7 @@ describe('ProductVariantsPanel', () => {
       is_active: true,
     });
     expect(screen.getByPlaceholderText('List price')).toBeInTheDocument();
-    expect(screen.getAllByRole('spinbutton').length).toBeGreaterThanOrEqual(3);
+    expect(screen.getAllByRole('textbox').length).toBeGreaterThanOrEqual(3);
   });
 
   test('edit mode hides stock input and strips stock from patch', async () => {
@@ -161,6 +161,81 @@ describe('ProductVariantsPanel', () => {
 
     expect(toast.warning).toHaveBeenCalledWith(
       'MRP should be at least the selling price for variant Large / Blue.'
+    );
+    expect(variantsAPI.update).not.toHaveBeenCalled();
+  });
+
+  test('allows clearing zero price to type a new value', async () => {
+    variantsAPI.getByProduct.mockResolvedValue({
+      data: {
+        results: [
+          {
+            id: 42,
+            product: 5,
+            size: 1,
+            color: 10,
+            sku: 'SKU-1',
+            price: 0,
+            mrp: 0,
+            cost: 0,
+            stock_quantity: 0,
+            is_active: true,
+          },
+        ],
+      },
+    });
+
+    render(
+      <ProductVariantsPanel
+        productId={5}
+        sizes={sizes}
+        colors={colors}
+        canEditPrice
+      />
+    );
+
+    await screen.findByRole('button', { name: /save variant/i });
+    const priceInput = screen.getByDisplayValue('0');
+    fireEvent.change(priceInput, { target: { value: '' } });
+    expect(priceInput).toHaveValue('');
+    fireEvent.change(priceInput, { target: { value: '150' } });
+    expect(priceInput).toHaveValue('150');
+  });
+
+  test('blocks save when price is not numeric', async () => {
+    variantsAPI.getByProduct.mockResolvedValue({
+      data: {
+        results: [
+          {
+            id: 42,
+            product: 5,
+            size: 1,
+            color: 10,
+            sku: 'SKU-1',
+            price: '100.00',
+            is_active: true,
+          },
+        ],
+      },
+    });
+
+    render(
+      <ProductVariantsPanel
+        productId={5}
+        sizes={sizes}
+        colors={colors}
+        canEditPrice
+      />
+    );
+
+    await screen.findByRole('button', { name: /save variant/i });
+    fireEvent.change(screen.getByDisplayValue('100.00'), {
+      target: { value: 'abc' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /submit for approval/i }));
+
+    expect(toast.warning).toHaveBeenCalledWith(
+      'Enter a valid number for price on variant Large / Blue.'
     );
     expect(variantsAPI.update).not.toHaveBeenCalled();
   });

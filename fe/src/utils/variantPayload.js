@@ -1,3 +1,75 @@
+/** Value for controlled numeric text inputs — allows clearing while editing. */
+export function editableNumericString(value) {
+  if (value === '' || value === null || value === undefined) {
+    return '';
+  }
+  return String(value);
+}
+
+function trimmedNumericInput(value) {
+  if (value === null || value === undefined) return '';
+  return String(value).trim();
+}
+
+/** Empty is allowed while editing; non-empty must be a non-negative decimal. */
+export function isValidOptionalDecimal(value) {
+  const s = trimmedNumericInput(value);
+  if (!s) return true;
+  if (!/^\d+(\.\d+)?$/.test(s)) return false;
+  const n = parseFloat(s);
+  return Number.isFinite(n) && n >= 0;
+}
+
+/** Empty is allowed while editing; non-empty must be a whole number. */
+export function isValidOptionalInteger(value, { allowNegative = false } = {}) {
+  const s = trimmedNumericInput(value);
+  if (!s) return true;
+  const re = allowNegative ? /^-?\d+$/ : /^\d+$/;
+  if (!re.test(s)) return false;
+  return Number.isFinite(parseInt(s, 10));
+}
+
+/** Empty means skip; non-empty must be a signed whole-number adjustment. */
+export function isValidStockAdjustmentQuantity(value) {
+  const s = trimmedNumericInput(value);
+  if (!s) return true;
+  if (!/^-?\d+$/.test(s)) return false;
+  return Number.isFinite(parseInt(s, 10));
+}
+
+/**
+ * Block save/submit when variant draft fields contain non-numeric text.
+ * @returns {string|null} Error message, or null when valid.
+ */
+export function variantDraftNumericValidationMessage(
+  draft,
+  {
+    label = 'this variant',
+    canEditMrp = false,
+    canEditCost = false,
+    allowStockInput = false,
+  } = {}
+) {
+  if (draft.price !== undefined && draft.price !== '' && !isValidOptionalDecimal(draft.price)) {
+    return `Enter a valid number for price on variant ${label}.`;
+  }
+  if (canEditMrp && draft.mrp !== undefined && draft.mrp !== '' && !isValidOptionalDecimal(draft.mrp)) {
+    return `Enter a valid number for MRP on variant ${label}.`;
+  }
+  if (canEditCost && draft.cost !== undefined && draft.cost !== '' && !isValidOptionalDecimal(draft.cost)) {
+    return `Enter a valid number for cost on variant ${label}.`;
+  }
+  if (
+    allowStockInput &&
+    draft.stock_quantity !== undefined &&
+    draft.stock_quantity !== '' &&
+    !isValidOptionalInteger(draft.stock_quantity)
+  ) {
+    return `Enter a valid whole number for opening stock on variant ${label}.`;
+  }
+  return null;
+}
+
 /** Full variant body for PUT — prefer ``buildVariantPatchPayload`` for edits. */
 export function buildVariantUpdatePayload(variant, draft) {
   const price = draft.price === '' ? null : draft.price;
