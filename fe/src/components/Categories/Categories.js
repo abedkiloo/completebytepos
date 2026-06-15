@@ -39,7 +39,7 @@ import {
   DataTableRow,
   DataTableCell,
   ActiveStatusBadge,
-  ListPagination,
+  ListPaginationRail,
 } from '../page';
 
 const FILTER_OPTIONS = [
@@ -326,6 +326,13 @@ const Categories = () => {
           onAction={!searchQuery ? () => openCreate(null) : undefined}
         />
       ) : (
+        <ListPaginationRail
+          page={page}
+          pageSize={DEFAULT_PAGE_SIZE}
+          totalCount={allDisplayRows.length}
+          suffix={`${allDisplayRows.length} rows`}
+          onPageChange={setPage}
+        >
         <DataTable>
           <DataTableHeader>
             <DataTableHead>Name</DataTableHead>
@@ -453,15 +460,8 @@ const Categories = () => {
             ))}
           </DataTableBody>
         </DataTable>
+        </ListPaginationRail>
       )}
-
-      <ListPagination
-        page={page}
-        pageSize={DEFAULT_PAGE_SIZE}
-        totalCount={allDisplayRows.length}
-        suffix={`${allDisplayRows.length} rows`}
-        onPageChange={setPage}
-      />
 
       {showForm && (
         <CategoryForm

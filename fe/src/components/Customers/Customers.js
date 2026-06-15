@@ -32,7 +32,7 @@ import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
 import { Skeleton } from '../ui/skeleton';
 import { cn } from '../../lib/cn';
-import { PageShell, PageHeader, ListPagination } from '../page';
+import { PageShell, PageHeader, ListPaginationRail } from '../page';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import {
@@ -342,6 +342,15 @@ const Customers = () => {
         </div>
 
         {/* --- Table --- */}
+        <ListPaginationRail
+          page={pagination.page}
+          pageSize={pagination.page_size}
+          totalCount={pagination.count}
+          suffix={`${pagination.count} customers`}
+          onPageChange={(nextPage) =>
+            setPagination((prev) => ({ ...prev, page: nextPage }))
+          }
+        >
         <div className="overflow-hidden rounded-lg border bg-background">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-border text-sm">
@@ -412,16 +421,7 @@ const Customers = () => {
             </table>
           </div>
         </div>
-
-        <ListPagination
-          page={pagination.page}
-          pageSize={pagination.page_size}
-          totalCount={pagination.count}
-          suffix={`${pagination.count} customers`}
-          onPageChange={(nextPage) =>
-            setPagination((prev) => ({ ...prev, page: nextPage }))
-          }
-        />
+        </ListPaginationRail>
 
       {/* --- Editor dialog --- */}
       <CustomerFormDialog

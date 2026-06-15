@@ -51,7 +51,7 @@ import {
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 import { cn } from '../../lib/cn';
-import { PageShell, PageHeader, ListPagination } from '../page';
+import { PageShell, PageHeader, ListPaginationRail } from '../page';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { getPersonaFromStorage } from '../../utils/navAccess';
 import { PERSONA } from '../../utils/roleAccess';
@@ -605,6 +605,15 @@ const Products = () => {
         )}
 
         {/* --- Table --- */}
+        <ListPaginationRail
+          page={pagination.page}
+          pageSize={pagination.page_size}
+          totalCount={pagination.count}
+          suffix={`${pagination.count} products`}
+          onPageChange={(nextPage) =>
+            setPagination((prev) => ({ ...prev, page: nextPage }))
+          }
+        >
         <div className="overflow-hidden rounded-lg border bg-background">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-border text-sm">
@@ -714,16 +723,7 @@ const Products = () => {
             </table>
           </div>
         </div>
-
-        <ListPagination
-          page={pagination.page}
-          pageSize={pagination.page_size}
-          totalCount={pagination.count}
-          suffix={`${pagination.count} products`}
-          onPageChange={(nextPage) =>
-            setPagination((prev) => ({ ...prev, page: nextPage }))
-          }
-        />
+        </ListPaginationRail>
 
       {/* --- Form modal (legacy, untouched) --- */}
       {adjustStockProduct && (

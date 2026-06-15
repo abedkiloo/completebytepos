@@ -28,7 +28,7 @@ import {
   DataTableRow,
   DataTableCell,
   StatusBadge,
-  ListPagination,
+  ListPaginationRail,
 } from '../page';
 
 const Income = () => {
@@ -256,7 +256,14 @@ const Income = () => {
             onAction={handleAdd}
           />
         ) : (
-          <>
+          <ListPaginationRail
+            page={pagination.page}
+            pageSize={pagination.page_size}
+            totalCount={pagination.count}
+            onPageChange={(nextPage) =>
+              setPagination((prev) => ({ ...prev, page: nextPage }))
+            }
+          >
             <DataTable>
               <DataTableHeader>
                 <DataTableHead>#</DataTableHead>
@@ -314,15 +321,7 @@ const Income = () => {
                 ))}
               </DataTableBody>
             </DataTable>
-            <ListPagination
-              page={pagination.page}
-              pageSize={pagination.page_size}
-              totalCount={pagination.count}
-              onPageChange={(nextPage) =>
-                setPagination((prev) => ({ ...prev, page: nextPage }))
-              }
-            />
-          </>
+          </ListPaginationRail>
         )}
 
         {/* Income Form Modal */}

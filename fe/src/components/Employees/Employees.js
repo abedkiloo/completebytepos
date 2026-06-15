@@ -42,7 +42,7 @@ import {
   DialogTitle,
 } from '../ui/dialog';
 import { cn } from '../../lib/cn';
-import { PageShell, PageHeader, ListPagination } from '../page';
+import { PageShell, PageHeader, ListPaginationRail } from '../page';
 
 const DEPARTMENTS = [
   { value: 'production', label: 'Production' },
@@ -307,6 +307,15 @@ export default function Employees() {
         )}
       </div>
 
+      <ListPaginationRail
+        page={pagination.page}
+        pageSize={pagination.page_size}
+        totalCount={pagination.count}
+        suffix={`${pagination.count} employees`}
+        onPageChange={(nextPage) =>
+          setPagination((prev) => ({ ...prev, page: nextPage }))
+        }
+      >
       <div className="overflow-hidden rounded-lg border bg-background">
         <table className="min-w-full divide-y divide-border text-sm">
           <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
@@ -404,16 +413,7 @@ export default function Employees() {
           </tbody>
         </table>
       </div>
-
-      <ListPagination
-        page={pagination.page}
-        pageSize={pagination.page_size}
-        totalCount={pagination.count}
-        suffix={`${pagination.count} employees`}
-        onPageChange={(nextPage) =>
-          setPagination((prev) => ({ ...prev, page: nextPage }))
-        }
-      />
+      </ListPaginationRail>
 
       <Dialog open={showModal} onOpenChange={(o) => !saving && setShowModal(o)}>
         <DialogContent className="sm:max-w-lg">

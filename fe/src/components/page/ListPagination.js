@@ -1,8 +1,9 @@
 import React from 'react';
 import { Button } from '../ui/button';
+import { cn } from '../../lib/cn';
 
 /**
- * Standard footer for paginated list screens: "Page X of Y" with prev/next.
+ * "Page X of Y" bar with prev/next. Returns null when a single page holds all rows.
  */
 export function ListPagination({
   page,
@@ -10,6 +11,7 @@ export function ListPagination({
   totalCount = 0,
   onPageChange,
   suffix = null,
+  className,
 }) {
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize) || 1);
   if (!totalCount || totalCount <= pageSize) {
@@ -17,7 +19,12 @@ export function ListPagination({
   }
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border bg-card px-4 py-3 text-sm">
+    <div
+      className={cn(
+        'flex flex-wrap items-center justify-between gap-4 rounded-lg border bg-card px-4 py-3 text-sm',
+        className
+      )}
+    >
       <span className="text-muted-foreground">
         Page {page} of {totalPages}
         {suffix ? ` · ${suffix}` : ''}
@@ -42,6 +49,17 @@ export function ListPagination({
           Next
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** Pagination above and below list content (same controls in both places). */
+export function ListPaginationRail({ children, className, ...paginationProps }) {
+  return (
+    <div className={cn('space-y-3', className)}>
+      <ListPagination {...paginationProps} />
+      {children}
+      <ListPagination {...paginationProps} />
     </div>
   );
 }

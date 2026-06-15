@@ -33,7 +33,7 @@ import {
   DataTableRow,
   DataTableCell,
   StatusBadge,
-  ListPagination,
+  ListPaginationRail,
 } from '../page';
 
 const Sales = () => {
@@ -346,7 +346,15 @@ const Sales = () => {
             onAction={() => window.location.assign('/pos')}
           />
         ) : (
-          <>
+          <ListPaginationRail
+            page={pagination.page}
+            pageSize={pagination.page_size}
+            totalCount={pagination.count}
+            suffix={`${pagination.count} sales`}
+            onPageChange={(nextPage) =>
+              setPagination((prev) => ({ ...prev, page: nextPage }))
+            }
+          >
             <DataTable>
               <DataTableHeader>
                 <DataTableHead>Sale #</DataTableHead>
@@ -419,17 +427,7 @@ const Sales = () => {
                 ))}
               </DataTableBody>
             </DataTable>
-
-            <ListPagination
-              page={pagination.page}
-              pageSize={pagination.page_size}
-              totalCount={pagination.count}
-              suffix={`${pagination.count} sales`}
-              onPageChange={(nextPage) =>
-                setPagination((prev) => ({ ...prev, page: nextPage }))
-              }
-            />
-          </>
+          </ListPaginationRail>
         )}
 
         <Dialog open={showReceiptModal} onOpenChange={setShowReceiptModal}>
