@@ -141,3 +141,31 @@ class EffectiveStateTests(TestCase):
             approved_sellable_stock_quantity(self.product, self.variant),
             5,
         )
+
+    def test_variant_product_aggregate_sellable_sums_per_variant_caps(self):
+        enable_maker_checker()
+        self.product.has_variants = True
+        self.product.stock_quantity = 40
+        self.product.save(update_fields=['has_variants', 'stock_quantity'])
+        self.variant.stock_quantity = 25
+        self.variant.save(update_fields=['stock_quantity'])
+        sibling = ProductVariant.objects.create(
+            product=self.product,
+            size=Size.objects.create(name='S', code='S', is_active=True),
+            color=self.color,
+            sku='EFF-1-S-R',
+            price=Decimal('100'),
+            stock_quantity=15,
+            is_active=True,
+        )
+        PendingChange.objects.create(
+            entity_type='products.ProductVariant',
+            entity_id=str(self.variant.pk),
+            action_type=ACTION_PRODUCT_STOCK,
+            status=PendingChange.STATUS_PENDING,
+            proposed_values={'stock_quantity': 5},
+            made_by=User.objects.create_user('req8', password='x'),
+        )
+        self.assertEqual(approved_sellable_stock_quantity(self.product, self.variant), 5)
+        self.assertEqual(approved_sellable_stock_quantity(self.product, sibling), 15)
+        self.assertEqual(approved_sellable_stock_quantity(self.product), 20)

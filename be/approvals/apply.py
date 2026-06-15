@@ -81,6 +81,12 @@ def _apply_variant(change: PendingChange) -> None:
         if hasattr(variant, key):
             setattr(variant, key, value)
     variant.save()
+    if 'stock_quantity' in proposed:
+        product = variant.product
+        if product and product.has_variants and product.track_stock:
+            from products.stock_utils import sync_product_stock_from_variants
+
+            sync_product_stock_from_variants(product)
 
 
 def _apply_category(change: PendingChange) -> None:

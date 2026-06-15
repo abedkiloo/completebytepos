@@ -462,6 +462,7 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         for idx, adj in enumerate(adjustments):
             try:
                 product_id = adj.get('product_id')
+                variant_id = adj.get('variant_id')
                 quantity = adj.get('quantity')
                 notes = adj.get('notes', '')
                 
@@ -479,17 +480,23 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                     errors.append(f"Adjustment {idx + 1}: Product does not track stock")
                     continue
                 
+                if product.has_variants and not variant_id:
+                    errors.append(
+                        f"Adjustment {idx + 1}: variant_id is required for variant products"
+                    )
+                    continue
+                
                 # Get current branch
                 current_branch = get_current_branch(request)
                 
-                movement = StockMovement.objects.create(
-                    branch=current_branch,
-                    product=product,
-                    movement_type='adjustment',
-                    quantity=quantity,
+                movement = self.stock_service.adjust_stock(
+                    product_id=product_id,
+                    variant_id=variant_id,
+                    quantity=int(quantity),
                     notes=notes,
                     user=request.user,
-                    reference=f'BULK-ADJ-{product.sku}'
+                    branch=current_branch,
+                    unit_cost=adj.get('unit_cost'),
                 )
                 created_movements.append(movement)
                 from utils.audit_events import log_stock_movement_event
@@ -498,7 +505,11 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                     request,
                     movement,
                     event='stock_adjust',
-                    payload={'product_id': product_id, 'bulk': True},
+                    payload={
+                        'product_id': product_id,
+                        'variant_id': variant_id,
+                        'bulk': True,
+                    },
                 )
 
             except Exception as e:

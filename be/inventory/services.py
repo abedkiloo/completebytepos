@@ -424,7 +424,9 @@ class StockMovementService(BaseService):
                 count=Count('id'),
             )
         )
-        recent_movements = movements_qs.select_related('product').order_by('-created_at')[:20]
+        recent_movements = movements_qs.select_related(
+            'product', 'variant', 'variant__size', 'variant__color'
+        ).order_by('-created_at')[:20]
 
         total_value = tracked_qs.aggregate(
             total=Sum(F('stock_quantity') * F('cost')),
@@ -446,6 +448,8 @@ class StockMovementService(BaseService):
                 {
                     'id': m.id,
                     'product': m.product.name,
+                    'variant': str(m.variant) if m.variant_id else None,
+                    'variant_id': m.variant_id,
                     'movement_type': m.movement_type,
                     'quantity': m.quantity,
                     'created_at': m.created_at,

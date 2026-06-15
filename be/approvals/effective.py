@@ -85,13 +85,35 @@ def has_pending_product_stock(product_id) -> bool:
     if not is_maker_checker_enabled():
         return False
 
-    return _pending_query_safe(
-        lambda: _pending_for_entity(
+    def _exists() -> bool:
+        if _pending_for_entity(
             'products.Product',
             product_id,
             (ACTION_PRODUCT_STOCK,) + _PENDING_INVENTORY_STOCK_ACTIONS,
-        ).exists()
-    )
+        ).exists():
+            return True
+        from products.models import ProductVariant
+
+        variant_ids = list(
+            ProductVariant.objects.filter(product_id=product_id).values_list('pk', flat=True)
+        )
+        if not variant_ids:
+            return False
+        str_ids = [str(v) for v in variant_ids]
+        if PendingChange.objects.filter(
+            status=PendingChange.STATUS_PENDING,
+            entity_type='products.ProductVariant',
+            entity_id__in=str_ids,
+            action_type__in=(ACTION_PRODUCT_STOCK,) + _PENDING_INVENTORY_STOCK_ACTIONS,
+        ).exists():
+            return True
+        return PendingChange.objects.filter(
+            status=PendingChange.STATUS_PENDING,
+            action_type__in=_PENDING_INVENTORY_STOCK_ACTIONS,
+            apply_payload__product_id=product_id,
+        ).exclude(apply_payload__variant_id=None).exists()
+
+    return _pending_query_safe(_exists)
 
 
 def _collect_stock_caps(qs) -> list[int]:
@@ -103,6 +125,35 @@ def _collect_stock_caps(qs) -> list[int]:
     except (ProgrammingError, OperationalError):
         return []
     for change in rows:
+        raw = (change.proposed_values or {}).get('stock_quantity')
+        if raw is not None and raw != '':
+            caps.append(int(raw))
+    return caps
+
+
+def _collect_product_level_stock_caps(product_id) -> list[int]:
+    """
+    Proposed parent stock caps — excludes variant-targeted inventory movements
+    (those are tracked on the variant row, not the parent aggregate).
+    """
+    if not pending_schema_ready():
+        return []
+    caps: list[int] = []
+    try:
+        qs = _pending_for_entity(
+            'products.Product',
+            product_id,
+            (ACTION_PRODUCT_STOCK,) + _PENDING_INVENTORY_STOCK_ACTIONS,
+        ).only('proposed_values', 'apply_payload', 'action_type')
+    except (ProgrammingError, OperationalError):
+        return []
+    for change in qs:
+        payload = change.apply_payload or {}
+        if (
+            change.action_type in _PENDING_INVENTORY_STOCK_ACTIONS
+            and payload.get('variant_id')
+        ):
+            continue
         raw = (change.proposed_values or {}).get('stock_quantity')
         if raw is not None and raw != '':
             caps.append(int(raw))
@@ -143,13 +194,7 @@ def _pending_proposed_stock_caps(product_id, variant_id=None) -> list[int]:
         )
         return caps
 
-    caps = _collect_stock_caps(
-        _pending_for_entity(
-            'products.Product',
-            product_id,
-            (ACTION_PRODUCT_STOCK,) + _PENDING_INVENTORY_STOCK_ACTIONS,
-        )
-    )
+    caps = _collect_product_level_stock_caps(product_id)
     return caps
 
 
@@ -351,9 +396,23 @@ def approved_sellable_stock_quantity(product, variant=None) -> int:
     """
     from products.stock_utils import sellable_stock_quantity
 
-    base = sellable_stock_quantity(product, variant=variant)
-    variant_id = variant.pk if variant is not None else None
-    caps = _pending_proposed_stock_caps(product.pk, variant_id=variant_id)
+    if variant is not None:
+        base = sellable_stock_quantity(product, variant=variant)
+        caps = _pending_proposed_stock_caps(product.pk, variant_id=variant.pk)
+        if not caps:
+            return base
+        return min([base, *caps])
+
+    if product.has_variants:
+        from products.models import ProductVariant
+
+        total = 0
+        for row in ProductVariant.objects.filter(product=product, is_active=True):
+            total += approved_sellable_stock_quantity(product, variant=row)
+        return total
+
+    base = sellable_stock_quantity(product)
+    caps = _pending_proposed_stock_caps(product.pk)
     if not caps:
         return base
     return min([base, *caps])

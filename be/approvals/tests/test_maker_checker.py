@@ -913,11 +913,14 @@ class MakerCheckerVariantTests(ManagerAPITestCase):
         self.assertEqual(self.variant.stock_quantity, 6000)
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock_quantity, 16010)
+        other.refresh_from_db()
+        self.assertEqual(other.stock_quantity, 10010)
         self.assertEqual(
             approved_sellable_stock_quantity(self.product, self.variant),
             6000,
         )
-        self.assertIsNotNone(other)
+        self.assertEqual(approved_sellable_stock_quantity(self.product, other), 10010)
+        self.assertEqual(approved_sellable_stock_quantity(self.product), 16010)
 
     def test_variant_delete_pending_keeps_row_until_approved(self):
         variant_id = self.variant.id

@@ -175,6 +175,42 @@ class StockMovementServiceTestCase(TestCase):
         self.assertEqual(movement.unit_cost, Decimal('8.00'))
         self.assertEqual(movement.total_cost, Decimal('24.00'))
 
+    def test_adjust_one_variant_leaves_sibling_unchanged(self):
+        size_a = Size.objects.create(name='A', code='A', is_active=True)
+        size_b = Size.objects.create(name='B', code='B', is_active=True)
+        self.product.has_variants = True
+        self.product.stock_quantity = 0
+        self.product.save(update_fields=['has_variants', 'stock_quantity'])
+        variant_a = ProductVariant.objects.create(
+            product=self.product,
+            size=size_a,
+            sku='ADJ-VAR-A',
+            price=Decimal('10.00'),
+            stock_quantity=0,
+            is_active=True,
+        )
+        variant_b = ProductVariant.objects.create(
+            product=self.product,
+            size=size_b,
+            sku='ADJ-VAR-B',
+            price=Decimal('10.00'),
+            stock_quantity=10010,
+            is_active=True,
+        )
+        self.service.adjust_stock(
+            product_id=self.product.id,
+            variant_id=variant_a.id,
+            quantity=6000,
+            notes='Only variant A',
+            user=self.user,
+        )
+        variant_a.refresh_from_db()
+        variant_b.refresh_from_db()
+        self.product.refresh_from_db()
+        self.assertEqual(variant_a.stock_quantity, 6000)
+        self.assertEqual(variant_b.stock_quantity, 10010)
+        self.assertEqual(self.product.stock_quantity, 16010)
+
     def test_adjust_variant_falls_back_to_product_cost(self):
         size = Size.objects.create(name='S', code='S', is_active=True)
         variant = ProductVariant.objects.create(
