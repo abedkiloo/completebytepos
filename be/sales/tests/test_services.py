@@ -129,6 +129,24 @@ class CustomerServiceTestCase(TestCase):
                 'payment',
                 user=self.user
             )
+
+    def test_record_wallet_payment_credits_negative_balance(self):
+        customer = Customer.objects.create(
+            name='Debtor',
+            wallet_balance=Decimal('-200.00'),
+            is_active=True,
+        )
+        txn = self.service.record_wallet_payment(
+            customer,
+            Decimal('75.00'),
+            payment_method='cash',
+            reference='R-1',
+            user=self.user,
+        )
+        customer.refresh_from_db()
+        self.assertEqual(customer.wallet_balance, Decimal('-125.00'))
+        self.assertEqual(txn.source_type, 'debt_settlement')
+        self.assertEqual(txn.transaction_type, 'credit')
     
     def test_get_customer_statistics(self):
         """Test getting customer statistics"""

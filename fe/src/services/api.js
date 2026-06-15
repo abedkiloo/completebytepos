@@ -319,6 +319,10 @@ export const customersAPI = {
   create: (data) => api.post('/sales/customers/', data),
   update: (id, data) => api.put(`/sales/customers/${id}/`, data),
   delete: (id) => api.delete(`/sales/customers/${id}/`),
+  walletTransactions: (id, params) =>
+    api.get(`/sales/customers/${id}/wallet-transactions/`, { params }),
+  receiveWalletPayment: (id, data) =>
+    api.post(`/sales/customers/${id}/receive-wallet-payment/`, data),
 };
 
 export const invoicesAPI = {

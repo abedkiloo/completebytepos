@@ -690,6 +690,12 @@ class AuthViewSet(viewsets.ViewSet):
             
             enabled_modules = get_enabled_modules_flat()
 
+            try:
+                from sales.services import SaleService
+                SaleService().purge_stale_holdings(user)
+            except Exception as purge_err:
+                logger.warning('Stale holding purge failed for %s: %s', username, purge_err)
+
             response_data = {
                 'message': 'Login successful',
                 'user': user_serializer.data,

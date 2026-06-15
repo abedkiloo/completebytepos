@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from '../../ui/dialog';
 import { cn } from '../../../lib/cn';
+import { CustomerWalletBalance } from '../../Customers/CustomerWalletBalance';
 
 /**
  * Single field that always shows the current customer name and opens a
@@ -25,6 +26,7 @@ export function CustomerPicker({
   onAddNew,
   requireCustomer = false,
   showCustomerCode = true,
+  showWalletBalance = false,
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -58,6 +60,15 @@ export function CustomerPicker({
           </div>
           {selectedCustomer?.phone && (
             <div className="truncate text-xs text-muted-foreground">{selectedCustomer.phone}</div>
+          )}
+          {showWalletBalance && selectedCustomer?.wallet_balance != null && (
+            <div className="text-xs">
+              <CustomerWalletBalance
+                balance={selectedCustomer.wallet_balance}
+                showZero
+                className="font-medium"
+              />
+            </div>
           )}
         </div>
         <span className="text-xs font-medium text-primary">Change</span>
@@ -111,6 +122,11 @@ export function CustomerPicker({
                             .filter(Boolean)
                             .join(' · ')}
                         </div>
+                        {showWalletBalance && c.wallet_balance != null && (
+                          <div className="mt-0.5 text-xs">
+                            <CustomerWalletBalance balance={c.wallet_balance} showZero />
+                          </div>
+                        )}
                       </div>
                       {active && <Check className="h-4 w-4 shrink-0" />}
                     </button>

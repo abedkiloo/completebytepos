@@ -32,6 +32,7 @@ import ReceiptDialog from './ReceiptDialog';
 
 import VariantSelector from '../VariantSelector';
 import PosCartRecoveryDialog from '../PosCartRecoveryDialog';
+import { buildCartRecoveryPreview } from '../../../utils/posCartRecovery';
 import CustomerFormModal from '../../Customers/CustomerFormModal';
 import BranchSelector from '../../BranchSelector/BranchSelector';
 import { useStoreSettings } from '../../../hooks/useStoreSettings';
@@ -45,6 +46,7 @@ import { useModuleSettings } from '../../../hooks/useModuleSettings';
 import {
   canQuickAddCustomerAtPos,
   customersShowCustomerCode,
+  customersShowWalletBalance,
 } from '../../../utils/customerDisplay';
 
 /**
@@ -75,6 +77,7 @@ export default function POSPage() {
     customerModuleSettings
   );
   const showCustomerCodeInPicker = customersShowCustomerCode(customerModuleSettings);
+  const showWalletInPicker = customersShowWalletBalance(customerModuleSettings);
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -263,6 +266,7 @@ export default function POSPage() {
               onAddNew={canAddCustomer ? () => setShowCustomerForm(true) : undefined}
               requireCustomer={state.requireCustomer}
               showCustomerCode={showCustomerCodeInPicker}
+              showWalletBalance={showWalletInPicker}
             />
           </div>
 
@@ -341,6 +345,11 @@ export default function POSPage() {
         source={state.cartRecovery?.source || 'local'}
         itemCount={state.cartRecovery?.itemCount || 0}
         label={state.cartRecovery?.label}
+        previewLines={buildCartRecoveryPreview({
+          source: state.cartRecovery?.source || 'local',
+          holding: state.cartRecovery?.holding,
+          draft: state.cartRecovery?.draft,
+        })}
         onContinue={state.continueCartRecovery}
         onStartNew={state.startNewSaleFromRecovery}
         busy={state.recoveryBusy}

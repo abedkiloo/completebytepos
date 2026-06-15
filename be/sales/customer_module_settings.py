@@ -55,6 +55,10 @@ def customers_allow_quick_add_at_pos() -> bool:
     return _enabled('allow_quick_add_at_pos', True)
 
 
+def customers_enable_wallet_payment() -> bool:
+    return _enabled('enable_wallet_payment', True)
+
+
 def apply_customer_representation_flags(data: dict) -> dict:
     if not customers_show_customer_code():
         data.pop('customer_code', None)

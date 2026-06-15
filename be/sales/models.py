@@ -906,6 +906,8 @@ class CustomerWalletTransaction(models.Model):
     
     SOURCE_TYPES = [
         ('overpayment', 'Overpayment from Sale'),
+        ('debt', 'Unpaid Sale Balance'),
+        ('debt_settlement', 'Debt Payment Received'),
         ('refund', 'Refund'),
         ('manual', 'Manual Adjustment'),
         ('payment', 'Payment from Wallet'),

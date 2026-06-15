@@ -1,8 +1,10 @@
 """Active holding draft recovery for Terminal POS."""
 
 from decimal import Decimal
+from datetime import timedelta
 
 from django.contrib.auth.models import User
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -94,5 +96,37 @@ class ActiveHoldingRecoveryAPITestCase(APITestCase):
         self.service.cancel_holding_sale(holding)
         response = self.client.get('/api/sales/active-holding/')
         self.assertIsNone(response.data.get('holding'))
+        holding.refresh_from_db()
+        self.assertEqual(holding.status, 'cancelled')
+
+    def test_stale_holding_purged_after_12_hours(self):
+        holding = self.service.save_holding_sale(
+            self.user,
+            [{'product_id': self.product.id, 'quantity': 2, 'unit_price': '100'}],
+        )
+        stale_time = timezone.now() - timedelta(hours=13)
+        Sale.objects.filter(pk=holding.pk).update(updated_at=stale_time)
+        purged = self.service.purge_stale_holdings(self.user)
+        self.assertEqual(purged, 1)
+        holding.refresh_from_db()
+        self.assertEqual(holding.status, 'cancelled')
+        response = self.client.get('/api/sales/active-holding/')
+        self.assertIsNone(response.data.get('holding'))
+
+    def test_login_purges_stale_holdings_for_user(self):
+        holding = self.service.save_holding_sale(
+            self.user,
+            [{'product_id': self.product.id, 'quantity': 1, 'unit_price': '100'}],
+        )
+        stale_time = timezone.now() - timedelta(hours=13)
+        Sale.objects.filter(pk=holding.pk).update(updated_at=stale_time)
+
+        login_response = self.client.post(
+            '/api/accounts/auth/login/',
+            {'username': 'hold_recover', 'password': 'admin123'},
+            format='json',
+        )
+        self.assertEqual(login_response.status_code, status.HTTP_200_OK)
+
         holding.refresh_from_db()
         self.assertEqual(holding.status, 'cancelled')

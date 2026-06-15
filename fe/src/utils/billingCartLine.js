@@ -1,6 +1,8 @@
 /**
  * Build a billing POS cart line from a catalog product and optional variant picker payload.
  */
+import { normalizeProductForSale } from './moduleFeatures';
+
 export function resolveCartVariantId(productId, variantPayload) {
   if (variantPayload == null) return null;
   if (variantPayload.variant_id != null && variantPayload.variant_id !== '') {
@@ -62,4 +64,44 @@ export function buildBillingCartLine(product, variantPayload = null, { validateS
     has_variants: Boolean(product?.has_variants),
     validateStock,
   };
+}
+
+function capLineQuantity(line, validateStock = true) {
+  if (!validateStock || line.track_stock === false) return line;
+  const cap = parseFloat(line.stock_quantity);
+  if (Number.isNaN(cap)) return line;
+  if (line.quantity > cap) {
+    return { ...line, quantity: Math.max(0, cap) };
+  }
+  return line;
+}
+
+/** Rebuild a billing cart line from a server holding sale item. */
+export function holdingSaleItemToCartLine(item, { validateStock = true } = {}) {
+  const product = item.product || {};
+  const qty = Math.max(1, parseInt(item.quantity, 10) || 1);
+  const line = normalizeProductForSale({
+    id: product.id || item.product_id,
+    name: item.product_name || product.name || 'Product',
+    sku: item.product_sku || product.sku,
+    price: parseFloat(item.unit_price),
+    cost: parseFloat(product.cost || 0),
+    stock_quantity: product.stock_quantity,
+    track_stock: product.track_stock !== false,
+    has_variants: product.has_variants,
+    variants: product.variants,
+  });
+  const selling = parseFloat(item.unit_price);
+  const mrp = parseFloat(product.mrp) || selling;
+  return capLineQuantity(
+    {
+      ...line,
+      quantity: qty,
+      variant_id: item.variant?.id || item.variant_id || null,
+      mrp,
+      selling_price: selling,
+      price: selling,
+    },
+    validateStock
+  );
 }

@@ -1,6 +1,9 @@
 /** POS cart recovery — prompt when returning with an in-progress sale. */
 
-export const DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+/** Drafts older than this are discarded on login and ignored for recovery. */
+export const DRAFT_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+
+export const DRAFT_STORAGE_KEY_PREFIX = 'pos_cart_draft_';
 
 export function countHoldingItems(holding) {
   if (!holding?.items?.length) return 0;
@@ -16,15 +19,19 @@ export function holdingNeedsRecoveryPrompt(holding) {
 
 export const shouldPromptForHoldingRecovery = holdingNeedsRecoveryPrompt;
 
+export function isDraftStale(draft, now = Date.now()) {
+  if (!draft?.savedAt) return false;
+  return now - draft.savedAt > DRAFT_MAX_AGE_MS;
+}
+
 export function localDraftNeedsRecoveryPrompt(draft) {
   if (!draft?.cart?.length) return false;
   const hasLines = draft.cart.some(
     (line) => (parseInt(line.quantity, 10) || 0) > 0
   );
   if (!hasLines) return false;
-  const savedAt = draft.savedAt;
-  if (!savedAt) return true;
-  return Date.now() - savedAt <= DRAFT_MAX_AGE_MS;
+  if (isDraftStale(draft)) return false;
+  return true;
 }
 
 /**
@@ -39,8 +46,29 @@ export function buildCartRecoveryMessage({ source, itemCount, label }) {
   return `You had ${countLabel} in the register from your last visit. Continue this sale or start a new one?`;
 }
 
+/** Short line list for the recovery confirmation dialog. */
+export function buildCartRecoveryPreview({ source, holding, draft }) {
+  if (source === 'holding' && holding?.items?.length) {
+    return holding.items
+      .filter((line) => (parseInt(line.quantity, 10) || 0) > 0)
+      .map((line) => ({
+        name: line.product_name || line.product?.name || 'Product',
+        quantity: parseInt(line.quantity, 10) || 1,
+      }));
+  }
+  if (source === 'local' && draft?.cart?.length) {
+    return draft.cart
+      .filter((line) => (parseInt(line.quantity, 10) || 0) > 0)
+      .map((line) => ({
+        name: line.name || 'Product',
+        quantity: parseInt(line.quantity, 10) || 1,
+      }));
+  }
+  return [];
+}
+
 export function posCartDraftKey(userId, branchId) {
-  return `pos_cart_draft_u${userId ?? '0'}_b${branchId ?? '0'}`;
+  return `${DRAFT_STORAGE_KEY_PREFIX}u${userId ?? '0'}_b${branchId ?? '0'}`;
 }
 
 export function serializeRetailCartDraft({
@@ -78,19 +106,23 @@ export function serializeRetailCartDraft({
   };
 }
 
-export function loadRetailCartDraft(key, storage = sessionStorage) {
+export function loadRetailCartDraft(key, storage = localStorage) {
   try {
     const raw = storage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || parsed.version !== 1) return null;
+    if (isDraftStale(parsed)) {
+      storage.removeItem(key);
+      return null;
+    }
     return parsed;
   } catch {
     return null;
   }
 }
 
-export function saveRetailCartDraft(key, draft, storage = sessionStorage) {
+export function saveRetailCartDraft(key, draft, storage = localStorage) {
   try {
     storage.setItem(key, JSON.stringify(draft));
   } catch {
@@ -98,11 +130,30 @@ export function saveRetailCartDraft(key, draft, storage = sessionStorage) {
   }
 }
 
-export function clearRetailCartDraft(key, storage = sessionStorage) {
+export function clearRetailCartDraft(key, storage = localStorage) {
   try {
     storage.removeItem(key);
   } catch {
     /* ignore */
+  }
+}
+
+/** Remove expired retail cart drafts (call after login). */
+export function purgeStaleRetailCartDrafts(storage = localStorage) {
+  try {
+    const keys = [];
+    for (let i = 0; i < storage.length; i += 1) {
+      const key = storage.key(i);
+      if (key?.startsWith(DRAFT_STORAGE_KEY_PREFIX)) keys.push(key);
+    }
+    keys.forEach((key) => {
+      const draft = loadRetailCartDraft(key, storage);
+      if (!draft) {
+        clearRetailCartDraft(key, storage);
+      }
+    });
+  } catch {
+    /* private mode */
   }
 }
 

@@ -11,6 +11,7 @@ import {
   Pencil,
   Trash2,
   X,
+  Wallet,
 } from 'lucide-react';
 
 import { customersAPI } from '../../services/api';
@@ -38,6 +39,8 @@ import { useStoreSettings } from '../../hooks/useStoreSettings';
 import {
   customersShowCustomerCode,
   customersShowOutstandingBalance,
+  customersShowWalletBalance,
+  customersEnableWalletPayment,
   customersEnableCreate,
   customersEnableEdit,
   customersEnableDelete,
@@ -46,6 +49,9 @@ import {
   customersShowNotes,
   customersShowStatus,
 } from '../../utils/customerDisplay';
+import { getWalletDebtAmount } from '../../utils/walletDisplay';
+import { CustomerWalletBalance } from './CustomerWalletBalance';
+import ReceiveWalletPaymentDialog from './ReceiveWalletPaymentDialog';
 
 const EMPTY_FORM = {
   name: '',
@@ -68,6 +74,8 @@ const Customers = () => {
 
   const showCustomerCode = customersShowCustomerCode(customerModuleSettings);
   const showOutstanding = customersShowOutstandingBalance(customerModuleSettings);
+  const showWallet = customersShowWalletBalance(customerModuleSettings);
+  const canRecordWalletPayment = customersEnableWalletPayment(customerModuleSettings);
   const canCreate = customersEnableCreate(customerModuleSettings);
   const canEdit = customersEnableEdit(customerModuleSettings);
   const canDelete = customersEnableDelete(customerModuleSettings);
@@ -91,6 +99,7 @@ const Customers = () => {
 
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [walletPaymentCustomer, setWalletPaymentCustomer] = useState(null);
   const [pagination, setPagination] = useState({
     page: 1,
     page_size: DEFAULT_PAGE_SIZE,
@@ -144,9 +153,22 @@ const Customers = () => {
       totalOwed: showOutstanding
         ? customers.reduce((sum, c) => sum + parseFloat(c.total_outstanding || 0), 0)
         : 0,
+      withWalletDebt: showWallet
+        ? customers.filter((c) => getWalletDebtAmount(c.wallet_balance) > 0).length
+        : 0,
+      totalWalletDebt: showWallet
+        ? customers.reduce((sum, c) => sum + getWalletDebtAmount(c.wallet_balance), 0)
+        : 0,
     }),
-    [customers, showOutstanding]
+    [customers, showOutstanding, showWallet]
   );
+
+  const tableColumnCount =
+    4 +
+    (showOutstanding ? 1 : 0) +
+    (showWallet ? 1 : 0) +
+    (showStatus ? 1 : 0) +
+    (canEdit || canDelete || canRecordWalletPayment ? 1 : 0);
 
   // --- Editor handlers ---
   const openCreate = () => {
@@ -279,7 +301,7 @@ const Customers = () => {
     <PageShell>
         <PageHeader
           title="Customers"
-          description="Manage shoppers, their contact details, and outstanding balances."
+          description="Manage shoppers, contact details, invoice balances, and POS wallet debt."
         >
           {canCreate && (
             <Button onClick={openCreate}>
@@ -293,7 +315,11 @@ const Customers = () => {
         <div
           className={cn(
             'grid grid-cols-1 gap-3',
-            showOutstanding ? 'sm:grid-cols-3' : 'sm:grid-cols-1'
+            showOutstanding && showWallet
+              ? 'sm:grid-cols-2 lg:grid-cols-5'
+              : showOutstanding || showWallet
+                ? 'sm:grid-cols-3'
+                : 'sm:grid-cols-1'
           )}
         >
           <SummaryCard
@@ -305,15 +331,31 @@ const Customers = () => {
             <>
               <SummaryCard
                 icon={UsersIcon}
-                label="With balance owing"
+                label="With invoice balance"
                 value={totals.withDebt.toLocaleString()}
                 tone={totals.withDebt > 0 ? 'warning' : 'default'}
               />
               <SummaryCard
                 icon={UsersIcon}
-                label="Total outstanding"
+                label="Invoice outstanding"
                 value={formatCurrency(totals.totalOwed)}
                 tone={totals.totalOwed > 0 ? 'destructive' : 'default'}
+              />
+            </>
+          )}
+          {showWallet && (
+            <>
+              <SummaryCard
+                icon={Wallet}
+                label="With wallet debt"
+                value={totals.withWalletDebt.toLocaleString()}
+                tone={totals.withWalletDebt > 0 ? 'warning' : 'default'}
+              />
+              <SummaryCard
+                icon={Wallet}
+                label="Total wallet debt"
+                value={formatCurrency(totals.totalWalletDebt)}
+                tone={totals.totalWalletDebt > 0 ? 'destructive' : 'default'}
               />
             </>
           )}
@@ -360,12 +402,15 @@ const Customers = () => {
                   <th className="px-4 py-2.5 text-left font-medium">Contact</th>
                   <th className="px-4 py-2.5 text-left font-medium">City</th>
                   {showOutstanding && (
-                    <th className="px-4 py-2.5 text-right font-medium">Outstanding</th>
+                    <th className="px-4 py-2.5 text-right font-medium">Invoice balance</th>
+                  )}
+                  {showWallet && (
+                    <th className="px-4 py-2.5 text-right font-medium">Wallet</th>
                   )}
                   {showStatus && (
                     <th className="px-4 py-2.5 text-left font-medium">Status</th>
                   )}
-                  {(canEdit || canDelete) && (
+                  {(canEdit || canDelete || (canRecordWalletPayment && showWallet)) && (
                     <th className="px-4 py-2.5 text-right font-medium">Actions</th>
                   )}
                 </tr>
@@ -374,10 +419,7 @@ const Customers = () => {
                 {loading && customers.length === 0 ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <tr key={i}>
-                      {Array.from({
-                        length:
-                          4 + (showOutstanding ? 1 : 0) + (showStatus ? 1 : 0) + (canEdit || canDelete ? 1 : 0),
-                      }).map((__, j) => (
+                      {Array.from({ length: tableColumnCount }).map((__, j) => (
                         <td key={j} className="px-4 py-3">
                           <Skeleton className="h-4 w-full" />
                         </td>
@@ -386,15 +428,7 @@ const Customers = () => {
                   ))
                 ) : customers.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan={
-                        4 +
-                        (showOutstanding ? 1 : 0) +
-                        (showStatus ? 1 : 0) +
-                        (canEdit || canDelete ? 1 : 0)
-                      }
-                      className="px-4 py-12 text-center"
-                    >
+                    <td colSpan={tableColumnCount} className="px-4 py-12 text-center">
                       <EmptyState
                         onCreate={canCreate ? openCreate : undefined}
                         searchQuery={searchQuery}
@@ -408,12 +442,15 @@ const Customers = () => {
                       customer={customer}
                       showCustomerCode={showCustomerCode}
                       showOutstanding={showOutstanding}
+                      showWallet={showWallet}
                       showStatus={showStatus}
                       showCustomerType={showCustomerType}
                       canEdit={canEdit}
                       canDelete={canDelete}
+                      canRecordWalletPayment={canRecordWalletPayment}
                       onEdit={() => openEdit(customer)}
                       onDelete={() => setPendingDelete(customer)}
+                      onReceivePayment={() => setWalletPaymentCustomer(customer)}
                     />
                   ))
                 )}
@@ -437,6 +474,20 @@ const Customers = () => {
         showTaxId={showTaxId}
         showNotes={showNotes}
         showStatus={showStatus}
+      />
+
+      <ReceiveWalletPaymentDialog
+        open={!!walletPaymentCustomer}
+        customer={walletPaymentCustomer}
+        onOpenChange={(next) => {
+          if (!next) setWalletPaymentCustomer(null);
+        }}
+        onSuccess={(updated) => {
+          setCustomers((prev) =>
+            prev.map((c) => (c.id === updated.id ? { ...c, wallet_balance: updated.wallet_balance } : c))
+          );
+          setWalletPaymentCustomer(null);
+        }}
       />
 
       {/* --- Delete confirm --- */}
@@ -486,14 +537,20 @@ function CustomerRow({
   customer,
   showCustomerCode,
   showOutstanding,
+  showWallet,
   showStatus,
   showCustomerType,
   canEdit,
   canDelete,
+  canRecordWalletPayment,
   onEdit,
   onDelete,
+  onReceivePayment,
 }) {
   const outstanding = parseFloat(customer.total_outstanding || 0);
+  const walletDebt = getWalletDebtAmount(customer.wallet_balance);
+  const showPaymentAction = canRecordWalletPayment && walletDebt > 0;
+  const hasRowActions = canEdit || canDelete || showPaymentAction;
   return (
     <tr
       className={cn(
@@ -552,6 +609,11 @@ function CustomerRow({
           </span>
         </td>
       )}
+      {showWallet && (
+        <td className="px-4 py-3 text-right">
+          <CustomerWalletBalance balance={customer.wallet_balance} />
+        </td>
+      )}
       {showStatus && (
         <td className="px-4 py-3">
           <Badge variant={customer.is_active ? 'success' : 'outline'}>
@@ -564,9 +626,20 @@ function CustomerRow({
           )}
         </td>
       )}
-      {(canEdit || canDelete) && (
+      {hasRowActions && (
         <td className="px-4 py-3">
           <div className="flex items-center justify-end gap-1">
+            {showPaymentAction && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onReceivePayment}
+                aria-label="Receive wallet payment"
+              >
+                <Wallet className="h-3.5 w-3.5" />
+                <span className="sr-only sm:not-sr-only sm:ml-1">Receive payment</span>
+              </Button>
+            )}
             {canEdit && (
               <Button variant="ghost" size="sm" onClick={onEdit} aria-label="Edit customer">
                 <Pencil className="h-3.5 w-3.5" />

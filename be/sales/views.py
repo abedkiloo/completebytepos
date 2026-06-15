@@ -16,7 +16,8 @@ from .serializers import (
     SaleRefundCreateSerializer, SaleRefundSerializer,
     InvoiceSerializer, InvoiceCreateSerializer,
     PaymentSerializer, PaymentCreateSerializer,
-    CustomerSerializer, CustomerListSerializer
+    CustomerSerializer, CustomerListSerializer,
+    CustomerWalletTransactionSerializer, ReceiveWalletPaymentSerializer,
 )
 from .refunds import SaleRefundService
 from products.models import Product, ProductVariant
@@ -59,6 +60,8 @@ CUSTOMERS_PERMS = RequirePermPerAction('customers', {
     'update': 'update',
     'partial_update': 'update',
     'destroy': 'delete',
+    'wallet_transactions': 'view',
+    'receive_wallet_payment': 'update',
 })
 
 INVOICES_PERMS = RequirePermPerAction('invoicing', {
@@ -504,6 +507,58 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                     queryset = queryset.none()
         
         return queryset
+
+    @action(detail=True, methods=['get'], url_path='wallet-transactions')
+    def wallet_transactions(self, request, pk=None):
+        from sales.customer_module_settings import customers_show_wallet_balance
+
+        if not customers_show_wallet_balance():
+            return self._feature_disabled_response('Wallet balance')
+        customer = self.get_object()
+        limit = min(int(request.query_params.get('limit', 50)), 100)
+        transactions = (
+            CustomerWalletTransaction.objects.filter(customer=customer)
+            .select_related('sale', 'created_by')
+            .order_by('-created_at')[:limit]
+        )
+        serializer = CustomerWalletTransactionSerializer(transactions, many=True)
+        return Response(serializer.data)
+
+    @transaction.atomic
+    @action(detail=True, methods=['post'], url_path='receive-wallet-payment')
+    def receive_wallet_payment(self, request, pk=None):
+        from sales.customer_module_settings import (
+            customers_enable_wallet_payment,
+            customers_show_wallet_balance,
+        )
+
+        if not customers_show_wallet_balance():
+            return self._feature_disabled_response('Wallet balance')
+        if not customers_enable_wallet_payment():
+            return self._feature_disabled_response('Recording wallet payments')
+        customer = self.get_object()
+        serializer = ReceiveWalletPaymentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        service = CustomerService()
+        try:
+            txn = service.record_wallet_payment(
+                customer=customer,
+                amount=serializer.validated_data['amount'],
+                payment_method=serializer.validated_data['payment_method'],
+                reference=serializer.validated_data.get('reference', ''),
+                notes=serializer.validated_data.get('notes', ''),
+                user=request.user if request.user.is_authenticated else None,
+            )
+        except ValidationError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        customer.refresh_from_db()
+        return Response(
+            {
+                'transaction': CustomerWalletTransactionSerializer(txn).data,
+                'wallet_balance': str(customer.wallet_balance),
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class InvoiceViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):

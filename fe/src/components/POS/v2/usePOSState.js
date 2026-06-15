@@ -252,6 +252,9 @@ export function usePOSState() {
   useEffect(() => {
     if (!cartDraftKey || cartRecovery) return;
     if (cart.length === 0) {
+      if (!draftCheckedRef.current) return;
+      const pending = loadRetailCartDraft(cartDraftKey);
+      if (pending && localDraftNeedsRecoveryPrompt(pending)) return;
       clearRetailCartDraft(cartDraftKey);
       return;
     }
@@ -290,6 +293,7 @@ export function usePOSState() {
           normalizeProductForSale({
             ...line,
             price: parseFloat(line.price),
+            quantity: Math.max(1, parseInt(line.quantity, 10) || 1),
           })
         )
       );

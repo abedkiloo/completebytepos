@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from rest_framework import serializers
 from .models import (
     Sale,
@@ -10,6 +12,7 @@ from .models import (
     Customer,
     PaymentPlan,
     PaymentReminder,
+    CustomerWalletTransaction,
 )
 from products.serializers import ProductSerializer
 
@@ -85,6 +88,38 @@ class CustomerListSerializer(serializers.ModelSerializer):
         from sales.customer_module_settings import apply_customer_representation_flags
 
         return apply_customer_representation_flags(super().to_representation(instance))
+
+
+class CustomerWalletTransactionSerializer(serializers.ModelSerializer):
+    sale_number = serializers.CharField(source='sale.sale_number', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+
+    class Meta:
+        model = CustomerWalletTransaction
+        fields = [
+            'id',
+            'transaction_type',
+            'source_type',
+            'amount',
+            'balance_after',
+            'sale',
+            'sale_number',
+            'reference',
+            'notes',
+            'created_by_name',
+            'created_at',
+        ]
+        read_only_fields = fields
+
+
+class ReceiveWalletPaymentSerializer(serializers.Serializer):
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal('0.01'))
+    payment_method = serializers.ChoiceField(
+        choices=[('cash', 'Cash'), ('mpesa', 'M-PESA'), ('card', 'Card'), ('other', 'Other')],
+        default='cash',
+    )
+    reference = serializers.CharField(required=False, allow_blank=True, max_length=100)
+    notes = serializers.CharField(required=False, allow_blank=True)
 
 
 class SaleItemSerializer(serializers.ModelSerializer):

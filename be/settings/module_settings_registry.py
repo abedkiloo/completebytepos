@@ -282,9 +282,16 @@ MODULE_SETTING_DEFINITIONS: dict[str, list[dict[str, Any]]] = {
         _setting(
             'show_wallet_balance',
             'Show wallet balance',
-            'Includes wallet credit/debt on customer API responses (used at checkout).',
+            'Shows wallet credit or POS debt on the Customers page and at checkout.',
             True,
             3,
+        ),
+        _setting(
+            'enable_wallet_payment',
+            'Allow wallet debt payments',
+            'When off, staff cannot record standalone payments against customer wallet debt.',
+            True,
+            9,
         ),
         _setting(
             'enable_customer_create',

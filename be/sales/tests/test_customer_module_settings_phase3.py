@@ -25,6 +25,7 @@ def _seed_customer_settings():
         ('show_customer_notes', True),
         ('show_customer_status', True),
         ('allow_quick_add_at_pos', True),
+        ('enable_wallet_payment', True),
     ):
         ModuleSetting.objects.update_or_create(
             module='customers',

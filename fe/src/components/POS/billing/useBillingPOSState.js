@@ -23,7 +23,7 @@ import {
   salesAllowPartialPayment,
   salesValidateStock,
 } from '../../../utils/salesDisplay';
-import { buildBillingCartLine } from '../../../utils/billingCartLine';
+import { buildBillingCartLine, holdingSaleItemToCartLine } from '../../../utils/billingCartLine';
 import {
   shouldPromptForHoldingRecovery,
   countHoldingItems,
@@ -41,30 +41,6 @@ function applyStockCapToLine(line, validateStock = true) {
     return { ...line, quantity: Math.max(0, cap) };
   }
   return line;
-}
-
-function holdingItemToCartLine(item) {
-  const product = item.product || {};
-  const line = normalizeProductForSale({
-    id: product.id || item.product_id,
-    name: item.product_name || product.name || 'Product',
-    sku: item.product_sku || product.sku,
-    price: parseFloat(item.unit_price),
-    cost: parseFloat(product.cost || 0),
-    stock_quantity: product.stock_quantity,
-    track_stock: product.track_stock !== false,
-    has_variants: product.has_variants,
-    variants: product.variants,
-  });
-  const selling = parseFloat(item.unit_price);
-  const mrp = parseFloat(item.product?.mrp) || selling;
-  return applyStockCapToLine({
-    ...line,
-    variant_id: item.variant?.id || item.variant_id || null,
-    mrp,
-    selling_price: selling,
-    price: selling,
-  });
 }
 
 export function useBillingPOSState() {
@@ -195,7 +171,9 @@ export function useBillingPOSState() {
     setDiscount(parseFloat(holding.discount_amount) || 0);
     setDiscountType('flat');
 
-    const lines = (holding.items || []).map(holdingItemToCartLine).filter((l) => l.quantity > 0);
+    const lines = (holding.items || [])
+      .map((item) => holdingSaleItemToCartLine(item, { validateStock }))
+      .filter((l) => l.quantity > 0);
     setCart(lines);
 
     if (holding.customer) {
@@ -208,7 +186,7 @@ export function useBillingPOSState() {
     } else {
       setSelectedCustomer(WALK_IN_CUSTOMER);
     }
-  }, [customers]);
+  }, [customers, validateStock]);
 
   const loadActiveHolding = useCallback(async () => {
     setLoadingHolding(true);

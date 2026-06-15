@@ -1,4 +1,4 @@
-import { resolveCartVariantId, buildBillingCartLine } from './billingCartLine';
+import { resolveCartVariantId, buildBillingCartLine, holdingSaleItemToCartLine } from './billingCartLine';
 
 describe('billingCartLine', () => {
   const product = {
@@ -57,5 +57,35 @@ describe('billingCartLine', () => {
     expect(line.selling_price).toBe(55);
     expect(line.mrp).toBe(60);
     expect(line.cost).toBe(20);
+  });
+
+  it('holdingSaleItemToCartLine restores quantity from holding item', () => {
+    const line = holdingSaleItemToCartLine(
+      {
+        product_id: 5,
+        product_name: 'Webbing',
+        quantity: 4,
+        unit_price: '500',
+        product: { id: 5, name: 'Webbing', stock_quantity: 50, track_stock: true },
+      },
+      { validateStock: false }
+    );
+    expect(line.quantity).toBe(4);
+    expect(line.price).toBe(500);
+    expect(line.name).toBe('Webbing');
+  });
+
+  it('caps quantity to stock when validateStock is enabled', () => {
+    const line = holdingSaleItemToCartLine(
+      {
+        product_id: 5,
+        product_name: 'Webbing',
+        quantity: 10,
+        unit_price: '500',
+        product: { id: 5, name: 'Webbing', stock_quantity: 3, track_stock: true },
+      },
+      { validateStock: true }
+    );
+    expect(line.quantity).toBe(3);
   });
 });

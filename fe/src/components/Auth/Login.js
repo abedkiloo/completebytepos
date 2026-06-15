@@ -98,6 +98,10 @@ const Login = () => {
 
       markSessionActivity();
       clearSessionTeardownFlag();
+
+      const { purgeStaleRetailCartDrafts } = await import('../../utils/posCartRecovery');
+      purgeStaleRetailCartDrafts();
+
       navigate('/');
     } catch (err) {
       setError(

@@ -20,6 +20,7 @@ import VariantSelector from '../VariantSelector';
 import { CartQtyInput } from '../CartQtyInput';
 import { getLineStockCap } from '../v2/usePOSState';
 import PosCartRecoveryDialog from '../PosCartRecoveryDialog';
+import { buildCartRecoveryPreview } from '../../../utils/posCartRecovery';
 import PartialPaymentCustomerDialog from './PartialPaymentCustomerDialog';
 import CustomerFormModal from '../../Customers/CustomerFormModal';
 import ReceiptDialog from '../v2/ReceiptDialog';
@@ -34,7 +35,8 @@ import {
 } from '../../../utils/paymentMethods';
 import { isManagerOrAdminFromStorage } from '../../../utils/roleAccess';
 import { useModuleSettings } from '../../../hooks/useModuleSettings';
-import { canQuickAddCustomerAtPos } from '../../../utils/customerDisplay';
+import { canQuickAddCustomerAtPos, customersShowWalletBalance } from '../../../utils/customerDisplay';
+import { CustomerWalletBalance } from '../../Customers/CustomerWalletBalance';
 import {
   BILLING_AMOUNT_RECEIVED_CLASS,
   BILLING_INVOICE_CARD_CLASS,
@@ -60,6 +62,7 @@ export default function BillingPOSPage() {
     isManagerOrAdminFromStorage(),
     customerModuleSettings
   );
+  const showWalletBalance = customersShowWalletBalance(customerModuleSettings);
 
   if (state.loadingHolding) {
     return (
@@ -309,6 +312,15 @@ export default function BillingPOSPage() {
                       {state.selectedCustomer.phone}
                     </div>
                   )}
+                  {showWalletBalance && state.selectedCustomer?.wallet_balance != null && (
+                    <div className="text-xs">
+                      <CustomerWalletBalance
+                        balance={state.selectedCustomer.wallet_balance}
+                        showZero
+                        className="font-medium"
+                      />
+                    </div>
+                  )}
                   {state.isWalkInCustomer(state.selectedCustomer) && (
                     <div className="text-xs text-muted-foreground">Default for cash sales</div>
                   )}
@@ -340,9 +352,14 @@ export default function BillingPOSPage() {
                           state.setCustomerQuery('');
                         }}
                       >
-                        {c.name}
-                        {c.phone && (
-                          <span className="ml-2 text-muted-foreground">{c.phone}</span>
+                        <div className="font-medium">{c.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {[c.phone, c.customer_code].filter(Boolean).join(' · ')}
+                        </div>
+                        {showWalletBalance && c.wallet_balance != null && (
+                          <div className="mt-0.5">
+                            <CustomerWalletBalance balance={c.wallet_balance} showZero />
+                          </div>
                         )}
                       </button>
                     </li>
@@ -572,6 +589,11 @@ export default function BillingPOSPage() {
         source={state.cartRecovery?.source || 'holding'}
         itemCount={state.cartRecovery?.itemCount || 0}
         label={state.cartRecovery?.label}
+        previewLines={buildCartRecoveryPreview({
+          source: state.cartRecovery?.source || 'holding',
+          holding: state.cartRecovery?.holding,
+          draft: state.cartRecovery?.draft,
+        })}
         onContinue={state.continueCartRecovery}
         onStartNew={state.startNewSaleFromRecovery}
         busy={state.recoveryBusy}

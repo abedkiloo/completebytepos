@@ -12,6 +12,10 @@ export function customersShowWalletBalance(settings) {
   return isModuleFlagEnabled(settings, 'show_wallet_balance', true);
 }
 
+export function customersEnableWalletPayment(settings) {
+  return isModuleFlagEnabled(settings, 'enable_wallet_payment', true);
+}
+
 export function customersEnableCreate(settings) {
   return isModuleFlagEnabled(settings, 'enable_customer_create', true);
 }

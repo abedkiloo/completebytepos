@@ -4,13 +4,17 @@ import {
   countLocalDraftItems,
   localDraftNeedsRecoveryPrompt,
   buildCartRecoveryMessage,
+  buildCartRecoveryPreview,
   posCartDraftKey,
   serializeRetailCartDraft,
   loadRetailCartDraft,
   saveRetailCartDraft,
   clearRetailCartDraft,
+  purgeStaleRetailCartDrafts,
+  isDraftStale,
   shouldPromptForHoldingRecovery,
   resolveBranchIdFromUser,
+  DRAFT_MAX_AGE_MS,
 } from './posCartRecovery';
 
 describe('posCartRecovery', () => {
@@ -60,9 +64,52 @@ describe('posCartRecovery', () => {
       expect(
         localDraftNeedsRecoveryPrompt({
           cart: [{ id: 1, quantity: 1 }],
-          savedAt: Date.now() - 8 * 24 * 60 * 60 * 1000,
+          savedAt: Date.now() - DRAFT_MAX_AGE_MS - 1000,
         })
       ).toBe(false);
+    });
+  });
+
+  describe('buildCartRecoveryPreview', () => {
+    it('lists holding line names and quantities', () => {
+      const preview = buildCartRecoveryPreview({
+        source: 'holding',
+        holding: {
+          items: [
+            { product_name: 'Water', quantity: 2 },
+            { product_name: 'Bread', quantity: 1 },
+          ],
+        },
+      });
+      expect(preview).toEqual([
+        { name: 'Water', quantity: 2 },
+        { name: 'Bread', quantity: 1 },
+      ]);
+    });
+
+    it('lists local draft lines', () => {
+      const preview = buildCartRecoveryPreview({
+        source: 'local',
+        draft: {
+          cart: [
+            { name: 'Snacks', quantity: 3 },
+            { name: '', quantity: 0 },
+          ],
+        },
+      });
+      expect(preview).toEqual([{ name: 'Snacks', quantity: 3 }]);
+    });
+
+    it('returns empty when no lines', () => {
+      expect(buildCartRecoveryPreview({ source: 'local', draft: { cart: [] } })).toEqual([]);
+    });
+  });
+
+  describe('isDraftStale', () => {
+    it('detects drafts older than 12 hours', () => {
+      expect(isDraftStale({ savedAt: Date.now() - DRAFT_MAX_AGE_MS - 1 })).toBe(true);
+      expect(isDraftStale({ savedAt: Date.now() })).toBe(false);
+      expect(isDraftStale({})).toBe(false);
     });
   });
 
@@ -130,13 +177,17 @@ describe('posCartRecovery', () => {
 
     beforeEach(() => {
       Object.keys(storage).forEach((k) => delete storage[k]);
-      global.sessionStorage = {
+      global.localStorage = {
         getItem: (k) => storage[k] ?? null,
         setItem: (k, v) => {
           storage[k] = v;
         },
         removeItem: (k) => {
           delete storage[k];
+        },
+        key: (i) => Object.keys(storage)[i] ?? null,
+        get length() {
+          return Object.keys(storage).length;
         },
       };
     });
@@ -159,13 +210,29 @@ describe('posCartRecovery', () => {
 
     it('returns null for invalid json', () => {
       const key = posCartDraftKey(1, 1);
-      sessionStorage.setItem(key, '{not json');
+      localStorage.setItem(key, '{not json');
       expect(loadRetailCartDraft(key)).toBeNull();
     });
 
     it('returns null for unknown draft version', () => {
       const key = posCartDraftKey(2, 2);
-      sessionStorage.setItem(key, JSON.stringify({ version: 2, cart: [] }));
+      localStorage.setItem(key, JSON.stringify({ version: 2, cart: [] }));
+      expect(loadRetailCartDraft(key)).toBeNull();
+    });
+
+    it('purges drafts older than 12 hours', () => {
+      const key = posCartDraftKey(4, 4);
+      saveRetailCartDraft(
+        key,
+        serializeRetailCartDraft({
+          cart: [{ id: 1, quantity: 1 }],
+          savedAt: Date.now() - DRAFT_MAX_AGE_MS - 5000,
+        })
+      );
+      const raw = JSON.parse(localStorage.getItem(key));
+      raw.savedAt = Date.now() - DRAFT_MAX_AGE_MS - 5000;
+      localStorage.setItem(key, JSON.stringify(raw));
+      purgeStaleRetailCartDrafts();
       expect(loadRetailCartDraft(key)).toBeNull();
     });
 

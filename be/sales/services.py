@@ -4,6 +4,7 @@ Moved from be/services/sales_service.py to be/sales/services.py
 """
 from typing import Optional, List, Dict, Any
 from decimal import Decimal
+from datetime import timedelta
 from django.db import transaction
 from django.db.models import Q, Sum, Count, Avg, F, QuerySet
 from django.core.exceptions import ValidationError
@@ -23,6 +24,8 @@ from settings.models import Branch
 from settings.utils import get_current_branch, get_current_tenant, is_branch_support_enabled
 from settings.feature_flags import is_product_variants_enabled
 from services.base import BaseService
+
+HOLDING_MAX_AGE = timedelta(hours=12)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -276,6 +279,7 @@ class SaleService(BaseService):
 
     def get_active_holding(self, user, branch: Optional[Branch] = None) -> Optional[Sale]:
         """Return the cashier's open holding invoice for this branch, if any."""
+        self.purge_stale_holdings(user, branch=branch)
         qs = self.model.objects.filter(
             cashier=user,
             status='holding',
@@ -283,6 +287,28 @@ class SaleService(BaseService):
         if branch:
             qs = qs.filter(branch=branch)
         return qs.order_by('-updated_at').first()
+
+    def purge_stale_holdings(
+        self,
+        user,
+        branch: Optional[Branch] = None,
+        max_age=None,
+    ) -> int:
+        """Cancel holding drafts older than max_age (default 12 hours)."""
+        max_age = max_age or HOLDING_MAX_AGE
+        cutoff = timezone.now() - max_age
+        qs = self.model.objects.filter(
+            cashier=user,
+            status='holding',
+            updated_at__lt=cutoff,
+        )
+        if branch:
+            qs = qs.filter(branch=branch)
+        cancelled = 0
+        for holding in qs:
+            self.cancel_holding_sale(holding)
+            cancelled += 1
+        return cancelled
 
     @transaction.atomic
     def save_holding_sale(
@@ -1379,7 +1405,42 @@ class CustomerService(BaseService):
         )
         
         return transaction
-    
+
+    @transaction.atomic
+    def record_wallet_payment(
+        self,
+        customer: Customer,
+        amount: Decimal,
+        payment_method: str = 'cash',
+        reference: str = '',
+        notes: str = '',
+        user=None,
+    ) -> 'CustomerWalletTransaction':
+        """Credit customer wallet — typically to settle POS partial-payment debt."""
+        if amount <= 0:
+            raise ValidationError('Payment amount must be greater than zero.')
+
+        method_labels = {
+            'cash': 'Cash',
+            'mpesa': 'M-PESA',
+            'card': 'Card',
+            'other': 'Other',
+        }
+        method_label = method_labels.get(payment_method, payment_method)
+        default_notes = f'Debt payment received via {method_label}'
+        if reference:
+            default_notes = f'{default_notes} (ref: {reference})'
+
+        return self.update_wallet_balance(
+            customer=customer,
+            amount=amount,
+            transaction_type='credit',
+            source_type='debt_settlement',
+            reference=reference,
+            notes=notes.strip() or default_notes,
+            user=user,
+        )
+
     def get_customer_statistics(self, customer_id: int) -> Dict[str, Any]:
         """Get comprehensive statistics for a customer"""
         try:
