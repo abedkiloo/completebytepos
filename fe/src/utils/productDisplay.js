@@ -6,6 +6,9 @@ import { isModuleFeatureEnabled } from './moduleFeatures';
 
 export const SELLING_PRICE_CLASS = 'text-success font-medium tabular-nums';
 
+/** Shown on parent rows for products that sell via variants (prices live on variant rows). */
+export const VARIANT_PARENT_PRICE_MASK = '***';
+
 export function showProductStatus(productModuleSettings, storeSettings) {
   if (storeSettings?.hide_entity_status_toggles) return false;
   return isModuleFlagEnabled(productModuleSettings, 'show_status', true);

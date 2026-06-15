@@ -3,9 +3,10 @@ import { Pencil } from 'lucide-react';
 
 import { productsAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
+import { catalogSellableStock } from '../../utils/catalogStock';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
 import { variantDisplayLabel } from '../../utils/variantCombinations';
-import { SELLING_PRICE_CLASS } from '../../utils/productDisplay';
+import { SELLING_PRICE_CLASS, VARIANT_PARENT_PRICE_MASK } from '../../utils/productDisplay';
 import { resolveProductDetailVisibility } from '../../utils/productAccess';
 import { proposedPendingCost } from '../../utils/makerChecker';
 import PendingApprovalBadges from '../Approvals/PendingApprovalBadges';
@@ -23,10 +24,6 @@ function DetailRow({ label, children }) {
       <dd className="text-sm text-foreground sm:text-right">{children}</dd>
     </div>
   );
-}
-
-function variantStockTotal(variants) {
-  return (variants || []).reduce((sum, v) => sum + (Number(v.stock_quantity) || 0), 0);
 }
 
 export default function ProductDetailPanel({
@@ -69,7 +66,6 @@ export default function ProductDetailPanel({
   const imageSrc = product ? resolveMediaUrl(product.image_url || product.image) : null;
   const sellingPrice = parseFloat(product?.selling_price ?? product?.price ?? 0);
   const pricePending = visibility.catalogOnly && sellingPrice <= 0;
-  const variantTotalStock = variantStockTotal(variants);
   const pendingCost = proposedPendingCost(product?.pending_approval);
 
   const showVariantFinancialCols =
@@ -145,7 +141,9 @@ export default function ProductDetailPanel({
 
                 {visibility.catalogOnly ? (
                   <DetailRow label="Price">
-                    {pricePending ? (
+                    {product.has_variants ? (
+                      <span className="text-muted-foreground">{VARIANT_PARENT_PRICE_MASK}</span>
+                    ) : pricePending ? (
                       <Badge variant="outline" className="font-normal">
                         Pending manager
                       </Badge>
@@ -202,7 +200,7 @@ export default function ProductDetailPanel({
                     <DetailRow label="Stock">
                       {product.track_stock
                         ? product.has_variants
-                          ? variantTotalStock
+                          ? catalogSellableStock(product)
                           : product.stock_quantity ?? 0
                         : 'Not tracked'}
                     </DetailRow>

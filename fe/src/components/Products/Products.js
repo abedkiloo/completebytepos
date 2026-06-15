@@ -30,6 +30,7 @@ import {
 import ChangeReasonField from '../Approvals/ChangeReasonField';
 import PendingApprovalBadges from '../Approvals/PendingApprovalBadges';
 import { formatCurrency } from '../../utils/formatters';
+import { catalogSellableStock } from '../../utils/catalogStock';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
 import ProductForm from './ProductForm';
 import ProductDetailPanel from './ProductDetailPanel';
@@ -58,6 +59,7 @@ import { PERSONA } from '../../utils/roleAccess';
 import { resolveProductFieldAccess } from '../../utils/productAccess';
 import {
   SELLING_PRICE_CLASS,
+  VARIANT_PARENT_PRICE_MASK,
   showProductStatus,
   showProductCostPrice,
   showProductMrp,
@@ -1124,22 +1126,28 @@ function ProductRow({
         <>
           {showMrp && (
           <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
-            {formatCurrency(product.mrp ?? product.price)}
+            {product.has_variants
+              ? VARIANT_PARENT_PRICE_MASK
+              : formatCurrency(product.mrp ?? product.price)}
           </td>
           )}
-          <td className={cn('px-4 py-3 text-right', SELLING_PRICE_CLASS)}>
-            {formatCurrency(product.selling_price ?? product.price)}
+          <td className={cn('px-4 py-3 text-right', product.has_variants ? 'text-muted-foreground' : SELLING_PRICE_CLASS)}>
+            {product.has_variants
+              ? VARIANT_PARENT_PRICE_MASK
+              : formatCurrency(product.selling_price ?? product.price)}
           </td>
           {showCost && (
           <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
-            {formatCurrency(product.cost)}
+            {product.has_variants ? VARIANT_PARENT_PRICE_MASK : formatCurrency(product.cost)}
           </td>
           )}
         </>
       )}
       {catalogOnly && (
         <td className="px-4 py-3 text-right text-sm">
-          {pricePending ? (
+          {product.has_variants ? (
+            <span className="text-muted-foreground">{VARIANT_PARENT_PRICE_MASK}</span>
+          ) : pricePending ? (
             <Badge variant="outline" className="font-normal text-muted-foreground">
               Pending manager
             </Badge>
@@ -1219,7 +1227,9 @@ function StockCell({ product, onAdjustStock }) {
   if (!product.track_stock) {
     return <span className="text-xs text-muted-foreground">Not tracked</span>;
   }
-  const qty = parseInt(product.stock_quantity, 10) || 0;
+  const qty = product.has_variants
+    ? catalogSellableStock(product)
+    : parseInt(product.stock_quantity, 10) || 0;
   const lowThreshold = parseInt(product.low_stock_threshold, 10) || 0;
   const tone =
     qty <= 0
