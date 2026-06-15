@@ -1,5 +1,6 @@
 import {
   SESSION_IDLE_MS,
+  ACTIVITY_PERSIST_INTERVAL_MS,
   markSessionActivity,
   getIdleRemainingMs,
   startIdleSessionWatch,
@@ -20,7 +21,7 @@ const { logoutAndRedirect } = require('./authSession');
 
 describe('sessionIdle', () => {
   beforeEach(() => {
-    jest.useFakeTimers();
+    jest.useFakeTimers({ advanceTime: false });
     localStorage.clear();
     clearSessionTeardownFlag();
     stopIdleSessionWatch();
@@ -36,13 +37,28 @@ describe('sessionIdle', () => {
     sessionStorage.clear();
   });
 
-  test('SESSION_IDLE_MS is fifteen minutes', () => {
-    expect(SESSION_IDLE_MS).toBe(15 * 60 * 1000);
+  test('SESSION_IDLE_MS is thirty minutes', () => {
+    expect(SESSION_IDLE_MS).toBe(30 * 60 * 1000);
   });
 
   test('markSessionActivity updates last_activity_at', () => {
     markSessionActivity();
     expect(localStorage.getItem('last_activity_at')).toBeTruthy();
+  });
+
+  test('activity timestamp updates at most every five minutes while active', () => {
+    const start = Date.now();
+    jest.setSystemTime(start);
+    markSessionActivity();
+    const first = localStorage.getItem('last_activity_at');
+
+    jest.setSystemTime(start + 2 * 60 * 1000);
+    markSessionActivity();
+    expect(localStorage.getItem('last_activity_at')).toBe(first);
+
+    jest.setSystemTime(start + ACTIVITY_PERSIST_INTERVAL_MS + 1);
+    markSessionActivity();
+    expect(Number(localStorage.getItem('last_activity_at'))).toBeGreaterThan(Number(first));
   });
 
   test('getIdleRemainingMs decreases as time passes', () => {
@@ -61,7 +77,31 @@ describe('sessionIdle', () => {
   test('checkIdleTimeout logs out after idle period', () => {
     startIdleSessionWatch();
     localStorage.setItem('last_activity_at', String(Date.now() - SESSION_IDLE_MS - 1000));
-    jest.advanceTimersByTime(20_000);
+    jest.advanceTimersByTime(60_000);
+    expect(logoutAndRedirect).toHaveBeenCalledWith({ reason: 'idle' });
+    stopIdleSessionWatch();
+  });
+
+  test('activity before idle deadline pushes logout forward', () => {
+    const start = Date.now();
+    jest.setSystemTime(start);
+    localStorage.setItem('last_activity_at', String(start));
+    startIdleSessionWatch();
+    logoutAndRedirect.mockClear();
+
+    jest.setSystemTime(start + 28 * 60 * 1000);
+    jest.advanceTimersByTime(60_000);
+    expect(logoutAndRedirect).not.toHaveBeenCalled();
+
+    jest.setSystemTime(start + 29 * 60 * 1000);
+    markSessionActivity();
+    logoutAndRedirect.mockClear();
+    jest.advanceTimersByTime(60_000);
+    expect(logoutAndRedirect).not.toHaveBeenCalled();
+
+    const activeAt = Number(localStorage.getItem('last_activity_at'));
+    jest.setSystemTime(activeAt + SESSION_IDLE_MS + 1000);
+    jest.advanceTimersByTime(60_000);
     expect(logoutAndRedirect).toHaveBeenCalledWith({ reason: 'idle' });
     stopIdleSessionWatch();
   });
@@ -70,9 +110,9 @@ describe('sessionIdle', () => {
     startIdleSessionWatch();
     localStorage.setItem(
       'last_activity_at',
-      String(Date.now() - SESSION_IDLE_MS + 60_000)
+      String(Date.now() - SESSION_IDLE_MS + 5 * 60_000)
     );
-    jest.advanceTimersByTime(20_000);
+    jest.advanceTimersByTime(60_000);
     expect(logoutAndRedirect).not.toHaveBeenCalled();
     stopIdleSessionWatch();
   });

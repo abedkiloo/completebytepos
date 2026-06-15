@@ -2,13 +2,15 @@
  * Log out after a period of user inactivity (mouse, keyboard, touch, scroll).
  * Activity is shared across tabs via localStorage.
  */
-import { SESSION_IDLE_MS } from '../config/sessionConfig';
+import {
+  SESSION_IDLE_MS,
+  ACTIVITY_PERSIST_INTERVAL_MS,
+} from '../config/sessionConfig';
 import { isAuthenticated, logoutAndRedirect, isSessionTeardownActive } from './authSession';
 
-export { SESSION_IDLE_MS };
+export { SESSION_IDLE_MS, ACTIVITY_PERSIST_INTERVAL_MS };
 
-const CHECK_INTERVAL_MS = 15 * 1000;
-const ACTIVITY_THROTTLE_MS = 1000;
+const CHECK_INTERVAL_MS = 60 * 1000;
 const LAST_ACTIVITY_KEY = 'last_activity_at';
 
 const ACTIVITY_EVENTS = [
@@ -27,7 +29,7 @@ let lastMark = 0;
 export function markSessionActivity() {
   if (!isAuthenticated()) return;
   const now = Date.now();
-  if (now - lastMark < ACTIVITY_THROTTLE_MS) return;
+  if (now - lastMark < ACTIVITY_PERSIST_INTERVAL_MS) return;
   lastMark = now;
   localStorage.setItem(LAST_ACTIVITY_KEY, String(now));
 }
