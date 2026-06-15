@@ -269,7 +269,9 @@ export default function POSPage() {
           <div className="min-h-0 flex-1">
             <Cart
               items={state.cart}
+              validateStock={state.validateStock}
               onAdjust={state.adjustItemQuantity}
+              onSetQuantity={state.setItemQuantity}
               onRemove={state.removeFromCart}
               onClear={requestClearCart}
             />

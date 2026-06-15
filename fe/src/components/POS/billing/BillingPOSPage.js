@@ -7,8 +7,6 @@ import {
   UserPlus,
   User,
   Check,
-  Minus,
-  Plus,
   Loader2,
 } from 'lucide-react';
 import { Button } from '../../ui/button';
@@ -19,6 +17,8 @@ import { cn } from '../../../lib/cn';
 import { formatCurrency } from '../../../utils/formatters';
 import { useBillingPOSState } from './useBillingPOSState';
 import VariantSelector from '../VariantSelector';
+import { CartQtyInput } from '../CartQtyInput';
+import { getLineStockCap } from '../v2/usePOSState';
 import PosCartRecoveryDialog from '../PosCartRecoveryDialog';
 import PartialPaymentCustomerDialog from './PartialPaymentCustomerDialog';
 import CustomerFormModal from '../../Customers/CustomerFormModal';
@@ -222,6 +222,7 @@ export default function BillingPOSPage() {
                         ? `${item.id}-${item.variant_id}`
                         : `${item.id}`;
                       const lineTotal = item.price * item.quantity;
+                      const stockCap = state.validateStock ? getLineStockCap(item) : null;
                       return (
                         <tr key={key} className="border-b last:border-0">
                           <td className="px-4 py-3">
@@ -234,29 +235,15 @@ export default function BillingPOSPage() {
                             {formatCurrency(item.selling_price ?? item.price)}
                           </td>
                           <td className="px-2 py-3">
-                            <div className="flex items-center justify-center gap-1">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => state.updateQty(key, -1)}
-                              >
-                                <Minus className="h-3 w-3" />
-                              </Button>
-                              <span className="w-8 text-center tabular-nums font-medium">
-                                {item.quantity}
-                              </span>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => state.updateQty(key, 1)}
-                              >
-                                <Plus className="h-3 w-3" />
-                              </Button>
-                            </div>
+                            <CartQtyInput
+                              quantity={item.quantity}
+                              stockCap={stockCap}
+                              onDelta={(delta) => state.updateQty(key, delta)}
+                              onSetQuantity={(qty) => state.setQty(key, qty)}
+                              disablePlus={
+                                stockCap !== null && item.quantity >= stockCap
+                              }
+                            />
                           </td>
                           <td className="px-2 py-3 text-right font-medium tabular-nums">
                             {formatCurrency(lineTotal)}

@@ -54,29 +54,50 @@ class NestedVariantsAPITests(TestCase):
         product.refresh_from_db()
         self.assertEqual(product.stock_quantity, 5)
 
-    def test_create_product_with_nested_variants_includes_mrp(self):
+    def test_update_product_with_nested_variants_updates_and_creates_variants(self):
+        # Create initial product with one variant
+        product = Product.objects.create(
+            name='Update Variant Product',
+            sku='API-VAR-2',
+            category=self.category,
+            price=Decimal('50.00'),
+            track_stock=True,
+            has_variants=True,
+            stock_quantity=0,
+            is_active=True,
+        )
+        variant = ProductVariant.objects.create(
+            product=product,
+            size=self.size,
+            color=self.color,
+            sku='API-VAR-2-DEF',
+            stock_quantity=2,
+            price=Decimal('50.00'),
+            is_active=True,
+        )
+        # PATCH with updated existing variant and a new variant
         payload = {
-            'name': 'API MRP Variant Product',
-            'sku': 'API-VAR-MRP',
-            'category': self.category.id,
-            'has_variants': True,
-            'track_stock': True,
             'variants': [
+                {
+                    'id': variant.id,
+                    'stock_quantity': 3,
+                },
                 {
                     'size': self.size.id,
                     'color': self.color.id,
-                    'sku': 'API-VAR-MRP-DEF',
-                    'stock_quantity': 2,
-                    'price': '100.00',
-                    'mrp': '130.00',
-                }
+                    'sku': 'API-VAR-2-DEF-NEW',
+                    'stock_quantity': 4,
+                    'price': '60.00',
+                },
             ],
         }
 
-        resp = self.client.post('/api/products/', payload, format='json')
-        self.assertIn(resp.status_code, (201, 202), msg=f'Got {resp.status_code} {resp.data}')
+        resp = self.client.patch(f'/api/products/{product.id}/', payload, format='json')
+        self.assertIn(resp.status_code, (200, 202), msg=f'Got {resp.status_code} {resp.data}')
 
-        product = Product.objects.filter(sku='API-VAR-MRP').first()
-        self.assertIsNotNone(product)
-        variant = product.variants.first()
-        self.assertEqual(variant.mrp, Decimal('130.00'))
+        product.refresh_from_db()
+        variants = list(product.variants.order_by('id').all())
+        # Two variants should now exist
+        self.assertEqual(len(variants), 2)
+        # Stock sync: parent = sum(3 + 4) = 7
+        self.assertEqual(product.stock_quantity, 7)

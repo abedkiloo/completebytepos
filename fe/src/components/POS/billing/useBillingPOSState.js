@@ -426,6 +426,20 @@ export function useBillingPOSState() {
     );
   }, [validateStock]);
 
+  const setQty = useCallback((key, newQty) => {
+    const requested = Math.max(0, parseInt(newQty, 10) || 0);
+    if (requested === 0) {
+      setCart((prev) => prev.filter((i) => cartItemKey(i) !== key));
+      return;
+    }
+    setCart((prev) =>
+      prev.map((item) => {
+        if (cartItemKey(item) !== key) return item;
+        return applyStockCapToLine({ ...item, quantity: requested }, validateStock);
+      })
+    );
+  }, [validateStock]);
+
   const removeLine = useCallback((key) => {
     setCart((prev) => prev.filter((i) => cartItemKey(i) !== key));
   }, []);
@@ -606,6 +620,7 @@ export function useBillingPOSState() {
     submitting,
     addToCart,
     updateQty,
+    setQty,
     removeLine,
     clearCart,
     checkout,

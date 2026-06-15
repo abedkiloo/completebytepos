@@ -1,11 +1,12 @@
 import React from 'react';
-import { Trash2, Plus, Minus, ShoppingCart, AlertTriangle } from 'lucide-react';
+import { Trash2, ShoppingCart, AlertTriangle } from 'lucide-react';
 
 import { Button } from '../../ui/button';
 import { ScrollArea } from '../../ui/scroll-area';
 import { formatCurrency } from '../../../utils/formatters';
 import { cn } from '../../../lib/cn';
 import { getLineStockCap } from './usePOSState';
+import { CartQtyInput } from '../CartQtyInput';
 
 /**
  * Classify a cart line against its stock cap.
@@ -16,8 +17,7 @@ import { getLineStockCap } from './usePOSState';
  *   - { kind: 'last', cap, atCap }   – qty within 2 of the cap
  *   - { kind: 'ok',   cap }          – plenty of stock
  */
-const classifyStock = (item) => {
-  const cap = getLineStockCap(item);
+const classifyStock = (item, cap = getLineStockCap(item)) => {
   if (cap === null) return { kind: 'untracked' };
   if (item.quantity > cap) return { kind: 'over', cap, by: item.quantity - cap };
   if (cap - item.quantity <= 2) return { kind: 'last', cap, atCap: item.quantity === cap };
@@ -33,8 +33,10 @@ const classifyStock = (item) => {
 export function Cart({
   items,
   onAdjust,
+  onSetQuantity,
   onRemove,
   onClear,
+  validateStock = true,
 }) {
   if (items.length === 0) {
     return (
@@ -73,7 +75,9 @@ export function Cart({
               <CartLine
                 key={`${item.id}-${item.variant_id || 'base'}`}
                 item={item}
+                validateStock={validateStock}
                 onAdjust={onAdjust}
+                onSetQuantity={onSetQuantity}
                 onRemove={onRemove}
               />
             ))}
@@ -84,12 +88,13 @@ export function Cart({
   );
 }
 
-function CartLine({ item, onAdjust, onRemove }) {
+function CartLine({ item, validateStock, onAdjust, onSetQuantity, onRemove }) {
   const lineTotal = item.price * item.quantity;
   const variantLabel = [item.variant?.size?.name, item.variant?.color?.name]
     .filter(Boolean)
     .join(' / ');
-  const stock = classifyStock(item);
+  const stockCap = validateStock ? getLineStockCap(item) : null;
+  const stock = classifyStock(item, stockCap);
   const atCap = stock.kind === 'last' && stock.atCap;
   const over = stock.kind === 'over';
 
@@ -127,7 +132,13 @@ function CartLine({ item, onAdjust, onRemove }) {
         </div>
 
         <div className="mt-2 flex items-center justify-between">
-          <QtyStepper item={item} onAdjust={onAdjust} disablePlus={atCap || over} />
+          <CartQtyInput
+            quantity={item.quantity}
+            stockCap={stockCap}
+            onDelta={(delta) => onAdjust(item, delta)}
+            onSetQuantity={(qty) => onSetQuantity(item, qty)}
+            disablePlus={atCap || over}
+          />
           <span className="text-sm font-semibold tabular-nums text-foreground">
             {formatCurrency(lineTotal)}
           </span>
@@ -174,40 +185,5 @@ function StockChip({ stock }) {
         {stock.cap} in stock
       </span>
     </>
-  );
-}
-
-function QtyStepper({ item, onAdjust, disablePlus = false }) {
-  return (
-    <div className="inline-flex items-center rounded-md border bg-background">
-      <button
-        type="button"
-        onClick={() => onAdjust(item, -1)}
-        aria-label="Decrease quantity"
-        className={cn(
-          'inline-flex h-8 w-8 items-center justify-center rounded-l-md text-muted-foreground',
-          'hover:bg-accent hover:text-foreground active:bg-accent/80'
-        )}
-      >
-        <Minus className="h-3.5 w-3.5" />
-      </button>
-      <span className="min-w-[2rem] px-2 text-center text-sm font-semibold tabular-nums">
-        {item.quantity}
-      </span>
-      <button
-        type="button"
-        onClick={() => onAdjust(item, +1)}
-        aria-label="Increase quantity"
-        disabled={disablePlus}
-        title={disablePlus ? 'No more in stock' : undefined}
-        className={cn(
-          'inline-flex h-8 w-8 items-center justify-center rounded-r-md text-muted-foreground',
-          'hover:bg-accent hover:text-foreground active:bg-accent/80',
-          'disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground'
-        )}
-      >
-        <Plus className="h-3.5 w-3.5" />
-      </button>
-    </div>
   );
 }

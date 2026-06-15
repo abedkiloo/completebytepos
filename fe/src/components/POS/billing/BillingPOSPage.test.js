@@ -79,6 +79,7 @@ function buildMockState(overrides = {}) {
     submitting: false,
     addToCart: jest.fn(),
     updateQty: jest.fn(),
+    setQty: jest.fn(),
     removeLine: jest.fn(),
     clearCart: jest.fn(),
     checkout: jest.fn(),
