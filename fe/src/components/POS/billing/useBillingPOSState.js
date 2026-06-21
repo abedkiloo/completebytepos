@@ -30,6 +30,10 @@ import {
 } from '../../../utils/posCartRecovery';
 import { evaluatePartialPaymentToggle } from '../../../utils/billingPartialPayment';
 import { paymentReferenceRequired } from '../../../utils/paymentMethods';
+import {
+  evaluateBillingAmountPaid,
+  isRegisteredPosCustomer,
+} from '../../../utils/posCheckoutValidation';
 
 const HOLDING_SYNC_MS = 600;
 
@@ -465,15 +469,21 @@ export function useBillingPOSState() {
       }
     }
 
-    const paid = parseFloat(amountPaid) || 0;
     if (paymentReferenceRequired(paymentMethod) && !String(paymentReference || '').trim()) {
       toast.warning('Enter the payment reference (e.g. M-Pesa code or card details).');
       return;
     }
-    if (paymentMethod !== 'other' && paid <= 0) {
-      toast.warning('Enter amount received');
+    const paidCheck = evaluateBillingAmountPaid(amountPaid, {
+      paymentMethod,
+      partialPayment,
+      hasRegisteredCustomer: isRegisteredPosCustomer(selectedCustomer),
+      total,
+    });
+    if (!paidCheck.ok) {
+      toast.warning(paidCheck.message);
       return;
     }
+    const paid = paidCheck.paid;
     if (requireCustomer && (!selectedCustomer || isWalkInCustomer(selectedCustomer))) {
       toast.warning('Select a registered customer to complete this sale.');
       return;

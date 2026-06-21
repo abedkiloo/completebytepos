@@ -41,13 +41,14 @@ import {
   salesShowTax,
   salesShowDelivery,
 } from '../../../utils/salesDisplay';
-import { isManagerOrAdminFromStorage } from '../../../utils/roleAccess';
+import { isManagerOrAdminFromStorage, getStoredAuth } from '../../../utils/roleAccess';
 import { useModuleSettings } from '../../../hooks/useModuleSettings';
 import {
   canQuickAddCustomerAtPos,
   customersShowCustomerCode,
   customersShowWalletBalance,
 } from '../../../utils/customerDisplay';
+import { isRegisteredPosCustomer } from '../../../utils/posCheckoutValidation';
 
 /**
  * Redesigned Point-of-Sale screen.
@@ -72,9 +73,11 @@ export default function POSPage() {
   const state = usePOSState();
   const { settings } = useStoreSettings();
   const { settings: customerModuleSettings } = useModuleSettings('customers');
+  const { permissions } = getStoredAuth();
   const canAddCustomer = canQuickAddCustomerAtPos(
     isManagerOrAdminFromStorage(),
-    customerModuleSettings
+    customerModuleSettings,
+    permissions
   );
   const showCustomerCodeInPicker = customersShowCustomerCode(customerModuleSettings);
   const showWalletInPicker = customersShowWalletBalance(customerModuleSettings);
@@ -312,6 +315,8 @@ export default function POSPage() {
             itemCount={state.cartItemCount}
             hasOversell={state.hasOversell}
             enabledPaymentMethods={settings.enabled_payment_methods}
+            allowPartialPayment={state.allowPartialPayment}
+            hasRegisteredCustomer={isRegisteredPosCustomer(state.selectedCustomer)}
             showDiscount={salesShowDiscount(state.salesModuleSettings)}
             showTax={salesShowTax(state.salesModuleSettings)}
             showDelivery={salesShowDelivery(state.salesModuleSettings)}

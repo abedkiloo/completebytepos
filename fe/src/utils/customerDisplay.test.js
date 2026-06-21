@@ -4,6 +4,7 @@ import {
   customersEnableCreate,
   customersShowStatus,
   customersAllowQuickAddAtPos,
+  canQuickAddCustomerAtPos,
 } from './customerDisplay';
 
 describe('customerDisplay', () => {
@@ -28,5 +29,14 @@ describe('customerDisplay', () => {
         enable_customer_create: false,
       })
     ).toBe(false);
+  });
+
+  test('canQuickAddCustomerAtPos allows sales staff with customers.create', () => {
+    const settings = { allow_quick_add_at_pos: true, enable_customer_create: true };
+    expect(canQuickAddCustomerAtPos(false, settings, [])).toBe(false);
+    expect(
+      canQuickAddCustomerAtPos(false, settings, [{ module: 'customers', action: 'create' }])
+    ).toBe(true);
+    expect(canQuickAddCustomerAtPos(true, settings, [])).toBe(true);
   });
 });

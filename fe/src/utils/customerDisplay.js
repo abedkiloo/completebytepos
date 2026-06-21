@@ -52,7 +52,26 @@ export function customersAllowQuickAddAtPos(settings) {
   );
 }
 
-/** Role check (manager/admin) plus module quick-add flag. */
-export function canQuickAddCustomerAtPos(roleAllowed, customerModuleSettings) {
-  return Boolean(roleAllowed) && customersAllowQuickAddAtPos(customerModuleSettings);
+/**
+ * Quick-add at POS: module flag plus create permission (manager/admin OR customers.create).
+ */
+export function canQuickAddCustomerAtPos(
+  roleAllowed,
+  customerModuleSettings,
+  permissions = []
+) {
+  if (!customersAllowQuickAddAtPos(customerModuleSettings)) {
+    return false;
+  }
+  if (roleAllowed) {
+    return true;
+  }
+  if (!Array.isArray(permissions)) {
+    return false;
+  }
+  return permissions.some(
+    (p) =>
+      p.name === 'customers.create' ||
+      (p.module === 'customers' && p.action === 'create')
+  );
 }

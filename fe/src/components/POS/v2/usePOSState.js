@@ -23,6 +23,10 @@ import {
 import { useModuleSettings } from '../../../hooks/useModuleSettings';
 import { paymentReferenceRequired } from '../../../utils/paymentMethods';
 import {
+  evaluatePosAmountReceived,
+  isRegisteredPosCustomer,
+} from '../../../utils/posCheckoutValidation';
+import {
   salesShowDiscount,
   salesShowTax,
   salesShowDelivery,
@@ -677,26 +681,30 @@ export function usePOSState() {
       return;
     }
 
-    const isTendered = paymentMethod === 'cash' || paymentMethod === 'mpesa';
-    const received = parseFloat(receivedAmount) || 0;
-
     if (paymentReferenceRequired(paymentMethod) && !String(paymentReference || '').trim()) {
       toast.warning('Enter the payment reference (e.g. M-Pesa code or card details).');
       return;
     }
 
+    const isTendered = paymentMethod === 'cash' || paymentMethod === 'mpesa';
+    const receivedCheck = evaluatePosAmountReceived(receivedAmount, {
+      allowPartialPayment,
+      hasRegisteredCustomer: isRegisteredPosCustomer(selectedCustomer),
+    });
+
     if (isTendered) {
-      if (!receivedAmount || received <= 0) {
-        toast.warning('Enter the amount received from the customer.');
+      if (!receivedCheck.ok) {
+        toast.warning(receivedCheck.message);
         return;
       }
+      const received = receivedCheck.received;
 
-      if (received < total) {
+      if (receivedCheck.creditSale || received < total) {
         if (!allowPartialPayment) {
           toast.warning('Partial payment is disabled. Collect the full amount to continue.');
           return;
         }
-        if (!selectedCustomer || selectedCustomer.id === 'walk-in') {
+        if (!isRegisteredPosCustomer(selectedCustomer)) {
           toast.warning(
             'Pick a registered customer before allowing a partial payment — the balance is recorded against their account.'
           );

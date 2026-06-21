@@ -724,6 +724,8 @@ class SaleService(BaseService):
         if payment_method not in ('cash', 'mpesa', 'card'):
             return
         if amount_paid <= 0:
+            if allow_partial and customer:
+                return
             raise ValidationError('Enter the amount received from the customer.')
         if amount_paid < total and not allow_partial:
             raise ValidationError(
@@ -769,7 +771,9 @@ class SaleService(BaseService):
                     )
                 if not customer:
                     raise ValidationError('Customer must be selected to allow partial payment')
-                pending_debt = abs(change)
+                # POS wallet debt only — normal sales track unpaid balance on invoices.
+                if sale_type == 'pos':
+                    pending_debt = abs(change)
                 change = Decimal('0')
             elif change > 0 and excess_payment_choice == 'wallet' and customer:
                 wallet_credit_added = change
@@ -814,22 +818,31 @@ class SaleService(BaseService):
 
         pending_debt = payment_result.get('pending_debt')
         if pending_debt:
-            customer.wallet_balance -= pending_debt
-            customer.save(update_fields=['wallet_balance', 'updated_at'])
-            CustomerWalletTransaction.objects.create(
-                customer=customer,
-                transaction_type='debit',
-                source_type='debt',
-                amount=pending_debt,
-                balance_after=customer.wallet_balance,
+            if CustomerWalletTransaction.objects.filter(
                 sale=sale,
-                reference=sale.sale_number,
-                notes=(
-                    f'Unpaid balance from sale added to customer debt '
-                    f'(wallet balance: {customer.wallet_balance})'
-                ),
-                created_by=user,
-            )
+                source_type='debt',
+            ).exists():
+                logger.warning(
+                    'Skipping duplicate wallet debt for sale %s',
+                    sale.sale_number,
+                )
+            else:
+                customer.wallet_balance -= pending_debt
+                customer.save(update_fields=['wallet_balance', 'updated_at'])
+                CustomerWalletTransaction.objects.create(
+                    customer=customer,
+                    transaction_type='debit',
+                    source_type='debt',
+                    amount=pending_debt,
+                    balance_after=customer.wallet_balance,
+                    sale=sale,
+                    reference=sale.sale_number,
+                    notes=(
+                        f'Unpaid balance from sale added to customer debt '
+                        f'(wallet balance: {customer.wallet_balance})'
+                    ),
+                    created_by=user,
+                )
 
         wallet_credit_added = payment_result['wallet_credit_added']
         if wallet_credit_added > 0:

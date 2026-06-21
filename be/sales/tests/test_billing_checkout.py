@@ -8,7 +8,7 @@ from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from products.models import Category, Color, Product, ProductVariant, Size
-from sales.models import Sale
+from sales.models import Sale, Customer
 from sales.services import SaleService
 from settings.models import Branch, Tenant
 from settings.test_utils import disable_product_variants, enable_product_variants
@@ -253,3 +253,37 @@ class BillingCheckoutAPITestCase(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('variant_id', response.data.get('error', '').lower())
+
+    def test_checkout_zero_amount_partial_records_wallet_debt_once(self):
+        customer = Customer.objects.create(
+            name='Credit Buyer',
+            is_active=True,
+            wallet_balance=Decimal('0'),
+        )
+        holding = self.sale_service.save_holding_sale(
+            self.user,
+            [{'product_id': self.product.id, 'quantity': 1, 'unit_price': '80.00'}],
+            branch=self.branch,
+            customer=customer,
+        )
+        response = self.client.post(
+            f'/api/sales/{holding.id}/checkout/',
+            {
+                'payment_method': 'cash',
+                'amount_paid': '0',
+                'allow_partial_payment': True,
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        customer.refresh_from_db()
+        self.assertEqual(customer.wallet_balance, Decimal('-80.00'))
+        from sales.models import CustomerWalletTransaction
+
+        self.assertEqual(
+            CustomerWalletTransaction.objects.filter(
+                sale_id=holding.id,
+                source_type='debt',
+            ).count(),
+            1,
+        )

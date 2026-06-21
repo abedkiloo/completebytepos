@@ -19,6 +19,7 @@ import {
   paymentReferencePlaceholder,
   paymentReferenceRequired,
 } from '../../../utils/paymentMethods';
+import { evaluatePosAmountReceived } from '../../../utils/posCheckoutValidation';
 
 export function CheckoutPanel({
   // totals
@@ -56,6 +57,8 @@ export function CheckoutPanel({
   itemCount,
   hasOversell = false,
   enabledPaymentMethods,
+  allowPartialPayment = false,
+  hasRegisteredCustomer = false,
   showDiscount = true,
   showTax = true,
   showDelivery = true,
@@ -83,12 +86,16 @@ export function CheckoutPanel({
   const isCashLike = method.requiresAmount;
   const needsReference = paymentReferenceRequired(paymentMethod);
   const referenceOk = !needsReference || String(paymentReference || '').trim().length > 0;
+  const receivedCheck = evaluatePosAmountReceived(receivedAmount, {
+    allowPartialPayment,
+    hasRegisteredCustomer,
+  });
   const canPay =
     !hasOversell &&
     itemCount > 0 &&
     total > 0 &&
     referenceOk &&
-    (!isCashLike || parseFloat(receivedAmount) > 0);
+    (!isCashLike || receivedCheck.ok);
 
   return (
     <div className="flex flex-col border-t bg-background">

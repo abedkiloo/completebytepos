@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Printer, Mail, Check, Loader2, Receipt as ReceiptIcon, UserPlus } from 'lucide-react';
+import { Printer, Mail, Check, Loader2, Receipt as ReceiptIcon, UserPlus, X } from 'lucide-react';
 
 import {
   Dialog,
@@ -12,7 +12,7 @@ import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
 import { toast } from '../../../utils/toast';
 import { formatCurrency } from '../../../utils/formatters';
-import { isManagerOrAdminFromStorage } from '../../../utils/roleAccess';
+import { isManagerOrAdminFromStorage, getStoredAuth } from '../../../utils/roleAccess';
 import { useModuleSettings } from '../../../hooks/useModuleSettings';
 import { canQuickAddCustomerAtPos } from '../../../utils/customerDisplay';
 import CustomerFormModal from '../../Customers/CustomerFormModal';
@@ -69,6 +69,7 @@ export default function ReceiptDialog({
 }) {
   const store = useStoreInfo(sale);
   const { settings: customerModuleSettings } = useModuleSettings('customers');
+  const { permissions } = getStoredAuth();
   const [printing, setPrinting] = useState(false);
   const [printedOnce, setPrintedOnce] = useState(false);
   const [showCustomerForm, setShowCustomerForm] = useState(false);
@@ -103,7 +104,8 @@ export default function ReceiptDialog({
   const walkIn = isWalkInSale(sale);
   const canAddCustomer = canQuickAddCustomerAtPos(
     isManagerOrAdminFromStorage(),
-    customerModuleSettings
+    customerModuleSettings,
+    permissions
   );
 
   return (
@@ -168,26 +170,38 @@ export default function ReceiptDialog({
             </div>
           </div>
 
-          <DialogFooter className="shrink-0 grid grid-cols-3 gap-1.5 border-t bg-background p-2.5">
-            <SendWhatsAppButton sale={sale} />
-            <SendEmailButton sale={sale} />
+          <DialogFooter className="shrink-0 flex-col gap-1.5 border-t bg-background p-2.5">
+            <div className="grid w-full grid-cols-3 gap-1.5">
+              <SendWhatsAppButton sale={sale} />
+              <SendEmailButton sale={sale} />
+              <Button
+                onClick={doPrint}
+                disabled={printing}
+                size="cashier"
+                className="col-span-1"
+              >
+                {printing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Sending…
+                  </>
+                ) : (
+                  <>
+                    <Printer className="h-4 w-4" />
+                    {printedOnce ? 'Print again' : 'Print'}
+                  </>
+                )}
+              </Button>
+            </div>
             <Button
-              onClick={doPrint}
-              disabled={printing}
+              type="button"
+              variant="outline"
               size="cashier"
-              className="col-span-1"
+              className="w-full"
+              onClick={() => onOpenChange(false)}
             >
-              {printing ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Sending…
-                </>
-              ) : (
-                <>
-                  <Printer className="h-4 w-4" />
-                  {printedOnce ? 'Print again' : 'Print'}
-                </>
-              )}
+              <X className="h-4 w-4" />
+              Cancel
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -620,6 +620,103 @@ class SaleServiceTestCase(TestCase):
                 wallet_amount_requested=Decimal('0'),
             )
 
+    def test_validate_checkout_payment_allows_zero_for_credit_sale(self):
+        self.service._validate_checkout_payment(
+            'cash',
+            Decimal('0'),
+            Decimal('100.00'),
+            self.customer,
+            allow_partial=True,
+        )
+
+    def test_validate_checkout_payment_rejects_zero_without_partial(self):
+        with self.assertRaises(ValidationError):
+            self.service._validate_checkout_payment(
+                'cash',
+                Decimal('0'),
+                Decimal('100.00'),
+                self.customer,
+                allow_partial=False,
+            )
+
+    def test_pos_partial_payment_records_single_wallet_debt(self):
+        from unittest.mock import patch
+
+        validated = {
+            'items': [{'product_id': self.product.id, 'quantity': 1}],
+            'payment_method': 'cash',
+            'amount_paid': Decimal('40.00'),
+            'sale_type': 'pos',
+            'allow_partial_payment': True,
+            'customer_id': self.customer.id,
+            'branch_id': self.branch.id,
+        }
+        request = type('Req', (), {'user': self.user, 'session': {}})()
+        with patch('sales.services.is_branch_support_enabled', return_value=False):
+            result = self.service.create_sale_from_validated_data(validated, self.user, request)
+
+        sale = result['sale']
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.wallet_balance, Decimal('140.00'))
+        debt_txns = CustomerWalletTransaction.objects.filter(
+            sale=sale,
+            source_type='debt',
+        )
+        self.assertEqual(debt_txns.count(), 1)
+        self.assertEqual(debt_txns.first().amount, Decimal('60.00'))
+
+    def test_pos_zero_payment_credit_sale(self):
+        from unittest.mock import patch
+
+        validated = {
+            'items': [{'product_id': self.product.id, 'quantity': 1}],
+            'payment_method': 'cash',
+            'amount_paid': Decimal('0'),
+            'sale_type': 'pos',
+            'allow_partial_payment': True,
+            'customer_id': self.customer.id,
+            'branch_id': self.branch.id,
+        }
+        request = type('Req', (), {'user': self.user, 'session': {}})()
+        with patch('sales.services.is_branch_support_enabled', return_value=False):
+            result = self.service.create_sale_from_validated_data(validated, self.user, request)
+
+        sale = result['sale']
+        self.customer.refresh_from_db()
+        self.assertEqual(sale.amount_paid, Decimal('0'))
+        self.assertEqual(self.customer.wallet_balance, Decimal('100.00'))
+        self.assertEqual(
+            CustomerWalletTransaction.objects.filter(sale=sale, source_type='debt').count(),
+            1,
+        )
+
+    def test_normal_partial_sale_uses_invoice_not_wallet_debt(self):
+        from unittest.mock import patch
+
+        validated = {
+            'items': [{'product_id': self.product.id, 'quantity': 1}],
+            'payment_method': 'cash',
+            'amount_paid': Decimal('40.00'),
+            'sale_type': 'normal',
+            'allow_partial_payment': True,
+            'customer_id': self.customer.id,
+            'branch_id': self.branch.id,
+        }
+        request = type('Req', (), {'user': self.user, 'session': {}})()
+        starting_wallet = self.customer.wallet_balance
+        with patch('sales.services.is_branch_support_enabled', return_value=False):
+            result = self.service.create_sale_from_validated_data(validated, self.user, request)
+
+        sale = result['sale']
+        invoice = result['invoice']
+        self.customer.refresh_from_db()
+        self.assertIsNotNone(invoice)
+        self.assertEqual(invoice.balance, Decimal('60.00'))
+        self.assertEqual(self.customer.wallet_balance, starting_wallet)
+        self.assertFalse(
+            CustomerWalletTransaction.objects.filter(sale=sale, source_type='debt').exists()
+        )
+
 
 class InvoiceServiceTestCase(TestCase):
     """Tests for InvoiceService"""

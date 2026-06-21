@@ -33,7 +33,7 @@ import {
   paymentReferencePlaceholder,
   paymentReferenceRequired,
 } from '../../../utils/paymentMethods';
-import { isManagerOrAdminFromStorage } from '../../../utils/roleAccess';
+import { isManagerOrAdminFromStorage, getStoredAuth } from '../../../utils/roleAccess';
 import { useModuleSettings } from '../../../hooks/useModuleSettings';
 import { canQuickAddCustomerAtPos, customersShowWalletBalance } from '../../../utils/customerDisplay';
 import { CustomerWalletBalance } from '../../Customers/CustomerWalletBalance';
@@ -58,9 +58,11 @@ export default function BillingPOSPage() {
   const customerSearchRef = useRef(null);
   const [showNewCustomer, setShowNewCustomer] = React.useState(false);
   const { settings: customerModuleSettings } = useModuleSettings('customers');
+  const { permissions } = getStoredAuth();
   const canAddCustomer = canQuickAddCustomerAtPos(
     isManagerOrAdminFromStorage(),
-    customerModuleSettings
+    customerModuleSettings,
+    permissions
   );
   const showWalletBalance = customersShowWalletBalance(customerModuleSettings);
 
