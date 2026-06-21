@@ -113,7 +113,6 @@ const Invoices = () => {
       const invoicesData = response.data.results || response.data || [];
       setInvoices(Array.isArray(invoicesData) ? invoicesData : []);
     } catch (error) {
-      console.error('Error loading invoices:', error);
       toast.error('Failed to load invoices');
     } finally {
       setLoading(false);
@@ -128,7 +127,6 @@ const Invoices = () => {
       const customersData = response.data.results || response.data || [];
       setCustomers(Array.isArray(customersData) ? customersData : []);
     } catch (error) {
-      console.error('Error loading customers:', error);
       toast.error('Failed to load customers');
     }
   };
@@ -138,7 +136,6 @@ const Invoices = () => {
       const response = await salesAPI.list({ limit: 100 });
       setSales(response.data.results || response.data || []);
     } catch (error) {
-      console.error('Error loading sales:', error);
     }
   };
 
@@ -148,7 +145,6 @@ const Invoices = () => {
       const productsData = response.data.results || response.data || [];
       setProducts(Array.isArray(productsData) ? productsData : []);
     } catch (error) {
-      console.error('Error loading products:', error);
     }
   };
 
@@ -228,7 +224,6 @@ const Invoices = () => {
       await loadCustomers();
       setShowModal(true);
     } catch (error) {
-      console.error('Error loading invoice details:', error);
       toast.error('Failed to load invoice details');
     }
   };

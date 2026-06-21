@@ -43,7 +43,6 @@ export default function SalesPersonReportView() {
       const response = await reportsAPI.salesByPerson(queryParams);
       setData(response.data);
     } catch (error) {
-      console.error('Error loading sales-by-person report:', error);
       setData(null);
       toast.error('Could not load sales staff report');
     } finally {

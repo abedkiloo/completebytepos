@@ -81,7 +81,6 @@ const Roles = () => {
         return;
       }
     } catch (error) {
-      console.warn('by_domain permissions failed, falling back to list', error);
     }
 
     try {
@@ -90,7 +89,6 @@ const Roles = () => {
       setPermissions(results);
       setPermissionCatalog([]);
     } catch (error) {
-      console.error(error);
       toast.error('Failed to load permissions');
     }
   };

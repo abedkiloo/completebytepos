@@ -187,11 +187,13 @@ run_migrations() {
     fi
     
     # Run migrate (apply migrations)
-    if docker exec completebytepos_backend python manage.py migrate --noinput 2>/dev/null; then
+    if docker exec completebytepos_backend python manage.py migrate --noinput; then
         print_success "Database migrations applied"
     else
         print_error "Failed to run migrations!"
-        print_info "Check backend logs: $COMPOSE_CMD -f docker-compose.dev.yml logs backend"
+        print_info "Common fix: POSTGRES_PASSWORD in .env must match the existing postgres volume."
+        print_info "  Align DB_PASSWORD with POSTGRES_PASSWORD, or reset DB: docker compose -f docker-compose.dev.yml down -v"
+        print_info "Full logs: $COMPOSE_CMD -f $COMPOSE_FILE logs backend"
         return 1
     fi
 }

@@ -58,6 +58,9 @@ import { clearAuthState, logoutLocally, clearSessionTeardownFlag } from '../../u
 import { isManagerOrAdminFromStorage } from '../../utils/roleAccess';
 import { stopIdleSessionWatch } from '../../utils/sessionIdle';
 import { cacheStoreSettings } from '../../utils/storeSettingsCache';
+import { useNavBadgeCounts } from '../../hooks/useNavBadgeCounts';
+import { navBadgeCountForItem } from '../../utils/navBadges';
+import NavCountBadge from './NavCountBadge';
 
 /**
  * Navigation tree.
@@ -357,6 +360,8 @@ const Layout = ({ children }) => {
     [itemVisible, navCtx]
   );
 
+  const navBadgeCounts = useNavBadgeCounts();
+
   return (
     <div className="flex min-h-screen flex-col bg-background">
       {/* Top bar */}
@@ -451,6 +456,7 @@ const Layout = ({ children }) => {
                 isActive={isActive}
                 onNavigate={handleNavClick}
                 showDivider={idx < visibleSections.length - 1}
+                navBadgeCounts={navBadgeCounts}
               />
             ))}
           </nav>
@@ -465,7 +471,7 @@ const Layout = ({ children }) => {
   );
 };
 
-const NavSection = ({ section, expanded, onToggle, isActive, onNavigate, showDivider }) => (
+const NavSection = ({ section, expanded, onToggle, isActive, onNavigate, showDivider, navBadgeCounts }) => (
   <div className="flex flex-col">
     <button
       type="button"
@@ -488,7 +494,13 @@ const NavSection = ({ section, expanded, onToggle, isActive, onNavigate, showDiv
     {expanded && (
       <div className="mt-1 flex flex-col gap-0.5">
         {section.visibleItems.map((item) => (
-          <NavItem key={`${section.id}-${item.to}-${item.label}`} item={item} isActive={isActive} onNavigate={onNavigate} />
+          <NavItem
+            key={`${section.id}-${item.to}-${item.label}`}
+            item={item}
+            isActive={isActive}
+            onNavigate={onNavigate}
+            badgeCount={navBadgeCountForItem(item, navBadgeCounts)}
+          />
         ))}
       </div>
     )}
@@ -497,7 +509,7 @@ const NavSection = ({ section, expanded, onToggle, isActive, onNavigate, showDiv
   </div>
 );
 
-const NavItem = ({ item, isActive, onNavigate }) => {
+const NavItem = ({ item, isActive, onNavigate, badgeCount = 0 }) => {
   const Icon = item.icon;
   const active = isActive(item);
   return (
@@ -514,6 +526,7 @@ const NavItem = ({ item, isActive, onNavigate }) => {
     >
       {Icon && <Icon className="h-4 w-4 shrink-0" />}
       <span className="truncate">{item.label}</span>
+      <NavCountBadge count={badgeCount} />
     </Link>
   );
 };

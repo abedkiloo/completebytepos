@@ -12,6 +12,18 @@ def _scoped_queryset(model, *, user, view_all: bool):
     return qs
 
 
+def _scoped_task_queryset(*, user, view_all: bool):
+    qs = DailyTask.objects.select_related(
+        'author',
+        'author__profile',
+        'assigned_to',
+        'assigned_to__profile',
+    )
+    if not view_all:
+        qs = qs.filter(assigned_to=user)
+    return qs
+
+
 def _apply_common_filters(qs, *, date_field: str, filters: dict | None, view_all: bool):
     filters = filters or {}
     day = filters.get('task_date') or filters.get('note_date')
@@ -21,6 +33,10 @@ def _apply_common_filters(qs, *, date_field: str, filters: dict | None, view_all
     author_id = filters.get('author')
     if author_id and view_all:
         qs = qs.filter(author_id=author_id)
+
+    assignee_id = filters.get('assigned_to')
+    if assignee_id and view_all:
+        qs = qs.filter(assigned_to_id=assignee_id)
 
     search = (filters.get('search') or '').strip()
     if search:
@@ -50,9 +66,16 @@ class DailyNoteService:
 
 class DailyTaskService:
     def build_queryset(self, *, user, view_all: bool, filters: dict | None = None):
-        qs = _scoped_queryset(DailyTask, user=user, view_all=view_all)
+        qs = _scoped_task_queryset(user=user, view_all=view_all)
         qs = _apply_common_filters(qs, date_field='task_date', filters=filters, view_all=view_all)
         return qs.order_by('is_done', '-created_at')
+
+    def pending_for_user(self, *, user, limit: int = 50):
+        return (
+            DailyTask.objects.filter(assigned_to=user, is_done=False)
+            .select_related('author', 'author__profile', 'assigned_to', 'assigned_to__profile')
+            .order_by('task_date', '-created_at')[:limit]
+        )
 
     def recent_dates(self, *, user, view_all: bool, limit: int = 30):
         return recent_activity_dates(user=user, view_all=view_all, limit=limit)
@@ -64,7 +87,7 @@ def recent_activity_dates(*, user, view_all: bool, limit: int = 30):
     task_qs = DailyTask.objects.all()
     if not view_all:
         note_qs = note_qs.filter(author=user)
-        task_qs = task_qs.filter(author=user)
+        task_qs = task_qs.filter(assigned_to=user)
 
     dates = set(note_qs.values_list('note_date', flat=True).distinct())
     dates.update(task_qs.values_list('task_date', flat=True).distinct())

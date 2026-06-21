@@ -127,10 +127,6 @@ class ModuleFeatureViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         audited_perform_update(self, serializer, updated_by=self.request.user)
-        logger.info(
-            f"Feature updated: {serializer.instance.feature_name} "
-            f"(enabled: {serializer.instance.is_enabled}) by {self.request.user.username}"
-        )
 
 
 class TenantViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
@@ -171,10 +167,8 @@ class TenantViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     
     def perform_create(self, serializer):
         instance = audited_perform_create(self, serializer, created_by=self.request.user)
-        logger.info(f"Tenant created: {instance.name} by {self.request.user.username}")
 
     def perform_update(self, serializer):
-        logger.info(f"Tenant updated: {serializer.instance.name} by {self.request.user.username}")
         audited_perform_update(self, serializer)
 
     def perform_destroy(self, instance):
@@ -199,7 +193,6 @@ class TenantViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             )
         
         set_current_tenant(request, tenant)
-        logger.info(f"Current tenant set to: {tenant.name} by {request.user.username}")
         
         serializer = TenantSerializer(tenant)
         return Response({
@@ -211,7 +204,6 @@ class TenantViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     def clear_current(self, request):
         """Clear current tenant"""
         set_current_tenant(request, None)
-        logger.info(f"Current tenant cleared by {request.user.username}")
         return Response({'message': 'Current tenant cleared.'})
 
 
@@ -232,7 +224,6 @@ class BranchViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         """Filter branches by current tenant"""
         # If branch support is not enabled, return empty queryset
         if not is_branch_support_enabled():
-            logger.debug("Branch support is disabled - returning empty queryset")
             return Branch.objects.none()
         
         queryset = Branch.objects.all().select_related('tenant', 'manager', 'created_by')
@@ -241,7 +232,6 @@ class BranchViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         tenant = get_current_tenant(self.request)
         if tenant:
             queryset = queryset.filter(tenant=tenant)
-            logger.debug(f"Filtering branches for tenant: {tenant.name}")
         else:
             logger.warning("No tenant found - showing all branches")
         
@@ -300,13 +290,8 @@ class BranchViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             tenant=tenant,
             created_by=self.request.user,
         )
-        logger.info(
-            f"Branch created: {instance.name} for tenant {tenant.name} "
-            f"by {self.request.user.username}"
-        )
 
     def perform_update(self, serializer):
-        logger.info(f"Branch updated: {serializer.instance.name} by {self.request.user.username}")
         audited_perform_update(self, serializer)
 
     def perform_destroy(self, instance):
@@ -346,7 +331,6 @@ class BranchViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             set_current_tenant(request, branch.tenant)
         
         set_current_branch(request, branch)
-        logger.info(f"Current branch set to: {branch.name} by {request.user.username}")
         
         serializer = BranchSerializer(branch)
         return Response({
@@ -358,7 +342,6 @@ class BranchViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     def clear_current(self, request):
         """Clear current branch (show all branches)"""
         set_current_branch(request, None)
-        logger.info(f"Current branch cleared by {request.user.username}")
         return Response({'message': 'Current branch cleared. Showing all branches.'})
 
 

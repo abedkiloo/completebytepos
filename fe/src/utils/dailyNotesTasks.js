@@ -46,3 +46,17 @@ export function mergeActivityDates(noteDates = [], taskDates = []) {
   const dates = [...asArray(noteDates), ...asArray(taskDates)];
   return [...new Set(dates)].sort((a, b) => b.localeCompare(a));
 }
+
+export function formatDisplayDate(iso) {
+  if (!iso) return '';
+  try {
+    return new Date(`${iso}T12:00:00`).toLocaleDateString(undefined, {
+      weekday: 'short',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  } catch {
+    return iso;
+  }
+}

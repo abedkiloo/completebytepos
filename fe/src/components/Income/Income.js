@@ -64,7 +64,6 @@ const Income = () => {
       const data = response.data.results || response.data || [];
       setCategories(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Error loading categories:', error);
     }
   };
 
@@ -96,7 +95,6 @@ const Income = () => {
         setIncomes(Array.isArray(data) ? data : []);
       }
     } catch (error) {
-      console.error('Error loading incomes:', error);
       setIncomes([]);
     } finally {
       setLoading(false);

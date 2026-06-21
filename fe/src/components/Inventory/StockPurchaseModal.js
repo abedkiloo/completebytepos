@@ -57,7 +57,6 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
       const productsData = response.data.results || response.data || [];
       setProducts(Array.isArray(productsData) ? productsData : []);
     } catch (error) {
-      console.error('Error loading products:', error);
     }
   };
 

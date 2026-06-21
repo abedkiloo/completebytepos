@@ -95,7 +95,6 @@ const Suppliers = () => {
       const suppliersData = response.data.results || response.data || [];
       setSuppliers(Array.isArray(suppliersData) ? suppliersData : []);
     } catch (error) {
-      console.error('Error loading suppliers:', error);
       toast.error('Failed to load suppliers');
     } finally {
       setLoading(false);
@@ -111,7 +110,6 @@ const Suppliers = () => {
       const response = await suppliersAPI.statistics();
       setStatistics(response.data);
     } catch (error) {
-      console.error('Error loading statistics:', error);
     }
   };
 

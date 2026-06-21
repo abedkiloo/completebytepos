@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Calendar, CheckSquare, NotebookPen, Pencil, Plus, Trash2 } from 'lucide-react';
 import { dailyNotesAPI, dailyTasksAPI } from '../../services/api';
 import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
@@ -7,7 +8,13 @@ import { getPersonaFromStorage, getStoredAuth } from '../../utils/roleAccess';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { userMayViewAllDailyNotes } from '../../utils/dailyNotesAccess';
 import {
+  canEditDailyTask,
+  canToggleDailyTask,
+} from '../../utils/dailyNotesTaskAccess';
+import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
+import {
   countOpenTasks,
+  formatDisplayDate,
   formatTaskCompletedAt,
   sortDailyTasks,
   taskStatusLabel,
@@ -32,21 +39,8 @@ import {
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
-const formatDisplayDate = (iso) => {
-  if (!iso) return '';
-  try {
-    return new Date(`${iso}T12:00:00`).toLocaleDateString(undefined, {
-      weekday: 'short',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  } catch {
-    return iso;
-  }
-};
-
 const DailyNotes = () => {
+  const [searchParams] = useSearchParams();
   const persona = getPersonaFromStorage();
   const { user } = getStoredAuth();
   const currentUserId = user?.id;
@@ -56,7 +50,10 @@ const DailyNotes = () => {
   const canModifyEntry = (entry) =>
     entry.author === currentUserId || entry.author_id === currentUserId;
 
-  const [selectedDate, setSelectedDate] = useState(todayIso());
+  const canToggleTask = (task) => canToggleDailyTask(task, currentUserId);
+  const canEditTask = (task) => canEditDailyTask(task, currentUserId, viewAll);
+
+  const [selectedDate, setSelectedDate] = useState(() => searchParams.get('date') || todayIso());
   const [recentDates, setRecentDates] = useState([]);
   const [notes, setNotes] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -96,7 +93,6 @@ const DailyNotes = () => {
       setNotes(Array.isArray(noteRows) ? noteRows : []);
       setTasks(Array.isArray(taskRows) ? taskRows : []);
     } catch (error) {
-      console.error(error);
       setNotes([]);
       setTasks([]);
       toast.error('Could not load this day');
@@ -104,6 +100,13 @@ const DailyNotes = () => {
       setLoading(false);
     }
   }, [selectedDate]);
+
+  useEffect(() => {
+    const fromUrl = searchParams.get('date');
+    if (fromUrl) {
+      setSelectedDate(fromUrl);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     loadRecentDates();
@@ -124,11 +127,12 @@ const DailyNotes = () => {
   };
 
   const handleToggleTask = async (task) => {
-    if (!canModifyEntry(task)) return;
+    if (!canToggleTask(task)) return;
     setTogglingTaskId(task.id);
     try {
       const res = await dailyTasksAPI.toggleDone(task.id);
       setTasks((prev) => prev.map((t) => (t.id === task.id ? res.data : t)));
+      dispatchNavBadgesRefresh();
     } catch (error) {
       toast.error(error.response?.data?.error || 'Could not update task');
     } finally {
@@ -282,7 +286,7 @@ const DailyNotes = () => {
                           type="checkbox"
                           className="mt-1 h-4 w-4 shrink-0"
                           checked={Boolean(task.is_done)}
-                          disabled={!canModifyEntry(task) || togglingTaskId === task.id}
+                          disabled={!canToggleTask(task) || togglingTaskId === task.id}
                           onChange={() => handleToggleTask(task)}
                           aria-label={`Mark "${task.title}" done`}
                         />
@@ -299,7 +303,12 @@ const DailyNotes = () => {
                           ) : null}
                           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                             {viewAll && (
-                              <span>{task.author_name || task.author_username}</span>
+                              <span>
+                                Assigned to {task.assigned_to_name || task.assigned_to_username}
+                              </span>
+                            )}
+                            {viewAll && task.author_name && task.author_id !== task.assigned_to && (
+                              <span>· by {task.author_name || task.author_username}</span>
                             )}
                             <span>{taskStatusLabel(task)}</span>
                             {task.is_done && task.completed_at && (
@@ -310,7 +319,7 @@ const DailyNotes = () => {
                           </div>
                         </div>
                       </div>
-                      {canModifyEntry(task) && (
+                      {canEditTask(task) && (
                         <div className="flex shrink-0 justify-end gap-1">
                           <Button
                             type="button"
@@ -434,6 +443,7 @@ const DailyNotes = () => {
         <DailyTaskForm
           task={editingTask}
           defaultDate={selectedDate}
+          canAssignToOthers={viewAll}
           onClose={() => {
             setShowTaskForm(false);
             setEditingTask(null);

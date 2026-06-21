@@ -147,7 +147,6 @@ const Inventory = () => {
         await loadReport();
       }
     } catch (error) {
-      console.error('Error loading data:', error);
     } finally {
       setLoading(false);
     }
@@ -164,7 +163,6 @@ const Inventory = () => {
       const response = await inventoryAPI.list(params);
       setMovements(response.data.results || response.data || []);
     } catch (error) {
-      console.error('Error loading movements:', error);
       setMovements([]);
     }
   };
@@ -174,7 +172,6 @@ const Inventory = () => {
       const response = await inventoryAPI.lowStock();
       setLowStockProducts(response.data);
     } catch (error) {
-      console.error('Error loading low stock:', error);
       setLowStockProducts([]);
     }
   };
@@ -184,7 +181,6 @@ const Inventory = () => {
       const response = await inventoryAPI.outOfStock();
       setOutOfStockProducts(response.data);
     } catch (error) {
-      console.error('Error loading out of stock:', error);
       setOutOfStockProducts([]);
     }
   };
@@ -194,7 +190,6 @@ const Inventory = () => {
       const response = await inventoryAPI.report();
       setReport(response.data);
     } catch (error) {
-      console.error('Error loading report:', error);
     }
   };
 

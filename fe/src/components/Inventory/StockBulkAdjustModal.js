@@ -38,7 +38,6 @@ const StockBulkAdjustModal = ({ onClose, onSave }) => {
       const productsData = response.data.results || response.data || [];
       setProducts(Array.isArray(productsData) ? productsData : []);
     } catch (err) {
-      console.error('Error loading products:', err);
     }
   };
 

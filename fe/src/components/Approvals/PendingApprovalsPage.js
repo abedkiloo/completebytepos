@@ -11,6 +11,7 @@ import { Label } from '../ui/label';
 import { toast } from '../../utils/toast';
 import { formatDateTime } from '../../utils/formatters';
 import { userMayEditFinancialFieldsFromStorage } from '../../utils/roleAccess';
+import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 import { needsExtremePriceConfirm } from '../../utils/makerChecker';
 import { describeApprovalSummary, formatApprovalValue } from '../../utils/approvalDisplay';
 import ApprovalChangeTable from './ApprovalChangeTable';
@@ -35,6 +36,7 @@ function PendingRow({ row, onResolved }) {
       });
       toast.success('Approved — the change is now live');
       onResolved();
+      dispatchNavBadgesRefresh();
     } catch (err) {
       const data = err.response?.data;
       const msg =
@@ -57,6 +59,7 @@ function PendingRow({ row, onResolved }) {
       await pendingChangesAPI.reject(row.id, { rejection_reason: rejectReason.trim() });
       toast.success('Rejected — nothing was changed');
       onResolved();
+      dispatchNavBadgesRefresh();
     } catch {
       toast.error('Could not reject this change');
     } finally {

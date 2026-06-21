@@ -123,7 +123,6 @@ const Categories = () => {
 
       setCategories(categoriesData);
     } catch (error) {
-      console.error('Error loading categories:', error);
       setCategories([]);
     } finally {
       setLoading(false);

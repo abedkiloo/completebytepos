@@ -54,7 +54,6 @@ const ModuleSettings = () => {
       setExpanded(initialExpanded);
       syncModulesCache(data);
     } catch (error) {
-      console.error(error);
       toast.error('Failed to load module settings');
     } finally {
       setLoading(false);

@@ -9,6 +9,7 @@ import { canAccessRoute, persistMeResponse } from './utils/roleAccess';
 import { normalizeModuleSettings, readCachedModules } from './utils/moduleCache';
 import SetupGate from './components/Installation/SetupGate';
 import AppLayout from './components/Layout/AppLayout';
+import PendingTasksOnLogin from './components/DailyNotes/PendingTasksOnLogin';
 import { fetchSetupStatus } from './utils/setupStatus';
 import './styles/responsive.css';
 import './styles/transitions.css';
@@ -92,7 +93,12 @@ const ProtectedRoute = () => {
     return <Navigate to="/" replace />;
   }
 
-  return <Outlet />;
+  return (
+    <>
+      <PendingTasksOnLogin />
+      <Outlet />
+    </>
+  );
 };
 
 function AuthBootstrap({ children }) {

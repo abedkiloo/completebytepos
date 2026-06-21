@@ -14,6 +14,7 @@ class DailyTaskModelTests(TestCase):
             task_date=date.today(),
             title='Test',
             author=user,
+            assigned_to=user,
         )
         at = timezone.now()
         task.mark_done(done=True, at=at)
@@ -29,6 +30,7 @@ class DailyTaskModelTests(TestCase):
             task_date=date.today(),
             title='Shelf check',
             author=user,
+            assigned_to=user,
             is_done=True,
         )
         self.assertIn('done', str(task))

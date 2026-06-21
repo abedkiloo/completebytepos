@@ -55,7 +55,6 @@ const StockTransferModal = ({ isOpen, onClose, onSuccess, product }) => {
       const productsData = response.data.results || response.data || [];
       setProducts(Array.isArray(productsData) ? productsData : []);
     } catch (error) {
-      console.error('Error loading products:', error);
       toast.error('Failed to load products');
     }
   };
@@ -66,7 +65,6 @@ const StockTransferModal = ({ isOpen, onClose, onSuccess, product }) => {
       const branchesData = response.data.results || response.data || [];
       setBranches(Array.isArray(branchesData) ? branchesData : []);
     } catch (error) {
-      console.error('Error loading branches:', error);
       toast.error('Failed to load branches');
     }
   };

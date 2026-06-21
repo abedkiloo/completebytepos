@@ -224,7 +224,6 @@ function SalesOverviewTile({ onOpen, showDiscount, showTax }) {
           <>
             <Skeleton className="h-12 w-full" />
             <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" />
           </>
         ) : (
           <>
@@ -403,7 +402,6 @@ function CashAndPaymentsTile({ onOpen }) {
         {loading ? (
           <>
             <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" />
           </>
         ) : (
           <>
@@ -480,7 +478,6 @@ function InventoryHealthTile({ onOpen }) {
           <>
             <Skeleton className="h-12 w-full" />
             <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" />
           </>
         ) : (
           <>
@@ -550,7 +547,6 @@ function CustomerOutstandingTile({ onOpen }) {
       <div className="grid grid-cols-3 gap-3 pb-3">
         {loading ? (
           <>
-            <Skeleton className="h-12 w-full" />
             <Skeleton className="h-12 w-full" />
             <Skeleton className="h-12 w-full" />
           </>

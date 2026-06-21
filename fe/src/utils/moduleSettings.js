@@ -14,7 +14,6 @@ export const getModuleSettings = () => {
     const cached = localStorage.getItem('enabled_modules');
     return cached ? normalizeModuleSettings(JSON.parse(cached)) : {};
   } catch (error) {
-    console.error('Error reading module settings from cache:', error);
     return {};
   }
 };

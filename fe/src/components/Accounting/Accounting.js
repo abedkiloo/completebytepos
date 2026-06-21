@@ -59,7 +59,6 @@ const Accounting = () => {
       });
       setCashFlow(response.data);
     } catch (error) {
-      console.error('Error loading cash flow:', error);
       setCashFlow(null);
     } finally {
       setLoading(false);
@@ -73,7 +72,6 @@ const Accounting = () => {
       const data = response.data.results || response.data || [];
       setBankAccounts(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Error loading bank accounts:', error);
       setBankAccounts([]);
     } finally {
       setLoading(false);
@@ -92,7 +90,6 @@ const Accounting = () => {
       });
       setAccountStatement(response.data);
     } catch (error) {
-      console.error('Error loading account statement:', error);
       setAccountStatement(null);
     } finally {
       setLoading(false);
@@ -111,7 +108,6 @@ const Accounting = () => {
       const response = await accountingAPI.reports.balanceSheet({ date: filters.date });
       setBalanceSheet(response.data);
     } catch (error) {
-      console.error('Error loading balance sheet:', error);
       setBalanceSheet(null);
     } finally {
       setLoading(false);
@@ -127,7 +123,6 @@ const Accounting = () => {
       });
       setIncomeStatement(response.data);
     } catch (error) {
-      console.error('Error loading income statement:', error);
       setIncomeStatement(null);
     } finally {
       setLoading(false);
@@ -140,7 +135,6 @@ const Accounting = () => {
       const response = await accountingAPI.reports.trialBalance({ date: filters.date });
       setTrialBalance(response.data);
     } catch (error) {
-      console.error('Error loading trial balance:', error);
       setTrialBalance(null);
     } finally {
       setLoading(false);
@@ -154,7 +148,6 @@ const Accounting = () => {
       const data = response.data.results || response.data || [];
       setAccounts(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Error loading accounts:', error);
       setAccounts([]);
     } finally {
       setLoading(false);
@@ -173,7 +166,6 @@ const Accounting = () => {
       });
       setGeneralLedger(response.data);
     } catch (error) {
-      console.error('Error loading general ledger:', error);
       setGeneralLedger(null);
     } finally {
       setLoading(false);

@@ -15,6 +15,7 @@ jest.mock('../../../hooks/useStoreSettings');
 jest.mock('../../../hooks/useModuleSettings');
 jest.mock('../../../utils/roleAccess', () => ({
   isManagerOrAdminFromStorage: jest.fn(() => false),
+  getStoredAuth: () => ({ permissions: [] }),
 }));
 jest.mock('../VariantSelector', () => () => null);
 jest.mock('../PosCartRecoveryDialog', () => () => null);

@@ -126,7 +126,6 @@ const Customers = () => {
       }));
     } catch (error) {
       if (signal?.aborted) return;
-      console.error('Error loading customers:', error);
       toast.error('Failed to load customers');
     } finally {
       if (!signal?.aborted) setLoading(false);

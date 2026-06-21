@@ -278,6 +278,7 @@ export const dailyTasksAPI = {
   update: (id, data) => api.patch(`/daily-notes/tasks/${id}/`, data),
   delete: (id) => api.delete(`/daily-notes/tasks/${id}/`),
   toggleDone: (id) => api.post(`/daily-notes/tasks/${id}/toggle-done/`),
+  pending: () => api.get('/daily-notes/tasks/pending/'),
 };
 
 export const employeesAPI = {
@@ -418,7 +419,6 @@ export const pendingChangesAPI = {
 export const barcodesAPI = {
   generate: (params) => api.get('/barcodes/generate', { params }),
   image: (params) => {
-    console.log('[BarcodesAPI] image() called with params:', params);
     return api.get('/barcodes/image', { params, responseType: 'blob' });
   },
   generateMissing: (data) => api.post('/barcodes/generate_missing/', data),

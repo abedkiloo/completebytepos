@@ -656,11 +656,6 @@ class AuthViewSet(viewsets.ViewSet):
         # password. Log only the non-sensitive metadata needed to debug login
         # issues (origin, attempted username).
         attempted_username = request.data.get('username') if hasattr(request, 'data') else None
-        logger.info(
-            "Login attempt: user=%s origin=%s",
-            attempted_username or '<missing>',
-            request.META.get('HTTP_ORIGIN', '-'),
-        )
 
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -705,7 +700,6 @@ class AuthViewSet(viewsets.ViewSet):
                 'access': str(refresh.access_token),
                 'refresh': str(refresh),
             }
-            logger.info("Login successful for user: %s", username)
             # Audit success - one row per login.
             log_audit(request, _AuditLog.ACTION_LOGIN, user, module='users')
             return Response(response_data)

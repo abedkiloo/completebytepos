@@ -93,7 +93,6 @@ const StockCountModal = ({ product, variant = null, onClose, onSave, nested = fa
       const productsData = response.data.results || response.data || [];
       setProducts(Array.isArray(productsData) ? productsData : []);
     } catch (err) {
-      console.error('Error loading products:', err);
     }
   };
 

@@ -98,6 +98,8 @@ const Login = () => {
 
       markSessionActivity();
       clearSessionTeardownFlag();
+      const { clearPendingTasksPromptDismissed } = await import('../../utils/dailyNotesTaskAccess');
+      clearPendingTasksPromptDismissed();
 
       const { purgeStaleRetailCartDrafts } = await import('../../utils/posCartRecovery');
       purgeStaleRetailCartDrafts();

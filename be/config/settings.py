@@ -72,7 +72,6 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
-    'middleware.cors_logging.CORSLoggingMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -386,11 +385,6 @@ LOGGING = {
         'settings': {'handlers': ['console'], 'level': LOG_LEVEL, 'propagate': False},
         'sales': {'handlers': ['console'], 'level': LOG_LEVEL, 'propagate': False},
         'inventory': {'handlers': ['console'], 'level': LOG_LEVEL, 'propagate': False},
-        'middleware.cors_logging': {
-            'handlers': ['console'],
-            'level': env_str('CORS_LOG_LEVEL', 'WARNING'),
-            'propagate': False,
-        },
         'barcodes': {'handlers': _FILE_HANDLERS, 'level': 'ERROR', 'propagate': False},
         'config': {'handlers': _FILE_HANDLERS, 'level': 'ERROR', 'propagate': False},
         'corsheaders': {

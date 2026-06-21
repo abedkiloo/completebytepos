@@ -42,7 +42,6 @@ const Branches = () => {
       const branchesData = response.data.results || response.data || [];
       setBranches(Array.isArray(branchesData) ? branchesData : []);
     } catch (error) {
-      console.error('Error loading branches:', error);
       toast.error('Failed to load branches');
     } finally {
       setLoading(false);
@@ -55,7 +54,6 @@ const Branches = () => {
       const usersData = response.data.results || response.data || [];
       setUsers(Array.isArray(usersData) ? usersData : []);
     } catch (error) {
-      console.error('Error loading users:', error);
     }
   };
 

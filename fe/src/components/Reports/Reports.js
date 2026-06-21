@@ -92,7 +92,6 @@ const Reports = () => {
       }
       setReportData(response.data);
     } catch (error) {
-      console.error(`Error loading ${reportParam} report:`, error);
       setReportData(null);
     } finally {
       setLoading(false);

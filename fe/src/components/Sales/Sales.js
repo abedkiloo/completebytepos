@@ -85,7 +85,6 @@ const Sales = () => {
         setSales(Array.isArray(data) ? data : []);
       }
     } catch (error) {
-      console.error('Error loading sales:', error);
       setSales([]);
     } finally {
       setLoading(false);

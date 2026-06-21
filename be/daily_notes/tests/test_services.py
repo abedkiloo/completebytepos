@@ -93,12 +93,14 @@ class DailyTaskServiceTests(TestCase):
             task_date=self.today,
             title='Alice open',
             author=self.alice,
+            assigned_to=self.alice,
         )
         DailyTask.objects.create(
             task_date=self.today,
             title='Bob done',
             is_done=True,
             author=self.bob,
+            assigned_to=self.bob,
         )
 
     def test_build_queryset_open_filter(self):
@@ -109,6 +111,24 @@ class DailyTaskServiceTests(TestCase):
         )
         self.assertEqual(qs.count(), 1)
         self.assertEqual(qs.first().author_id, self.alice.id)
+
+    def test_build_queryset_scoped_to_assignee(self):
+        qs = self.service.build_queryset(user=self.alice, view_all=False)
+        self.assertEqual(qs.count(), 1)
+        self.assertEqual(qs.first().assigned_to_id, self.alice.id)
+
+    def test_pending_for_user_returns_open_assigned_only(self):
+        DailyTask.objects.create(
+            task_date=self.today,
+            title='Bob open for Alice',
+            author=self.bob,
+            assigned_to=self.alice,
+        )
+        pending = self.service.pending_for_user(user=self.alice)
+        self.assertEqual(pending.count(), 2)
+        titles = {t.title for t in pending}
+        self.assertIn('Bob open for Alice', titles)
+        self.assertIn('Alice open', titles)
 
     def test_recent_activity_dates_merges_notes_and_tasks(self):
         yesterday = self.today - timedelta(days=1)

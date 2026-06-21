@@ -140,7 +140,6 @@ const Products = () => {
       setCategories(Array.isArray(data) ? data : []);
     } catch (error) {
       // Categories are best-effort; the filter just won't have them.
-      console.error('Error loading categories:', error);
     }
   }, []);
 
@@ -149,7 +148,6 @@ const Products = () => {
       const response = await productsAPI.statistics();
       setStatistics(response.data);
     } catch (error) {
-      console.error('Error loading statistics:', error);
     }
   }, []);
 
@@ -172,7 +170,6 @@ const Products = () => {
         count: response.data?.count ?? items.length,
       }));
     } catch (error) {
-      console.error('Error loading products:', error);
       toast.error('Failed to load products');
       setProducts([]);
     } finally {
@@ -240,7 +237,6 @@ const Products = () => {
       setShowForm(true);
       setViewProductId(null);
     } catch (error) {
-      console.error('Error loading product details:', error);
       toast.error('Failed to load product details');
     }
   };
@@ -355,7 +351,6 @@ const Products = () => {
       window.URL.revokeObjectURL(url);
       toast.success('Products exported');
     } catch (error) {
-      console.error('Export error:', error);
       toast.error(
         'Failed to export products: ' + (error.response?.data?.error || error.message)
       );
@@ -472,15 +467,13 @@ const Products = () => {
       const data = response.data || {};
       let message = data.message || 'Products imported';
       if (data.errors && data.errors.length > 0) {
-        message += ` · ${data.errors.length} error(s) — see console.`;
-        console.warn('Import errors:', data.errors);
+        message += ` · ${data.errors.length} error(s).`;
       }
       toast.success(message, 8000);
     } catch (error) {
       const msg =
         error.response?.data?.error || error.message || 'Failed to import products';
       toast.error(`Failed to import products: ${msg}`, 8000);
-      console.error('Import error:', error.response?.data || error);
     }
   };
 
@@ -1285,7 +1278,6 @@ function VariantRows({
         if (!mounted) return;
         setVariants(res.data.variants || []);
       } catch (e) {
-        console.error('Failed to load variants', e);
       } finally {
         if (mounted) setLoading(false);
       }

@@ -89,7 +89,6 @@ const Users = () => {
       const response = await rolesAPI.list();
       setRoles(response.data.results || response.data || []);
     } catch (error) {
-      console.error('Error loading roles:', error);
     }
   };
 

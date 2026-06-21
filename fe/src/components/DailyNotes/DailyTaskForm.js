@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { dailyTasksAPI } from '../../services/api';
+import { dailyTasksAPI, usersAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 
-const DailyTaskForm = ({ task, defaultDate, onClose, onSave }) => {
+const DailyTaskForm = ({ task, defaultDate, canAssignToOthers = false, onClose, onSave }) => {
   const [formData, setFormData] = useState({
     task_date: defaultDate || new Date().toISOString().slice(0, 10),
     title: '',
     description: '',
     is_done: false,
+    assigned_to: '',
   });
+  const [users, setUsers] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -18,11 +21,34 @@ const DailyTaskForm = ({ task, defaultDate, onClose, onSave }) => {
         title: task.title || '',
         description: task.description || '',
         is_done: Boolean(task.is_done),
+        assigned_to: task.assigned_to ? String(task.assigned_to) : '',
       });
     } else if (defaultDate) {
       setFormData((prev) => ({ ...prev, task_date: defaultDate }));
     }
   }, [task, defaultDate]);
+
+  useEffect(() => {
+    if (!canAssignToOthers) return;
+    let cancelled = false;
+    setLoadingUsers(true);
+    usersAPI
+      .list({ page_size: 200, is_active: true })
+      .then((res) => {
+        if (cancelled) return;
+        const rows = res.data?.results || res.data || [];
+        setUsers(Array.isArray(rows) ? rows : []);
+      })
+      .catch(() => {
+        if (!cancelled) setUsers([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingUsers(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canAssignToOthers]);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -46,6 +72,9 @@ const DailyTaskForm = ({ task, defaultDate, onClose, onSave }) => {
         description: formData.description.trim(),
         is_done: formData.is_done,
       };
+      if (canAssignToOthers && formData.assigned_to) {
+        payload.assigned_to = parseInt(formData.assigned_to, 10);
+      }
       if (task?.id) {
         await dailyTasksAPI.update(task.id, payload);
         toast.success('Task updated');
@@ -63,6 +92,11 @@ const DailyTaskForm = ({ task, defaultDate, onClose, onSave }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const userLabel = (u) => {
+    const name = [u.first_name, u.last_name].filter(Boolean).join(' ').trim();
+    return name ? `${name} (${u.username})` : u.username;
   };
 
   return (
@@ -86,6 +120,25 @@ const DailyTaskForm = ({ task, defaultDate, onClose, onSave }) => {
                 required
               />
             </div>
+            {canAssignToOthers && (
+              <div className="form-group">
+                <label>Assign to *</label>
+                <select
+                  name="assigned_to"
+                  value={formData.assigned_to}
+                  onChange={handleChange}
+                  required={canAssignToOthers}
+                  disabled={loadingUsers}
+                >
+                  <option value="">Select staff member…</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {userLabel(u)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="form-group">
               <label>Task *</label>
               <input

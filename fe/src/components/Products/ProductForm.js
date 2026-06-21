@@ -154,7 +154,6 @@ const ProductForm = ({
         setSizes(sizesRes.data.results || sizesRes.data || []);
         setColors(colorsRes.data.results || colorsRes.data || []);
       } catch (error) {
-        console.error('Error loading sizes/colors:', error);
       }
     };
     loadSizesAndColors();
@@ -168,7 +167,6 @@ const ProductForm = ({
         const categoriesData = response.data.results || response.data || [];
         setAllCategories(Array.isArray(categoriesData) ? categoriesData : []);
       } catch (error) {
-        console.error('Error loading categories:', error);
       }
     };
     loadAllCategories();
@@ -182,7 +180,6 @@ const ProductForm = ({
         const suppliersData = response.data.results || response.data || [];
         setSuppliers(Array.isArray(suppliersData) ? suppliersData : []);
       } catch (error) {
-        console.error('Error loading suppliers:', error);
         // If suppliers module is disabled, just set empty array
         setSuppliers([]);
       }
@@ -222,7 +219,6 @@ const ProductForm = ({
           }
         }
       } catch (error) {
-        console.error('Error loading subcategories:', error);
         if (!cancelled) {
           setSubcategories([]);
         }
@@ -351,7 +347,6 @@ const ProductForm = ({
           }));
         }
       } catch (error) {
-        console.error('Error reloading categories:', error);
       }
     };
     loadAllCategories();
@@ -372,7 +367,6 @@ const ProductForm = ({
         setSubcategoryFormInitialName('');
         setFormData((prev) => ({ ...prev, subcategory: String(newSubcategory.id) }));
       } catch (error) {
-        console.error('Error reloading categories/subcategories:', error);
       }
     };
     loadAllCategories();
@@ -423,7 +417,6 @@ const ProductForm = ({
           supplier_name: newSupplier.name
         }));
       } catch (error) {
-        console.error('Error reloading suppliers:', error);
       }
     };
     loadSuppliers();

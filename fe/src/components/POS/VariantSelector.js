@@ -58,7 +58,6 @@ const VariantSelector = ({ product, onSelect, onClose, validateStock = true }) =
       setAvailableSizes(Array.isArray(sizes) ? sizes : []);
       setAvailableColors(Array.isArray(colors) ? colors : []);
     } catch (error) {
-      console.error('[VariantSelector] Error loading product details:', error);
       if (product.available_sizes_detail?.length) {
         setAvailableSizes(product.available_sizes_detail);
       } else if (product.available_sizes?.length) {
@@ -80,7 +79,6 @@ const VariantSelector = ({ product, onSelect, onClose, validateStock = true }) =
       const variantsData = response.data.results || response.data || [];
       setVariants(variantsData);
     } catch (error) {
-      console.error('Error loading variants:', error);
     } finally {
       setLoading(false);
     }

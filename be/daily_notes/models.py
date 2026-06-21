@@ -41,6 +41,12 @@ class DailyTask(models.Model):
         on_delete=models.CASCADE,
         related_name='daily_tasks',
     )
+    assigned_to = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='assigned_daily_tasks',
+        help_text='Staff member responsible for completing this task.',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -49,6 +55,7 @@ class DailyTask(models.Model):
         indexes = [
             models.Index(fields=['task_date', 'author']),
             models.Index(fields=['task_date', 'is_done']),
+            models.Index(fields=['assigned_to', 'is_done']),
         ]
 
     def __str__(self):

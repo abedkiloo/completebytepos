@@ -132,7 +132,6 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
       const customersData = response.data.results || response.data || [];
       setCustomers(Array.isArray(customersData) ? customersData : []);
     } catch (error) {
-      console.error('Error loading customers:', error);
       setCustomers([]);
     }
   };
@@ -151,7 +150,6 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
       setProductSearchResults(products);
       setShowProductSearch(products.length > 0);
     } catch (error) {
-      console.error('Error searching products:', error);
       setProductSearchResults([]);
       setShowProductSearch(false);
     }

@@ -24,6 +24,7 @@ class DailyTaskSerializerTests(TestCase):
         task = ser.save(author=self.user)
         self.assertFalse(task.is_done)
         self.assertIsNone(task.completed_at)
+        self.assertEqual(task.assigned_to_id, self.user.id)
 
     def test_create_done_task_sets_completed_at(self):
         ser = DailyTaskSerializer(
@@ -45,6 +46,7 @@ class DailyTaskSerializerTests(TestCase):
             is_done=True,
             completed_at=timezone.now(),
             author=self.user,
+            assigned_to=self.user,
         )
         ser = DailyTaskSerializer(task, data={'is_done': False}, partial=True)
         self.assertTrue(ser.is_valid(), ser.errors)

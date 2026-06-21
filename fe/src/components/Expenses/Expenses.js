@@ -64,7 +64,6 @@ const Expenses = () => {
       const data = response.data.results || response.data || [];
       setCategories(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Error loading categories:', error);
     }
   };
 
@@ -96,7 +95,6 @@ const Expenses = () => {
         setExpenses(Array.isArray(data) ? data : []);
       }
     } catch (error) {
-      console.error('Error loading expenses:', error);
       setExpenses([]);
     } finally {
       setLoading(false);
@@ -168,7 +166,6 @@ const Expenses = () => {
     // Reload categories to include the new one
     loadCategories();
   };
-
 
   if (loading && expenses.length === 0) {
     return (

@@ -21,7 +21,6 @@ const StockHistoryModal = ({ product, onClose, showCost = true }) => {
       const response = await inventoryAPI.productHistory(product.id);
       setHistory(response.data);
     } catch (error) {
-      console.error('Error loading history:', error);
     } finally {
       setLoading(false);
     }

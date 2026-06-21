@@ -13,7 +13,7 @@ class DailyNoteAdmin(admin.ModelAdmin):
 
 @admin.register(DailyTask)
 class DailyTaskAdmin(admin.ModelAdmin):
-    list_display = ('task_date', 'title', 'is_done', 'completed_at', 'author')
+    list_display = ('task_date', 'title', 'is_done', 'assigned_to', 'author', 'completed_at')
     list_filter = ('task_date', 'is_done')
-    search_fields = ('title', 'description', 'author__username')
-    raw_id_fields = ('author',)
+    search_fields = ('title', 'description', 'author__username', 'assigned_to__username')
+    raw_id_fields = ('author', 'assigned_to')
