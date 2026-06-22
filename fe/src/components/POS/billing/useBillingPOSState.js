@@ -12,6 +12,7 @@ import { formatApiError } from '../../../utils/apiErrors';
 import {
   WALK_IN_CUSTOMER,
   mergeCustomersWithWalkIn,
+  prependCustomerToList,
   isWalkInCustomer,
   customerIdForSale,
 } from '../../../utils/walkInCustomer';
@@ -135,6 +136,17 @@ export function useBillingPOSState() {
       setCustomers(requireCustomer ? [] : [WALK_IN_CUSTOMER]);
     }
   }, [requireCustomer]);
+
+  const addCustomerAndSelect = useCallback(
+    (customer) => {
+      if (!customer?.id) return;
+      setCustomers((prev) => prependCustomerToList(prev, customer, { requireCustomer }));
+      setSelectedCustomer(customer);
+      setCustomerQuery('');
+      setPartialPaymentCustomerPrompt(false);
+    },
+    [requireCustomer]
+  );
 
   const selectWalkInCustomer = useCallback(() => {
     setSelectedCustomer(WALK_IN_CUSTOMER);
@@ -614,6 +626,7 @@ export function useBillingPOSState() {
     setPaymentReference,
     selectedCustomer,
     setSelectedCustomer,
+    addCustomerAndSelect,
     selectWalkInCustomer,
     loadCustomers,
     isWalkInCustomer,

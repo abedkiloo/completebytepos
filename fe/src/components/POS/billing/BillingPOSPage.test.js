@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { WALK_IN_CUSTOMER } from '../../../utils/walkInCustomer';
 
 jest.mock('../../../services/api', () => ({
@@ -63,6 +63,7 @@ function buildMockState(overrides = {}) {
     partialPayment: false,
     setPartialPayment: jest.fn(),
     attemptSetPartialPayment: jest.fn(),
+    payFullAmountLater: jest.fn(),
     partialPaymentCustomerPrompt: false,
     closePartialPaymentCustomerPrompt: jest.fn(),
     amountPaid: '',
@@ -135,5 +136,20 @@ describe('BillingPOSPage invoice layout', () => {
 
     expect(screen.queryByText(/Payment on customer account/i)).not.toBeInTheDocument();
     expect(screen.getByTestId('billing-amount-received')).toBeInTheDocument();
+  });
+
+  it('pay later button invokes handler when customer selected', () => {
+    const payFullAmountLater = jest.fn();
+    useBillingPOSState.mockReturnValue(
+      buildMockState({
+        partialPayment: true,
+        selectedCustomer: { id: 2, name: 'Jane' },
+        payFullAmountLater,
+      })
+    );
+    render(<BillingPOSPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Pay full amount later/i }));
+    expect(payFullAmountLater).toHaveBeenCalledTimes(1);
   });
 });

@@ -56,17 +56,22 @@ export default function RefundSaleDialog({ sale, open, onOpenChange, onSubmit, s
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Refund sale {sale.sale_number}</DialogTitle>
+          <DialogTitle>Void or refund sale {sale.sale_number}</DialogTitle>
         </DialogHeader>
         {!refundable ? (
           <p className="text-sm text-muted-foreground">
-            This sale cannot be refunded (already fully refunded or not completed).
+            This sale cannot be voided (already fully refunded or not completed).
           </p>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <p className="text-sm text-muted-foreground">
               Original sale total {formatCurrency(sale.total)} · refundable{' '}
               {formatCurrency(sale.refundable_remaining ?? sale.total)}
+            </p>
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+              Stock is returned to inventory, revenue and cash books are reversed, and any
+              customer account or wallet balance from this sale is adjusted. The original sale
+              is kept for audit — it is not deleted.
             </p>
             <div className="flex gap-4 text-sm">
               <label className="flex items-center gap-2">
@@ -76,7 +81,7 @@ export default function RefundSaleDialog({ sale, open, onOpenChange, onSubmit, s
                   checked={mode === 'full'}
                   onChange={() => setMode('full')}
                 />
-                Full refund
+                Full void (refund entire sale)
               </label>
               <label className="flex items-center gap-2">
                 <input
@@ -117,15 +122,15 @@ export default function RefundSaleDialog({ sale, open, onOpenChange, onSubmit, s
             <ChangeReasonField
               value={reason}
               onChange={setReason}
-              label="Refund reason"
-              placeholder="Why is this sale being refunded?"
+              label="Reason for void / refund"
+              placeholder="Why is this sale being voided or refunded?"
             />
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
               <Button type="submit" variant="destructive" disabled={submitting || !reason.trim()}>
-                {submitting ? 'Processing…' : 'Confirm refund'}
+                {submitting ? 'Processing…' : 'Confirm void / refund'}
               </Button>
             </DialogFooter>
           </form>

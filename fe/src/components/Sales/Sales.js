@@ -119,7 +119,7 @@ const Sales = () => {
     setRefundSubmitting(true);
     try {
       const res = await salesAPI.refund(refundSale.id, payload);
-      toast.success(`Refund ${res.data.refund_number} recorded`);
+      toast.success(`Void recorded as ${res.data.refund_number}`);
       setRefundSale(null);
       if (selectedSale?.id === refundSale.id) {
         setShowReceiptModal(false);
@@ -283,7 +283,11 @@ const Sales = () => {
     <PageShell>
         <PageHeader
           title="Sales history"
-          description="Review completed transactions and reprint receipts."
+          description={
+            canRefund
+              ? 'Review transactions, reprint receipts, or void mistaken sales. A full void refunds stock, reverses books, and clears customer account balances.'
+              : 'Review completed transactions and reprint receipts.'
+          }
         >
           <Button asChild>
             <Link to="/pos">
@@ -410,7 +414,7 @@ const Sales = () => {
                             onClick={() => openRefundDialog(sale)}
                           >
                             <RotateCcw className="mr-1 h-3.5 w-3.5" />
-                            Refund
+                            Void / Refund
                           </Button>
                         )}
                         <Button
@@ -561,7 +565,7 @@ const Sales = () => {
                     }}
                   >
                     <RotateCcw className="mr-1 h-4 w-4" />
-                    Refund
+                    Void / Refund
                   </Button>
                 )}
               </div>

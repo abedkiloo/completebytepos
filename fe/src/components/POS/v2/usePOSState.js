@@ -27,6 +27,7 @@ import {
   isRegisteredPosCustomer,
 } from '../../../utils/posCheckoutValidation';
 import { evaluatePartialPaymentToggle } from '../../../utils/billingPartialPayment';
+import { prependCustomerToList } from '../../../utils/walkInCustomer';
 import {
   salesShowDiscount,
   salesShowTax,
@@ -239,6 +240,16 @@ export function usePOSState() {
       }
     }
   }, [requireCustomer]);
+
+  const addCustomerAndSelect = useCallback(
+    (customer) => {
+      if (!customer?.id) return;
+      setCustomers((prev) => prependCustomerToList(prev, customer, { requireCustomer }));
+      setSelectedCustomer(customer);
+      setPaymentOnAccountCustomerPrompt(false);
+    },
+    [requireCustomer]
+  );
 
   const loadUser = useCallback(async () => {
     try {
@@ -809,6 +820,7 @@ export function usePOSState() {
     // customer
     selectedCustomer, setSelectedCustomer,
     setCustomers,
+    addCustomerAndSelect,
     requireCustomer,
     allowPartialPayment,
     allowExcessToWallet,

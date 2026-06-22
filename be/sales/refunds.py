@@ -11,6 +11,7 @@ from django.db.models import Sum
 
 from inventory.models import StockMovement
 from sales.models import Sale, SaleItem, SaleRefund, SaleRefundItem
+from sales.refund_allocation import compute_refund_allocation
 
 
 class SaleRefundService:
@@ -79,6 +80,7 @@ class SaleRefundService:
             )
 
         self._credit_wallet_if_needed(sale, amount, refund, user)
+        self._reverse_customer_debt_if_needed(sale, amount, refund, user)
         self._sync_sale_refund_status(sale)
 
         try:
@@ -186,20 +188,8 @@ class SaleRefundService:
     def _credit_wallet_if_needed(sale: Sale, amount: Decimal, refund: SaleRefund, user) -> None:
         if not sale.customer_id or sale.total <= 0:
             return
-        from sales.models import CustomerWalletTransaction
-
-        wallet_used = (
-            CustomerWalletTransaction.objects.filter(
-                sale=sale,
-                transaction_type='debit',
-                source_type='payment',
-            ).aggregate(total=Sum('amount'))['total']
-            or Decimal('0')
-        )
-        if wallet_used <= 0:
-            return
-        ratio = min(Decimal('1'), amount / sale.total)
-        credit_amount = (wallet_used * ratio).quantize(Decimal('0.01'))
+        allocation = compute_refund_allocation(sale, amount)
+        credit_amount = allocation['wallet_back']
         if credit_amount <= 0:
             return
         from sales.services import CustomerService
@@ -211,8 +201,37 @@ class SaleRefundService:
             source_type='refund',
             sale=sale,
             reference=refund.refund_number,
-            notes=f'Refund credit for {sale.sale_number}',
+            notes=f'Wallet payment reversed for refund of {sale.sale_number}',
             user=user,
+        )
+
+    @staticmethod
+    def _reverse_customer_debt_if_needed(
+        sale: Sale, amount: Decimal, refund: SaleRefund, user
+    ) -> None:
+        """Restore customer account when reversing pay-later / partial-payment debt."""
+        if not sale.customer_id or sale.total <= 0:
+            return
+        allocation = compute_refund_allocation(sale, amount)
+        reversal = allocation['debt_back']
+        if reversal <= 0:
+            return
+        from sales.models import CustomerWalletTransaction
+
+        customer = sale.customer
+        customer.refresh_from_db()
+        customer.wallet_balance += reversal
+        customer.save(update_fields=['wallet_balance', 'updated_at'])
+        CustomerWalletTransaction.objects.create(
+            customer=customer,
+            transaction_type='credit',
+            source_type='refund',
+            amount=reversal,
+            balance_after=customer.wallet_balance,
+            sale=sale,
+            reference=refund.refund_number,
+            notes=f'Account debt reversed for refund of {sale.sale_number}',
+            created_by=user,
         )
 
     @staticmethod

@@ -79,10 +79,8 @@ export const ThermalReceipt = forwardRef(function ThermalReceipt(
         {store.address && (
           <div className="receipt-thermal__line-thin">{store.address}</div>
         )}
-        {(store.phone || store.email) && (
-          <div className="receipt-thermal__line-thin">
-            {[store.phone, store.email].filter(Boolean).join(' · ')}
-          </div>
+        {store.phone && (
+          <div className="receipt-thermal__line-thin">{store.phone}</div>
         )}
         {store.taxId && (
           <div className="receipt-thermal__line-thin">PIN: {store.taxId}</div>

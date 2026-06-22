@@ -44,4 +44,13 @@ describe('ReceiptDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: /Cancel/i }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
+
+  it('does not show email action and prioritises print', () => {
+    render(
+      <ReceiptDialog sale={sale} open onOpenChange={jest.fn()} autoPrint={false} />
+    );
+
+    expect(screen.queryByRole('button', { name: /Email/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Print$/i })).toBeInTheDocument();
+  });
 });

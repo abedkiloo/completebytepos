@@ -607,12 +607,11 @@ export default function BillingPOSPage() {
         <CustomerFormModal
           isOpen={showNewCustomer}
           onClose={() => setShowNewCustomer(false)}
-          onCustomerCreated={async (customer) => {
-            await state.loadCustomers();
-            state.setSelectedCustomer(customer);
-            state.setCustomerQuery('');
+          onCustomerCreated={(customer) => {
+            state.addCustomerAndSelect(customer);
             setShowNewCustomer(false);
             toast.success('Customer added and selected for this sale');
+            void state.loadCustomers();
           }}
         />
       )}

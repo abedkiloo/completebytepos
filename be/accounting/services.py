@@ -571,7 +571,9 @@ def create_sale_journal_entry(sale):
 
 
 def create_sale_refund_journal_entry(refund):
-    """Reverse a portion of sale revenue for a refund (cash and wallet portions)."""
+    """Reverse sale revenue and offset cash, wallet, or accounts receivable."""
+    from sales.refund_allocation import compute_refund_allocation
+
     sale = refund.sale
     amount = refund.amount
     if amount <= 0:
@@ -599,6 +601,17 @@ def create_sale_refund_journal_entry(refund):
             'description': 'Cash on hand',
         },
     )
+    accounts_receivable_account, _ = Account.objects.get_or_create(
+        account_code='1200',
+        defaults={
+            'name': 'Accounts Receivable',
+            'account_type': AccountType.objects.get_or_create(
+                name='asset',
+                defaults={'normal_balance': 'debit'},
+            )[0],
+            'description': 'Accounts receivable from customers',
+        },
+    )
     customer_prepaid_account, _ = Account.objects.get_or_create(
         account_code='2100',
         defaults={
@@ -611,33 +624,10 @@ def create_sale_refund_journal_entry(refund):
         },
     )
 
-    ratio = (amount / sale.total) if sale.total > 0 else Decimal('1')
-    cash_back = ((sale.amount_paid or Decimal('0')) * ratio).quantize(Decimal('0.01'))
-
-    wallet_back = Decimal('0')
-    try:
-        from sales.models import CustomerWalletTransaction
-
-        wallet_used = (
-            CustomerWalletTransaction.objects.filter(
-                sale=sale,
-                transaction_type='debit',
-                source_type='payment',
-            ).aggregate(total=Sum('amount'))['total']
-            or Decimal('0')
-        )
-        wallet_back = (wallet_used * ratio).quantize(Decimal('0.01'))
-    except Exception:
-        wallet_back = Decimal('0')
-
-    remainder = amount - cash_back - wallet_back
-    if remainder < 0:
-        remainder = Decimal('0')
-    if remainder > 0 and cash_back == 0 and wallet_back == 0:
-        cash_back = remainder
-        remainder = Decimal('0')
-    elif remainder > 0:
-        cash_back += remainder
+    allocation = compute_refund_allocation(sale, amount)
+    cash_back = allocation['cash_back']
+    wallet_back = allocation['wallet_back']
+    debt_back = allocation['debt_back']
 
     txn = Transaction.objects.create(
         transaction_date=refund.created_at.date(),
@@ -691,127 +681,14 @@ def create_sale_refund_journal_entry(refund):
                 created_by=refund.refunded_by,
             )
         )
-
-    txn.journal_entries.add(*entries)
-    return txn
-
-
-def create_sale_refund_journal_entry(refund):
-    """Reverse a portion of sale revenue for a refund (cash and wallet portions)."""
-    from django.db.models import Sum
-
-    sale = refund.sale
-    amount = refund.amount
-    if amount <= 0:
-        return None
-
-    sales_revenue_account, _ = Account.objects.get_or_create(
-        account_code='4000',
-        defaults={
-            'name': 'Sales Revenue',
-            'account_type': AccountType.objects.get_or_create(
-                name='revenue',
-                defaults={'normal_balance': 'credit'},
-            )[0],
-            'description': 'Sales revenue',
-        },
-    )
-    cash_account, _ = Account.objects.get_or_create(
-        account_code='1000',
-        defaults={
-            'name': 'Cash',
-            'account_type': AccountType.objects.get_or_create(
-                name='asset',
-                defaults={'normal_balance': 'debit'},
-            )[0],
-            'description': 'Cash on hand',
-        },
-    )
-    customer_prepaid_account, _ = Account.objects.get_or_create(
-        account_code='2100',
-        defaults={
-            'name': 'Customer Prepaid/Wallet',
-            'account_type': AccountType.objects.get_or_create(
-                name='liability',
-                defaults={'normal_balance': 'credit'},
-            )[0],
-            'description': 'Customer wallet balances',
-        },
-    )
-
-    ratio = (amount / sale.total) if sale.total > 0 else Decimal('1')
-    cash_back = ((sale.amount_paid or Decimal('0')) * ratio).quantize(Decimal('0.01'))
-
-    wallet_back = Decimal('0')
-    try:
-        from sales.models import CustomerWalletTransaction
-
-        wallet_used = (
-            CustomerWalletTransaction.objects.filter(
-                sale=sale,
-                transaction_type='debit',
-                source_type='payment',
-            ).aggregate(total=Sum('amount'))['total']
-            or Decimal('0')
-        )
-        wallet_back = (wallet_used * ratio).quantize(Decimal('0.01'))
-    except Exception:
-        wallet_back = Decimal('0')
-
-    remainder = amount - cash_back - wallet_back
-    if remainder < 0:
-        remainder = Decimal('0')
-    if remainder > 0 and cash_back == 0 and wallet_back == 0:
-        cash_back = remainder
-        remainder = Decimal('0')
-    elif remainder > 0:
-        cash_back += remainder
-
-    txn = Transaction.objects.create(
-        transaction_date=refund.created_at.date(),
-        description=f'Refund: {refund.refund_number} ({sale.sale_number})',
-        reference=refund.refund_number,
-        reference_type='sale_refund',
-        reference_id=refund.id,
-        created_by=refund.refunded_by,
-    )
-    entries = []
-
-    revenue_entry = JournalEntry.objects.create(
-        entry_date=refund.created_at.date(),
-        account=sales_revenue_account,
-        entry_type='debit',
-        amount=amount,
-        description=f'Refund revenue reversal: {refund.refund_number}',
-        reference=refund.refund_number,
-        reference_type='sale_refund',
-        reference_id=refund.id,
-        created_by=refund.refunded_by,
-    )
-    entries.append(revenue_entry)
-
-    if cash_back > 0:
+    if debt_back > 0:
         entries.append(
             JournalEntry.objects.create(
                 entry_date=refund.created_at.date(),
-                account=cash_account,
+                account=accounts_receivable_account,
                 entry_type='credit',
-                amount=cash_back,
-                description=f'Refund cash out: {refund.refund_number}',
-                reference=refund.refund_number,
-                reference_type='sale_refund',
-                reference_id=refund.id,
-                created_by=refund.refunded_by,
-            )
-        )
-    if wallet_back > 0:
-        entries.append(
-            JournalEntry.objects.create(
-                entry_date=refund.created_at.date(),
-                account=customer_prepaid_account,
-                entry_type='credit',
-                amount=wallet_back,
-                description=f'Refund to customer wallet: {refund.refund_number}',
+                amount=debt_back,
+                description=f'Refund AR / account debt reversal: {refund.refund_number}',
                 reference=refund.refund_number,
                 reference_type='sale_refund',
                 reference_id=refund.id,

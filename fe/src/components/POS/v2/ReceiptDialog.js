@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Printer, Mail, Check, Loader2, Receipt as ReceiptIcon, UserPlus, X } from 'lucide-react';
+import { Printer, Check, Loader2, Receipt as ReceiptIcon, UserPlus, X } from 'lucide-react';
 
 import {
   Dialog,
@@ -59,7 +59,7 @@ function buildWhatsAppMessage(sale) {
 }
 
 /**
- * Receipt preview with Print, Email, and WhatsApp actions.
+ * Receipt preview with Print and WhatsApp actions.
  */
 export default function ReceiptDialog({
   sale,
@@ -113,7 +113,7 @@ export default function ReceiptDialog({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           className="left-[50%] top-[3vh] flex max-h-[94dvh] w-[calc(100%-1rem)] max-w-[380px] translate-x-[-50%] translate-y-0 flex-col gap-0 overflow-hidden p-0 sm:max-w-[380px]"
-          description={`Receipt for sale ${sale.sale_number}. Print, email, or send via WhatsApp.`}
+          description={`Receipt for sale ${sale.sale_number}. Print or send via WhatsApp.`}
         >
           <DialogHeader className="shrink-0 border-b px-3 py-2.5">
             <DialogTitle className="flex items-center gap-2 text-base">
@@ -171,28 +171,25 @@ export default function ReceiptDialog({
           </div>
 
           <DialogFooter className="shrink-0 flex-col gap-1.5 border-t bg-background p-2.5">
-            <div className="grid w-full grid-cols-3 gap-1.5">
-              <SendWhatsAppButton sale={sale} />
-              <SendEmailButton sale={sale} />
-              <Button
-                onClick={doPrint}
-                disabled={printing}
-                size="cashier"
-                className="col-span-1"
-              >
-                {printing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Sending…
-                  </>
-                ) : (
-                  <>
-                    <Printer className="h-4 w-4" />
-                    {printedOnce ? 'Print again' : 'Print'}
-                  </>
-                )}
-              </Button>
-            </div>
+            <Button
+              onClick={doPrint}
+              disabled={printing}
+              size="cashier-lg"
+              className="w-full"
+            >
+              {printing ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Sending…
+                </>
+              ) : (
+                <>
+                  <Printer className="h-4 w-4" />
+                  {printedOnce ? 'Print again' : 'Print'}
+                </>
+              )}
+            </Button>
+            <SendWhatsAppButton sale={sale} className="w-full" />
             <Button
               type="button"
               variant="outline"
@@ -220,24 +217,7 @@ export default function ReceiptDialog({
   );
 }
 
-function SendEmailButton({ sale }) {
-  const hasEmail = !!sale.customer_email;
-  const onClick = () => {
-    if (!hasEmail) {
-      toast.warning('This customer has no email on file. Add one in Customers.');
-      return;
-    }
-    toast.info('Email receipts are coming once the mail gateway is configured.');
-  };
-  return (
-    <Button variant="outline" size="cashier" onClick={onClick} className="gap-1.5">
-      <Mail className="h-4 w-4" />
-      Email
-    </Button>
-  );
-}
-
-function SendWhatsAppButton({ sale }) {
+function SendWhatsAppButton({ sale, className = '' }) {
   const phone = (sale.customer_phone || sale.customer?.phone || '').replace(/\D/g, '');
 
   const onClick = () => {
@@ -251,7 +231,12 @@ function SendWhatsAppButton({ sale }) {
   };
 
   return (
-    <Button variant="outline" size="cashier" onClick={onClick} className="gap-1.5 text-[#128C7E] hover:text-[#128C7E]">
+    <Button
+      variant="outline"
+      size="cashier"
+      onClick={onClick}
+      className={`gap-1.5 text-[#128C7E] hover:text-[#128C7E] ${className}`.trim()}
+    >
       <WhatsAppIcon className="h-4 w-4" />
       WhatsApp
     </Button>

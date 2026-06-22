@@ -43,13 +43,22 @@ describe('posCheckoutValidation', () => {
     ).toEqual({ ok: true, paid: 0, creditSale: true, fullPayLater: true });
   });
 
-  test('evaluatePosAmountReceived allows empty when payment on account', () => {
+  test('evaluateBillingAmountPaid allows partial amount on account', () => {
     expect(
-      evaluatePosAmountReceived('', {
-        allowPartialPayment: true,
+      evaluateBillingAmountPaid('150', {
+        partialPayment: true,
         hasRegisteredCustomer: true,
-        paymentOnAccount: true,
+        total: 500,
       })
-    ).toEqual({ ok: true, received: 0, creditSale: true, fullPayLater: true });
+    ).toEqual({ ok: true, paid: 150 });
+  });
+
+  test('evaluateBillingAmountPaid rejects empty without payment on account', () => {
+    expect(
+      evaluateBillingAmountPaid('', {
+        partialPayment: false,
+        hasRegisteredCustomer: true,
+      }).ok
+    ).toBe(false);
   });
 });

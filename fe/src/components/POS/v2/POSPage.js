@@ -113,9 +113,9 @@ export default function POSPage() {
   };
 
   const handleCustomerCreated = (newCustomer) => {
-    state.setCustomers((prev) => [newCustomer, ...prev]);
-    state.setSelectedCustomer(newCustomer);
+    state.addCustomerAndSelect(newCustomer);
     setShowCustomerForm(false);
+    toast.success('Customer added and selected for this sale');
   };
 
   const requestClearCart = () => {
@@ -444,10 +444,11 @@ export default function POSPage() {
         autoPrint={settings.receipt_auto_print}
       />
 
-      {canAddCustomer && showCustomerForm && (
+      {canAddCustomer && (
         <CustomerFormModal
-          onSave={handleCustomerCreated}
+          isOpen={showCustomerForm}
           onClose={() => setShowCustomerForm(false)}
+          onCustomerCreated={handleCustomerCreated}
         />
       )}
 

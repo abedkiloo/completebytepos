@@ -119,6 +119,62 @@ class SaleRefundServiceTests(TestCase):
         with self.assertRaises(ValidationError):
             self.service.create_refund(self.sale, reason='  ', user=self.user, full=True)
 
+    def test_full_refund_reverses_pay_later_customer_debt(self):
+        from sales.models import Customer, CustomerWalletTransaction
+
+        customer = Customer.objects.create(name='Debtor', phone='0700111222')
+        customer.wallet_balance = Decimal('-100')
+        customer.save(update_fields=['wallet_balance'])
+
+        debt_sale = Sale.objects.create(
+            sale_number='S-REF-DEBT',
+            status='completed',
+            subtotal=Decimal('100'),
+            tax_amount=Decimal('0'),
+            discount_amount=Decimal('0'),
+            total=Decimal('100'),
+            payment_method='cash',
+            amount_paid=Decimal('0'),
+            cashier=self.user,
+            customer=customer,
+        )
+        SaleItem.objects.create(
+            sale=debt_sale,
+            product=self.product,
+            quantity=2,
+            unit_price=Decimal('50'),
+            subtotal=Decimal('100'),
+        )
+        CustomerWalletTransaction.objects.create(
+            customer=customer,
+            transaction_type='debit',
+            source_type='debt',
+            amount=Decimal('100'),
+            balance_after=Decimal('-100'),
+            sale=debt_sale,
+            reference=debt_sale.sale_number,
+            notes='Pay later',
+            created_by=self.user,
+        )
+
+        refund = self.service.create_refund(
+            debt_sale,
+            reason='Wrong customer — void sale',
+            user=self.user,
+            full=True,
+        )
+        self.assertEqual(refund.amount, Decimal('100'))
+        customer.refresh_from_db()
+        self.assertEqual(customer.wallet_balance, Decimal('0'))
+        self.assertTrue(
+            CustomerWalletTransaction.objects.filter(
+                sale=debt_sale,
+                source_type='refund',
+                transaction_type='credit',
+                amount=Decimal('100'),
+            ).exists()
+        )
+
 
 class SaleRefundAPITests(ManagerAPITestCase):
     @classmethod
