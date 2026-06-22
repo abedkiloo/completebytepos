@@ -163,6 +163,11 @@ export function useBillingPOSState() {
     setPartialPaymentCustomerPrompt(false);
   }, []);
 
+  const payFullAmountLater = useCallback(() => {
+    if (!attemptSetPartialPayment(true)) return;
+    setAmountPaid('0');
+  }, [attemptSetPartialPayment]);
+
   const hydrateFromHolding = useCallback((holding) => {
     if (!holding) return;
     setHoldingId(holding.id);
@@ -488,6 +493,12 @@ export function useBillingPOSState() {
       toast.warning('Select a registered customer to complete this sale.');
       return;
     }
+    if (paid < total && !partialPayment) {
+      toast.warning(
+        'Enable "Payment on customer account" for a partial payment or pay later.'
+      );
+      return;
+    }
     if (partialPayment) {
       if (!allowPartialPayment) {
         toast.warning('Partial payment is disabled in store settings.');
@@ -525,7 +536,13 @@ export function useBillingPOSState() {
       setTaxPct(0);
       setSelectedCustomer(WALK_IN_CUSTOMER);
       setCustomerQuery('');
-      toast.success('Sale completed');
+      toast.success(
+        paid === 0 && total > 0
+          ? 'Sale completed. Full amount added to customer account.'
+          : paid < total
+            ? 'Sale completed. Balance added to customer account.'
+            : 'Sale completed'
+      );
     } catch (err) {
       const msg = formatApiError(err, 'Checkout failed');
       toast.error(msg);
@@ -588,6 +605,7 @@ export function useBillingPOSState() {
     partialPayment,
     setPartialPayment,
     attemptSetPartialPayment,
+    payFullAmountLater,
     partialPaymentCustomerPrompt,
     closePartialPaymentCustomerPrompt,
     amountPaid,

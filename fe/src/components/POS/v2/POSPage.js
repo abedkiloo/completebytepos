@@ -33,8 +33,10 @@ import ReceiptDialog from './ReceiptDialog';
 import VariantSelector from '../VariantSelector';
 import PosCartRecoveryDialog from '../PosCartRecoveryDialog';
 import { buildCartRecoveryPreview } from '../../../utils/posCartRecovery';
+import PartialPaymentCustomerDialog from '../billing/PartialPaymentCustomerDialog';
 import CustomerFormModal from '../../Customers/CustomerFormModal';
 import BranchSelector from '../../BranchSelector/BranchSelector';
+import { cn } from '../../../lib/cn';
 import { useStoreSettings } from '../../../hooks/useStoreSettings';
 import {
   salesShowDiscount,
@@ -84,6 +86,7 @@ export default function POSPage() {
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [mobilePanel, setMobilePanel] = useState('products');
   const searchInputRef = useRef(null);
 
   const handleFullscreen = () => {
@@ -168,9 +171,9 @@ export default function POSPage() {
   }, [state.requestPayment]);
 
   return (
-    <div className="flex h-screen flex-col bg-background">
+    <div className="flex h-[100dvh] flex-col overflow-hidden bg-background">
       {/* Header */}
-      <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-background px-3">
+      <header className="flex h-14 shrink-0 items-center gap-1 overflow-hidden border-b bg-background px-2 sm:gap-2 sm:px-3">
         <Button
           variant="ghost"
           size="icon"
@@ -188,27 +191,34 @@ export default function POSPage() {
           </span>
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-2">
           {canAddCustomer && (
             <>
-              <BranchSelector />
+              <BranchSelector compact />
               <Separator orientation="vertical" className="hidden h-6 sm:block" />
             </>
           )}
-          <Button variant="ghost" size="icon" onClick={handleRefresh} aria-label="Refresh products">
+          <Button variant="ghost" size="icon" className="shrink-0" onClick={handleRefresh} aria-label="Refresh products">
             <RefreshCw className="h-4 w-4" />
           </Button>
           {canAddCustomer && (
-            <Button variant="ghost" size="icon" onClick={() => navigate('/reports')} aria-label="Reports">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="hidden shrink-0 sm:inline-flex"
+              onClick={() => navigate('/reports')}
+              aria-label="Reports"
+            >
               <BarChart3 className="h-4 w-4" />
             </Button>
           )}
-          <Button variant="ghost" size="icon" onClick={handleReprintLast} aria-label="Reprint last receipt">
+          <Button variant="ghost" size="icon" className="shrink-0" onClick={handleReprintLast} aria-label="Reprint last receipt">
             <Printer className="h-4 w-4" />
           </Button>
           <Button
             variant="ghost"
             size="icon"
+            className="hidden shrink-0 sm:inline-flex"
             onClick={() => setShowShortcuts(true)}
             aria-label="Keyboard shortcuts"
             title="Keyboard shortcuts"
@@ -218,21 +228,28 @@ export default function POSPage() {
           <Button
             variant="ghost"
             size="icon"
+            className="hidden shrink-0 md:inline-flex"
             onClick={() => window.open('calculator:', '_blank')}
             aria-label="Open calculator"
           >
             <Calculator className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={handleFullscreen} aria-label="Toggle fullscreen">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hidden shrink-0 md:inline-flex"
+            onClick={handleFullscreen}
+            aria-label="Toggle fullscreen"
+          >
             <Maximize2 className="h-4 w-4" />
           </Button>
 
-          <Separator orientation="vertical" className="h-6" />
-          <div className="flex items-center gap-2 pl-1">
+          <Separator orientation="vertical" className="hidden h-6 sm:block" />
+          <div className="hidden items-center gap-2 pl-1 sm:flex">
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
               {state.user?.username?.[0]?.toUpperCase() || 'U'}
             </span>
-            <span className="hidden text-sm font-medium sm:inline">
+            <span className="hidden text-sm font-medium md:inline">
               {state.user?.username || 'Cashier'}
             </span>
           </div>
@@ -240,9 +257,49 @@ export default function POSPage() {
       </header>
 
       {/* Body */}
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+        <div
+          className="flex shrink-0 border-b bg-muted/30 lg:hidden"
+          role="tablist"
+          aria-label="POS panels"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mobilePanel === 'products'}
+            className={cn(
+              'flex-1 px-3 py-2.5 text-sm font-medium transition-colors',
+              mobilePanel === 'products'
+                ? 'border-b-2 border-primary text-primary'
+                : 'text-muted-foreground'
+            )}
+            onClick={() => setMobilePanel('products')}
+          >
+            Products
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mobilePanel === 'cart'}
+            className={cn(
+              'flex-1 px-3 py-2.5 text-sm font-medium transition-colors',
+              mobilePanel === 'cart'
+                ? 'border-b-2 border-primary text-primary'
+                : 'text-muted-foreground'
+            )}
+            onClick={() => setMobilePanel('cart')}
+          >
+            Cart ({state.cartItemCount})
+          </button>
+        </div>
+
         {/* Left: products */}
-        <section className="min-h-0 min-w-0 flex-1">
+        <section
+          className={cn(
+            'min-h-0 min-w-0 flex-1',
+            mobilePanel !== 'products' && 'hidden lg:block'
+          )}
+        >
           <ProductGrid
             products={state.products}
             categories={state.categories}
@@ -260,7 +317,12 @@ export default function POSPage() {
         </section>
 
         {/* Right: cart + checkout */}
-        <aside className="flex w-[18rem] shrink-0 flex-col border-l bg-background lg:w-[20rem]">
+        <aside
+          className={cn(
+            'flex min-h-0 w-full flex-col border-l bg-background lg:w-[18rem] lg:shrink-0 xl:w-[20rem]',
+            mobilePanel !== 'cart' && 'hidden lg:flex'
+          )}
+        >
           <div className="border-b px-3 py-2">
             <CustomerPicker
               customers={state.customers}
@@ -317,6 +379,9 @@ export default function POSPage() {
             enabledPaymentMethods={settings.enabled_payment_methods}
             allowPartialPayment={state.allowPartialPayment}
             hasRegisteredCustomer={isRegisteredPosCustomer(state.selectedCustomer)}
+            paymentOnAccount={state.paymentOnAccount}
+            onPaymentOnAccountChange={state.attemptSetPaymentOnAccount}
+            onPayFullAmountLater={state.payFullAmountLater}
             showDiscount={salesShowDiscount(state.salesModuleSettings)}
             showTax={salesShowTax(state.salesModuleSettings)}
             showDelivery={salesShowDelivery(state.salesModuleSettings)}
@@ -385,6 +450,20 @@ export default function POSPage() {
           onClose={() => setShowCustomerForm(false)}
         />
       )}
+
+      <PartialPaymentCustomerDialog
+        open={state.paymentOnAccountCustomerPrompt}
+        canAddCustomer={canAddCustomer}
+        onClose={() => state.setPaymentOnAccountCustomerPrompt(false)}
+        onSelectCustomer={() => {
+          state.setPaymentOnAccountCustomerPrompt(false);
+          setMobilePanel('cart');
+        }}
+        onAddCustomer={() => {
+          state.setPaymentOnAccountCustomerPrompt(false);
+          if (canAddCustomer) setShowCustomerForm(true);
+        }}
+      />
 
       {/* Clear-cart confirmation. The original POS just nuked the cart on
           a single tap which made it terrifyingly easy to lose a half-built

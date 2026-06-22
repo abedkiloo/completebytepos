@@ -8,14 +8,14 @@ import { Button } from '../ui/button';
 export function FilterBar({ children, className }) {
   return (
     <Card className={cn('shadow-sm', className)}>
-      <CardContent className="flex flex-wrap items-end gap-2 p-3">{children}</CardContent>
+      <CardContent className="flex flex-wrap items-end gap-2 overflow-x-hidden p-3">{children}</CardContent>
     </Card>
   );
 }
 
 export function FilterField({ label, children, className }) {
   return (
-    <div className={cn('flex min-w-[140px] flex-1 flex-col gap-1', className)}>
+    <div className={cn('flex min-w-0 flex-1 flex-col gap-1 sm:min-w-[140px]', className)}>
       {label && (
         <label className="text-xs font-medium text-muted-foreground">{label}</label>
       )}
@@ -26,7 +26,7 @@ export function FilterField({ label, children, className }) {
 
 export function SearchField({ value, onChange, placeholder = 'Search…', className }) {
   return (
-    <div className={cn('relative min-w-[200px] flex-1', className)}>
+    <div className={cn('relative min-w-0 flex-1 sm:min-w-[200px]', className)}>
       <Search
         className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
         aria-hidden
@@ -45,7 +45,8 @@ export function SearchField({ value, onChange, placeholder = 'Search…', classN
 /** Segmented filter pills (All / Active / Inactive). */
 export function FilterPills({ options, value, onChange }) {
   return (
-    <div className="inline-flex items-center rounded-lg border bg-muted/40 p-0.5">
+    <div className="max-w-full overflow-x-auto">
+      <div className="inline-flex min-w-0 items-center rounded-lg border bg-muted/40 p-0.5">
       {options.map((opt) => (
         <Button
           key={opt.value}
@@ -61,6 +62,7 @@ export function FilterPills({ options, value, onChange }) {
           {opt.label}
         </Button>
       ))}
+      </div>
     </div>
   );
 }

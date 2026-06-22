@@ -26,6 +26,7 @@ import {
   evaluatePosAmountReceived,
   isRegisteredPosCustomer,
 } from '../../../utils/posCheckoutValidation';
+import { evaluatePartialPaymentToggle } from '../../../utils/billingPartialPayment';
 import {
   salesShowDiscount,
   salesShowTax,
@@ -121,8 +122,32 @@ export function usePOSState() {
   // --- Checkout ---
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [receivedAmount, setReceivedAmount] = useState('');
+  const [paymentOnAccount, setPaymentOnAccount] = useState(false);
+  const [paymentOnAccountCustomerPrompt, setPaymentOnAccountCustomerPrompt] = useState(false);
   const [paymentReference, setPaymentReference] = useState('');
   const [submitting, setSubmitting] = useState(false);     // double-submit guard
+
+  const attemptSetPaymentOnAccount = useCallback((checked) => {
+    const { allow } = evaluatePartialPaymentToggle(checked, selectedCustomer);
+    if (allow) {
+      setPaymentOnAccount(checked);
+      if (!checked) setPaymentOnAccountCustomerPrompt(false);
+      return true;
+    }
+    setPaymentOnAccountCustomerPrompt(true);
+    return false;
+  }, [selectedCustomer]);
+
+  const payFullAmountLater = useCallback(() => {
+    if (!attemptSetPaymentOnAccount(true)) return;
+    setReceivedAmount('0');
+  }, [attemptSetPaymentOnAccount]);
+
+  useEffect(() => {
+    if (paymentOnAccount && !isRegisteredPosCustomer(selectedCustomer)) {
+      setPaymentOnAccount(false);
+    }
+  }, [selectedCustomer, paymentOnAccount]);
 
   // --- Pending confirmation state (lifted so dialogs can read it) ---
   const [pendingSaleData, setPendingSaleData] = useState(null);
@@ -539,6 +564,8 @@ export function usePOSState() {
     if (cartDraftKey) clearRetailCartDraft(cartDraftKey);
     setCart([]);
     setReceivedAmount('');
+    setPaymentOnAccount(false);
+    setPaymentOnAccountCustomerPrompt(false);
     setPaymentReference('');
     setDiscount(0);
     setTaxPct(0);
@@ -639,7 +666,11 @@ export function usePOSState() {
         resetAfterSale();
 
         if (allowPartial && pendingSaleData?.balance > 0) {
-          toast.success('Sale completed. Balance added to customer account.');
+          if (pendingSaleData.received === 0) {
+            toast.success('Sale completed. Full amount added to customer account.');
+          } else {
+            toast.success('Sale completed. Balance added to customer account.');
+          }
         } else if (excessChoice === 'wallet' && pendingSaleData?.excess > 0) {
           toast.success("Sale completed. Excess credited to customer's wallet.");
         } else {
@@ -690,6 +721,7 @@ export function usePOSState() {
     const receivedCheck = evaluatePosAmountReceived(receivedAmount, {
       allowPartialPayment,
       hasRegisteredCustomer: isRegisteredPosCustomer(selectedCustomer),
+      paymentOnAccount,
     });
 
     if (isTendered) {
@@ -701,12 +733,18 @@ export function usePOSState() {
 
       if (receivedCheck.creditSale || received < total) {
         if (!allowPartialPayment) {
-          toast.warning('Partial payment is disabled. Collect the full amount to continue.');
+          toast.warning('Payment on account is disabled in store settings.');
+          return;
+        }
+        if (!paymentOnAccount) {
+          toast.warning(
+            'Enable "Payment on customer account" for a partial payment or pay later.'
+          );
           return;
         }
         if (!isRegisteredPosCustomer(selectedCustomer)) {
           toast.warning(
-            'Pick a registered customer before allowing a partial payment — the balance is recorded against their account.'
+            'Pick a registered customer before recording a balance on their account.'
           );
           return;
         }
@@ -738,6 +776,7 @@ export function usePOSState() {
     total,
     selectedCustomer,
     allowPartialPayment,
+    paymentOnAccount,
     allowExcessToWallet,
     submitSale,
   ]);
@@ -793,6 +832,11 @@ export function usePOSState() {
     // checkout
     paymentMethod, setPaymentMethod,
     receivedAmount, setReceivedAmount,
+    paymentOnAccount,
+    attemptSetPaymentOnAccount,
+    payFullAmountLater,
+    paymentOnAccountCustomerPrompt,
+    setPaymentOnAccountCustomerPrompt,
     paymentReference, setPaymentReference,
     submitting,
     requestPayment,

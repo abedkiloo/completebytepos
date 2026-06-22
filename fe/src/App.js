@@ -14,6 +14,7 @@ import { fetchSetupStatus } from './utils/setupStatus';
 import './styles/responsive.css';
 import './styles/transitions.css';
 import './styles/mobile-fixes.css';
+import './styles/app-shell-mobile.css';
 import './styles/forms-compact.css';
 
 const Login = lazy(() => import('./components/Auth/Login'));

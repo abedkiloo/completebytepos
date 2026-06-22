@@ -94,19 +94,8 @@
   }
 }
 
-/* ===== BUTTON FIXES ===== */
+/* ===== BUTTON FIXES (legacy module action rows only) ===== */
 @media (max-width: 639px) {
-  /* Ensure buttons don't overflow */
-  .btn,
-  button {
-    max-width: 100%;
-    word-wrap: break-word;
-    white-space: normal;
-    padding: 0.75rem 1rem;
-    min-height: 44px;
-  }
-
-  /* Stack action buttons */
   .category-actions,
   .product-actions,
   .customer-actions {
@@ -119,19 +108,13 @@
   .product-actions button,
   .customer-actions button {
     width: 100%;
-  min-height: 44px;
-  margin: 0;
-  padding: 0.75rem 1rem;
-  font-size: 0.9375rem;
-  font-weight: 500;
-  border-radius: 6px;
+    min-height: 44px;
+    margin: 0;
+    padding: 0.75rem 1rem;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    border-radius: 6px;
     transition: all 0.2s;
-  }
-
-  .category-actions button:active,
-  .product-actions button:active,
-  .customer-actions button:active {
-    transform: scale(0.98);
   }
 }
 
@@ -205,48 +188,25 @@
   }
 }
 
-/* ===== NAVIGATION FIXES ===== */
+/* ===== NAVIGATION FIXES (legacy class names) ===== */
 @media (max-width: 1023px) {
-  /* Ensure sidebar doesn't cause horizontal scroll */
-  .app-body {
-    overflow-x: hidden;
-  }
-
-  /* Prevent body scroll when sidebar is open */
-  body.sidebar-open {
+  body.nav-drawer-open {
     overflow: hidden;
   }
 }
 
-/* ===== TOUCH TARGET FIXES ===== */
+/* ===== TOUCH TARGET FIXES (legacy sidebar + POS only) ===== */
 @media (max-width: 1023px) {
-  /* All interactive elements should be touch-friendly */
-  a,
-  button,
-  input[type="checkbox"]:not(.variant-attribute-checklist__checkbox):not(.form-inline-checkbox__input),
-  input[type="radio"],
-  select,
-  .clickable,
   .sidebar-item,
-  .section-header {
-    min-height: 44px;
-    min-width: 44px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  /* Touch target is the whole row, not an oversized checkbox */
-  .variant-attribute-checklist__item {
-    min-height: 2.25rem;
-  }
-
-  /* Icons need padding for touch */
+  .section-header,
   .header-icon,
   .menu-toggle {
-    padding: 0.75rem;
-    min-width: 44px;
     min-height: 44px;
+    min-width: 44px;
+  }
+
+  .variant-attribute-checklist__item {
+    min-height: 2.25rem;
   }
 }
 
@@ -305,13 +265,10 @@
 }
 
 /* ===== PERFORMANCE FIXES ===== */
-/* GPU acceleration for smooth animations */
+/* Avoid blanket will-change on all buttons — it hurts mobile GPUs */
 .sidebar,
-.modal-content,
-.btn,
-.page-header {
+.modal-content {
   will-change: transform;
-  transform: translateZ(0);
 }
 
 /* ===== PREVENT LAYOUT SHIFTS ===== */

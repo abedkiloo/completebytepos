@@ -300,6 +300,32 @@ const Layout = ({ children }) => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Prevent background scroll bleed while the mobile drawer is open (iOS-safe).
+  useEffect(() => {
+    if (!isMobile || !sidebarOpen) {
+      document.body.classList.remove('nav-drawer-open');
+      return undefined;
+    }
+
+    const scrollY = window.scrollY;
+    document.body.classList.add('nav-drawer-open');
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.left = '0';
+    document.body.style.right = '0';
+    document.body.style.width = '100%';
+
+    return () => {
+      document.body.classList.remove('nav-drawer-open');
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.left = '';
+      document.body.style.right = '';
+      document.body.style.width = '';
+      window.scrollTo(0, scrollY);
+    };
+  }, [isMobile, sidebarOpen]);
+
   const navCtx = useMemo(
     () => buildNavContext(moduleSettings, loadingModules),
     [moduleSettings, loadingModules]
@@ -362,10 +388,21 @@ const Layout = ({ children }) => {
 
   const navBadgeCounts = useNavBadgeCounts();
 
+  // On mobile, expand the section that contains the active route.
+  useEffect(() => {
+    if (!isMobile) return;
+    const activeSection = visibleSections.find((section) =>
+      section.visibleItems.some((item) => isActive(item))
+    );
+    if (activeSection) {
+      setExpanded((prev) => ({ ...prev, [activeSection.id]: true }));
+    }
+  }, [isMobile, location.pathname, location.search, visibleSections, isActive]);
+
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-[100dvh] flex-col overflow-x-hidden bg-background">
       {/* Top bar */}
-      <header className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b bg-background px-3 sm:px-4">
+      <header className="sticky top-0 z-40 flex h-14 min-w-0 items-center gap-2 border-b bg-background px-2 sm:gap-3 sm:px-4">
         <Button
           variant="ghost"
           size="icon"
@@ -376,15 +413,15 @@ const Layout = ({ children }) => {
           <Menu className="h-5 w-5" />
         </Button>
 
-        <Link to="/" className="flex items-center gap-2">
-          <img src="/logo.svg" alt="CompleteByte POS" className="h-7 w-auto" />
-          <span className="hidden text-sm font-semibold text-foreground sm:inline">
+        <Link to="/" className="flex min-w-0 shrink items-center gap-2">
+          <img src="/logo.svg" alt="CompleteByte POS" className="h-7 w-auto shrink-0" />
+          <span className="hidden truncate text-sm font-semibold text-foreground sm:inline">
             CompleteByte POS
           </span>
         </Link>
 
-        <div className="ml-auto flex items-center gap-2">
-          {isManagerOrAdmin && <BranchSelector showAllOption={isSuperAdmin} />}
+        <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1 sm:gap-2">
+          {isManagerOrAdmin && <BranchSelector showAllOption={isSuperAdmin} compact />}
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -434,6 +471,7 @@ const Layout = ({ children }) => {
           <div
             className="fixed inset-0 top-14 z-30 bg-black/40 lg:hidden"
             onClick={() => setSidebarOpen(false)}
+            onTouchMove={(e) => e.preventDefault()}
             aria-hidden="true"
           />
         )}
@@ -441,7 +479,7 @@ const Layout = ({ children }) => {
         {/* Sidebar */}
         <aside
           className={cn(
-            'fixed inset-y-14 left-0 z-30 w-64 shrink-0 overflow-y-auto border-r bg-background transition-transform duration-200 lg:static lg:inset-auto lg:translate-x-0',
+            'fixed bottom-0 left-0 top-14 z-40 w-[min(100vw-3rem,16rem)] shrink-0 overflow-y-auto overscroll-y-contain border-r bg-background pb-[env(safe-area-inset-bottom)] transition-transform duration-200 lg:static lg:inset-auto lg:w-64 lg:translate-x-0',
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           )}
           aria-label="Primary navigation"
@@ -463,7 +501,7 @@ const Layout = ({ children }) => {
         </aside>
 
         {/* Main content area */}
-        <main className="app-surface flex-1 overflow-y-auto">
+        <main className="app-surface min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain">
           {children}
         </main>
       </div>
@@ -517,7 +555,7 @@ const NavItem = ({ item, isActive, onNavigate, badgeCount = 0 }) => {
       to={item.to}
       onClick={onNavigate}
       className={cn(
-        'pos-target flex items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors',
+        'pos-target flex min-h-[44px] items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
         active
           ? 'bg-primary/10 text-primary'
           : 'text-foreground/80 hover:bg-accent hover:text-foreground'
@@ -525,7 +563,7 @@ const NavItem = ({ item, isActive, onNavigate, badgeCount = 0 }) => {
       aria-current={active ? 'page' : undefined}
     >
       {Icon && <Icon className="h-4 w-4 shrink-0" />}
-      <span className="truncate">{item.label}</span>
+      <span className="min-w-0 flex-1 truncate">{item.label}</span>
       <NavCountBadge count={badgeCount} />
     </Link>
   );

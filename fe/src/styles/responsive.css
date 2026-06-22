@@ -100,13 +100,14 @@
     padding: 1rem;
   }
 
-  /* Buttons - Larger touch targets on mobile */
-  .btn {
+  /* Buttons - Larger touch targets in page header actions only */
+  .page-header-actions .btn {
     padding: 0.625rem 1rem;
     font-size: 0.9375rem;
-    min-height: 44px; /* Better touch target */
+    min-height: 44px;
     width: 100%;
     max-width: 100%;
+    justify-content: center;
   }
 
   /* Cards and Grids */
@@ -234,21 +235,18 @@
   }
 }
 
-/* ===== TOUCH-FRIENDLY INTERACTIONS ===== */
-/* Larger touch targets for mobile */
+/* ===== TOUCH-FRIENDLY INTERACTIONS (legacy sidebar only) ===== */
 @media (max-width: 1023px) {
-  /* All interactive elements */
-  button,
-  a,
-  input[type="checkbox"]:not(.variant-attribute-checklist__checkbox):not(.form-inline-checkbox__input),
-  input[type="radio"],
-  select,
-  .clickable {
-    min-height: 44px;
-    min-width: 44px;
+  .sidebar-item {
+    min-height: 48px;
+    padding: 0.875rem 1.5rem;
   }
 
-  /* Icons */
+  .section-header {
+    min-height: 44px;
+    padding: 0.875rem 1.5rem;
+  }
+
   .header-icon,
   .menu-toggle {
     min-width: 44px;
@@ -256,18 +254,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-  }
-
-  /* Sidebar items */
-  .sidebar-item {
-    min-height: 48px;
-    padding: 0.875rem 1.5rem;
-  }
-
-  /* Section headers */
-  .section-header {
-    min-height: 44px;
-    padding: 0.875rem 1.5rem;
   }
 }
 

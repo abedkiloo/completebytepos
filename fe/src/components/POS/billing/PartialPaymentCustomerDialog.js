@@ -27,7 +27,7 @@ export default function PartialPaymentCustomerDialog({
         if (!next) onClose?.();
       }}
     >
-      <DialogContent className="sm:max-w-md" description="Select a customer before partial payment.">
+      <DialogContent className="sm:max-w-md" description="Select a customer before payment on account.">
         <DialogHeader>
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
@@ -36,9 +36,9 @@ export default function PartialPaymentCustomerDialog({
             <div className="min-w-0 flex-1 space-y-1">
               <DialogTitle>Select a customer first</DialogTitle>
               <DialogDescription className="text-sm leading-relaxed">
-                Partial payment saves the remaining balance on a customer account.
-                Search for an existing customer below, or add a new one — then enable
-                partial payment again.
+                Partial payments and pay-later sales post the balance to a customer account.
+                Search for an existing customer below, or add a new one — then enable payment on
+                account again.
               </DialogDescription>
             </div>
           </div>

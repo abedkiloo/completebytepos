@@ -1,4 +1,5 @@
-import React, { useRef } from 'react';
+/* @refresh reset */
+import React, { useRef, useState } from 'react';
 import {
   Search,
   ScanBarcode,
@@ -37,10 +38,10 @@ import { isManagerOrAdminFromStorage, getStoredAuth } from '../../../utils/roleA
 import { useModuleSettings } from '../../../hooks/useModuleSettings';
 import { canQuickAddCustomerAtPos, customersShowWalletBalance } from '../../../utils/customerDisplay';
 import { CustomerWalletBalance } from '../../Customers/CustomerWalletBalance';
+import { AccountPaymentBlock } from '../AccountPaymentBlock';
 import {
   BILLING_AMOUNT_RECEIVED_CLASS,
   BILLING_INVOICE_CARD_CLASS,
-  BILLING_PARTIAL_PAYMENT_BLOCK_CLASS,
   BILLING_PAYMENT_METHODS_GRID_CLASS,
   BILLING_PAYMENT_SECTION_CLASS,
   BILLING_RIGHT_COLUMN_CLASS,
@@ -56,7 +57,7 @@ export default function BillingPOSPage() {
   }));
   const searchRef = useRef(null);
   const customerSearchRef = useRef(null);
-  const [showNewCustomer, setShowNewCustomer] = React.useState(false);
+  const [showNewCustomer, setShowNewCustomer] = useState(false);
   const { settings: customerModuleSettings } = useModuleSettings('customers');
   const { permissions } = getStoredAuth();
   const canAddCustomer = canQuickAddCustomerAtPos(
@@ -77,12 +78,12 @@ export default function BillingPOSPage() {
 
   return (
     <>
-    <div className="flex min-h-[calc(100vh-3.5rem)] flex-col bg-slate-50">
+    <div className="flex min-h-[100dvh] flex-col overflow-x-hidden bg-slate-50">
         {/* Top bar */}
-        <div className="flex items-center justify-between border-b bg-white px-4 py-3">
-          <div>
-            <h1 className="text-lg font-semibold text-slate-900">Terminal POS</h1>
-            <p className="text-xs text-muted-foreground">
+        <div className="flex flex-col gap-2 border-b bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+          <div className="min-w-0">
+            <h1 className="truncate text-lg font-semibold text-slate-900">Terminal POS</h1>
+            <p className="truncate text-xs text-muted-foreground">
               Draft invoice saved automatically
               {state.holdingNumber && (
                 <span className="ml-2 font-mono text-primary">{state.holdingNumber}</span>
@@ -92,12 +93,12 @@ export default function BillingPOSPage() {
               )}
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={state.clearCart}>
+          <Button variant="outline" size="sm" className="w-full shrink-0 sm:w-auto" onClick={state.clearCart}>
             New sale
           </Button>
         </div>
 
-        <div className="grid flex-1 gap-4 p-4 lg:grid-cols-[1fr_minmax(300px,380px)]">
+        <div className="grid min-w-0 flex-1 gap-4 overflow-x-hidden p-2 sm:p-4 lg:grid-cols-[1fr_minmax(300px,380px)]">
           {/* Left: search + cart */}
           <div className="flex flex-col gap-4">
             {/* Scan / search */}
@@ -437,28 +438,17 @@ export default function BillingPOSPage() {
                   Payment Mode
                 </Label>
 
-                {state.allowPartialPayment && (
-                  <div className={BILLING_PARTIAL_PAYMENT_BLOCK_CLASS}>
-                    <label className="flex cursor-pointer items-start gap-2.5 text-sm leading-snug">
-                      <input
-                        type="checkbox"
-                        className="mt-0.5 h-4 w-4 shrink-0"
-                        checked={state.partialPayment}
-                        onChange={(e) => state.attemptSetPartialPayment(e.target.checked)}
-                        aria-describedby="partial-payment-hint"
-                      />
-                      <span>Partial payment (balance on customer account)</span>
-                    </label>
-                    {state.isWalkInCustomer(state.selectedCustomer) && (
-                      <p
-                        id="partial-payment-hint"
-                        className="text-xs leading-relaxed text-muted-foreground"
-                      >
-                        Select or add a customer to charge the balance to their account.
-                      </p>
-                    )}
-                  </div>
-                )}
+                {state.allowPartialPayment ? (
+                  <AccountPaymentBlock
+                    visible
+                    checked={state.partialPayment}
+                    onCheckedChange={state.attemptSetPartialPayment}
+                    hasRegisteredCustomer={!state.isWalkInCustomer(state.selectedCustomer)}
+                    total={state.total}
+                    amountPaid={state.amountPaid}
+                    onPayFullAmountLater={state.payFullAmountLater}
+                  />
+                ) : null}
 
                 <div
                   className={cn(

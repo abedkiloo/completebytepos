@@ -25,26 +25,39 @@ export function PartialPaymentConfirm({
   onConfirm,
 }) {
   if (!pending) return null;
+  const fullPayLater = pending.received === 0;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-warning" />
-            Record balance as debt?
+            {fullPayLater ? 'Record full amount as pay later?' : 'Record balance as debt?'}
           </DialogTitle>
           <DialogDescription>
-            The customer is paying less than the total. The unpaid balance will be added to
-            {' '}<strong className="text-foreground">{customer?.name}</strong>'s account.
+            {fullPayLater ? (
+              <>
+                No payment is collected now. The full sale total will be added to{' '}
+                <strong className="text-foreground">{customer?.name}</strong>&apos;s account as
+                amount due.
+              </>
+            ) : (
+              <>
+                The customer is paying less than the total. The unpaid balance will be added to{' '}
+                <strong className="text-foreground">{customer?.name}</strong>&apos;s account.
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
 
         <dl className="grid grid-cols-2 gap-y-2 rounded-md border bg-muted/40 px-4 py-3 text-sm">
           <dt className="text-muted-foreground">Sale total</dt>
           <dd className="text-right tabular-nums">{formatCurrency(pending.total)}</dd>
-          <dt className="text-muted-foreground">Received</dt>
+          <dt className="text-muted-foreground">{fullPayLater ? 'Collected now' : 'Received'}</dt>
           <dd className="text-right tabular-nums">{formatCurrency(pending.received)}</dd>
-          <dt className="font-medium text-foreground">Balance (debt)</dt>
+          <dt className="font-medium text-foreground">
+            {fullPayLater ? 'Amount due (pay later)' : 'Balance (debt)'}
+          </dt>
           <dd className="text-right text-base font-semibold tabular-nums text-warning">
             {formatCurrency(pending.balance)}
           </dd>
@@ -55,7 +68,7 @@ export function PartialPaymentConfirm({
             Cancel
           </Button>
           <Button onClick={onConfirm} disabled={submitting}>
-            Record sale &amp; debt
+            {fullPayLater ? 'Record sale — pay later' : 'Record sale & debt'}
           </Button>
         </DialogFooter>
       </DialogContent>

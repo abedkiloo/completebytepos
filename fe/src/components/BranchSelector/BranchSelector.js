@@ -13,7 +13,7 @@ import {
 } from '../ui/dropdown-menu';
 import { cn } from '../../lib/cn';
 
-const BranchSelector = ({ onBranchChange, showAllOption = false }) => {
+const BranchSelector = ({ onBranchChange, showAllOption = false, compact = false }) => {
   const [branches, setBranches] = useState([]);
   const [selectedBranch, setSelectedBranch] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -152,10 +152,18 @@ const BranchSelector = ({ onBranchChange, showAllOption = false }) => {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="h-9 max-w-[180px] gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className={cn(
+            'h-9 gap-2',
+            compact ? 'max-w-[2.75rem] px-2 sm:max-w-[180px] sm:px-3' : 'max-w-[180px]'
+          )}
+          aria-label={`Branch: ${displayName}`}
+        >
           <Building2 className="h-4 w-4 shrink-0 text-primary" />
-          <span className="truncate">{displayName}</span>
-          <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+          <span className={cn('truncate', compact && 'hidden sm:inline')}>{displayName}</span>
+          <ChevronDown className={cn('h-4 w-4 shrink-0 opacity-50', compact && 'hidden sm:inline')} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">

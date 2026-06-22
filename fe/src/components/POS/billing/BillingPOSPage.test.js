@@ -123,7 +123,7 @@ describe('BillingPOSPage invoice layout', () => {
 
     expect(screen.getByLabelText(/Amount received/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/Partial payment \(balance on customer account\)/i)
+      screen.getByText(/Payment on customer account/i)
     ).toBeInTheDocument();
   });
 
@@ -133,7 +133,7 @@ describe('BillingPOSPage invoice layout', () => {
     );
     render(<BillingPOSPage />);
 
-    expect(screen.queryByText(/Partial payment/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Payment on customer account/i)).not.toBeInTheDocument();
     expect(screen.getByTestId('billing-amount-received')).toBeInTheDocument();
   });
 });

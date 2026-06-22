@@ -20,6 +20,7 @@ import {
   paymentReferenceRequired,
 } from '../../../utils/paymentMethods';
 import { evaluatePosAmountReceived } from '../../../utils/posCheckoutValidation';
+import { AccountPaymentBlock } from '../AccountPaymentBlock';
 
 export function CheckoutPanel({
   // totals
@@ -59,6 +60,9 @@ export function CheckoutPanel({
   enabledPaymentMethods,
   allowPartialPayment = false,
   hasRegisteredCustomer = false,
+  paymentOnAccount = false,
+  onPaymentOnAccountChange,
+  onPayFullAmountLater,
   showDiscount = true,
   showTax = true,
   showDelivery = true,
@@ -89,6 +93,7 @@ export function CheckoutPanel({
   const receivedCheck = evaluatePosAmountReceived(receivedAmount, {
     allowPartialPayment,
     hasRegisteredCustomer,
+    paymentOnAccount,
   });
   const canPay =
     !hasOversell &&
@@ -248,6 +253,20 @@ export function CheckoutPanel({
             placeholder={paymentReferencePlaceholder(paymentMethod)}
             className="h-10 font-mono text-sm"
             autoComplete="off"
+          />
+        </div>
+      ) : null}
+
+      {allowPartialPayment && isCashLike ? (
+        <div className="px-3 pt-2">
+          <AccountPaymentBlock
+            visible
+            checked={paymentOnAccount}
+            onCheckedChange={onPaymentOnAccountChange}
+            hasRegisteredCustomer={hasRegisteredCustomer}
+            total={total}
+            amountPaid={receivedAmount}
+            onPayFullAmountLater={onPayFullAmountLater}
           />
         </div>
       ) : null}

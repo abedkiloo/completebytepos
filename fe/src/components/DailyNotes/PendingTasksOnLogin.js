@@ -134,7 +134,7 @@ export default function PendingTasksOnLogin() {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && handleDismiss()}>
       <DialogContent
-        className="max-h-[85dvh] max-w-md overflow-hidden p-0"
+        className="max-h-[min(92dvh,100vh)] w-[calc(100%-1rem)] max-w-md overflow-hidden p-0 sm:w-full"
         description="Your open daily tasks and approvals waiting for review."
       >
         <DialogHeader className="border-b px-4 py-3">

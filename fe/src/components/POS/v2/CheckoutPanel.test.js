@@ -37,6 +37,7 @@ describe('CheckoutPanel', () => {
         {...baseProps}
         allowPartialPayment
         hasRegisteredCustomer
+        paymentOnAccount
       />
     );
 
