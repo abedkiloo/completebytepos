@@ -180,6 +180,18 @@
   background: hsl(var(--border));
 }
 
+/* Receipt dialog actions — always stack; Print is full-width primary CTA */
+.receipt-dialog-footer {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+}
+.receipt-dialog-footer > * {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
 .receipt-thermal--58mm {
   width: 58mm;
   max-width: 58mm;

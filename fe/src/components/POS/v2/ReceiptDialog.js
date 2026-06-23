@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Printer, Check, Loader2, Receipt as ReceiptIcon, UserPlus, X } from 'lucide-react';
+import { Printer, Check, Loader2, Receipt as ReceiptIcon, UserPlus } from 'lucide-react';
 
 import {
   Dialog,
@@ -161,7 +161,7 @@ export default function ReceiptDialog({
           </div>
 
           <div
-            className="receipt-dialog-scroll min-h-0 max-h-[calc(94dvh-10.5rem)] flex-1 overflow-y-auto overscroll-contain bg-muted/20 px-1 py-1.5"
+            className="receipt-dialog-scroll min-h-0 max-h-[calc(94dvh-12.5rem)] flex-1 overflow-y-auto overscroll-contain bg-muted/20 px-1 py-1.5"
             role="region"
             aria-label="Receipt preview"
           >
@@ -170,36 +170,40 @@ export default function ReceiptDialog({
             </div>
           </div>
 
-          <DialogFooter className="shrink-0 flex-col gap-1.5 border-t bg-background p-2.5">
+          <DialogFooter className="receipt-dialog-footer shrink-0 gap-2 border-t bg-muted/30 p-3 sm:flex-col sm:justify-stretch sm:space-x-0">
             <Button
+              type="button"
               onClick={doPrint}
               disabled={printing}
+              variant="success"
               size="cashier-lg"
-              className="w-full"
+              data-testid="receipt-print-button"
+              className="w-full min-h-16 text-lg font-semibold shadow-md"
             >
               {printing ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Sending…
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  Opening print…
                 </>
               ) : (
                 <>
-                  <Printer className="h-4 w-4" />
-                  {printedOnce ? 'Print again' : 'Print'}
+                  <Printer className="h-5 w-5" />
+                  {printedOnce ? 'Print again' : 'Print receipt'}
                 </>
               )}
             </Button>
-            <SendWhatsAppButton sale={sale} className="w-full" />
-            <Button
-              type="button"
-              variant="outline"
-              size="cashier"
-              className="w-full"
-              onClick={() => onOpenChange(false)}
-            >
-              <X className="h-4 w-4" />
-              Cancel
-            </Button>
+            <div className="grid w-full grid-cols-2 gap-2">
+              <SendWhatsAppButton sale={sale} className="w-full" />
+              <Button
+                type="button"
+                variant="outline"
+                size="cashier"
+                className="w-full"
+                onClick={() => onOpenChange(false)}
+              >
+                Done
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

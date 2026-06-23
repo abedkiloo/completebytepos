@@ -34,14 +34,14 @@ const sale = {
 };
 
 describe('ReceiptDialog', () => {
-  it('shows Cancel and closes the dialog', () => {
+  it('shows Done and closes the dialog', () => {
     const onOpenChange = jest.fn();
 
     render(
       <ReceiptDialog sale={sale} open onOpenChange={onOpenChange} autoPrint={false} />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Cancel/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Done/i }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
@@ -51,6 +51,7 @@ describe('ReceiptDialog', () => {
     );
 
     expect(screen.queryByRole('button', { name: /Email/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^Print$/i })).toBeInTheDocument();
+    expect(screen.getByTestId('receipt-print-button')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Print receipt/i })).toBeInTheDocument();
   });
 });
