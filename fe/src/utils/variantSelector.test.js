@@ -10,6 +10,7 @@ import {
   getPickerSizes,
   getPickerColors,
   shouldOpenVariantPicker,
+  hasHeterogeneousVariantAttributes,
 } from './variantSelector';
 
 const product = {
@@ -199,6 +200,54 @@ describe('variantSelector utils', () => {
     const rows = [{ id: 1, sku: 'SKU-A' }, { id: 2, sku: 'SKU-B' }];
     expect(getVariantPickerMode(rows)).toBe('list');
     expect(getVariantPickerMode(variants)).toBe('size-color');
+  });
+
+  it('getVariantPickerMode uses list for mixed size+color and color-only rows', () => {
+    const zipperVariants = [
+      {
+        id: 1,
+        size: 10,
+        color: 1,
+        size_name: '200 Mtrs',
+        color_name: 'WHITE',
+        price: '1800',
+        stock_quantity: 150,
+      },
+      {
+        id: 2,
+        color: 2,
+        color_name: 'BLACK',
+        price: '1600',
+        stock_quantity: 1350,
+      },
+      {
+        id: 3,
+        color: 3,
+        color_name: 'CREAM',
+        price: '1800',
+        stock_quantity: 0,
+      },
+    ];
+    expect(hasHeterogeneousVariantAttributes(zipperVariants)).toBe(true);
+    expect(getVariantPickerMode(zipperVariants)).toBe('list');
+  });
+
+  it('getVariantPickerMode stays size-color when every row has size and color', () => {
+    expect(
+      getVariantPickerMode([
+        { id: 1, size: 1, color: 1, size_name: 'L', color_name: 'Blue' },
+        { id: 2, size: 2, color: 2, size_name: 'M', color_name: 'Red' },
+      ])
+    ).toBe('size-color');
+  });
+
+  it('getVariantPickerMode uses color-only when all rows have color but no size', () => {
+    expect(
+      getVariantPickerMode([
+        { id: 1, color: 1, color_name: 'BLACK' },
+        { id: 2, color: 2, color_name: 'WHITE' },
+      ])
+    ).toBe('color-only');
   });
 
   it('getPickerSizes only includes sizes present on variant rows', () => {

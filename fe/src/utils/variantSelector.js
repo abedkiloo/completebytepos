@@ -47,13 +47,55 @@ export function variantUsesColor(variant) {
 }
 
 /**
+ * True when variant rows use size/color inconsistently (e.g. one size+color row
+ * plus several color-only rows). Matrix pickers cannot represent every row.
+ */
+export function hasHeterogeneousVariantAttributes(activeVariants) {
+  if (!activeVariants?.length) return false;
+
+  const withSize = activeVariants.filter(variantUsesSize);
+  const withColor = activeVariants.filter(variantUsesColor);
+  const withBoth = activeVariants.filter(
+    (v) => variantUsesSize(v) && variantUsesColor(v)
+  );
+  const withColorOnly = activeVariants.filter(
+    (v) => !variantUsesSize(v) && variantUsesColor(v)
+  );
+  const withSizeOnly = activeVariants.filter(
+    (v) => variantUsesSize(v) && !variantUsesColor(v)
+  );
+  const withNeither = activeVariants.filter(
+    (v) => !variantUsesSize(v) && !variantUsesColor(v)
+  );
+
+  if (
+    withBoth.length > 0 &&
+    (withColorOnly.length > 0 || withSizeOnly.length > 0)
+  ) {
+    return true;
+  }
+  if (withSize.length > 0 && withSize.length < activeVariants.length) {
+    return true;
+  }
+  if (withColor.length > 0 && withColor.length < activeVariants.length) {
+    return true;
+  }
+  if (withNeither.length > 0 && withNeither.length < activeVariants.length) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Picker layout based on actual variant rows (not the full size × color matrix).
  * - size-color: pick size, then color (only combinations that exist)
  * - size-only / color-only: single attribute axis
- * - list: pick a variant row directly (no size/color on rows)
+ * - list: pick a variant row directly (mixed attributes or no size/color on rows)
  */
 export function getVariantPickerMode(activeVariants) {
   if (!activeVariants?.length) return 'none';
+  if (hasHeterogeneousVariantAttributes(activeVariants)) return 'list';
+
   const anySize = activeVariants.some(variantUsesSize);
   const anyColor = activeVariants.some(variantUsesColor);
   const anyBoth = activeVariants.some(
