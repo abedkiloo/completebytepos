@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { variantsAPI, productsAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
 import { cn } from '../../lib/cn';
@@ -11,6 +11,12 @@ import {
   canAddVariantToCart,
   isVariantAddToCartDisabled,
   buildVariantCartPayload,
+  getActiveVariants,
+  getVariantPickerMode,
+  getPickerSizes,
+  getPickerColors,
+  getVariantRowLabel,
+  normalizeFkId,
 } from '../../utils/variantSelector';
 
 const VariantSelector = ({ product, onSelect, onClose, validateStock = true }) => {
@@ -26,17 +32,8 @@ const VariantSelector = ({ product, onSelect, onClose, validateStock = true }) =
   const [quantityInput, setQuantityInput] = useState('1');
   const [quantityError, setQuantityError] = useState(null);
 
-  useEffect(() => {
-    loadProductDetails();
-    loadVariants();
-  }, [product]);
-
-  useEffect(() => {
-    setQuantityInput(quantity.toString());
-    setQuantityError(null);
-  }, [quantity]);
-
-  const loadProductDetails = async () => {
+  const loadProductDetails = useCallback(async () => {
+    if (!product?.id) return;
     setLoadingDetails(true);
     try {
       const response = await productsAPI.get(product.id);
@@ -71,18 +68,54 @@ const VariantSelector = ({ product, onSelect, onClose, validateStock = true }) =
     } finally {
       setLoadingDetails(false);
     }
-  };
+  }, [product]);
 
-  const loadVariants = async () => {
+  const loadVariants = useCallback(async () => {
+    if (!product?.id) return;
+    setLoading(true);
     try {
       const response = await variantsAPI.getByProduct(product.id);
       const variantsData = response.data.results || response.data || [];
       setVariants(variantsData);
     } catch (error) {
+      setVariants([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [product?.id]);
+
+  useEffect(() => {
+    setSelectedSize(null);
+    setSelectedColor(null);
+    setSelectedVariant(null);
+    setQuantity(1);
+    setQuantityInput('1');
+    setQuantityError(null);
+    loadProductDetails();
+    loadVariants();
+  }, [loadProductDetails, loadVariants]);
+
+  useEffect(() => {
+    setQuantityInput(quantity.toString());
+    setQuantityError(null);
+  }, [quantity]);
+
+  const activeVariants = useMemo(() => getActiveVariants(variants), [variants]);
+
+  const pickerMode = useMemo(
+    () => getVariantPickerMode(activeVariants),
+    [activeVariants]
+  );
+
+  const pickerSizes = useMemo(
+    () => getPickerSizes(activeVariants, availableSizes),
+    [activeVariants, availableSizes]
+  );
+
+  const pickerColors = useMemo(
+    () => getPickerColors(activeVariants, availableColors, selectedSize),
+    [activeVariants, availableColors, selectedSize]
+  );
 
   const handleSizeSelect = (sizeId) => {
     setSelectedSize(sizeId);
@@ -95,16 +128,43 @@ const VariantSelector = ({ product, onSelect, onClose, validateStock = true }) =
     setSelectedVariant(null);
   };
 
+  const handleVariantRowSelect = (variant) => {
+    setSelectedVariant(variant);
+    setSelectedSize(normalizeFkId(variant.size) ?? variant.size_id ?? null);
+    setSelectedColor(normalizeFkId(variant.color) ?? variant.color_id ?? null);
+    setQuantity(1);
+    setQuantityInput('1');
+    setQuantityError(null);
+  };
+
   useEffect(() => {
+    if (pickerMode !== 'size-color') return;
+    if (selectedSize == null || selectedColor != null) return;
+    if (pickerColors.length === 1) {
+      setSelectedColor(pickerColors[0].id);
+    }
+  }, [pickerMode, selectedSize, selectedColor, pickerColors]);
+
+  useEffect(() => {
+    if (pickerMode === 'list') return;
+    const sizeOptions = pickerMode === 'color-only' ? [] : pickerSizes;
+    const colorOptions = pickerMode === 'size-only' ? [] : pickerColors;
     const variant = findVariantForSelection(
-      variants,
+      activeVariants,
       selectedSize,
       selectedColor,
-      availableSizes,
-      availableColors
+      sizeOptions,
+      colorOptions
     );
     setSelectedVariant(variant);
-  }, [selectedSize, selectedColor, variants, availableSizes, availableColors]);
+  }, [
+    pickerMode,
+    selectedSize,
+    selectedColor,
+    activeVariants,
+    pickerSizes,
+    pickerColors,
+  ]);
 
   const effectiveStock = getSellableStockForVariant(
     product,
@@ -113,19 +173,19 @@ const VariantSelector = ({ product, onSelect, onClose, validateStock = true }) =
   );
   const canAdd = canAddVariantToCart({
     product,
-    variants,
+    variants: activeVariants,
     selectedSize,
     selectedColor,
     selectedVariant,
-    availableSizes,
-    availableColors,
+    availableSizes: pickerMode === 'color-only' ? [] : pickerSizes,
+    availableColors: pickerMode === 'size-only' ? [] : pickerColors,
   });
   const addDisabled = isVariantAddToCartDisabled({
     product,
     selectedVariant,
     canAdd,
     validateStock,
-    variantsList: variants,
+    variantsList: activeVariants,
   });
 
   const handleAddToCart = () => {
@@ -134,7 +194,7 @@ const VariantSelector = ({ product, onSelect, onClose, validateStock = true }) =
       product,
       selectedVariant,
       quantity,
-      variants
+      activeVariants
     );
     onSelect(payload);
   };
@@ -187,10 +247,17 @@ const VariantSelector = ({ product, onSelect, onClose, validateStock = true }) =
     setQuantityInput(numValue.toString());
   };
 
-  if (!product.has_variants && variants.length === 0) {
+  if (!product.has_variants && activeVariants.length === 0) {
     onSelect(buildVariantCartPayload(product, null, 1));
     return null;
   }
+
+  const showSizePicker =
+    pickerMode === 'size-only' || pickerMode === 'size-color';
+  const showColorPicker =
+    pickerMode === 'color-only' ||
+    (pickerMode === 'size-color' && selectedSize != null);
+  const showVariantList = pickerMode === 'list' && activeVariants.length > 0;
 
   const stockDisplay = getVariantStock();
   const showSelectionSummary = selectedVariant != null;
@@ -210,7 +277,7 @@ const VariantSelector = ({ product, onSelect, onClose, validateStock = true }) =
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-4">
+        <div className="app-scroll-region flex-1 px-6 py-4">
           <div className="mb-4 border-b pb-4">
             <h4 className="mb-1 text-base font-medium">{product.name}</h4>
             {product.category_name && (
@@ -225,11 +292,59 @@ const VariantSelector = ({ product, onSelect, onClose, validateStock = true }) =
             <div className="py-8 text-center text-muted-foreground">Loading variants...</div>
           ) : (
             <>
-              {availableSizes.length > 0 ? (
+              {showVariantList ? (
+                <div className="mb-4">
+                  <label className="mb-2 block text-sm font-semibold">Variant</label>
+                  <div className="flex flex-col gap-2">
+                    {activeVariants.map((variant) => {
+                      const rowStock = getSellableStockForVariant(
+                        product,
+                        variant,
+                        activeVariants
+                      );
+                      const rowDisabled =
+                        validateStock && rowStock !== null && rowStock <= 0;
+                      const isSelected = selectedVariant?.id === variant.id;
+                      return (
+                        <button
+                          key={variant.id}
+                          type="button"
+                          disabled={rowDisabled}
+                          className={cn(
+                            'rounded-md border-2 px-3 py-2 text-left text-sm transition-colors',
+                            isSelected
+                              ? 'border-primary bg-primary text-primary-foreground'
+                              : 'border-border bg-background hover:border-primary/50 hover:bg-primary/5',
+                            rowDisabled && 'cursor-not-allowed opacity-50'
+                          )}
+                          onClick={() => handleVariantRowSelect(variant)}
+                        >
+                          <div className="font-medium">{getVariantRowLabel(variant)}</div>
+                          <div
+                            className={cn(
+                              'text-xs',
+                              isSelected ? 'text-primary-foreground/80' : 'text-muted-foreground'
+                            )}
+                          >
+                            {formatCurrency(
+                              variant.effective_price ?? variant.price ?? product.price
+                            )}
+                            {rowStock === null
+                              ? ' · Stock not tracked'
+                              : ` · ${rowStock} ${product.unit || 'pcs'}`}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              {showSizePicker && pickerSizes.length > 0 ? (
                 <div className="mb-4">
                   <label className="mb-2 block text-sm font-semibold">Size</label>
                   <div className="flex flex-wrap gap-2">
-                    {availableSizes.map(size => (
+                    {pickerSizes.map(size => (
                       <button
                         key={size.id}
                         type="button"
@@ -248,11 +363,11 @@ const VariantSelector = ({ product, onSelect, onClose, validateStock = true }) =
                 </div>
               ) : null}
 
-              {availableColors.length > 0 ? (
+              {showColorPicker && pickerColors.length > 0 ? (
                 <div className="mb-4">
                   <label className="mb-2 block text-sm font-semibold">Color</label>
                   <div className="flex flex-wrap gap-2">
-                    {availableColors.map(color => (
+                    {pickerColors.map(color => (
                       <button
                         key={color.id}
                         type="button"
@@ -301,18 +416,24 @@ const VariantSelector = ({ product, onSelect, onClose, validateStock = true }) =
                 </div>
               )}
 
-              {!selectedVariant && product.has_variants && variants.length > 0 && (
+              {!selectedVariant && product.has_variants && activeVariants.length > 0 && (
                 <div className="py-4 text-center text-sm italic text-muted-foreground">
-                  {availableSizes.length > 0 && availableColors.length > 0 && (
-                    <span>Please select both size and color</span>
-                  )}
-                  {availableSizes.length > 0 && availableColors.length === 0 && (
+                  {pickerMode === 'size-color' && selectedSize == null && (
                     <span>Please select a size</span>
                   )}
-                  {availableColors.length > 0 && availableSizes.length === 0 && (
+                  {pickerMode === 'size-color' && selectedSize != null && (
                     <span>Please select a color</span>
                   )}
-                  {availableSizes.length === 0 && availableColors.length === 0 && (
+                  {pickerMode === 'size-only' && (
+                    <span>Please select a size</span>
+                  )}
+                  {pickerMode === 'color-only' && (
+                    <span>Please select a color</span>
+                  )}
+                  {pickerMode === 'list' && (
+                    <span>Please select a variant</span>
+                  )}
+                  {pickerMode === 'none' && (
                     <span>No variants available</span>
                   )}
                 </div>

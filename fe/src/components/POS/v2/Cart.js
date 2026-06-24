@@ -2,8 +2,8 @@ import React from 'react';
 import { Trash2, ShoppingCart, AlertTriangle } from 'lucide-react';
 
 import { Button } from '../../ui/button';
-import { ScrollArea } from '../../ui/scroll-area';
 import { formatCurrency } from '../../../utils/formatters';
+import { cartVariantLabel } from '../../../utils/variantCombinations';
 import { cn } from '../../../lib/cn';
 import { getLineStockCap } from './usePOSState';
 import { CartQtyInput } from '../CartQtyInput';
@@ -68,9 +68,8 @@ export function Cart({
         </Button>
       </div>
 
-      <div className="min-h-0 flex-1">
-        <ScrollArea className="h-full">
-          <ul className="divide-y">
+      <div className="app-scroll-region min-h-0 flex-1">
+        <ul className="divide-y pb-4">
             {items.map((item) => (
               <CartLine
                 key={`${item.id}-${item.variant_id || 'base'}`}
@@ -81,8 +80,7 @@ export function Cart({
                 onRemove={onRemove}
               />
             ))}
-          </ul>
-        </ScrollArea>
+        </ul>
       </div>
     </div>
   );
@@ -90,9 +88,7 @@ export function Cart({
 
 function CartLine({ item, validateStock, onAdjust, onSetQuantity, onRemove }) {
   const lineTotal = item.price * item.quantity;
-  const variantLabel = [item.variant?.size?.name, item.variant?.color?.name]
-    .filter(Boolean)
-    .join(' / ');
+  const variantLabel = cartVariantLabel(item);
   const stockCap = validateStock ? getLineStockCap(item) : null;
   const stock = classifyStock(item, stockCap);
   const atCap = stock.kind === 'last' && stock.atCap;

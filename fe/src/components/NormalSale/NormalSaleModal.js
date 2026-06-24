@@ -6,6 +6,7 @@ import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import SearchableSelect from '../Shared/SearchableSelect';
 import CustomerFormModal from '../Customers/CustomerFormModal';
 import { toast } from '../../utils/toast';
+import { shouldOpenVariantPicker } from '../../utils/variantSelector';
 import { cn } from '../../lib/cn';
 import { Button } from '../ui/button';
 
@@ -168,25 +169,17 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
   };
 
   const handleProductSelect = async (product) => {
-    // Check if product has variants
-    const hasSizes = (product.available_sizes_detail && product.available_sizes_detail.length > 0) || 
-                     (product.available_sizes && product.available_sizes.length > 0);
-    const hasColors = (product.available_colors_detail && product.available_colors_detail.length > 0) || 
-                      (product.available_colors && product.available_colors.length > 0);
-    
-    if (product.has_variants && (hasSizes || hasColors)) {
-      // Create a new row for this product
+    if (shouldOpenVariantPicker(product)) {
       const newRowIndex = productRows.length;
-      addProductRow(); // Add empty row first
+      addProductRow();
       setSelectedProduct(product);
       setSelectedProductRowIndex(newRowIndex);
       setShowVariantSelector(true);
       setShowProductSearch(false);
-      setProductSearch(''); // Clear search
+      setProductSearch('');
       return;
     }
 
-    // Add product without variant - automatically create new row
     const newRowIndex = productRows.length;
     addProductRow(); // Add new row
     addProductToRow(product, newRowIndex);

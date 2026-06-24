@@ -177,7 +177,7 @@ describe('ProductForm integration', () => {
     expect(applyVariantDraftsAfterProductSave).toHaveBeenCalledWith(
       99,
       mockVariantSetup.drafts,
-      { includeStock: true }
+      { includeStock: true, reason: '' }
     );
 
     await waitFor(() => {
@@ -218,7 +218,7 @@ describe('ProductForm integration', () => {
     expect(applyVariantDraftsAfterProductSave).toHaveBeenCalledWith(
       1,
       mockVariantSetup.drafts,
-      { includeStock: false }
+      { includeStock: false, reason: '' }
     );
   });
 

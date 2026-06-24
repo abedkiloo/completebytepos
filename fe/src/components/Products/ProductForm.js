@@ -47,7 +47,7 @@ import {
   mergeCategoryOptions,
   resolveSubcategoryDuplicate,
 } from '../../utils/categorySelect';
-import { applyVariantDraftsAfterProductSave } from '../../utils/variantDrafts';
+import { applyVariantDraftsAfterProductSave, variantDraftsApplyNeedsReason } from '../../utils/variantDrafts';
 
 const defaultFieldAccess = (catalogOnly, financialFieldsLocked) => ({
   catalog: true,
@@ -489,6 +489,36 @@ const ProductForm = ({
     [makerCheckerOn, product, formData, makerCheckerFinancialLocked, fieldAccess]
   );
 
+  const sensitiveVariantDraftApplies = useMemo(() => {
+    if (!makerCheckerOn || !variantsEnabled || !formData.has_variants) return false;
+    const productBaseline = product || {
+      price: formData.selling_price ?? formData.price,
+      mrp: formData.mrp,
+      cost: formData.cost,
+    };
+    return variantDraftsApplyNeedsReason(variantDrafts, variantCombinationKeys, {
+      product: productBaseline,
+      variants: product?.variants || [],
+      sizes,
+      colors,
+    });
+  }, [
+    makerCheckerOn,
+    variantsEnabled,
+    formData.has_variants,
+    formData.selling_price,
+    formData.price,
+    formData.mrp,
+    formData.cost,
+    variantDrafts,
+    variantCombinationKeys,
+    product,
+    sizes,
+    colors,
+  ]);
+
+  const showCatalogChangeReason = sensitiveProductEdit || sensitiveVariantDraftApplies;
+
   const pendingCost = proposedPendingCost(pendingApproval);
 
   const handleSubmit = async (e) => {
@@ -609,11 +639,12 @@ const ProductForm = ({
       const needsReason =
         makerCheckerOn &&
         product &&
-        productEditNeedsReason(payload, product, {
+        (productEditNeedsReason(payload, product, {
           financialFieldsLocked: makerCheckerFinancialLocked,
           variantProduct: payload.has_variants,
           fieldAccess,
-        });
+        }) ||
+          sensitiveVariantDraftApplies);
       if (needsReason) {
         if (!changeReason.trim()) {
           toast.warning(
@@ -623,6 +654,14 @@ const ProductForm = ({
           return;
         }
         submitData.append('reason', changeReason.trim());
+      } else if (makerCheckerOn && !product && sensitiveVariantDraftApplies) {
+        if (!changeReason.trim()) {
+          toast.warning(
+            'Enter a reason below — variant price or cost changes need manager approval.'
+          );
+          setLoading(false);
+          return;
+        }
       }
 
       let response;
@@ -656,7 +695,10 @@ const ProductForm = ({
           const { applied } = await applyVariantDraftsAfterProductSave(
             savedProductId,
             variantDraftsRef.current,
-            { includeStock: !product && showStockFields && fieldAccess.stock }
+            {
+              includeStock: !product && showStockFields && fieldAccess.stock,
+              reason: makerCheckerOn ? changeReason.trim() : '',
+            }
           );
           if (applied > 0) {
             toast.success(
@@ -1097,7 +1139,7 @@ const ProductForm = ({
 
           </form>
         </div>
-        {sensitiveProductEdit ? (
+        {showCatalogChangeReason ? (
           <div className="border-t border-amber-200/80 bg-amber-50/30 px-4 py-3 dark:border-amber-900 dark:bg-amber-950/20">
             <ChangeReasonField
               context="catalog"

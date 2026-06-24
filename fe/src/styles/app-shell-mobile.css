@@ -16,13 +16,12 @@ body,
 
 body {
   min-height: 100dvh;
-  overscroll-behavior-y: none;
+  overscroll-behavior-y: auto;
 }
 
 /* Lock background scroll while the mobile nav drawer is open (iOS-safe). */
 body.nav-drawer-open {
   overflow: hidden;
-  touch-action: none;
 }
 
 @supports (padding: max(0px)) {

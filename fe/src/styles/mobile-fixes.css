@@ -10,8 +10,28 @@
 .invoices-table-container,
 .expenses-table-container {
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
   position: relative;
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.4) transparent;
+}
+
+.table-container::-webkit-scrollbar,
+.products-table-container::-webkit-scrollbar,
+.customers-table-container::-webkit-scrollbar,
+.invoices-table-container::-webkit-scrollbar,
+.expenses-table-container::-webkit-scrollbar {
+  height: 10px;
+}
+
+.table-container::-webkit-scrollbar-thumb,
+.products-table-container::-webkit-scrollbar-thumb,
+.customers-table-container::-webkit-scrollbar-thumb,
+.invoices-table-container::-webkit-scrollbar-thumb,
+.expenses-table-container::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.35);
+  border-radius: 9999px;
 }
 
 @media (max-width: 639px) {

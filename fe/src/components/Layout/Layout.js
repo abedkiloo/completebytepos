@@ -400,7 +400,7 @@ const Layout = ({ children }) => {
   }, [isMobile, location.pathname, location.search, visibleSections, isActive]);
 
   return (
-    <div className="flex min-h-[100dvh] flex-col overflow-x-hidden bg-background">
+    <div className="flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-background">
       {/* Top bar */}
       <header className="sticky top-0 z-40 flex h-14 min-w-0 items-center gap-2 border-b bg-background px-2 sm:gap-3 sm:px-4">
         <Button
@@ -465,7 +465,7 @@ const Layout = ({ children }) => {
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Backdrop for mobile drawer */}
         {isMobile && sidebarOpen && (
           <div
@@ -479,7 +479,7 @@ const Layout = ({ children }) => {
         {/* Sidebar */}
         <aside
           className={cn(
-            'fixed bottom-0 left-0 top-14 z-40 w-[min(100vw-3rem,16rem)] shrink-0 overflow-y-auto overscroll-y-contain border-r bg-background pb-[env(safe-area-inset-bottom)] transition-transform duration-200 lg:static lg:inset-auto lg:w-64 lg:translate-x-0',
+            'fixed bottom-0 left-0 top-14 z-40 w-[min(100vw-3rem,16rem)] shrink-0 app-scroll-region border-r bg-background pb-[env(safe-area-inset-bottom)] transition-transform duration-200 lg:static lg:inset-auto lg:w-64 lg:translate-x-0',
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           )}
           aria-label="Primary navigation"
@@ -501,7 +501,7 @@ const Layout = ({ children }) => {
         </aside>
 
         {/* Main content area */}
-        <main className="app-surface min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain">
+        <main className="app-scroll-region app-surface min-h-0 min-w-0 flex-1">
           {children}
         </main>
       </div>

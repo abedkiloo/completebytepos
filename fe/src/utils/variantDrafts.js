@@ -1,7 +1,41 @@
 import { variantsAPI } from '../services/api';
-import { variantCombinationKey, variantDisplayLabel } from './variantCombinations';
-import { buildVariantDraftPatchPayload } from './variantPayload';
+import {
+  buildRowFromKey,
+  variantCombinationKey,
+  variantDisplayLabel,
+} from './variantCombinations';
+import { buildVariantPatchPayload } from './variantPayload';
 import { formatApiError } from './apiErrors';
+import { variantEditNeedsReason } from './makerChecker';
+
+/**
+ * True when post-save variant draft PATCHes would need a maker-checker reason.
+ */
+export function variantDraftsApplyNeedsReason(
+  draftsByKey,
+  combinationKeys,
+  { product, variants = [], sizes = [], colors = [] } = {}
+) {
+  if (!draftsByKey || !combinationKeys?.length) return false;
+
+  const productDefaults = {
+    price: product?.price ?? product?.selling_price,
+    mrp: product?.mrp ?? product?.price,
+    cost: product?.cost,
+    stock_quantity: 0,
+    is_active: true,
+  };
+
+  for (const key of combinationKeys) {
+    const draft = draftsByKey[key];
+    if (!draft) continue;
+    const row = buildRowFromKey(key, variants, sizes, colors);
+    const baseline = row.variant || productDefaults;
+    const payload = buildVariantPatchPayload(baseline, draft);
+    if (variantEditNeedsReason(payload, baseline)) return true;
+  }
+  return false;
+}
 
 /**
  * After product save creates/regenerates variant rows, apply price/stock the user entered.
@@ -11,7 +45,7 @@ import { formatApiError } from './apiErrors';
 export async function applyVariantDraftsAfterProductSave(
   productId,
   draftsByKey,
-  { includeStock = true } = {}
+  { includeStock = true, reason = '' } = {}
 ) {
   if (!productId || !draftsByKey || !Object.keys(draftsByKey).length) {
     return { applied: 0 };
@@ -23,17 +57,21 @@ export async function applyVariantDraftsAfterProductSave(
     return { applied: 0 };
   }
 
+  const trimmedReason = String(reason || '').trim();
   let applied = 0;
   for (const variant of variants) {
     const key = variantCombinationKey(variant);
     const draft = draftsByKey[key];
     if (!draft) continue;
 
-    const payload = buildVariantDraftPatchPayload(draft);
+    const payload = buildVariantPatchPayload(variant, draft);
     if (!includeStock) {
       delete payload.stock_quantity;
     }
     if (!Object.keys(payload).length) continue;
+    if (trimmedReason) {
+      payload.reason = trimmedReason;
+    }
     try {
       await variantsAPI.update(variant.id, payload);
       applied += 1;

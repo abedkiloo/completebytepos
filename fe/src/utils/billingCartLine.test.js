@@ -29,7 +29,7 @@ describe('billingCartLine', () => {
     const line = buildBillingCartLine(product, {
       id: 5,
       variant_id: 12,
-      variant: { id: 12, sku: 'WEB-L-B', stock_quantity: 0 },
+      variant: { id: 12, sku: 'WEB-L-B', size_name: 'Large', color_name: 'Blue', stock_quantity: 0 },
       price: 500,
       stock_quantity: 50,
       quantity: 2,
@@ -39,6 +39,11 @@ describe('billingCartLine', () => {
     expect(line.price).toBe(500);
     expect(line.quantity).toBe(2);
     expect(line.stock_quantity).toBe(50);
+    expect(line.size_name).toBe('Large');
+    expect(line.color_name).toBe('Blue');
+    expect(line.variant).toEqual(
+      expect.objectContaining({ id: 12, size_name: 'Large', color_name: 'Blue' })
+    );
   });
 
   it('buildBillingCartLine without variant uses product pricing', () => {
@@ -66,6 +71,9 @@ describe('billingCartLine', () => {
         product_name: 'Webbing',
         quantity: 4,
         unit_price: '500',
+        variant_id: 12,
+        size_name: 'Large',
+        color_name: 'White',
         product: { id: 5, name: 'Webbing', stock_quantity: 50, track_stock: true },
       },
       { validateStock: false }
@@ -73,6 +81,9 @@ describe('billingCartLine', () => {
     expect(line.quantity).toBe(4);
     expect(line.price).toBe(500);
     expect(line.name).toBe('Webbing');
+    expect(line.size_name).toBe('Large');
+    expect(line.color_name).toBe('White');
+    expect(line.variant_id).toBe(12);
   });
 
   it('caps quantity to stock when validateStock is enabled', () => {

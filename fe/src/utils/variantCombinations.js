@@ -1,5 +1,14 @@
 /** Build size × color rows matching backend variant generation. */
 
+function normalizeFkId(value) {
+  if (value == null || value === '') return null;
+  if (typeof value === 'object' && value !== null && 'id' in value) {
+    return Number(value.id);
+  }
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function buildVariantCombinations(sizeIds = [], colorIds = []) {
   const sizes = sizeIds?.length ? sizeIds.map(Number) : [null];
   const colors = colorIds?.length ? colorIds.map(Number) : [null];
@@ -16,7 +25,9 @@ export function buildVariantCombinations(sizeIds = [], colorIds = []) {
 }
 
 export function variantCombinationKey(variant) {
-  return `${variant.size ?? 'none'}-${variant.color ?? 'none'}`;
+  const sizeId = normalizeFkId(variant?.size ?? variant?.size_id);
+  const colorId = normalizeFkId(variant?.color ?? variant?.color_id);
+  return `${sizeId ?? 'none'}-${colorId ?? 'none'}`;
 }
 
 export function mergeVariantCombinationRows(variants, sizeIds, colorIds, sizes = [], colors = []) {
@@ -47,6 +58,47 @@ export function variantDisplayLabel(variant) {
   if (variant.size_name) parts.push(variant.size_name);
   if (variant.color_name) parts.push(variant.color_name);
   return parts.length ? parts.join(' / ') : variant.sku || `Variant #${variant.id}`;
+}
+
+/**
+ * Human-readable variant label for POS cart lines (e.g. "Large / White" or "L / BLU").
+ */
+export function cartVariantLabel(line) {
+  if (!line) return '';
+
+  const variant = line.variant;
+  const sizeName =
+    line.size_name ||
+    (typeof line.size === 'string' ? line.size : null) ||
+    variant?.size_name ||
+    variant?.size?.name;
+  const colorName =
+    line.color_name ||
+    (typeof line.color === 'string' ? line.color : null) ||
+    variant?.color_name ||
+    variant?.color?.name;
+
+  if (sizeName || colorName) {
+    return [sizeName, colorName].filter(Boolean).join(' / ');
+  }
+
+  if (variant) {
+    const sizeCode = variant.size_code || variant.size?.code;
+    const colorShort = variant.color_name
+      ? String(variant.color_name).slice(0, 3).toUpperCase()
+      : null;
+    if (sizeCode || colorShort) {
+      return [sizeCode, colorShort].filter(Boolean).join(' / ');
+    }
+    const label = variantDisplayLabel(variant);
+    if (label && label !== 'Variant') return label;
+  }
+
+  if (line.variant_id && line.sku) {
+    return line.sku;
+  }
+
+  return '';
 }
 
 export function combinationKeyFromParts(sizeId, colorId) {

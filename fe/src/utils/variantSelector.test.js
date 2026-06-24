@@ -5,6 +5,11 @@ import {
   isVariantAddToCartDisabled,
   buildVariantCartPayload,
   variantMatchesSize,
+  getActiveVariants,
+  getVariantPickerMode,
+  getPickerSizes,
+  getPickerColors,
+  shouldOpenVariantPicker,
 } from './variantSelector';
 
 const product = {
@@ -159,5 +164,113 @@ describe('variantSelector utils', () => {
     expect(line.quantity).toBe(2);
     expect(line.stock_quantity).toBe(5);
     expect(line.price).toBe(1600);
+  });
+
+  it('shouldOpenVariantPicker when product has variants and feature is on', () => {
+    localStorage.setItem(
+      'enabled_modules',
+      JSON.stringify({
+        products: {
+          is_enabled: true,
+          features: { product_variants: { is_enabled: true } },
+        },
+      })
+    );
+    expect(shouldOpenVariantPicker({ has_variants: true })).toBe(true);
+    expect(shouldOpenVariantPicker({ has_variants: false })).toBe(false);
+    localStorage.clear();
+  });
+
+  it('getPickerColors only returns colors with a variant for the selected size', () => {
+    const partialVariants = [
+      { id: 10, size: 2, color: 5, size_name: 'Large', color_name: 'Blue' },
+      { id: 11, size: 3, color: 6, size_name: 'Medium', color_name: 'Red' },
+    ];
+    const allColors = [
+      { id: 5, name: 'Blue' },
+      { id: 6, name: 'Red' },
+      { id: 7, name: 'Green' },
+    ];
+    expect(getPickerColors(partialVariants, allColors, 2).map((c) => c.id)).toEqual([5]);
+    expect(getPickerColors(partialVariants, allColors, 3).map((c) => c.id)).toEqual([6]);
+  });
+
+  it('getVariantPickerMode uses list when variants have no size or color', () => {
+    const rows = [{ id: 1, sku: 'SKU-A' }, { id: 2, sku: 'SKU-B' }];
+    expect(getVariantPickerMode(rows)).toBe('list');
+    expect(getVariantPickerMode(variants)).toBe('size-color');
+  });
+
+  it('getPickerSizes only includes sizes present on variant rows', () => {
+    const partialVariants = [
+      { id: 10, size: 2, size_name: 'Large' },
+      { id: 11, size: 3, size_name: 'Medium' },
+    ];
+    const allSizes = [
+      { id: 2, name: 'Large', code: 'L' },
+      { id: 3, name: 'Medium', code: 'M' },
+      { id: 4, name: 'Small', code: 'S' },
+    ];
+    expect(getPickerSizes(partialVariants, allSizes).map((s) => s.id)).toEqual([2, 3]);
+  });
+
+  it('getActiveVariants skips inactive rows', () => {
+    const rows = [
+      { id: 1, is_active: true },
+      { id: 2, is_active: false },
+      { id: 3 },
+    ];
+    expect(getActiveVariants(rows).map((v) => v.id)).toEqual([1, 3]);
+  });
+
+  it('shouldOpenVariantPicker is false when feature is disabled', () => {
+    localStorage.setItem(
+      'enabled_modules',
+      JSON.stringify({
+        products: {
+          is_enabled: true,
+          features: { product_variants: { is_enabled: false } },
+        },
+      })
+    );
+    expect(shouldOpenVariantPicker({ has_variants: true })).toBe(false);
+    localStorage.clear();
+  });
+
+  it('canAddVariantToCart requires selectedVariant in list picker mode', () => {
+    const rows = [{ id: 99, sku: 'ONLY' }];
+    expect(
+      canAddVariantToCart({
+        product,
+        variants: rows,
+        selectedSize: null,
+        selectedColor: null,
+        selectedVariant: null,
+        availableSizes: [],
+        availableColors: [],
+      })
+    ).toBe(false);
+    expect(
+      canAddVariantToCart({
+        product,
+        variants: rows,
+        selectedSize: null,
+        selectedColor: null,
+        selectedVariant: rows[0],
+        availableSizes: [],
+        availableColors: [],
+      })
+    ).toBe(true);
+  });
+
+  it('buildVariantCartPayload assigns distinct variant_id per row', () => {
+    const v10 = findVariantForSelection(variants, 2, 5, sizes, colors);
+    const v11 = findVariantForSelection(variants, 3, 5, sizes, colors);
+    const lineA = buildVariantCartPayload(product, v10, 1, variants);
+    const lineB = buildVariantCartPayload(product, v11, 1, variants);
+    expect(lineA.variant_id).toBe(10);
+    expect(lineB.variant_id).toBe(11);
+    expect(lineA.id).toBe(lineB.id);
+    expect(lineA.variant_id).not.toBe(lineB.variant_id);
   });
 });

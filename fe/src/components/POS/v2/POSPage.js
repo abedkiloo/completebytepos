@@ -296,8 +296,8 @@ export default function POSPage() {
         {/* Left: products */}
         <section
           className={cn(
-            'min-h-0 min-w-0 flex-1',
-            mobilePanel !== 'products' && 'hidden lg:block'
+            'flex h-full min-h-0 min-w-0 flex-1 flex-col',
+            mobilePanel !== 'products' && 'hidden lg:flex'
           )}
         >
           <ProductGrid

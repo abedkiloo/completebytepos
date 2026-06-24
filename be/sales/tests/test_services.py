@@ -296,6 +296,50 @@ class SaleServiceTestCase(TestCase):
         self.assertEqual(validated[0]['variant'], variant)
         self.assertEqual(validated[0]['unit_price'], Decimal('110.00'))
 
+    def test_validate_sale_items_multiple_variants_same_product(self):
+        """A single sale may include different variant rows for one product."""
+        from settings.test_utils import enable_product_variants
+
+        enable_product_variants()
+        size_s = Size.objects.create(name='Small', code='S', is_active=True)
+        size_m = Size.objects.create(name='Medium', code='M', is_active=True)
+        color = Color.objects.create(name='Red', is_active=True)
+        self.product.has_variants = True
+        self.product.save()
+        self.product.available_sizes.add(size_s, size_m)
+        self.product.available_colors.add(color)
+
+        variant_s = ProductVariant.objects.create(
+            product=self.product,
+            size=size_s,
+            color=color,
+            sku='TEST-001-S-RED',
+            price=Decimal('110.00'),
+            stock_quantity=10,
+            is_active=True,
+        )
+        variant_m = ProductVariant.objects.create(
+            product=self.product,
+            size=size_m,
+            color=color,
+            sku='TEST-001-M-RED',
+            price=Decimal('120.00'),
+            stock_quantity=8,
+            is_active=True,
+        )
+
+        items_data = [
+            {'product_id': self.product.id, 'variant_id': variant_s.id, 'quantity': 2},
+            {'product_id': self.product.id, 'variant_id': variant_m.id, 'quantity': 3},
+        ]
+
+        validated = self.service.validate_sale_items(items_data)
+        self.assertEqual(len(validated), 2)
+        self.assertEqual(validated[0]['variant'], variant_s)
+        self.assertEqual(validated[1]['variant'], variant_m)
+        self.assertEqual(validated[0]['quantity'], 2)
+        self.assertEqual(validated[1]['quantity'], 3)
+
     def test_validate_sale_items_rejects_variant_with_zero_stock(self):
         """Sellable stock for a variant row is that row's quantity only."""
         from django.core.exceptions import ValidationError

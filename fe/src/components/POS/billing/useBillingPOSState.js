@@ -8,6 +8,7 @@ import { toast } from '../../../utils/toast';
 import { cartItemKey, getLineStockCap } from '../v2/usePOSState';
 import { isProductVariantsEnabled, normalizeProductForSale } from '../../../utils/moduleFeatures';
 import { isProductOutOfStock } from '../../../utils/productStock';
+import { shouldOpenVariantPicker } from '../../../utils/variantSelector';
 import { formatApiError } from '../../../utils/apiErrors';
 import {
   WALK_IN_CUSTOMER,
@@ -353,32 +354,15 @@ export function useBillingPOSState() {
       toast.warning(`${product.name} is out of stock`);
       return;
     }
-    if (isProductVariantsEnabled() && product.has_variants && !variant) {
-      const hasSizes =
-        (product.available_sizes_detail?.length || 0) > 0 ||
-        (product.available_sizes?.length || 0) > 0;
-      const hasColors =
-        (product.available_colors_detail?.length || 0) > 0 ||
-        (product.available_colors?.length || 0) > 0;
-      if (hasSizes || hasColors) {
-        setVariantPickerProduct(product);
-        return;
-      }
+    if (shouldOpenVariantPicker(product) && !variant) {
+      setVariantPickerProduct(product);
+      return;
     }
     const base = normalizeProductForSale(product);
     const draft = buildBillingCartLine(base, variant, { validateStock });
     const line = {
-      id: draft.id,
-      name: draft.name,
-      sku: draft.sku,
-      mrp: draft.mrp,
-      selling_price: draft.selling_price,
-      price: draft.price,
-      cost: draft.cost,
-      quantity: draft.quantity,
+      ...draft,
       variant_id: isProductVariantsEnabled() ? draft.variant_id : null,
-      stock_quantity: draft.stock_quantity,
-      track_stock: draft.track_stock,
       has_variants: isProductVariantsEnabled() ? draft.has_variants : false,
     };
     const stockCap = validateStock ? getLineStockCap(line) : null;

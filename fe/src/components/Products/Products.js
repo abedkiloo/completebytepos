@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
-import { productsAPI, categoriesAPI } from '../../services/api';
+import { productsAPI, categoriesAPI, variantsAPI } from '../../services/api';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import {
   isMakerCheckerEnabled,
@@ -1100,8 +1100,9 @@ function ProductRow({
               )}
               {product.has_variants && (
                 <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
-                  {(product.available_sizes_detail?.length || 0) +
-                    (product.available_colors_detail?.length || 0)}{' '}
+                  {product.variants_count ??
+                    (product.available_sizes_detail?.length || 0) +
+                      (product.available_colors_detail?.length || 0)}{' '}
                   variants
                 </Badge>
               )}
@@ -1269,15 +1270,23 @@ function VariantRows({
   const [variants, setVariants] = useState([]);
   const [loading, setLoading] = useState(false);
 
+  const variantListKey = useMemo(() => {
+    const sizeIds = (product.available_sizes_detail || []).map((s) => s.id).join(',');
+    const colorIds = (product.available_colors_detail || []).map((c) => c.id).join(',');
+    return `${product.id}:${product.variants_count ?? ''}:${sizeIds}|${colorIds}`;
+  }, [product]);
+
   useEffect(() => {
     let mounted = true;
     const load = async () => {
       setLoading(true);
       try {
-        const res = await productsAPI.get(product.id);
+        const res = await variantsAPI.getByProduct(product.id);
         if (!mounted) return;
-        setVariants(res.data.variants || []);
+        const list = res.data?.results || res.data || [];
+        setVariants(Array.isArray(list) ? list : []);
       } catch (e) {
+        if (mounted) setVariants([]);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -1286,7 +1295,7 @@ function VariantRows({
     return () => {
       mounted = false;
     };
-  }, [product.id]);
+  }, [variantListKey]);
 
   if (loading) {
     return (

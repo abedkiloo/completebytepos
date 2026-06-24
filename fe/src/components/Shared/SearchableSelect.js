@@ -100,7 +100,7 @@ const SearchableSelect = ({
       </div>
 
       {isOpen && (
-        <div className="absolute left-0 right-0 top-full z-[1000] mt-1 flex max-h-[300px] flex-col overflow-hidden rounded-md border border-border bg-background shadow-lg animate-in fade-in-0 zoom-in-95">
+        <div className="app-scroll-region absolute left-0 right-0 top-full z-[1000] mt-1 flex max-h-[300px] flex-col rounded-md border border-border bg-background shadow-lg animate-in fade-in-0 zoom-in-95">
           {searchable && (
             <div className="border-b border-border p-2">
               <input
@@ -119,7 +119,7 @@ const SearchableSelect = ({
             </div>
           )}
 
-          <div className="max-h-[200px] flex-1 overflow-y-auto">
+          <div className="app-scroll-region max-h-[200px] flex-1">
             {filteredOptions.length > 0 ? (
               filteredOptions.map((option, index) => {
                 const optionValue = option.id || option.value;

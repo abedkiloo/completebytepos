@@ -1044,6 +1044,7 @@ class ProductListSerializer(serializers.ModelSerializer):
     category_name = serializers.SerializerMethodField()
     subcategory_name = serializers.SerializerMethodField()
     has_variants = serializers.BooleanField(read_only=True)
+    variants_count = serializers.SerializerMethodField()
     available_sizes_detail = SizeSerializer(source='available_sizes', many=True, read_only=True)
     available_colors_detail = ColorSerializer(source='available_colors', many=True, read_only=True)
     is_low_stock = serializers.BooleanField(read_only=True)
@@ -1060,7 +1061,7 @@ class ProductListSerializer(serializers.ModelSerializer):
             # (and tests) can filter / link without an extra round-trip.
             'category', 'category_name',
             'subcategory', 'subcategory_name',
-            'has_variants',
+            'has_variants', 'variants_count',
             'available_sizes_detail', 'available_colors_detail',
             'mrp', 'price', 'selling_price', 'cost', 'stock_quantity', 'unit', 'track_stock',
             'is_low_stock', 'is_active', 'image_url'
@@ -1071,6 +1072,11 @@ class ProductListSerializer(serializers.ModelSerializer):
     
     def get_subcategory_name(self, obj):
         return obj.subcategory.name if obj.subcategory else None
+
+    def get_variants_count(self, obj):
+        if not obj.has_variants:
+            return 0
+        return obj.variants.count()
     
     def get_image_url(self, obj):
         if obj.image:

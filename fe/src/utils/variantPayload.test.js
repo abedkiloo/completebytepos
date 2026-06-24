@@ -158,9 +158,17 @@ describe('buildVariantPatchPayload', () => {
 });
 
 describe('buildVariantDraftPatchPayload', () => {
+  const newVariant = {
+    price: '0',
+    mrp: null,
+    cost: null,
+    stock_quantity: 0,
+    is_active: true,
+  };
+
   test('sets price, mrp, and stock from create drafts', () => {
     expect(
-      buildVariantDraftPatchPayload({
+      buildVariantDraftPatchPayload(newVariant, {
         price: '55.00',
         mrp: '70.00',
         stock_quantity: '4',
@@ -171,15 +179,14 @@ describe('buildVariantDraftPatchPayload', () => {
       selling_price: '55.00',
       mrp: '70.00',
       stock_quantity: 4,
-      is_active: true,
     });
   });
 
   test('includes cost and omits empty mrp', () => {
-    expect(buildVariantDraftPatchPayload({ cost: '12.00', mrp: '' })).toEqual({
+    expect(buildVariantDraftPatchPayload(newVariant, { cost: '12.00', mrp: '' })).toEqual({
       cost: '12.00',
     });
-    expect(buildVariantDraftPatchPayload({ is_active: false })).toEqual({
+    expect(buildVariantDraftPatchPayload(newVariant, { is_active: false })).toEqual({
       is_active: false,
     });
   });

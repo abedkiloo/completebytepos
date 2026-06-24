@@ -1,4 +1,6 @@
 import { getSellableStock } from './productStock';
+import { isProductVariantsEnabled } from './moduleFeatures';
+import { variantDisplayLabel } from './variantCombinations';
 
 /** Normalize FK ids from API (number, string, or nested object). */
 export function normalizeFkId(value) {
@@ -24,6 +26,91 @@ export function variantMatchesColor(variant, colorId) {
     normalizeFkId(variant.color) === target ||
     normalizeFkId(variant.color_id) === target
   );
+}
+
+export function getActiveVariants(variants) {
+  return (Array.isArray(variants) ? variants : []).filter((v) => v.is_active !== false);
+}
+
+export function variantUsesSize(variant) {
+  return (
+    normalizeFkId(variant?.size) != null ||
+    normalizeFkId(variant?.size_id) != null
+  );
+}
+
+export function variantUsesColor(variant) {
+  return (
+    normalizeFkId(variant?.color) != null ||
+    normalizeFkId(variant?.color_id) != null
+  );
+}
+
+/**
+ * Picker layout based on actual variant rows (not the full size × color matrix).
+ * - size-color: pick size, then color (only combinations that exist)
+ * - size-only / color-only: single attribute axis
+ * - list: pick a variant row directly (no size/color on rows)
+ */
+export function getVariantPickerMode(activeVariants) {
+  if (!activeVariants?.length) return 'none';
+  const anySize = activeVariants.some(variantUsesSize);
+  const anyColor = activeVariants.some(variantUsesColor);
+  const anyBoth = activeVariants.some(
+    (v) => variantUsesSize(v) && variantUsesColor(v)
+  );
+  if (anyBoth || (anySize && anyColor)) return 'size-color';
+  if (anySize) return 'size-only';
+  if (anyColor) return 'color-only';
+  return 'list';
+}
+
+function collectAttributeOptions(activeVariants, attr, detailList = []) {
+  const idField = attr === 'size' ? 'size' : 'color';
+  const idAlt = `${attr}_id`;
+  const nameField = `${attr}_name`;
+  const byId = new Map();
+  const details = Array.isArray(detailList) ? detailList : [];
+
+  for (const variant of activeVariants) {
+    const id = normalizeFkId(variant[idField]) ?? normalizeFkId(variant[idAlt]);
+    if (id == null || byId.has(id)) continue;
+    const fromDetail = details.find((row) => Number(row.id) === id);
+    byId.set(id, {
+      id,
+      name: variant[nameField] || fromDetail?.name || `${attr} #${id}`,
+      code: fromDetail?.code,
+      hex_code: fromDetail?.hex_code,
+    });
+  }
+
+  return [...byId.values()];
+}
+
+/** Sizes that appear on at least one active variant row. */
+export function getPickerSizes(activeVariants, availableSizes = []) {
+  return collectAttributeOptions(activeVariants, 'size', availableSizes);
+}
+
+/**
+ * Colors available for the current size (or all variant colors when size not chosen).
+ * Only returns colors that have a matching variant row.
+ */
+export function getPickerColors(activeVariants, availableColors = [], selectedSize = null) {
+  let pool = activeVariants;
+  if (selectedSize != null) {
+    pool = pool.filter((v) => variantMatchesSize(v, selectedSize));
+  }
+  return collectAttributeOptions(pool, 'color', availableColors);
+}
+
+export function getVariantRowLabel(variant) {
+  return variantDisplayLabel(variant);
+}
+
+/** Open the POS variant picker whenever the product is variant-backed. */
+export function shouldOpenVariantPicker(product) {
+  return Boolean(isProductVariantsEnabled() && product?.has_variants);
 }
 
 /**
@@ -143,6 +230,9 @@ export function canAddVariantToCart({
   }
   if (colors.length > 0 && sizes.length === 0) {
     return selectedColor != null && selectedVariant != null;
+  }
+  if (list.length > 0) {
+    return selectedVariant != null;
   }
   return true;
 }

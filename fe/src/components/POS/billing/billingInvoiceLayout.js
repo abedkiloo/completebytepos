@@ -2,8 +2,12 @@
  * Layout classes for Terminal POS invoice column (single source for UI + tests).
  */
 
+/** Scrollable left column (search + cart table) inside the fixed viewport. */
+export const BILLING_LEFT_COLUMN_CLASS =
+  'app-scroll-region flex min-h-0 flex-col gap-4 pr-1';
+
 export const BILLING_RIGHT_COLUMN_CLASS =
-  'flex min-h-0 flex-col gap-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto lg:pr-1';
+  'app-scroll-region flex min-h-0 flex-col gap-4 pr-1 lg:sticky lg:top-4 lg:max-h-[calc(100dvh-7rem)]';
 
 export const BILLING_INVOICE_CARD_CLASS =
   'flex flex-col rounded-xl border bg-white p-4 shadow-sm';

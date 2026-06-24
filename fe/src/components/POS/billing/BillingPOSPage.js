@@ -16,6 +16,7 @@ import { Label } from '../../ui/label';
 import { Badge } from '../../ui/badge';
 import { cn } from '../../../lib/cn';
 import { formatCurrency } from '../../../utils/formatters';
+import { cartVariantLabel } from '../../../utils/variantCombinations';
 import { useBillingPOSState } from './useBillingPOSState';
 import VariantSelector from '../VariantSelector';
 import { CartQtyInput } from '../CartQtyInput';
@@ -42,6 +43,7 @@ import { AccountPaymentBlock } from '../AccountPaymentBlock';
 import {
   BILLING_AMOUNT_RECEIVED_CLASS,
   BILLING_INVOICE_CARD_CLASS,
+  BILLING_LEFT_COLUMN_CLASS,
   BILLING_PAYMENT_METHODS_GRID_CLASS,
   BILLING_PAYMENT_SECTION_CLASS,
   BILLING_RIGHT_COLUMN_CLASS,
@@ -78,7 +80,7 @@ export default function BillingPOSPage() {
 
   return (
     <>
-    <div className="flex min-h-[100dvh] flex-col overflow-x-hidden bg-slate-50">
+    <div className="flex h-[100dvh] flex-col overflow-hidden bg-slate-50">
         {/* Top bar */}
         <div className="flex flex-col gap-2 border-b bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
           <div className="min-w-0">
@@ -98,9 +100,9 @@ export default function BillingPOSPage() {
           </Button>
         </div>
 
-        <div className="grid min-w-0 flex-1 gap-4 overflow-x-hidden p-2 sm:p-4 lg:grid-cols-[1fr_minmax(300px,380px)]">
+        <div className="grid min-h-0 min-w-0 flex-1 gap-4 overflow-hidden p-2 sm:p-4 lg:grid-cols-[1fr_minmax(300px,380px)]">
           {/* Left: search + cart */}
-          <div className="flex flex-col gap-4">
+          <div className={BILLING_LEFT_COLUMN_CLASS}>
             {/* Scan / search */}
             <div className="rounded-xl border bg-white p-4 shadow-sm">
               <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
@@ -233,6 +235,11 @@ export default function BillingPOSPage() {
                         <tr key={key} className="border-b last:border-0">
                           <td className="px-4 py-3">
                             <div className="font-medium">{item.name}</div>
+                            {cartVariantLabel(item) ? (
+                              <div className="mt-0.5 text-xs text-muted-foreground">
+                                {cartVariantLabel(item)}
+                              </div>
+                            ) : null}
                           </td>
                           <td className="px-2 py-3 text-right tabular-nums text-muted-foreground">
                             {formatCurrency(item.mrp ?? item.price)}

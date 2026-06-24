@@ -7,6 +7,7 @@ import {
   unionSizeColorIdsFromKeys,
   variantCombinationKey,
   variantDisplayLabel,
+  cartVariantLabel,
 } from './variantCombinations';
 
 describe('variantCombinations', () => {
@@ -21,6 +22,38 @@ describe('variantCombinations', () => {
     expect(
       variantDisplayLabel({ id: 1, size_name: 'Medium', color_name: 'White' })
     ).toBe('Medium / White');
+  });
+
+  test('cartVariantLabel prefers full size and color names', () => {
+    expect(
+      cartVariantLabel({
+        variant_id: 10,
+        variant: { id: 10, size_name: 'Large', color_name: 'White' },
+      })
+    ).toBe('Large / White');
+  });
+
+  test('cartVariantLabel reads size and color from cart line fields', () => {
+    expect(
+      cartVariantLabel({
+        variant_id: 10,
+        size: 'Large',
+        color: 'White',
+      })
+    ).toBe('Large / White');
+  });
+
+  test('cartVariantLabel falls back to size code when names missing', () => {
+    expect(
+      cartVariantLabel({
+        variant_id: 10,
+        variant: { id: 10, size_code: 'LG' },
+      })
+    ).toBe('LG');
+  });
+
+  test('cartVariantLabel returns empty for non-variant lines', () => {
+    expect(cartVariantLabel({ id: 1, name: 'Simple' })).toBe('');
   });
 
   test('combinationKeyFromParts and parseCombinationKey round-trip', () => {
@@ -41,6 +74,11 @@ describe('variantCombinations', () => {
 
   test('combinationsPayloadFromKeys builds API payload', () => {
     expect(combinationsPayloadFromKeys(['1-10'])).toEqual([{ size: 1, color: 10 }]);
+  });
+
+  test('variantCombinationKey normalizes nested size/color objects', () => {
+    expect(variantCombinationKey({ size: { id: 1 }, color: { id: 10 } })).toBe('1-10');
+    expect(variantCombinationKey({ size_id: 2, color_id: 11 })).toBe('2-11');
   });
 
   test('mergeVariantCombinationRows marks missing API rows as pending', () => {

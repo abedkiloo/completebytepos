@@ -98,7 +98,7 @@ export function buildVariantUpdatePayload(variant, draft) {
  */
 export function buildVariantPatchPayload(variant, draft) {
   const payload = {};
-  if (draft.price !== undefined) {
+  if (draft.price !== undefined && draft.price !== '') {
     const price = draft.price === '' ? null : draft.price;
     const prev = variant.price ?? variant.selling_price ?? null;
     if (String(price ?? '') !== String(prev ?? '')) {
@@ -106,7 +106,7 @@ export function buildVariantPatchPayload(variant, draft) {
       payload.selling_price = price;
     }
   }
-  if (draft.mrp !== undefined) {
+  if (draft.mrp !== undefined && draft.mrp !== '') {
     const mrp = draft.mrp === '' ? null : draft.mrp;
     const prev = variant.mrp ?? null;
     if (String(mrp ?? '') !== String(prev ?? '')) {
@@ -120,7 +120,7 @@ export function buildVariantPatchPayload(variant, draft) {
       payload.stock_quantity = stock;
     }
   }
-  if (draft.cost !== undefined) {
+  if (draft.cost !== undefined && draft.cost !== '') {
     const cost = draft.cost === '' ? null : draft.cost;
     const prev = variant.cost ?? null;
     if (String(cost ?? '') !== String(prev ?? '')) {
@@ -137,27 +137,9 @@ export function buildVariantPatchPayload(variant, draft) {
   return payload;
 }
 
-/** Apply initial price/stock from product-create drafts (only set provided fields). */
-export function buildVariantDraftPatchPayload(draft) {
-  const payload = {};
-  if (draft.price !== undefined) {
-    const price = draft.price === '' ? null : draft.price;
-    payload.price = price;
-    payload.selling_price = price;
-  }
-  if (draft.mrp !== undefined && draft.mrp !== '') {
-    payload.mrp = draft.mrp;
-  }
-  if (draft.stock_quantity !== undefined && draft.stock_quantity !== '') {
-    payload.stock_quantity = parseInt(draft.stock_quantity, 10) || 0;
-  }
-  if (draft.cost !== undefined && draft.cost !== '') {
-    payload.cost = draft.cost === '' ? null : draft.cost;
-  }
-  if (draft.is_active !== undefined) {
-    payload.is_active = draft.is_active !== false;
-  }
-  return payload;
+/** @deprecated Prefer ``buildVariantPatchPayload`` so only real changes are sent. */
+export function buildVariantDraftPatchPayload(variant, draft) {
+  return buildVariantPatchPayload(variant, draft);
 }
 
 /**

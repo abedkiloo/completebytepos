@@ -3,7 +3,6 @@ import { Search, Package, Filter } from 'lucide-react';
 
 import { Input } from '../../ui/input';
 import { Button } from '../../ui/button';
-import { ScrollArea } from '../../ui/scroll-area';
 import { Skeleton } from '../../ui/skeleton';
 import { Badge } from '../../ui/badge';
 import { formatCurrency } from '../../../utils/formatters';
@@ -42,7 +41,7 @@ export function ProductGrid({
   return (
     <div className="flex h-full min-h-0 flex-col bg-secondary/30">
       {/* Search */}
-      <div className="border-b bg-background px-4 py-3">
+      <div className="shrink-0 border-b bg-background px-4 py-3">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -58,9 +57,9 @@ export function ProductGrid({
       </div>
 
       {/* Top-level category tabs */}
-      <div className="border-b bg-background">
-        <ScrollArea className="w-full">
-          <div className="flex gap-1 px-3 py-2">
+      <div className="shrink-0 border-b bg-background">
+        <div className="overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]">
+          <div className="flex w-max min-w-full gap-1 px-3 py-2">
             <CategoryChip
               active={selectedCategory === 'all'}
               onClick={() => {
@@ -83,13 +82,13 @@ export function ProductGrid({
               />
             ))}
           </div>
-        </ScrollArea>
+        </div>
 
         {/* Sub-category row, only when a top-level category with children is active */}
         {subcategories.length > 0 && (
           <div className="border-t bg-secondary/40">
-            <ScrollArea className="w-full">
-              <div className="flex gap-1 px-3 py-2">
+            <div className="overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]">
+              <div className="flex w-max min-w-full gap-1 px-3 py-2">
                 <CategoryChip
                   active={!selectedSubcategory}
                   onClick={() => onSelectSubcategory(null)}
@@ -106,15 +105,14 @@ export function ProductGrid({
                   />
                 ))}
               </div>
-            </ScrollArea>
+            </div>
           </div>
         )}
       </div>
 
       {/* Product grid */}
-      <div className="min-h-0 flex-1">
-        <ScrollArea className="h-full">
-          <div className="p-4">
+      <div className="app-scroll-region min-h-0 flex-1">
+        <div className="p-4 pb-8">
             {loading ? (
               <ProductGridSkeleton />
             ) : products.length === 0 ? (
@@ -131,8 +129,7 @@ export function ProductGrid({
                 ))}
               </div>
             )}
-          </div>
-        </ScrollArea>
+        </div>
       </div>
     </div>
   );

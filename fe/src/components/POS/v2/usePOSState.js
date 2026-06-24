@@ -8,8 +8,9 @@ import {
   authAPI,
 } from '../../../services/api';
 import { toast } from '../../../utils/toast';
-import { isProductVariantsEnabled, normalizeProductForSale } from '../../../utils/moduleFeatures';
+import { normalizeProductForSale } from '../../../utils/moduleFeatures';
 import { isProductOutOfStock } from '../../../utils/productStock';
+import { shouldOpenVariantPicker } from '../../../utils/variantSelector';
 import {
   posCartDraftKey,
   serializeRetailCartDraft,
@@ -448,17 +449,7 @@ export function usePOSState() {
         toast.warning(`${product.name} has no selling price yet. Ask a manager to set pricing.`);
         return;
       }
-      const hasSizes =
-        (product.available_sizes_detail?.length || 0) > 0 ||
-        (product.available_sizes?.length || 0) > 0;
-      const hasColors =
-        (product.available_colors_detail?.length || 0) > 0 ||
-        (product.available_colors?.length || 0) > 0;
-      if (
-        isProductVariantsEnabled() &&
-        product.has_variants &&
-        (hasSizes || hasColors)
-      ) {
+      if (shouldOpenVariantPicker(product)) {
         setVariantPickerProduct(product);
         return;
       }
