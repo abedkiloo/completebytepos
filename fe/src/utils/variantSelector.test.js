@@ -297,6 +297,7 @@ describe('variantSelector utils', () => {
         selectedVariant: null,
         availableSizes: [],
         availableColors: [],
+        pickerMode: 'list',
       })
     ).toBe(false);
     expect(
@@ -308,8 +309,59 @@ describe('variantSelector utils', () => {
         selectedVariant: rows[0],
         availableSizes: [],
         availableColors: [],
+        pickerMode: 'list',
       })
     ).toBe(true);
+  });
+
+  it('canAddVariantToCart in list mode allows color-only rows without a size', () => {
+    const zipperVariants = [
+      {
+        id: 1,
+        size: 10,
+        color: 1,
+        size_name: '200 Mtrs',
+        color_name: 'WHITE',
+        stock_quantity: 150,
+      },
+      {
+        id: 2,
+        color: 2,
+        color_name: 'BLACK',
+        stock_quantity: 1350,
+      },
+    ];
+    const black = zipperVariants[1];
+    const pickerSizes = [{ id: 10, name: '200 Mtrs' }];
+    const pickerColors = [
+      { id: 1, name: 'WHITE' },
+      { id: 2, name: 'BLACK' },
+    ];
+
+    expect(
+      canAddVariantToCart({
+        product,
+        variants: zipperVariants,
+        selectedSize: null,
+        selectedColor: 2,
+        selectedVariant: black,
+        availableSizes: pickerSizes,
+        availableColors: pickerColors,
+        pickerMode: 'list',
+      })
+    ).toBe(true);
+
+    expect(
+      canAddVariantToCart({
+        product,
+        variants: zipperVariants,
+        selectedSize: null,
+        selectedColor: 2,
+        selectedVariant: black,
+        availableSizes: pickerSizes,
+        availableColors: pickerColors,
+      })
+    ).toBe(false);
   });
 
   it('buildVariantCartPayload assigns distinct variant_id per row', () => {

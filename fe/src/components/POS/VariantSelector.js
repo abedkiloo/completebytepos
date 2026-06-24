@@ -179,6 +179,7 @@ const VariantSelector = ({ product, onSelect, onClose, validateStock = true }) =
     selectedVariant,
     availableSizes: pickerMode === 'color-only' ? [] : pickerSizes,
     availableColors: pickerMode === 'size-only' ? [] : pickerColors,
+    pickerMode,
   });
   const addDisabled = isVariantAddToCartDisabled({
     product,

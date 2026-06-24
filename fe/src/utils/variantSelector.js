@@ -252,10 +252,15 @@ export function canAddVariantToCart({
   selectedVariant,
   availableSizes,
   availableColors,
+  pickerMode = null,
 }) {
   if (!product?.has_variants) return true;
   const list = Array.isArray(variants) ? variants : [];
   if (list.length === 0) return true;
+
+  if (pickerMode === 'list') {
+    return selectedVariant != null;
+  }
 
   const sizes = Array.isArray(availableSizes) ? availableSizes : [];
   const colors = Array.isArray(availableColors) ? availableColors : [];
