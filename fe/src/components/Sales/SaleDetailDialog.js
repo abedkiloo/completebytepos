@@ -12,9 +12,13 @@ import {
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { saleIsRefundable, refundStatusLabel } from '../../utils/saleRefund';
 import {
-  saleBalanceDue,
+  saleAmountRefunded,
+  saleFinalStatusLabel,
+  saleHasRefundActivity,
   saleItemVariantLabel,
-  salePaymentStatusLabel,
+  saleNetBalanceDue,
+  saleNetPaymentStatusLabel,
+  normalizeSaleForReceipt,
 } from '../../utils/saleItemDisplay';
 import { hasDuplicateSaleLines } from '../../utils/detectDuplicateSaleLines';
 
@@ -26,13 +30,18 @@ export default function SaleDetailDialog({
   canRefund = false,
   onPrint,
   showCustomerName = true,
+  showAdminDetails = true,
 }) {
   if (!sale) return null;
 
-  const balanceDue = saleBalanceDue(sale);
-  const paymentStatus = salePaymentStatusLabel(sale);
+  const receiptSale = normalizeSaleForReceipt(sale);
   const refundLabel = refundStatusLabel(sale.refund_status);
+  const finalStatus = saleFinalStatusLabel(sale);
   const duplicateLines = hasDuplicateSaleLines(sale.items);
+  const refundedAmount = saleAmountRefunded(sale);
+  const hasRefund = saleHasRefundActivity(sale);
+  const balanceDue = saleNetBalanceDue(sale);
+  const paymentStatus = saleNetPaymentStatusLabel(sale);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -40,12 +49,12 @@ export default function SaleDetailDialog({
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">
             <span>Sale — {sale.sale_number}</span>
-            {refundLabel ? (
+            {showAdminDetails && refundLabel ? (
               <Badge variant="secondary" className="text-xs">
                 {refundLabel}
               </Badge>
             ) : null}
-            {duplicateLines ? (
+            {showAdminDetails && duplicateLines ? (
               <Badge variant="outline" className="text-xs text-amber-800 border-amber-300">
                 Duplicate lines
               </Badge>
@@ -87,71 +96,54 @@ export default function SaleDetailDialog({
                 </tr>
               </thead>
               <tbody>
-                {sale.items?.map((item) => {
-                  const variantLabel = saleItemVariantLabel(item);
-                  const refunded = parseInt(item.quantity_refunded, 10) || 0;
-                  return (
-                    <tr key={item.id} className="border-b border-dashed border-border/60">
-                      <td className="py-2 pr-2">
-                        <div>{item.product_name || item.product?.name || 'Item'}</div>
-                        {variantLabel ? (
-                          <div className="text-xs text-muted-foreground">{variantLabel}</div>
-                        ) : null}
-                        {refunded > 0 ? (
-                          <div className="text-xs text-amber-700">
-                            {refunded} of {item.quantity} refunded
-                          </div>
-                        ) : null}
-                      </td>
-                      <td className="py-2 px-2 text-right tabular-nums">{item.quantity}</td>
-                      <td className="py-2 px-2 text-right tabular-nums">
-                        {formatCurrency(item.unit_price)}
-                      </td>
-                      <td className="py-2 pl-2 text-right tabular-nums">
-                        {formatCurrency(item.subtotal)}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {receiptSale.items?.length ? (
+                  receiptSale.items.map((item) => {
+                    const variantLabel = saleItemVariantLabel(item);
+                    return (
+                      <tr key={item.id} className="border-b border-dashed border-border/60">
+                        <td className="py-2 pr-2">
+                          <div>{item.product_name || item.product?.name || 'Item'}</div>
+                          {variantLabel ? (
+                            <div className="text-xs text-muted-foreground">{variantLabel}</div>
+                          ) : null}
+                        </td>
+                        <td className="py-2 px-2 text-right tabular-nums">{item.quantity}</td>
+                        <td className="py-2 px-2 text-right tabular-nums">
+                          {formatCurrency(item.unit_price)}
+                        </td>
+                        <td className="py-2 pl-2 text-right tabular-nums">
+                          {formatCurrency(item.subtotal)}
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="py-4 text-center text-muted-foreground">
+                      No items on this sale.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
 
           <div className="receipt-summary space-y-1 border-t pt-3">
-            <SummaryRow label="Subtotal" value={formatCurrency(sale.subtotal)} />
-            {parseFloat(sale.tax_amount) > 0 ? (
-              <SummaryRow label="Tax" value={formatCurrency(sale.tax_amount)} />
+            <SummaryRow label="Subtotal" value={formatCurrency(receiptSale.subtotal)} />
+            {parseFloat(receiptSale.tax_amount) > 0 ? (
+              <SummaryRow label="Tax" value={formatCurrency(receiptSale.tax_amount)} />
             ) : null}
-            {parseFloat(sale.discount_amount) > 0 ? (
-              <SummaryRow label="Discount" value={`-${formatCurrency(sale.discount_amount)}`} />
+            {parseFloat(receiptSale.discount_amount) > 0 ? (
+              <SummaryRow
+                label="Discount"
+                value={`-${formatCurrency(receiptSale.discount_amount)}`}
+              />
             ) : null}
-            <SummaryRow label="Total" value={formatCurrency(sale.total)} strong />
+            <SummaryRow label="Total" value={formatCurrency(receiptSale.total)} strong />
             <SummaryRow label="Payment method" value={sale.payment_method || '—'} />
-            <SummaryRow label="Amount paid" value={formatCurrency(sale.amount_paid)} />
-            <SummaryRow label="Payment status" value={paymentStatus} />
-            {balanceDue > 0 ? (
-              <SummaryRow
-                label="Balance due"
-                value={formatCurrency(balanceDue)}
-                className="text-destructive"
-              />
-            ) : null}
-            {parseFloat(sale.change) > 0 ? (
-              <SummaryRow label="Change" value={formatCurrency(sale.change)} />
-            ) : null}
-            {parseFloat(sale.amount_refunded) > 0 ? (
-              <SummaryRow
-                label="Amount refunded"
-                value={formatCurrency(sale.amount_refunded)}
-                className="text-amber-800"
-              />
-            ) : null}
-            {parseFloat(sale.refundable_remaining) > 0 &&
-            sale.refund_status !== 'refunded' ? (
-              <SummaryRow
-                label="Refundable remaining"
-                value={formatCurrency(sale.refundable_remaining)}
-              />
+            <SummaryRow label="Amount paid" value={formatCurrency(receiptSale.amount_paid)} />
+            {parseFloat(receiptSale.change) > 0 ? (
+              <SummaryRow label="Change" value={formatCurrency(receiptSale.change)} />
             ) : null}
           </div>
 
@@ -174,9 +166,9 @@ export default function SaleDetailDialog({
                   <strong>Location:</strong> {sale.shipping_location}
                 </p>
               ) : null}
-              {parseFloat(sale.delivery_cost) > 0 ? (
+              {parseFloat(receiptSale.delivery_cost) > 0 ? (
                 <p className="text-muted-foreground">
-                  <strong>Delivery cost:</strong> {formatCurrency(sale.delivery_cost)}
+                  <strong>Delivery cost:</strong> {formatCurrency(receiptSale.delivery_cost)}
                 </p>
               ) : null}
             </div>
@@ -190,6 +182,36 @@ export default function SaleDetailDialog({
             </div>
           ) : null}
         </div>
+
+        {showAdminDetails ? (
+          <div className="space-y-1 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Admin
+            </p>
+            <SummaryRow label="Status" value={finalStatus} />
+            <SummaryRow label="Payment status" value={paymentStatus} />
+            {balanceDue > 0 ? (
+              <SummaryRow
+                label="Balance due"
+                value={formatCurrency(balanceDue)}
+                className="text-destructive"
+              />
+            ) : null}
+            {hasRefund && refundedAmount > 0 ? (
+              <SummaryRow
+                label="Amount refunded"
+                value={formatCurrency(refundedAmount)}
+                className="text-amber-800"
+              />
+            ) : null}
+            {parseFloat(sale.refundable_remaining) > 0 && sale.refund_status !== 'refunded' ? (
+              <SummaryRow
+                label="Still refundable"
+                value={formatCurrency(sale.refundable_remaining)}
+              />
+            ) : null}
+          </div>
+        ) : null}
 
         <DialogFooter className="flex-wrap gap-2 sm:justify-between">
           <div>

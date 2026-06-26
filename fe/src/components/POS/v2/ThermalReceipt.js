@@ -1,5 +1,6 @@
 import React, { forwardRef } from 'react';
 import { formatCurrency } from '../../../utils/formatters';
+import { normalizeSaleForReceipt } from '../../../utils/saleItemDisplay';
 
 /**
  * Thermal-printer-friendly receipt body.
@@ -43,11 +44,12 @@ export const ThermalReceipt = forwardRef(function ThermalReceipt(
 ) {
   if (!sale) return null;
 
-  const items = sale.items || [];
+  const receipt = normalizeSaleForReceipt(sale);
+  const items = receipt.items || [];
   const dateLabel = formatReceiptDate(sale.created_at);
   const cashierLabel = sale.cashier_name || sale.cashier || '';
-  const balance = (parseFloat(sale.total) || 0) - (parseFloat(sale.amount_paid) || 0);
-  const change = parseFloat(sale.change) || 0;
+  const balance = (parseFloat(receipt.total) || 0) - (parseFloat(receipt.amount_paid) || 0);
+  const change = parseFloat(receipt.change) || 0;
   const isPaymentMpesa = sale.payment_method === 'mpesa';
   const isPaymentCash = sale.payment_method === 'cash';
   const isPaymentWallet = sale.payment_method === 'wallet';
@@ -119,27 +121,27 @@ export const ThermalReceipt = forwardRef(function ThermalReceipt(
       <section className="receipt-thermal__totals">
         <ReceiptRow
           left="Subtotal"
-          right={formatCurrency(sale.subtotal)}
+          right={formatCurrency(receipt.subtotal)}
           price
         />
-        {!!parseFloat(sale.discount_amount) && (
+        {!!parseFloat(receipt.discount_amount) && (
           <ReceiptRow
             left="Discount"
-            right={`-${formatCurrency(sale.discount_amount)}`}
+            right={`-${formatCurrency(receipt.discount_amount)}`}
             price
           />
         )}
-        {!!parseFloat(sale.tax_amount) && (
+        {!!parseFloat(receipt.tax_amount) && (
           <ReceiptRow
             left={`VAT${sale.tax_rate ? ` (${sale.tax_rate}%)` : ''}`}
-            right={formatCurrency(sale.tax_amount)}
+            right={formatCurrency(receipt.tax_amount)}
             price
           />
         )}
-        {!!parseFloat(sale.delivery_cost) && (
+        {!!parseFloat(receipt.delivery_cost) && (
           <ReceiptRow
             left="Delivery"
-            right={formatCurrency(sale.delivery_cost)}
+            right={formatCurrency(receipt.delivery_cost)}
             price
           />
         )}
@@ -149,7 +151,7 @@ export const ThermalReceipt = forwardRef(function ThermalReceipt(
 
       <ReceiptRow
         left="TOTAL"
-        right={formatCurrency(sale.total)}
+        right={formatCurrency(receipt.total)}
         bold
         emphasised
         price
@@ -161,7 +163,7 @@ export const ThermalReceipt = forwardRef(function ThermalReceipt(
       <section className="receipt-thermal__payment">
         <ReceiptRow
           left={paymentLabel}
-          right={formatCurrency(sale.amount_paid)}
+          right={formatCurrency(receipt.amount_paid)}
           price
         />
         {sale.payment_reference ? (

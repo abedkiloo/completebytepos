@@ -43,7 +43,7 @@ export default function CustomerDetailDialog({
 
   const handleSelectSale = useCallback(async (sale) => {
     try {
-      const response = await salesAPI.receipt(sale.id);
+      const response = await salesAPI.get(sale.id);
       setSelectedSale(response.data);
       setSaleDetailOpen(true);
     } catch (error) {
@@ -71,12 +71,16 @@ export default function CustomerDetailDialog({
     try {
       const res = await salesAPI.refund(refundSale.id, payload);
       handleSaleRefundResponse(res, {
-        onApplied: (data) => toast.success(`Void recorded as ${data.refund_number}`),
+        onApplied: async (data) => {
+          toast.success(`Void recorded as ${data.refund_number}`);
+          if (selectedSale?.id === refundSale.id) {
+            const refreshed = await salesAPI.get(refundSale.id);
+            setSelectedSale(refreshed.data);
+          }
+        },
         onPending: () => toast.success(pendingApprovalToastMessage()),
       });
       setRefundSale(null);
-      setSelectedSale(null);
-      setSaleDetailOpen(false);
       onCustomerUpdated?.();
     } catch (error) {
       const data = error.response?.data;

@@ -21,6 +21,21 @@ jest.mock('../../utils/roleAccess', () => ({
   isManagerOrAdminFromStorage: () => true,
 }));
 
+jest.mock('../../utils/makerChecker', () => ({
+  isMakerCheckerEnabled: () => false,
+  makerCheckerReasonCopy: () => ({
+    label: 'Reason for void',
+    description: '',
+    submitLabel: 'Confirm void / refund',
+  }),
+  pendingApprovalToastMessage: () => 'Submitted for approval',
+}));
+
+jest.mock('../../hooks/useStoreSettings', () => ({
+  __esModule: true,
+  useStoreSettings: jest.fn(),
+}));
+
 jest.mock('../Approvals/ChangeReasonField', () => ({
   __esModule: true,
   default: ({ value, onChange, label }) => (
@@ -52,6 +67,8 @@ const customer = {
 describe('CustomerDetailDialog', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    const { useStoreSettings } = require('../../hooks/useStoreSettings');
+    useStoreSettings.mockReturnValue({ settings: { maker_checker_enabled: false } });
     salesAPI.list.mockResolvedValue({
       data: {
         count: 1,
@@ -102,13 +119,23 @@ describe('CustomerDetailDialog', () => {
         status: 'completed',
         refund_status: 'none',
         total: '500',
+        amount_paid: '500',
+        subtotal: '500',
+        tax_amount: '0',
+        discount_amount: '0',
+        change: '0',
+        payment_method: 'cash',
+        created_at: '2026-06-24T10:00:00Z',
         refundable_remaining: '500',
         items: [
           {
             id: 1,
             product_name: 'Shirt',
             quantity: 1,
+            quantity_refunded: 0,
             refundable_quantity: 1,
+            unit_price: '500',
+            subtotal: '500',
           },
         ],
       },
@@ -133,7 +160,7 @@ describe('CustomerDetailDialog', () => {
     fireEvent.click(await screen.findByText('S-900'));
 
     await waitFor(() => {
-      expect(salesAPI.receipt).toHaveBeenCalledWith(99);
+      expect(salesAPI.get).toHaveBeenCalledWith(99);
     });
     expect(await screen.findByText(/Sale — S-900/)).toBeInTheDocument();
     expect(screen.getByText('Shirt')).toBeInTheDocument();
@@ -151,16 +178,16 @@ describe('CustomerDetailDialog', () => {
     );
 
     fireEvent.click(await screen.findByText('S-900'));
-    await waitFor(() => expect(salesAPI.receipt).toHaveBeenCalled());
+    await waitFor(() => expect(salesAPI.get).toHaveBeenCalledWith(99));
 
     fireEvent.click(await screen.findByRole('button', { name: /Void \/ Refund/i }));
-    await waitFor(() => expect(salesAPI.get).toHaveBeenCalledWith(99));
+    await waitFor(() => expect(salesAPI.get).toHaveBeenCalledTimes(2));
 
     const reasonInput = await screen.findByLabelText(/Reason for void/i);
     fireEvent.change(reasonInput, {
       target: { value: 'Wrong item' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /Confirm void/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Confirm void \/ refund/i }));
 
     await waitFor(() => {
       expect(salesAPI.refund).toHaveBeenCalledWith(99, {

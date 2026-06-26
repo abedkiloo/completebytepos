@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import SaleDetailDialog from './SaleDetailDialog';
 
 const sale = {
@@ -47,20 +47,53 @@ const sale = {
 };
 
 describe('SaleDetailDialog', () => {
-  it('shows payment status, balance due, and variant labels', () => {
+  it('shows a clean receipt with remaining items only; admin block has refund info', () => {
     render(
       <SaleDetailDialog sale={sale} open onOpenChange={() => {}} showCustomerName />
     );
 
+    const receipt = document.querySelector('.receipt-content');
+
     expect(screen.getByText(/Sale — S-100/)).toBeInTheDocument();
-    expect(screen.getByText('Partial refund')).toBeInTheDocument();
     expect(screen.getByText('Martha')).toBeInTheDocument();
-    expect(screen.getAllByText('Large / White').length).toBeGreaterThan(0);
-    expect(screen.getByText(/1 of 2 refunded/)).toBeInTheDocument();
+    expect(within(receipt).getAllByText('Large / White').length).toBe(2);
+    expect(within(receipt).queryByText(/returned/i)).not.toBeInTheDocument();
+    expect(within(receipt).queryByText(/refund/i)).not.toBeInTheDocument();
+    expect(within(receipt).queryByText(/final state/i)).not.toBeInTheDocument();
+    expect(within(receipt).getAllByText('Total').length).toBeGreaterThan(0);
+    expect(within(receipt).queryByText(/Net total/i)).not.toBeInTheDocument();
+
+    expect(screen.getByText('Admin')).toBeInTheDocument();
+    expect(screen.getAllByText('Partial refund').length).toBeGreaterThan(0);
     expect(screen.getByText('Partial payment')).toBeInTheDocument();
-    expect(screen.getByText(/Balance due/)).toBeInTheDocument();
     expect(screen.getByText(/Amount refunded/)).toBeInTheDocument();
-    expect(screen.getByText(/Refundable remaining/)).toBeInTheDocument();
+    expect(screen.getByText(/Still refundable/)).toBeInTheDocument();
+  });
+
+  it('omits fully returned lines from the receipt', () => {
+    render(
+      <SaleDetailDialog
+        sale={{
+          ...sale,
+          items: [
+            ...sale.items,
+            {
+              id: 12,
+              product_name: 'Returned shirt',
+              quantity: 1,
+              quantity_refunded: 1,
+              unit_price: '300',
+              subtotal: '300',
+            },
+          ],
+        }}
+        open
+        onOpenChange={() => {}}
+      />
+    );
+
+    const receipt = document.querySelector('.receipt-content');
+    expect(within(receipt).queryByText('Returned shirt')).not.toBeInTheDocument();
   });
 
   it('flags duplicate lines and hides customer name when requested', () => {
@@ -104,5 +137,19 @@ describe('SaleDetailDialog', () => {
     );
 
     expect(screen.queryByRole('button', { name: /Void \/ Refund/i })).not.toBeInTheDocument();
+  });
+
+  it('hides admin block when showAdminDetails is false', () => {
+    render(
+      <SaleDetailDialog
+        sale={sale}
+        open
+        onOpenChange={() => {}}
+        showAdminDetails={false}
+      />
+    );
+
+    expect(screen.queryByText('Admin')).not.toBeInTheDocument();
+    expect(screen.queryByText('Partial refund')).not.toBeInTheDocument();
   });
 });

@@ -3,6 +3,15 @@ import { ChevronDown, ChevronRight, Receipt } from 'lucide-react';
 import { salesAPI } from '../../../services/api';
 import { formatCurrency, formatDateTime } from '../../../utils/formatters';
 import { cartVariantLabel } from '../../../utils/variantCombinations';
+import { refundStatusLabel } from '../../../utils/saleRefund';
+import {
+  saleDisplayTotal,
+  saleHasRefundActivity,
+  saleItemNetQuantity,
+  saleItemNetSubtotal,
+  saleNetItemCount,
+} from '../../../utils/saleItemDisplay';
+import { Badge } from '../../ui/badge';
 
 /**
  * Recent completed sales for the selected customer (one batch per sale).
@@ -58,10 +67,19 @@ export default function CustomerRecentSales({ customerId }) {
         <ul className="max-h-48 space-y-1 overflow-y-auto rounded-lg border bg-muted/20 p-1">
           {sales.map((sale) => {
             const expanded = expandedId === sale.id;
-            const itemCount =
-              sale.item_count ??
-              sale.items?.reduce((sum, row) => sum + (parseInt(row.quantity, 10) || 0), 0) ??
-              0;
+            const hasRefund = saleHasRefundActivity(sale);
+            const itemCount = hasRefund
+              ? saleNetItemCount(sale)
+              : sale.item_count ??
+                sale.items?.reduce((sum, row) => sum + (parseInt(row.quantity, 10) || 0), 0) ??
+                0;
+            const originalItemCount = hasRefund
+              ? sale.item_count ??
+                sale.items?.reduce((sum, row) => sum + (parseInt(row.quantity, 10) || 0), 0) ??
+                0
+              : itemCount;
+            const refundLabel = refundStatusLabel(sale.refund_status);
+            const displayTotal = saleDisplayTotal(sale);
             return (
               <li key={sale.id} className="rounded-md bg-background">
                 <button
@@ -75,21 +93,34 @@ export default function CustomerRecentSales({ customerId }) {
                     <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   )}
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate font-medium">{sale.sale_number}</span>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="truncate font-medium">{sale.sale_number}</span>
+                        {refundLabel ? (
+                          <Badge variant="secondary" className="text-[10px]">
+                            {refundLabel}
+                          </Badge>
+                        ) : null}
+                      </div>
                       <span className="shrink-0 tabular-nums font-medium">
-                        {formatCurrency(sale.total)}
+                        {formatCurrency(displayTotal)}
                       </span>
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {formatDateTime(sale.created_at)} · {itemCount}{' '}
-                      {itemCount === 1 ? 'item' : 'items'}
+                      {formatDateTime(sale.created_at)} · {itemCount}
+                      {hasRefund && itemCount !== originalItemCount
+                        ? ` of ${originalItemCount}`
+                        : ''}{' '}
+                      {itemCount === 1 ? 'unit' : 'units'}
+                      {hasRefund ? ` · was ${formatCurrency(sale.total)}` : ''}
                     </div>
                   </div>
                 </button>
                 {expanded && sale.items?.length ? (
                   <ul className="border-t px-3 py-2 text-xs text-muted-foreground">
-                    {sale.items.map((item) => {
+                    {sale.items
+                      .filter((item) => saleItemNetQuantity(item) > 0)
+                      .map((item) => {
                       const label = cartVariantLabel({
                         variant_id: item.variant,
                         variant: item.variant
@@ -102,6 +133,8 @@ export default function CustomerRecentSales({ customerId }) {
                         size_name: item.size_name,
                         color_name: item.color_name,
                       });
+                      const netQty = saleItemNetQuantity(item);
+                      const lineTotal = saleItemNetSubtotal(item);
                       return (
                         <li
                           key={item.id}
@@ -114,10 +147,10 @@ export default function CustomerRecentSales({ customerId }) {
                             {label ? (
                               <span className="block text-[11px]">{label}</span>
                             ) : null}
-                            <span className="tabular-nums"> × {item.quantity}</span>
+                            <span className="tabular-nums"> × {netQty}</span>
                           </span>
                           <span className="shrink-0 tabular-nums text-foreground">
-                            {formatCurrency(item.subtotal ?? item.unit_price * item.quantity)}
+                            {formatCurrency(lineTotal)}
                           </span>
                         </li>
                       );

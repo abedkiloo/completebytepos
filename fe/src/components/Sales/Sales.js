@@ -9,6 +9,11 @@ import { toast } from '../../utils/toast';
 import { getStoredAuth, isManagerOrAdminFromStorage } from '../../utils/roleAccess';
 import { userCanRefundSales, saleIsRefundable, refundStatusLabel, handleSaleRefundResponse } from '../../utils/saleRefund';
 import { pendingApprovalToastMessage } from '../../utils/makerChecker';
+import {
+  saleDisplayTotal,
+  saleHasRefundActivity,
+  saleNetItemCount,
+} from '../../utils/saleItemDisplay';
 import RefundSaleDialog from './RefundSaleDialog';
 import SaleDetailDialog from './SaleDetailDialog';
 import { Button } from '../ui/button';
@@ -92,7 +97,7 @@ const Sales = () => {
 
   const handleViewReceipt = async (sale) => {
     try {
-      const response = await salesAPI.receipt(sale.id);
+      const response = await salesAPI.get(sale.id);
       setSelectedSale(response.data);
       setShowReceiptModal(true);
     } catch (error) {
@@ -120,8 +125,8 @@ const Sales = () => {
       });
       setRefundSale(null);
       if (outcome === 'applied' && selectedSale?.id === refundSale.id) {
-        setShowReceiptModal(false);
-        setSelectedSale(null);
+        const refreshed = await salesAPI.get(refundSale.id);
+        setSelectedSale(refreshed.data);
       }
       loadSales();
     } catch (error) {
@@ -368,7 +373,13 @@ const Sales = () => {
                 <DataTableHead align="right">Actions</DataTableHead>
               </DataTableHeader>
               <DataTableBody>
-                {sales.map((sale) => (
+                {sales.map((sale) => {
+                  const hasRefund = saleHasRefundActivity(sale);
+                  const displayTotal = saleDisplayTotal(sale);
+                  const itemCount = hasRefund
+                    ? saleNetItemCount(sale)
+                    : sale.item_count || 0;
+                  return (
                   <DataTableRow key={sale.id}>
                     <DataTableCell>
                       <button
@@ -383,9 +394,14 @@ const Sales = () => {
                       {formatDateTime(sale.created_at)}
                     </DataTableCell>
                     <DataTableCell>{sale.cashier_name || '—'}</DataTableCell>
-                    <DataTableCell align="right">{sale.item_count || 0}</DataTableCell>
+                    <DataTableCell align="right">{itemCount}</DataTableCell>
                     <DataTableCell align="right" className="font-semibold">
-                      {formatCurrency(sale.total)}
+                      <div>{formatCurrency(displayTotal)}</div>
+                      {hasRefund ? (
+                        <div className="text-xs font-normal text-muted-foreground line-through">
+                          {formatCurrency(sale.total)}
+                        </div>
+                      ) : null}
                     </DataTableCell>
                     <DataTableCell>
                       <Badge variant="outline" className="capitalize">
@@ -425,7 +441,8 @@ const Sales = () => {
                       </div>
                     </DataTableCell>
                   </DataTableRow>
-                ))}
+                  );
+                })}
               </DataTableBody>
             </DataTable>
           </ListPaginationRail>

@@ -4,6 +4,12 @@ import { salesAPI } from '../../services/api';
 import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { refundStatusLabel } from '../../utils/saleRefund';
+import {
+  saleDisplayTotal,
+  saleHasRefundActivity,
+  saleNetItemCount,
+  saleAmountRefunded,
+} from '../../utils/saleItemDisplay';
 import { Badge } from '../ui/badge';
 import { Skeleton } from '../ui/skeleton';
 import { ListPaginationRail } from '../page';
@@ -83,14 +89,26 @@ export default function CustomerSalesList({ customerId, onSelectSale }) {
           ) : (
             <ul className="divide-y">
               {sales.map((sale) => {
-                const itemCount =
-                  sale.item_count ??
-                  sale.items?.reduce(
-                    (sum, row) => sum + (parseInt(row.quantity, 10) || 0),
+                const hasRefund = saleHasRefundActivity(sale);
+                const itemCount = hasRefund
+                  ? saleNetItemCount(sale)
+                  : sale.item_count ??
+                    sale.items?.reduce(
+                      (sum, row) => sum + (parseInt(row.quantity, 10) || 0),
+                      0
+                    ) ??
+                    0;
+                const originalItemCount = hasRefund
+                  ? sale.item_count ??
+                    sale.items?.reduce(
+                      (sum, row) => sum + (parseInt(row.quantity, 10) || 0),
+                      0
+                    ) ??
                     0
-                  ) ??
-                  0;
+                  : itemCount;
                 const refundLabel = refundStatusLabel(sale.refund_status);
+                const displayTotal = saleDisplayTotal(sale);
+                const refundedAmount = saleAmountRefunded(sale);
                 return (
                   <li key={sale.id}>
                     <button
@@ -108,16 +126,23 @@ export default function CustomerSalesList({ customerId, onSelectSale }) {
                           ) : null}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {formatDateTime(sale.created_at)} · {itemCount}{' '}
-                          {itemCount === 1 ? 'item' : 'items'} ·{' '}
-                          {sale.payment_method || '—'}
+                          {formatDateTime(sale.created_at)} · {itemCount}
+                          {hasRefund && itemCount !== originalItemCount
+                            ? ` of ${originalItemCount}`
+                            : ''}{' '}
+                          {itemCount === 1 ? 'unit' : 'units'} · {sale.payment_method || '—'}
                         </div>
                       </div>
                       <div className="shrink-0 text-right">
                         <div className="font-semibold tabular-nums">
-                          {formatCurrency(sale.total)}
+                          {formatCurrency(displayTotal)}
                         </div>
-                        {parseFloat(sale.amount_paid) <
+                        {hasRefund ? (
+                          <div className="text-xs text-amber-700">
+                            was {formatCurrency(sale.total)}
+                            {refundedAmount > 0 ? ` · −${formatCurrency(refundedAmount)}` : ''}
+                          </div>
+                        ) : parseFloat(sale.amount_paid) <
                           parseFloat(sale.total) - 0.009 ? (
                           <div className="text-xs text-amber-700">
                             Paid {formatCurrency(sale.amount_paid)}
