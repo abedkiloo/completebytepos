@@ -1,52 +1,70 @@
-function cartLineKey(item) {
-  return item?.variant_id ? `${item.id}-${item.variant_id}` : `${item.id}`;
+import { cartLineKey, saleLineKey } from './cartLineKey';
+
+function mergeRowsByKey(rows, keyFn, createRow, mergeInto) {
+  const byKey = new Map();
+  for (const row of rows) {
+    const key = keyFn(row);
+    if (!key) continue;
+    const existing = byKey.get(key);
+    if (existing) {
+      mergeInto(existing, row);
+    } else {
+      byKey.set(key, createRow(row));
+    }
+  }
+  return [...byKey.values()];
 }
 
 /**
  * Merge cart rows that share the same product + variant key (sums quantity).
  */
 export function mergeCartLines(cart = []) {
-  const byKey = new Map();
-  for (const item of cart) {
-    const key = cartLineKey(item);
-    const existing = byKey.get(key);
-    if (existing) {
-      byKey.set(key, {
-        ...existing,
-        quantity: (existing.quantity || 0) + (item.quantity || 0),
-      });
-    } else {
-      byKey.set(key, { ...item });
+  return mergeRowsByKey(
+    cart,
+    cartLineKey,
+    (item) => ({ ...item }),
+    (existing, item) => {
+      existing.quantity = (existing.quantity || 0) + (item.quantity || 0);
     }
-  }
-  return [...byKey.values()];
+  );
 }
 
 /**
  * Merge holding API item payloads before save (product_id + variant_id).
  */
 export function mergeHoldingItemPayloads(items = []) {
-  const byKey = new Map();
-  for (const item of items) {
-    const productId = item.product_id;
-    const variantId = item.variant_id || null;
-    const key = variantId ? `${productId}-${variantId}` : `${productId}`;
-    const qty = Math.max(0, parseInt(item.quantity, 10) || 0);
-    if (qty <= 0) continue;
-    const existing = byKey.get(key);
-    if (existing) {
+  return mergeRowsByKey(
+    items,
+    (item) => saleLineKey(item.product_id, item.variant_id || null),
+    (item) => {
+      const qty = Math.max(0, parseInt(item.quantity, 10) || 0);
+      return {
+        product_id: item.product_id,
+        variant_id: item.variant_id || null,
+        quantity: qty,
+        unit_price: item.unit_price,
+      };
+    },
+    (existing, item) => {
+      const qty = Math.max(0, parseInt(item.quantity, 10) || 0);
       existing.quantity += qty;
       if (item.unit_price != null) {
         existing.unit_price = item.unit_price;
       }
-    } else {
-      byKey.set(key, {
-        product_id: productId,
-        variant_id: variantId,
-        quantity: qty,
-        unit_price: item.unit_price,
-      });
     }
-  }
-  return [...byKey.values()];
+  ).filter((row) => row.quantity > 0);
+}
+
+/**
+ * Cart → consolidated holding save payload (merge cart rows, then API shape).
+ */
+export function buildHoldingItemsFromCart(cart = []) {
+  return mergeHoldingItemPayloads(
+    mergeCartLines(cart).map((item) => ({
+      product_id: item.id,
+      variant_id: item.variant_id || null,
+      quantity: item.quantity,
+      unit_price: parseFloat(item.price),
+    }))
+  );
 }

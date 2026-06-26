@@ -100,6 +100,8 @@ describe('usePOSState variant cart', () => {
     );
   });
 
+  // cartLineKey alias tests live in utils/cartLineKey.test.js
+
   it('tryAddToCart opens variant picker when has_variants even without size/color attrs', async () => {
     const { result } = renderHook(() => usePOSState());
 

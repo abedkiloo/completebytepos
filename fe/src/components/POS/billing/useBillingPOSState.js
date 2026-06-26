@@ -26,7 +26,7 @@ import {
   salesValidateStock,
 } from '../../../utils/salesDisplay';
 import { buildBillingCartLine, holdingSaleItemToCartLine } from '../../../utils/billingCartLine';
-import { mergeCartLines, mergeHoldingItemPayloads } from '../../../utils/mergeCartLines';
+import { mergeCartLines, buildHoldingItemsFromCart } from '../../../utils/mergeCartLines';
 import {
   shouldPromptForHoldingRecovery,
   countHoldingItems,
@@ -310,14 +310,7 @@ export function useBillingPOSState() {
   const buildHoldingPayload = useCallback(
     () => ({
       holding_id: holdingId,
-      items: mergeHoldingItemPayloads(
-        mergeCartLines(cart).map((item) => ({
-          product_id: item.id,
-          variant_id: item.variant_id || null,
-          quantity: item.quantity,
-          unit_price: parseFloat(item.price),
-        }))
-      ),
+      items: buildHoldingItemsFromCart(cart),
       customer_id: customerIdForSale(selectedCustomer),
       tax_amount: parseFloat(taxAmount.toFixed(2)),
       discount_amount: parseFloat(discountAmount.toFixed(2)),

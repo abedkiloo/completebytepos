@@ -1,4 +1,4 @@
-import { mergeCartLines, mergeHoldingItemPayloads } from './mergeCartLines';
+import { mergeCartLines, mergeHoldingItemPayloads, buildHoldingItemsFromCart } from './mergeCartLines';
 
 describe('mergeCartLines', () => {
   it('merges rows with the same product and variant', () => {
@@ -38,6 +38,20 @@ describe('mergeHoldingItemPayloads', () => {
     expect(merged).toEqual([
       { product_id: 5, variant_id: 12, quantity: 3, unit_price: 100 },
       { product_id: 5, variant_id: null, quantity: 4, unit_price: 50 },
+    ]);
+  });
+});
+
+describe('buildHoldingItemsFromCart', () => {
+  it('merges duplicate cart rows into one holding payload line', () => {
+    const items = buildHoldingItemsFromCart([
+      { id: 5, variant_id: 12, quantity: 2, price: 100 },
+      { id: 5, variant_id: 12, quantity: 3, price: 100 },
+      { id: 7, quantity: 1, price: 50 },
+    ]);
+    expect(items).toEqual([
+      { product_id: 5, variant_id: 12, quantity: 5, unit_price: 100 },
+      { product_id: 7, variant_id: null, quantity: 1, unit_price: 50 },
     ]);
   });
 });

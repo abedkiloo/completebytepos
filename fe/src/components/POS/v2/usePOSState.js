@@ -45,8 +45,9 @@ import {
  * Two SaleItems for the same product but different variants are distinct
  * lines. Use this everywhere we look an item up or compare.
  */
-export const cartItemKey = (item) =>
-  item.variant_id ? `${item.id}-${item.variant_id}` : `${item.id}`;
+import { cartItemKey, cartLineKey, saleLineKey } from '../../../utils/cartLineKey';
+
+export { cartItemKey, cartLineKey, saleLineKey };
 
 /**
  * Resolve the *effective* stock cap for a cart line.

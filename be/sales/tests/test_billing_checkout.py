@@ -287,3 +287,90 @@ class BillingCheckoutAPITestCase(APITestCase):
             ).count(),
             1,
         )
+
+    def test_save_holding_api_consolidates_duplicate_product_rows(self):
+        response = self.client.post(
+            '/api/sales/holding/',
+            {
+                'items': [
+                    {
+                        'product_id': self.product.id,
+                        'quantity': 2,
+                        'unit_price': '80',
+                    },
+                    {
+                        'product_id': self.product.id,
+                        'quantity': 3,
+                        'unit_price': '80',
+                    },
+                ],
+                'branch_id': self.branch.id,
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(len(response.data['items']), 1)
+        self.assertEqual(response.data['items'][0]['quantity'], 5)
+
+    def test_checkout_after_duplicate_holding_payload_has_single_line(self):
+        holding = self.sale_service.save_holding_sale(
+            self.user,
+            [
+                {'product_id': self.product.id, 'quantity': 2, 'unit_price': '80.00'},
+                {'product_id': self.product.id, 'quantity': 1, 'unit_price': '80.00'},
+            ],
+            branch=self.branch,
+        )
+        self.assertEqual(holding.items.count(), 1)
+        self.assertEqual(holding.items.first().quantity, 3)
+
+        response = self.client.post(
+            f'/api/sales/{holding.id}/checkout/',
+            {
+                'payment_method': 'cash',
+                'amount_paid': '240.00',
+                'allow_partial_payment': False,
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        holding.refresh_from_db()
+        self.assertEqual(holding.items.count(), 1)
+        self.assertEqual(holding.items.first().quantity, 3)
+
+    def test_list_sales_filters_by_customer_id(self):
+        customer = Customer.objects.create(name='Martha', is_active=True)
+        completed = self.sale_service.save_holding_sale(
+            self.user,
+            [{'product_id': self.product.id, 'quantity': 1, 'unit_price': '80.00'}],
+            branch=self.branch,
+            customer=customer,
+        )
+        self.sale_service.complete_holding_sale(
+            completed,
+            payment_method='cash',
+            amount_paid=Decimal('80.00'),
+            allow_partial=False,
+            user=self.user,
+        )
+        other = self.sale_service.save_holding_sale(
+            self.user,
+            [{'product_id': self.product.id, 'quantity': 1, 'unit_price': '80.00'}],
+            branch=self.branch,
+        )
+        self.sale_service.complete_holding_sale(
+            other,
+            payment_method='cash',
+            amount_paid=Decimal('80.00'),
+            allow_partial=False,
+            user=self.user,
+        )
+
+        response = self.client.get(
+            '/api/sales/',
+            {'customer_id': customer.id, 'status': 'completed'},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = [row['id'] for row in response.data.get('results', response.data)]
+        self.assertIn(completed.id, ids)
+        self.assertNotIn(other.id, ids)
