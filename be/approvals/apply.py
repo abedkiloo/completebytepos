@@ -18,6 +18,7 @@ from approvals.registry import (
     ACTION_PRODUCT_UNIT,
     ACTION_ROLE_PERMISSIONS,
     ACTION_SALE_COMPLETED_EDIT,
+    ACTION_SALE_REFUND,
     ACTION_STOCK_ADJUST,
     ACTION_STOCK_PURCHASE,
     ACTION_STOCK_TRANSFER,
@@ -54,6 +55,9 @@ def apply_pending_change(change: PendingChange) -> None:
         return
     if change.entity_type == 'sales.Sale' and change.action_type == ACTION_SALE_COMPLETED_EDIT:
         _apply_sale_completed_edit(change)
+        return
+    if change.entity_type == 'sales.Sale' and change.action_type == ACTION_SALE_REFUND:
+        _apply_sale_refund(change)
         return
     raise ValidationError(f'Unsupported pending change: {change.action_type}')
 
@@ -210,3 +214,31 @@ def _apply_sale_completed_edit(change: PendingChange) -> None:
     fields = [k for k in change.proposed_values if k in SALE_EDIT_QUEUEABLE_FIELDS]
     if fields:
         sale.save(update_fields=fields)
+
+
+def _apply_sale_refund(change: PendingChange) -> None:
+    from sales.models import Sale
+    from sales.refunds import SaleRefundService
+
+    sale = Sale.objects.get(pk=change.entity_id)
+    payload = change.apply_payload or {}
+    checker = change.checked_by
+    if not checker:
+        raise ValidationError('Refund approval requires a checker user.')
+
+    refund = SaleRefundService().create_refund(
+        sale,
+        reason=change.reason,
+        user=checker,
+        items=payload.get('items') or None,
+        full=bool(payload.get('full', False)),
+    )
+    change.apply_payload = {**payload, 'refund_id': refund.id, 'refund_number': refund.refund_number}
+    change.save(update_fields=['apply_payload'])
+
+    try:
+        from utils.audit_events import log_sale_refunded
+
+        log_sale_refunded(None, sale, refund)
+    except Exception:
+        pass

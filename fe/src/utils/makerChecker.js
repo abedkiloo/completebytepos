@@ -46,6 +46,12 @@ const REASON_CONTEXT_COPY = {
     summary:
       'This entry will be submitted for approval and will not affect accounts until a manager approves it.',
   },
+  sale_refund: {
+    label: 'Reason for void / refund',
+    placeholder: 'Why is this sale being voided or refunded?',
+    summary:
+      'This void/refund will be submitted for manager approval. Stock, wallet, and accounts stay unchanged until it is approved.',
+  },
 };
 
 /** True when the signed-in user can open the pending-approvals queue. */
@@ -64,6 +70,7 @@ export function userMayReviewPendingApprovals(permissions = getPermissionsFromSt
     'invoicing',
     'roles',
     'settings',
+    'sales',
   ];
   return approveModules.some((module) => hasPermission(permissions, module, 'approve'));
 }

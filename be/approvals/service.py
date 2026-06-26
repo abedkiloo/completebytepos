@@ -22,6 +22,7 @@ from approvals.permissions import (
 from approvals.registry import (
     ACTION_PRODUCT_PRICE,
     ACTION_PRODUCT_STOCK,
+    ACTION_SALE_REFUND,
     ACTION_STOCK_ADJUST,
     ACTION_STOCK_PURCHASE,
     ACTION_STOCK_TRANSFER,
@@ -173,6 +174,27 @@ def validate_before_approval(change: PendingChange, *, extreme_price_confirmed: 
                             'Approval would result in negative stock; adjust quantity or reject.'
                         )
 
+    if change.action_type == ACTION_SALE_REFUND:
+        from sales.models import Sale
+        from sales.refunds import SaleRefundService
+
+        sale = Sale.objects.get(pk=change.entity_id)
+        if sale.status != 'completed':
+            raise ValidationError('Sale is no longer completed; reject this refund request.')
+        if sale.refund_status == 'refunded':
+            raise ValidationError('Sale has already been fully refunded; reject this request.')
+        payload = change.apply_payload or {}
+        lines = SaleRefundService()._resolve_refund_lines(
+            sale,
+            items=payload.get('items') or None,
+            full=bool(payload.get('full', False)),
+        )
+        amount = sum((line['subtotal'] for line in lines), Decimal('0'))
+        if amount > sale.refundable_remaining():
+            raise ValidationError(
+                'Refund amount exceeds remaining refundable balance; reject or adjust.'
+            )
+
 
 @transaction.atomic
 def approve_change(
@@ -205,9 +227,9 @@ def approve_change(
 def _apply_single_change(change: PendingChange, checker, request) -> PendingChange:
     from approvals.apply import apply_pending_change
 
+    change.checked_by = checker
     apply_pending_change(change)
     change.status = PendingChange.STATUS_APPROVED
-    change.checked_by = checker
     change.checked_at = timezone.now()
     change.save(update_fields=['status', 'checked_by', 'checked_at'])
     if request:

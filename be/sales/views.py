@@ -85,7 +85,9 @@ PAYMENTS_PERMS = RequirePermPerAction('invoicing', {
 
 
 class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
-    queryset = Sale.objects.all().select_related('cashier').prefetch_related('items__product')
+    queryset = Sale.objects.all().select_related('cashier').prefetch_related(
+        'items__product', 'items__refund_lines'
+    )
     serializer_class = SaleSerializer
     permission_classes = [IsAuthenticated, SALES_PERMS]
     audit_module = 'sales'
@@ -350,6 +352,30 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         serializer = SaleRefundCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+
+        from approvals.refund_integration import queue_sale_refund, sale_refund_maker_checker_active
+        from approvals.serializers import PendingChangeSerializer
+
+        if sale_refund_maker_checker_active():
+            try:
+                pending = queue_sale_refund(
+                    request,
+                    sale,
+                    full=data.get('full', False),
+                    items=data.get('items'),
+                    reason=data['reason'],
+                )
+            except ValidationError as e:
+                payload = getattr(e, 'message_dict', None) or {'error': validation_error_message(e)}
+                return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {
+                    'message': 'Refund submitted for approval — not active until a checker approves it.',
+                    'pending_change': PendingChangeSerializer(pending).data,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+
         try:
             refund = self.refund_service.create_refund(
                 sale,

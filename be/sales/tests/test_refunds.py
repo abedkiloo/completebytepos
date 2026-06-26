@@ -15,6 +15,7 @@ from sales.models import Sale, SaleItem, SaleRefund
 from sales.refunds import SaleRefundService
 from sales.services import SaleService
 from settings.models import Branch, Tenant
+from settings.test_utils import disable_maker_checker, enable_maker_checker
 from utils.tests.api_test_base import ManagerAPITestCase, SuperAdminAPITestCase
 
 
@@ -176,6 +177,51 @@ class SaleRefundServiceTests(TestCase):
         )
 
 
+class SaleItemRefundableQuantitySerializerTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user('serializer_refund', password='x')
+        cls.cat = Category.objects.create(name='SerCat', is_active=True)
+        cls.product = Product.objects.create(
+            name='SerProduct',
+            sku='SER-1',
+            category=cls.cat,
+            price=Decimal('30'),
+            stock_quantity=5,
+            is_active=True,
+        )
+        cls.sale = Sale.objects.create(
+            sale_number='S-SER-1',
+            status='completed',
+            subtotal=Decimal('60'),
+            total=Decimal('60'),
+            payment_method='cash',
+            amount_paid=Decimal('60'),
+            cashier=cls.user,
+        )
+        cls.line = SaleItem.objects.create(
+            sale=cls.sale,
+            product=cls.product,
+            quantity=2,
+            unit_price=Decimal('30'),
+            subtotal=Decimal('60'),
+        )
+
+    def test_sale_item_serializer_exposes_refundable_quantities(self):
+        from sales.serializers import SaleSerializer
+
+        SaleRefundService().create_refund(
+            self.sale,
+            reason='One returned',
+            user=self.user,
+            items=[{'sale_item_id': self.line.id, 'quantity': 1}],
+        )
+        data = SaleSerializer(self.sale).data
+        item = data['items'][0]
+        self.assertEqual(item['quantity_refunded'], 1)
+        self.assertEqual(item['refundable_quantity'], 1)
+
+
 class SaleRefundAPITests(ManagerAPITestCase):
     @classmethod
     def setUpTestData(cls):
@@ -210,6 +256,14 @@ class SaleRefundAPITests(ManagerAPITestCase):
             subtotal=Decimal('40'),
         )
 
+    def setUp(self):
+        super().setUp()
+        disable_maker_checker()
+
+    def tearDown(self):
+        disable_maker_checker()
+        super().tearDown()
+
     def test_refund_endpoint_creates_audit_log(self):
         resp = self.client.post(
             f'/api/sales/{self.sale.id}/refund/',
@@ -223,6 +277,66 @@ class SaleRefundAPITests(ManagerAPITestCase):
         self.assertTrue(
             AuditLog.objects.filter(module='sales', action='refund').exists()
         )
+
+    def test_get_sale_includes_refundable_quantity_on_items(self):
+        line = self.sale.items.first()
+        partial = self.client.post(
+            f'/api/sales/{self.sale.id}/refund/',
+            {
+                'reason': 'One damaged',
+                'full': False,
+                'items': [{'sale_item_id': line.id, 'quantity': 1}],
+            },
+            format='json',
+        )
+        self.assertEqual(partial.status_code, status.HTTP_201_CREATED, partial.data)
+
+        detail = self.client.get(f'/api/sales/{self.sale.id}/')
+        self.assertEqual(detail.status_code, status.HTTP_200_OK)
+        item = detail.data['items'][0]
+        self.assertEqual(item['quantity_refunded'], 1)
+        self.assertEqual(item['refundable_quantity'], 1)
+        self.assertEqual(detail.data['refund_status'], 'partial')
+        self.assertGreater(Decimal(str(detail.data['refundable_remaining'])), 0)
+
+    def test_partial_refund_duplicate_excess_line_restores_stock_only_for_refunded_qty(self):
+        """Refund only the duplicate row — first line per product stays on the sale."""
+        keeper = self.sale.items.first()
+        duplicate = SaleItem.objects.create(
+            sale=self.sale,
+            product=self.product,
+            quantity=1,
+            unit_price=Decimal('20'),
+            subtotal=Decimal('20'),
+        )
+        self.sale.subtotal = Decimal('60')
+        self.sale.total = Decimal('60')
+        self.sale.save(update_fields=['subtotal', 'total'])
+        stock_before = self.product.stock_quantity
+
+        resp = self.client.post(
+            f'/api/sales/{self.sale.id}/refund/',
+            {
+                'reason': 'Duplicate invoice line',
+                'full': False,
+                'items': [{'sale_item_id': duplicate.id, 'quantity': 1}],
+            },
+            format='json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED, resp.data)
+
+        keeper.refresh_from_db()
+        self.assertEqual(keeper.quantity, 2)
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, stock_before + 1)
+
+        detail = self.client.get(f'/api/sales/{self.sale.id}/')
+        by_id = {row['id']: row for row in detail.data['items']}
+        self.assertEqual(by_id[keeper.id]['quantity_refunded'], 0)
+        self.assertEqual(by_id[keeper.id]['refundable_quantity'], 2)
+        self.assertEqual(by_id[duplicate.id]['quantity_refunded'], 1)
+        self.assertEqual(by_id[duplicate.id]['refundable_quantity'], 0)
 
     def test_sales_without_refund_permission_denied(self):
         sales_user = User.objects.create_user('no_refund', password='x')

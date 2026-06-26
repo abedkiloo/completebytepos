@@ -52,6 +52,7 @@ import {
 import { getWalletDebtAmount } from '../../utils/walletDisplay';
 import { CustomerWalletBalance } from './CustomerWalletBalance';
 import ReceiveWalletPaymentDialog from './ReceiveWalletPaymentDialog';
+import CustomerDetailDialog from './CustomerDetailDialog';
 
 const EMPTY_FORM = {
   name: '',
@@ -100,6 +101,7 @@ const Customers = () => {
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [walletPaymentCustomer, setWalletPaymentCustomer] = useState(null);
+  const [detailCustomer, setDetailCustomer] = useState(null);
   const [pagination, setPagination] = useState({
     page: 1,
     page_size: DEFAULT_PAGE_SIZE,
@@ -447,6 +449,7 @@ const Customers = () => {
                       canEdit={canEdit}
                       canDelete={canDelete}
                       canRecordWalletPayment={canRecordWalletPayment}
+                      onView={() => setDetailCustomer(customer)}
                       onEdit={() => openEdit(customer)}
                       onDelete={() => setPendingDelete(customer)}
                       onReceivePayment={() => setWalletPaymentCustomer(customer)}
@@ -486,6 +489,29 @@ const Customers = () => {
             prev.map((c) => (c.id === updated.id ? { ...c, wallet_balance: updated.wallet_balance } : c))
           );
           setWalletPaymentCustomer(null);
+        }}
+      />
+
+      <CustomerDetailDialog
+        customer={detailCustomer}
+        open={!!detailCustomer}
+        onOpenChange={(next) => {
+          if (!next) setDetailCustomer(null);
+        }}
+        showOutstanding={showOutstanding}
+        showWallet={showWallet}
+        canRecordWalletPayment={canRecordWalletPayment}
+        onCustomerUpdated={(updated) => {
+          if (updated?.id) {
+            setCustomers((prev) =>
+              prev.map((c) => (c.id === updated.id ? { ...c, ...updated } : c))
+            );
+            setDetailCustomer((prev) =>
+              prev?.id === updated.id ? { ...prev, ...updated } : prev
+            );
+          } else {
+            loadCustomers();
+          }
         }}
       />
 
@@ -542,6 +568,7 @@ function CustomerRow({
   canEdit,
   canDelete,
   canRecordWalletPayment,
+  onView,
   onEdit,
   onDelete,
   onReceivePayment,
@@ -553,9 +580,10 @@ function CustomerRow({
   return (
     <tr
       className={cn(
-        'transition-colors hover:bg-muted/40',
+        'cursor-pointer transition-colors hover:bg-muted/40',
         showStatus && !customer.is_active && 'opacity-60'
       )}
+      onClick={onView}
     >
       <td className="px-4 py-3">
         <div className="flex flex-col">
@@ -626,7 +654,7 @@ function CustomerRow({
         </td>
       )}
       {hasRowActions && (
-        <td className="px-4 py-3">
+        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-end gap-1">
             {showPaymentAction && (
               <Button

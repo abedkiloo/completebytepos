@@ -37,3 +37,18 @@ export function refundStatusLabel(refundStatus) {
   if (refundStatus === 'partial') return 'Partial refund';
   return null;
 }
+
+/**
+ * Handle refund API response — immediate (201) vs maker-checker queue (202).
+ * @returns {'applied'|'pending'}
+ */
+export function handleSaleRefundResponse(response, { onApplied, onPending } = {}) {
+  const status = response?.status;
+  const data = response?.data;
+  if (status === 202) {
+    onPending?.(data?.pending_change, data);
+    return 'pending';
+  }
+  onApplied?.(data);
+  return 'applied';
+}

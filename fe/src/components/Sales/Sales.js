@@ -7,18 +7,13 @@ import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { toast } from '../../utils/toast';
 import { getStoredAuth, isManagerOrAdminFromStorage } from '../../utils/roleAccess';
-import { userCanRefundSales, saleIsRefundable, refundStatusLabel } from '../../utils/saleRefund';
+import { userCanRefundSales, saleIsRefundable, refundStatusLabel, handleSaleRefundResponse } from '../../utils/saleRefund';
+import { pendingApprovalToastMessage } from '../../utils/makerChecker';
 import RefundSaleDialog from './RefundSaleDialog';
+import SaleDetailDialog from './SaleDetailDialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '../ui/dialog';
 import {
   PageShell,
   PageHeader,
@@ -119,9 +114,12 @@ const Sales = () => {
     setRefundSubmitting(true);
     try {
       const res = await salesAPI.refund(refundSale.id, payload);
-      toast.success(`Void recorded as ${res.data.refund_number}`);
+      const outcome = handleSaleRefundResponse(res, {
+        onApplied: (data) => toast.success(`Void recorded as ${data.refund_number}`),
+        onPending: () => toast.success(pendingApprovalToastMessage()),
+      });
       setRefundSale(null);
-      if (selectedSale?.id === refundSale.id) {
+      if (outcome === 'applied' && selectedSale?.id === refundSale.id) {
         setShowReceiptModal(false);
         setSelectedSale(null);
       }
@@ -433,151 +431,17 @@ const Sales = () => {
           </ListPaginationRail>
         )}
 
-        <Dialog open={showReceiptModal} onOpenChange={setShowReceiptModal}>
-          <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Receipt — {selectedSale?.sale_number}</DialogTitle>
-            </DialogHeader>
-            {selectedSale && (
-              <div className="receipt-content space-y-4 text-sm">
-                <div className="receipt-header">
-                  <h3>CompleteByte POS</h3>
-                  <p>Sale Receipt</p>
-                </div>
-                <div className="receipt-info">
-                  <p><strong>Sale Number:</strong> {selectedSale.sale_number}</p>
-                  <p><strong>Date:</strong> {formatDateTime(selectedSale.created_at)}</p>
-                  <p><strong>Cashier:</strong> {selectedSale.cashier_name || 'N/A'}</p>
-                </div>
-                <div className="receipt-items">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Item</th>
-                        <th>Qty</th>
-                        <th>Price</th>
-                        <th>Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedSale.items?.map((item, idx) => {
-                        const itemName = item.product_name || item.product?.name || 'N/A';
-                        const variantInfo = [];
-                        if (item.size_name) variantInfo.push(`Size: ${item.size_name}`);
-                        if (item.color_name) variantInfo.push(`Color: ${item.color_name}`);
-                        const variantStr = variantInfo.length > 0 ? ` (${variantInfo.join(', ')})` : '';
-                        const displayName = `${itemName}${variantStr}`;
-                        
-                        return (
-                          <tr key={idx}>
-                            <td>
-                              <div>{displayName}</div>
-                            </td>
-                            <td>{item.quantity}</td>
-                            <td>{formatCurrency(item.unit_price)}</td>
-                            <td>{formatCurrency(item.subtotal)}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="receipt-summary">
-                  <div className="summary-row">
-                    <span>Subtotal:</span>
-                    <span>{formatCurrency(selectedSale.subtotal)}</span>
-                  </div>
-                  {selectedSale.tax_amount > 0 && (
-                    <div className="summary-row">
-                      <span>Tax:</span>
-                      <span>{formatCurrency(selectedSale.tax_amount)}</span>
-                    </div>
-                  )}
-                  {selectedSale.discount_amount > 0 && (
-                    <div className="summary-row">
-                      <span>Discount:</span>
-                      <span>-{formatCurrency(selectedSale.discount_amount)}</span>
-                    </div>
-                  )}
-                  <div className="summary-row total">
-                    <span>Total:</span>
-                    <span>{formatCurrency(selectedSale.total)}</span>
-                  </div>
-                  <div className="summary-row">
-                    <span>Payment Method:</span>
-                    <span>{selectedSale.payment_method}</span>
-                  </div>
-                  <div className="summary-row">
-                    <span>Amount Paid:</span>
-                    <span>{formatCurrency(selectedSale.amount_paid)}</span>
-                  </div>
-                  {selectedSale.change > 0 && (
-                    <div className="summary-row">
-                      <span>Change:</span>
-                      <span>{formatCurrency(selectedSale.change)}</span>
-                    </div>
-                  )}
-                </div>
-                {/* Shipping Information */}
-                {(selectedSale.shipping_address || selectedSale.shipping_location) && (
-                  <div className="receipt-shipping" style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px dashed #e5e7eb' }}>
-                    <p style={{ fontWeight: 600, marginBottom: '0.5rem', fontSize: '0.9rem' }}>Shipping Information</p>
-                    {selectedSale.delivery_method && (
-                      <p style={{ fontSize: '0.85rem', margin: '0.25rem 0' }}>
-                        <strong>Method:</strong> {selectedSale.delivery_method.charAt(0).toUpperCase() + selectedSale.delivery_method.slice(1)}
-                      </p>
-                    )}
-                    {selectedSale.shipping_address && (
-                      <p style={{ fontSize: '0.85rem', margin: '0.25rem 0' }}>
-                        <strong>Address:</strong> {selectedSale.shipping_address}
-                      </p>
-                    )}
-                    {selectedSale.shipping_location && (
-                      <p style={{ fontSize: '0.85rem', margin: '0.25rem 0' }}>
-                        <strong>Location:</strong> {selectedSale.shipping_location}
-                      </p>
-                    )}
-                    {selectedSale.delivery_cost > 0 && (
-                      <p style={{ fontSize: '0.85rem', margin: '0.25rem 0' }}>
-                        <strong>Delivery Cost:</strong> {formatCurrency(selectedSale.delivery_cost)}
-                      </p>
-                    )}
-                  </div>
-                )}
-                {selectedSale.notes && (
-                  <div className="receipt-notes">
-                    <p><strong>Notes:</strong> {selectedSale.notes}</p>
-                  </div>
-                )}
-                <div className="receipt-footer">
-                  <p>Thank you for your business!</p>
-                </div>
-              </div>
-            )}
-            <DialogFooter className="flex-wrap gap-2 sm:justify-between">
-              <div>
-                {canRefund && selectedSale && saleIsRefundable(selectedSale) && (
-                  <Button
-                    variant="destructive"
-                    onClick={() => {
-                      setShowReceiptModal(false);
-                      openRefundDialog(selectedSale);
-                    }}
-                  >
-                    <RotateCcw className="mr-1 h-4 w-4" />
-                    Void / Refund
-                  </Button>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setShowReceiptModal(false)}>
-                  Close
-                </Button>
-                <Button onClick={handlePrintReceipt}>Print receipt</Button>
-              </div>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <SaleDetailDialog
+          sale={selectedSale}
+          open={showReceiptModal}
+          onOpenChange={setShowReceiptModal}
+          canRefund={canRefund}
+          onRefund={(sale) => {
+            setShowReceiptModal(false);
+            openRefundDialog(sale);
+          }}
+          onPrint={handlePrintReceipt}
+        />
 
         <RefundSaleDialog
           sale={refundSale}

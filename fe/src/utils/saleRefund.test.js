@@ -4,6 +4,7 @@ import {
   buildFullRefundPayload,
   buildPartialRefundPayload,
   refundStatusLabel,
+  handleSaleRefundResponse,
 } from './saleRefund';
 
 describe('saleRefund', () => {
@@ -47,5 +48,27 @@ describe('saleRefund', () => {
     expect(refundStatusLabel('refunded')).toBe('Refunded');
     expect(refundStatusLabel('partial')).toBe('Partial refund');
     expect(refundStatusLabel('none')).toBeNull();
+  });
+
+  it('handles immediate vs pending refund API responses', () => {
+    const onApplied = jest.fn();
+    const onPending = jest.fn();
+    expect(
+      handleSaleRefundResponse(
+        { status: 201, data: { refund_number: 'RF-1' } },
+        { onApplied, onPending }
+      )
+    ).toBe('applied');
+    expect(onApplied).toHaveBeenCalledWith({ refund_number: 'RF-1' });
+
+    onApplied.mockClear();
+    expect(
+      handleSaleRefundResponse(
+        { status: 202, data: { pending_change: { id: 9 } } },
+        { onApplied, onPending }
+      )
+    ).toBe('pending');
+    expect(onPending).toHaveBeenCalled();
+    expect(onApplied).not.toHaveBeenCalled();
   });
 });

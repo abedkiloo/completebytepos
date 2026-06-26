@@ -175,8 +175,8 @@ export default function SystemSettings() {
                 Maker-checker
               </CardTitle>
               <CardDescription>
-                Sensitive price, stock, and delete changes can require approval before they affect
-                POS and reports.
+                Sensitive price, stock, delete, and sale void/refund changes can require approval
+                before they affect POS, inventory, and reports.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -201,7 +201,7 @@ export default function SystemSettings() {
                 disabled={!form.maker_checker_enabled}
                 onChange={(v) => setForm({ ...form, maker_checker_sales_controls: v })}
                 label="Optional: post-completion sale edits"
-                description="Future feature — approval for notes/payment method only. Off by default; refunds use Sales history."
+                description="Future feature — approval for notes/payment method only. Off by default; voids/refunds use the main maker-checker toggle above."
               />
             </CardContent>
           </Card>

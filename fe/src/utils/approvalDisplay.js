@@ -21,6 +21,7 @@ export const ACTION_TYPE_LABELS = {
   receipt_legal: 'Receipt text change',
   role_permissions: 'Role permissions change',
   sale_completed_edit: 'Completed sale edit',
+  sale_refund: 'Sale void / refund',
 };
 
 export const ENTITY_TYPE_LABELS = {
@@ -61,6 +62,11 @@ export const FIELD_LABELS = {
   quantity: 'Quantity',
   notes: 'Notes',
   permissions: 'Permissions',
+  refund_mode: 'Refund type',
+  lines: 'Lines to return',
+  amount: 'Refund amount',
+  sale_total: 'Sale total',
+  refundable_remaining: 'Refundable remaining',
 };
 
 const MONEY_FIELDS = new Set([
@@ -68,6 +74,9 @@ const MONEY_FIELDS = new Set([
   'selling_price',
   'mrp',
   'cost',
+  'amount',
+  'sale_total',
+  'refundable_remaining',
 ]);
 
 const BOOLEAN_FIELDS = new Set([

@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.db.models import Sum
 from rest_framework import serializers
 from .models import (
     Sale,
@@ -131,16 +132,30 @@ class SaleItemSerializer(serializers.ModelSerializer):
     size_name = serializers.CharField(source='size.name', read_only=True)
     color_name = serializers.CharField(source='color.name', read_only=True)
     variant_sku = serializers.CharField(source='variant.sku', read_only=True)
-    
+    quantity_refunded = serializers.SerializerMethodField()
+    refundable_quantity = serializers.SerializerMethodField()
+
     class Meta:
         model = SaleItem
         fields = [
             'id', 'product_id', 'product', 'product_name', 'product_sku',
             'variant', 'variant_id', 'variant_sku',
             'size', 'size_name', 'color', 'color_name',
-            'quantity', 'unit_price', 'subtotal', 'created_at'
+            'quantity', 'quantity_refunded', 'refundable_quantity',
+            'unit_price', 'subtotal', 'created_at'
         ]
         read_only_fields = ['subtotal', 'created_at']
+
+    def get_quantity_refunded(self, obj):
+        cache = self.context.get('refunded_qty_by_item')
+        if cache is not None:
+            return cache.get(obj.id, 0)
+        agg = obj.refund_lines.aggregate(total=Sum('quantity'))
+        return agg['total'] or 0
+
+    def get_refundable_quantity(self, obj):
+        refunded = self.get_quantity_refunded(obj)
+        return max(0, obj.quantity - refunded)
 
 
 class SaleRefundItemSerializer(serializers.ModelSerializer):
@@ -236,6 +251,21 @@ class SaleSerializer(serializers.ModelSerializer):
             and obj.refund_status != 'refunded'
             and obj.refundable_remaining() > 0
         )
+
+    def to_representation(self, instance):
+        refunded_qty = self._refunded_qty_by_sale_item(instance)
+        items_field = self.fields['items']
+        items_field.child.context['refunded_qty_by_item'] = refunded_qty
+        return super().to_representation(instance)
+
+    @staticmethod
+    def _refunded_qty_by_sale_item(sale):
+        rows = (
+            SaleRefundItem.objects.filter(sale_item__sale=sale)
+            .values('sale_item_id')
+            .annotate(total=Sum('quantity'))
+        )
+        return {row['sale_item_id']: row['total'] or 0 for row in rows}
 
 
 class HoldingSaleSerializer(serializers.Serializer):

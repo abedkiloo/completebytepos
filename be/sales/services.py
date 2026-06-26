@@ -57,7 +57,7 @@ class SaleService(BaseService):
             QuerySet of sales with proper select_related/prefetch_related
         """
         queryset = self.model.objects.all().select_related('cashier', 'branch').prefetch_related(
-            'items__product', 'items__variant', 'items__size', 'items__color'
+            'items__product', 'items__variant', 'items__size', 'items__color', 'items__refund_lines'
         )
         
         if not filters:
