@@ -1,7 +1,7 @@
 /**
  * Build a billing POS cart line from a catalog product and optional variant picker payload.
  */
-import { normalizeProductForSale } from './moduleFeatures';
+import { normalizeProductForSale, isProductVariantsEnabled } from './moduleFeatures';
 
 export function resolveCartVariantId(productId, variantPayload) {
   if (variantPayload == null) return null;
@@ -98,11 +98,14 @@ export function holdingSaleItemToCartLine(item, { validateStock = true } = {}) {
   });
   const selling = parseFloat(item.unit_price);
   const mrp = parseFloat(product.mrp) || selling;
+  const variantId = isProductVariantsEnabled()
+    ? item.variant?.id || item.variant_id || null
+    : null;
   return capLineQuantity(
     {
       ...line,
       quantity: qty,
-      variant_id: item.variant?.id || item.variant_id || null,
+      variant_id: variantId,
       variant: item.variant || null,
       size_name: item.size_name || item.variant?.size_name || null,
       color_name: item.color_name || item.variant?.color_name || null,

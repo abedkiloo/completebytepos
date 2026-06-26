@@ -106,7 +106,7 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         query_params = self.request.query_params
         
         # Extract all filter parameters
-        for param in ['branch_id', 'show_all', 'date_from', 'date_to', 'payment_method', 'search']:
+        for param in ['branch_id', 'show_all', 'date_from', 'date_to', 'payment_method', 'search', 'customer_id', 'status']:
             if param in query_params:
                 filters[param] = query_params.get(param)
 

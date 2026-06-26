@@ -4,6 +4,7 @@ Moved from be/services/sales_service.py to be/sales/services.py
 """
 from typing import Optional, List, Dict, Any
 from decimal import Decimal
+from sales.item_consolidation import consolidate_sale_items_data
 from datetime import timedelta
 from django.db import transaction
 from django.db.models import Q, Sum, Count, Avg, F, QuerySet
@@ -104,6 +105,13 @@ class SaleService(BaseService):
                 Q(notes__icontains=search)
             )
 
+        customer_id = filters.get('customer_id')
+        if customer_id:
+            try:
+                queryset = queryset.filter(customer_id=int(customer_id))
+            except (ValueError, TypeError):
+                queryset = queryset.none()
+
         # Status filter — default hides register drafts from sales history / reports.
         status = filters.get('status')
         if status:
@@ -121,6 +129,7 @@ class SaleService(BaseService):
         user=None,
     ) -> List[Dict[str, Any]]:
         """Validate sale items; optionally enforce stock (checkout only)."""
+        items_data = consolidate_sale_items_data(items_data or [])
         validated_items = []
         
         for item_data in items_data:

@@ -247,6 +247,15 @@ class SaleServiceTestCase(TestCase):
         self.assertEqual(len(validated), 1)
         self.assertEqual(validated[0]['quantity'], 200)
 
+    def test_validate_sale_items_consolidates_duplicate_rows(self):
+        items_data = [
+            {'product_id': self.product.id, 'quantity': 2, 'unit_price': '100.00'},
+            {'product_id': self.product.id, 'quantity': 3, 'unit_price': '100.00'},
+        ]
+        validated = self.service.validate_sale_items(items_data, check_stock=False)
+        self.assertEqual(len(validated), 1)
+        self.assertEqual(validated[0]['quantity'], 5)
+
     def test_save_holding_sale_allows_over_stock_quantity(self):
         """Saving a holding invoice must not reject over-stock cart lines."""
         holding = self.service.save_holding_sale(

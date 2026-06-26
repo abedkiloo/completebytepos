@@ -1,6 +1,22 @@
 import { resolveCartVariantId, buildBillingCartLine, holdingSaleItemToCartLine } from './billingCartLine';
 
 describe('billingCartLine', () => {
+  beforeEach(() => {
+    localStorage.setItem(
+      'enabled_modules',
+      JSON.stringify({
+        products: {
+          is_enabled: true,
+          features: { product_variants: { is_enabled: true } },
+        },
+      })
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
   const product = {
     id: 5,
     name: 'Webbing',

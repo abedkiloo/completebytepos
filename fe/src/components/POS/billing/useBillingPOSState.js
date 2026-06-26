@@ -26,6 +26,7 @@ import {
   salesValidateStock,
 } from '../../../utils/salesDisplay';
 import { buildBillingCartLine, holdingSaleItemToCartLine } from '../../../utils/billingCartLine';
+import { mergeCartLines, mergeHoldingItemPayloads } from '../../../utils/mergeCartLines';
 import {
   shouldPromptForHoldingRecovery,
   countHoldingItems,
@@ -193,9 +194,11 @@ export function useBillingPOSState() {
     setDiscount(parseFloat(holding.discount_amount) || 0);
     setDiscountType('flat');
 
-    const lines = (holding.items || [])
-      .map((item) => holdingSaleItemToCartLine(item, { validateStock }))
-      .filter((l) => l.quantity > 0);
+    const lines = mergeCartLines(
+      (holding.items || [])
+        .map((item) => holdingSaleItemToCartLine(item, { validateStock }))
+        .filter((l) => l.quantity > 0)
+    );
     setCart(lines);
 
     if (holding.customer) {
@@ -307,12 +310,14 @@ export function useBillingPOSState() {
   const buildHoldingPayload = useCallback(
     () => ({
       holding_id: holdingId,
-      items: cart.map((item) => ({
-        product_id: item.id,
-        variant_id: item.variant_id || null,
-        quantity: item.quantity,
-        unit_price: parseFloat(item.price),
-      })),
+      items: mergeHoldingItemPayloads(
+        mergeCartLines(cart).map((item) => ({
+          product_id: item.id,
+          variant_id: item.variant_id || null,
+          quantity: item.quantity,
+          unit_price: parseFloat(item.price),
+        }))
+      ),
       customer_id: customerIdForSale(selectedCustomer),
       tax_amount: parseFloat(taxAmount.toFixed(2)),
       discount_amount: parseFloat(discountAmount.toFixed(2)),
@@ -338,7 +343,7 @@ export function useBillingPOSState() {
   }, [buildHoldingPayload]);
 
   useEffect(() => {
-    if (loadingHolding || cartRecovery) return;
+    if (loadingHolding || cartRecovery || submitting) return;
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     syncTimerRef.current = setTimeout(() => {
       if (cart.length === 0 && !holdingId) return;
@@ -347,7 +352,7 @@ export function useBillingPOSState() {
     return () => {
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     };
-  }, [cart, selectedCustomer, taxAmount, discountAmount, loadingHolding, holdingId, cartRecovery, syncHolding]);
+  }, [cart, selectedCustomer, taxAmount, discountAmount, loadingHolding, holdingId, cartRecovery, submitting, syncHolding]);
 
   const addToCart = useCallback((product, variant = null) => {
     if (validateStock && isProductOutOfStock(product)) {

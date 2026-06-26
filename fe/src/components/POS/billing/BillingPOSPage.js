@@ -23,6 +23,7 @@ import { CartQtyInput } from '../CartQtyInput';
 import { getLineStockCap } from '../v2/usePOSState';
 import PosCartRecoveryDialog from '../PosCartRecoveryDialog';
 import { buildCartRecoveryPreview } from '../../../utils/posCartRecovery';
+import CustomerRecentSales from './CustomerRecentSales';
 import PartialPaymentCustomerDialog from './PartialPaymentCustomerDialog';
 import CustomerFormModal from '../../Customers/CustomerFormModal';
 import ReceiptDialog from '../v2/ReceiptDialog';
@@ -375,6 +376,9 @@ export default function BillingPOSPage() {
                     </li>
                   ))}
                 </ul>
+              )}
+              {!state.isWalkInCustomer(state.selectedCustomer) && (
+                <CustomerRecentSales customerId={state.selectedCustomer?.id} />
               )}
             </div>
 
