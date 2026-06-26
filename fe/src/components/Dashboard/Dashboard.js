@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { reportsAPI, productsAPI, salesAPI, authAPI } from '../../services/api';
 import { formatCurrency, formatNumber } from '../../utils/formatters';
+import { saleDisplayTotal } from '../../utils/saleItemDisplay';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -315,7 +316,7 @@ const Dashboard = () => {
                       </div>
                       <div className="text-right">
                         <p className="font-semibold tabular-nums text-sm">
-                          {formatCurrency(sale.total || 0)}
+                          {formatCurrency(saleDisplayTotal(sale))}
                         </p>
                         <Badge variant="outline" className="mt-1 text-xs capitalize">
                           {sale.status || 'completed'}

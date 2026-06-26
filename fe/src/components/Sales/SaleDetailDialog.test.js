@@ -150,6 +150,6 @@ describe('SaleDetailDialog', () => {
     );
 
     expect(screen.queryByText('Admin')).not.toBeInTheDocument();
-    expect(screen.queryByText('Partial refund')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Amount refunded/)).not.toBeInTheDocument();
   });
 });

@@ -51,7 +51,7 @@ describe('CustomerRecentSales', () => {
     });
 
     expect(await screen.findByText('S-100')).toBeInTheDocument();
-    expect(screen.getByText(/3 items/)).toBeInTheDocument();
+    expect(screen.getByText(/2 units/)).toBeInTheDocument();
   });
 
   it('expands a sale to show line items with variant labels', async () => {

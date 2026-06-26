@@ -46,6 +46,6 @@ describe('CustomerSalesList', () => {
     expect(onSelectSale).toHaveBeenCalledWith(
       expect.objectContaining({ sale_number: 'S-200' })
     );
-    expect(screen.getByText(/Paid/)).toBeInTheDocument();
+    expect(screen.getByText(/Balance/)).toBeInTheDocument();
   });
 });

@@ -77,6 +77,14 @@ export function saleDisplayTotal(sale) {
   return saleHasRefundActivity(sale) ? saleNetTotal(sale) : parseFloat(sale?.total ?? 0);
 }
 
+/** Item/unit count for lists — remaining qty after refunds when line data is present. */
+export function saleDisplayItemCount(sale) {
+  if (sale?.items?.length) {
+    return saleNetItemCount(sale);
+  }
+  return parseInt(sale?.item_count, 10) || 0;
+}
+
 /** Remaining quantity that can still be refunded on this line. */
 export function saleItemRefundableQuantity(item) {
   if (!item) return 0;

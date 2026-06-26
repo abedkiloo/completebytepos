@@ -3,14 +3,11 @@ import { Receipt } from 'lucide-react';
 import { salesAPI } from '../../services/api';
 import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
-import { refundStatusLabel } from '../../utils/saleRefund';
 import {
+  saleDisplayItemCount,
   saleDisplayTotal,
-  saleHasRefundActivity,
-  saleNetItemCount,
-  saleAmountRefunded,
+  saleNetBalanceDue,
 } from '../../utils/saleItemDisplay';
-import { Badge } from '../ui/badge';
 import { Skeleton } from '../ui/skeleton';
 import { ListPaginationRail } from '../page';
 
@@ -89,26 +86,9 @@ export default function CustomerSalesList({ customerId, onSelectSale }) {
           ) : (
             <ul className="divide-y">
               {sales.map((sale) => {
-                const hasRefund = saleHasRefundActivity(sale);
-                const itemCount = hasRefund
-                  ? saleNetItemCount(sale)
-                  : sale.item_count ??
-                    sale.items?.reduce(
-                      (sum, row) => sum + (parseInt(row.quantity, 10) || 0),
-                      0
-                    ) ??
-                    0;
-                const originalItemCount = hasRefund
-                  ? sale.item_count ??
-                    sale.items?.reduce(
-                      (sum, row) => sum + (parseInt(row.quantity, 10) || 0),
-                      0
-                    ) ??
-                    0
-                  : itemCount;
-                const refundLabel = refundStatusLabel(sale.refund_status);
+                const itemCount = saleDisplayItemCount(sale);
                 const displayTotal = saleDisplayTotal(sale);
-                const refundedAmount = saleAmountRefunded(sale);
+                const balanceDue = saleNetBalanceDue(sale);
                 return (
                   <li key={sale.id}>
                     <button
@@ -117,19 +97,9 @@ export default function CustomerSalesList({ customerId, onSelectSale }) {
                       onClick={() => onSelectSale?.(sale)}
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-medium">{sale.sale_number}</span>
-                          {refundLabel ? (
-                            <Badge variant="secondary" className="text-xs">
-                              {refundLabel}
-                            </Badge>
-                          ) : null}
-                        </div>
+                        <div className="font-medium">{sale.sale_number}</div>
                         <div className="text-xs text-muted-foreground">
-                          {formatDateTime(sale.created_at)} · {itemCount}
-                          {hasRefund && itemCount !== originalItemCount
-                            ? ` of ${originalItemCount}`
-                            : ''}{' '}
+                          {formatDateTime(sale.created_at)} · {itemCount}{' '}
                           {itemCount === 1 ? 'unit' : 'units'} · {sale.payment_method || '—'}
                         </div>
                       </div>
@@ -137,15 +107,9 @@ export default function CustomerSalesList({ customerId, onSelectSale }) {
                         <div className="font-semibold tabular-nums">
                           {formatCurrency(displayTotal)}
                         </div>
-                        {hasRefund ? (
+                        {balanceDue > 0 ? (
                           <div className="text-xs text-amber-700">
-                            was {formatCurrency(sale.total)}
-                            {refundedAmount > 0 ? ` · −${formatCurrency(refundedAmount)}` : ''}
-                          </div>
-                        ) : parseFloat(sale.amount_paid) <
-                          parseFloat(sale.total) - 0.009 ? (
-                          <div className="text-xs text-amber-700">
-                            Paid {formatCurrency(sale.amount_paid)}
+                            Balance {formatCurrency(balanceDue)}
                           </div>
                         ) : null}
                       </div>

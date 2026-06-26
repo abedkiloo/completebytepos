@@ -2,6 +2,7 @@ import {
   saleAmountRefunded,
   saleBalanceDue,
   saleDisplayTotal,
+  saleDisplayItemCount,
   saleFinalStatusLabel,
   saleHasRefundActivity,
   saleItemNetQuantity,
@@ -66,6 +67,7 @@ describe('saleItemDisplay', () => {
     expect(saleNetItemCount(sale)).toBe(2);
     expect(saleHasRefundActivity(sale)).toBe(true);
     expect(saleDisplayTotal(sale)).toBe(800);
+    expect(saleDisplayItemCount(sale)).toBe(2);
     expect(saleFinalStatusLabel(sale)).toBe('Partial refund');
     expect(saleFinalStatusLabel({ ...sale, refund_status: 'refunded', amount_refunded: '1000' })).toBe(
       'Fully refunded'

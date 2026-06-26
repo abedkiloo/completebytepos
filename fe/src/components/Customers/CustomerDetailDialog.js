@@ -200,6 +200,7 @@ export default function CustomerDetailDialog({
         canRefund={canRefund}
         onRefund={openRefundDialog}
         showCustomerName={false}
+        showAdminDetails={canRefund}
       />
 
       <RefundSaleDialog

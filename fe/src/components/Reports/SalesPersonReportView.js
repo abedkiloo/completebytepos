@@ -212,8 +212,6 @@ export default function SalesPersonReportView() {
                       <th>Date</th>
                       <th>Payment</th>
                       <th>Total</th>
-                      <th>Refunded</th>
-                      <th>Net</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -222,8 +220,6 @@ export default function SalesPersonReportView() {
                         <td>{tx.sale_number}</td>
                         <td>{formatDateTime(tx.date)}</td>
                         <td className="capitalize">{tx.payment_method}</td>
-                        <td>{formatCurrency(tx.total)}</td>
-                        <td>{tx.refunded > 0 ? formatCurrency(tx.refunded) : '—'}</td>
                         <td>{formatCurrency(tx.net)}</td>
                       </tr>
                     ))}

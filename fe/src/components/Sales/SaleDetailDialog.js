@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from '../ui/dialog';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
-import { saleIsRefundable, refundStatusLabel } from '../../utils/saleRefund';
+import { saleIsRefundable } from '../../utils/saleRefund';
 import {
   saleAmountRefunded,
   saleFinalStatusLabel,
@@ -35,7 +35,6 @@ export default function SaleDetailDialog({
   if (!sale) return null;
 
   const receiptSale = normalizeSaleForReceipt(sale);
-  const refundLabel = refundStatusLabel(sale.refund_status);
   const finalStatus = saleFinalStatusLabel(sale);
   const duplicateLines = hasDuplicateSaleLines(sale.items);
   const refundedAmount = saleAmountRefunded(sale);
@@ -49,11 +48,6 @@ export default function SaleDetailDialog({
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">
             <span>Sale — {sale.sale_number}</span>
-            {showAdminDetails && refundLabel ? (
-              <Badge variant="secondary" className="text-xs">
-                {refundLabel}
-              </Badge>
-            ) : null}
             {showAdminDetails && duplicateLines ? (
               <Badge variant="outline" className="text-xs text-amber-800 border-amber-300">
                 Duplicate lines

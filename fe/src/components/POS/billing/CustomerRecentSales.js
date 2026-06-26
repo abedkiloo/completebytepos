@@ -3,15 +3,12 @@ import { ChevronDown, ChevronRight, Receipt } from 'lucide-react';
 import { salesAPI } from '../../../services/api';
 import { formatCurrency, formatDateTime } from '../../../utils/formatters';
 import { cartVariantLabel } from '../../../utils/variantCombinations';
-import { refundStatusLabel } from '../../../utils/saleRefund';
 import {
+  saleDisplayItemCount,
   saleDisplayTotal,
-  saleHasRefundActivity,
   saleItemNetQuantity,
   saleItemNetSubtotal,
-  saleNetItemCount,
 } from '../../../utils/saleItemDisplay';
-import { Badge } from '../../ui/badge';
 
 /**
  * Recent completed sales for the selected customer (one batch per sale).
@@ -67,19 +64,11 @@ export default function CustomerRecentSales({ customerId }) {
         <ul className="max-h-48 space-y-1 overflow-y-auto rounded-lg border bg-muted/20 p-1">
           {sales.map((sale) => {
             const expanded = expandedId === sale.id;
-            const hasRefund = saleHasRefundActivity(sale);
-            const itemCount = hasRefund
-              ? saleNetItemCount(sale)
-              : sale.item_count ??
-                sale.items?.reduce((sum, row) => sum + (parseInt(row.quantity, 10) || 0), 0) ??
-                0;
-            const originalItemCount = hasRefund
-              ? sale.item_count ??
-                sale.items?.reduce((sum, row) => sum + (parseInt(row.quantity, 10) || 0), 0) ??
-                0
-              : itemCount;
-            const refundLabel = refundStatusLabel(sale.refund_status);
+            const itemCount = saleDisplayItemCount(sale);
             const displayTotal = saleDisplayTotal(sale);
+            const visibleItems = (sale.items || []).filter(
+              (item) => saleItemNetQuantity(item) > 0
+            );
             return (
               <li key={sale.id} className="rounded-md bg-background">
                 <button
@@ -94,33 +83,20 @@ export default function CustomerRecentSales({ customerId }) {
                   )}
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="truncate font-medium">{sale.sale_number}</span>
-                        {refundLabel ? (
-                          <Badge variant="secondary" className="text-[10px]">
-                            {refundLabel}
-                          </Badge>
-                        ) : null}
-                      </div>
+                      <span className="truncate font-medium">{sale.sale_number}</span>
                       <span className="shrink-0 tabular-nums font-medium">
                         {formatCurrency(displayTotal)}
                       </span>
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {formatDateTime(sale.created_at)} · {itemCount}
-                      {hasRefund && itemCount !== originalItemCount
-                        ? ` of ${originalItemCount}`
-                        : ''}{' '}
+                      {formatDateTime(sale.created_at)} · {itemCount}{' '}
                       {itemCount === 1 ? 'unit' : 'units'}
-                      {hasRefund ? ` · was ${formatCurrency(sale.total)}` : ''}
                     </div>
                   </div>
                 </button>
-                {expanded && sale.items?.length ? (
+                {expanded && visibleItems.length > 0 ? (
                   <ul className="border-t px-3 py-2 text-xs text-muted-foreground">
-                    {sale.items
-                      .filter((item) => saleItemNetQuantity(item) > 0)
-                      .map((item) => {
+                    {visibleItems.map((item) => {
                       const label = cartVariantLabel({
                         variant_id: item.variant,
                         variant: item.variant

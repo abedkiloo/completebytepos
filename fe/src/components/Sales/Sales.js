@@ -7,13 +7,9 @@ import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { toast } from '../../utils/toast';
 import { getStoredAuth, isManagerOrAdminFromStorage } from '../../utils/roleAccess';
-import { userCanRefundSales, saleIsRefundable, refundStatusLabel, handleSaleRefundResponse } from '../../utils/saleRefund';
+import { userCanRefundSales, saleIsRefundable, handleSaleRefundResponse } from '../../utils/saleRefund';
 import { pendingApprovalToastMessage } from '../../utils/makerChecker';
-import {
-  saleDisplayTotal,
-  saleHasRefundActivity,
-  saleNetItemCount,
-} from '../../utils/saleItemDisplay';
+import { saleDisplayItemCount, saleDisplayTotal } from '../../utils/saleItemDisplay';
 import RefundSaleDialog from './RefundSaleDialog';
 import SaleDetailDialog from './SaleDetailDialog';
 import { Button } from '../ui/button';
@@ -374,11 +370,8 @@ const Sales = () => {
               </DataTableHeader>
               <DataTableBody>
                 {sales.map((sale) => {
-                  const hasRefund = saleHasRefundActivity(sale);
                   const displayTotal = saleDisplayTotal(sale);
-                  const itemCount = hasRefund
-                    ? saleNetItemCount(sale)
-                    : sale.item_count || 0;
+                  const itemCount = saleDisplayItemCount(sale);
                   return (
                   <DataTableRow key={sale.id}>
                     <DataTableCell>
@@ -396,12 +389,7 @@ const Sales = () => {
                     <DataTableCell>{sale.cashier_name || '—'}</DataTableCell>
                     <DataTableCell align="right">{itemCount}</DataTableCell>
                     <DataTableCell align="right" className="font-semibold">
-                      <div>{formatCurrency(displayTotal)}</div>
-                      {hasRefund ? (
-                        <div className="text-xs font-normal text-muted-foreground line-through">
-                          {formatCurrency(sale.total)}
-                        </div>
-                      ) : null}
+                      {formatCurrency(displayTotal)}
                     </DataTableCell>
                     <DataTableCell>
                       <Badge variant="outline" className="capitalize">
@@ -409,14 +397,7 @@ const Sales = () => {
                       </Badge>
                     </DataTableCell>
                     <DataTableCell>
-                      <div className="flex flex-col gap-1">
-                        <StatusBadge status={sale.status || 'completed'} />
-                        {refundStatusLabel(sale.refund_status) && (
-                          <Badge variant="secondary" className="w-fit text-xs">
-                            {refundStatusLabel(sale.refund_status)}
-                          </Badge>
-                        )}
-                      </div>
+                      <StatusBadge status={sale.status || 'completed'} />
                     </DataTableCell>
                     <DataTableCell align="right">
                       <div className="flex justify-end gap-1">
