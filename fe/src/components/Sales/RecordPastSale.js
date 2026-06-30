@@ -19,69 +19,20 @@ import { PageHeader, PageShell } from '../page';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import VariantSelector from '../POS/VariantSelector';
 import { shouldOpenVariantPicker, getVariantRowLabel } from '../../utils/variantSelector';
+import {
+  defaultOccurredAtLocal,
+  minOccurredAtLocal,
+  toIsoDatetime,
+  linesFromBackfillPayload,
+  parseRejectedBackfillChange,
+  buildBackfillSubmitPayload,
+  backfillPendingNavigatePath,
+  backfillPendingToastMessage,
+  servedByIdForPrefill,
+} from '../../utils/recordPastSaleBackfill';
 
 function selectValue(setter) {
   return (e) => setter(e.target.value);
-}
-
-function defaultOccurredAtLocal() {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 16);
-}
-
-function minOccurredAtLocal(maxDays) {
-  const d = new Date();
-  d.setDate(d.getDate() - maxDays);
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 16);
-}
-
-function toIsoDatetime(localValue) {
-  if (!localValue) return null;
-  const d = new Date(localValue);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
-}
-
-function localDatetimeFromIso(iso) {
-  if (!iso) return defaultOccurredAtLocal();
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return defaultOccurredAtLocal();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 16);
-}
-
-async function linesFromBackfillPayload(items = []) {
-  const lines = [];
-  for (const row of items) {
-    let productName = `Product #${row.product_id}`;
-    try {
-      const res = await productsAPI.get(row.product_id);
-      const product = res.data;
-      productName = product.name;
-      if (row.variant_id) {
-        const vRes = await variantsAPI.getByProduct(product.id);
-        const variants = vRes.data?.results || vRes.data || [];
-        const variant = variants.find((v) => String(v.id) === String(row.variant_id));
-        if (variant) {
-          productName = `${product.name} — ${getVariantRowLabel(variant)}`;
-        }
-      } else if (product.sku) {
-        productName = `${product.name} (${product.sku})`;
-      }
-    } catch {
-      // keep fallback label
-    }
-    lines.push({
-      key: `${row.product_id}-${row.variant_id || 'base'}-${lines.length}`,
-      product_id: row.product_id,
-      variant_id: row.variant_id ?? null,
-      product_name: productName,
-      quantity: row.quantity,
-      unit_price: parseFloat(row.unit_price),
-    });
-  }
-  return lines;
 }
 
 function downloadBlob(blob, filename) {
@@ -168,28 +119,38 @@ function SinglePastSaleForm({
       .get(resubmitId)
       .then(async (res) => {
         if (cancelled) return;
-        const change = res.data;
-        if (change.status !== 'rejected' || change.action_type !== 'sale_backfill') {
-          toast.error('This submission cannot be edited here.');
+        const parsed = parseRejectedBackfillChange(res.data, {
+          canPickServedBy,
+          currentUserId,
+        });
+        if (!parsed.ok) {
+          toast.error(parsed.error);
           return;
         }
-        const payload = change.apply_payload || {};
-        setResubmitPendingId(change.id);
-        setRejectionReason(change.rejection_reason || '');
-        setOccurredAt(localDatetimeFromIso(payload.occurred_at));
-        setBackfillReason(payload.backfill_reason || change.reason || '');
-        setSaleType(payload.sale_type || 'pos');
-        setCustomerId(payload.customer_id ? String(payload.customer_id) : '');
-        setPaymentMethod(payload.payment_method || 'cash');
-        setPaymentReference(payload.payment_reference || '');
-        setAmountPaid(String(payload.amount_paid ?? ''));
-        setAllowPartial(Boolean(payload.allow_partial_payment));
-        if (canPickServedBy && payload.served_by_id) {
-          setServedById(String(payload.served_by_id));
-        } else if (currentUserId != null) {
-          setServedById(String(currentUserId));
-        }
-        const nextLines = await linesFromBackfillPayload(payload.items || []);
+        const { prefill } = parsed;
+        setResubmitPendingId(parsed.resubmitPendingId);
+        setRejectionReason(parsed.rejectionReason);
+        setOccurredAt(prefill.occurredAtLocal);
+        setBackfillReason(prefill.backfillReason);
+        setSaleType(prefill.saleType);
+        setCustomerId(prefill.customerId);
+        setPaymentMethod(prefill.paymentMethod);
+        setPaymentReference(prefill.paymentReference);
+        setAmountPaid(prefill.amountPaid);
+        setAllowPartial(prefill.allowPartial);
+        setServedById(
+          servedByIdForPrefill({
+            canPickServedBy,
+            payloadServedById: res.data.apply_payload?.served_by_id,
+            currentUserId,
+          }) || prefill.servedById
+        );
+        const nextLines = await linesFromBackfillPayload(prefill.items, {
+          getProduct: (id) => productsAPI.get(id).then((r) => r.data),
+          getVariants: (id) =>
+            variantsAPI.getByProduct(id).then((r) => r.data?.results || r.data || []),
+          getVariantRowLabel,
+        });
         if (!cancelled) setLines(nextLines);
       })
       .catch(() => {
@@ -344,34 +305,22 @@ function SinglePastSaleForm({
 
     setSubmitting(true);
     try {
-      const payload = {
-        occurred_at: toIsoDatetime(occurredAt),
-        backfill_reason: backfillReason.trim(),
-        sale_type: saleType,
-        served_by_id: canPickServedBy
-          ? servedById
-            ? parseInt(servedById, 10)
-            : currentUserId
-          : currentUserId,
-        customer_id: customerId ? parseInt(customerId, 10) : null,
-        payment_method: paymentMethod,
-        payment_reference: paymentReference,
-        amount_paid: paid,
-        allow_partial_payment: allowPartial,
-        acknowledge_stock_warnings: ackStockWarnings,
-        items: lines.map((row) => ({
-          product_id: row.product_id,
-          variant_id: row.variant_id ?? undefined,
-          quantity: row.quantity,
-          unit_price: row.unit_price,
-        })),
-      };
-      if (resubmitPendingId) {
-        payload.resubmit_of = resubmitPendingId;
-      }
-      if (saleType === 'normal') {
-        payload.create_invoice = true;
-      }
+      const payload = buildBackfillSubmitPayload({
+        occurredAt,
+        backfillReason,
+        saleType,
+        canPickServedBy,
+        servedById,
+        currentUserId,
+        customerId,
+        paymentMethod,
+        paymentReference,
+        amountPaid,
+        allowPartial,
+        ackStockWarnings,
+        lines,
+        resubmitPendingId,
+      });
 
       const res = await salesAPI.backfill(payload, receiptPhoto);
       handleSaleBackfillResponse(res, {
@@ -381,11 +330,9 @@ function SinglePastSaleForm({
         },
         onPending: () => {
           toast.success(
-            resubmitPendingId
-              ? 'Corrected sale sent back for approval.'
-              : pendingApprovalToastMessage()
+            backfillPendingToastMessage(resubmitPendingId, pendingApprovalToastMessage())
           );
-          navigate(resubmitPendingId ? '/sales/record-past' : '/pending-approvals');
+          navigate(backfillPendingNavigatePath(resubmitPendingId));
         },
       });
     } catch (error) {

@@ -14,6 +14,7 @@ import { userMayEditFinancialFieldsFromStorage } from '../../utils/roleAccess';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 import { needsExtremePriceConfirm } from '../../utils/makerChecker';
 import { describeApprovalSummary, formatApprovalValue } from '../../utils/approvalDisplay';
+import { backfillRejectionSuccessMessage } from '../../utils/recordPastSaleBackfill';
 import ApprovalChangeTable from './ApprovalChangeTable';
 
 function PendingRow({ row, onResolved }) {
@@ -57,11 +58,7 @@ function PendingRow({ row, onResolved }) {
     setBusy(true);
     try {
       await pendingChangesAPI.reject(row.id, { rejection_reason: rejectReason.trim() });
-      if (row.action_type === 'sale_backfill') {
-        toast.success('Rejected — sent back to staff to fix on Record past sale.');
-      } else {
-        toast.success('Rejected — nothing was changed');
-      }
+      toast.success(backfillRejectionSuccessMessage(row.action_type));
       onResolved();
       dispatchNavBadgesRefresh();
     } catch {

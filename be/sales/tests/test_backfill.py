@@ -1,6 +1,8 @@
 from datetime import timedelta
+from decimal import Decimal
 
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
@@ -16,6 +18,7 @@ from sales.backfill_policy import (
     backfill_max_days,
     get_backfill_stock_warnings,
     resolve_backfill_served_by,
+    user_may_pick_backfill_served_by,
     validate_backfill_occurred_at,
     validate_backfill_reason,
 )
@@ -210,6 +213,154 @@ class SaleBackfillAPITests(ManagerAPITestCase):
         self.assertEqual(res.data['errors'], [])
 
 
+class BackfillPolicyServedByTests(TestCase):
+    def test_unauthenticated_user_cannot_pick_served_by(self):
+        from django.contrib.auth.models import AnonymousUser
+
+        self.assertFalse(user_may_pick_backfill_served_by(AnonymousUser()))
+        self.assertEqual(resolve_backfill_served_by(AnonymousUser(), 5), AnonymousUser())
+
+    def test_validate_backfill_occurred_at_requires_value(self):
+        with self.assertRaises(Exception):
+            validate_backfill_occurred_at(None)
+
+    def test_get_backfill_stock_warnings_skips_untracked_products(self):
+        product = Product.objects.create(
+            name='Service item',
+            sku='SVC-1',
+            price='10.00',
+            cost='5.00',
+            stock_quantity=0,
+            track_stock=False,
+        )
+        occurred = timezone.now() - timedelta(days=3)
+        StockMovement.objects.create(
+            product=product,
+            movement_type='adjustment',
+            quantity=1,
+        )
+        self.assertEqual(
+            get_backfill_stock_warnings(
+                occurred,
+                [{'product_id': product.id, 'quantity': 1}],
+            ),
+            [],
+        )
+
+    def test_get_backfill_stock_warnings_returns_empty_without_occurred_at(self):
+        self.assertEqual(get_backfill_stock_warnings(None, []), [])
+
+    def test_superuser_may_pick_backfill_served_by(self):
+        admin = User.objects.create_superuser(username='su_pick', password='x', email='su@test.com')
+        self.assertTrue(user_may_pick_backfill_served_by(admin))
+
+
+class BackfillIntegrationUnitTests(TestCase):
+    def test_summarize_items_includes_variant_ids(self):
+        from approvals.backfill_integration import _build_backfill_summary
+        from django.utils import timezone
+
+        user = User.objects.create_user(username='summary_user', password='x')
+        summary = _build_backfill_summary(
+            {
+                'occurred_at': timezone.now(),
+                'served_by_id': user.id,
+                'items': [{'product_id': 1, 'variant_id': 9, 'quantity': 2}],
+                '_preview_total': Decimal('20.00'),
+            }
+        )
+        self.assertIn('variant #9', summary['lines'])
+        self.assertEqual(summary['served_by'], 'summary_user')
+
+    def test_queue_sale_backfill_requires_items(self):
+        from approvals.backfill_integration import queue_sale_backfill
+        from django.test import RequestFactory
+
+        store = StoreSettings.load()
+        store.maker_checker_enabled = True
+        store.backfill_maker_checker_enabled = True
+        store.save(update_fields=['maker_checker_enabled', 'backfill_maker_checker_enabled'])
+
+        request = RequestFactory().post('/api/sales/backfill/')
+        request.user = User.objects.create_user(username='queue_user', password='x')
+        with self.assertRaises(ValidationError):
+            queue_sale_backfill(
+                request,
+                {
+                    'occurred_at': timezone.now() - timedelta(days=1),
+                    'backfill_reason': 'Missing line items here',
+                    'items': [],
+                },
+            )
+
+    def test_resubmit_rejects_non_backfill_change(self):
+        from approvals.backfill_integration import resubmit_sale_backfill
+        from approvals.models import PendingChange
+        from django.test import RequestFactory
+
+        user = User.objects.create_user(username='resubmit_user', password='x')
+        change = PendingChange.objects.create(
+            action_type='product_price',
+            entity_type='products.Product',
+            entity_id='1',
+            entity_repr='Product',
+            status=PendingChange.STATUS_REJECTED,
+            made_by=user,
+            reason='test',
+            original_values={},
+            proposed_values={},
+            apply_payload={},
+        )
+        request = RequestFactory().post('/api/sales/backfill/')
+        request.user = user
+        with self.assertRaises(ValidationError):
+            resubmit_sale_backfill(
+                request,
+                change,
+                {
+                    'occurred_at': timezone.now() - timedelta(days=1),
+                    'backfill_reason': 'Should not apply here',
+                    'items': [{'product_id': 1, 'quantity': 1, 'unit_price': '1'}],
+                },
+            )
+
+    def test_resubmit_requires_items(self):
+        from approvals.backfill_integration import resubmit_sale_backfill
+        from approvals.models import PendingChange
+        from django.test import RequestFactory
+
+        store = StoreSettings.load()
+        store.maker_checker_enabled = True
+        store.backfill_maker_checker_enabled = True
+        store.save(update_fields=['maker_checker_enabled', 'backfill_maker_checker_enabled'])
+
+        user = User.objects.create_user(username='empty_items_user', password='x')
+        change = PendingChange.objects.create(
+            action_type='sale_backfill',
+            entity_type='sales.SaleBackfill',
+            entity_id='new',
+            entity_repr='Past sale',
+            status=PendingChange.STATUS_REJECTED,
+            made_by=user,
+            reason='test',
+            original_values={},
+            proposed_values={},
+            apply_payload={},
+        )
+        request = RequestFactory().post('/api/sales/backfill/')
+        request.user = user
+        with self.assertRaises(ValidationError):
+            resubmit_sale_backfill(
+                request,
+                change,
+                {
+                    'occurred_at': timezone.now() - timedelta(days=1),
+                    'backfill_reason': 'No items on resubmit',
+                    'items': [],
+                },
+            )
+
+
 class BackfillResubmitAndServedByTests(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -348,3 +499,12 @@ class BackfillResubmitAndServedByTests(TestCase):
         )
         picked = resolve_backfill_served_by(self.manager_user, self.sales_user.id)
         self.assertEqual(picked.id, self.sales_user.id)
+
+    def test_user_may_pick_backfill_served_by_superuser(self):
+        self.assertTrue(user_may_pick_backfill_served_by(self.checker_user))
+
+    def test_resolve_backfill_served_by_ignores_invalid_staff_id(self):
+        self.assertEqual(
+            resolve_backfill_served_by(self.manager_user, 999999),
+            self.manager_user,
+        )
