@@ -25,6 +25,7 @@ const Products = lazy(() => import('./components/Products/Products'));
 const Categories = lazy(() => import('./components/Categories/Categories'));
 const ProductAttributes = lazy(() => import('./components/Products/ProductAttributes'));
 const Sales = lazy(() => import('./components/Sales/Sales'));
+const RecordPastSale = lazy(() => import('./components/Sales/RecordPastSale'));
 const Inventory = lazy(() => import('./components/Inventory/Inventory'));
 const Barcodes = lazy(() => import('./components/Barcodes/Barcodes'));
 const Reports = lazy(() => import('./components/Reports/Reports'));
@@ -158,6 +159,7 @@ function App() {
                 <Route path="/categories" element={<Categories />} />
                 <Route path="/product-attributes" element={<ProductAttributes />} />
                 <Route path="/sales" element={<Sales />} />
+                <Route path="/sales/record-past" element={<RecordPastSale />} />
                 <Route path="/inventory" element={<Inventory />} />
                 <Route path="/barcodes" element={<Barcodes />} />
                 <Route path="/reports" element={<Reports />} />

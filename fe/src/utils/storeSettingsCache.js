@@ -15,6 +15,8 @@ export const DEFAULT_STORE_SETTINGS = {
   receipt_auto_print: false,
   maker_checker_enabled: true,
   maker_checker_sales_controls: false,
+  backfill_max_days: 30,
+  backfill_maker_checker_enabled: true,
   emergency_stock_mode: false,
 };
 

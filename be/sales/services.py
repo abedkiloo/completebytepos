@@ -82,14 +82,14 @@ class SaleService(BaseService):
                     except (ValueError, TypeError):
                         queryset = queryset.none()
         
-        # Date filters
+        # Date filters — business date (when the sale happened)
         date_from = filters.get('date_from')
         if date_from:
-            queryset = queryset.filter(created_at__gte=date_from)
-        
+            queryset = queryset.filter(occurred_at__gte=date_from)
+
         date_to = filters.get('date_to')
         if date_to:
-            queryset = queryset.filter(created_at__lte=date_to)
+            queryset = queryset.filter(occurred_at__lte=date_to)
         
         # Payment method filter
         payment_method = filters.get('payment_method')
@@ -542,13 +542,30 @@ class SaleService(BaseService):
         change = Decimal('0')
         if sale_type == 'pos':
             change = max(Decimal('0'), amount_paid - total)
-        
+
+        from django.contrib.auth.models import User
+        from django.utils import timezone
+
+        served_by = sale_data.get('served_by')
+        if served_by is None and sale_data.get('served_by_id'):
+            served_by = User.objects.filter(
+                pk=sale_data['served_by_id'], is_active=True
+            ).first()
+
+        occurred_at = sale_data.get('occurred_at') or timezone.now()
+        entry_source = sale_data.get('entry_source')
+        if not entry_source:
+            entry_source = 'normal' if sale_type == 'normal' else 'pos'
+
+        is_backfill = entry_source == 'backfill'
+
         # Create sale
         sale = Sale.objects.create(
             sale_type=sale_type,
             status='completed',
             branch=branch,
             cashier=user,
+            served_by=served_by,
             customer=sale_data.get('customer'),
             subtotal=subtotal,
             tax_amount=tax_amount,
@@ -563,6 +580,9 @@ class SaleService(BaseService):
             amount_paid=amount_paid,
             change=change,
             notes=sale_data.get('notes', ''),
+            occurred_at=occurred_at,
+            entry_source=entry_source,
+            backfill_reason=sale_data.get('backfill_reason', ''),
         )
         
         # Create sale items. Stock is mutated exclusively by StockMovement.save()
@@ -579,7 +599,7 @@ class SaleService(BaseService):
 
             if (
                 item_data['product'].track_stock
-                and sales_validate_stock_before_sale()
+                and (sales_validate_stock_before_sale() or is_backfill)
             ):
                 self._create_sale_stock_movements(
                     branch=branch,
@@ -610,9 +630,9 @@ class SaleService(BaseService):
         queryset = self.model.objects.filter(status='completed')
         
         if date_from:
-            queryset = queryset.filter(created_at__gte=date_from)
+            queryset = queryset.filter(occurred_at__gte=date_from)
         if date_to:
-            queryset = queryset.filter(created_at__lte=date_to)
+            queryset = queryset.filter(occurred_at__lte=date_to)
         
         stats = {
             'total_sales': queryset.count(),
@@ -987,7 +1007,9 @@ class SaleService(BaseService):
 
         validated_items = self.validate_sale_items(
             items_data,
-            check_stock=sales_validate_stock_before_sale(),
+            check_stock=False
+            if validated_data.get('_backfill')
+            else sales_validate_stock_before_sale(),
             user=user,
         )
         subtotal = sum(item['subtotal'] for item in validated_items)
@@ -1016,6 +1038,27 @@ class SaleService(BaseService):
             'delivery_cost': delivery_cost,
             'customer': customer,
         }
+        if validated_data.get('_backfill'):
+            from django.contrib.auth.models import User
+
+            served_by = None
+            served_by_id = validated_data.get('served_by_id')
+            if served_by_id:
+                served_by = User.objects.filter(pk=served_by_id, is_active=True).first()
+            if served_by is None and user is not None:
+                served_by = user
+            sale_data.update(
+                {
+                    'entry_source': 'backfill',
+                    'occurred_at': validated_data['occurred_at'],
+                    'backfill_reason': validated_data.get('backfill_reason', ''),
+                    'served_by': served_by,
+                }
+            )
+            pending_photo = validated_data.get('backfill_receipt_photo_path')
+        else:
+            pending_photo = None
+            sale_data['entry_source'] = 'normal' if sale_type == 'normal' else 'pos'
 
         sale = self.create_sale(
             sale_data,
@@ -1024,6 +1067,10 @@ class SaleService(BaseService):
             branch,
             validated_items=validated_items,
         )
+        if pending_photo:
+            from sales.backfill_photo import attach_pending_backfill_receipt_photo
+
+            attach_pending_backfill_receipt_photo(sale, pending_photo)
         self._apply_sale_payment(customer, sale, user, payment_result)
 
         invoice = self._maybe_create_invoice_for_sale(
@@ -1048,6 +1095,25 @@ class SaleService(BaseService):
                     f'Sale completed. {payment_result["wallet_credit_added"]} KES added to customer wallet.'
                 )
         return result
+
+    @transaction.atomic
+    def create_backfill_from_payload(self, payload: Dict[str, Any], user) -> Dict[str, Any]:
+        """Apply an approved backfill from stored apply_payload."""
+        from django.utils.dateparse import parse_datetime
+        from django.utils import timezone
+
+        data = dict(payload or {})
+        occurred_raw = data.pop('occurred_at', None)
+        photo_path = data.pop('backfill_receipt_photo_path', None)
+        if isinstance(occurred_raw, str):
+            occurred_at = parse_datetime(occurred_raw)
+            if occurred_at and timezone.is_naive(occurred_at):
+                occurred_at = timezone.make_aware(occurred_at)
+            data['occurred_at'] = occurred_at
+        data['_backfill'] = True
+        if photo_path:
+            data['backfill_receipt_photo_path'] = photo_path
+        return self.create_sale_from_validated_data(data, user, request=None)
 
     @transaction.atomic
     def cancel_holding_sale(self, holding: Sale) -> Sale:
@@ -1166,7 +1232,7 @@ class InvoiceService(BaseService):
             balance=balance,
             status=status,
             due_date=due_date,
-            issued_date=sale.created_at.date(),
+            issued_date=(sale.occurred_at or sale.created_at).date(),
             created_by=user or sale.cashier,
             notes=notes
         )
@@ -1190,7 +1256,7 @@ class InvoiceService(BaseService):
                 invoice=invoice,
                 amount=paid_amount,
                 payment_method=sale.payment_method,
-                payment_date=timezone.now().date(),
+                payment_date=(sale.occurred_at or sale.created_at).date(),
                 recorded_by=user or sale.cashier,
                 notes=f"Initial payment from sale {sale.sale_number}"
             )

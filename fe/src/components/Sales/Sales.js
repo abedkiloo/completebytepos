@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Receipt, RotateCcw, ShoppingCart } from 'lucide-react';
+import { Receipt, RotateCcw, ShoppingCart, Clock } from 'lucide-react';
 import { salesAPI } from '../../services/api';
 import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
@@ -288,6 +288,12 @@ const Sales = () => {
               : 'Review completed transactions and reprint receipts.'
           }
         >
+          <Button variant="outline" asChild>
+            <Link to="/sales/record-past">
+              <Clock className="h-4 w-4" />
+              Record past sale
+            </Link>
+          </Button>
           <Button asChild>
             <Link to="/pos">
               <ShoppingCart className="h-4 w-4" />
@@ -372,6 +378,7 @@ const Sales = () => {
                 {sales.map((sale) => {
                   const displayTotal = saleDisplayTotal(sale);
                   const itemCount = saleDisplayItemCount(sale);
+                  const saleWhen = sale.occurred_at || sale.created_at;
                   return (
                   <DataTableRow key={sale.id}>
                     <DataTableCell>
@@ -382,9 +389,14 @@ const Sales = () => {
                       >
                         {sale.sale_number}
                       </button>
+                      {sale.is_late_entry ? (
+                        <Badge variant="outline" className="ml-1 text-[10px]">
+                          Late entry
+                        </Badge>
+                      ) : null}
                     </DataTableCell>
                     <DataTableCell className="text-muted-foreground whitespace-nowrap">
-                      {formatDateTime(sale.created_at)}
+                      {formatDateTime(saleWhen)}
                     </DataTableCell>
                     <DataTableCell>{sale.cashier_name || '—'}</DataTableCell>
                     <DataTableCell align="right">{itemCount}</DataTableCell>

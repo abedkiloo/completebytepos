@@ -10,7 +10,8 @@ from decimal import Decimal
 from typing import Any, Optional, Tuple
 
 from django.contrib.auth.models import User
-from django.db.models import Count, Sum
+from django.db.models import Count, Q, Sum
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from sales.models import Sale, SaleRefund
@@ -71,21 +72,20 @@ class SalesPersonReportService:
         except (TypeError, ValueError):
             cashier_id_int = None
 
-        sales_qs = Sale.objects.filter(status='completed').select_related('cashier')
+        sales_qs = Sale.objects.filter(status='completed').select_related('cashier', 'served_by')
         if start:
-            sales_qs = sales_qs.filter(created_at__gte=start)
+            sales_qs = sales_qs.filter(occurred_at__gte=start)
         if end:
-            sales_qs = sales_qs.filter(created_at__lte=end)
+            sales_qs = sales_qs.filter(occurred_at__lte=end)
         if cashier_id_int:
-            sales_qs = sales_qs.filter(cashier_id=cashier_id_int)
+            sales_qs = sales_qs.filter(
+                Q(served_by_id=cashier_id_int)
+                | Q(served_by__isnull=True, cashier_id=cashier_id_int)
+            )
 
         staff_rows = list(
-            sales_qs.values(
-                'cashier_id',
-                'cashier__username',
-                'cashier__first_name',
-                'cashier__last_name',
-            )
+            sales_qs.annotate(staff_id=Coalesce('served_by_id', 'cashier_id'))
+            .values('staff_id')
             .annotate(
                 sales_count=Count('id', distinct=True),
                 gross_sales=Sum('total'),
@@ -93,6 +93,9 @@ class SalesPersonReportService:
             )
             .order_by('-gross_sales')
         )
+
+        user_ids = [row['staff_id'] for row in staff_rows if row['staff_id']]
+        users_by_id = {u.id: u for u in User.objects.filter(id__in=user_ids)}
 
         refund_qs = SaleRefund.objects.filter(sale__status='completed').select_related(
             'sale', 'sale__cashier'
@@ -102,11 +105,18 @@ class SalesPersonReportService:
         if end:
             refund_qs = refund_qs.filter(created_at__lte=end)
         if cashier_id_int:
-            refund_qs = refund_qs.filter(sale__cashier_id=cashier_id_int)
+            refund_qs = refund_qs.filter(
+                Q(sale__served_by_id=cashier_id_int)
+                | Q(sale__served_by__isnull=True, sale__cashier_id=cashier_id_int)
+            )
 
-        refund_by_cashier = {
-            row['sale__cashier_id']: row
-            for row in refund_qs.values('sale__cashier_id').annotate(
+        refund_by_staff = {
+            row['staff_id']: row
+            for row in refund_qs.annotate(
+                staff_id=Coalesce('sale__served_by_id', 'sale__cashier_id')
+            )
+            .values('staff_id')
+            .annotate(
                 refunds_count=Count('id'),
                 refunds_total=Sum('amount'),
             )
@@ -123,30 +133,22 @@ class SalesPersonReportService:
         }
 
         for row in staff_rows:
-            cid = row['cashier_id']
+            sid = row['staff_id']
             gross = _decimal_float(row['gross_sales'])
             count = row['sales_count'] or 0
             items = int(row['items_sold'] or 0)
-            ref = refund_by_cashier.get(cid, {})
+            ref = refund_by_staff.get(sid, {})
             ref_count = ref.get('refunds_count') or 0
             ref_total = _decimal_float(ref.get('refunds_total'))
             net = gross - ref_total
             avg_ticket = (gross / count) if count else 0.0
 
-            if cid:
-                user_stub = User(
-                    id=cid,
-                    username=row['cashier__username'] or '',
-                    first_name=row['cashier__first_name'] or '',
-                    last_name=row['cashier__last_name'] or '',
-                )
-                name = _display_name(user_stub)
-            else:
-                name = 'Unassigned'
+            user_stub = users_by_id.get(sid) if sid else None
+            name = _display_name(user_stub) if user_stub else 'Unassigned'
 
             staff.append({
-                'user_id': cid,
-                'username': row['cashier__username'] or '',
+                'user_id': sid,
+                'username': user_stub.username if user_stub else '',
                 'display_name': name,
                 'sales_count': count,
                 'gross_sales': round(gross, 2),
@@ -171,9 +173,14 @@ class SalesPersonReportService:
         if cashier_id_int or len(staff) == 1:
             target_id = cashier_id_int or (staff[0]['user_id'] if len(staff) == 1 else None)
             if target_id is not None:
-                detail_qs = sales_qs.filter(cashier_id=target_id).order_by('-created_at')[:200]
+                detail_qs = sales_qs.filter(
+                    Q(served_by_id=target_id)
+                    | Q(served_by__isnull=True, cashier_id=target_id)
+                ).order_by('-occurred_at')[:200]
             elif target_id is None and staff and staff[0]['user_id'] is None:
-                detail_qs = sales_qs.filter(cashier__isnull=True).order_by('-created_at')[:200]
+                detail_qs = sales_qs.filter(
+                    served_by__isnull=True, cashier__isnull=True
+                ).order_by('-occurred_at')[:200]
             else:
                 detail_qs = sales_qs.none()
 
@@ -190,7 +197,12 @@ class SalesPersonReportService:
                 detail.append({
                     'sale_id': sale.id,
                     'sale_number': sale.sale_number,
-                    'date': sale.created_at.isoformat() if sale.created_at else None,
+                    'date': sale.occurred_at.isoformat() if sale.occurred_at else None,
+                    'recorded_at': sale.created_at.isoformat() if sale.created_at else None,
+                    'is_late_entry': sale.is_late_entry,
+                    'served_by_name': (
+                        _display_name(sale.served_by) if sale.served_by else _display_name(sale.cashier)
+                    ),
                     'payment_method': sale.payment_method,
                     'total': _decimal_float(sale.total),
                     'refunded': round(refunded, 2),

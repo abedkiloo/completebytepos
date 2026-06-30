@@ -414,6 +414,17 @@ class StoreSettings(models.Model):
             'Off by default — POS and checkout are unchanged.'
         ),
     )
+    backfill_max_days = models.PositiveIntegerField(
+        default=30,
+        help_text='Maximum days in the past staff may record an offline sale.',
+    )
+    backfill_maker_checker_enabled = models.BooleanField(
+        default=True,
+        help_text=(
+            'When maker-checker is on, past sale entries require checker approval before '
+            'stock and accounts are updated. Turn off to apply backfills immediately.'
+        ),
+    )
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(
         User,

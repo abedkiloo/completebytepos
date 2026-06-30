@@ -149,6 +149,8 @@ class StoreSettingsSerializer(serializers.ModelSerializer):
             'receipt_auto_print',
             'maker_checker_enabled',
             'maker_checker_sales_controls',
+            'backfill_max_days',
+            'backfill_maker_checker_enabled',
             'emergency_stock_mode',
             'updated_at',
         ]

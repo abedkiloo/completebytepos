@@ -370,7 +370,7 @@ def create_sale_journal_entry(sale):
     
     # Create transaction
     txn = Transaction.objects.create(
-        transaction_date=sale.created_at.date(),
+        transaction_date=(sale.occurred_at or sale.created_at).date(),
         description=f"Sale: {sale.sale_number}",
         reference=sale.sale_number,
         reference_type='sale',

@@ -84,6 +84,8 @@ export default function SystemSettings() {
         maker_checker_enabled: form.maker_checker_enabled,
         maker_checker_sales_controls: form.maker_checker_sales_controls,
         emergency_stock_mode: form.emergency_stock_mode,
+        backfill_max_days: Number(form.backfill_max_days) || 30,
+        backfill_maker_checker_enabled: form.backfill_maker_checker_enabled,
       };
       if (needsReason) {
         payload.reason = changeReason.trim();
@@ -202,6 +204,30 @@ export default function SystemSettings() {
                 onChange={(v) => setForm({ ...form, maker_checker_sales_controls: v })}
                 label="Optional: post-completion sale edits"
                 description="Future feature — approval for notes/payment method only. Off by default; voids/refunds use the main maker-checker toggle above."
+              />
+              <div className="space-y-1.5 border-t border-dashed pt-3">
+                <Label htmlFor="backfill_max_days">Past sale backdate limit (days)</Label>
+                <Input
+                  id="backfill_max_days"
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={form.backfill_max_days ?? 30}
+                  onChange={(e) =>
+                    setForm({ ...form, backfill_max_days: parseInt(e.target.value, 10) || 30 })
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  How far back staff may record offline sales (default 30 days).
+                </p>
+              </div>
+              <StoreCheckboxRow
+                id="backfill_maker_checker_enabled"
+                checked={form.backfill_maker_checker_enabled !== false}
+                disabled={!form.maker_checker_enabled}
+                onChange={(v) => setForm({ ...form, backfill_maker_checker_enabled: v })}
+                label="Require approval for past sale entries"
+                description="When maker-checker is on, backfills queue for checker approval before stock and accounts update."
               />
             </CardContent>
           </Card>

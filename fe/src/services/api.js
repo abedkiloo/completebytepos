@@ -312,6 +312,39 @@ export const salesAPI = {
   checkout: (id, data) => api.post(`/sales/${id}/checkout/`, data),
   cancelHolding: (id) => api.post(`/sales/${id}/cancel-holding/`),
   refund: (id, data) => api.post(`/sales/${id}/refund/`, data),
+  backfill: (data, photoFile) => {
+    if (photoFile) {
+      const body = new FormData();
+      Object.entries(data).forEach(([key, value]) => {
+        if (value === null || value === undefined) return;
+        if (key === 'items') {
+          body.append(key, JSON.stringify(value));
+        } else if (typeof value === 'boolean') {
+          body.append(key, value ? 'true' : 'false');
+        } else {
+          body.append(key, value);
+        }
+      });
+      body.append('backfill_receipt_photo', photoFile);
+      return api.post('/sales/backfill/', body, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+    }
+    return api.post('/sales/backfill/', data);
+  },
+  backfillPreflight: (data) => api.post('/sales/backfill-preflight/', data),
+  backfillImportCsv: (file, options = {}) => {
+    const body = new FormData();
+    body.append('file', file);
+    if (options.acknowledge_stock_warnings) {
+      body.append('acknowledge_stock_warnings', 'true');
+    }
+    return api.post('/sales/backfill-import-csv/', body, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  backfillImportTemplate: () =>
+    api.get('/sales/backfill-import-template/', { responseType: 'blob' }),
 };
 
 export const customersAPI = {

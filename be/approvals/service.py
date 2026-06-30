@@ -5,6 +5,7 @@ Maker-checker workflow: submit, approve, reject, validate.
 from __future__ import annotations
 
 import uuid
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -23,6 +24,7 @@ from approvals.registry import (
     ACTION_PRODUCT_PRICE,
     ACTION_PRODUCT_STOCK,
     ACTION_SALE_REFUND,
+    ACTION_SALE_BACKFILL,
     ACTION_STOCK_ADJUST,
     ACTION_STOCK_PURCHASE,
     ACTION_STOCK_TRANSFER,
@@ -41,8 +43,16 @@ class MakerCheckerRequired(Exception):
 
 
 def _json_safe(value: Any) -> Any:
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
     if isinstance(value, Decimal):
         return str(value)
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
     if hasattr(value, 'pk'):
         return value.pk
     if hasattr(value, 'name'):
@@ -50,7 +60,7 @@ def _json_safe(value: Any) -> Any:
             return str(value.name) if value else ''
         except ValueError:
             return ''
-    return value
+    return str(value)
 
 
 def snapshot_model(instance, fields: Optional[List[str]] = None) -> Dict[str, Any]:
@@ -111,7 +121,7 @@ def submit_change(
         reason=str(reason).strip(),
         status=PendingChange.STATUS_PENDING,
         made_by=request.user if request and getattr(request, 'user', None) else None,
-        apply_payload=apply_payload or {},
+        apply_payload={k: _json_safe(v) for k, v in (apply_payload or {}).items()},
         batch_id=batch_id or '',
     )
     _audit_pending(request, change, 'pending_submit')
@@ -194,6 +204,20 @@ def validate_before_approval(change: PendingChange, *, extreme_price_confirmed: 
             raise ValidationError(
                 'Refund amount exceeds remaining refundable balance; reject or adjust.'
             )
+
+    if change.action_type == ACTION_SALE_BACKFILL:
+        from sales.backfill_policy import validate_backfill_occurred_at
+        from django.utils.dateparse import parse_datetime
+        from django.utils import timezone
+
+        payload = change.apply_payload or {}
+        occurred_raw = payload.get('occurred_at')
+        occurred_at = occurred_raw
+        if isinstance(occurred_raw, str):
+            occurred_at = parse_datetime(occurred_raw)
+            if occurred_at and timezone.is_naive(occurred_at):
+                occurred_at = timezone.make_aware(occurred_at)
+        validate_backfill_occurred_at(occurred_at)
 
 
 @transaction.atomic

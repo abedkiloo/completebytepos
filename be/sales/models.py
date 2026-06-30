@@ -111,6 +111,13 @@ class Sale(models.Model):
         ('partial', 'Partially refunded'),
         ('refunded', 'Fully refunded'),
     ]
+
+    ENTRY_SOURCE_CHOICES = [
+        ('pos', 'POS'),
+        ('billing', 'Billing'),
+        ('normal', 'Normal sale'),
+        ('backfill', 'Past sale entry'),
+    ]
     
     PAYMENT_METHODS = [
         ('cash', 'Cash'),
@@ -219,6 +226,34 @@ class Sale(models.Model):
         help_text='Shipping location/area'
     )
     notes = models.TextField(blank=True)
+    occurred_at = models.DateTimeField(
+        db_index=True,
+        help_text='When the sale actually happened (business date for reports).',
+    )
+    entry_source = models.CharField(
+        max_length=20,
+        choices=ENTRY_SOURCE_CHOICES,
+        default='pos',
+        db_index=True,
+    )
+    backfill_reason = models.TextField(
+        blank=True,
+        help_text='Required when entry_source is backfill — why this sale is being entered late.',
+    )
+    served_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='sales_served',
+        help_text='Staff member who made the sale (commission attribution). Defaults to cashier.',
+    )
+    backfill_receipt_photo = models.ImageField(
+        upload_to='sale_backfill/',
+        blank=True,
+        null=True,
+        help_text='Optional photo of the paper receipt for past sale entries.',
+    )
     refund_status = models.CharField(
         max_length=20,
         choices=REFUND_STATUS_CHOICES,
@@ -233,16 +268,31 @@ class Sale(models.Model):
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['created_at']),
+            models.Index(fields=['occurred_at']),
             models.Index(fields=['sale_number']),
             models.Index(fields=['cashier', 'created_at']),
+            models.Index(fields=['served_by', 'occurred_at']),
             models.Index(fields=['status', 'cashier']),
             models.Index(fields=['refund_status', 'created_at']),
+            models.Index(fields=['entry_source', 'occurred_at']),
         ]
 
     def save(self, *args, **kwargs):
         if not self.sale_number:
             self.sale_number = f"SALE-{uuid.uuid4().hex[:8].upper()}"
+        if not self.occurred_at:
+            from django.utils import timezone
+            self.occurred_at = timezone.now()
         super().save(*args, **kwargs)
+
+    @property
+    def is_late_entry(self) -> bool:
+        return self.entry_source == 'backfill'
+
+    @property
+    def attributed_staff(self):
+        """Staff credited for this sale (served_by or cashier)."""
+        return self.served_by or self.cashier
 
     def __str__(self):
         return f"{self.sale_number} - {self.total} KES"

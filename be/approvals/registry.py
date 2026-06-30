@@ -36,6 +36,7 @@ ACTION_ROLE_PERMISSIONS = 'role_permissions'
 # Sales (completed)
 ACTION_SALE_COMPLETED_EDIT = 'sale_completed_edit'
 ACTION_SALE_REFUND = 'sale_refund'
+ACTION_SALE_BACKFILL = 'sale_backfill'
 
 PRODUCT_SENSITIVE_FIELDS: FrozenSet[str] = frozenset({
     'price',
@@ -84,6 +85,7 @@ CHECKER_MODULE_BY_ACTION: dict[str, str] = {
     ACTION_ROLE_PERMISSIONS: 'roles',
     ACTION_SALE_COMPLETED_EDIT: 'sales',
     ACTION_SALE_REFUND: 'sales',
+    ACTION_SALE_BACKFILL: 'sales',
 }
 
 

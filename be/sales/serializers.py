@@ -217,6 +217,9 @@ class SaleSerializer(serializers.ModelSerializer):
     items = SaleItemSerializer(many=True, read_only=True)
     cashier_name = serializers.CharField(source='cashier.username', read_only=True)
     customer_name = serializers.CharField(source='customer.name', read_only=True)
+    served_by_name = serializers.SerializerMethodField()
+    is_late_entry = serializers.SerializerMethodField()
+    backfill_receipt_photo_url = serializers.SerializerMethodField()
     item_count = serializers.SerializerMethodField()
     amount_refunded = serializers.SerializerMethodField()
     refundable_remaining = serializers.SerializerMethodField()
@@ -226,18 +229,40 @@ class SaleSerializer(serializers.ModelSerializer):
         model = Sale
         fields = [
             'id', 'sale_number', 'sale_type', 'status', 'refund_status', 'cashier', 'cashier_name',
-            'customer', 'customer_name',
+            'served_by', 'served_by_name', 'customer', 'customer_name',
             'subtotal', 'tax_amount', 'discount_amount', 'total',
             'delivery_method', 'delivery_cost',
             'shipping_address', 'shipping_location',
             'payment_method', 'payment_reference', 'amount_paid', 'change', 'notes',
+            'occurred_at', 'entry_source', 'backfill_reason', 'is_late_entry',
+            'backfill_receipt_photo_url',
             'items', 'item_count', 'amount_refunded', 'refundable_remaining', 'can_refund',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['sale_number', 'created_at', 'updated_at', 'refund_status']
+        read_only_fields = [
+            'sale_number', 'created_at', 'updated_at', 'refund_status', 'entry_source',
+        ]
 
     def get_item_count(self, obj):
         return obj.item_count
+
+    def get_served_by_name(self, obj):
+        staff = obj.served_by or obj.cashier
+        if not staff:
+            return None
+        full = staff.get_full_name().strip()
+        return full or staff.username
+
+    def get_is_late_entry(self, obj):
+        return obj.is_late_entry
+
+    def get_backfill_receipt_photo_url(self, obj):
+        if not obj.backfill_receipt_photo:
+            return None
+        request = self.context.get('request')
+        from config.media_urls import absolute_media_url
+
+        return absolute_media_url(request, obj.backfill_receipt_photo.url)
 
     def get_amount_refunded(self, obj):
         return obj.amount_refunded
@@ -492,6 +517,31 @@ class SaleCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError({'payment_reference': str(exc)})
 
         return apply_sale_module_settings(attrs)
+
+
+class SaleBackfillCreateSerializer(SaleCreateSerializer):
+    """Record a sale that happened offline, with a historical business date."""
+
+    occurred_at = serializers.DateTimeField()
+    backfill_reason = serializers.CharField()
+    served_by_id = serializers.IntegerField(required=False, allow_null=True)
+    acknowledge_stock_warnings = serializers.BooleanField(required=False, default=False)
+
+    def validate_backfill_reason(self, value):
+        from sales.backfill_policy import validate_backfill_reason
+
+        return validate_backfill_reason(value)
+
+    def validate_occurred_at(self, value):
+        from sales.backfill_policy import validate_backfill_occurred_at
+
+        validate_backfill_occurred_at(value)
+        return value
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        attrs['_backfill'] = True
+        return attrs
 
 
 class InvoiceItemSerializer(serializers.ModelSerializer):

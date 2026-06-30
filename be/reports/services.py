@@ -66,11 +66,11 @@ class ReportDashboardService:
             datetime(today.year, today.month - 1 if today.month > 1 else 12, 1)
         )
 
-        today_sales = Sale.objects.filter(created_at__gte=start_of_day, status='completed')
+        today_sales = Sale.objects.filter(occurred_at__gte=start_of_day, status='completed')
         today_total = today_sales.aggregate(total=Sum('total'))['total'] or 0
         today_count = today_sales.count()
 
-        month_sales = Sale.objects.filter(created_at__gte=start_of_month, status='completed')
+        month_sales = Sale.objects.filter(occurred_at__gte=start_of_month, status='completed')
         month_total = month_sales.aggregate(total=Sum('total'))['total'] or 0
 
         last_month_sales = Sale.objects.filter(

@@ -22,6 +22,7 @@ export const ACTION_TYPE_LABELS = {
   role_permissions: 'Role permissions change',
   sale_completed_edit: 'Completed sale edit',
   sale_refund: 'Sale void / refund',
+  sale_backfill: 'Record past sale',
 };
 
 export const ENTITY_TYPE_LABELS = {

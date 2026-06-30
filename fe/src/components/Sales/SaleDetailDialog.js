@@ -67,7 +67,7 @@ export default function SaleDetailDialog({
               <strong>Sale number:</strong> {sale.sale_number}
             </p>
             <p>
-              <strong>Date:</strong> {formatDateTime(sale.created_at)}
+              <strong>Date:</strong> {formatDateTime(sale.occurred_at || sale.created_at)}
             </p>
             {showCustomerName && sale.customer_name ? (
               <p>
@@ -182,6 +182,36 @@ export default function SaleDetailDialog({
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Admin
             </p>
+            {sale.is_late_entry ? (
+              <SummaryRow label="Late entry" value="Yes" className="text-amber-800" />
+            ) : null}
+            {sale.occurred_at ? (
+              <SummaryRow label="Sale date" value={formatDateTime(sale.occurred_at)} />
+            ) : null}
+            <SummaryRow label="Recorded in system" value={formatDateTime(sale.created_at)} />
+            {sale.served_by_name ? (
+              <SummaryRow label="Served by" value={sale.served_by_name} />
+            ) : null}
+            {sale.backfill_reason ? (
+              <SummaryRow label="Entry reason" value={sale.backfill_reason} />
+            ) : null}
+            {sale.backfill_receipt_photo_url ? (
+              <div className="space-y-1 pt-1">
+                <p className="text-muted-foreground">Paper receipt</p>
+                <a
+                  href={sale.backfill_receipt_photo_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block"
+                >
+                  <img
+                    src={sale.backfill_receipt_photo_url}
+                    alt="Paper receipt"
+                    className="max-h-40 rounded border object-contain"
+                  />
+                </a>
+              </div>
+            ) : null}
             <SummaryRow label="Status" value={finalStatus} />
             <SummaryRow label="Payment status" value={paymentStatus} />
             {balanceDue > 0 ? (

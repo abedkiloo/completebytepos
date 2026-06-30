@@ -21,6 +21,8 @@ STORE_SETTINGS_IMMEDIATE_FIELDS = frozenset({
     'maker_checker_enabled',
     'maker_checker_sales_controls',
     'emergency_stock_mode',
+    'backfill_max_days',
+    'backfill_maker_checker_enabled',
     'updated_by',
     'receipt_logo',
 })

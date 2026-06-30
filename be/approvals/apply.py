@@ -19,6 +19,7 @@ from approvals.registry import (
     ACTION_ROLE_PERMISSIONS,
     ACTION_SALE_COMPLETED_EDIT,
     ACTION_SALE_REFUND,
+    ACTION_SALE_BACKFILL,
     ACTION_STOCK_ADJUST,
     ACTION_STOCK_PURCHASE,
     ACTION_STOCK_TRANSFER,
@@ -58,6 +59,9 @@ def apply_pending_change(change: PendingChange) -> None:
         return
     if change.entity_type == 'sales.Sale' and change.action_type == ACTION_SALE_REFUND:
         _apply_sale_refund(change)
+        return
+    if change.entity_type == 'sales.SaleBackfill' and change.action_type == ACTION_SALE_BACKFILL:
+        _apply_sale_backfill(change)
         return
     raise ValidationError(f'Unsupported pending change: {change.action_type}')
 
@@ -240,5 +244,33 @@ def _apply_sale_refund(change: PendingChange) -> None:
         from utils.audit_events import log_sale_refunded
 
         log_sale_refunded(None, sale, refund)
+    except Exception:
+        pass
+
+
+def _apply_sale_backfill(change: PendingChange) -> None:
+    from sales.services import SaleService
+
+    payload = dict(change.apply_payload or {})
+    checker = change.checked_by or change.made_by
+    if not checker:
+        raise ValidationError('Backfill approval requires a checker user.')
+
+    service = SaleService()
+    result = service.create_backfill_from_payload(payload, user=checker)
+    sale = result['sale']
+    change.apply_payload = {
+        **payload,
+        'sale_id': sale.id,
+        'sale_number': sale.sale_number,
+    }
+    change.entity_id = str(sale.pk)
+    change.entity_type = 'sales.Sale'
+    change.save(update_fields=['apply_payload', 'entity_id', 'entity_type'])
+
+    try:
+        from utils.audit_events import log_sale_completed
+
+        log_sale_completed(None, sale, source='backfill')
     except Exception:
         pass

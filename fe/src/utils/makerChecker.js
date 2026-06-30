@@ -52,6 +52,12 @@ const REASON_CONTEXT_COPY = {
     summary:
       'This void/refund will be submitted for manager approval. Stock, wallet, and accounts stay unchanged until it is approved.',
   },
+  sale_backfill: {
+    label: 'Reason for late entry',
+    placeholder: 'Why is this sale being entered now? (e.g. busy day, paper receipt only)',
+    summary:
+      'This past sale will be submitted for manager approval. Stock and accounts stay unchanged until it is approved.',
+  },
 };
 
 /** True when the signed-in user can open the pending-approvals queue. */

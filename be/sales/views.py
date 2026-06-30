@@ -11,7 +11,7 @@ from decimal import Decimal
 from django.http import HttpResponse
 from .models import Sale, SaleItem, Invoice, InvoiceItem, Payment, Customer, PaymentPlan, PaymentReminder, CustomerWalletTransaction
 from .serializers import (
-    SaleSerializer, SaleCreateSerializer,
+    SaleSerializer, SaleCreateSerializer, SaleBackfillCreateSerializer,
     HoldingSaleSerializer, CheckoutHoldingSerializer,
     SaleRefundCreateSerializer, SaleRefundSerializer,
     InvoiceSerializer, InvoiceCreateSerializer,
@@ -35,6 +35,64 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _parse_backfill_request_data(request):
+    """Normalize JSON or multipart backfill payloads."""
+    import json
+
+    data = dict(request.data)
+    items = data.get('items')
+    if isinstance(items, str):
+        data['items'] = json.loads(items)
+    for key in ('customer_id', 'served_by_id'):
+        if key in data and data[key] in ('', None, 'null'):
+            data[key] = None
+    if 'amount_paid' in data and data['amount_paid'] not in (None, ''):
+        data['amount_paid'] = data['amount_paid']
+    if 'allow_partial_payment' in data:
+        data['allow_partial_payment'] = str(data['allow_partial_payment']).lower() in (
+            'true',
+            '1',
+            'yes',
+        )
+    if 'acknowledge_stock_warnings' in data:
+        data['acknowledge_stock_warnings'] = str(
+            data['acknowledge_stock_warnings']
+        ).lower() in ('true', '1', 'yes')
+    if 'create_invoice' in data:
+        data['create_invoice'] = str(data['create_invoice']).lower() in ('true', '1', 'yes')
+    return data
+
+
+def _queue_or_create_backfill(request, validated):
+    from sales.backfill_policy import backfill_requires_approval
+    from approvals.backfill_integration import queue_sale_backfill
+
+    if backfill_requires_approval():
+        pending = queue_sale_backfill(request, validated)
+        from approvals.serializers import PendingChangeSerializer
+
+        return Response(
+            {'pending_change': PendingChangeSerializer(pending).data},
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+    result = SaleService().create_sale_from_validated_data(
+        validated,
+        request.user,
+        request,
+    )
+    sale = result['sale']
+    response_data = SaleSerializer(sale, context={'request': request}).data
+    invoice = result.get('invoice')
+    if invoice:
+        response_data['invoice'] = InvoiceSerializer(invoice).data
+
+    from utils.audit_events import log_sale_completed
+
+    log_sale_completed(request, sale, source='backfill')
+    return Response(response_data, status=status.HTTP_201_CREATED)
+
+
 # RBAC maps. Note: SaleViewSet does NOT include 'destroy' here because we
 # disable DELETE on Sales at the http_method_names level for audit-trail
 # integrity (refunds/voids should be modelled separately, not DB deletes).
@@ -51,6 +109,10 @@ SALES_PERMS = RequirePermPerAction('sales', {
     'checkout': 'create',
     'cancel_holding': 'update',
     'refund': 'refund',
+    'backfill': 'create',
+    'backfill_preflight': 'create',
+    'backfill_import_csv': 'create',
+    'backfill_import_template': 'view',
 })
 
 CUSTOMERS_PERMS = RequirePermPerAction('customers', {
@@ -85,7 +147,7 @@ PAYMENTS_PERMS = RequirePermPerAction('invoicing', {
 
 
 class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
-    queryset = Sale.objects.all().select_related('cashier').prefetch_related(
+    queryset = Sale.objects.all().select_related('cashier', 'served_by').prefetch_related(
         'items__product', 'items__refund_lines'
     )
     serializer_class = SaleSerializer
@@ -94,7 +156,7 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     # Sales are part of the audit trail - never deletable via the API. Use a
     # void/refund flow instead (modelled separately).
     http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
-    ordering = ['-created_at']
+    ordering = ['-occurred_at']
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -161,6 +223,109 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         log_sale_completed(request, sale, source='create')
 
         return Response(response_data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='backfill')
+    @transaction.atomic
+    def backfill(self, request):
+        """Record a sale that happened offline, using a historical business date."""
+        raw = _parse_backfill_request_data(request)
+        serializer = SaleBackfillCreateSerializer(data=raw)
+        serializer.is_valid(raise_exception=True)
+        validated = dict(serializer.validated_data)
+
+        from sales.backfill_policy import validate_backfill_stock_warnings
+        from sales.backfill_photo import save_pending_backfill_receipt_photo
+
+        try:
+            validated_items = self.sale_service.validate_sale_items(
+                validated['items'],
+                check_stock=False,
+                user=request.user,
+            )
+            subtotal = sum(item['subtotal'] for item in validated_items)
+            tax = Decimal(str(validated.get('tax_amount', 0)))
+            discount = Decimal(str(validated.get('discount_amount', 0)))
+            delivery = Decimal(str(validated.get('delivery_cost', 0)))
+            validated['_preview_total'] = subtotal + tax - discount + delivery
+            validate_backfill_stock_warnings(
+                validated['occurred_at'],
+                validated['items'],
+                acknowledged=validated.get('acknowledge_stock_warnings'),
+            )
+        except ValidationError as e:
+            payload = getattr(e, 'message_dict', None) or {'error': validation_error_message(e)}
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+        photo = request.FILES.get('backfill_receipt_photo')
+        if photo:
+            validated['backfill_receipt_photo_path'] = save_pending_backfill_receipt_photo(photo)
+
+        try:
+            return _queue_or_create_backfill(request, validated)
+        except ValidationError as e:
+            return Response(
+                {'error': validation_error_message(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    @action(detail=False, methods=['post'], url_path='backfill-preflight')
+    def backfill_preflight(self, request):
+        """Return stock-count warnings before submitting a past sale."""
+        raw = _parse_backfill_request_data(request)
+        occurred_at = raw.get('occurred_at')
+        items = raw.get('items') or []
+        if isinstance(occurred_at, str):
+            from django.utils.dateparse import parse_datetime
+
+            occurred_at = parse_datetime(occurred_at)
+            if occurred_at and timezone.is_naive(occurred_at):
+                occurred_at = timezone.make_aware(occurred_at)
+
+        from sales.backfill_policy import get_backfill_stock_warnings
+
+        warnings = get_backfill_stock_warnings(occurred_at, items)
+        return Response({'warnings': warnings})
+
+    @action(detail=False, methods=['get'], url_path='backfill-import-template')
+    def backfill_import_template(self, request):
+        from sales.backfill_import import backfill_import_template_csv
+
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="past_sales_import_template.csv"'
+        response.write('\ufeff')
+        response.write(backfill_import_template_csv())
+        return response
+
+    @action(detail=False, methods=['post'], url_path='backfill-import-csv')
+    def backfill_import_csv(self, request):
+        if 'file' not in request.FILES:
+            return Response({'error': 'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from sales.backfill_import import import_backfill_sales_from_csv
+
+        acknowledge = str(request.data.get('acknowledge_stock_warnings', '')).lower() in (
+            'true',
+            '1',
+            'yes',
+        )
+        try:
+            results = import_backfill_sales_from_csv(
+                request.FILES['file'],
+                user=request.user,
+                request=request,
+                acknowledge_stock_warnings=acknowledge,
+            )
+        except Exception as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        message = (
+            f'Import finished: {results["created"]} recorded'
+            f'{f", {results["pending"]} pending approval" if results["pending"] else ""}'
+        )
+        if results['errors']:
+            message += f'. {len(results["errors"])} issue(s).'
+
+        return Response({'message': message, **results})
 
     def update(self, request, *args, **kwargs):
         return self._update_sale(request, partial=False, **kwargs)
