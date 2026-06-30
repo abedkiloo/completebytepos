@@ -57,7 +57,11 @@ function PendingRow({ row, onResolved }) {
     setBusy(true);
     try {
       await pendingChangesAPI.reject(row.id, { rejection_reason: rejectReason.trim() });
-      toast.success('Rejected — nothing was changed');
+      if (row.action_type === 'sale_backfill') {
+        toast.success('Rejected — sent back to staff to fix on Record past sale.');
+      } else {
+        toast.success('Rejected — nothing was changed');
+      }
       onResolved();
       dispatchNavBadgesRefresh();
     } catch {

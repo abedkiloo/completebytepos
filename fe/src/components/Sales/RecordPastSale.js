@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, Clock, Download, Plus, Search, Trash2, Upload, X } from 'lucide-react';
-import { customersAPI, productsAPI, salesAPI, usersAPI } from '../../services/api';
+import { customersAPI, pendingChangesAPI, productsAPI, salesAPI, usersAPI, variantsAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
 import { toast } from '../../utils/toast';
 import { handleSaleBackfillResponse } from '../../utils/saleBackfill';
@@ -9,6 +9,7 @@ import { pendingApprovalToastMessage } from '../../utils/makerChecker';
 import { makerCheckerReasonCopy } from '../../utils/makerChecker';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import { isMakerCheckerEnabled, getCurrentUserId } from '../../utils/makerChecker';
+import { isManagerOrAdminFromStorage } from '../../utils/roleAccess';
 import ChangeReasonField from '../Approvals/ChangeReasonField';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { Button } from '../ui/button';
@@ -42,6 +43,47 @@ function toIsoDatetime(localValue) {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
+function localDatetimeFromIso(iso) {
+  if (!iso) return defaultOccurredAtLocal();
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return defaultOccurredAtLocal();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
+}
+
+async function linesFromBackfillPayload(items = []) {
+  const lines = [];
+  for (const row of items) {
+    let productName = `Product #${row.product_id}`;
+    try {
+      const res = await productsAPI.get(row.product_id);
+      const product = res.data;
+      productName = product.name;
+      if (row.variant_id) {
+        const vRes = await variantsAPI.getByProduct(product.id);
+        const variants = vRes.data?.results || vRes.data || [];
+        const variant = variants.find((v) => String(v.id) === String(row.variant_id));
+        if (variant) {
+          productName = `${product.name} — ${getVariantRowLabel(variant)}`;
+        }
+      } else if (product.sku) {
+        productName = `${product.name} (${product.sku})`;
+      }
+    } catch {
+      // keep fallback label
+    }
+    lines.push({
+      key: `${row.product_id}-${row.variant_id || 'base'}-${lines.length}`,
+      product_id: row.product_id,
+      variant_id: row.variant_id ?? null,
+      product_name: productName,
+      quantity: row.quantity,
+      unit_price: parseFloat(row.unit_price),
+    });
+  }
+  return lines;
+}
+
 function downloadBlob(blob, filename) {
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -51,9 +93,21 @@ function downloadBlob(blob, filename) {
   window.URL.revokeObjectURL(url);
 }
 
-function SinglePastSaleForm({ maxDays, mcOn, mcBackfill, backfillCopy }) {
+function SinglePastSaleForm({
+  maxDays,
+  mcOn,
+  mcBackfill,
+  backfillCopy,
+  canPickServedBy,
+  resubmitId,
+  rejectedSubmissions,
+  onEditResubmit,
+}) {
   const navigate = useNavigate();
   const currentUserId = getCurrentUserId();
+  const [resubmitPendingId, setResubmitPendingId] = useState(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [loadingResubmit, setLoadingResubmit] = useState(false);
   const [occurredAt, setOccurredAt] = useState(defaultOccurredAtLocal);
   const [backfillReason, setBackfillReason] = useState('');
   const [saleType, setSaleType] = useState('pos');
@@ -81,12 +135,7 @@ function SinglePastSaleForm({ maxDays, mcOn, mcBackfill, backfillCopy }) {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    customersAPI.list({ page_size: 100, is_active: true }).then((res) => {
-      const rows = res.data?.results || res.data || [];
-      setCustomerOptions(
-        rows.map((c) => ({ value: String(c.id), label: c.name || c.customer_code || `#${c.id}` }))
-      );
-    });
+    if (!canPickServedBy) return;
     usersAPI.list({ page_size: 100 }).then((res) => {
       const rows = res.data?.results || res.data || [];
       setStaffOptions(
@@ -96,7 +145,63 @@ function SinglePastSaleForm({ maxDays, mcOn, mcBackfill, backfillCopy }) {
         }))
       );
     });
+  }, [canPickServedBy]);
+
+  useEffect(() => {
+    customersAPI.list({ page_size: 100, is_active: true }).then((res) => {
+      const rows = res.data?.results || res.data || [];
+      setCustomerOptions(
+        rows.map((c) => ({ value: String(c.id), label: c.name || c.customer_code || `#${c.id}` }))
+      );
+    });
   }, []);
+
+  useEffect(() => {
+    if (!resubmitId) {
+      setResubmitPendingId(null);
+      setRejectionReason('');
+      return;
+    }
+    let cancelled = false;
+    setLoadingResubmit(true);
+    pendingChangesAPI
+      .get(resubmitId)
+      .then(async (res) => {
+        if (cancelled) return;
+        const change = res.data;
+        if (change.status !== 'rejected' || change.action_type !== 'sale_backfill') {
+          toast.error('This submission cannot be edited here.');
+          return;
+        }
+        const payload = change.apply_payload || {};
+        setResubmitPendingId(change.id);
+        setRejectionReason(change.rejection_reason || '');
+        setOccurredAt(localDatetimeFromIso(payload.occurred_at));
+        setBackfillReason(payload.backfill_reason || change.reason || '');
+        setSaleType(payload.sale_type || 'pos');
+        setCustomerId(payload.customer_id ? String(payload.customer_id) : '');
+        setPaymentMethod(payload.payment_method || 'cash');
+        setPaymentReference(payload.payment_reference || '');
+        setAmountPaid(String(payload.amount_paid ?? ''));
+        setAllowPartial(Boolean(payload.allow_partial_payment));
+        if (canPickServedBy && payload.served_by_id) {
+          setServedById(String(payload.served_by_id));
+        } else if (currentUserId != null) {
+          setServedById(String(currentUserId));
+        }
+        const nextLines = await linesFromBackfillPayload(payload.items || []);
+        if (!cancelled) setLines(nextLines);
+      })
+      .catch(() => {
+        if (!cancelled) toast.error('Could not load rejected submission');
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingResubmit(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [resubmitId, canPickServedBy, currentUserId]);
 
   useEffect(() => {
     const term = productSearch.trim();
@@ -243,7 +348,11 @@ function SinglePastSaleForm({ maxDays, mcOn, mcBackfill, backfillCopy }) {
         occurred_at: toIsoDatetime(occurredAt),
         backfill_reason: backfillReason.trim(),
         sale_type: saleType,
-        served_by_id: servedById ? parseInt(servedById, 10) : currentUserId,
+        served_by_id: canPickServedBy
+          ? servedById
+            ? parseInt(servedById, 10)
+            : currentUserId
+          : currentUserId,
         customer_id: customerId ? parseInt(customerId, 10) : null,
         payment_method: paymentMethod,
         payment_reference: paymentReference,
@@ -257,6 +366,9 @@ function SinglePastSaleForm({ maxDays, mcOn, mcBackfill, backfillCopy }) {
           unit_price: row.unit_price,
         })),
       };
+      if (resubmitPendingId) {
+        payload.resubmit_of = resubmitPendingId;
+      }
       if (saleType === 'normal') {
         payload.create_invoice = true;
       }
@@ -268,8 +380,12 @@ function SinglePastSaleForm({ maxDays, mcOn, mcBackfill, backfillCopy }) {
           navigate('/sales');
         },
         onPending: () => {
-          toast.success(pendingApprovalToastMessage());
-          navigate('/pending-approvals');
+          toast.success(
+            resubmitPendingId
+              ? 'Corrected sale sent back for approval.'
+              : pendingApprovalToastMessage()
+          );
+          navigate(resubmitPendingId ? '/sales/record-past' : '/pending-approvals');
         },
       });
     } catch (error) {
@@ -294,6 +410,38 @@ function SinglePastSaleForm({ maxDays, mcOn, mcBackfill, backfillCopy }) {
   return (
     <>
     <form onSubmit={handleSubmit} className="space-y-6">
+      {loadingResubmit ? (
+        <p className="text-sm text-muted-foreground">Loading rejected submission…</p>
+      ) : null}
+      {rejectionReason ? (
+        <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm">
+          <p className="font-medium text-destructive">Sent back for correction</p>
+          <p className="mt-1 text-muted-foreground">{rejectionReason}</p>
+        </div>
+      ) : null}
+      {!resubmitId && rejectedSubmissions?.length > 0 ? (
+        <div className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-4">
+          <p className="font-medium">Past sales sent back for correction</p>
+          <ul className="space-y-2">
+            {rejectedSubmissions.map((row) => (
+              <li
+                key={row.id}
+                className="flex flex-wrap items-start justify-between gap-2 text-sm"
+              >
+                <div className="min-w-0">
+                  <p>{row.entity_repr || 'Past sale'}</p>
+                  {row.rejection_reason ? (
+                    <p className="text-muted-foreground">{row.rejection_reason}</p>
+                  ) : null}
+                </div>
+                <Button type="button" size="sm" variant="outline" onClick={() => onEditResubmit(row.id)}>
+                  Fix & resubmit
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {mcOn && mcBackfill ? (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
           {backfillCopy.summary}
@@ -335,12 +483,18 @@ function SinglePastSaleForm({ maxDays, mcOn, mcBackfill, backfillCopy }) {
         </div>
         <div className="space-y-1.5">
           <Label>Served by</Label>
-          <SearchableSelect
-            value={servedById}
-            onChange={selectValue(setServedById)}
-            placeholder="Who made the sale?"
-            options={staffOptions}
-          />
+          {canPickServedBy ? (
+            <SearchableSelect
+              value={servedById}
+              onChange={selectValue(setServedById)}
+              placeholder="Who made the sale?"
+              options={staffOptions}
+            />
+          ) : (
+            <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+              You — recorded as the person who made this sale
+            </p>
+          )}
         </div>
         <div className="space-y-1.5 sm:col-span-2">
           <Label>Customer</Label>
@@ -680,11 +834,31 @@ function BulkPastSaleImport({ mcOn, mcBackfill }) {
 }
 
 export default function RecordPastSale() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const resubmitId = searchParams.get('resubmit');
+  const canPickServedBy = isManagerOrAdminFromStorage();
   const { settings } = useStoreSettings();
   const backfillCopy = makerCheckerReasonCopy('sale_backfill');
   const mcOn = isMakerCheckerEnabled(settings);
   const mcBackfill = settings.backfill_maker_checker_enabled !== false;
   const maxDays = Math.max(1, parseInt(settings.backfill_max_days, 10) || 30);
+  const [rejectedSubmissions, setRejectedSubmissions] = useState([]);
+
+  const loadRejected = useCallback(() => {
+    pendingChangesAPI
+      .mySubmissions({ status: 'rejected', action_type: 'sale_backfill' })
+      .then((res) => setRejectedSubmissions(res.data || []))
+      .catch(() => setRejectedSubmissions([]));
+  }, []);
+
+  useEffect(() => {
+    loadRejected();
+  }, [loadRejected, resubmitId]);
+
+  const onEditResubmit = (id) => {
+    navigate(`/sales/record-past?resubmit=${id}`);
+  };
 
   return (
     <PageShell>
@@ -709,6 +883,10 @@ export default function RecordPastSale() {
               mcOn={mcOn}
               mcBackfill={mcBackfill}
               backfillCopy={backfillCopy}
+              canPickServedBy={canPickServedBy}
+              resubmitId={resubmitId}
+              rejectedSubmissions={rejectedSubmissions}
+              onEditResubmit={onEditResubmit}
             />
           </TabsContent>
           <TabsContent value="bulk">

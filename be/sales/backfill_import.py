@@ -233,8 +233,11 @@ def import_backfill_sales_from_csv(
             }
             if group['customer_id']:
                 payload['customer_id'] = int(group['customer_id'])
-            if group['served_by_id']:
-                payload['served_by_id'] = int(group['served_by_id'])
+            if group['served_by_id'] and user is not None:
+                from sales.backfill_policy import resolve_backfill_served_by
+
+                staff = resolve_backfill_served_by(user, int(group['served_by_id']))
+                payload['served_by_id'] = staff.pk
             elif user is not None:
                 payload['served_by_id'] = user.pk
             if group['sale_type'] == 'normal':

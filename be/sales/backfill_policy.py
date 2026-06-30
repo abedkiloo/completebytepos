@@ -106,6 +106,27 @@ def backfill_stock_warnings_acknowledged(value) -> bool:
     return value in (True, 'true', 'True', '1', 1)
 
 
+def user_may_pick_backfill_served_by(user) -> bool:
+    """Only managers/admins may attribute a past sale to another staff member."""
+    if not user or not getattr(user, 'is_authenticated', False):
+        return False
+    if getattr(user, 'is_superuser', False):
+        return True
+    profile = getattr(user, 'profile', None)
+    return bool(profile and profile.is_manager)
+
+
+def resolve_backfill_served_by(user, served_by_id=None):
+    """Default to the recorder; admins may pick another active staff member."""
+    from django.contrib.auth.models import User
+
+    if user_may_pick_backfill_served_by(user) and served_by_id:
+        staff = User.objects.filter(pk=served_by_id, is_active=True).first()
+        if staff:
+            return staff
+    return user
+
+
 def validate_backfill_stock_warnings(occurred_at, items, *, acknowledged) -> list[dict]:
     warnings = get_backfill_stock_warnings(occurred_at, items)
     if warnings and not backfill_stock_warnings_acknowledged(acknowledged):

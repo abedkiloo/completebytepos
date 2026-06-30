@@ -526,6 +526,7 @@ class SaleBackfillCreateSerializer(SaleCreateSerializer):
     backfill_reason = serializers.CharField()
     served_by_id = serializers.IntegerField(required=False, allow_null=True)
     acknowledge_stock_warnings = serializers.BooleanField(required=False, default=False)
+    resubmit_of = serializers.IntegerField(required=False, allow_null=True)
 
     def validate_backfill_reason(self, value):
         from sales.backfill_policy import validate_backfill_reason

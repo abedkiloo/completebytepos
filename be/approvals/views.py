@@ -44,8 +44,15 @@ class PendingChangeViewSet(viewsets.ReadOnlyModelViewSet):
         return super().list(request, *args, **kwargs)
 
     def retrieve(self, request, *args, **kwargs):
-        self._require_checker(request)
-        return super().retrieve(request, *args, **kwargs)
+        if user_may_edit_financial_fields(request.user):
+            return super().retrieve(request, *args, **kwargs)
+        change = PendingChange.objects.filter(
+            pk=kwargs.get('pk'),
+            made_by=request.user,
+        ).first()
+        if not change:
+            raise PermissionDenied('Submission not found.')
+        return Response(PendingChangeSerializer(change).data)
 
     @action(detail=False, methods=['get'])
     def pending(self, request):
@@ -53,6 +60,20 @@ class PendingChangeViewSet(viewsets.ReadOnlyModelViewSet):
         self._require_checker(request)
         qs = self.get_queryset().filter(status=PendingChange.STATUS_PENDING)
         serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='my-submissions')
+    def my_submissions(self, request):
+        """Submissions created by the current user (e.g. rejected past sales to fix)."""
+        qs = self.get_queryset().filter(made_by=request.user)
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        action_type = request.query_params.get('action_type')
+        if action_type:
+            qs = qs.filter(action_type=action_type)
+        limit = min(int(request.query_params.get('limit', 20) or 20), 100)
+        serializer = self.get_serializer(qs.order_by('-made_at')[:limit], many=True)
         return Response(serializer.data)
 
     @action(detail=True, methods=['post'])

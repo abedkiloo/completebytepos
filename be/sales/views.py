@@ -93,6 +93,22 @@ def _queue_or_create_backfill(request, validated):
     return Response(response_data, status=status.HTTP_201_CREATED)
 
 
+def _resubmit_backfill(request, pending_id: int, validated):
+    from approvals.models import PendingChange
+    from approvals.backfill_integration import resubmit_sale_backfill
+    from approvals.serializers import PendingChangeSerializer
+
+    change = PendingChange.objects.filter(pk=pending_id).first()
+    if not change:
+        raise ValidationError('Rejected submission not found.')
+
+    change = resubmit_sale_backfill(request, change, validated)
+    return Response(
+        {'pending_change': PendingChangeSerializer(change).data},
+        status=status.HTTP_202_ACCEPTED,
+    )
+
+
 # RBAC maps. Note: SaleViewSet does NOT include 'destroy' here because we
 # disable DELETE on Sales at the http_method_names level for audit-trail
 # integrity (refunds/voids should be modelled separately, not DB deletes).
@@ -259,6 +275,26 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         photo = request.FILES.get('backfill_receipt_photo')
         if photo:
             validated['backfill_receipt_photo_path'] = save_pending_backfill_receipt_photo(photo)
+
+        from sales.backfill_policy import resolve_backfill_served_by
+
+        staff = resolve_backfill_served_by(request.user, validated.get('served_by_id'))
+        validated['served_by_id'] = staff.pk
+
+        resubmit_id = raw.get('resubmit_of') or raw.get('resubmit_pending_id')
+        if resubmit_id:
+            try:
+                pending_id = int(resubmit_id)
+            except (TypeError, ValueError):
+                return Response(
+                    {'error': 'Invalid resubmit submission id.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                return _resubmit_backfill(request, pending_id, validated)
+            except ValidationError as e:
+                payload = getattr(e, 'message_dict', None) or {'error': validation_error_message(e)}
+                return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             return _queue_or_create_backfill(request, validated)

@@ -1039,14 +1039,13 @@ class SaleService(BaseService):
             'customer': customer,
         }
         if validated_data.get('_backfill'):
-            from django.contrib.auth.models import User
+            from sales.backfill_policy import resolve_backfill_served_by
 
-            served_by = None
-            served_by_id = validated_data.get('served_by_id')
-            if served_by_id:
-                served_by = User.objects.filter(pk=served_by_id, is_active=True).first()
-            if served_by is None and user is not None:
-                served_by = user
+            served_by = resolve_backfill_served_by(
+                user,
+                validated_data.get('served_by_id'),
+            )
+            validated_data['served_by_id'] = served_by.pk if served_by else None
             sale_data.update(
                 {
                     'entry_source': 'backfill',

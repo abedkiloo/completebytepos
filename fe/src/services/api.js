@@ -444,6 +444,7 @@ export const auditLogAPI = {
 export const pendingChangesAPI = {
   list: (params) => api.get('/approvals/pending-changes/', { params }),
   pending: () => api.get('/approvals/pending-changes/pending/'),
+  mySubmissions: (params) => api.get('/approvals/pending-changes/my-submissions/', { params }),
   get: (id) => api.get(`/approvals/pending-changes/${id}/`),
   approve: (id, data = {}) => api.post(`/approvals/pending-changes/${id}/approve/`, data),
   reject: (id, data) => api.post(`/approvals/pending-changes/${id}/reject/`, data),
