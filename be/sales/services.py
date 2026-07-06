@@ -56,7 +56,7 @@ class SaleService(BaseService):
         Returns:
             QuerySet of sales with proper select_related/prefetch_related
         """
-        queryset = self.model.objects.all().select_related('cashier', 'branch').prefetch_related(
+        queryset = self.model.objects.all().select_related('cashier', 'branch', 'customer').prefetch_related(
             'items__product', 'items__variant', 'items__size', 'items__color', 'items__refund_lines'
         )
         
@@ -102,6 +102,8 @@ class SaleService(BaseService):
             queryset = queryset.filter(
                 Q(sale_number__icontains=search) |
                 Q(cashier__username__icontains=search) |
+                Q(customer__name__icontains=search) |
+                Q(customer__customer_code__icontains=search) |
                 Q(notes__icontains=search)
             )
 

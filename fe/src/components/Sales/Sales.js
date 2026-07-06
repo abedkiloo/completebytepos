@@ -338,7 +338,7 @@ const Sales = () => {
             <Input
               type="search"
               name="search"
-              placeholder="Sale number…"
+              placeholder="Sale number, customer…"
               value={filters.search}
               onChange={handleFilterChange}
             />

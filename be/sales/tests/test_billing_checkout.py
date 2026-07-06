@@ -62,6 +62,56 @@ class BillingCheckoutAPITestCase(APITestCase):
         with_holding = self.sale_service.build_queryset({'include_holding': True})
         self.assertTrue(with_holding.filter(pk=holding.pk).exists())
 
+    def test_build_queryset_search_matches_customer_name(self):
+        customer = Customer.objects.create(
+            name='Martha Wanjiku',
+            phone='0700111222',
+            created_by=self.user,
+        )
+        sale = Sale.objects.create(
+            sale_number='S-CUST-01',
+            cashier=self.user,
+            branch=self.branch,
+            customer=customer,
+            status='completed',
+            payment_method='cash',
+            subtotal=Decimal('80.00'),
+            total=Decimal('80.00'),
+            amount_paid=Decimal('80.00'),
+        )
+
+        by_name = self.sale_service.build_queryset({'search': 'Martha'})
+        self.assertTrue(by_name.filter(pk=sale.pk).exists())
+
+        by_code_fragment = self.sale_service.build_queryset({'search': customer.customer_code[-4:]})
+        self.assertTrue(by_code_fragment.filter(pk=sale.pk).exists())
+
+        unrelated = self.sale_service.build_queryset({'search': 'NoSuchCustomer'})
+        self.assertFalse(unrelated.filter(pk=sale.pk).exists())
+
+    def test_list_sales_api_search_by_customer_name(self):
+        customer = Customer.objects.create(
+            name='Peter Otieno',
+            phone='0700333444',
+            created_by=self.user,
+        )
+        Sale.objects.create(
+            sale_number='S-CUST-02',
+            cashier=self.user,
+            branch=self.branch,
+            customer=customer,
+            status='completed',
+            payment_method='cash',
+            subtotal=Decimal('50.00'),
+            total=Decimal('50.00'),
+            amount_paid=Decimal('50.00'),
+        )
+
+        response = self.client.get('/api/sales/', {'search': 'Otieno'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        rows = response.data.get('results', response.data)
+        self.assertTrue(any(row.get('customer_name') == 'Peter Otieno' for row in rows))
+
     def test_checkout_holding_sale(self):
         holding = self.sale_service.save_holding_sale(
             self.user,
