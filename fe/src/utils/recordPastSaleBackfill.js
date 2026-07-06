@@ -72,6 +72,7 @@ export function parseRejectedBackfillChange(change, { canPickServedBy = false, c
       paymentMethod: payload.payment_method || 'cash',
       paymentReference: payload.payment_reference || '',
       amountPaid: String(payload.amount_paid ?? ''),
+      discountAmount: String(payload.discount_amount ?? ''),
       allowPartial: Boolean(payload.allow_partial_payment),
       servedById: servedByIdForPrefill({
         canPickServedBy,
@@ -97,9 +98,11 @@ export function buildBackfillSubmitPayload({
   allowPartial,
   ackStockWarnings,
   lines,
+  discountAmount = '0',
   resubmitPendingId,
 }) {
   const paid = parseFloat(amountPaid) || 0;
+  const discount = Math.max(0, parseFloat(discountAmount) || 0);
   const payload = {
     occurred_at: toIsoDatetime(occurredAt),
     backfill_reason: String(backfillReason || '').trim(),
@@ -111,6 +114,7 @@ export function buildBackfillSubmitPayload({
     amount_paid: paid,
     allow_partial_payment: allowPartial,
     acknowledge_stock_warnings: ackStockWarnings,
+    discount_amount: discount,
     items: (lines || []).map((row) => ({
       product_id: row.product_id,
       variant_id: row.variant_id ?? undefined,

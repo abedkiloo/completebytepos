@@ -19,7 +19,13 @@ import {
   normalizeFkId,
 } from '../../utils/variantSelector';
 
-const VariantSelector = ({ product, onSelect, onClose, validateStock = true }) => {
+const VariantSelector = ({
+  product,
+  onSelect,
+  onClose,
+  validateStock = true,
+  initialQuantity = 1,
+}) => {
   const [variants, setVariants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingDetails, setLoadingDetails] = useState(true);
@@ -85,15 +91,16 @@ const VariantSelector = ({ product, onSelect, onClose, validateStock = true }) =
   }, [product?.id]);
 
   useEffect(() => {
+    const startQty = Math.max(1, parseInt(initialQuantity, 10) || 1);
     setSelectedSize(null);
     setSelectedColor(null);
     setSelectedVariant(null);
-    setQuantity(1);
-    setQuantityInput('1');
+    setQuantity(startQty);
+    setQuantityInput(String(startQty));
     setQuantityError(null);
     loadProductDetails();
     loadVariants();
-  }, [loadProductDetails, loadVariants]);
+  }, [initialQuantity, loadProductDetails, loadVariants]);
 
   useEffect(() => {
     setQuantityInput(quantity.toString());

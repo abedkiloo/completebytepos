@@ -8,6 +8,7 @@ import { handleSaleBackfillResponse } from '../../utils/saleBackfill';
 import { pendingApprovalToastMessage } from '../../utils/makerChecker';
 import { makerCheckerReasonCopy } from '../../utils/makerChecker';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
+import { salesShowDiscount } from '../../utils/salesDisplay';
 import { isMakerCheckerEnabled, getCurrentUserId } from '../../utils/makerChecker';
 import { isManagerOrAdminFromStorage } from '../../utils/roleAccess';
 import ChangeReasonField from '../Approvals/ChangeReasonField';
@@ -55,6 +56,8 @@ function SinglePastSaleForm({
   onEditResubmit,
 }) {
   const navigate = useNavigate();
+  const { settings } = useStoreSettings();
+  const showDiscount = salesShowDiscount(settings);
   const currentUserId = getCurrentUserId();
   const [resubmitPendingId, setResubmitPendingId] = useState(null);
   const [rejectionReason, setRejectionReason] = useState('');
@@ -78,8 +81,10 @@ function SinglePastSaleForm({
   const [customerOptions, setCustomerOptions] = useState([]);
   const [staffOptions, setStaffOptions] = useState([]);
   const [pickQty, setPickQty] = useState('1');
+  const [discountAmount, setDiscountAmount] = useState('');
   const [variantPickerProduct, setVariantPickerProduct] = useState(null);
   const [pendingQty, setPendingQty] = useState(1);
+  const [lineQtyDrafts, setLineQtyDrafts] = useState({});
   const [receiptPhoto, setReceiptPhoto] = useState(null);
   const [stockWarnings, setStockWarnings] = useState([]);
   const [ackStockWarnings, setAckStockWarnings] = useState(false);
@@ -138,6 +143,7 @@ function SinglePastSaleForm({
         setPaymentReference(prefill.paymentReference);
         setAmountPaid(prefill.amountPaid);
         setAllowPartial(prefill.allowPartial);
+        setDiscountAmount(prefill.discountAmount);
         setServedById(
           servedByIdForPrefill({
             canPickServedBy,
@@ -213,9 +219,28 @@ function SinglePastSaleForm({
     return () => clearTimeout(timer);
   }, [occurredAt, lines]);
 
+  const subtotal = useMemo(
+    () =>
+      lines.reduce((sum, row) => {
+        const draft = lineQtyDrafts[row.key];
+        let qty = row.quantity;
+        if (draft !== undefined && draft !== '') {
+          const parsed = parseInt(draft, 10);
+          if (!Number.isNaN(parsed)) qty = Math.max(1, parsed);
+        }
+        return sum + qty * row.unit_price;
+      }, 0),
+    [lineQtyDrafts, lines]
+  );
+
+  const discountValue = useMemo(() => {
+    if (!showDiscount) return 0;
+    return Math.max(0, parseFloat(discountAmount) || 0);
+  }, [discountAmount, showDiscount]);
+
   const total = useMemo(
-    () => lines.reduce((sum, row) => sum + row.quantity * row.unit_price, 0),
-    [lines]
+    () => Math.max(0, subtotal - discountValue),
+    [subtotal, discountValue]
   );
 
   const addLineFromProduct = useCallback((product, variant, qty) => {
@@ -268,15 +293,38 @@ function SinglePastSaleForm({
   const handleVariantSelect = useCallback(
     (payload) => {
       if (!variantPickerProduct) return;
-      addLineFromProduct(variantPickerProduct, payload?.variant ?? null, pendingQty);
+      const qty = payload?.quantity ?? pendingQty;
+      addLineFromProduct(variantPickerProduct, payload?.variant ?? null, qty);
       setVariantPickerProduct(null);
       setPendingQty(1);
     },
     [addLineFromProduct, pendingQty, variantPickerProduct]
   );
 
+  const handleLineQtyInput = useCallback((key, raw) => {
+    setLineQtyDrafts((prev) => ({ ...prev, [key]: raw }));
+  }, []);
+
+  const commitLineQty = useCallback((key) => {
+    setLineQtyDrafts((prev) => {
+      const raw = prev[key];
+      if (raw === undefined) return prev;
+      const quantity = Math.max(1, parseInt(raw, 10) || 1);
+      setLines((current) =>
+        current.map((row) => (row.key === key ? { ...row, quantity } : row))
+      );
+      const { [key]: _removed, ...rest } = prev;
+      return rest;
+    });
+  }, []);
+
   const removeLine = (key) => {
     setLines((prev) => prev.filter((row) => row.key !== key));
+    setLineQtyDrafts((prev) => {
+      if (!(key in prev)) return prev;
+      const { [key]: _removed, ...rest } = prev;
+      return rest;
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -319,6 +367,7 @@ function SinglePastSaleForm({
         allowPartial,
         ackStockWarnings,
         lines,
+        discountAmount: showDiscount ? discountAmount : '0',
         resubmitPendingId,
       });
 
@@ -580,14 +629,41 @@ function SinglePastSaleForm({
           <p className="text-sm text-muted-foreground">No items yet.</p>
         ) : (
           <ul className="divide-y rounded-md border">
-            {lines.map((row) => (
+            {lines.map((row) => {
+              const draftQty = lineQtyDrafts[row.key];
+              let displayQty = row.quantity;
+              if (draftQty !== undefined && draftQty !== '') {
+                const parsed = parseInt(draftQty, 10);
+                if (!Number.isNaN(parsed)) displayQty = Math.max(1, parsed);
+              }
+              return (
               <li key={row.key} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
-                <span>
-                  {row.product_name} × {row.quantity} @ {formatCurrency(row.unit_price)}
+                <span className="min-w-0 flex-1">
+                  {row.product_name} @ {formatCurrency(row.unit_price)}
                 </span>
-                <div className="flex items-center gap-2">
-                  <span className="font-medium tabular-nums">
-                    {formatCurrency(row.quantity * row.unit_price)}
+                <div className="flex shrink-0 items-center gap-2">
+                  <div className="w-16 space-y-0.5">
+                    <Label className="sr-only" htmlFor={`qty-${row.key}`}>
+                      Quantity for {row.product_name}
+                    </Label>
+                    <Input
+                      id={`qty-${row.key}`}
+                      type="number"
+                      min={1}
+                      className="h-8 px-2 text-right tabular-nums"
+                      value={lineQtyDrafts[row.key] ?? String(row.quantity)}
+                      onChange={(e) => handleLineQtyInput(row.key, e.target.value)}
+                      onBlur={() => commitLineQty(row.key)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          commitLineQty(row.key);
+                        }
+                      }}
+                    />
+                  </div>
+                  <span className="w-24 text-right font-medium tabular-nums">
+                    {formatCurrency(displayQty * row.unit_price)}
                   </span>
                   <Button
                     type="button"
@@ -600,10 +676,35 @@ function SinglePastSaleForm({
                   </Button>
                 </div>
               </li>
-            ))}
+            );
+            })}
           </ul>
         )}
-        <p className="text-right font-semibold">Total: {formatCurrency(total)}</p>
+        <div className="space-y-1 text-right text-sm">
+          <p>
+            Subtotal: <span className="font-medium tabular-nums">{formatCurrency(subtotal)}</span>
+          </p>
+          {showDiscount ? (
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Label htmlFor="discount_amount" className="text-muted-foreground">
+                Discount
+              </Label>
+              <Input
+                id="discount_amount"
+                type="number"
+                min={0}
+                step="0.01"
+                className="h-8 w-28 text-right tabular-nums"
+                value={discountAmount}
+                onChange={(e) => setDiscountAmount(e.target.value)}
+                placeholder="0"
+              />
+            </div>
+          ) : null}
+          <p className="font-semibold">
+            Total: <span className="tabular-nums">{formatCurrency(total)}</span>
+          </p>
+        </div>
       </section>
 
       <section className="grid gap-4 rounded-lg border p-4 sm:grid-cols-2">
@@ -663,6 +764,7 @@ function SinglePastSaleForm({
         <VariantSelector
           product={variantPickerProduct}
           validateStock={false}
+          initialQuantity={pendingQty}
           onSelect={handleVariantSelect}
           onClose={() => setVariantPickerProduct(null)}
         />

@@ -30,12 +30,14 @@ jest.mock('../../hooks/useStoreSettings', () => ({
       maker_checker_enabled: true,
       backfill_maker_checker_enabled: true,
       backfill_max_days: 30,
+      show_discount: true,
     },
   }),
 }));
 
 jest.mock('../../utils/roleAccess', () => ({
   isManagerOrAdminFromStorage: () => mockIsManagerOrAdmin(),
+  userMayEditFinancialFieldsFromStorage: jest.fn(() => true),
 }));
 
 jest.mock('../../utils/makerChecker', () => ({
@@ -87,7 +89,32 @@ jest.mock('../ui/tabs', () => ({
   TabsTrigger: ({ children }) => <button type="button">{children}</button>,
   TabsContent: ({ children }) => <div>{children}</div>,
 }));
-jest.mock('../POS/VariantSelector', () => () => null);
+jest.mock('../POS/VariantSelector', () => ({ product, onSelect, initialQuantity }) => {
+  if (!product) return null;
+  return (
+    <div data-testid="variant-selector">
+      <span data-testid="variant-initial-qty">{initialQuantity}</span>
+      <button
+        type="button"
+        onClick={() =>
+          onSelect({
+            variant: { id: 9, color_name: 'BLACK', effective_price: '1600' },
+            quantity: 7,
+          })
+        }
+      >
+        Mock add variant
+      </button>
+    </div>
+  );
+});
+jest.mock('../../utils/variantSelector', () => {
+  const actual = jest.requireActual('../../utils/variantSelector');
+  return {
+    ...actual,
+    shouldOpenVariantPicker: (product) => Boolean(product?.has_variants),
+  };
+});
 jest.mock('../Approvals/ChangeReasonField', () => ({ label, value, onChange }) => (
   <label>
     {label}
@@ -140,6 +167,7 @@ describe('RecordPastSale resubmit and served-by', () => {
     productsAPI.list.mockResolvedValue({ data: { results: [] } });
     productsAPI.get.mockResolvedValue({ data: { id: 1, name: 'Pen', sku: 'PEN-1' } });
     pendingChangesAPI.mySubmissions.mockResolvedValue({ data: [] });
+    salesAPI.backfillPreflight.mockResolvedValue({ data: { warnings: [] } });
   });
 
   it('shows read-only served-by text for sales staff', async () => {
@@ -217,6 +245,7 @@ describe('RecordPastSale resubmit and served-by', () => {
     const [payload] = salesAPI.backfill.mock.calls[0];
     expect(payload.resubmit_of).toBe(42);
     expect(payload.served_by_id).toBe(5);
+    expect(payload.discount_amount).toBe(0);
     expect(payload.items).toEqual([
       expect.objectContaining({ product_id: 1, quantity: 1, unit_price: 50 }),
     ]);
@@ -242,7 +271,111 @@ describe('RecordPastSale resubmit and served-by', () => {
 
     await waitFor(() => {
       expect(productsAPI.get).toHaveBeenCalledWith(1);
-      expect(screen.getByText(/Pen \(PEN-1\)/)).toBeInTheDocument();
+      expect(screen.getAllByText(/Pen \(PEN-1\)/).length).toBeGreaterThan(0);
+    });
+  });
+});
+
+const SIMPLE_PRODUCT = {
+  id: 10,
+  name: 'Hook & Loop',
+  sku: 'HL-50',
+  price: '1050',
+  has_variants: false,
+};
+
+const VARIANT_PRODUCT = {
+  id: 11,
+  name: 'NO 5 Zipper',
+  sku: 'Z5',
+  price: '1600',
+  has_variants: true,
+};
+
+describe('RecordPastSale quantity', () => {
+  beforeEach(() => {
+    installLocalStorageMock();
+    jest.clearAllMocks();
+    mockIsManagerOrAdmin.mockReturnValue(false);
+    mockGetCurrentUserId.mockReturnValue(5);
+    mockIsMakerCheckerEnabled.mockReturnValue(false);
+    mockMakerCheckerReasonCopy.mockReturnValue({
+      label: 'Why now?',
+      placeholder: 'Explain',
+      summary: 'May require approval',
+    });
+    customersAPI.list.mockResolvedValue({ data: { results: [] } });
+    usersAPI.list.mockResolvedValue({ data: { results: [] } });
+    productsAPI.list.mockResolvedValue({ data: { results: [SIMPLE_PRODUCT] } });
+    productsAPI.get.mockResolvedValue({ data: SIMPLE_PRODUCT });
+    pendingChangesAPI.mySubmissions.mockResolvedValue({ data: [] });
+    salesAPI.backfillPreflight.mockResolvedValue({ data: { warnings: [] } });
+  });
+
+  async function pickProductFromSearch(name = 'Hook') {
+    renderPage();
+    const search = await screen.findByPlaceholderText(/Type product name or SKU/i);
+    fireEvent.change(search, { target: { value: name } });
+    await waitFor(() => {
+      expect(productsAPI.list).toHaveBeenCalled();
+    });
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(SIMPLE_PRODUCT.name, 'i') }));
+  }
+
+  it('adds a product without variants using the qty entered before Add', async () => {
+    await pickProductFromSearch();
+
+    const qtyInputs = screen.getAllByRole('spinbutton');
+    const pickQtyInput = qtyInputs[0];
+    fireEvent.change(pickQtyInput, { target: { value: '5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Subtotal:/)).toBeInTheDocument();
+      expect(screen.getAllByText(/Ksh\s*5,250\.00/).length).toBeGreaterThan(0);
+    });
+
+    expect(screen.getByLabelText(/Quantity for Hook & Loop/i)).toHaveValue(5);
+  });
+
+  it('lets you edit quantity on a line for a product without variants', async () => {
+    await pickProductFromSearch();
+
+    fireEvent.change(screen.getAllByRole('spinbutton')[0], { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+
+    const lineQtyInput = screen.getByLabelText(/Quantity for Hook & Loop/i);
+    fireEvent.change(lineQtyInput, { target: { value: '8' } });
+    fireEvent.blur(lineQtyInput);
+
+    await waitFor(() => {
+      expect(lineQtyInput).toHaveValue(8);
+      expect(screen.getAllByText(/Ksh\s*8,400\.00/).length).toBeGreaterThan(0);
+    });
+  });
+
+  it('uses variant picker quantity instead of the pre-add qty', async () => {
+    productsAPI.list.mockResolvedValue({ data: { results: [VARIANT_PRODUCT] } });
+
+    renderPage();
+    const search = await screen.findByPlaceholderText(/Type product name or SKU/i);
+    fireEvent.change(search, { target: { value: 'NO 5' } });
+    await waitFor(() => expect(productsAPI.list).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: /NO 5 Zipper/i }));
+
+    fireEvent.change(screen.getAllByRole('spinbutton')[0], { target: { value: '3' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('variant-selector')).toBeInTheDocument();
+      expect(screen.getByTestId('variant-initial-qty')).toHaveTextContent('3');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Mock add variant/i }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Quantity for NO 5 Zipper/i)).toHaveValue(7);
+      expect(screen.getAllByText(/Ksh\s*11,200\.00/).length).toBeGreaterThan(0);
     });
   });
 });

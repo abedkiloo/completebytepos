@@ -160,6 +160,20 @@ describe('recordPastSaleBackfill', () => {
       expect(parsed.prefill.servedById).toBe('5');
     });
 
+    it('parseRejectedBackfillChange includes discount in prefill', () => {
+      const parsed = parseRejectedBackfillChange(
+        {
+          ...rejectedChange,
+          apply_payload: {
+            ...rejectedChange.apply_payload,
+            discount_amount: '1000',
+          },
+        },
+        { canPickServedBy: false, currentUserId: 5 }
+      );
+      expect(parsed.prefill.discountAmount).toBe('1000');
+    });
+
     it('parseRejectedBackfillChange rejects invalid submission', () => {
       const parsed = parseRejectedBackfillChange({ status: 'approved' });
       expect(parsed.ok).toBe(false);
@@ -204,6 +218,19 @@ describe('recordPastSaleBackfill', () => {
       expect(payload.resubmit_of).toBe(42);
       expect(payload.create_invoice).toBe(true);
       expect(payload.served_by_id).toBe(8);
+    });
+
+    it('includes discount_amount when provided', () => {
+      const payload = buildBackfillSubmitPayload({
+        ...base,
+        discountAmount: '1000',
+      });
+      expect(payload.discount_amount).toBe(1000);
+    });
+
+    it('defaults discount_amount to zero', () => {
+      const payload = buildBackfillSubmitPayload(base);
+      expect(payload.discount_amount).toBe(0);
     });
   });
 
