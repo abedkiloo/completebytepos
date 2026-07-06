@@ -16,8 +16,6 @@ import {
 } from 'recharts';
 import {
   ArrowRight,
-  Banknote,
-  CreditCard,
   Package,
   Receipt,
   ShoppingCart,
@@ -45,48 +43,17 @@ import {
 } from '../../utils/formatters';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Skeleton } from '../ui/skeleton';
+import PeriodPills from './PeriodPills';
+import { DEFAULT_REPORT_PERIOD } from '../../utils/reportPeriods';
 
 // --------------------------------------------------------------------------
-// Period selector primitives
-// --------------------------------------------------------------------------
-
-const PERIODS = [
-  { id: 'today', label: 'Today' },
-  { id: 'week', label: 'Week' },
-  { id: 'month', label: 'Month' },
-];
-
-function PeriodPills({ value, onChange }) {
-  return (
-    <div className="inline-flex items-center rounded-md border bg-muted/30 p-0.5 text-xs">
-      {PERIODS.map((p) => (
-        <button
-          key={p.id}
-          type="button"
-          onClick={() => onChange(p.id)}
-          className={`rounded px-2.5 py-1 font-medium transition ${
-            value === p.id
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          {p.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// --------------------------------------------------------------------------
-// Generic card shell — header with icon/title/period + content area
+// Generic card shell — header with icon/title + content area
 // --------------------------------------------------------------------------
 
 function ReportCard({
   icon: Icon,
   title,
   description,
-  period,
-  onPeriodChange,
   onOpen,
   openLabel = 'Open full report',
   children,
@@ -107,7 +74,6 @@ function ReportCard({
             ) : null}
           </div>
         </div>
-        <PeriodPills value={period} onChange={onPeriodChange} />
       </CardHeader>
       <CardContent className="flex flex-1 flex-col">
         {children}
@@ -203,8 +169,7 @@ function chartHeight(extra = 0) {
 // Individual report tiles
 // --------------------------------------------------------------------------
 
-function SalesOverviewTile({ onOpen, showDiscount, showTax }) {
-  const [period, setPeriod] = useState('today');
+function SalesOverviewTile({ period, onOpen, showDiscount, showTax }) {
   const { data, loading, error } = useReport(reportsAPI.salesOverview, period);
 
   const summary = data?.summary || {};
@@ -215,8 +180,6 @@ function SalesOverviewTile({ onOpen, showDiscount, showTax }) {
       icon={TrendingUp}
       title="Sales overview"
       description="Revenue, ticket count and the daily trend."
-      period={period}
-      onPeriodChange={setPeriod}
       onOpen={onOpen}
     >
       <div className="grid grid-cols-3 gap-3 pb-3">
@@ -295,8 +258,7 @@ function SalesOverviewTile({ onOpen, showDiscount, showTax }) {
   );
 }
 
-function TopProductsTile({ onOpen }) {
-  const [period, setPeriod] = useState('week');
+function TopProductsTile({ period, onOpen }) {
   const { data, loading, error } = useReport(reportsAPI.topProducts, period);
 
   const items = data?.items || [];
@@ -315,8 +277,6 @@ function TopProductsTile({ onOpen }) {
       icon={ShoppingCart}
       title="Top products"
       description="Best-selling SKUs by quantity moved."
-      period={period}
-      onPeriodChange={setPeriod}
       onOpen={onOpen}
     >
       {loading ? (
@@ -375,8 +335,7 @@ function TopProductsTile({ onOpen }) {
   );
 }
 
-function CashAndPaymentsTile({ onOpen }) {
-  const [period, setPeriod] = useState('today');
+function CashAndPaymentsTile({ period, onOpen }) {
   const { data, loading, error } = useReport(reportsAPI.cashAndPayments, period);
 
   const summary = data?.summary || {};
@@ -394,8 +353,6 @@ function CashAndPaymentsTile({ onOpen }) {
       icon={Wallet}
       title="Cash & payments"
       description="Money in by payment method."
-      period={period}
-      onPeriodChange={setPeriod}
       onOpen={onOpen}
     >
       <div className="grid grid-cols-2 gap-3 pb-3">
@@ -457,8 +414,7 @@ function CashAndPaymentsTile({ onOpen }) {
   );
 }
 
-function InventoryHealthTile({ onOpen }) {
-  const [period, setPeriod] = useState('week');
+function InventoryHealthTile({ period, onOpen }) {
   const { data, loading, error } = useReport(reportsAPI.inventoryHealth, period);
 
   const summary = data?.summary || {};
@@ -469,8 +425,6 @@ function InventoryHealthTile({ onOpen }) {
       icon={Package}
       title="Inventory health"
       description="Stock value, low and out-of-stock alerts."
-      period={period}
-      onPeriodChange={setPeriod}
       onOpen={onOpen}
     >
       <div className="grid grid-cols-3 gap-3 pb-3">
@@ -528,8 +482,7 @@ function InventoryHealthTile({ onOpen }) {
   );
 }
 
-function CustomerOutstandingTile({ onOpen }) {
-  const [period, setPeriod] = useState('month');
+function CustomerOutstandingTile({ period, onOpen }) {
   const { data, loading, error } = useReport(reportsAPI.customerOutstanding, period);
 
   const summary = data?.summary || {};
@@ -540,8 +493,6 @@ function CustomerOutstandingTile({ onOpen }) {
       icon={Receipt}
       title="Customer outstanding"
       description="Money owed to you, with AR aging."
-      period={period}
-      onPeriodChange={setPeriod}
       onOpen={onOpen}
     >
       <div className="grid grid-cols-3 gap-3 pb-3">
@@ -627,6 +578,7 @@ function prettyMethod(method) {
 
 export default function ReportsHub() {
   const navigate = useNavigate();
+  const [period, setPeriod] = useState(DEFAULT_REPORT_PERIOD);
   const { settings: reportSettings } = useModuleSettings('reports');
   const goLegacy = (reportName) => () => navigate(`/reports?report=${reportName}`);
 
@@ -647,8 +599,7 @@ export default function ReportsHub() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Reports</h1>
           <p className="text-sm text-muted-foreground">
-            Daily, weekly and monthly view of the metrics that matter most for the
-            store.
+            Pick a period to refresh every chart — today, this week, this month, or this year.
           </p>
           {showLegacy ? (
             <button
@@ -660,17 +611,7 @@ export default function ReportsHub() {
             </button>
           ) : null}
         </div>
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1">
-            <Banknote className="h-3.5 w-3.5" /> Sales
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <Users className="h-3.5 w-3.5" /> Customers
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <CreditCard className="h-3.5 w-3.5" /> Payments
-          </span>
-        </div>
+        <PeriodPills value={period} onChange={setPeriod} size="default" />
       </header>
 
       {visibleCount === 0 ? (
@@ -681,7 +622,7 @@ export default function ReportsHub() {
       <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-2">
         {showSales ? (
           <>
-            <SalesOverviewTile onOpen={goLegacy('sales')} showDiscount={showDiscount} showTax={showTax} />
+            <SalesOverviewTile period={period} onOpen={goLegacy('sales')} showDiscount={showDiscount} showTax={showTax} />
             <Card className="flex flex-col border-dashed">
               <CardHeader className="pb-3">
                 <div className="flex items-start gap-3">
@@ -709,10 +650,10 @@ export default function ReportsHub() {
             </Card>
           </>
         ) : null}
-        {showProducts ? <TopProductsTile onOpen={goLegacy('products')} /> : null}
-        {showCash ? <CashAndPaymentsTile onOpen={goLegacy('income')} /> : null}
-        {showInventory ? <InventoryHealthTile onOpen={goLegacy('inventory')} /> : null}
-        {showInvoice ? <CustomerOutstandingTile onOpen={goLegacy('invoice')} /> : null}
+        {showProducts ? <TopProductsTile period={period} onOpen={goLegacy('products')} /> : null}
+        {showCash ? <CashAndPaymentsTile period={period} onOpen={goLegacy('income')} /> : null}
+        {showInventory ? <InventoryHealthTile period={period} onOpen={goLegacy('inventory')} /> : null}
+        {showInvoice ? <CustomerOutstandingTile period={period} onOpen={goLegacy('invoice')} /> : null}
       </div>
       )}
     </div>

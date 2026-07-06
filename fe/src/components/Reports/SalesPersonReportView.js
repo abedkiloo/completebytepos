@@ -9,6 +9,8 @@ import { EmptyState, FilterBar, FilterField, PageLoading } from '../page';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { R } from './reportUI';
+import PeriodPills from './PeriodPills';
+import { DEFAULT_REPORT_PERIOD } from '../../utils/reportPeriods';
 
 function currentMonthValue() {
   const now = new Date();
@@ -22,7 +24,9 @@ function staffLabel(user) {
 }
 
 export default function SalesPersonReportView() {
+  const [periodPreset, setPeriodPreset] = useState(DEFAULT_REPORT_PERIOD);
   const [month, setMonth] = useState(currentMonthValue());
+  const [useCalendarMonth, setUseCalendarMonth] = useState(false);
   const [cashierId, setCashierId] = useState('all');
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
@@ -30,12 +34,12 @@ export default function SalesPersonReportView() {
   const [staffOptions, setStaffOptions] = useState([]);
 
   const queryParams = useMemo(() => {
-    const params = { month };
+    const params = useCalendarMonth ? { month } : { period: periodPreset };
     if (cashierId && cashierId !== 'all') {
       params.cashier_id = cashierId;
     }
     return params;
-  }, [month, cashierId]);
+  }, [useCalendarMonth, month, periodPreset, cashierId]);
 
   const loadReport = useCallback(async () => {
     setLoading(true);
@@ -81,11 +85,24 @@ export default function SalesPersonReportView() {
   return (
     <div className="sales-person-report space-y-6 print:space-y-4">
       <FilterBar className="print:hidden">
-        <FilterField label="Month">
+        <FilterField label="Period" className="sm:col-span-2">
+          <PeriodPills
+            value={useCalendarMonth ? 'custom' : periodPreset}
+            onChange={(periodId) => {
+              setUseCalendarMonth(false);
+              setPeriodPreset(periodId);
+            }}
+            size="default"
+          />
+        </FilterField>
+        <FilterField label="Or pick month">
           <Input
             type="month"
             value={month}
-            onChange={(e) => setMonth(e.target.value)}
+            onChange={(e) => {
+              setMonth(e.target.value);
+              setUseCalendarMonth(true);
+            }}
           />
         </FilterField>
         <FilterField label="Staff member">

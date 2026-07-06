@@ -12,6 +12,12 @@ import { formatCurrency, formatNumber, formatDateTime, formatCompactCurrency } f
 import ReportsList from './ReportsList';
 import ReportsHub from './ReportsHub';
 import SalesPersonReportView from './SalesPersonReportView';
+import PeriodPills from './PeriodPills';
+import {
+  DEFAULT_REPORT_PERIOD,
+  detectPeriodFromDates,
+  periodToDateFilters,
+} from '../../utils/reportPeriods';
 import { PageShell, PageHeader, FilterBar, FilterField, PageLoading, EmptyState } from '../page';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -30,11 +36,11 @@ const Reports = () => {
   // All hooks must be called at the top level, before any conditional returns
   const [loading, setLoading] = useState(false);
   const [reportData, setReportData] = useState(null);
-  const [filters, setFilters] = useState({
-    date_from: '',
-    date_to: '',
+  const [periodPreset, setPeriodPreset] = useState(DEFAULT_REPORT_PERIOD);
+  const [filters, setFilters] = useState(() => ({
+    ...periodToDateFilters(DEFAULT_REPORT_PERIOD),
     year: new Date().getFullYear(),
-  });
+  }));
 
   const loadReport = useCallback(async () => {
     if (reportParam && reportParam !== '__legacy__' && !reportsLegacyReportEnabled(reportSettings, reportParam)) {
@@ -138,9 +144,20 @@ const Reports = () => {
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
-    setFilters(prev => ({
+    setFilters((prev) => {
+      const next = { ...prev, [name]: value };
+      if (name === 'date_from' || name === 'date_to') {
+        setPeriodPreset(detectPeriodFromDates(next.date_from, next.date_to));
+      }
+      return next;
+    });
+  };
+
+  const handlePeriodPresetChange = (periodId) => {
+    setPeriodPreset(periodId);
+    setFilters((prev) => ({
       ...prev,
-      [name]: value,
+      ...periodToDateFilters(periodId),
     }));
   };
 
@@ -902,6 +919,9 @@ const Reports = () => {
 
         {needsDateFilter && (
           <FilterBar>
+            <FilterField label="Period" className="sm:col-span-2">
+              <PeriodPills value={periodPreset} onChange={handlePeriodPresetChange} size="default" />
+            </FilterField>
             <FilterField label="From">
               <Input
                 type="date"
@@ -932,6 +952,18 @@ const Reports = () => {
                 min="2020"
                 max={new Date().getFullYear() + 1}
               />
+            </FilterField>
+            <FilterField label="Quick pick">
+              <Button
+                type="button"
+                variant={filters.year === new Date().getFullYear() ? 'default' : 'outline'}
+                size="sm"
+                onClick={() =>
+                  setFilters((prev) => ({ ...prev, year: new Date().getFullYear() }))
+                }
+              >
+                This year
+              </Button>
             </FilterField>
           </FilterBar>
         )}
