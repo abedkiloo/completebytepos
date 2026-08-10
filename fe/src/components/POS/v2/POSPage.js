@@ -341,6 +341,7 @@ export default function POSPage() {
               validateStock={state.validateStock}
               onAdjust={state.adjustItemQuantity}
               onSetQuantity={state.setItemQuantity}
+              onSetPrice={state.setItemPrice}
               onRemove={state.removeFromCart}
               onClear={requestClearCart}
             />

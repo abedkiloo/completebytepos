@@ -28,6 +28,7 @@ import PartialPaymentCustomerDialog from './PartialPaymentCustomerDialog';
 import CustomerFormModal from '../../Customers/CustomerFormModal';
 import ReceiptDialog from '../v2/ReceiptDialog';
 import { toast } from '../../../utils/toast';
+import { saleUnitPriceOverrideError } from '../../../utils/saleUnitPrice';
 import { getSellableStock, isProductOutOfStock } from '../../../utils/productStock';
 import { useStoreSettings } from '../../../hooks/useStoreSettings';
 import {
@@ -36,7 +37,11 @@ import {
   paymentReferencePlaceholder,
   paymentReferenceRequired,
 } from '../../../utils/paymentMethods';
-import { isManagerOrAdminFromStorage, getStoredAuth } from '../../../utils/roleAccess';
+import {
+  isManagerOrAdminFromStorage,
+  getStoredAuth,
+  userMayEditFinancialFieldsFromStorage,
+} from '../../../utils/roleAccess';
 import { useModuleSettings } from '../../../hooks/useModuleSettings';
 import { canQuickAddCustomerAtPos, customersShowWalletBalance } from '../../../utils/customerDisplay';
 import { CustomerWalletBalance } from '../../Customers/CustomerWalletBalance';
@@ -68,6 +73,7 @@ export default function BillingPOSPage() {
     customerModuleSettings,
     permissions
   );
+  const mayEditPricing = Boolean(userMayEditFinancialFieldsFromStorage());
   const showWalletBalance = customersShowWalletBalance(customerModuleSettings);
 
   if (state.loadingHolding) {
@@ -245,8 +251,35 @@ export default function BillingPOSPage() {
                           <td className="px-2 py-3 text-right tabular-nums text-muted-foreground">
                             {formatCurrency(item.mrp ?? item.price)}
                           </td>
-                          <td className="px-2 py-3 text-right tabular-nums font-medium">
-                            {formatCurrency(item.selling_price ?? item.price)}
+                          <td className="px-2 py-3 text-right">
+                            <Input
+                              type="number"
+                              min={mayEditPricing ? 0 : item.catalog_price ?? item.price}
+                              step="0.01"
+                              className="ml-auto h-8 w-24 px-2 text-right tabular-nums"
+                              defaultValue={item.price}
+                              key={`${key}-price-${item.price}`}
+                              aria-label={`Unit price for ${item.name}`}
+                              onBlur={(e) => {
+                                const catalog =
+                                  item.catalog_price ?? item.selling_price ?? item.price;
+                                const error = saleUnitPriceOverrideError({
+                                  catalogPrice: catalog,
+                                  requestedPrice: e.target.value,
+                                  mayEditPricing,
+                                });
+                                if (error) {
+                                  e.target.value = String(item.price);
+                                }
+                                state.setLinePrice(key, e.target.value, { mayEditPricing });
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  e.currentTarget.blur();
+                                }
+                              }}
+                            />
                           </td>
                           <td className="px-2 py-3">
                             <CartQtyInput

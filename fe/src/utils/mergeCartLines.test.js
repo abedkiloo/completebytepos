@@ -40,6 +40,17 @@ describe('mergeHoldingItemPayloads', () => {
       { product_id: 5, variant_id: null, quantity: 4, unit_price: 50 },
     ]);
   });
+
+  it('keeps same product at different unit prices as separate lines', () => {
+    const merged = mergeHoldingItemPayloads([
+      { product_id: 5, variant_id: null, quantity: 1, unit_price: 20 },
+      { product_id: 5, variant_id: null, quantity: 2, unit_price: 50 },
+    ]);
+    expect(merged).toEqual([
+      { product_id: 5, variant_id: null, quantity: 1, unit_price: 20 },
+      { product_id: 5, variant_id: null, quantity: 2, unit_price: 50 },
+    ]);
+  });
 });
 
 describe('buildHoldingItemsFromCart', () => {

@@ -34,6 +34,10 @@ import {
 import { evaluatePartialPaymentToggle } from '../../../utils/billingPartialPayment';
 import { paymentReferenceRequired } from '../../../utils/paymentMethods';
 import {
+  normalizeMoney,
+  saleUnitPriceOverrideError,
+} from '../../../utils/saleUnitPrice';
+import {
   evaluateBillingAmountPaid,
   isRegisteredPosCustomer,
 } from '../../../utils/posCheckoutValidation';
@@ -421,6 +425,34 @@ export function useBillingPOSState() {
     );
   }, [validateStock]);
 
+  const setLinePrice = useCallback((key, rawPrice, { mayEditPricing = false } = {}) => {
+    setCart((prev) => {
+      const target = prev.find((i) => cartItemKey(i) === key);
+      if (!target) return prev;
+      const catalog = target.catalog_price ?? target.selling_price ?? target.price;
+      const error = saleUnitPriceOverrideError({
+        catalogPrice: catalog,
+        requestedPrice: rawPrice,
+        mayEditPricing,
+      });
+      if (error) {
+        toast.warning(error);
+        return prev;
+      }
+      const nextPrice = normalizeMoney(rawPrice);
+      return prev.map((item) =>
+        cartItemKey(item) === key
+          ? {
+              ...item,
+              price: nextPrice,
+              selling_price: nextPrice,
+              catalog_price: item.catalog_price ?? catalog,
+            }
+          : item
+      );
+    });
+  }, []);
+
   const removeLine = useCallback((key) => {
     setCart((prev) => prev.filter((i) => cartItemKey(i) !== key));
   }, []);
@@ -622,6 +654,7 @@ export function useBillingPOSState() {
     addToCart,
     updateQty,
     setQty,
+    setLinePrice,
     removeLine,
     clearCart,
     checkout,

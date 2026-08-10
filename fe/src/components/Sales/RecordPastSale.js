@@ -10,7 +10,8 @@ import { makerCheckerReasonCopy } from '../../utils/makerChecker';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import { salesShowDiscount } from '../../utils/salesDisplay';
 import { isMakerCheckerEnabled, getCurrentUserId } from '../../utils/makerChecker';
-import { isManagerOrAdminFromStorage } from '../../utils/roleAccess';
+import { isManagerOrAdminFromStorage, userMayEditFinancialFieldsFromStorage } from '../../utils/roleAccess';
+import { saleUnitPriceOverrideError } from '../../utils/saleUnitPrice';
 import ChangeReasonField from '../Approvals/ChangeReasonField';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { Button } from '../ui/button';
@@ -262,6 +263,7 @@ function SinglePastSaleForm({
         product_name: productName,
         quantity,
         unit_price: unitPrice,
+        catalog_price: unitPrice,
       },
     ]);
     setSelectedProduct(null);
@@ -315,6 +317,34 @@ function SinglePastSaleForm({
       );
       const { [key]: _removed, ...rest } = prev;
       return rest;
+    });
+  }, []);
+
+  const updateLinePrice = useCallback((key, rawPrice) => {
+    setLines((prev) => {
+      const target = prev.find((row) => row.key === key);
+      if (!target) return prev;
+      const catalog = target.catalog_price ?? target.unit_price;
+      const mayEditPricing = userMayEditFinancialFieldsFromStorage();
+      const error = saleUnitPriceOverrideError({
+        catalogPrice: catalog,
+        requestedPrice: rawPrice,
+        mayEditPricing,
+      });
+      if (error) {
+        toast.warning(error);
+        return prev;
+      }
+      const nextPrice = Math.max(0, parseFloat(rawPrice) || 0);
+      return prev.map((row) =>
+        row.key === key
+          ? {
+              ...row,
+              unit_price: nextPrice,
+              catalog_price: row.catalog_price ?? catalog,
+            }
+          : row
+      );
     });
   }, []);
 
@@ -638,10 +668,29 @@ function SinglePastSaleForm({
               }
               return (
               <li key={row.key} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
-                <span className="min-w-0 flex-1">
-                  {row.product_name} @ {formatCurrency(row.unit_price)}
-                </span>
+                <span className="min-w-0 flex-1">{row.product_name}</span>
                 <div className="flex shrink-0 items-center gap-2">
+                  <div className="w-20 space-y-0.5">
+                    <Label className="sr-only" htmlFor={`price-${row.key}`}>
+                      Unit price for {row.product_name}
+                    </Label>
+                    <Input
+                      id={`price-${row.key}`}
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      className="h-8 px-2 text-right tabular-nums"
+                      defaultValue={row.unit_price}
+                      key={`${row.key}-price-${row.unit_price}`}
+                      onBlur={(e) => updateLinePrice(row.key, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          e.currentTarget.blur();
+                        }
+                      }}
+                    />
+                  </div>
                   <div className="w-16 space-y-0.5">
                     <Label className="sr-only" htmlFor={`qty-${row.key}`}>
                       Quantity for {row.product_name}

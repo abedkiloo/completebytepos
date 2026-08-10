@@ -15,6 +15,12 @@ function mergeRowsByKey(rows, keyFn, createRow, mergeInto) {
   return [...byKey.values()];
 }
 
+function normalizeUnitPriceKey(unitPrice) {
+  const n = parseFloat(unitPrice);
+  if (!Number.isFinite(n)) return '';
+  return n.toFixed(2);
+}
+
 /**
  * Merge cart rows that share the same product + variant key (sums quantity).
  */
@@ -30,12 +36,16 @@ export function mergeCartLines(cart = []) {
 }
 
 /**
- * Merge holding API item payloads before save (product_id + variant_id).
+ * Merge holding API item payloads before save (product_id + variant_id + unit_price).
+ * Different unit prices stay as separate lines.
  */
 export function mergeHoldingItemPayloads(items = []) {
   return mergeRowsByKey(
     items,
-    (item) => saleLineKey(item.product_id, item.variant_id || null),
+    (item) =>
+      `${saleLineKey(item.product_id, item.variant_id || null)}@${normalizeUnitPriceKey(
+        item.unit_price
+      )}`,
     (item) => {
       const qty = Math.max(0, parseInt(item.quantity, 10) || 0);
       return {
@@ -48,9 +58,6 @@ export function mergeHoldingItemPayloads(items = []) {
     (existing, item) => {
       const qty = Math.max(0, parseInt(item.quantity, 10) || 0);
       existing.quantity += qty;
-      if (item.unit_price != null) {
-        existing.unit_price = item.unit_price;
-      }
     }
   ).filter((row) => row.quantity > 0);
 }

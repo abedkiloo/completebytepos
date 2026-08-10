@@ -17,5 +17,18 @@ class ConsolidateSaleItemsTests(SimpleTestCase):
         self.assertEqual(by_key[(5, 12)]['quantity'], 5)
         self.assertEqual(by_key[(7, None)]['quantity'], 1)
 
+    def test_keeps_same_sku_at_different_unit_prices_separate(self):
+        merged = consolidate_sale_items_data(
+            [
+                {'product_id': 5, 'variant_id': None, 'quantity': 1, 'unit_price': '20'},
+                {'product_id': 5, 'variant_id': None, 'quantity': 2, 'unit_price': '50'},
+                {'product_id': 5, 'variant_id': None, 'quantity': 1, 'unit_price': '20'},
+            ]
+        )
+        self.assertEqual(len(merged), 2)
+        by_price = {str(r['unit_price']): r for r in merged}
+        self.assertEqual(by_price['20']['quantity'], 2)
+        self.assertEqual(by_price['50']['quantity'], 2)
+
     def test_empty_input(self):
         self.assertEqual(consolidate_sale_items_data([]), [])

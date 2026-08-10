@@ -645,6 +645,56 @@ class SaleServiceTestCase(TestCase):
             CustomerWalletTransaction.objects.filter(sale=sale, source_type='payment').exists()
         )
 
+    def test_create_sale_with_unit_price_markup_above_catalog(self):
+        """Charging above catalog selling price stores override and total."""
+        from unittest.mock import patch
+
+        validated = {
+            'items': [
+                {
+                    'product_id': self.product.id,
+                    'quantity': 1,
+                    'unit_price': Decimal('150.00'),
+                }
+            ],
+            'payment_method': 'cash',
+            'amount_paid': Decimal('150.00'),
+            'sale_type': 'pos',
+            'branch_id': self.branch.id,
+        }
+        request = type('Req', (), {'user': self.user, 'session': {}})()
+        with patch('sales.services.is_branch_support_enabled', return_value=False):
+            result = self.service.create_sale_from_validated_data(validated, self.user, request)
+
+        sale = result['sale']
+        item = sale.items.get()
+        self.assertEqual(item.unit_price, Decimal('150.00'))
+        self.assertEqual(sale.subtotal, Decimal('150.00'))
+        self.assertEqual(sale.total, Decimal('150.00'))
+
+    def test_validate_sale_items_allows_sales_staff_markup(self):
+        """Sales cashiers may sell above catalog price; undercutting is rejected."""
+        from accounts.models import Role, UserProfile
+        from accounts.role_definitions import ROLE_SALES, sync_default_roles
+
+        sync_default_roles()
+        cashier = User.objects.create_user(username='cashier1', password='x')
+        UserProfile.objects.create(
+            user=cashier,
+            role='cashier',
+            custom_role=Role.objects.get(name=ROLE_SALES),
+        )
+        validated = self.service.validate_sale_items(
+            [{'product_id': self.product.id, 'quantity': 1, 'unit_price': '150.00'}],
+            user=cashier,
+        )
+        self.assertEqual(validated[0]['unit_price'], Decimal('150.00'))
+        with self.assertRaises(ValidationError):
+            self.service.validate_sale_items(
+                [{'product_id': self.product.id, 'quantity': 1, 'unit_price': '10.00'}],
+                user=cashier,
+            )
+
     def test_cancel_holding_sale(self):
         holding = Sale.objects.create(
             sale_type='pos',

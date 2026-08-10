@@ -55,6 +55,7 @@ export function buildBillingCartLine(product, variantPayload = null, { validateS
     sku: merged.sku ?? variantRow?.sku ?? product?.sku,
     mrp,
     selling_price: selling,
+    catalog_price: selling,
     price: selling,
     cost: parseFloat(variantRow?.cost ?? merged.cost ?? product?.cost ?? 0),
     quantity: Math.max(1, parseInt(merged.quantity, 10) || 1),
@@ -97,6 +98,9 @@ export function holdingSaleItemToCartLine(item, { validateStock = true } = {}) {
     variants: product.variants,
   });
   const selling = parseFloat(item.unit_price);
+  const catalogPrice = parseFloat(
+    product.selling_price ?? product.price ?? item.unit_price
+  );
   const mrp = parseFloat(product.mrp) || selling;
   const variantId = isProductVariantsEnabled()
     ? item.variant?.id || item.variant_id || null
@@ -111,6 +115,7 @@ export function holdingSaleItemToCartLine(item, { validateStock = true } = {}) {
       color_name: item.color_name || item.variant?.color_name || null,
       mrp,
       selling_price: selling,
+      catalog_price: Number.isFinite(catalogPrice) ? catalogPrice : selling,
       price: selling,
     },
     validateStock

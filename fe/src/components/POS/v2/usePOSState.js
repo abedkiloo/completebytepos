@@ -38,13 +38,10 @@ import {
   salesAllowExcessToWallet,
   salesValidateStock,
 } from '../../../utils/salesDisplay';
-
-/**
- * Cart-item identity.
- *
- * Two SaleItems for the same product but different variants are distinct
- * lines. Use this everywhere we look an item up or compare.
- */
+import {
+  normalizeMoney,
+  saleUnitPriceOverrideError,
+} from '../../../utils/saleUnitPrice';
 import { cartItemKey, cartLineKey, saleLineKey } from '../../../utils/cartLineKey';
 
 export { cartItemKey, cartLineKey, saleLineKey };
@@ -421,6 +418,9 @@ export function usePOSState() {
         ...product,
         quantity: qtyToAdd,
         price: parseFloat(product.price),
+        catalog_price: parseFloat(
+          product.catalog_price ?? product.selling_price ?? product.price ?? 0
+        ),
         sku: product.sku || product.variant?.sku || '',
         stock_quantity: stock,
       };
@@ -476,6 +476,34 @@ export function usePOSState() {
         return { ...i, quantity: next };
       })
     );
+  }, []);
+
+  const setItemPrice = useCallback((item, rawPrice, { mayEditPricing = false } = {}) => {
+    const catalog =
+      item.catalog_price ?? item.selling_price ?? item.price;
+    const error = saleUnitPriceOverrideError({
+      catalogPrice: catalog,
+      requestedPrice: rawPrice,
+      mayEditPricing,
+    });
+    if (error) {
+      toast.warning(error);
+      return false;
+    }
+    const nextPrice = normalizeMoney(rawPrice);
+    setCart((prev) =>
+      prev.map((i) =>
+        cartItemKey(i) === cartItemKey(item)
+          ? {
+              ...i,
+              price: nextPrice,
+              selling_price: nextPrice,
+              catalog_price: i.catalog_price ?? catalog,
+            }
+          : i
+      )
+    );
+    return true;
   }, []);
 
   const adjustItemQuantity = useCallback((item, delta) => {
@@ -805,6 +833,7 @@ export function usePOSState() {
     tryAddToCart,
     addProductToCart,
     setItemQuantity,
+    setItemPrice,
     adjustItemQuantity,
     removeFromCart,
     clearCart,

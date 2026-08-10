@@ -179,6 +179,7 @@ export async function linesFromBackfillPayload(items = [], deps) {
       product_name: productName,
       quantity: row.quantity,
       unit_price: parseFloat(row.unit_price),
+      catalog_price: parseFloat(row.unit_price),
     });
   }
   return lines;

@@ -66,7 +66,13 @@ def validate_sale_unit_price_override(
     variant,
     override,
 ) -> None:
-    """Reject client-supplied unit_price overrides from sales staff."""
+    """
+    Validate client-supplied unit_price on a sale line.
+
+    Managers (product pricing editors) may set any non-negative price.
+    Sales staff may charge the catalog selling price or higher (markup /
+    customer-specific rate) but cannot undercut the catalog price.
+    """
     from django.core.exceptions import ValidationError
 
     from products.stock_utils import sellable_unit_price
@@ -75,16 +81,21 @@ def validate_sale_unit_price_override(
         return
     from products.catalog_access import user_may_edit_product_pricing
 
-    if user_may_edit_product_pricing(user):
-        return
-    catalog_price = sellable_unit_price(product, variant)
     try:
         requested = Decimal(str(override))
     except Exception as exc:
         raise ValidationError('Invalid unit price.') from exc
-    if requested != Decimal(str(catalog_price)):
+    if requested < 0:
+        raise ValidationError('Unit price cannot be negative.')
+
+    if user_may_edit_product_pricing(user):
+        return
+
+    catalog_price = Decimal(str(sellable_unit_price(product, variant)))
+    if requested < catalog_price:
         raise ValidationError(
-            'You cannot change unit prices on sales. Ask a manager to adjust product pricing.'
+            'Unit price cannot be below the selling price. '
+            'Ask a manager if you need to discount this item.'
         )
 
 
