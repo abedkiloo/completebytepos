@@ -182,6 +182,7 @@ const NAV_SECTIONS = [
     items: [
       { to: '/accounting', label: 'Accounting', icon: Calculator },
       { to: '/expenses', label: 'Expenses', icon: TrendingDown, module: 'expenses' },
+      { to: '/expenses/categories', label: 'Expense Categories', icon: FolderTree, module: 'expenses' },
       { to: '/income', label: 'Income', icon: TrendingUp, module: 'income' },
     ],
   },

@@ -29,6 +29,7 @@ export const ROUTE_MODULE_MAP = {
   '/pending-approvals': 'reports',
   '/accounting': 'accounting',
   '/expenses': 'expenses',
+  '/expenses/categories': 'expenses',
   '/income': 'income',
   '/users': 'settings',
   '/roles': 'settings',

@@ -36,6 +36,7 @@ export const APP_ROUTE_PREFIXES = [
   '/audit-log',
   '/pending-approvals',
   '/expenses',
+  '/expenses/categories',
   '/accounting',
   '/income',
   '/users',
@@ -186,9 +187,9 @@ export function canAccessRoute(persona, pathname, options = {}) {
   const routeAllowed = list.some((prefix) => pathMatchesPrefix(pathname, prefix));
   if (!routeAllowed) return false;
 
-  const pathKey = Object.keys(ROUTE_MODULE_MAP).find(
-    (p) => pathname === p || pathname.startsWith(`${p}/`)
-  );
+  const pathKey = Object.keys(ROUTE_MODULE_MAP)
+    .filter((p) => pathname === p || pathname.startsWith(`${p}/`))
+    .sort((a, b) => b.length - a.length)[0];
   if (!pathKey || !moduleSettings || loadingModules) {
     return true;
   }

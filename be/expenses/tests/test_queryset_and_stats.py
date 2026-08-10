@@ -106,6 +106,16 @@ class ExpenseQuerysetTests(TestCase):
         self.assertIn('Ops', names)
         self.assertNotIn('Retired', names)
 
+    def test_delete_unused_category_rejects_when_used(self):
+        from django.core.exceptions import ValidationError
+
+        service = ExpenseCategoryService()
+        with self.assertRaises(ValidationError):
+            service.delete_unused_category(self.cat_a)
+        unused = ExpenseCategory.objects.create(name='Spare', is_active=True)
+        service.delete_unused_category(unused)
+        self.assertFalse(ExpenseCategory.objects.filter(id=unused.id).exists())
+
 
 class ExpenseAPIExtendedTests(ManagerAPITestCase):
     @classmethod

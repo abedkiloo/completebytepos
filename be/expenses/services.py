@@ -44,15 +44,31 @@ class ExpenseCategoryService(BaseService):
         queryset = self.model.objects.annotate(expense_count=Count('expenses'))
         
         if not filters:
-            return queryset
+            return queryset.order_by('name')
         
         is_active = filters.get('is_active')
         if is_active is not None:
             if isinstance(is_active, str):
                 is_active = is_active.lower() == 'true'
             queryset = queryset.filter(is_active=is_active)
+
+        search = _clean_filter_value(filters.get('search'))
+        if search:
+            queryset = queryset.filter(
+                Q(name__icontains=search) | Q(description__icontains=search)
+            )
         
         return queryset.order_by('name')
+
+    def delete_unused_category(self, category: ExpenseCategory) -> None:
+        """Hard-delete a category only when no expenses reference it."""
+        usage = Expense.objects.filter(category=category).count()
+        if usage:
+            raise ValidationError(
+                f'Cannot delete “{category.name}”: it is used by {usage} expense(s). '
+                'Deactivate it instead, or reassign those expenses first.'
+            )
+        category.delete()
 
 
 class ExpenseService(BaseService):

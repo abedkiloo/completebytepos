@@ -12,7 +12,7 @@ from .serializers import (
     ExpenseCategorySerializer, ExpenseSerializer, ExpenseListSerializer
 )
 from .services import ExpenseCategoryService, ExpenseService
-from accounts.permissions import RequirePermPerAction
+from accounts.permissions import RequirePermPerAction, IsSuperAdmin
 from utils.audit_events import log_approval_event
 from utils.audit_helpers import audited_perform_create, audited_perform_update
 from approvals.financial_workflow import finalize_financial_create, prepare_financial_update
@@ -50,11 +50,19 @@ class ExpenseCategoryViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         super().__init__(*args, **kwargs)
         self.category_service = ExpenseCategoryService()
 
+    def get_permissions(self):
+        """Only super admins may hard-delete expense categories."""
+        if self.action == 'destroy':
+            return [IsAuthenticated(), IsSuperAdmin()]
+        return super().get_permissions()
+
     def get_queryset(self):
         """Get queryset using service layer"""
         filters = {}
         if 'is_active' in self.request.query_params:
             filters['is_active'] = self.request.query_params.get('is_active')
+        if 'search' in self.request.query_params:
+            filters['search'] = self.request.query_params.get('search')
         return self.category_service.build_queryset(filters)
 
     def create(self, request, *args, **kwargs):
@@ -79,6 +87,15 @@ class ExpenseCategoryViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 serializer = self.get_serializer(existing)
                 return Response(serializer.data, status=status.HTTP_200_OK)
         return super().create(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        category = self.get_object()
+        try:
+            self.category_service.delete_unused_category(category)
+        except DjangoValidationError as e:
+            messages = getattr(e, 'messages', None) or [str(e)]
+            return Response({'error': messages[0]}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):

@@ -32,6 +32,7 @@ const Reports = lazy(() => import('./components/Reports/Reports'));
 const AuditLogPage = lazy(() => import('./components/AuditLog/AuditLogPage'));
 const PendingApprovalsPage = lazy(() => import('./components/Approvals/PendingApprovalsPage'));
 const Expenses = lazy(() => import('./components/Expenses/Expenses'));
+const ExpenseCategories = lazy(() => import('./components/Expenses/ExpenseCategories'));
 const Income = lazy(() => import('./components/Income/Income'));
 const Accounting = lazy(() => import('./components/Accounting/Accounting'));
 const Users = lazy(() => import('./components/Users/Users'));
@@ -166,6 +167,7 @@ function App() {
                 <Route path="/audit-log" element={<AuditLogPage />} />
                 <Route path="/pending-approvals" element={<PendingApprovalsPage />} />
                 <Route path="/expenses" element={<Expenses />} />
+                <Route path="/expenses/categories" element={<ExpenseCategories />} />
                 <Route path="/accounting" element={<Accounting />} />
                 <Route path="/income" element={<Income />} />
                 <Route path="/users" element={<Users />} />

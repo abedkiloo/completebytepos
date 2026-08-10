@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { Check, Pencil, Plus, RefreshCw, Trash2, TrendingDown } from 'lucide-react';
 import { expensesAPI } from '../../services/api';
 import { CATALOG_FETCH_PAGE_SIZE, DEFAULT_PAGE_SIZE } from '../../config/pagination';
@@ -199,6 +200,11 @@ const Expenses = () => {
             <RefreshCw className="h-4 w-4" />
             Refresh categories
           </Button>
+          <Link to="/expenses/categories">
+            <Button type="button" variant="outline">
+              Manage categories
+            </Button>
+          </Link>
           <Button onClick={handleAdd}>
             <Plus className="h-4 w-4" />
             Add expense
