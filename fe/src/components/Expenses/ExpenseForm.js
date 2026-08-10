@@ -8,6 +8,8 @@ import {
   financialSubmitSuccessMessage,
   isMakerCheckerEnabled,
 } from '../../utils/makerChecker';
+import { findCategoryByName } from '../../utils/expenseFilters';
+import { CATALOG_FETCH_PAGE_SIZE } from '../../config/pagination';
 
 const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }) => {
   const [formData, setFormData] = useState({
@@ -48,23 +50,25 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       [name]: value,
     }));
-    // Clear error for this field
     if (errors[name]) {
-      setErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[name];
-        return newErrors;
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
       });
     }
   };
 
   const validate = () => {
     const newErrors = {};
-    
+
+    if (!formData.category) {
+      newErrors.category = 'Category is required';
+    }
     if (!formData.amount || parseFloat(formData.amount) <= 0) {
       newErrors.amount = 'Amount must be greater than 0';
     }
@@ -82,36 +86,65 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
     return Object.keys(newErrors).length === 0;
   };
 
+  const selectCategory = (category) => {
+    if (!category?.id) return;
+    setFormData((prev) => ({ ...prev, category: category.id }));
+    setNewCategory({ name: '', description: '' });
+    setShowCategoryForm(false);
+    if (onCategoryCreated) {
+      onCategoryCreated(category);
+    }
+  };
+
+  const resolveExistingCategory = async (name) => {
+    const local = findCategoryByName(categories, name);
+    if (local) return local;
+    try {
+      const response = await expensesAPI.categories.list({
+        search: name,
+        page_size: CATALOG_FETCH_PAGE_SIZE,
+      });
+      const rows = response.data.results || response.data || [];
+      return findCategoryByName(Array.isArray(rows) ? rows : [], name);
+    } catch {
+      return null;
+    }
+  };
+
   const handleCreateCategory = async (e) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     if (!newCategory.name.trim()) {
       toast.error('Category name is required');
       return;
     }
-    
+
     setCreatingCategory(true);
     try {
       const response = await expensesAPI.categories.create(newCategory);
-      toast.success('Category created successfully');
-      setNewCategory({ name: '', description: '' });
-      setShowCategoryForm(false);
-      if (onCategoryCreated) {
-        onCategoryCreated(response.data);
+      const created = response.data;
+      if (response.status === 200) {
+        toast.success(`Using existing category “${created.name}”`);
+      } else {
+        toast.success('Category created successfully');
       }
-      // Auto-select the newly created category
-      setFormData(prev => ({ ...prev, category: response.data.id }));
+      selectCategory(created);
     } catch (error) {
       const errorData = error.response?.data;
-      if (errorData) {
-        if (errorData.name) {
-          toast.error(errorData.name[0]);
-        } else {
-          toast.error('Failed to create category: ' + (errorData.detail || error.message));
+      const nameError = errorData?.name?.[0] || '';
+      if (/already exists/i.test(nameError)) {
+        const existing = await resolveExistingCategory(newCategory.name);
+        if (existing) {
+          toast.success(`Using existing category “${existing.name}”`);
+          selectCategory(existing);
+          return;
         }
+      }
+      if (nameError) {
+        toast.error(nameError);
       } else {
-        toast.error('Failed to create category: ' + error.message);
+        toast.error('Failed to create category: ' + (errorData?.detail || error.message));
       }
     } finally {
       setCreatingCategory(false);
@@ -120,11 +153,11 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!validate()) {
       return;
     }
-    
+
     setLoading(true);
     try {
       const payload = { ...formData };
@@ -139,11 +172,17 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
       }
       const mcMsg = financialSubmitSuccessMessage(storeSettings);
       if (mcMsg) toast.warning(mcMsg);
+      else toast.success(expense ? 'Expense updated' : 'Expense created');
       onSave();
     } catch (error) {
       const errorData = error.response?.data;
       if (errorData) {
         setErrors(errorData);
+        toast.error(
+          errorData.detail ||
+            errorData.error ||
+            'Failed to save expense. Check the form fields.'
+        );
       } else {
         toast.error('Failed to save expense: ' + error.message);
       }
@@ -159,7 +198,7 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
           <h2>{expense ? 'Edit Expense' : 'Add New Expense'}</h2>
           <button className="slide-in-panel-close" onClick={onClose}>×</button>
         </div>
-        
+
         <div className="slide-in-panel-body">
           <form onSubmit={handleSubmit}>
           <div className="form-grid">
@@ -185,7 +224,7 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
                   ⚠️ No categories available. Please create a category first.
                 </div>
               )}
-              
+
               {showCategoryForm && (
                 <div className="category-form" style={{ marginTop: '1rem', padding: '1rem', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '6px' }}>
                   <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', fontWeight: '600' }}>Create New Category</h4>
@@ -363,4 +402,3 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
 };
 
 export default ExpenseForm;
-

@@ -57,6 +57,29 @@ class ExpenseCategoryViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             filters['is_active'] = self.request.query_params.get('is_active')
         return self.category_service.build_queryset(filters)
 
+    def create(self, request, *args, **kwargs):
+        """
+        Create category, or reuse an existing name (reactivate if inactive).
+        Avoids 400 duplicate errors when the UI tries to re-add a seeded category.
+        """
+        name = (request.data.get('name') or '').strip()
+        if name:
+            existing = ExpenseCategory.objects.filter(name__iexact=name).first()
+            if existing:
+                changed = False
+                if not existing.is_active:
+                    existing.is_active = True
+                    changed = True
+                description = request.data.get('description')
+                if description is not None and description != existing.description:
+                    existing.description = description
+                    changed = True
+                if changed:
+                    existing.save()
+                serializer = self.get_serializer(existing)
+                return Response(serializer.data, status=status.HTTP_200_OK)
+        return super().create(request, *args, **kwargs)
+
 
 class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = Expense.objects.all().select_related('category', 'created_by', 'approved_by')

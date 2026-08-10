@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Check, Pencil, Plus, RefreshCw, Trash2, TrendingDown } from 'lucide-react';
 import { expensesAPI } from '../../services/api';
-import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
+import { CATALOG_FETCH_PAGE_SIZE, DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { toast } from '../../utils/toast';
@@ -11,6 +11,10 @@ import {
   canApproveFinancialRecord,
   isMakerCheckerEnabled,
 } from '../../utils/makerChecker';
+import {
+  buildExpenseListParams,
+  normalizeFilterChangeValue,
+} from '../../utils/expenseFilters';
 import ExpenseForm from './ExpenseForm';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -60,34 +64,33 @@ const Expenses = () => {
 
   const loadCategories = async () => {
     try {
-      const response = await expensesAPI.categories.list({ is_active: 'true' });
+      const response = await expensesAPI.categories.list({
+        is_active: 'true',
+        page_size: CATALOG_FETCH_PAGE_SIZE,
+      });
       const data = response.data.results || response.data || [];
       setCategories(Array.isArray(data) ? data : []);
     } catch (error) {
+      setCategories([]);
+      toast.error('Failed to load expense categories');
     }
   };
 
   const loadExpenses = useCallback(async () => {
     setLoading(true);
     try {
-      const params = {
+      const params = buildExpenseListParams({
+        filters,
         page: pagination.page,
-        page_size: pagination.page_size,
-      };
-      
-      if (filters.category) params.category = filters.category;
-      if (filters.status) params.status = filters.status;
-      if (filters.date_from) params.date_from = filters.date_from;
-      if (filters.date_to) params.date_to = filters.date_to;
-      if (filters.payment_method) params.payment_method = filters.payment_method;
-      if (filters.search) params.search = filters.search;
-      
+        pageSize: pagination.page_size,
+      });
+
       const response = await expensesAPI.list(params);
       const data = response.data;
-      
+
       if (data.results) {
         setExpenses(data.results);
-        setPagination(prev => ({
+        setPagination((prev) => ({
           ...prev,
           count: data.count || 0,
         }));
@@ -96,6 +99,7 @@ const Expenses = () => {
       }
     } catch (error) {
       setExpenses([]);
+      toast.error('Failed to load expenses');
     } finally {
       setLoading(false);
     }
@@ -107,11 +111,11 @@ const Expenses = () => {
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
-    setFilters(prev => ({
+    setFilters((prev) => ({
       ...prev,
-      [name]: value,
+      [name]: normalizeFilterChangeValue(value),
     }));
-    setPagination(prev => ({ ...prev, page: 1 }));
+    setPagination((prev) => ({ ...prev, page: 1 }));
   };
 
   const handleAdd = () => {
@@ -130,7 +134,7 @@ const Expenses = () => {
 
   const confirmDeleteAction = async () => {
     if (!confirmDelete) return;
-    
+
     try {
       await expensesAPI.delete(confirmDelete);
       loadExpenses();
@@ -163,8 +167,16 @@ const Expenses = () => {
   };
 
   const handleCategoryCreated = (newCategory) => {
-    // Reload categories to include the new one
-    loadCategories();
+    if (newCategory?.id) {
+      setCategories((prev) => {
+        const without = prev.filter((c) => c.id !== newCategory.id);
+        return [...without, newCategory].sort((a, b) =>
+          String(a.name).localeCompare(String(b.name))
+        );
+      });
+    } else {
+      loadCategories();
+    }
   };
 
   if (loading && expenses.length === 0) {
@@ -364,7 +376,6 @@ const Expenses = () => {
           </ListPaginationRail>
         )}
 
-        {/* Expense Form Modal */}
         {showForm && (
           <ExpenseForm
             expense={editingExpense}
@@ -375,7 +386,6 @@ const Expenses = () => {
           />
         )}
 
-      {/* Confirm Delete Dialog */}
       <ConfirmDialog
         isOpen={!!confirmDelete}
         title="Delete Expense"
@@ -391,4 +401,3 @@ const Expenses = () => {
 };
 
 export default Expenses;
-

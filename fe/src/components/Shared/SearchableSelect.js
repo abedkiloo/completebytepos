@@ -48,7 +48,9 @@ const SearchableSelect = ({
       )
     : options;
 
-  const selectedOption = options.find(opt => String(opt.id || opt.value) === String(value));
+  const selectedOption = options.find(
+    (opt) => String(opt.id ?? opt.value ?? '') === String(value ?? '')
+  );
 
   const optionKey = (option, index) => {
     const v = option.id ?? option.value;
@@ -57,12 +59,12 @@ const SearchableSelect = ({
   };
 
   const handleSelect = (option) => {
-    const optionValue = option.id || option.value;
+    const optionValue = option.id ?? option.value;
     onChange({
       target: {
         name: name,
-        value: String(optionValue)
-      }
+        value: optionValue == null || optionValue === '' ? '' : String(optionValue),
+      },
     });
     setIsOpen(false);
     setSearchTerm('');
@@ -122,8 +124,8 @@ const SearchableSelect = ({
           <div className="app-scroll-region max-h-[200px] flex-1">
             {filteredOptions.length > 0 ? (
               filteredOptions.map((option, index) => {
-                const optionValue = option.id || option.value;
-                const isSelected = String(optionValue) === String(value);
+                const optionValue = option.id ?? option.value;
+                const isSelected = String(optionValue ?? '') === String(value ?? '');
                 return (
                   <div
                     key={optionKey(option, index)}
@@ -178,9 +180,9 @@ const SearchableSelect = ({
       >
         <option key="__placeholder__" value="">{placeholder}</option>
         {options.map((option, index) => {
-          const optionValue = option.id || option.value;
+          const optionValue = option.id ?? option.value;
           return (
-            <option key={optionKey(option, index)} value={String(optionValue)}>
+            <option key={optionKey(option, index)} value={optionValue == null ? '' : String(optionValue)}>
               {option.name || option.label}
             </option>
           );
