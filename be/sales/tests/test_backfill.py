@@ -15,7 +15,6 @@ from approvals.models import PendingChange
 from inventory.models import StockMovement
 from products.models import Product
 from sales.backfill_policy import (
-    backfill_max_days,
     get_backfill_stock_warnings,
     resolve_backfill_served_by,
     user_may_pick_backfill_served_by,
@@ -38,10 +37,21 @@ class BackfillPolicyTests(TestCase):
     def test_occurred_at_within_window(self):
         now = timezone.now()
         validate_backfill_occurred_at(now - timedelta(days=5))
-        with self.assertRaises(Exception):
-            validate_backfill_occurred_at(now - timedelta(days=backfill_max_days() + 1))
+        validate_backfill_occurred_at(now - timedelta(days=45))
         with self.assertRaises(Exception):
             validate_backfill_occurred_at(now + timedelta(days=1))
+
+    def test_occurred_at_honours_store_limit(self):
+        store = StoreSettings.load()
+        store.backfill_max_days = 30
+        store.save(update_fields=['backfill_max_days'])
+        now = timezone.now()
+        validate_backfill_occurred_at(now - timedelta(days=5))
+        with self.assertRaises(Exception):
+            validate_backfill_occurred_at(now - timedelta(days=31))
+        store.backfill_max_days = 0
+        store.save(update_fields=['backfill_max_days'])
+        validate_backfill_occurred_at(now - timedelta(days=400))
 
 
 class BackfillStockWarningTests(TestCase):
@@ -146,6 +156,79 @@ class SaleBackfillAPITests(ManagerAPITestCase):
         self.assertTrue(data['is_late_entry'])
         self.assertEqual(float(data['total']), 200.0)
         self.assertEqual(data['served_by'], self.manager_user.id)
+
+    def test_backfill_creates_sale_older_than_30_days(self):
+        store = StoreSettings.load()
+        store.maker_checker_enabled = False
+        store.backfill_maker_checker_enabled = False
+        store.backfill_max_days = 0
+        store.save(
+            update_fields=[
+                'maker_checker_enabled',
+                'backfill_maker_checker_enabled',
+                'backfill_max_days',
+            ]
+        )
+        occurred = timezone.now() - timedelta(days=45)
+        res = self.client.post(
+            '/api/sales/backfill/',
+            {
+                'occurred_at': occurred.isoformat(),
+                'backfill_reason': 'Found the handwritten receipt from last quarter',
+                'sale_type': 'pos',
+                'payment_method': 'cash',
+                'amount_paid': '100.00',
+                'items': [
+                    {
+                        'product_id': self.product.id,
+                        'quantity': 1,
+                        'unit_price': '100.00',
+                    }
+                ],
+            },
+            format='json',
+        )
+        self.assertEqual(res.status_code, 201, res.content)
+        self.assertEqual(res.data['entry_source'], 'backfill')
+        self.assertTrue(res.data['is_late_entry'])
+        self.assertEqual(float(res.data['total']), 100.0)
+
+    def test_backfill_rejects_sale_beyond_configured_limit(self):
+        store = StoreSettings.load()
+        store.maker_checker_enabled = False
+        store.backfill_maker_checker_enabled = False
+        store.backfill_max_days = 30
+        store.save(
+            update_fields=[
+                'maker_checker_enabled',
+                'backfill_maker_checker_enabled',
+                'backfill_max_days',
+            ]
+        )
+        occurred = timezone.now() - timedelta(days=45)
+        res = self.client.post(
+            '/api/sales/backfill/',
+            {
+                'occurred_at': occurred.isoformat(),
+                'backfill_reason': 'Found the handwritten receipt from last quarter',
+                'sale_type': 'pos',
+                'payment_method': 'cash',
+                'amount_paid': '100.00',
+                'items': [
+                    {
+                        'product_id': self.product.id,
+                        'quantity': 1,
+                        'unit_price': '100.00',
+                    }
+                ],
+            },
+            format='json',
+        )
+        self.assertEqual(res.status_code, 400, res.content)
+        self.assertTrue(
+            'occurred_at' in res.data
+            or 'more than 30 days' in str(res.data).lower()
+        )
 
     def test_preflight_returns_stock_warnings(self):
         occurred = timezone.now() - timedelta(days=4)

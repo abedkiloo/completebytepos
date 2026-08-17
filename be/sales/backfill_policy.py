@@ -19,11 +19,17 @@ def backfill_requires_approval() -> bool:
 
 
 def backfill_max_days() -> int:
+    """0 means no past-date cap (any historical sale date is allowed)."""
     from settings.models import StoreSettings
 
     store = StoreSettings.load()
-    days = int(getattr(store, 'backfill_max_days', 30) or 30)
-    return max(1, min(days, 365))
+    try:
+        days = int(getattr(store, 'backfill_max_days', 0) or 0)
+    except (TypeError, ValueError):
+        days = 0
+    if days <= 0:
+        return 0
+    return min(days, 3650)
 
 
 def validate_backfill_occurred_at(occurred_at) -> None:
@@ -32,12 +38,15 @@ def validate_backfill_occurred_at(occurred_at) -> None:
     now = timezone.now()
     if occurred_at > now + timedelta(minutes=5):
         raise ValidationError({'occurred_at': 'Sale date cannot be in the future.'})
-    earliest = now - timedelta(days=backfill_max_days())
+    max_days = backfill_max_days()
+    if not max_days:
+        return
+    earliest = now - timedelta(days=max_days)
     if occurred_at < earliest:
         raise ValidationError(
             {
                 'occurred_at': (
-                    f'Sale date cannot be more than {backfill_max_days()} days in the past.'
+                    f'Sale date cannot be more than {max_days} days in the past.'
                 )
             }
         )

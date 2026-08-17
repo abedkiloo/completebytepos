@@ -415,8 +415,11 @@ class StoreSettings(models.Model):
         ),
     )
     backfill_max_days = models.PositiveIntegerField(
-        default=30,
-        help_text='Maximum days in the past staff may record an offline sale.',
+        default=0,
+        help_text=(
+            'Maximum days in the past staff may record an offline sale. '
+            '0 means no limit (any past date).'
+        ),
     )
     backfill_maker_checker_enabled = models.BooleanField(
         default=True,
