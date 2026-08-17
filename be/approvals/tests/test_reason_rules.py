@@ -6,6 +6,7 @@ from approvals.reason_rules import (
     is_initial_sensitive_set,
     is_unset_financial_value,
     split_initial_vs_change_sensitive,
+    stock_reason_error,
 )
 
 
@@ -61,3 +62,8 @@ class ReasonRulesTests(SimpleTestCase):
         )
         self.assertEqual(initial, {})
         self.assertEqual(change, {})
+
+    def test_stock_reason_allows_five_characters(self):
+        self.assertIsNone(stock_reason_error('Count'))
+        self.assertIn('at least 5', stock_reason_error('abcd'))
+        self.assertIn('required', stock_reason_error(''))

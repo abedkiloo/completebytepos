@@ -122,6 +122,42 @@ class MakerCheckerStoreSettingsTests(MakerCheckerP2TestMixin, SuperAdminAPITestC
             _enable_maker_checker(enabled=True)
             self.assertTrue(StoreSettings.load().maker_checker_enabled)
 
+    def test_backfill_max_days_applies_immediately_without_reason(self):
+        resp = self.client.patch(
+            self.url,
+            {'backfill_max_days': 90},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
+        self.assertEqual(StoreSettings.load().backfill_max_days, 90)
+        self.assertFalse(PendingChange.objects.exists())
+
+    def test_full_payload_only_backfill_change_does_not_need_reason(self):
+        store = StoreSettings.load()
+        resp = self.client.patch(
+            self.url,
+            {
+                'backfill_max_days': 14,
+                'allow_sales_add_products': store.allow_sales_add_products,
+                'receipt_footer_text': store.receipt_footer_text or '',
+                'receipt_header_text': store.receipt_header_text or '',
+                'enabled_payment_methods': list(store.enabled_payment_methods or []),
+                'receipt_show_sku': store.receipt_show_sku,
+            },
+            format='json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
+        self.assertEqual(StoreSettings.load().backfill_max_days, 14)
+
+    def test_sensitive_store_change_without_reason_rejected(self):
+        resp = self.client.patch(
+            self.url,
+            {'receipt_footer_text': 'New legal footer'},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST, resp.data)
+        self.assertIn('reason', resp.data)
+
 
 class MakerCheckerModuleSettingsTests(MakerCheckerP2TestMixin, SuperAdminAPITestCase):
     def setUp(self):

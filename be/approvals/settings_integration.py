@@ -27,6 +27,38 @@ STORE_SETTINGS_IMMEDIATE_FIELDS = frozenset({
     'receipt_logo',
 })
 
+STORE_SETTINGS_META_KEYS = frozenset({'reason', 'change_reason', 'clear_receipt_logo'})
+
+
+def store_setting_values_equal(key: str, current: Any, proposed: Any) -> bool:
+    if key == 'enabled_payment_methods':
+        return list(current or []) == list(proposed or [])
+    if isinstance(current, bool) or isinstance(proposed, bool):
+        return bool(current) == bool(proposed)
+    return current == proposed
+
+
+def sensitive_store_keys_that_changed(
+    store,
+    validated: Dict[str, Any],
+    submitted_keys: set[str],
+) -> set[str]:
+    """Keys that need maker-checker because their submitted value actually changed."""
+    changed: set[str] = set()
+    candidates = (
+        set(submitted_keys)
+        - STORE_SETTINGS_IMMEDIATE_FIELDS
+        - STORE_SETTINGS_META_KEYS
+    )
+    for key in candidates:
+        if key not in validated:
+            continue
+        current = getattr(store, key, None)
+        if not store_setting_values_equal(key, current, validated[key]):
+            changed.add(key)
+    return changed
+
+
 PAYMENT_METHOD_FIELDS = frozenset({'enabled_payment_methods'})
 RECEIPT_LEGAL_FIELDS = frozenset({'receipt_header_text', 'receipt_footer_text'})
 STORE_RULE_FIELDS = frozenset({

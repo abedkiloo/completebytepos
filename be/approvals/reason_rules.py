@@ -46,6 +46,28 @@ def is_initial_sensitive_set(field: str, previous: Any, proposed: Any) -> bool:
     return is_unset_financial_value(previous) and not is_unset_financial_value(proposed)
 
 
+STOCK_REASON_MIN_LENGTH = 5
+
+
+def stock_reason_error(reason: Any) -> str | None:
+    """Return an error message, or None when a stock reason is long enough."""
+    text = str(reason or '').strip()
+    if not text:
+        return 'A reason is required for stock changes.'
+    if len(text) < STOCK_REASON_MIN_LENGTH:
+        return f'Enter a reason of at least {STOCK_REASON_MIN_LENGTH} characters.'
+    return None
+
+
+def normalize_stock_reason(reason: Any) -> str:
+    error = stock_reason_error(reason)
+    if error:
+        from django.core.exceptions import ValidationError
+
+        raise ValidationError({'reason': error})
+    return str(reason).strip()
+
+
 def sensitive_values_equal(field: str, previous: Any, proposed: Any) -> bool:
     """True when the client re-submitted the same value (no real change)."""
     if field == 'is_active':

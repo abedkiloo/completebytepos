@@ -10,6 +10,8 @@ from approvals.registry import (
 from approvals.settings_integration import (
     STORE_SETTINGS_IMMEDIATE_FIELDS,
     classify_store_settings_changes,
+    sensitive_store_keys_that_changed,
+    store_setting_values_equal,
 )
 
 
@@ -40,3 +42,55 @@ class SettingsIntegrationUnitTests(TestCase):
 
     def test_maker_checker_fields_are_immediate(self):
         self.assertIn('maker_checker_enabled', STORE_SETTINGS_IMMEDIATE_FIELDS)
+
+    def test_backfill_limit_is_immediate(self):
+        self.assertIn('backfill_max_days', STORE_SETTINGS_IMMEDIATE_FIELDS)
+        self.assertIn('backfill_maker_checker_enabled', STORE_SETTINGS_IMMEDIATE_FIELDS)
+
+    def test_sensitive_keys_ignore_unchanged_submitted_values(self):
+        class Store:
+            receipt_footer_text = 'Thanks'
+            enabled_payment_methods = ['cash']
+            allow_sales_add_products = True
+            backfill_max_days = 0
+
+        changed = sensitive_store_keys_that_changed(
+            Store(),
+            {
+                'backfill_max_days': 90,
+                'receipt_footer_text': 'Thanks',
+                'enabled_payment_methods': ['cash'],
+                'allow_sales_add_products': True,
+            },
+            {
+                'backfill_max_days',
+                'receipt_footer_text',
+                'enabled_payment_methods',
+                'allow_sales_add_products',
+                'reason',
+            },
+        )
+        self.assertEqual(changed, set())
+
+    def test_sensitive_keys_detect_receipt_change(self):
+        class Store:
+            receipt_footer_text = 'Old'
+
+        changed = sensitive_store_keys_that_changed(
+            Store(),
+            {'receipt_footer_text': 'New'},
+            {'receipt_footer_text'},
+        )
+        self.assertEqual(changed, {'receipt_footer_text'})
+
+    def test_payment_method_list_equality(self):
+        self.assertTrue(
+            store_setting_values_equal(
+                'enabled_payment_methods', ['cash', 'mpesa'], ['cash', 'mpesa']
+            )
+        )
+        self.assertFalse(
+            store_setting_values_equal(
+                'enabled_payment_methods', ['cash'], ['cash', 'mpesa']
+            )
+        )

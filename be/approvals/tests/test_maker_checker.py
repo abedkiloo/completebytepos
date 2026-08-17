@@ -416,6 +416,33 @@ class MakerCheckerStockTests(ManagerAPITestCase):
             PendingChange.objects.filter(action_type=ACTION_STOCK_ADJUST).exists()
         )
 
+    def test_stock_adjust_accepts_five_character_reason(self):
+        resp = self.client.post(
+            '/api/inventory/adjust/',
+            {
+                'product_id': self.product.id,
+                'quantity': 1,
+                'reason': 'Count',
+            },
+            format='json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_202_ACCEPTED, resp.data)
+        pending = PendingChange.objects.get(action_type=ACTION_STOCK_ADJUST)
+        self.assertEqual(pending.reason, 'Count')
+
+    def test_stock_adjust_rejects_reason_shorter_than_five(self):
+        resp = self.client.post(
+            '/api/inventory/adjust/',
+            {
+                'product_id': self.product.id,
+                'quantity': 1,
+                'reason': 'abcd',
+            },
+            format='json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST, resp.data)
+        self.assertIn('reason', resp.data)
+
     def test_emergency_mode_positive_adjust_applies_immediately(self):
         _enable_maker_checker(emergency=True)
         resp = self.client.post(

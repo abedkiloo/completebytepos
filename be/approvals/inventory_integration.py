@@ -8,6 +8,7 @@ from rest_framework import status
 from rest_framework.response import Response
 
 from approvals.permissions import is_maker_checker_enabled
+from approvals.reason_rules import stock_reason_error
 from approvals.serializers import PendingChangeSerializer
 from approvals.service import route_stock_movement
 
@@ -25,10 +26,11 @@ def try_pending_stock_response(
     """
     if not is_maker_checker_enabled():
         return None
-    if not str(reason).strip():
+    error = stock_reason_error(reason)
+    if error:
         from rest_framework.exceptions import ValidationError
 
-        raise ValidationError({'reason': 'A reason is required for stock changes.'})
+        raise ValidationError({'reason': error})
     pending = route_stock_movement(
         request,
         action_type=action_type,

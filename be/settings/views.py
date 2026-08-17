@@ -656,6 +656,7 @@ def store_settings(request):
     from approvals.settings_integration import (
         STORE_SETTINGS_IMMEDIATE_FIELDS,
         queue_store_settings_patch,
+        sensitive_store_keys_that_changed,
     )
 
     validated = dict(serializer.validated_data)
@@ -672,7 +673,9 @@ def store_settings(request):
             or request.data.get('reason')
             or ''
         )
-        sensitive_keys = submitted_keys - STORE_SETTINGS_IMMEDIATE_FIELDS
+        sensitive_keys = sensitive_store_keys_that_changed(
+            settings_obj, validated, submitted_keys
+        )
         if sensitive_keys:
             if not str(reason).strip():
                 return Response(
@@ -683,12 +686,12 @@ def store_settings(request):
                 request,
                 settings_obj,
                 validated,
-                submitted_keys=submitted_keys,
+                submitted_keys=sensitive_keys,
                 reason=str(reason).strip(),
             )
             if pending:
                 for key in list(validated.keys()):
-                    if key not in STORE_SETTINGS_IMMEDIATE_FIELDS and key in submitted_keys:
+                    if key not in STORE_SETTINGS_IMMEDIATE_FIELDS and key in sensitive_keys:
                         validated.pop(key, None)
                         serializer.validated_data.pop(key, None)
 
