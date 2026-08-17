@@ -13,7 +13,6 @@ from inventory.models import StockMovement
 from expenses.models import Expense
 from income.models import Income
 from accounts.permissions import RequirePermPerAction
-from django.http import HttpResponse
 
 from .sales_person_report import SalesPersonReportService
 from .services import ReportDashboardService, resolve_period
@@ -22,6 +21,7 @@ from .module_settings import (
     reports_action_label,
     apply_report_response_flags,
 )
+from .export import maybe_export_report
 
 
 REPORTS_PERMS = RequirePermPerAction('reports', {
@@ -60,6 +60,18 @@ def gated_report_action(action_name):
             response = view_method(self, request, *args, **kwargs)
             if isinstance(response, Response) and isinstance(response.data, dict):
                 response.data = apply_report_response_flags(response.data)
+                csv_body = None
+                if action_name == 'sales_by_person':
+                    csv_body = SalesPersonReportService.to_csv(response.data)
+                exported = maybe_export_report(
+                    request,
+                    response.data,
+                    title=reports_action_label(action_name),
+                    slug=action_name,
+                    csv_body=csv_body,
+                )
+                if exported is not None:
+                    return exported
             return response
 
         return wrapper
@@ -958,15 +970,7 @@ class ReportViewSet(viewsets.ViewSet):
           period=today|week|month|year — alternative window
           date_from, date_to — custom range
           cashier_id      — filter to one person (+ transaction detail)
-          format=csv      — downloadable spreadsheet
+          format=pdf|xlsx|csv — downloadable file (excel/xls aliases work)
         """
         payload = SalesPersonReportService.build(request)
-        if (request.query_params.get('format') or '').lower() == 'csv':
-            csv_body = SalesPersonReportService.to_csv(payload)
-            filename = f"sales_staff_{payload.get('period', 'report')}.csv"
-            response = HttpResponse(content_type='text/csv; charset=utf-8')
-            response['Content-Disposition'] = f'attachment; filename="{filename}"'
-            response.write('\ufeff')
-            response.write(csv_body)
-            return response
         return Response(payload)

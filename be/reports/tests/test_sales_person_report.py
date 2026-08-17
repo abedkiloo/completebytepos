@@ -75,6 +75,21 @@ class SalesPersonReportTests(ManagerAPITestCase):
         self.assertIn('Sales staff performance report', body)
         self.assertIn('staff_b', body)
 
+    def test_sales_by_person_pdf_and_excel(self):
+        month = timezone.now().strftime('%Y-%m')
+        pdf = self.client.get(
+            '/api/reports/sales_by_person/',
+            {'month': month, 'format': 'pdf'},
+        )
+        self.assertEqual(pdf.status_code, status.HTTP_200_OK)
+        self.assertTrue(pdf.content.startswith(b'%PDF'))
+        xlsx = self.client.get(
+            '/api/reports/sales_by_person/',
+            {'month': month, 'format': 'xlsx'},
+        )
+        self.assertEqual(xlsx.status_code, status.HTTP_200_OK)
+        self.assertTrue(xlsx.content[:2] == b'PK')
+
     def test_holding_sales_excluded(self):
         Sale.objects.create(
             status='holding',

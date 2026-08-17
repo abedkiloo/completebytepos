@@ -87,6 +87,41 @@ class ReportsViewsTestCase(ManagerAPITestCase):
         self.assertIn('by_payment_method', response.data)
         self.assertIn('daily_breakdown', response.data)
 
+    def test_sales_report_pdf_download(self):
+        response = self.client.get('/api/reports/sales/', {'format': 'pdf'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertTrue(response.content.startswith(b'%PDF'))
+        self.assertIn('attachment', response['Content-Disposition'])
+
+    def test_sales_report_excel_download(self):
+        response = self.client.get('/api/reports/sales/', {'format': 'xlsx'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('spreadsheetml', response['Content-Type'])
+        self.assertTrue(response.content[:2] == b'PK')
+
+    def test_expense_report_excel_alias(self):
+        response = self.client.get('/api/reports/expense/', {'format': 'excel'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.content[:2] == b'PK')
+
+    def test_inventory_report_csv_download(self):
+        response = self.client.get('/api/reports/inventory/', {'format': 'csv'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('text/csv', response['Content-Type'])
+        body = response.content.decode('utf-8-sig')
+        self.assertIn('Low Stock Count', body)
+
+    def test_report_export_rejects_unknown_format(self):
+        response = self.client.get('/api/reports/sales/', {'format': 'ppt'})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', response.data)
+
+    def test_profit_loss_pdf_download(self):
+        response = self.client.get('/api/reports/profit_loss/', {'format': 'pdf'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.content.startswith(b'%PDF'))
+
     def test_products_report_lists_sold_items(self):
         response = self.client.get('/api/reports/products/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -171,6 +206,32 @@ class ReportsViewsTestCase(ManagerAPITestCase):
         response = self.client.get('/api/reports/supplier/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('suppliers', response.data)
+
+    def test_all_operational_reports_export_pdf_and_excel(self):
+        endpoints = [
+            '/api/reports/purchase/',
+            '/api/reports/invoice/',
+            '/api/reports/supplier/',
+            '/api/reports/customer/',
+            '/api/reports/products/',
+            '/api/reports/income/',
+            '/api/reports/tax/',
+            '/api/reports/annual/',
+            '/api/reports/sales_overview/',
+            '/api/reports/top_products/',
+            '/api/reports/cash_and_payments/',
+            '/api/reports/inventory_health/',
+            '/api/reports/customer_outstanding/',
+        ]
+        for path in endpoints:
+            with self.subTest(path=path, fmt='pdf'):
+                response = self.client.get(path, {'format': 'pdf'})
+                self.assertEqual(response.status_code, status.HTTP_200_OK, path)
+                self.assertTrue(response.content.startswith(b'%PDF'), path)
+            with self.subTest(path=path, fmt='xlsx'):
+                response = self.client.get(path, {'format': 'xlsx'})
+                self.assertEqual(response.status_code, status.HTTP_200_OK, path)
+                self.assertEqual(response.content[:2], b'PK', path)
 
 
 class ReportsPermissionsTestCase(SalesAPITestCase):

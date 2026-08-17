@@ -51,6 +51,11 @@
       "include": ["bankaccounts/services.py"]
     },
     {
+      "name": "reports",
+      "include": ["reports/export.py"],
+      "minimum_percent": 98
+    },
+    {
       "name": "daily_notes",
       "include": [
         "daily_notes/access.py",
