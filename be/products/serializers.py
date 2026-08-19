@@ -1045,7 +1045,8 @@ class ProductListSerializer(serializers.ModelSerializer):
     variants_count = serializers.SerializerMethodField()
     available_sizes_detail = SizeSerializer(source='available_sizes', many=True, read_only=True)
     available_colors_detail = ColorSerializer(source='available_colors', many=True, read_only=True)
-    is_low_stock = serializers.BooleanField(read_only=True)
+    is_low_stock = serializers.SerializerMethodField()
+    has_out_of_stock = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()
     selling_price = serializers.DecimalField(
         source='price', max_digits=10, decimal_places=2, read_only=True
@@ -1062,8 +1063,16 @@ class ProductListSerializer(serializers.ModelSerializer):
             'has_variants', 'variants_count',
             'available_sizes_detail', 'available_colors_detail',
             'mrp', 'price', 'selling_price', 'cost', 'stock_quantity', 'unit', 'track_stock',
-            'is_low_stock', 'is_active', 'image_url'
+            'is_low_stock', 'has_out_of_stock', 'is_active', 'image_url'
         ]
+    
+    def get_is_low_stock(self, obj):
+        from products.stock_alerts import product_has_low_stock
+        return product_has_low_stock(obj)
+
+    def get_has_out_of_stock(self, obj):
+        from products.stock_alerts import product_has_out_of_stock
+        return product_has_out_of_stock(obj)
     
     def get_category_name(self, obj):
         return obj.category.name if obj.category else None
@@ -1143,5 +1152,9 @@ class ProductStatisticsSerializer(serializers.Serializer):
     # Canonical ``_count`` aliases used by the Reports hub and dashboard.
     low_stock_count = serializers.IntegerField()
     out_of_stock_count = serializers.IntegerField()
+    low_stock_simple_count = serializers.IntegerField(required=False)
+    low_stock_variant_count = serializers.IntegerField(required=False)
+    out_of_stock_simple_count = serializers.IntegerField(required=False)
+    out_of_stock_variant_count = serializers.IntegerField(required=False)
     total_inventory_value = serializers.DecimalField(max_digits=12, decimal_places=2)
     total_products_value = serializers.DecimalField(max_digits=12, decimal_places=2)

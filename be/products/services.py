@@ -14,6 +14,11 @@ from .status_rules import (
     products_show_status_enabled,
     strip_product_status_filter,
 )
+from .stock_alerts import (
+    apply_low_stock_filter,
+    apply_out_of_stock_filter,
+    count_stock_alert_items,
+)
 from suppliers.models import Supplier
 from services.base import BaseService, QueryService
 
@@ -439,21 +444,18 @@ class ProductService(BaseService):
             return []  # Return empty list on error rather than raising
     
     def get_low_stock_products(self) -> List[Product]:
-        """Get products with stock below threshold"""
+        """Products with a low-stock alert on the parent row or any variant."""
         return list(
             apply_operational_product_filter(
-                self.model.objects.filter(
-                    track_stock=True,
-                    stock_quantity__lt=F('low_stock_threshold'),
-                )
-            ).exclude(stock_quantity=0)
+                apply_low_stock_filter(self.model.objects.all())
+            )
         )
-    
+
     def get_out_of_stock_products(self) -> List[Product]:
-        """Get products that are out of stock"""
+        """Products with an out-of-stock alert on the parent row or any variant."""
         return list(
             apply_operational_product_filter(
-                self.model.objects.filter(track_stock=True, stock_quantity=0)
+                apply_out_of_stock_filter(self.model.objects.all())
             )
         )
     
@@ -535,10 +537,7 @@ class ProductService(BaseService):
                 else:
                     low_stock = low_stock_lower == 'true'
             if low_stock is not None and low_stock:
-                queryset = queryset.filter(
-                    stock_quantity__lte=F('low_stock_threshold'),
-                    track_stock=True
-                )
+                queryset = apply_low_stock_filter(queryset)
         
         out_of_stock = filters.get('out_of_stock')
         if out_of_stock is not None:
@@ -550,7 +549,7 @@ class ProductService(BaseService):
                 else:
                     out_of_stock = out_of_stock_lower == 'true'
             if out_of_stock is not None and out_of_stock:
-                queryset = queryset.filter(stock_quantity=0, track_stock=True)
+                queryset = apply_out_of_stock_filter(queryset)
         
         needs_restock = filters.get('needs_restock')
         if needs_restock is not None:
@@ -776,12 +775,10 @@ class ProductService(BaseService):
             if total_products_value is None:
                 total_products_value = Decimal('0')
             
-            # Get low stock and out of stock counts
-            low_stock_list = self.get_low_stock_products()
-            out_of_stock_list = self.get_out_of_stock_products()
-            
-            low_stock_count = len(low_stock_list) if low_stock_list else 0
-            out_of_stock_count = len(out_of_stock_list) if out_of_stock_list else 0
+            # Stock alert counts include simple products and individual variants.
+            alert_counts = count_stock_alert_items(queryset)
+            low_stock_count = alert_counts['low_stock_count']
+            out_of_stock_count = alert_counts['out_of_stock_count']
             stats = {
                 'total_products': queryset.count(),
                 'active_products': queryset.filter(is_active=True).count(),
@@ -793,6 +790,10 @@ class ProductService(BaseService):
                 # naming used in the Reports hub and dashboard endpoints.
                 'low_stock_count': low_stock_count,
                 'out_of_stock_count': out_of_stock_count,
+                'low_stock_simple_count': alert_counts['low_stock_simple_count'],
+                'low_stock_variant_count': alert_counts['low_stock_variant_count'],
+                'out_of_stock_simple_count': alert_counts['out_of_stock_simple_count'],
+                'out_of_stock_variant_count': alert_counts['out_of_stock_variant_count'],
                 'total_inventory_value': float(total_inventory_value),
                 'total_products_value': float(total_products_value),
             }
