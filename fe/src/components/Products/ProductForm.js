@@ -37,6 +37,7 @@ import {
   pendingApprovalToastMessage,
   productEditNeedsReason,
   proposedPendingCost,
+  stockReasonValidationMessage,
 } from '../../utils/makerChecker';
 import { formatCurrency } from '../../utils/formatters';
 import PendingApprovalBadges from '../Approvals/PendingApprovalBadges';
@@ -568,8 +569,6 @@ const ProductForm = ({
         delete payload.mrp;
         delete payload.cost;
         delete payload.stock_quantity;
-        delete payload.low_stock_threshold;
-        delete payload.reorder_quantity;
       }
       if (product) {
         delete payload.stock_quantity;
@@ -646,18 +645,24 @@ const ProductForm = ({
         }) ||
           sensitiveVariantDraftApplies);
       if (needsReason) {
-        if (!changeReason.trim()) {
+        const reasonError = stockReasonValidationMessage(changeReason);
+        if (reasonError) {
           toast.warning(
-            'Enter a reason below — price, cost, or stock changes need manager approval.'
+            reasonError === 'A reason is required for stock changes.'
+              ? 'Enter a reason below — price, cost, or stock changes need manager approval.'
+              : reasonError
           );
           setLoading(false);
           return;
         }
         submitData.append('reason', changeReason.trim());
       } else if (makerCheckerOn && !product && sensitiveVariantDraftApplies) {
-        if (!changeReason.trim()) {
+        const reasonError = stockReasonValidationMessage(changeReason);
+        if (reasonError) {
           toast.warning(
-            'Enter a reason below — variant price or cost changes need manager approval.'
+            reasonError === 'A reason is required for stock changes.'
+              ? 'Enter a reason below — variant price or cost changes need manager approval.'
+              : reasonError
           );
           setLoading(false);
           return;
@@ -751,7 +756,14 @@ const ProductForm = ({
   };
 
   return (
-    <div className="slide-in-overlay" onClick={onClose}>
+    <div
+      className="slide-in-overlay"
+      onClick={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (showCategoryForm || showSubcategoryForm || showSupplierForm) return;
+        onClose();
+      }}
+    >
       <div className="slide-in-panel" onClick={(e) => e.stopPropagation()}>
         <div className="slide-in-panel-header">
           <h2>{product ? 'Edit Product' : 'Add Product'}</h2>
@@ -883,7 +895,10 @@ const ProductForm = ({
                 {showMrp && showPricingFields ? ' MRP,' : ''} price
                 {showCostField ? ', cost' : ''}
                 {showStockFields && !product ? ', and opening stock' : ''}{' '}
-                for that row.
+                for that row
+                {showStockFields && !product
+                  ? '. Set low-stock threshold and reorder quantity above — they apply to every variant.'
+                  : '.'}
               </p>
               <ProductVariantsPanel
                 productId={product?.id}
@@ -963,8 +978,9 @@ const ProductForm = ({
           </div>
           )}
 
-          {showStockFields && !formData.has_variants && !product && (
+          {showStockFields && !product && (
           <div className="form-row">
+            {formData.has_variants ? null : (
             <div className="form-group">
               <label htmlFor="product-opening-stock">{STOCK_OPENING_LABEL}</label>
               <small className="form-text">{STOCK_OPENING_HINT}</small>
@@ -977,9 +993,14 @@ const ProductForm = ({
                 min="0"
               />
             </div>
+            )}
             <div className="form-group">
-              <label>Low Stock Threshold</label>
+              <label htmlFor="product-low-stock-threshold">Low Stock Threshold</label>
+              {formData.has_variants ? (
+                <small className="form-text">Default alert level copied to each variant.</small>
+              ) : null}
               <input
+                id="product-low-stock-threshold"
                 type="number"
                 name="low_stock_threshold"
                 value={formData.low_stock_threshold}
@@ -989,8 +1010,12 @@ const ProductForm = ({
             </div>
 
             <div className="form-group">
-              <label>Reorder Quantity</label>
+              <label htmlFor="product-reorder-quantity">Reorder Quantity</label>
+              {formData.has_variants ? (
+                <small className="form-text">Suggested restock quantity for this product.</small>
+              ) : null}
               <input
+                id="product-reorder-quantity"
                 type="number"
                 name="reorder_quantity"
                 value={formData.reorder_quantity}
@@ -1143,6 +1168,7 @@ const ProductForm = ({
           <div className="border-t border-amber-200/80 bg-amber-50/30 px-4 py-3 dark:border-amber-900 dark:bg-amber-950/20">
             <ChangeReasonField
               context="catalog"
+              minLength={5}
               value={changeReason}
               onChange={setChangeReason}
             />

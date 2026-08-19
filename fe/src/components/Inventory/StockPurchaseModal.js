@@ -9,6 +9,7 @@ import {
   isMakerCheckerEnabled,
   isPendingApprovalResponse,
   PENDING_APPROVAL_MESSAGE,
+  stockReasonValidationMessage,
 } from '../../utils/makerChecker';
 
 const StockPurchaseModal = ({ product, onClose, onSave }) => {
@@ -100,8 +101,13 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
     try {
       const payload = { ...formData, quantity: quantityNum };
       if (makerCheckerOn) {
-        if (!changeReason.trim()) {
-          setError('A reason is required for stock purchases.');
+        const reasonError = stockReasonValidationMessage(changeReason);
+        if (reasonError) {
+          setError(
+            reasonError === 'A reason is required for stock changes.'
+              ? 'A reason is required for stock purchases.'
+              : reasonError
+          );
           setLoading(false);
           return;
         }

@@ -23,6 +23,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { ArrowLeft, BarChart3 } from 'lucide-react';
 import { R } from './reportUI';
+import ReportExportButtons from './ReportExportButtons';
 
 const Reports = () => {
   const [searchParams] = useSearchParams();
@@ -900,6 +901,17 @@ const Reports = () => {
 
   const needsDateFilter = ['sales', 'purchase', 'invoice', 'customer', 'products', 'expense', 'income', 'tax', 'profit-loss'].includes(reportParam);
   const needsYearFilter = reportParam === 'annual';
+  const exportParams =
+    reportParam === 'annual'
+      ? filters.year
+        ? { year: filters.year }
+        : {}
+      : reportParam === 'inventory'
+        ? {}
+        : {
+            ...(filters.date_from ? { date_from: filters.date_from } : {}),
+            ...(filters.date_to ? { date_to: filters.date_to } : {}),
+          };
 
   return (
     <PageShell>
@@ -907,10 +919,13 @@ const Reports = () => {
           title={getReportTitle()}
           description={
             reportParam === 'sales-by-person'
-              ? 'Month-end totals per sales person — filter, print, or download CSV for commission records.'
-              : `Analytics for ${getReportTitle().toLowerCase()}.`
+              ? 'Month-end totals per sales person — filter, print, or download PDF, Excel, or CSV for commission records.'
+              : `Analytics for ${getReportTitle().toLowerCase()}. Download PDF or Excel anytime.`
           }
         >
+          {reportParam !== 'sales-by-person' ? (
+            <ReportExportButtons slug={reportParam} params={exportParams} disabled={loading} />
+          ) : null}
           <Button variant="outline" onClick={() => navigate('/reports')}>
             <ArrowLeft className="h-4 w-4" />
             All reports

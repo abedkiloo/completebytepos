@@ -47,6 +47,7 @@ jest.mock('../../services/api', () => ({
     customerOutstanding: jest.fn(),
     salesByPerson: jest.fn(),
     salesByPersonCsv: jest.fn(),
+    exportFile: jest.fn(),
   },
 }));
 
@@ -156,6 +157,25 @@ describe('Reports detail period filters', () => {
           date_from: yearRange.date_from,
           date_to: yearRange.date_to,
         })
+      );
+    });
+  });
+
+  it('exports PDF of the current sales filters', async () => {
+    reportsAPI.exportFile.mockResolvedValue('sales.pdf');
+    const monthRange = periodToDateFilters('month');
+    render(<Reports />);
+    await waitFor(() => expect(reportsAPI.sales).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole('button', { name: /Download PDF/i }));
+    await waitFor(() => {
+      expect(reportsAPI.exportFile).toHaveBeenCalledWith(
+        'sales',
+        expect.objectContaining({
+          date_from: monthRange.date_from,
+          date_to: monthRange.date_to,
+        }),
+        'pdf'
       );
     });
   });

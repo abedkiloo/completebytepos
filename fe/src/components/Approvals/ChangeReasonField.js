@@ -2,7 +2,7 @@ import React from 'react';
 import { Info } from 'lucide-react';
 import { Label } from '../ui/label';
 import { Input } from '../ui/input';
-import { makerCheckerReasonCopy } from '../../utils/makerChecker';
+import { makerCheckerReasonCopy, STOCK_REASON_MIN_LENGTH } from '../../utils/makerChecker';
 
 export default function ChangeReasonField({
   value,
@@ -14,11 +14,14 @@ export default function ChangeReasonField({
   placeholder,
   error,
   requiresApproval = true,
+  minLength,
 }) {
   const copy = makerCheckerReasonCopy(context);
   const resolvedLabel = label ?? copy.label;
   const resolvedPlaceholder = placeholder ?? copy.placeholder;
   const resolvedHint = hint ?? copy.summary;
+  const resolvedMinLength =
+    minLength ?? (context === 'stock' ? STOCK_REASON_MIN_LENGTH : undefined);
 
   return (
     <div
@@ -60,8 +63,14 @@ export default function ChangeReasonField({
           placeholder={resolvedPlaceholder}
           className="mt-1.5"
           required={required}
+          minLength={resolvedMinLength}
           aria-invalid={Boolean(error)}
         />
+        {resolvedMinLength ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            At least {resolvedMinLength} characters.
+          </p>
+        ) : null}
         {error ? <p className="mt-1 text-xs text-destructive">{error}</p> : null}
       </div>
     </div>

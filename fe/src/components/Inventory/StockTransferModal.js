@@ -10,6 +10,7 @@ import {
   isMakerCheckerEnabled,
   isPendingApprovalResponse,
   PENDING_APPROVAL_MESSAGE,
+  stockReasonValidationMessage,
 } from '../../utils/makerChecker';
 import { inventoryAllowMovementUndo } from '../../utils/inventoryDisplay';
 const StockTransferModal = ({ isOpen, onClose, onSuccess, product }) => {
@@ -77,9 +78,16 @@ const StockTransferModal = ({ isOpen, onClose, onSuccess, product }) => {
       toast.error('Please fill in all required fields');
       return;
     }
-    if (makerCheckerOn && !changeReason.trim()) {
-      toast.error('A reason is required for stock transfers.');
-      return;
+    if (makerCheckerOn) {
+      const reasonError = stockReasonValidationMessage(changeReason);
+      if (reasonError) {
+        toast.error(
+          reasonError === 'A reason is required for stock changes.'
+            ? 'A reason is required for stock transfers.'
+            : reasonError
+        );
+        return;
+      }
     }
 
     // Show confirmation dialog

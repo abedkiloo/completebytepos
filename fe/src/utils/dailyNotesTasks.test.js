@@ -1,5 +1,6 @@
 import {
   countOpenTasks,
+  formatDisplayDate,
   formatTaskCompletedAt,
   mergeActivityDates,
   sortDailyTasks,
@@ -89,6 +90,17 @@ describe('dailyNotesTasks', () => {
     expect(mergeActivityDates(undefined, ['2026-06-02'])).toEqual(['2026-06-02']);
     expect(mergeActivityDates(['2026-06-03'], undefined)).toEqual(['2026-06-03']);
     expect(mergeActivityDates('ignored', 42)).toEqual([]);
+  });
+
+  test('formatDisplayDate formats calendar days', () => {
+    expect(formatDisplayDate('')).toBe('');
+    expect(formatDisplayDate('2026-06-01')).toMatch(/2026/);
+    const orig = Date.prototype.toLocaleDateString;
+    Date.prototype.toLocaleDateString = () => {
+      throw new Error('locale fail');
+    };
+    expect(formatDisplayDate('2026-06-01')).toBe('2026-06-01');
+    Date.prototype.toLocaleDateString = orig;
   });
 
   test('taskStatusLabel uses formatted completion time when present', () => {

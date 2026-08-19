@@ -18,6 +18,7 @@ import {
   isPendingApprovalResponse,
   pendingApprovalToastMessage,
   variantEditNeedsReason,
+  stockReasonValidationMessage,
 } from '../../utils/makerChecker';
 import {
   buildVariantPatchPayload,
@@ -229,12 +230,17 @@ export default function ProductVariantsPanel({
     }
     const needsReason = makerCheckerOn && variantEditNeedsReason(payload, variant);
     const reason = (reasons[row.key] || '').trim();
-    if (needsReason && !reason) {
-      setReasonFocusId(row.key);
-      toast.warning('Enter a reason below — price, cost, stock, or status changes need approval.');
-      return;
-    }
     if (needsReason) {
+      const reasonError = stockReasonValidationMessage(reason);
+      if (reasonError) {
+        setReasonFocusId(row.key);
+        toast.warning(
+          reasonError === 'A reason is required for stock changes.'
+            ? 'Enter a reason below — price, cost, stock, or status changes need approval.'
+            : reasonError
+        );
+        return;
+      }
       payload.reason = reason;
     }
     setBusyId(row.key);
@@ -471,6 +477,7 @@ export default function ProductVariantsPanel({
                   >
                     <ChangeReasonField
                       context="catalog"
+                      minLength={5}
                       value={reasons[row.key] || ''}
                       onChange={(v) => setReasons((prev) => ({ ...prev, [row.key]: v }))}
                     />

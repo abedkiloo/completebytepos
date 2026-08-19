@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { categoriesAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import SearchableSelect from '../Shared/SearchableSelect';
@@ -20,6 +21,7 @@ const CategoryForm = ({
   });
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+  const allowBackdropClose = useRef(false);
 
   const isSubcategory = Boolean(parentCategory);
   const topLevelParents = useMemo(
@@ -43,6 +45,18 @@ const CategoryForm = ({
       setErrors({});
     }
   }, [isOpen, parentCategory, initialName]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      allowBackdropClose.current = false;
+      return undefined;
+    }
+    allowBackdropClose.current = false;
+    const timer = window.setTimeout(() => {
+      allowBackdropClose.current = true;
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [isOpen]);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -127,8 +141,18 @@ const CategoryForm = ({
 
   if (!isOpen) return null;
 
-  return (
-    <div className="slide-in-overlay nested" onClick={onClose}>
+  const handleOverlayClick = (e) => {
+    e.stopPropagation();
+    if (!allowBackdropClose.current) return;
+    if (e.target === e.currentTarget) onClose();
+  };
+
+  return createPortal(
+    <div
+      className="slide-in-overlay nested"
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={handleOverlayClick}
+    >
       <div className="slide-in-panel nested" onClick={(e) => e.stopPropagation()}>
         <div className="slide-in-panel-header">
           <h2>{isSubcategory ? 'Add subcategory' : 'Add category'}</h2>
@@ -219,7 +243,8 @@ const CategoryForm = ({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

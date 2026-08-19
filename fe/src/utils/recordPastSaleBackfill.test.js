@@ -12,6 +12,8 @@ import {
   backfillPendingToastMessage,
   backfillRejectionSuccessMessage,
   linesFromBackfillPayload,
+  resolveBackfillMaxDays,
+  backfillWindowDescription,
 } from './recordPastSaleBackfill';
 
 describe('recordPastSaleBackfill', () => {
@@ -21,12 +23,18 @@ describe('recordPastSaleBackfill', () => {
     it('defaultOccurredAtLocal returns local datetime string', () => {
       const value = defaultOccurredAtLocal(fixedNow);
       expect(value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+      expect(defaultOccurredAtLocal()).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
     });
 
     it('minOccurredAtLocal subtracts maxDays', () => {
       const min = minOccurredAtLocal(30, fixedNow);
       const max = defaultOccurredAtLocal(fixedNow);
       expect(min < max).toBe(true);
+    });
+
+    it('minOccurredAtLocal has no floor when unlimited', () => {
+      expect(minOccurredAtLocal(0, fixedNow)).toBeUndefined();
+      expect(minOccurredAtLocal(5)).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
     });
 
     it('toIsoDatetime converts local input to ISO', () => {
@@ -50,6 +58,21 @@ describe('recordPastSaleBackfill', () => {
     });
   });
 
+  describe('backfill date window', () => {
+    it('treats 0 and missing settings as unlimited', () => {
+      expect(resolveBackfillMaxDays(0)).toBe(0);
+      expect(resolveBackfillMaxDays(undefined)).toBe(0);
+      expect(resolveBackfillMaxDays('')).toBe(0);
+      expect(resolveBackfillMaxDays(-3)).toBe(0);
+      expect(resolveBackfillMaxDays(45)).toBe(45);
+    });
+
+    it('describes unlimited vs capped windows', () => {
+      expect(backfillWindowDescription(0)).toMatch(/any past date/i);
+      expect(backfillWindowDescription(30)).toBe('up to 30 days ago');
+    });
+  });
+
   describe('served by', () => {
     it('forces current user for staff', () => {
       expect(
@@ -59,6 +82,13 @@ describe('recordPastSaleBackfill', () => {
           currentUserId: 5,
         })
       ).toBe(5);
+      expect(
+        resolveBackfillServedById({
+          canPickServedBy: false,
+          servedById: '99',
+          currentUserId: undefined,
+        })
+      ).toBeNull();
     });
 
     it('allows manager to pick another staff member', () => {
@@ -79,6 +109,27 @@ describe('recordPastSaleBackfill', () => {
           currentUserId: 5,
         })
       ).toBe(5);
+      expect(
+        resolveBackfillServedById({
+          canPickServedBy: true,
+          servedById: 'nope',
+          currentUserId: 5,
+        })
+      ).toBe(5);
+      expect(
+        resolveBackfillServedById({
+          canPickServedBy: true,
+          servedById: 'nope',
+          currentUserId: null,
+        })
+      ).toBeNull();
+      expect(
+        resolveBackfillServedById({
+          canPickServedBy: true,
+          servedById: '',
+          currentUserId: null,
+        })
+      ).toBeNull();
     });
 
     it('servedByIdForPrefill respects role', () => {
@@ -106,6 +157,13 @@ describe('recordPastSaleBackfill', () => {
           currentUserId: null,
         })
       ).toBe('');
+      expect(
+        servedByIdForPrefill({
+          canPickServedBy: true,
+          payloadServedById: null,
+          currentUserId: 5,
+        })
+      ).toBe('5');
     });
 
     it('parseRejectedBackfillChange keeps manager served-by selection', () => {
@@ -179,6 +237,31 @@ describe('recordPastSaleBackfill', () => {
       expect(parsed.ok).toBe(false);
       expect(parsed.error).toMatch(/cannot be edited/i);
     });
+
+    it('parseRejectedBackfillChange fills defaults from an empty payload', () => {
+      const parsed = parseRejectedBackfillChange({
+        id: 7,
+        status: 'rejected',
+        action_type: 'sale_backfill',
+        reason: 'Fix date',
+        apply_payload: { customer_id: 3 },
+      });
+      expect(parsed.ok).toBe(true);
+      expect(parsed.prefill.backfillReason).toBe('Fix date');
+      expect(parsed.prefill.customerId).toBe('3');
+      expect(parsed.prefill.saleType).toBe('pos');
+      expect(parsed.prefill.paymentMethod).toBe('cash');
+    });
+
+    it('parseRejectedBackfillChange uses an empty payload when none is stored', () => {
+      const parsed = parseRejectedBackfillChange({
+        id: 8,
+        status: 'rejected',
+        action_type: 'sale_backfill',
+      });
+      expect(parsed.ok).toBe(true);
+      expect(parsed.prefill.items).toEqual([]);
+    });
   });
 
   describe('buildBackfillSubmitPayload', () => {
@@ -231,6 +314,20 @@ describe('recordPastSaleBackfill', () => {
     it('defaults discount_amount to zero', () => {
       const payload = buildBackfillSubmitPayload(base);
       expect(payload.discount_amount).toBe(0);
+    });
+
+    it('parses customer id and keeps variant ids', () => {
+      const payload = buildBackfillSubmitPayload({
+        ...base,
+        customerId: '44',
+        amountPaid: 'nope',
+        backfillReason: '',
+        lines: [{ product_id: 1, variant_id: 9, quantity: 1, unit_price: 25 }],
+      });
+      expect(payload.customer_id).toBe(44);
+      expect(payload.items[0].variant_id).toBe(9);
+      expect(payload.amount_paid).toBe(0);
+      expect(payload.backfill_reason).toBe('');
     });
   });
 
@@ -296,8 +393,40 @@ describe('recordPastSaleBackfill', () => {
       expect(lines[0].product_name).toBe('Product #77');
     });
 
+    it('keeps the product name when sku and variant are missing', async () => {
+      const unnamed = await linesFromBackfillPayload(
+        [{ product_id: 1, quantity: 1, unit_price: '10' }],
+        {
+          getProduct: async () => ({ id: 1, name: 'Shirt' }),
+          getVariants: async () => [],
+          getVariantRowLabel: () => 'unused',
+        }
+      );
+      expect(unnamed[0].product_name).toBe('Shirt');
+
+      const missedVariant = await linesFromBackfillPayload(
+        [{ product_id: 1, variant_id: 9, quantity: 1, unit_price: '10' }],
+        {
+          getProduct: async () => ({ id: 1, name: 'Shirt' }),
+          getVariants: async () => [{ id: 2 }],
+          getVariantRowLabel: () => 'unused',
+        }
+      );
+      expect(missedVariant[0].product_name).toBe('Shirt');
+    });
+
     it('requires fetch dependencies', async () => {
       await expect(linesFromBackfillPayload([])).rejects.toThrow(/requires product fetch/i);
+    });
+
+    it('defaults items to an empty list', async () => {
+      await expect(
+        linesFromBackfillPayload(undefined, {
+          getProduct: async () => ({ id: 1, name: 'Pen' }),
+          getVariants: async () => [],
+          getVariantRowLabel: () => '',
+        })
+      ).resolves.toEqual([]);
     });
   });
 });

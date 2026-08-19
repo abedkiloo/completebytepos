@@ -15,6 +15,7 @@ import {
   isMakerCheckerEnabled,
   isPendingApprovalResponse,
   PENDING_APPROVAL_MESSAGE,
+  stockReasonValidationMessage,
 } from '../../utils/makerChecker';
 import { isValidOptionalInteger } from '../../utils/variantPayload';
 import {
@@ -159,10 +160,13 @@ const StockCountModal = ({ product, variant = null, onClose, onSave, nested = fa
         return;
       }
 
-      if (makerCheckerOn && !changeReason.trim()) {
-        setError('A reason is required for stock changes.');
-        setLoading(false);
-        return;
+      if (makerCheckerOn) {
+        const reasonError = stockReasonValidationMessage(changeReason);
+        if (reasonError) {
+          setError(reasonError);
+          setLoading(false);
+          return;
+        }
       }
 
       const reason = makerCheckerOn ? changeReason.trim() : undefined;

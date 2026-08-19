@@ -6,9 +6,29 @@ export function defaultOccurredAtLocal(now = new Date()) {
   return d.toISOString().slice(0, 16);
 }
 
+/**
+ * Days staff may backdate a past sale.
+ * 0 (or missing/invalid) means no past-date cap — only “not in the future”.
+ */
+export function resolveBackfillMaxDays(raw) {
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return n;
+}
+
+export function backfillWindowDescription(maxDays) {
+  const days = resolveBackfillMaxDays(maxDays);
+  if (!days) {
+    return 'any past date (not in the future)';
+  }
+  return `up to ${days} days ago`;
+}
+
 export function minOccurredAtLocal(maxDays, now = new Date()) {
+  const days = resolveBackfillMaxDays(maxDays);
+  if (!days) return undefined;
   const d = new Date(now);
-  d.setDate(d.getDate() - maxDays);
+  d.setDate(d.getDate() - days);
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
   return d.toISOString().slice(0, 16);
 }

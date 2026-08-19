@@ -45,6 +45,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Skeleton } from '../ui/skeleton';
 import PeriodPills from './PeriodPills';
 import { DEFAULT_REPORT_PERIOD } from '../../utils/reportPeriods';
+import ReportExportButtons from './ReportExportButtons';
 
 // --------------------------------------------------------------------------
 // Generic card shell — header with icon/title + content area
@@ -56,6 +57,8 @@ function ReportCard({
   description,
   onOpen,
   openLabel = 'Open full report',
+  exportSlug,
+  exportParams = {},
   children,
 }) {
   return (
@@ -77,6 +80,11 @@ function ReportCard({
       </CardHeader>
       <CardContent className="flex flex-1 flex-col">
         {children}
+        {exportSlug ? (
+          <div className="mt-3">
+            <ReportExportButtons slug={exportSlug} params={exportParams} />
+          </div>
+        ) : null}
         {onOpen ? (
           <button
             type="button"
@@ -179,8 +187,10 @@ function SalesOverviewTile({ period, onOpen, showDiscount, showTax }) {
     <ReportCard
       icon={TrendingUp}
       title="Sales overview"
-      description="Revenue, ticket count and the daily trend."
+      description="Revenue, ticket count and the daily trend — export PDF or Excel."
       onOpen={onOpen}
+      exportSlug="sales-overview"
+      exportParams={{ period }}
     >
       <div className="grid grid-cols-3 gap-3 pb-3">
         {loading ? (
@@ -276,8 +286,10 @@ function TopProductsTile({ period, onOpen }) {
     <ReportCard
       icon={ShoppingCart}
       title="Top products"
-      description="Best-selling SKUs by quantity moved."
+      description="Best-selling SKUs by quantity moved — export PDF or Excel."
       onOpen={onOpen}
+      exportSlug="top-products"
+      exportParams={{ period }}
     >
       {loading ? (
         <Skeleton className="h-52 w-full" />
@@ -352,8 +364,10 @@ function CashAndPaymentsTile({ period, onOpen }) {
     <ReportCard
       icon={Wallet}
       title="Cash & payments"
-      description="Money in by payment method."
+      description="Money in by payment method — export PDF or Excel."
       onOpen={onOpen}
+      exportSlug="cash-and-payments"
+      exportParams={{ period }}
     >
       <div className="grid grid-cols-2 gap-3 pb-3">
         {loading ? (
@@ -424,8 +438,10 @@ function InventoryHealthTile({ period, onOpen }) {
     <ReportCard
       icon={Package}
       title="Inventory health"
-      description="Stock value, low and out-of-stock alerts."
+      description="Stock value, low and out-of-stock alerts — export PDF or Excel."
       onOpen={onOpen}
+      exportSlug="inventory-health"
+      exportParams={{ period }}
     >
       <div className="grid grid-cols-3 gap-3 pb-3">
         {loading ? (
@@ -492,8 +508,10 @@ function CustomerOutstandingTile({ period, onOpen }) {
     <ReportCard
       icon={Receipt}
       title="Customer outstanding"
-      description="Money owed to you, with AR aging."
+      description="Money owed to you, with AR aging — export PDF or Excel."
       onOpen={onOpen}
+      exportSlug="customer-outstanding"
+      exportParams={{ period }}
     >
       <div className="grid grid-cols-3 gap-3 pb-3">
         {loading ? (
@@ -632,16 +650,17 @@ export default function ReportsHub() {
                   <div>
                     <CardTitle className="text-base">Sales by staff</CardTitle>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      Month-end performance per person — download CSV to share for rewards or commission proof.
+                      Month-end performance per person — download PDF or Excel for rewards or commission proof.
                     </p>
                   </div>
                 </div>
               </CardHeader>
               <CardContent className="mt-auto pt-0">
+                <ReportExportButtons slug="sales-by-person" params={{ period }} />
                 <button
                   type="button"
                   onClick={() => navigate('/reports?report=sales-by-person')}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                  className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
                 >
                   Open staff report
                   <ArrowRight className="h-3.5 w-3.5" />

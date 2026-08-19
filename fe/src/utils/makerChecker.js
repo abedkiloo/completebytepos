@@ -4,6 +4,8 @@
 
 import { hasPermission, getPersonaFromStorage, PERSONA } from './roleAccess';
 
+export const STOCK_REASON_MIN_LENGTH = 5;
+
 export const PENDING_APPROVALS_NAV = 'Reports → Pending approvals';
 
 export const PENDING_APPROVAL_MESSAGE =
@@ -30,9 +32,9 @@ const REASON_CONTEXT_COPY = {
   },
   stock: {
     label: 'Reason for this stock change',
-    placeholder: 'e.g. Cycle count correction, received shipment',
+    placeholder: 'e.g. Count, damaged (min 5 characters)',
     summary:
-      'This stock change will be submitted for approval. Stock quantities stay unchanged until a manager approves it.',
+      'This stock change will be submitted for approval. Stock quantities stay unchanged until a manager approves it. A short reason of at least 5 characters is enough.',
   },
   settings: {
     label: 'Reason for this settings change',
@@ -232,6 +234,16 @@ export function extractApiReasonError(data) {
   return '';
 }
 
+/** Empty or shorter than 5 characters is rejected; 5+ is allowed. */
+export function stockReasonValidationMessage(reason) {
+  const text = String(reason || '').trim();
+  if (!text) return 'A reason is required for stock changes.';
+  if (text.length < STOCK_REASON_MIN_LENGTH) {
+    return `Enter a reason of at least ${STOCK_REASON_MIN_LENGTH} characters.`;
+  }
+  return '';
+}
+
 export function variantEditNeedsReason(formData, variant) {
   if (!formData || variant == null) return false;
   for (const key of SENSITIVE_VARIANT_KEYS) {
@@ -258,7 +270,16 @@ export function categoryDeactivateNeedsReason(category) {
   return Boolean(category?.is_active);
 }
 
-const STORE_SENSITIVE_KEYS = [
+const STORE_SETTINGS_IMMEDIATE_KEYS = [
+  'maker_checker_enabled',
+  'maker_checker_sales_controls',
+  'emergency_stock_mode',
+  'backfill_max_days',
+  'backfill_maker_checker_enabled',
+];
+
+const STORE_SETTINGS_PATCH_KEYS = [
+  ...STORE_SETTINGS_IMMEDIATE_KEYS,
   'enabled_payment_methods',
   'receipt_footer_text',
   'receipt_header_text',
@@ -270,21 +291,47 @@ const STORE_SENSITIVE_KEYS = [
   'receipt_auto_print',
 ];
 
-export function storeSettingsEditNeedsReason(form, baseline) {
-  if (!form || !baseline) return false;
-  const methodsEqual =
-    JSON.stringify(form.enabled_payment_methods || []) ===
-    JSON.stringify(baseline.enabled_payment_methods || []);
-  if (!methodsEqual) return true;
-  return STORE_SENSITIVE_KEYS.some((key) => {
-    if (key === 'enabled_payment_methods') return false;
-    const next = form[key];
-    const prev = baseline[key];
-    if (typeof next === 'boolean' || typeof prev === 'boolean') {
-      return Boolean(next) !== Boolean(prev);
+export function storeSettingsValuesEqual(key, next, prev) {
+  if (key === 'enabled_payment_methods') {
+    return JSON.stringify(next || []) === JSON.stringify(prev || []);
+  }
+  if (key === 'backfill_max_days') {
+    return Number(next ?? 0) === Number(prev ?? 0);
+  }
+  if (typeof next === 'boolean' || typeof prev === 'boolean') {
+    return Boolean(next) === Boolean(prev);
+  }
+  return String(next ?? '') === String(prev ?? '');
+}
+
+export function normalizeStoreSettingValue(key, value) {
+  if (key === 'backfill_max_days') {
+    const parsed = parseInt(value, 10);
+    return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+  }
+  if (key === 'enabled_payment_methods') {
+    return Array.isArray(value) ? value : [];
+  }
+  return value;
+}
+
+/** Only the fields the operator actually changed — other keys stay off the PATCH. */
+export function buildStoreSettingsUpdatePayload(form, baseline) {
+  if (!form) return {};
+  const payload = {};
+  STORE_SETTINGS_PATCH_KEYS.forEach((key) => {
+    const next = normalizeStoreSettingValue(key, form[key]);
+    const prev = normalizeStoreSettingValue(key, baseline?.[key]);
+    if (!storeSettingsValuesEqual(key, next, prev)) {
+      payload[key] = next;
     }
-    return String(next ?? '') !== String(prev ?? '');
   });
+  return payload;
+}
+
+export function storeSettingsEditNeedsReason(form, baseline) {
+  const payload = buildStoreSettingsUpdatePayload(form, baseline);
+  return Object.keys(payload).some((key) => !STORE_SETTINGS_IMMEDIATE_KEYS.includes(key));
 }
 
 export function moduleSettingsPatchNeedsReason(values, baselineSettings = {}) {

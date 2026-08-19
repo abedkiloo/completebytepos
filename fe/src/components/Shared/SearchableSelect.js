@@ -152,12 +152,18 @@ const SearchableSelect = ({
           </div>
 
           {onAddNew && (
-            <div
+            <button
+              type="button"
               className={cn(
-                'flex cursor-pointer items-center gap-2 border-t border-border bg-muted/40 px-3 py-2.5 text-sm font-medium text-primary transition-colors hover:bg-muted',
+                'flex w-full cursor-pointer items-center gap-2 border-t border-border bg-muted/40 px-3 py-2.5 text-left text-sm font-medium text-primary transition-colors hover:bg-muted',
                 filteredOptions.length === 0 && searchTerm && 'border-t-2 border-t-primary bg-primary/5 font-semibold'
               )}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
               onClick={(e) => {
+                e.preventDefault();
                 e.stopPropagation();
                 onAddNew();
                 setIsOpen(false);
@@ -166,7 +172,7 @@ const SearchableSelect = ({
             >
               <span className="text-lg font-bold leading-none">+</span>
               <span>{addNewLabel}</span>
-            </div>
+            </button>
           )}
         </div>
       )}

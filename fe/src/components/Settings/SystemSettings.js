@@ -13,6 +13,7 @@ import { PAYMENT_METHODS } from '../../utils/paymentMethods';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import ChangeReasonField from '../Approvals/ChangeReasonField';
 import {
+  buildStoreSettingsUpdatePayload,
   isMakerCheckerEnabled,
   isPendingApprovalResponse,
   pendingApprovalToastMessage,
@@ -58,35 +59,26 @@ export default function SystemSettings() {
     });
   };
 
+  const dirtyPayload = form ? buildStoreSettingsUpdatePayload(form, settings) : {};
+  const needsReason = makerCheckerOn && storeSettingsEditNeedsReason(form, settings);
+
   const handleSave = async () => {
     if (!form) return;
     if (!(form.enabled_payment_methods || []).length) {
       toast.warning('Select at least one payment method.');
       return;
     }
-    const needsReason = makerCheckerOn && storeSettingsEditNeedsReason(form, settings);
+    if (!Object.keys(dirtyPayload).length && !logoFile) {
+      toast.info('No store setting changes to save.');
+      return;
+    }
     if (needsReason && !changeReason.trim()) {
       toast.warning('Enter a reason for these store setting changes.');
       return;
     }
     setSaving(true);
     try {
-      const payload = {
-        allow_sales_add_products: form.allow_sales_add_products,
-        sales_catalog_skip_pricing: form.sales_catalog_skip_pricing,
-        hide_entity_status_toggles: form.hide_entity_status_toggles,
-        receipt_header_text: form.receipt_header_text || '',
-        receipt_footer_text: form.receipt_footer_text || '',
-        receipt_show_logo: form.receipt_show_logo,
-        receipt_show_sku: form.receipt_show_sku,
-        receipt_auto_print: form.receipt_auto_print,
-        enabled_payment_methods: form.enabled_payment_methods || [],
-        maker_checker_enabled: form.maker_checker_enabled,
-        maker_checker_sales_controls: form.maker_checker_sales_controls,
-        emergency_stock_mode: form.emergency_stock_mode,
-        backfill_max_days: Number(form.backfill_max_days) || 30,
-        backfill_maker_checker_enabled: form.backfill_maker_checker_enabled,
-      };
+      const payload = { ...dirtyPayload };
       if (needsReason) {
         payload.reason = changeReason.trim();
       }
@@ -210,15 +202,21 @@ export default function SystemSettings() {
                 <Input
                   id="backfill_max_days"
                   type="number"
-                  min={1}
-                  max={365}
-                  value={form.backfill_max_days ?? 30}
-                  onChange={(e) =>
-                    setForm({ ...form, backfill_max_days: parseInt(e.target.value, 10) || 30 })
-                  }
+                  min={0}
+                  max={3650}
+                  value={form.backfill_max_days ?? 0}
+                  onChange={(e) => {
+                    const next = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
+                    setForm({
+                      ...form,
+                      backfill_max_days: Number.isFinite(next) ? Math.max(0, next) : 0,
+                    });
+                  }}
                 />
                 <p className="text-xs text-muted-foreground">
-                  How far back staff may record offline sales (default 30 days).
+                  How far back staff may record offline sales. Use 0 for no limit so you can
+                  enter sales older than 30 days. This limit saves immediately — other store
+                  rules may still ask for a reason if you change them in the same save.
                 </p>
               </div>
               <StoreCheckboxRow
@@ -371,14 +369,15 @@ export default function SystemSettings() {
             </CardContent>
           </Card>
 
-          {makerCheckerOn && storeSettingsEditNeedsReason(form, settings) ? (
-            <ChangeReasonField context="settings" value={changeReason} onChange={setChangeReason} />
-          ) : null}
-
-          <div className="sticky bottom-2 z-10 flex justify-end rounded-lg border bg-background/95 p-3 shadow-sm backdrop-blur">
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? 'Saving…' : 'Save store settings'}
-            </Button>
+          <div className="sticky bottom-2 z-10 space-y-3 rounded-lg border bg-background/95 p-3 shadow-sm backdrop-blur">
+            {needsReason ? (
+              <ChangeReasonField context="settings" value={changeReason} onChange={setChangeReason} />
+            ) : null}
+            <div className="flex justify-end">
+              <Button onClick={handleSave} disabled={saving}>
+                {saving ? 'Saving…' : 'Save store settings'}
+              </Button>
+            </div>
           </div>
         </TabsContent>
 

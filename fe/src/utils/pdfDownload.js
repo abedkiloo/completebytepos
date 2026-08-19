@@ -62,10 +62,16 @@ export async function readErrorFromBlob(blob) {
 
 /**
  * @param {import('axios').AxiosInstance} apiClient
- * @param {string} path - e.g. `/sales/invoices/3/download_pdf/`
+ * @param {string} path
  * @param {string} filename
+ * @param {{ emptyMessage?: string, failedMessage?: string }} [options]
  */
-export async function downloadAuthenticatedPdf(apiClient, path, filename) {
+export async function downloadAuthenticatedFile(
+  apiClient,
+  path,
+  filename,
+  { emptyMessage = 'File was empty', failedMessage = 'Failed to download file' } = {}
+) {
   try {
     const response = await apiClient.get(path, { responseType: 'blob' });
     const contentType = response.headers['content-type'] || '';
@@ -74,13 +80,9 @@ export async function downloadAuthenticatedPdf(apiClient, path, filename) {
       throw new Error(message);
     }
     if (!(response.data instanceof Blob) || response.data.size === 0) {
-      throw new Error('PDF file was empty');
+      throw new Error(emptyMessage);
     }
-    const type = response.data.type || 'application/pdf';
-    const blob =
-      type.includes('pdf') || response.data.size > 100
-        ? response.data
-        : new Blob([response.data], { type: 'application/pdf' });
+    const blob = response.data;
     saveBlobAsFile(blob, filename);
   } catch (err) {
     if (err.response?.data instanceof Blob) {
@@ -90,6 +92,18 @@ export async function downloadAuthenticatedPdf(apiClient, path, filename) {
     if (err.message) {
       throw err;
     }
-    throw new Error('Failed to download PDF');
+    throw new Error(failedMessage);
   }
+}
+
+/**
+ * @param {import('axios').AxiosInstance} apiClient
+ * @param {string} path - e.g. `/sales/invoices/3/download_pdf/`
+ * @param {string} filename
+ */
+export async function downloadAuthenticatedPdf(apiClient, path, filename) {
+  return downloadAuthenticatedFile(apiClient, path, filename, {
+    emptyMessage: 'PDF file was empty',
+    failedMessage: 'Failed to download PDF',
+  });
 }

@@ -129,4 +129,38 @@ describe('pdfDownload', () => {
     expect(click).toHaveBeenCalled();
     expect(revoke).toHaveBeenCalledWith('blob:mock');
   });
+
+  it('saveBlobAsFile ignores empty input and wraps non-blobs', () => {
+    const click = jest.fn();
+    const anchor = { click, href: '', download: '' };
+    jest.spyOn(document, 'createElement').mockReturnValue(anchor);
+    Object.defineProperty(document.body, 'appendChild', { value: jest.fn(), configurable: true });
+    Object.defineProperty(document.body, 'removeChild', { value: jest.fn(), configurable: true });
+    window.URL.createObjectURL = jest.fn(() => 'blob:bytes');
+    window.URL.revokeObjectURL = jest.fn();
+
+    saveBlobAsFile(null, 'skip.pdf');
+    expect(click).not.toHaveBeenCalled();
+
+    saveBlobAsFile('%PDF-bytes', 'bytes.pdf');
+    expect(click).toHaveBeenCalled();
+    expect(anchor.download).toBe('bytes.pdf');
+  });
+
+  it('readErrorFromBlob uses FileReader when blob.text is missing', async () => {
+    const blob = new Blob(['plain fallback'], { type: 'text/plain' });
+    Object.defineProperty(blob, 'text', { value: undefined });
+    await expect(readErrorFromBlob(blob)).resolves.toBe('plain fallback');
+  });
+
+  it('readErrorFromBlob returns raw JSON when no error field exists', async () => {
+    const blob = new Blob([JSON.stringify({ foo: 'bar' })], { type: 'application/json' });
+    await expect(readErrorFromBlob(blob)).resolves.toBe('{"foo":"bar"}');
+  });
+
+  it('readErrorFromBlob falls back when reading the blob fails', async () => {
+    const blob = new Blob(['x']);
+    blob.text = () => Promise.reject(new Error('read fail'));
+    await expect(readErrorFromBlob(blob)).resolves.toBe('Failed to download PDF');
+  });
 });

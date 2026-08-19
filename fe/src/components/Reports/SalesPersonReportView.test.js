@@ -7,6 +7,7 @@ jest.mock('../../services/api', () => ({
   reportsAPI: {
     salesByPerson: jest.fn(),
     salesByPersonCsv: jest.fn(),
+    exportFile: jest.fn(),
   },
   usersAPI: {
     list: jest.fn(),
@@ -79,12 +80,31 @@ describe('SalesPersonReportView period picker', () => {
     jest.clearAllMocks();
     reportsAPI.salesByPerson.mockResolvedValue({ data: emptyReport });
 
-    fireEvent.change(screen.getByDisplayValue('2026-07'), {
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    fireEvent.change(screen.getByDisplayValue(currentMonth), {
       target: { value: '2026-06' },
     });
 
     await waitFor(() => {
       expect(reportsAPI.salesByPerson).toHaveBeenCalledWith({ month: '2026-06' });
     });
+  });
+
+  it('offers PDF, Excel, and CSV downloads for the current filters', async () => {
+    reportsAPI.exportFile.mockResolvedValue('staff.pdf');
+    render(<SalesPersonReportView />);
+    await waitFor(() => expect(reportsAPI.salesByPerson).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole('button', { name: /Download PDF/i }));
+    await waitFor(() => {
+      expect(reportsAPI.exportFile).toHaveBeenCalledWith(
+        'sales-by-person',
+        { period: 'month' },
+        'pdf'
+      );
+    });
+    expect(screen.getByRole('button', { name: /Download Excel/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Download CSV/i })).toBeInTheDocument();
   });
 });

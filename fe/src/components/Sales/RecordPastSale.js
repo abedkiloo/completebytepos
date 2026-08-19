@@ -31,6 +31,8 @@ import {
   backfillPendingNavigatePath,
   backfillPendingToastMessage,
   servedByIdForPrefill,
+  resolveBackfillMaxDays,
+  backfillWindowDescription,
 } from '../../utils/recordPastSaleBackfill';
 
 function selectValue(setter) {
@@ -486,6 +488,9 @@ function SinglePastSaleForm({
             onChange={(e) => setOccurredAt(e.target.value)}
             required
           />
+          <p className="text-xs text-muted-foreground">
+            You can record a sale from {backfillWindowDescription(maxDays)}.
+          </p>
         </div>
         <div className="space-y-1.5 sm:col-span-2">
           <ChangeReasonField
@@ -940,7 +945,7 @@ export default function RecordPastSale() {
   const backfillCopy = makerCheckerReasonCopy('sale_backfill');
   const mcOn = isMakerCheckerEnabled(settings);
   const mcBackfill = settings.backfill_maker_checker_enabled !== false;
-  const maxDays = Math.max(1, parseInt(settings.backfill_max_days, 10) || 30);
+  const maxDays = resolveBackfillMaxDays(settings.backfill_max_days);
   const [rejectedSubmissions, setRejectedSubmissions] = useState([]);
 
   const loadRejected = useCallback(() => {
@@ -962,7 +967,7 @@ export default function RecordPastSale() {
     <PageShell>
       <PageHeader
         title="Record past sale"
-        description={`Enter sales that happened outside the system (up to ${maxDays} days ago). Stock, accounts, and reports update like a normal sale.`}
+        description={`Enter sales that happened outside the system (${backfillWindowDescription(maxDays)}). Stock, accounts, and reports update like a normal sale.`}
       >
         <Button variant="outline" asChild>
           <Link to="/sales">Back to sales</Link>

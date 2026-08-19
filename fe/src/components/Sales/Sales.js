@@ -12,6 +12,8 @@ import { pendingApprovalToastMessage } from '../../utils/makerChecker';
 import { saleDisplayItemCount, saleDisplayTotal } from '../../utils/saleItemDisplay';
 import RefundSaleDialog from './RefundSaleDialog';
 import SaleDetailDialog from './SaleDetailDialog';
+import ReportExportButtons from '../Reports/ReportExportButtons';
+import { salesHistoryExportParams } from '../../utils/reportExport';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
@@ -147,6 +149,8 @@ const Sales = () => {
     }));
     setPagination(prev => ({ ...prev, page: 1 }));
   };
+
+  const exportParams = salesHistoryExportParams(filters);
 
   const handlePrintReceipt = () => {
     if (selectedSale) {
@@ -284,10 +288,11 @@ const Sales = () => {
           title="Sales history"
           description={
             canRefund
-              ? 'Review transactions, reprint receipts, or void mistaken sales. A full void refunds stock, reverses books, and clears customer account balances.'
-              : 'Review completed transactions and reprint receipts.'
+              ? 'Review transactions, reprint receipts, or void mistaken sales. Download PDF or Excel for the current filters. A full void refunds stock, reverses books, and clears customer account balances.'
+              : 'Review completed transactions, reprint receipts, and download PDF or Excel for the current filters.'
           }
         >
+          <ReportExportButtons slug="sales-history" params={exportParams} />
           <Button variant="outline" asChild>
             <Link to="/sales/record-past">
               <Clock className="h-4 w-4" />

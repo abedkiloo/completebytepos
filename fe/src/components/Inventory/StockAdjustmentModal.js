@@ -15,6 +15,7 @@ import {
   isMakerCheckerEnabled,
   isPendingApprovalResponse,
   PENDING_APPROVAL_MESSAGE,
+  stockReasonValidationMessage,
 } from '../../utils/makerChecker';
 import { isValidStockAdjustmentQuantity } from '../../utils/variantPayload';
 import { STOCK_ADJUST_HINT } from '../../utils/productDisplay';
@@ -164,10 +165,13 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
         return;
       }
 
-      if (makerCheckerOn && !changeReason.trim()) {
-        setError('A reason is required for stock changes.');
-        setLoading(false);
-        return;
+      if (makerCheckerOn) {
+        const reasonError = stockReasonValidationMessage(changeReason);
+        if (reasonError) {
+          setError(reasonError);
+          setLoading(false);
+          return;
+        }
       }
 
       let lines = [];

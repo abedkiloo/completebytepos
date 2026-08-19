@@ -10,6 +10,7 @@ import {
   isMakerCheckerEnabled,
   isPendingApprovalResponse,
   PENDING_APPROVAL_MESSAGE,
+  stockReasonValidationMessage,
 } from '../../utils/makerChecker';
 import { formatStockProductOptionLabel } from '../../utils/stockProductOptions';
 
@@ -82,9 +83,16 @@ const StockBulkAdjustModal = ({ onClose, onSave }) => {
       setError('Add at least one product with a quantity.');
       return;
     }
-    if (makerCheckerOn && !changeReason.trim()) {
-      setError('A reason is required for bulk stock changes.');
-      return;
+    if (makerCheckerOn) {
+      const reasonError = stockReasonValidationMessage(changeReason);
+      if (reasonError) {
+        setError(
+          reasonError === 'A reason is required for stock changes.'
+            ? 'A reason is required for bulk stock changes.'
+            : reasonError
+        );
+        return;
+      }
     }
 
     setLoading(true);

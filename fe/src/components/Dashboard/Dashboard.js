@@ -28,7 +28,6 @@ import {
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import {
   reportsEnableDashboardSummary,
-  userMayViewDashboardProfit,
   userMayViewDashboardRevenue,
 } from '../../utils/reportDisplay';
 import {
@@ -71,7 +70,6 @@ const Dashboard = () => {
   const dashboardReportsEnabled = reportsEnableDashboardSummary(reportSettings);
   const { permissions } = getStoredAuth();
   const canViewMonthRevenue = userMayViewDashboardRevenue(permissions);
-  const canViewProfit = userMayViewDashboardProfit(permissions, reportSettings);
 
   useEffect(() => {
     const load = async () => {
@@ -110,11 +108,11 @@ const Dashboard = () => {
 
   const data = dashboardData || {
     today: { sales_count: 0, total: 0 },
+    week: { sales_count: 0, total: 0, days: [] },
     month: { total: 0 },
     low_stock_count: 0,
     total_sales: 0,
-    profit: 0,
-    growth: { sales: 0, profit: 0 },
+    growth: { sales: 0 },
     overall: { customers: 0, orders: 0 },
   };
 
@@ -127,6 +125,11 @@ const Dashboard = () => {
           persona !== 'sales' ? ' today' : ''
         }`,
       },
+      {
+        label: 'This week',
+        value: formatCurrency(data.week?.total || 0),
+        hint: `${data.week?.sales_count || 0} order${data.week?.sales_count === 1 ? '' : 's'} in the last 7 days`,
+      },
     ];
 
     if (canViewMonthRevenue) {
@@ -134,14 +137,6 @@ const Dashboard = () => {
         label: persona === 'sales' ? 'This month' : 'Month revenue',
         value: formatCurrency(data.month?.total || data.total_sales || 0),
         hint: 'Completed sales',
-      });
-    }
-
-    if (canViewProfit) {
-      items.push({
-        label: 'Profit (est.)',
-        value: formatCurrency(data.profit || 0),
-        hint: 'From dashboard report',
       });
     }
 
@@ -159,7 +154,6 @@ const Dashboard = () => {
     persona,
     data,
     canViewMonthRevenue,
-    canViewProfit,
     lowStockProducts.length,
   ]);
 
@@ -253,6 +247,45 @@ const Dashboard = () => {
             </Card>
           ))}
         </section>
+
+        {Array.isArray(data.week?.days) && data.week.days.length > 0 && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-base">Weekly sales</CardTitle>
+                <CardDescription>
+                  {data.week.sales_count || 0} order{(data.week.sales_count || 0) === 1 ? '' : 's'} ·{' '}
+                  {formatCurrency(data.week.total || 0)} in the last 7 days
+                </CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-2">
+                {data.week.days.map((day) => {
+                  const maxTotal = Math.max(...data.week.days.map((d) => Number(d.total) || 0), 1);
+                  const pct = Math.round(((Number(day.total) || 0) / maxTotal) * 100);
+                  return (
+                    <li key={day.date} className="flex items-center gap-3">
+                      <span className="w-9 shrink-0 text-xs text-muted-foreground">{day.label}</span>
+                      <div className="h-2 min-w-0 flex-1 rounded-full bg-muted">
+                        <div
+                          className="h-2 rounded-full bg-primary"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <span className="w-16 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
+                        {day.sales_count || 0}
+                      </span>
+                      <span className="w-24 shrink-0 text-right text-sm tabular-nums">
+                        {formatCurrency(day.total || 0)}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
 
         <section>
           <h2 className="mb-3 text-sm font-medium text-muted-foreground uppercase tracking-wide">

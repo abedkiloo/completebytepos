@@ -55,6 +55,7 @@ jest.mock('../../services/api', () => ({
     cashAndPayments: jest.fn(),
     inventoryHealth: jest.fn(),
     customerOutstanding: jest.fn(),
+    exportFile: jest.fn(),
   },
 }));
 
@@ -99,6 +100,23 @@ describe('ReportsHub period picker', () => {
       expect(reportsAPI.cashAndPayments).toHaveBeenCalledWith({ period: 'today' });
       expect(reportsAPI.inventoryHealth).toHaveBeenCalledWith({ period: 'today' });
       expect(reportsAPI.customerOutstanding).toHaveBeenCalledWith({ period: 'today' });
+    });
+  });
+
+  it('offers PDF export on hub tiles', async () => {
+    reportsAPI.exportFile.mockResolvedValue('report.pdf');
+    render(<ReportsHub />);
+    await waitFor(() => expect(reportsAPI.salesOverview).toHaveBeenCalled());
+
+    const pdfButtons = screen.getAllByRole('button', { name: /Download PDF/i });
+    expect(pdfButtons.length).toBeGreaterThan(1);
+    fireEvent.click(pdfButtons[0]);
+    await waitFor(() => {
+      expect(reportsAPI.exportFile).toHaveBeenCalledWith(
+        'sales-overview',
+        { period: 'month' },
+        'pdf'
+      );
     });
   });
 });

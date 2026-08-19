@@ -29,7 +29,7 @@ jest.mock('../../hooks/useStoreSettings', () => ({
     settings: {
       maker_checker_enabled: true,
       backfill_maker_checker_enabled: true,
-      backfill_max_days: 30,
+      backfill_max_days: 0,
       show_discount: true,
     },
   }),

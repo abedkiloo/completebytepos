@@ -185,6 +185,33 @@ describe('ProductForm integration', () => {
     }, { timeout: 1000 });
   });
 
+  test('create with variants keeps low stock threshold and reorder quantity', async () => {
+    render(<ProductForm categories={categories} onClose={jest.fn()} onSave={jest.fn()} />);
+
+    await fillNameAndEnableVariants();
+
+    expect(screen.getByLabelText(/Low Stock Threshold/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Reorder Quantity/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Opening stock/i)).not.toBeInTheDocument();
+
+    fireEvent.change(document.querySelector('input[name="low_stock_threshold"]'), {
+      target: { name: 'low_stock_threshold', value: '4' },
+    });
+    fireEvent.change(document.querySelector('input[name="reorder_quantity"]'), {
+      target: { name: 'reorder_quantity', value: '24' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /create/i }));
+
+    await waitFor(() => {
+      expect(productsAPI.create).toHaveBeenCalled();
+    });
+
+    const body = productsAPI.create.mock.calls[0][0];
+    expect(body.get('low_stock_threshold')).toBe('4');
+    expect(body.get('reorder_quantity')).toBe('24');
+    expect(body.get('stock_quantity')).toBeNull();
+  });
+
   test('edit with variants applies drafts without stock', async () => {
     const product = {
       id: 1,

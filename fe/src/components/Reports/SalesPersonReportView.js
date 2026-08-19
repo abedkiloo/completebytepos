@@ -1,9 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Download, Printer, UserRound } from 'lucide-react';
+import { Printer, UserRound } from 'lucide-react';
 
 import { reportsAPI, usersAPI } from '../../services/api';
 import { formatCurrency, formatDateTime, formatNumber } from '../../utils/formatters';
-import { saveBlobAsFile } from '../../utils/pdfDownload';
 import { toast } from '../../utils/toast';
 import { EmptyState, FilterBar, FilterField, PageLoading } from '../page';
 import { Button } from '../ui/button';
@@ -11,6 +10,7 @@ import { Input } from '../ui/input';
 import { R } from './reportUI';
 import PeriodPills from './PeriodPills';
 import { DEFAULT_REPORT_PERIOD } from '../../utils/reportPeriods';
+import ReportExportButtons from './ReportExportButtons';
 
 function currentMonthValue() {
   const now = new Date();
@@ -29,7 +29,6 @@ export default function SalesPersonReportView() {
   const [useCalendarMonth, setUseCalendarMonth] = useState(false);
   const [cashierId, setCashierId] = useState('all');
   const [loading, setLoading] = useState(true);
-  const [downloading, setDownloading] = useState(false);
   const [data, setData] = useState(null);
   const [staffOptions, setStaffOptions] = useState([]);
 
@@ -67,20 +66,6 @@ export default function SalesPersonReportView() {
       })
       .catch(() => setStaffOptions([]));
   }, []);
-
-  const handleDownload = async () => {
-    setDownloading(true);
-    try {
-      const response = await reportsAPI.salesByPersonCsv(queryParams);
-      const period = data?.period || month;
-      saveBlobAsFile(response.data, `sales_staff_${period}.csv`);
-      toast.success('Downloaded — share with staff as commission proof');
-    } catch {
-      toast.error('Could not download CSV');
-    } finally {
-      setDownloading(false);
-    }
-  };
 
   return (
     <div className="sales-person-report space-y-6 print:space-y-4">
@@ -122,12 +107,9 @@ export default function SalesPersonReportView() {
         <div className="flex flex-wrap items-end gap-2">
           <Button type="button" variant="outline" size="sm" onClick={() => window.print()}>
             <Printer className="mr-2 h-4 w-4" />
-            Print / PDF
+            Print
           </Button>
-          <Button type="button" size="sm" onClick={handleDownload} disabled={downloading || loading}>
-            <Download className="mr-2 h-4 w-4" />
-            {downloading ? 'Downloading…' : 'Download CSV'}
-          </Button>
+          <ReportExportButtons slug="sales-by-person" params={queryParams} disabled={loading} />
         </div>
       </FilterBar>
 

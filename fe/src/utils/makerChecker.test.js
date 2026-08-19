@@ -5,16 +5,20 @@ import {
   isPendingApprovalResponse,
   isAppliedModuleSettingsResponse,
   productEditNeedsReason,
+  productEditableSensitiveKeys,
   proposedPendingCost,
   pendingApprovalLabels,
   extractPendingChange,
   extractApiReasonError,
+  stockReasonValidationMessage,
+  STOCK_REASON_MIN_LENGTH,
   priceChangeExceedsFiftyPercent,
   needsExtremePriceConfirm,
   variantEditNeedsReason,
   categoryEditNeedsReason,
   categoryDeactivateNeedsReason,
   storeSettingsEditNeedsReason,
+  buildStoreSettingsUpdatePayload,
   moduleSettingsPatchNeedsReason,
   rolePermissionsChanged,
   formatPendingApprovalHint,
@@ -117,6 +121,17 @@ describe('makerChecker', () => {
       extractApiReasonError({ reason: ['First error'] })
     ).toBe('First error');
     expect(extractApiReasonError({})).toBe('');
+  });
+
+  it('allows a 5-character stock reason', () => {
+    expect(STOCK_REASON_MIN_LENGTH).toBe(5);
+    expect(stockReasonValidationMessage('Count')).toBe('');
+    expect(stockReasonValidationMessage('abcd')).toBe(
+      'Enter a reason of at least 5 characters.'
+    );
+    expect(stockReasonValidationMessage('  ')).toBe(
+      'A reason is required for stock changes.'
+    );
   });
 
   it('extracts pending_change from response body', () => {
@@ -259,6 +274,18 @@ describe('makerChecker', () => {
         { receipt_footer_text: 'same' }
       )
     ).toBe(false);
+    expect(
+      storeSettingsEditNeedsReason(
+        { backfill_max_days: 90, receipt_footer_text: 'same' },
+        { backfill_max_days: 0, receipt_footer_text: 'same' }
+      )
+    ).toBe(false);
+    expect(
+      buildStoreSettingsUpdatePayload(
+        { backfill_max_days: 90, receipt_footer_text: 'Thanks' },
+        { backfill_max_days: 0, receipt_footer_text: 'Thanks' }
+      )
+    ).toEqual({ backfill_max_days: 90 });
     expect(storeSettingsEditNeedsReason(null, {})).toBe(false);
     expect(
       moduleSettingsPatchNeedsReason({ show_status: false }, { show_status: true })
@@ -368,6 +395,20 @@ describe('makerChecker', () => {
   it('getCurrentUserId returns null on invalid storage', () => {
     localStorage.setItem('user', 'not-json');
     expect(getCurrentUserId()).toBeNull();
+  });
+
+  it('getCurrentUserId reads profile.user_id when user is missing', () => {
+    localStorage.clear();
+    localStorage.setItem('profile', JSON.stringify({ user_id: 21 }));
+    expect(getCurrentUserId()).toBe(21);
+  });
+
+  it('productEditableSensitiveKeys follows catalog field access', () => {
+    expect(productEditableSensitiveKeys({ cost: true })).toContain('cost');
+    expect(productEditableSensitiveKeys({ pricing: true })).toEqual(
+      expect.arrayContaining(['selling_price', 'mrp', 'is_active'])
+    );
+    expect(productEditableSensitiveKeys({ pricing: true }, true)).toEqual([]);
   });
 
   it('getPermissionsFromStorage returns empty on invalid JSON', () => {

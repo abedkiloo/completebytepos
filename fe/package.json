@@ -36,6 +36,7 @@
     "test": "react-scripts test",
     "test:unit": "react-scripts test --watchAll=false --testPathPattern=\"src/(utils|config|hooks)/\"",
     "test:coverage": "react-scripts test --watchAll=false --coverage --testPathPattern=\"src/(utils|config|hooks)/\"",
+    "test:coverage:features": "react-scripts test --watchAll=false --coverage --testPathPattern=\"CategoryForm.test|Dashboard.test|SearchableSelect.test|ReportExportButtons.test|ChangeReasonField.test\" --collectCoverageFrom=\"src/components/Products/CategoryForm.js\" --collectCoverageFrom=\"src/components/Dashboard/Dashboard.js\" --collectCoverageFrom=\"src/components/Shared/SearchableSelect.js\" --collectCoverageFrom=\"src/components/Reports/ReportExportButtons.js\" --collectCoverageFrom=\"src/components/Approvals/ChangeReasonField.js\" --coverageThreshold='{\"global\":{\"lines\":98,\"statements\":94,\"functions\":88,\"branches\":75}}'",
     "test:coverage:all": "react-scripts test --watchAll=false --coverage --testPathPattern=\"src/(utils|config|hooks)/|Display\\.test|moduleSettingsCache|FeatureFlag|sellingPrice\" --coverageThreshold='{}'",
     "test:flags": "react-scripts test --watchAll=false --testPathPattern=\"Display|moduleSettingsCache|FeatureFlag|useModuleSettings|productDisplay|sellingPrice|sessionIdle|Products.module|billingInvoice|BillingPOSPage\"",
     "test:e2e": "playwright test -c e2e/playwright.config.js",
@@ -70,6 +71,8 @@
       "src/utils/setupStatus.js",
       "src/utils/storeSettingsCache.js",
       "src/utils/pdfDownload.js",
+      "src/utils/reportExport.js",
+      "src/utils/recordPastSaleBackfill.js",
       "src/utils/makerChecker.js",
       "src/utils/approvalDisplay.js",
       "src/utils/saleRefund.js",
@@ -121,6 +124,24 @@
         "functions": 88,
         "lines": 95,
         "statements": 88
+      },
+      "./src/utils/pdfDownload.js": {
+        "branches": 70,
+        "functions": 88,
+        "lines": 98,
+        "statements": 90
+      },
+      "./src/utils/reportExport.js": {
+        "branches": 98,
+        "functions": 98,
+        "lines": 98,
+        "statements": 98
+      },
+      "./src/utils/recordPastSaleBackfill.js": {
+        "branches": 98,
+        "functions": 98,
+        "lines": 98,
+        "statements": 98
       },
       "./src/utils/dailyNotesAccess.js": {
         "branches": 98,

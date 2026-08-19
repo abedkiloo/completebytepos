@@ -4,6 +4,7 @@ import {
   buildPdfFilename,
   downloadAuthenticatedPdf,
 } from '../utils/pdfDownload';
+import { downloadReportExport } from '../utils/reportExport';
 import {
   isSessionTeardownActive,
   logoutAndRedirect,
@@ -433,6 +434,8 @@ export const reportsAPI = {
       params: { ...params, format: 'csv' },
       responseType: 'blob',
     }),
+  exportFile: (slug, params, format) =>
+    downloadReportExport(api, { slug, params, format }),
 };
 
 // Audit log — super-admin only on the backend (IsSuperAdmin).
