@@ -145,6 +145,8 @@ class ThreeUserPersonasTestCase(APITestCase):
         summary = client.get('/api/sales/dashboard-summary/')
         self.assertEqual(summary.status_code, status.HTTP_200_OK)
         self.assertIn('today', summary.data)
+        self.assertIn('week', summary.data)
+        self.assertEqual(len(summary.data['week']['days']), 7)
         self.assertNotIn('month', summary.data)
         create_user = client.post(
             '/api/accounts/users/',

@@ -774,12 +774,10 @@ class ProductSerializer(serializers.ModelSerializer):
         # Extract ManyToMany fields
         available_sizes = validated_data.pop('available_sizes', [])
         available_colors = validated_data.pop('available_colors', [])
-        # Prevent editing parent-level stock fields directly when this product
-        # has variants. Stock for variant products is derived from variants
-        # and must be updated via variant-level movements or variant edits.
+        # Parent on-hand stock is derived from variants. Keep threshold and
+        # reorder quantity — they are defaults copied onto each variant.
         if validated_data.get('has_variants'):
-            for _f in ('stock_quantity', 'low_stock_threshold', 'reorder_quantity'):
-                validated_data.pop(_f, None)
+            validated_data.pop('stock_quantity', None)
         
         # Handle category - ensure it's either a Category instance or None
         from .models import Category

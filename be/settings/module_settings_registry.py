@@ -568,7 +568,7 @@ MODULE_SETTING_DEFINITIONS: dict[str, list[dict[str, Any]]] = {
         _setting(
             'enable_dashboard_summary',
             'Dashboard summary report',
-            'KPI bundle on the home dashboard (revenue, stock alerts, profit estimate).',
+            'KPI bundle on the home dashboard (today, this week, revenue, stock alerts).',
             True,
             1,
         ),

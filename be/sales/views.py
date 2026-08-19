@@ -129,6 +129,7 @@ SALES_PERMS = RequirePermPerAction('sales', {
     'backfill_preflight': 'create',
     'backfill_import_csv': 'create',
     'backfill_import_template': 'view',
+    'export': 'view',
 })
 
 CUSTOMERS_PERMS = RequirePermPerAction('customers', {
@@ -420,7 +421,7 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='dashboard-summary')
     def dashboard_summary(self, request):
-        """Lightweight today totals for the home screen; month only with reports.view."""
+        """Lightweight today/week totals for the home screen; month only with reports.view."""
         from accounts.permissions import _has_permission
 
         today = timezone.now().date()
@@ -430,11 +431,14 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         base = self.sale_service.build_queryset({}, request=request).filter(status='completed')
         today_sales = base.filter(created_at__gte=start_of_day)
 
+        from reports.week_summary import week_sales_summary
+
         payload = {
             'today': {
                 'sales_count': today_sales.count(),
                 'total': float(today_sales.aggregate(total=Sum('total'))['total'] or 0),
             },
+            'week': week_sales_summary(base, at_field='created_at'),
         }
         if _has_permission(request, 'reports', 'view'):
             month_sales = base.filter(created_at__gte=start_of_month)
@@ -442,6 +446,36 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 'total': float(month_sales.aggregate(total=Sum('total'))['total'] or 0),
             }
         return Response(payload)
+
+    @action(detail=False, methods=['get'], url_path='export')
+    def export(self, request):
+        """PDF / Excel / CSV of sales history for the current list filters."""
+        from reports.export import (
+            UnsupportedExportFormat,
+            maybe_export_report,
+            normalize_export_format,
+        )
+
+        try:
+            fmt = normalize_export_format(request.query_params.get('format'))
+        except UnsupportedExportFormat as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        if not fmt:
+            return Response(
+                {'error': 'Use format=pdf, xlsx, or csv.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        queryset = self.get_queryset()
+        from sales.history_export import build_sales_history_report
+
+        payload = build_sales_history_report(queryset)
+        return maybe_export_report(
+            request,
+            payload,
+            title='Sales history',
+            slug='sales-history',
+        )
 
     def _resolve_branch(self, request, branch_id=None):
         try:

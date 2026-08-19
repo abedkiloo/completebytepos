@@ -76,9 +76,12 @@ class ReportsViewsTestCase(ManagerAPITestCase):
         response = self.client.get('/api/reports/dashboard/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('today', response.data)
+        self.assertIn('week', response.data)
+        self.assertEqual(len(response.data['week']['days']), 7)
         self.assertIn('growth', response.data)
         self.assertIn('profit', response.data)
         self.assertGreaterEqual(response.data['today']['sales_count'], 1)
+        self.assertGreaterEqual(response.data['week']['sales_count'], 1)
 
     def test_sales_report_summary(self):
         response = self.client.get('/api/reports/sales/')

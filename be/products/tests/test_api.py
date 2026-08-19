@@ -519,6 +519,39 @@ class ProductAPITestCase(TransactionTestCase):
         for variant in variants:
             self.assertIn(variant.color, [self.color_red, self.color_blue])
             self.assertEqual(variant.size, self.size_small)
+
+    def test_create_variant_product_keeps_threshold_and_reorder(self):
+        from settings.test_utils import enable_product_variants
+        enable_product_variants()
+
+        token = self.get_auth_token(self.superuser)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+        response = self.client.post(
+            '/api/products/',
+            {
+                'name': 'Threshold Variant Product',
+                'sku': 'VAR-THRESH-001',
+                'category': self.main_category.id,
+                'price': '100.00',
+                'cost': '50.00',
+                'has_variants': True,
+                'available_sizes': [self.size_small.id],
+                'available_colors': [self.color_red.id],
+                'stock_quantity': 99,
+                'low_stock_threshold': 4,
+                'reorder_quantity': 24,
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        product = Product.objects.get(sku='VAR-THRESH-001')
+        self.assertEqual(product.stock_quantity, 0)
+        self.assertEqual(product.low_stock_threshold, 4)
+        self.assertEqual(product.reorder_quantity, 24)
+        variant = ProductVariant.objects.get(product=product)
+        self.assertEqual(variant.low_stock_threshold, 4)
     
     def test_filter_products_by_subcategory(self):
         """Test filtering products by subcategory"""

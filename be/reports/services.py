@@ -3,13 +3,15 @@ Reports service layer — aggregations and period parsing (no ORM in views).
 """
 from datetime import datetime, timedelta
 
-from django.db.models import Count, F, Q, Sum
+from django.db.models import F, Q, Sum
 from django.utils import timezone
 
 from expenses.models import Expense
 from inventory.models import StockMovement
 from products.models import Product
 from sales.models import Sale, SaleItem
+
+from .week_summary import week_sales_summary
 
 
 def resolve_period(request):
@@ -66,11 +68,13 @@ class ReportDashboardService:
             datetime(today.year, today.month - 1 if today.month > 1 else 12, 1)
         )
 
-        today_sales = Sale.objects.filter(occurred_at__gte=start_of_day, status='completed')
+        completed = Sale.objects.filter(status='completed')
+        today_sales = completed.filter(occurred_at__gte=start_of_day)
         today_total = today_sales.aggregate(total=Sum('total'))['total'] or 0
         today_count = today_sales.count()
+        week = week_sales_summary(completed, at_field='occurred_at')
 
-        month_sales = Sale.objects.filter(occurred_at__gte=start_of_month, status='completed')
+        month_sales = completed.filter(occurred_at__gte=start_of_month)
         month_total = month_sales.aggregate(total=Sum('total'))['total'] or 0
 
         last_month_sales = Sale.objects.filter(
@@ -176,6 +180,7 @@ class ReportDashboardService:
                 'sales_count': today_count,
                 'total': float(today_total),
             },
+            'week': week,
             'month': {
                 'total': float(month_total),
             },

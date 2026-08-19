@@ -52,7 +52,12 @@
     },
     {
       "name": "reports",
-      "include": ["reports/export.py"],
+      "include": ["reports/export.py", "reports/week_summary.py", "reports/services.py"],
+      "minimum_percent": 98
+    },
+    {
+      "name": "sales_history_export",
+      "include": ["sales/history_export.py"],
       "minimum_percent": 98
     },
     {

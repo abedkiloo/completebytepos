@@ -54,6 +54,11 @@ class ResolvePeriodTestCase(TestCase):
         self.assertEqual(label, 'custom')
         self.assertIsNone(start)
 
+    def test_invalid_date_to_ignored(self):
+        start, end, label = self._get({'date_to': 'not-a-date'})
+        self.assertEqual(label, 'custom')
+        self.assertIsNone(end)
+
     def test_unknown_period_falls_back_to_custom(self):
         start, end, label = self._get({'period': 'quarter'})
         self.assertEqual(label, 'custom')
