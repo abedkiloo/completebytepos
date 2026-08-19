@@ -12,7 +12,7 @@
     },
     {
       "name": "products",
-      "include": ["products/catalog_rules.py", "products/stock_utils.py"]
+      "include": ["products/catalog_rules.py", "products/stock_utils.py", "products/stock_alerts.py"]
     },
     {
       "name": "inventory",

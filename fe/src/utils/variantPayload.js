@@ -68,6 +68,13 @@ export function variantDraftNumericValidationMessage(
   ) {
     return `Enter a valid whole number for ${stockLabel} on variant ${label}.`;
   }
+  if (
+    draft.low_stock_threshold !== undefined &&
+    draft.low_stock_threshold !== '' &&
+    !isValidOptionalInteger(draft.low_stock_threshold)
+  ) {
+    return `Enter a valid whole number for low stock threshold on variant ${label}.`;
+  }
   return null;
 }
 
@@ -85,7 +92,10 @@ export function buildVariantUpdatePayload(variant, draft) {
     barcode: variant.barcode ?? null,
     mrp,
     cost,
-    low_stock_threshold: variant.low_stock_threshold ?? null,
+    low_stock_threshold:
+      draft.low_stock_threshold !== undefined && draft.low_stock_threshold !== ''
+        ? parseInt(draft.low_stock_threshold, 10) || 0
+        : variant.low_stock_threshold ?? null,
     price,
     selling_price: price,
     stock_quantity: parseInt(draft.stock_quantity, 10) || 0,
@@ -132,6 +142,13 @@ export function buildVariantPatchPayload(variant, draft) {
     const prev = variant.is_active !== false;
     if (active !== prev) {
       payload.is_active = active;
+    }
+  }
+  if (draft.low_stock_threshold !== undefined && draft.low_stock_threshold !== '') {
+    const threshold = parseInt(draft.low_stock_threshold, 10) || 0;
+    const prev = variant.low_stock_threshold ?? null;
+    if (threshold !== prev) {
+      payload.low_stock_threshold = threshold;
     }
   }
   return payload;

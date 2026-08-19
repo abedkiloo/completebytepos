@@ -40,6 +40,7 @@ export default function ProductVariantsPanel({
   canEditMrp = false,
   canEditStock = true,
   canEditCost = false,
+  defaultLowStockThreshold = 10,
   onDraftsChange,
   onCombinationKeysChange,
 }) {
@@ -110,12 +111,15 @@ export default function ProductVariantsPanel({
           mrp: editableNumericString(v.mrp),
           cost: editableNumericString(v.cost),
           stock_quantity: editableNumericString(v.stock_quantity),
+          low_stock_threshold: editableNumericString(
+            v.low_stock_threshold ?? defaultLowStockThreshold
+          ),
           is_active: v.is_active !== false,
         };
       });
       return next;
     });
-  }, [productId, variants, loading]);
+  }, [productId, variants, loading, defaultLowStockThreshold]);
 
   const draftsByKey = useMemo(() => {
     const map = {};
@@ -172,6 +176,7 @@ export default function ProductVariantsPanel({
         mrp: '',
         cost: '',
         stock_quantity: '',
+        low_stock_threshold: String(defaultLowStockThreshold ?? ''),
         is_active: true,
       },
     }));
@@ -430,6 +435,23 @@ export default function ProductVariantsPanel({
                       />
                     </div>
                   ) : null}
+                  <div className="w-[5.5rem] shrink-0">
+                    <label
+                      className="text-xs text-muted-foreground"
+                      htmlFor={`variant-threshold-${row.key}`}
+                    >
+                      Low stock at
+                    </label>
+                    <Input
+                      id={`variant-threshold-${row.key}`}
+                      type="text"
+                      inputMode="numeric"
+                      className="h-9"
+                      value={editableNumericString(draft.low_stock_threshold)}
+                      onChange={(e) => updateEdit(row.key, 'low_stock_threshold', e.target.value)}
+                      title="Alert when this variant falls to this quantity or below"
+                    />
+                  </div>
                   {variant ? (
                     <label className="form-inline-checkbox shrink-0 self-end">
                       <input

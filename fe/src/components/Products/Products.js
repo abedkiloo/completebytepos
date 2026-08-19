@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Plus,
   Search,
@@ -30,6 +31,16 @@ import ChangeReasonField from '../Approvals/ChangeReasonField';
 import PendingApprovalBadges from '../Approvals/PendingApprovalBadges';
 import { formatCurrency } from '../../utils/formatters';
 import { catalogSellableStock } from '../../utils/catalogStock';
+import {
+  parseProductFiltersFromSearch,
+  productFiltersToSearchParams,
+  productHasLowStock,
+  productHasOutOfStock,
+  summaryFilterFromCard,
+  variantIsLowStock,
+  variantIsOutOfStock,
+  variantStockTone,
+} from '../../utils/variantStockAlerts';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
 import ProductForm from './ProductForm';
 import ProductDetailPanel from './ProductDetailPanel';
@@ -77,6 +88,7 @@ const EMPTY_FILTERS = {
 };
 
 const Products = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { settings: storeSettings } = useStoreSettings();
   const { settings: productModuleSettings } = useModuleSettings('products');
   const persona = getPersonaFromStorage();
@@ -111,6 +123,25 @@ const Products = () => {
 
   // --- Filters ---
   const [filters, setFilters] = useState(EMPTY_FILTERS);
+
+  const updateFilters = useCallback(
+    (patchOrFn) => {
+      setFilters((prev) => {
+        const next =
+          typeof patchOrFn === 'function' ? patchOrFn(prev) : { ...prev, ...patchOrFn };
+        setSearchParams(
+          productFiltersToSearchParams({
+            low_stock: next.low_stock,
+            out_of_stock: next.out_of_stock,
+            is_active: next.is_active,
+          }),
+          { replace: true }
+        );
+        return next;
+      });
+    },
+    [setSearchParams]
+  );
 
   // --- Editor + selection ---
   const [showForm, setShowForm] = useState(false);
@@ -178,9 +209,36 @@ const Products = () => {
   }, [filters, showStatus, pagination.page, pagination.page_size]);
 
   useEffect(() => {
+    const fromUrl = parseProductFiltersFromSearch(searchParams);
+    if (fromUrl) {
+      setFilters((prev) => ({ ...prev, ...fromUrl }));
+    }
+    // Hydrate stock/status filters from dashboard or bookmarked URLs once on load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const applySummaryFilter = useCallback(
+    (label) => {
+      const patch = summaryFilterFromCard(label);
+      updateFilters((prev) => ({
+        ...prev,
+        ...patch,
+      }));
+    },
+    [updateFilters]
+  );
+
+  useEffect(() => {
     loadCategories();
     loadStatistics();
   }, [loadCategories, loadStatistics]);
+
+  useEffect(() => {
+    if (!filters.low_stock && !filters.out_of_stock) return;
+    const variantIds = products.filter((product) => product.has_variants).map((product) => product.id);
+    if (!variantIds.length) return;
+    setExpandedProductIds((prev) => [...new Set([...prev, ...variantIds])]);
+  }, [products, filters.low_stock, filters.out_of_stock]);
 
   useEffect(() => {
     setPagination((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
@@ -549,12 +607,12 @@ const Products = () => {
         </PageHeader>
 
         {/* --- Summary stats --- */}
-        <SummaryStats statistics={statistics} />
+        <SummaryStats statistics={statistics} onSelectFilter={applySummaryFilter} />
 
         {/* --- Filter toolbar --- */}
         <FilterBar
           filters={filters}
-          setFilters={setFilters}
+          setFilters={updateFilters}
           categories={categories}
           activeCount={activeFilterCount}
           showProductStatus={showStatus}
@@ -699,6 +757,7 @@ const Products = () => {
                           showMrp={showMrp}
                           showCost={showCost && fieldAccess.cost}
                           showSku={showSku}
+                          showLowStock={showLowStock}
                           catalogOnly={catalogOnly}
                           onEdit={() => openEdit(product)}
                           onSetStock={
@@ -811,7 +870,7 @@ const Products = () => {
   );
 };
 
-function SummaryStats({ statistics }) {
+function SummaryStats({ statistics, onSelectFilter }) {
   if (!statistics) {
     return (
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -826,26 +885,40 @@ function SummaryStats({ statistics }) {
     {
       label: 'Total products',
       value: statistics.total_products ?? '-',
+      hint: null,
       icon: Package,
       tone: 'default',
+      clickable: Boolean(onSelectFilter),
     },
     {
       label: 'Active',
       value: statistics.active_products ?? '-',
+      hint: null,
       icon: Package,
       tone: 'success',
+      clickable: Boolean(onSelectFilter),
     },
     {
       label: 'Low stock',
       value: statistics.low_stock_count ?? '-',
+      hint:
+        statistics.low_stock_variant_count != null
+          ? `${statistics.low_stock_simple_count ?? 0} products · ${statistics.low_stock_variant_count ?? 0} variants`
+          : null,
       icon: AlertCircle,
       tone: 'warning',
+      clickable: Boolean(onSelectFilter),
     },
     {
       label: 'Out of stock',
       value: statistics.out_of_stock_count ?? '-',
+      hint:
+        statistics.out_of_stock_variant_count != null
+          ? `${statistics.out_of_stock_simple_count ?? 0} products · ${statistics.out_of_stock_variant_count ?? 0} variants`
+          : null,
       icon: XCircle,
       tone: 'destructive',
+      clickable: Boolean(onSelectFilter),
     },
   ];
 
@@ -858,24 +931,46 @@ function SummaryStats({ statistics }) {
 
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      {items.map(({ label, value, icon: Icon, tone }) => (
-        <div
-          key={label}
-          className="flex items-center gap-3 rounded-lg border bg-background px-4 py-3"
-        >
-          <div className={cn('flex h-9 w-9 items-center justify-center rounded-md bg-muted', toneClasses[tone])}>
-            <Icon className="h-4 w-4" />
-          </div>
-          <div className="min-w-0">
-            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {label}
+      {items.map(({ label, value, hint, icon: Icon, tone, clickable }) => {
+        const card = (
+          <>
+            <div className={cn('flex h-9 w-9 items-center justify-center rounded-md bg-muted', toneClasses[tone])}>
+              <Icon className="h-4 w-4" />
             </div>
-            <div className={cn('text-lg font-semibold tabular-nums', toneClasses[tone])}>
-              {value}
+            <div className="min-w-0">
+              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {label}
+              </div>
+              <div className={cn('text-lg font-semibold tabular-nums', toneClasses[tone])}>
+                {value}
+              </div>
+              {hint ? (
+                <div className="text-[11px] text-muted-foreground">{hint}</div>
+              ) : null}
             </div>
-          </div>
-        </div>
-      ))}
+          </>
+        );
+        if (!clickable) {
+          return (
+            <div
+              key={label}
+              className="flex items-center gap-3 rounded-lg border bg-background px-4 py-3"
+            >
+              {card}
+            </div>
+          );
+        }
+        return (
+          <button
+            key={label}
+            type="button"
+            onClick={() => onSelectFilter(label)}
+            className="flex items-center gap-3 rounded-lg border bg-background px-4 py-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/30"
+          >
+            {card}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -1106,9 +1201,14 @@ function ProductRow({
                   variants
                 </Badge>
               )}
-              {showLowStock && product.is_low_stock && (
+              {showLowStock && productHasLowStock(product) && (
                 <Badge variant="warning" className="px-1.5 py-0 text-[10px]">
                   Low stock
+                </Badge>
+              )}
+              {showLowStock && productHasOutOfStock(product) && (
+                <Badge variant="destructive" className="px-1.5 py-0 text-[10px]">
+                  Out of stock
                 </Badge>
               )}
               <PendingApprovalBadges pendingApproval={product.pending_approval} />
@@ -1230,11 +1330,17 @@ function StockCell({ product, onSetStock }) {
   const qty = product.has_variants
     ? catalogSellableStock(product)
     : parseInt(product.stock_quantity, 10) || 0;
+  const hasOutOfStock = productHasOutOfStock(product);
+  const hasLowStock = productHasLowStock(product);
   const lowThreshold = parseInt(product.low_stock_threshold, 10) || 0;
   const tone =
-    qty <= 0
+    hasOutOfStock && !product.has_variants
       ? 'text-destructive'
-      : lowThreshold > 0 && qty <= lowThreshold
+      : hasOutOfStock && product.has_variants
+      ? 'text-warning'
+      : qty <= 0
+      ? 'text-destructive'
+      : hasLowStock || (lowThreshold > 0 && qty <= lowThreshold)
       ? 'text-warning'
       : 'text-foreground';
   const qtyEl = (
@@ -1263,6 +1369,7 @@ function VariantRows({
   showMrp = true,
   showCost = true,
   showSku = false,
+  showLowStock = true,
   catalogOnly = false,
   onEdit,
   onSetStock,
@@ -1313,13 +1420,31 @@ function VariantRows({
     );
   }
 
-  return variants.map((v) => (
+  return variants.map((v) => {
+    const stockTone = variantStockTone(v, product);
+    const qtyClass =
+      stockTone === 'destructive'
+        ? 'text-destructive'
+        : stockTone === 'warning'
+        ? 'text-warning'
+        : 'text-foreground';
+    return (
     <tr key={v.id} className="bg-muted/20">
       <td className="px-4 py-2" />
       <td className="px-4 py-2">
         <div className="ml-8 text-sm">
           <div className="font-medium">{v.sku || `${product.name} variant`}</div>
           <div className="text-xs text-muted-foreground">{v.size_name || ''} {v.color_name ? `• ${v.color_name}` : ''}</div>
+          {showLowStock && variantIsOutOfStock(v) ? (
+            <Badge variant="destructive" className="mt-1 px-1.5 py-0 text-[10px]">
+              Out of stock
+            </Badge>
+          ) : null}
+          {showLowStock && !variantIsOutOfStock(v) && variantIsLowStock(v, product) ? (
+            <Badge variant="warning" className="mt-1 px-1.5 py-0 text-[10px]">
+              Low stock
+            </Badge>
+          ) : null}
         </div>
       </td>
       <td className="px-4 py-2">{product.category_name || '—'}</td>
@@ -1338,13 +1463,13 @@ function VariantRows({
           <button
             type="button"
             onClick={() => onSetStock(v)}
-            className="rounded px-1 py-0.5 font-semibold tabular-nums hover:bg-muted/80"
+            className={cn('rounded px-1 py-0.5 font-semibold tabular-nums hover:bg-muted/80', qtyClass)}
             title={`Set ${STOCK_ON_HAND_LABEL.toLowerCase()}`}
           >
             {v.stock_quantity}
           </button>
         ) : (
-          v.stock_quantity
+          <span className={cn('font-semibold tabular-nums', qtyClass)}>{v.stock_quantity}</span>
         )}
       </td>
       <td className="px-4 py-2">
@@ -1371,7 +1496,8 @@ function VariantRows({
         </div>
       </td>
     </tr>
-  ));
+    );
+  });
 }
 
 function EmptyProducts({ onCreate, hasFilters }) {

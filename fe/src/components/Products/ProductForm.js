@@ -908,6 +908,7 @@ const ProductForm = ({
                 canEditMrp={showMrp && showPricingFields}
                 canEditStock={showStockFields && !product}
                 canEditCost={showCostField}
+                defaultLowStockThreshold={formData.low_stock_threshold}
                 onDraftsChange={handleVariantDraftsChange}
                 onCombinationKeysChange={handleVariantCombinationKeysChange}
               />
@@ -997,7 +998,7 @@ const ProductForm = ({
             <div className="form-group">
               <label htmlFor="product-low-stock-threshold">Low Stock Threshold</label>
               {formData.has_variants ? (
-                <small className="form-text">Default alert level copied to each variant.</small>
+                <small className="form-text">Default for new variants — adjust per row below.</small>
               ) : null}
               <input
                 id="product-low-stock-threshold"

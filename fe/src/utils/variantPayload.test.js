@@ -155,6 +155,12 @@ describe('buildVariantPatchPayload', () => {
   test('ignores empty stock in patch', () => {
     expect(buildVariantPatchPayload(variant, { stock_quantity: '' })).toEqual({});
   });
+
+  test('includes low stock threshold when changed', () => {
+    expect(
+      buildVariantPatchPayload({ ...variant, low_stock_threshold: 5 }, { low_stock_threshold: '12' })
+    ).toEqual({ low_stock_threshold: 12 });
+  });
 });
 
 describe('buildVariantDraftPatchPayload', () => {
