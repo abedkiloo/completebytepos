@@ -44,8 +44,9 @@ const SetupGate = ({ children }) => {
         <div className="w-full max-w-md space-y-3 rounded-lg border bg-background p-6 text-center">
           <p className="font-medium">Cannot reach the server</p>
           <p className="text-sm text-muted-foreground">
-            The app loaded, but the API did not respond. Check that the backend
-            container is running, then try again.
+            The app loaded, but the API timed out. This is common right after a
+            restart while Gunicorn or Postgres is still coming up. Wait a few
+            seconds, then retry. Use the site on port 3000 (not 8000).
           </p>
           <button
             type="button"

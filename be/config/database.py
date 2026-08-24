@@ -58,12 +58,15 @@ def build_databases(*, base_dir: Path, running_tests: bool = False) -> dict:
 
     conn_max_age = _env('DB_CONN_MAX_AGE', '300')
     conn_health = _env('DB_CONN_HEALTH_CHECKS', 'true').lower() in ('1', 'true', 'yes')
+    options = {}
+    if 'postgresql' in cfg.get('ENGINE', ''):
+        options['connect_timeout'] = 5
     return {
         'default': {
             **cfg,
             'CONN_MAX_AGE': int(conn_max_age) if conn_max_age.isdigit() else 300,
             'CONN_HEALTH_CHECKS': conn_health,
-            'OPTIONS': {},
+            'OPTIONS': options,
         }
     }
 

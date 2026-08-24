@@ -347,7 +347,8 @@ Run after install or deploy:
 # Containers up
 docker ps --filter name=completebytepos
 
-# API health (public endpoint)
+# API health (public endpoint through nginx)
+curl -s http://YOUR_HOST:3000/api/healthz/
 curl -s http://YOUR_HOST:3000/api/settings/setup-status/ | python3 -m json.tool
 
 # Expect: "installed": true, "tenant_count": >= 1

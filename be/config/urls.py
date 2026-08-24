@@ -3,6 +3,7 @@ URL configuration for CompleteBytePOS project.
 """
 from django.contrib import admin
 from django.urls import path, include
+from config.health import healthz
 from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework_simplejwt.views import (
@@ -13,6 +14,7 @@ from rest_framework_simplejwt.views import (
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('api/healthz/', healthz, name='healthz'),
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/token/verify/', TokenVerifyView.as_view(), name='token_verify'),

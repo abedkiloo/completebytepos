@@ -588,7 +588,7 @@ export const transfersAPI = {
 };
 
 export const installAPI = {
-  status: () => api.get('/settings/setup-status/', { timeout: 8000 }),
+  status: () => api.get('/settings/setup-status/', { timeout: 20000 }),
   freshInstall: (data) => api.post('/settings/fresh-install/', data),
 };
 
