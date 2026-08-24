@@ -382,6 +382,13 @@ LOGGING = {
             'level': DJANGO_REQUEST_LOG_LEVEL,
             'propagate': False,
         },
+        # Internet scanners send fake Host headers. Reject them; do not log a
+        # full traceback for every probe.
+        'django.security.DisallowedHost': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
         'settings': {'handlers': ['console'], 'level': LOG_LEVEL, 'propagate': False},
         'sales': {'handlers': ['console'], 'level': LOG_LEVEL, 'propagate': False},
         'inventory': {'handlers': ['console'], 'level': LOG_LEVEL, 'propagate': False},

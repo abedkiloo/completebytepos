@@ -25,6 +25,8 @@ if (isNgrokUrl) {
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: defaultHeaders,
+  // Hung Gunicorn/DB after deploy used to leave the SPA on a grey skeleton forever.
+  timeout: 12000,
 });
 
 // Get token from localStorage
@@ -586,7 +588,7 @@ export const transfersAPI = {
 };
 
 export const installAPI = {
-  status: () => api.get('/settings/setup-status/'),
+  status: () => api.get('/settings/setup-status/', { timeout: 8000 }),
   freshInstall: (data) => api.post('/settings/fresh-install/', data),
 };
 

@@ -38,7 +38,10 @@ services:
     container_name: completebytepos_backend
     hostname: backend
     ports:
-      - "8000:8000"
+      # Only reachable on the VPS itself. Browsers should use :3000 (nginx).
+      # Publishing 0.0.0.0:8000 invites internet scanners (fake Host headers,
+      # RDP probes, HTTP/2 PRI) that show up as DisallowedHost in the logs.
+      - "127.0.0.1:8000:8000"
     env_file:
       - .env
     volumes:
