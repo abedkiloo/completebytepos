@@ -248,8 +248,8 @@ docker exec completebytepos_backend python manage.py setup_new_organization
 | Port | Purpose |
 |------|---------|
 | 3000 | Web UI (nginx in prod, or React dev) |
-| 8000 | Backend API (needed for **dev** mode; optional in prod if all traffic goes through :3000 `/api`) |
-| 5432 | PostgreSQL — **do not** expose publicly; internal to Docker only |
+| 8000 | Backend API (needed for **dev** mode; prod binds **127.0.0.1** only — use :3000 `/api`) |
+| 5432 | PostgreSQL — **127.0.0.1** only; use an SSH tunnel for remote admin |
 
 ### Do not run dev mode on a small production VPS
 
@@ -269,11 +269,19 @@ Add your public URL to `CSRF_TRUSTED_ORIGINS` and `CORS_ALLOWED_ORIGINS`.
 
 ### Resource tuning (small VPS)
 
-| Setting | Suggestion (≈2 GB RAM) |
-|---------|-------------------------|
-| Gunicorn workers | Change prod compose from `--workers 4` to `--workers 2` |
-| Postgres | Limit memory via Docker `deploy.resources.limits` |
-| Monitoring | `docker stats` — see ops notes in project chat / future runbook |
+Prod compose defaults are sized for ≈2 GB RAM. Override in `.env` if the box is larger:
+
+| Setting | Default | Notes |
+|---------|---------|--------|
+| `GUNICORN_WORKERS` | `2` | Each worker is a full Django process. Do not set 4+ on 2 GB. |
+| `GUNICORN_THREADS` | `4` | Extra concurrent I/O without extra RAM. |
+| `GUNICORN_TIMEOUT` | `60` | Fail hung requests instead of stacking workers. |
+| `DB_CONN_MAX_AGE` | `300` | Reuse Postgres connections. |
+| `POSTGRES_SHARED_BUFFERS` | `128MB` | Lower to `64MB` on 1 GB VPS. |
+
+After changing compose or `.env`: `docker compose up -d`. Nginx gzip/keepalive needs a **frontend image rebuild**.
+
+Watch live pressure with `docker stats`.
 
 ---
 
@@ -340,7 +348,7 @@ Run after install or deploy:
 docker ps --filter name=completebytepos
 
 # API health (public endpoint)
-curl -s http://YOUR_HOST:8000/api/settings/setup-status/ | python3 -m json.tool
+curl -s http://YOUR_HOST:3000/api/settings/setup-status/ | python3 -m json.tool
 
 # Expect: "installed": true, "tenant_count": >= 1
 
