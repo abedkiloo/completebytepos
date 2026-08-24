@@ -1,7 +1,9 @@
 """
-Docker healthcheck: API must answer on the container's LAN IP, not only
-127.0.0.1. A localhost-only Gunicorn bind passes curl-to-127 but nginx
-(other containers) gets Connection refused → 502.
+Docker healthcheck.
+
+Gunicorn must listen on 0.0.0.0 (so nginx on another container can connect).
+Django ALLOWED_HOSTS must NOT include Docker bridge IPs (172.18.x.x) — those
+are not public hosts. Probe HTTP with Host: 127.0.0.1, which is already allowed.
 """
 from __future__ import annotations
 
@@ -20,16 +22,28 @@ def _lan_ip() -> str:
         sock.close()
 
 
+def gunicorn_accepts_on_lan(timeout: float = 5) -> None:
+    """Fails if Gunicorn is bound to 127.0.0.1 only."""
+    sock = socket.create_connection((_lan_ip(), 8000), timeout)
+    sock.close()
+
+
+def healthz_ok(timeout: float = 5) -> None:
+    request = urllib.request.Request(
+        'http://127.0.0.1:8000/api/healthz/',
+        headers={'Host': '127.0.0.1'},
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as resp:
+        if resp.status != 200:
+            raise RuntimeError(f'healthz status {resp.status}')
+
+
 def main() -> int:
-    ip = _lan_ip()
-    url = f'http://{ip}:8000/api/healthz/'
     try:
-        with urllib.request.urlopen(url, timeout=5) as resp:
-            if resp.status != 200:
-                print(f'healthz status {resp.status} via {ip}', file=sys.stderr)
-                return 1
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        print(f'healthz failed via {ip}: {exc}', file=sys.stderr)
+        gunicorn_accepts_on_lan()
+        healthz_ok()
+    except (urllib.error.URLError, TimeoutError, OSError, RuntimeError) as exc:
+        print(f'healthcheck failed: {exc}', file=sys.stderr)
         return 1
     return 0
 

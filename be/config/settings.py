@@ -27,8 +27,15 @@ SECRET_KEY = env_str(
 )
 DEBUG = env_bool('DEBUG', True)
 
-# Docker nginx proxies with Host: backend — always keep internal names allowed.
-_DOCKER_ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', 'backend', 'frontend']
+# Docker internals only. Never add scanner Hosts or bridge IPs (172.18.x.x).
+_DOCKER_ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    '0.0.0.0',
+    'backend',
+    'frontend',
+    'completebytepos_backend',
+]
 PUBLIC_HOST = env_str('PUBLIC_HOST') or env_str('SERVER_IP') or env_str('SERVER_PUBLIC_IP')
 ALLOWED_HOSTS = merge_unique_list(
     env_list('ALLOWED_HOSTS', _DOCKER_ALLOWED_HOSTS),
