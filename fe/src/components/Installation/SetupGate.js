@@ -44,9 +44,9 @@ const SetupGate = ({ children }) => {
         <div className="w-full max-w-md space-y-3 rounded-lg border bg-background p-6 text-center">
           <p className="font-medium">Cannot reach the server</p>
           <p className="text-sm text-muted-foreground">
-            The app loaded, but the API timed out. This is common right after a
-            restart while Gunicorn or Postgres is still coming up. Wait a few
-            seconds, then retry. Use the site on port 3000 (not 8000).
+            The app loaded, but the API returned an error or timed out. If you
+            see 502, the backend container is up but nginx cannot reach Gunicorn
+            — wait for migrate to finish, then retry. Use port 3000 only.
           </p>
           <button
             type="button"

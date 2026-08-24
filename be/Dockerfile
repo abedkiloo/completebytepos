@@ -23,12 +23,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create necessary directories
-RUN mkdir -p /app/staticfiles /app/media /app/db
-
-# Note: collectstatic will be run in docker-compose command
+RUN mkdir -p /app/staticfiles /app/media /app/db \
+    && chmod +x /app/docker-entrypoint.sh
 
 # Expose port
 EXPOSE 8000
 
-# Default command (can be overridden)
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2", "--threads", "4"]
+ENTRYPOINT ["/bin/sh", "/app/docker-entrypoint.sh"]

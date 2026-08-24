@@ -50,7 +50,6 @@ services:
       context: ./be
       dockerfile: Dockerfile
     container_name: completebytepos_backend
-    hostname: backend
     ports:
       # Only reachable on the VPS itself. Browsers should use :3000 (nginx).
       # Publishing 0.0.0.0:8000 invites internet scanners (fake Host headers,
@@ -66,7 +65,7 @@ services:
     environment:
       - DEBUG=${DEBUG:-False}
       - DJANGO_SETTINGS_MODULE=config.settings
-      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1,0.0.0.0,backend}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1,0.0.0.0,backend,completebytepos_backend}
       - PUBLIC_HOST=${PUBLIC_HOST:-}
       - DB_HOST=db
       - DB_PORT=5432
@@ -82,45 +81,21 @@ services:
       - GUNICORN_THREADS=${GUNICORN_THREADS:-4}
       - GUNICORN_TIMEOUT=${GUNICORN_TIMEOUT:-60}
       - GUNICORN_MAX_REQUESTS=${GUNICORN_MAX_REQUESTS:-800}
-    command: >
-      sh -c "
-        mkdir -p /app/logs &&
-        python manage.py migrate --noinput &&
-        python manage.py init_permissions --noinput || python manage.py init_permissions || true &&
-        python manage.py init_modules || true &&
-        python manage.py create_users || true &&
-        python manage.py collectstatic --noinput || true &&
-        gunicorn config.wsgi:application
-          --bind 0.0.0.0:8000
-          --worker-class gthread
-          --workers $${GUNICORN_WORKERS:-2}
-          --threads $${GUNICORN_THREADS:-4}
-          --timeout $${GUNICORN_TIMEOUT:-60}
-          --keep-alive 5
-          --max-requests $${GUNICORN_MAX_REQUESTS:-800}
-          --max-requests-jitter 80
-          --worker-tmp-dir /dev/shm
-          --access-logfile -
-          --error-logfile -
-      "
+    entrypoint: ["/bin/sh", "/app/docker-entrypoint.sh"]
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
     networks:
-      - completebytepos_network
+      completebytepos_network:
+        aliases:
+          - backend
     healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/healthz/', timeout=5)",
-        ]
-      interval: 30s
+      test: ["CMD", "python", "/app/config/docker_healthcheck.py"]
+      interval: 15s
       timeout: 8s
-      retries: 3
-      start_period: 90s
+      retries: 5
+      start_period: 120s
 
   frontend:
     build:
