@@ -34,6 +34,22 @@ describe('resolveApiBaseUrl', () => {
     expect(resolveApiBaseUrl()).toBe('/api');
   });
 
+  it('rewrites a baked public :8000 URL to /api on the nginx SPA', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.REACT_APP_API_URL = 'http://193.37.213.177:8000/api';
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        protocol: 'http:',
+        hostname: '193.37.213.177',
+        port: '3000',
+        origin: 'http://193.37.213.177:3000',
+      },
+    });
+    const { resolveApiBaseUrl } = require('./apiBaseUrl');
+    expect(resolveApiBaseUrl()).toBe('/api');
+  });
+
   it('defaults to localhost when unset', () => {
     delete process.env.REACT_APP_API_URL;
     const { resolveApiBaseUrl } = require('./apiBaseUrl');

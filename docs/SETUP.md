@@ -137,7 +137,7 @@ Docker Compose reads **`CompleteBytePOS/.env`** (repository root, beside `be/` a
 | Mode | Compose file | Set in root `.env` |
 |------|--------------|-------------------|
 | **Dev Docker** (UI on :3000, webpack) | `docker-compose.dev.yml` | `http://YOUR_SERVER_IP:8000/api` or `http://localhost:8000/api` |
-| **Prod Docker** (nginx proxies `/api`) | `docker-compose.yml` | `REACT_APP_API_URL=/api` |
+| **Prod Docker** (nginx proxies `/api`) | `docker-compose.yml` | Baked as `/api` (compose ignores a `:8000` value in `.env`) |
 
 **Remote dev VPS example:**
 

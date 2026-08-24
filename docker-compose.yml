@@ -126,7 +126,8 @@ services:
       context: ./fe
       dockerfile: Dockerfile
       args:
-        REACT_APP_API_URL: ${REACT_APP_API_URL:-/api}
+        # Always same-origin. Do not bake :8000 from .env — Gunicorn is localhost-only.
+        REACT_APP_API_URL: /api
     container_name: completebytepos_frontend
     hostname: frontend
     ports:
