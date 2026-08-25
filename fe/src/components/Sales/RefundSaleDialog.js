@@ -22,6 +22,7 @@ import {
   saleItemRefundableQuantity,
   saleItemVariantLabel,
 } from '../../utils/saleItemDisplay';
+import CommitConfirm from '../Shared/CommitConfirm';
 import {
   buildDuplicateRefundQtyMap,
   detectDuplicateSaleLineGroups,
@@ -33,6 +34,8 @@ export default function RefundSaleDialog({ sale, open, onOpenChange, onSubmit, s
   const [reason, setReason] = useState('');
   const [mode, setMode] = useState('full');
   const [lineQty, setLineQty] = useState({});
+  const [pendingPayload, setPendingPayload] = useState(null);
+  const [showCommitConfirm, setShowCommitConfirm] = useState(false);
   const { settings: storeSettings } = useStoreSettings();
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
   const refundCopy = makerCheckerReasonCopy('sale_refund');
@@ -71,7 +74,8 @@ export default function RefundSaleDialog({ sale, open, onOpenChange, onSubmit, s
     e.preventDefault();
     if (!reason.trim()) return;
     if (mode === 'full') {
-      onSubmit(buildFullRefundPayload(reason));
+      setPendingPayload(buildFullRefundPayload(reason));
+      setShowCommitConfirm(true);
       return;
     }
     const items = (sale.items || [])
@@ -80,10 +84,42 @@ export default function RefundSaleDialog({ sale, open, onOpenChange, onSubmit, s
         quantity: parseInt(lineQty[item.id], 10) || 0,
       }))
       .filter((row) => row.quantity > 0);
-    onSubmit(buildPartialRefundPayload(reason, items));
+    if (!items.length) return;
+    setPendingPayload(buildPartialRefundPayload(reason, items));
+    setShowCommitConfirm(true);
   };
 
+  const confirmCommit = () => {
+    if (!pendingPayload || submitting) return;
+    onSubmit(pendingPayload);
+  };
+
+  const commitRows = (() => {
+    if (!pendingPayload || !sale) return [];
+    const rows = [
+      { label: 'Sale', value: sale.sale_number },
+      {
+        label: 'Mode',
+        value: pendingPayload.full ? 'Full void' : 'Partial refund',
+        emphasis: true,
+      },
+      {
+        label: 'Refundable',
+        value: formatCurrency(sale.refundable_remaining ?? sale.total),
+        tone: 'danger',
+        emphasis: true,
+      },
+      { label: 'Reason', value: reason.trim() },
+    ];
+    if (!pendingPayload.full && Array.isArray(pendingPayload.items)) {
+      const qtyTotal = pendingPayload.items.reduce((sum, row) => sum + (row.quantity || 0), 0);
+      rows.splice(3, 0, { label: 'Lines / qty', value: `${pendingPayload.items.length} · ${qtyTotal}` });
+    }
+    return rows;
+  })();
+
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -238,5 +274,22 @@ export default function RefundSaleDialog({ sale, open, onOpenChange, onSubmit, s
         )}
       </DialogContent>
     </Dialog>
+    <CommitConfirm
+      open={showCommitConfirm}
+      onOpenChange={(next) => {
+        if (!next && !submitting) {
+          setShowCommitConfirm(false);
+          setPendingPayload(null);
+        }
+      }}
+      title="Confirm void / refund?"
+      description="This reverses stock, revenue, and customer balances for the selected quantities. The original sale stays on record."
+      rows={commitRows}
+      submitting={submitting}
+      confirmText={makerCheckerOn ? 'Submit for approval' : 'Confirm void / refund'}
+      onConfirm={confirmCommit}
+      variant="danger"
+    />
+    </>
   );
 }

@@ -3,6 +3,8 @@ import { incomeAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import SearchableSelect from '../Shared/SearchableSelect';
 import ChangeReasonField from '../Approvals/ChangeReasonField';
+import CommitConfirm from '../Shared/CommitConfirm';
+import { formatCurrency } from '../../utils/formatters';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import {
   financialSubmitSuccessMessage,
@@ -24,6 +26,7 @@ const IncomeForm = ({ income, categories, onClose, onSave }) => {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
   const [proposalReason, setProposalReason] = useState('');
+  const [showCommitConfirm, setShowCommitConfirm] = useState(false);
   const { settings: storeSettings } = useStoreSettings();
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
 
@@ -78,13 +81,17 @@ const IncomeForm = ({ income, categories, onClose, onSave }) => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
-    
+
     if (!validate()) {
       return;
     }
-    
+    setShowCommitConfirm(true);
+  };
+
+  const confirmCommit = async () => {
+    if (loading) return;
     setLoading(true);
     try {
       const payload = { ...formData };
@@ -99,20 +106,48 @@ const IncomeForm = ({ income, categories, onClose, onSave }) => {
       }
       const mcMsg = financialSubmitSuccessMessage(storeSettings);
       if (mcMsg) toast.warning(mcMsg);
+      else toast.success(income ? 'Income updated' : 'Income created');
+      setShowCommitConfirm(false);
       onSave();
     } catch (error) {
       const errorData = error.response?.data;
       if (errorData) {
         setErrors(errorData);
+        toast.error(
+          errorData.detail ||
+            errorData.error ||
+            'Failed to save income. Check the form fields.'
+        );
       } else {
         toast.error('Failed to save income: ' + error.message);
       }
+      setShowCommitConfirm(false);
     } finally {
       setLoading(false);
     }
   };
 
+  const categoryName =
+    (categories || []).find((c) => Number(c.id) === Number(formData.category))?.name ||
+    formData.category ||
+    '—';
+  const commitRows = [
+    { label: 'Category', value: String(categoryName) },
+    {
+      label: 'Amount',
+      value: formatCurrency(formData.amount),
+      tone: 'success',
+      emphasis: true,
+    },
+    formData.description ? { label: 'Description', value: formData.description } : null,
+    formData.payer ? { label: 'Payer', value: formData.payer } : null,
+    formData.income_date ? { label: 'Date', value: formData.income_date } : null,
+    { label: 'Method', value: formData.payment_method },
+  ].filter(Boolean);
+
+
   return (
+    <>
     <div className="slide-in-overlay" onClick={onClose}>
       <div className="slide-in-panel" onClick={(e) => e.stopPropagation()}>
         <div className="slide-in-panel-header">
@@ -266,6 +301,20 @@ const IncomeForm = ({ income, categories, onClose, onSave }) => {
         </div>
       </div>
     </div>
+    <CommitConfirm
+      open={showCommitConfirm}
+      onOpenChange={(open) => {
+        if (!open && !loading) setShowCommitConfirm(false);
+      }}
+      title="Confirm income?"
+      description="Review the income details, then confirm to save."
+      rows={commitRows}
+      submitting={loading}
+      confirmText={makerCheckerOn ? 'Submit for approval' : (income ? 'Confirm & update' : 'Confirm & create')}
+      onConfirm={confirmCommit}
+      variant="info"
+    />
+    </>
   );
 };
 

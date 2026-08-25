@@ -18,6 +18,8 @@ import {
   formatVariantStockOptionLabel,
   toStockProductSelectOptions,
 } from '../../utils/stockProductOptions';
+import CommitConfirm from '../Shared/CommitConfirm';
+import { formatSignedQty } from '../../utils/commitConfirm';
 
 const emptyLine = () => ({
   product_id: '',
@@ -35,6 +37,8 @@ const StockBulkAdjustModal = ({ onClose, onSave }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [changeReason, setChangeReason] = useState('');
+  const [pendingAdjustments, setPendingAdjustments] = useState(null);
+  const [showCommitConfirm, setShowCommitConfirm] = useState(false);
   const { settings: storeSettings } = useStoreSettings();
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
   const searchRequestId = useRef(0);
@@ -153,9 +157,15 @@ const StockBulkAdjustModal = ({ onClose, onSave }) => {
       }
     }
 
+    setPendingAdjustments(adjustments);
+    setShowCommitConfirm(true);
+  };
+
+  const confirmCommit = async () => {
+    if (!pendingAdjustments?.length || loading) return;
     setLoading(true);
     try {
-      const payload = { adjustments };
+      const payload = { adjustments: pendingAdjustments };
       if (makerCheckerOn) {
         payload.reason = changeReason.trim();
       }
@@ -165,15 +175,37 @@ const StockBulkAdjustModal = ({ onClose, onSave }) => {
       } else {
         toast.success('Bulk adjustments recorded');
       }
+      setShowCommitConfirm(false);
+      setPendingAdjustments(null);
       onSave();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to submit bulk adjustments');
+      setShowCommitConfirm(false);
     } finally {
       setLoading(false);
     }
   };
 
+  const commitRows = (pendingAdjustments || []).flatMap((adj, index) => {
+    const product = findProductById(catalogProducts, adj.product_id);
+    const variants = variantsByProduct[adj.product_id] || [];
+    const variant = variants.find((v) => Number(v.id) === Number(adj.variant_id));
+    const name = variant
+      ? `${product?.name || 'Product'} — ${formatVariantStockOptionLabel(variant)}`
+      : product?.name || `Product #${adj.product_id}`;
+    return [
+      { label: `Line ${index + 1}`, value: name },
+      {
+        label: `Qty Δ ${index + 1}`,
+        value: formatSignedQty(adj.quantity),
+        tone: adj.quantity < 0 ? 'danger' : 'success',
+        emphasis: true,
+      },
+    ];
+  });
+
   return (
+    <>
     <div className="slide-in-overlay" onClick={onClose}>
       <div className="slide-in-panel slide-in-panel-wide" onClick={(e) => e.stopPropagation()}>
         <div className="slide-in-panel-header">
@@ -289,6 +321,23 @@ const StockBulkAdjustModal = ({ onClose, onSave }) => {
         </div>
       </div>
     </div>
+    <CommitConfirm
+      open={showCommitConfirm}
+      onOpenChange={(open) => {
+        if (!open) {
+          setShowCommitConfirm(false);
+          setPendingAdjustments(null);
+        }
+      }}
+      title="Confirm bulk stock adjustment?"
+      description="Review each line, then confirm to save the quantity changes."
+      rows={commitRows}
+      submitting={loading}
+      confirmText={makerCheckerOn ? 'Submit for approval' : 'Confirm & adjust'}
+      onConfirm={confirmCommit}
+      variant="warning"
+    />
+    </>
   );
 };
 

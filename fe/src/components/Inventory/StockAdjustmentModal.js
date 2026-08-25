@@ -20,6 +20,8 @@ import {
 } from '../../utils/makerChecker';
 import { isValidStockAdjustmentQuantity } from '../../utils/variantPayload';
 import { STOCK_ADJUST_HINT } from '../../utils/productDisplay';
+import CommitConfirm from '../Shared/CommitConfirm';
+import { formatSignedQty } from '../../utils/commitConfirm';
 
 const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
   const [formData, setFormData] = useState({
@@ -36,6 +38,8 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [changeReason, setChangeReason] = useState('');
+  const [pendingLines, setPendingLines] = useState(null);
+  const [showCommitConfirm, setShowCommitConfirm] = useState(false);
   const { settings: storeSettings } = useStoreSettings();
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
 
@@ -160,13 +164,11 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    setLoading(true);
 
     try {
       const productId = contextProductId;
       if (!productId) {
         setError('Select a product.');
-        setLoading(false);
         return;
       }
 
@@ -174,7 +176,6 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
         const reasonError = stockReasonValidationMessage(changeReason);
         if (reasonError) {
           setError(reasonError);
-          setLoading(false);
           return;
         }
       }
@@ -188,7 +189,6 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
             setError(
               `Enter a valid whole number for ${variantDisplayLabel(v)} (digits only, + or -).`
             );
-            setLoading(false);
             return;
           }
         }
@@ -203,16 +203,15 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
             product_id: productId,
             variant_id: v.id,
             quantity: parseInt(variantAdjustments[v.id], 10),
+            label: variantDisplayLabel(v),
           }));
         if (!lines.length) {
           setError('Enter an adjustment for at least one variant.');
-          setLoading(false);
           return;
         }
       } else {
         if (!formData.quantity) {
           setError('Enter a non-zero adjustment quantity.');
-          setLoading(false);
           return;
         }
         lines = [
@@ -220,27 +219,60 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
             product_id: productId,
             variant_id: null,
             quantity: formData.quantity,
+            label: pickedProduct?.name || 'Product',
           },
         ];
       }
 
-      const { pendingCount } = await submitAdjustments(lines);
+      setPendingLines(lines);
+      setShowCommitConfirm(true);
+    } catch (err) {
+      setError(err.response?.data?.error || err.response?.data?.detail || 'Failed to prepare adjustment');
+    }
+  };
+
+  const confirmCommit = async () => {
+    if (!pendingLines?.length || loading) return;
+    setLoading(true);
+    setError('');
+    try {
+      const { pendingCount } = await submitAdjustments(pendingLines);
       if (pendingCount > 0) {
         toast.warning(PENDING_APPROVAL_MESSAGE);
-      } else if (lines.length > 1) {
-        toast.success(`Adjusted stock for ${lines.length} variant rows`);
+      } else if (pendingLines.length > 1) {
+        toast.success(`Adjusted stock for ${pendingLines.length} variant rows`);
       } else if (variantMode) {
         toast.success('Variant stock adjusted');
       }
+      setShowCommitConfirm(false);
+      setPendingLines(null);
       onSave();
     } catch (err) {
       setError(err.response?.data?.error || err.response?.data?.detail || 'Failed to adjust stock');
+      setShowCommitConfirm(false);
     } finally {
       setLoading(false);
     }
   };
 
+  const commitRows = (pendingLines || []).flatMap((line, index) => [
+    {
+      label: pendingLines.length > 1 ? `Line ${index + 1}` : 'Product',
+      value: line.label || pickedProduct?.name || `Product #${line.product_id}`,
+    },
+    {
+      label: pendingLines.length > 1 ? `Qty Δ ${index + 1}` : 'Quantity change',
+      value: formatSignedQty(line.quantity),
+      tone: line.quantity < 0 ? 'danger' : 'success',
+      emphasis: true,
+    },
+  ]);
+  if (formData.notes) {
+    commitRows.push({ label: 'Notes', value: formData.notes });
+  }
+
   return (
+    <>
     <div
       className={nested ? 'slide-in-overlay nested' : 'slide-in-overlay'}
       onClick={onClose}
@@ -379,6 +411,23 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
         </div>
       </div>
     </div>
+    <CommitConfirm
+      open={showCommitConfirm}
+      onOpenChange={(open) => {
+        if (!open) {
+          setShowCommitConfirm(false);
+          setPendingLines(null);
+        }
+      }}
+      title="Confirm stock adjustment?"
+      description="Review the quantity changes, then confirm to save them."
+      rows={commitRows}
+      submitting={loading}
+      confirmText={makerCheckerOn ? 'Submit for approval' : 'Confirm & adjust'}
+      onConfirm={confirmCommit}
+      variant="warning"
+    />
+    </>
   );
 };
 

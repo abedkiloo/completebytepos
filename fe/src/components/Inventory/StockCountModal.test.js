@@ -53,6 +53,7 @@ describe('StockCountModal', () => {
 
     fireEvent.change(screen.getByLabelText(/Stock on hand/i), { target: { value: '20' } });
     fireEvent.click(screen.getByRole('button', { name: /save stock count/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /confirm & save count/i }));
 
     await waitFor(() => {
       expect(productsAPI.update).toHaveBeenCalledWith(7, { stock_quantity: 20 });
@@ -94,6 +95,7 @@ describe('StockCountModal', () => {
     const input = screen.getByLabelText(/Stock on hand for Large \/ Blue/i);
     fireEvent.change(input, { target: { value: '35' } });
     fireEvent.click(screen.getByRole('button', { name: /save stock count/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /confirm & save count/i }));
 
     await waitFor(() => {
       expect(variantsAPI.update).toHaveBeenCalledWith(41, { stock_quantity: 35 });
@@ -127,6 +129,7 @@ describe('StockCountModal', () => {
       target: { value: '15' },
     });
     fireEvent.click(screen.getByRole('button', { name: /save stock count/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /confirm & save count/i }));
 
     await waitFor(() => {
       expect(variantsAPI.update).toHaveBeenCalledWith(42, { stock_quantity: 15 });

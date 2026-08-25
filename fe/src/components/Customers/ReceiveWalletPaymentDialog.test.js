@@ -44,6 +44,7 @@ describe('ReceiveWalletPaymentDialog', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: /Record payment/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Confirm & record payment/i }));
 
     await waitFor(() => {
       expect(customersAPI.receiveWalletPayment).toHaveBeenCalledWith(3, {

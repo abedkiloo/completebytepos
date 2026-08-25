@@ -28,6 +28,7 @@ import {
   isRegisteredPosCustomer,
 } from '../../../utils/posCheckoutValidation';
 import { evaluatePartialPaymentToggle } from '../../../utils/billingPartialPayment';
+import { buildSaleCommitSummary } from '../../../utils/saleCommitSummary';
 import { prependCustomerToList } from '../../../utils/walkInCustomer';
 import {
   salesShowDiscount,
@@ -153,6 +154,7 @@ export function usePOSState() {
   const [pendingSaleData, setPendingSaleData] = useState(null);
   const [showPartialPaymentConfirm, setShowPartialPaymentConfirm] = useState(false);
   const [showExcessPaymentConfirm, setShowExcessPaymentConfirm] = useState(false);
+  const [showSaleCommitConfirm, setShowSaleCommitConfirm] = useState(false);
 
   // --- Receipt / success after sale ---
   const [lastSale, setLastSale] = useState(null);
@@ -607,6 +609,7 @@ export function usePOSState() {
     setPendingSaleData(null);
     setShowPartialPaymentConfirm(false);
     setShowExcessPaymentConfirm(false);
+    setShowSaleCommitConfirm(false);
     setOrderNumber(`#ORD${Date.now().toString().slice(-6)}`);
   }, [cartDraftKey]);
 
@@ -790,15 +793,44 @@ export function usePOSState() {
           setShowExcessPaymentConfirm(true);
           return;
         }
-        submitSale({ allowPartial: false, excessChoice: 'change' });
-        return;
       }
+
+      const customerName =
+        selectedCustomer && selectedCustomer.id !== 'walk-in'
+          ? selectedCustomer.name
+          : null;
+      setPendingSaleData(
+        buildSaleCommitSummary({
+          total,
+          received,
+          paymentMethod,
+          itemCount: cart.reduce((n, i) => n + (Number(i.quantity) || 0), 0),
+          customerName,
+          paymentReference,
+        })
+      );
+      setShowSaleCommitConfirm(true);
+      return;
     }
 
-    submitSale({ allowPartial: false, excessChoice: 'change' });
+    const customerName =
+      selectedCustomer && selectedCustomer.id !== 'walk-in'
+        ? selectedCustomer.name
+        : null;
+    setPendingSaleData(
+      buildSaleCommitSummary({
+        total,
+        received: paymentMethod === 'wallet' || paymentMethod === 'card' ? total : parseFloat(receivedAmount) || 0,
+        paymentMethod,
+        itemCount: cart.reduce((n, i) => n + (Number(i.quantity) || 0), 0),
+        customerName,
+        paymentReference,
+      })
+    );
+    setShowSaleCommitConfirm(true);
   }, [
     submitting,
-    cart.length,
+    cart,
     requireCustomer,
     hasOversell,
     paymentMethod,
@@ -809,7 +841,6 @@ export function usePOSState() {
     allowPartialPayment,
     paymentOnAccount,
     allowExcessToWallet,
-    submitSale,
   ]);
 
   return {
@@ -879,6 +910,7 @@ export function usePOSState() {
     pendingSaleData,
     showPartialPaymentConfirm, setShowPartialPaymentConfirm,
     showExcessPaymentConfirm, setShowExcessPaymentConfirm,
+    showSaleCommitConfirm, setShowSaleCommitConfirm,
 
     // receipt
     lastSale,

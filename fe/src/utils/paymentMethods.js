@@ -62,3 +62,9 @@ export function paymentReferencePlaceholder(methodId) {
   const meta = getPaymentMethodMeta(methodId);
   return meta.referencePlaceholder || 'Enter reference';
 }
+
+export function paymentMethodLabel(methodId) {
+  if (methodId === 'installments') return 'Installments';
+  if (methodId === 'other') return 'Other';
+  return getPaymentMethodMeta(methodId).label;
+}

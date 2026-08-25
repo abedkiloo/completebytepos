@@ -24,6 +24,7 @@ import {
   STOCK_COUNT_LABEL,
   STOCK_ON_HAND_LABEL,
 } from '../../utils/productDisplay';
+import CommitConfirm from '../Shared/CommitConfirm';
 
 const StockCountModal = ({ product, variant = null, onClose, onSave, nested = false }) => {
   const [formData, setFormData] = useState({
@@ -39,6 +40,8 @@ const StockCountModal = ({ product, variant = null, onClose, onSave, nested = fa
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [changeReason, setChangeReason] = useState('');
+  const [pendingCountPlan, setPendingCountPlan] = useState(null);
+  const [showCommitConfirm, setShowCommitConfirm] = useState(false);
   const { settings: storeSettings } = useStoreSettings();
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
 
@@ -152,53 +155,84 @@ const StockCountModal = ({ product, variant = null, onClose, onSave, nested = fa
     }));
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     setError('');
-    setLoading(true);
 
-    try {
-      const productId = contextProductId;
-      if (!productId) {
-        setError('Select a product.');
-        setLoading(false);
+    const productId = contextProductId;
+    if (!productId) {
+      setError('Select a product.');
+      return;
+    }
+
+    if (makerCheckerOn) {
+      const reasonError = stockReasonValidationMessage(changeReason);
+      if (reasonError) {
+        setError(reasonError);
         return;
       }
+    }
 
-      if (makerCheckerOn) {
-        const reasonError = stockReasonValidationMessage(changeReason);
-        if (reasonError) {
-          setError(reasonError);
-          setLoading(false);
+    const reason = makerCheckerOn ? changeReason.trim() : undefined;
+
+    if (variantMode) {
+      const lines = [];
+      for (const v of variants) {
+        const raw = variantCounts[v.id];
+        if (!isValidOptionalInteger(raw)) {
+          setError(`Enter a valid whole number for ${variantDisplayLabel(v)}.`);
           return;
         }
+        const next = parseInt(raw, 10) || 0;
+        const prev = parseInt(v.stock_quantity, 10) || 0;
+        if (next !== prev) {
+          lines.push({
+            variant: v,
+            stock_quantity: next,
+            previous: prev,
+            label: variantDisplayLabel(v),
+          });
+        }
       }
+      if (!lines.length) {
+        setError('Change at least one variant count or cancel.');
+        return;
+      }
+      setPendingCountPlan({ kind: 'variants', productId, reason, lines });
+    } else {
+      if (!isValidOptionalInteger(formData.stock_quantity)) {
+        setError('Enter a valid whole number for stock on hand.');
+        return;
+      }
+      const next = parseInt(formData.stock_quantity, 10) || 0;
+      const prev = parseInt(pickedProduct?.stock_quantity, 10) || 0;
+      if (next === prev) {
+        setError('Stock on hand is unchanged.');
+        return;
+      }
+      setPendingCountPlan({
+        kind: 'product',
+        productId,
+        reason,
+        stock_quantity: next,
+        previous: prev,
+        label: pickedProduct?.name || 'Product',
+      });
+    }
+    setShowCommitConfirm(true);
+  };
 
-      const reason = makerCheckerOn ? changeReason.trim() : undefined;
+  const confirmCommit = async () => {
+    if (!pendingCountPlan || loading) return;
+    setLoading(true);
+    setError('');
+    try {
+      const reason = pendingCountPlan.reason;
       let pendingCount = 0;
       let updatedCount = 0;
 
-      if (variantMode) {
-        const lines = [];
-        for (const v of variants) {
-          const raw = variantCounts[v.id];
-          if (!isValidOptionalInteger(raw)) {
-            setError(`Enter a valid whole number for ${variantDisplayLabel(v)}.`);
-            setLoading(false);
-            return;
-          }
-          const next = parseInt(raw, 10) || 0;
-          const prev = parseInt(v.stock_quantity, 10) || 0;
-          if (next !== prev) {
-            lines.push({ variant: v, stock_quantity: next });
-          }
-        }
-        if (!lines.length) {
-          setError('Change at least one variant count or cancel.');
-          setLoading(false);
-          return;
-        }
-        for (const line of lines) {
+      if (pendingCountPlan.kind === 'variants') {
+        for (const line of pendingCountPlan.lines) {
           const payload = { stock_quantity: line.stock_quantity };
           if (reason) payload.reason = reason;
           const res = await variantsAPI.update(line.variant.id, payload);
@@ -208,21 +242,9 @@ const StockCountModal = ({ product, variant = null, onClose, onSave, nested = fa
           updatedCount += 1;
         }
       } else {
-        if (!isValidOptionalInteger(formData.stock_quantity)) {
-          setError('Enter a valid whole number for stock on hand.');
-          setLoading(false);
-          return;
-        }
-        const next = parseInt(formData.stock_quantity, 10) || 0;
-        const prev = parseInt(pickedProduct?.stock_quantity, 10) || 0;
-        if (next === prev) {
-          setError('Stock on hand is unchanged.');
-          setLoading(false);
-          return;
-        }
-        const payload = { stock_quantity: next };
+        const payload = { stock_quantity: pendingCountPlan.stock_quantity };
         if (reason) payload.reason = reason;
-        const res = await productsAPI.update(productId, payload);
+        const res = await productsAPI.update(pendingCountPlan.productId, payload);
         if (isPendingApprovalResponse(res.status)) {
           pendingCount += 1;
         }
@@ -236,6 +258,8 @@ const StockCountModal = ({ product, variant = null, onClose, onSave, nested = fa
       } else {
         toast.success('Stock count saved');
       }
+      setShowCommitConfirm(false);
+      setPendingCountPlan(null);
       onSave();
     } catch (err) {
       const detail =
@@ -245,12 +269,39 @@ const StockCountModal = ({ product, variant = null, onClose, onSave, nested = fa
           ? Object.values(err.response.data).flat().join(', ')
           : null);
       setError(detail || 'Failed to save stock count');
+      setShowCommitConfirm(false);
     } finally {
       setLoading(false);
     }
   };
 
+  const commitRows = (() => {
+    if (!pendingCountPlan) return [];
+    if (pendingCountPlan.kind === 'variants') {
+      return pendingCountPlan.lines.flatMap((line, index) => [
+        {
+          label: pendingCountPlan.lines.length > 1 ? `Variant ${index + 1}` : 'Variant',
+          value: line.label,
+        },
+        {
+          label: pendingCountPlan.lines.length > 1 ? `Count ${index + 1}` : 'On hand',
+          value: `${line.previous} → ${line.stock_quantity}`,
+          emphasis: true,
+        },
+      ]);
+    }
+    return [
+      { label: 'Product', value: pendingCountPlan.label },
+      {
+        label: 'On hand',
+        value: `${pendingCountPlan.previous} → ${pendingCountPlan.stock_quantity}`,
+        emphasis: true,
+      },
+    ];
+  })();
+
   return (
+    <>
     <div
       className={nested ? 'slide-in-overlay nested' : 'slide-in-overlay'}
       onClick={onClose}
@@ -388,6 +439,23 @@ const StockCountModal = ({ product, variant = null, onClose, onSave, nested = fa
         </div>
       </div>
     </div>
+    <CommitConfirm
+      open={showCommitConfirm}
+      onOpenChange={(open) => {
+        if (!open) {
+          setShowCommitConfirm(false);
+          setPendingCountPlan(null);
+        }
+      }}
+      title="Confirm stock count?"
+      description="Review the counted quantities, then confirm to save them."
+      rows={commitRows}
+      submitting={loading}
+      confirmText={makerCheckerOn ? 'Submit for approval' : 'Confirm & save count'}
+      onConfirm={confirmCommit}
+      variant="warning"
+    />
+    </>
   );
 };
 

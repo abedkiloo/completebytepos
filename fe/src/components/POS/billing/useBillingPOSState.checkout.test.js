@@ -108,6 +108,13 @@ describe('useBillingPOSState checkout — payment on account', () => {
       await result.current.checkout();
     });
 
+    expect(salesAPI.checkout).not.toHaveBeenCalled();
+    expect(result.current.showSaleCommitConfirm).toBe(true);
+
+    await act(async () => {
+      await result.current.confirmCheckout();
+    });
+
     expect(salesAPI.checkout).toHaveBeenCalledWith(
       55,
       expect.objectContaining({
@@ -141,6 +148,12 @@ describe('useBillingPOSState checkout — payment on account', () => {
 
     await act(async () => {
       await result.current.checkout();
+    });
+
+    expect(salesAPI.checkout).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await result.current.confirmCheckout();
     });
 
     expect(salesAPI.checkout).toHaveBeenCalledWith(

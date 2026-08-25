@@ -237,6 +237,9 @@ describe('RecordPastSale resubmit and served-by', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: /Submit for approval/i }));
+    await screen.findByText('Confirm past sale?');
+    const confirmButtons = screen.getAllByRole('button', { name: /Submit for approval/i });
+    fireEvent.click(confirmButtons[confirmButtons.length - 1]);
 
     await waitFor(() => {
       expect(salesAPI.backfill).toHaveBeenCalled();

@@ -11,6 +11,7 @@ import {
   PENDING_APPROVAL_MESSAGE,
   stockReasonValidationMessage,
 } from '../../utils/makerChecker';
+import CommitConfirm from '../Shared/CommitConfirm';
 
 const StockPurchaseModal = ({ product, onClose, onSave }) => {
   const defaultQuantity = (product?.reorder_quantity != null && product.reorder_quantity > 0)
@@ -27,6 +28,8 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [changeReason, setChangeReason] = useState('');
+  const [pendingPayload, setPendingPayload] = useState(null);
+  const [showCommitConfirm, setShowCommitConfirm] = useState(false);
   const { settings: storeSettings } = useStoreSettings();
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
 
@@ -90,44 +93,70 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
   };
 
   const quantityNum = Number(formData.quantity);
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     setError('');
     if (formData.quantity === '' || formData.quantity === undefined || quantityNum < 1) {
       setError('Quantity must be at least 1 to record a purchase.');
       return;
     }
+    if (!formData.product_id && !product?.id) {
+      setError('Select a product.');
+      return;
+    }
+    const payload = { ...formData, quantity: quantityNum };
+    if (makerCheckerOn) {
+      const reasonError = stockReasonValidationMessage(changeReason);
+      if (reasonError) {
+        setError(
+          reasonError === 'A reason is required for stock changes.'
+            ? 'A reason is required for stock purchases.'
+            : reasonError
+        );
+        return;
+      }
+      payload.reason = changeReason.trim();
+    }
+    setPendingPayload(payload);
+    setShowCommitConfirm(true);
+  };
+
+  const confirmCommit = async () => {
+    if (!pendingPayload || loading) return;
     setLoading(true);
     try {
-      const payload = { ...formData, quantity: quantityNum };
-      if (makerCheckerOn) {
-        const reasonError = stockReasonValidationMessage(changeReason);
-        if (reasonError) {
-          setError(
-            reasonError === 'A reason is required for stock changes.'
-              ? 'A reason is required for stock purchases.'
-              : reasonError
-          );
-          setLoading(false);
-          return;
-        }
-        payload.reason = changeReason.trim();
-      }
-      const res = await inventoryAPI.purchase(payload);
+      const res = await inventoryAPI.purchase(pendingPayload);
       if (isPendingApprovalResponse(res.status)) {
         toast.warning(PENDING_APPROVAL_MESSAGE);
       }
+      setShowCommitConfirm(false);
+      setPendingPayload(null);
       onSave();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to record purchase');
+      setShowCommitConfirm(false);
     } finally {
       setLoading(false);
     }
   };
 
   const totalCost = (quantityNum >= 0 ? quantityNum : 0) * (formData.unit_cost || 0);
+  const selectedProduct =
+    product || products.find((p) => Number(p.id) === Number(pendingPayload?.product_id || formData.product_id));
+  const commitRows = pendingPayload
+    ? [
+        { label: 'Product', value: selectedProduct?.name || `Product #${pendingPayload.product_id}` },
+        { label: 'Quantity', value: `+${pendingPayload.quantity}`, tone: 'success', emphasis: true },
+        pendingPayload.unit_cost
+          ? { label: 'Unit cost', value: formatCurrency(pendingPayload.unit_cost) }
+          : null,
+        totalCost > 0 ? { label: 'Total cost', value: formatCurrency(totalCost), emphasis: true } : null,
+        pendingPayload.reference ? { label: 'Reference', value: pendingPayload.reference } : null,
+      ].filter(Boolean)
+    : [];
 
   return (
+    <>
     <div className="slide-in-overlay" onClick={onClose}>
       <div className="slide-in-panel" onClick={(e) => e.stopPropagation()}>
         <div className="slide-in-panel-header">
@@ -234,6 +263,23 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
         </div>
       </div>
     </div>
+    <CommitConfirm
+      open={showCommitConfirm}
+      onOpenChange={(open) => {
+        if (!open) {
+          setShowCommitConfirm(false);
+          setPendingPayload(null);
+        }
+      }}
+      title="Confirm stock purchase?"
+      description="Review the purchase details, then confirm to add stock."
+      rows={commitRows}
+      submitting={loading}
+      confirmText={makerCheckerOn ? 'Submit for approval' : 'Confirm & record purchase'}
+      onConfirm={confirmCommit}
+      variant="warning"
+    />
+    </>
   );
 };
 

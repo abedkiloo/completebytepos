@@ -17,6 +17,7 @@ import {
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import CommitConfirm from '../Shared/CommitConfirm';
 
 const PAYMENT_METHODS = [
   { value: 'cash', label: 'Cash' },
@@ -46,6 +47,8 @@ export default function ReceiveWalletPaymentDialog({
   const [submitting, setSubmitting] = useState(false);
   const [transactions, setTransactions] = useState([]);
   const [loadingTxns, setLoadingTxns] = useState(false);
+  const [showCommitConfirm, setShowCommitConfirm] = useState(false);
+  const [pendingAmount, setPendingAmount] = useState(null);
 
   const debtAmount = getWalletDebtAmount(customer?.wallet_balance);
 
@@ -83,7 +86,7 @@ export default function ReceiveWalletPaymentDialog({
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     if (!customer?.id || submitting) return;
 
@@ -92,16 +95,23 @@ export default function ReceiveWalletPaymentDialog({
       toast.error('Enter a valid payment amount');
       return;
     }
+    setPendingAmount(amount);
+    setShowCommitConfirm(true);
+  };
 
+  const confirmCommit = async () => {
+    if (!customer?.id || submitting || pendingAmount == null) return;
     setSubmitting(true);
     try {
       const res = await customersAPI.receiveWalletPayment(customer.id, {
-        amount,
+        amount: pendingAmount,
         payment_method: form.payment_method,
         reference: form.reference.trim(),
         notes: form.notes.trim(),
       });
       toast.success('Payment recorded');
+      setShowCommitConfirm(false);
+      setPendingAmount(null);
       onSuccess?.({
         ...customer,
         wallet_balance: res.data.wallet_balance,
@@ -115,14 +125,36 @@ export default function ReceiveWalletPaymentDialog({
         error.message ||
         'Failed to record payment';
       toast.error(msg);
+      setShowCommitConfirm(false);
     } finally {
       setSubmitting(false);
     }
   };
 
+  const methodLabel =
+    PAYMENT_METHODS.find((m) => m.value === form.payment_method)?.label || form.payment_method;
+  const commitRows =
+    pendingAmount == null
+      ? []
+      : [
+          { label: 'Customer', value: customer?.name || '—' },
+          {
+            label: 'Amount',
+            value: formatCurrency(pendingAmount),
+            tone: 'success',
+            emphasis: true,
+          },
+          { label: 'Method', value: methodLabel },
+          form.reference.trim() ? { label: 'Reference', value: form.reference.trim() } : null,
+          debtAmount > 0
+            ? { label: 'Current debt', value: formatCurrency(debtAmount) }
+            : null,
+        ].filter(Boolean);
+
   if (!customer) return null;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg" description="Record payment against customer wallet debt.">
         <DialogHeader>
@@ -253,5 +285,22 @@ export default function ReceiveWalletPaymentDialog({
         </form>
       </DialogContent>
     </Dialog>
+    <CommitConfirm
+      open={showCommitConfirm}
+      onOpenChange={(next) => {
+        if (!next && !submitting) {
+          setShowCommitConfirm(false);
+          setPendingAmount(null);
+        }
+      }}
+      title="Confirm wallet payment?"
+      description="Review the payment, then confirm to credit the customer wallet."
+      rows={commitRows}
+      submitting={submitting}
+      confirmText="Confirm & record payment"
+      onConfirm={confirmCommit}
+      variant="info"
+    />
+    </>
   );
 }

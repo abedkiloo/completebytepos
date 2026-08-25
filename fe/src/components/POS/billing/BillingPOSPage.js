@@ -27,6 +27,7 @@ import CustomerRecentSales from './CustomerRecentSales';
 import PartialPaymentCustomerDialog from './PartialPaymentCustomerDialog';
 import CustomerFormModal from '../../Customers/CustomerFormModal';
 import ReceiptDialog from '../v2/ReceiptDialog';
+import { SaleCommitConfirm } from '../v2/SaleCommitConfirm';
 import { toast } from '../../../utils/toast';
 import { saleUnitPriceOverrideError } from '../../../utils/saleUnitPrice';
 import { getSellableStock, isProductOutOfStock } from '../../../utils/productStock';
@@ -659,6 +660,16 @@ export default function BillingPOSPage() {
           }}
         />
       )}
+
+      <SaleCommitConfirm
+        open={state.showSaleCommitConfirm}
+        onOpenChange={(open) => {
+          if (!open) state.cancelSaleCommitConfirm();
+        }}
+        summary={state.pendingCheckout?.summary}
+        submitting={state.submitting}
+        onConfirm={() => state.confirmCheckout()}
+      />
 
       <ReceiptDialog
         sale={state.lastSale}

@@ -79,7 +79,7 @@ describe('RefundSaleDialog', () => {
     expect(screen.queryByRole('button', { name: /Confirm void/i })).not.toBeInTheDocument();
   });
 
-  it('submits full refund payload with reason', () => {
+  it('submits full refund payload with reason', async () => {
     const onSubmit = jest.fn();
     render(
       <RefundSaleDialog
@@ -95,6 +95,7 @@ describe('RefundSaleDialog', () => {
       target: { value: 'Customer return' },
     });
     fireEvent.click(screen.getByRole('button', { name: /Confirm void/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Confirm void \/ refund$/i }));
 
     expect(onSubmit).toHaveBeenCalledWith({
       full: true,
@@ -166,7 +167,7 @@ describe('RefundSaleDialog', () => {
     expect(screen.getAllByText('Large / White').length).toBeGreaterThan(0);
   });
 
-  it('offers duplicate-line refund preset', () => {
+  it('offers duplicate-line refund preset', async () => {
     const onSubmit = jest.fn();
     render(
       <RefundSaleDialog
@@ -183,6 +184,7 @@ describe('RefundSaleDialog', () => {
       target: { value: 'Duplicate invoice lines' },
     });
     fireEvent.click(screen.getByRole('button', { name: /Confirm void/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Confirm void \/ refund$/i }));
 
     expect(onSubmit).toHaveBeenCalledWith({
       full: false,

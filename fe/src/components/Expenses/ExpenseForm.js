@@ -3,6 +3,8 @@ import { expensesAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import SearchableSelect from '../Shared/SearchableSelect';
 import ChangeReasonField from '../Approvals/ChangeReasonField';
+import CommitConfirm from '../Shared/CommitConfirm';
+import { formatCurrency } from '../../utils/formatters';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import {
   financialSubmitSuccessMessage,
@@ -29,6 +31,7 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
   const [newCategory, setNewCategory] = useState({ name: '', description: '' });
   const [creatingCategory, setCreatingCategory] = useState(false);
   const [proposalReason, setProposalReason] = useState('');
+  const [showCommitConfirm, setShowCommitConfirm] = useState(false);
   const { settings: storeSettings } = useStoreSettings();
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
 
@@ -151,13 +154,17 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
     }
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
 
     if (!validate()) {
       return;
     }
+    setShowCommitConfirm(true);
+  };
 
+  const confirmCommit = async () => {
+    if (loading) return;
     setLoading(true);
     try {
       const payload = { ...formData };
@@ -173,6 +180,7 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
       const mcMsg = financialSubmitSuccessMessage(storeSettings);
       if (mcMsg) toast.warning(mcMsg);
       else toast.success(expense ? 'Expense updated' : 'Expense created');
+      setShowCommitConfirm(false);
       onSave();
     } catch (error) {
       const errorData = error.response?.data;
@@ -186,12 +194,33 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
       } else {
         toast.error('Failed to save expense: ' + error.message);
       }
+      setShowCommitConfirm(false);
     } finally {
       setLoading(false);
     }
   };
 
+  const categoryName =
+    (categories || []).find((c) => Number(c.id) === Number(formData.category))?.name ||
+    formData.category ||
+    '—';
+  const commitRows = [
+    { label: 'Category', value: String(categoryName) },
+    {
+      label: 'Amount',
+      value: formatCurrency(formData.amount),
+      tone: 'danger',
+      emphasis: true,
+    },
+    formData.description ? { label: 'Description', value: formData.description } : null,
+    formData.vendor ? { label: 'Vendor', value: formData.vendor } : null,
+    formData.expense_date ? { label: 'Date', value: formData.expense_date } : null,
+    { label: 'Method', value: formData.payment_method },
+  ].filter(Boolean);
+
+
   return (
+    <>
     <div className="slide-in-overlay" onClick={onClose}>
       <div className="slide-in-panel" onClick={(e) => e.stopPropagation()}>
         <div className="slide-in-panel-header">
@@ -398,6 +427,20 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
         </div>
       </div>
     </div>
+    <CommitConfirm
+      open={showCommitConfirm}
+      onOpenChange={(open) => {
+        if (!open && !loading) setShowCommitConfirm(false);
+      }}
+      title="Confirm expense?"
+      description="Review the expense details, then confirm to save."
+      rows={commitRows}
+      submitting={loading}
+      confirmText={makerCheckerOn ? 'Submit for approval' : (expense ? 'Confirm & update' : 'Confirm & create')}
+      onConfirm={confirmCommit}
+      variant="warning"
+    />
+    </>
   );
 };
 

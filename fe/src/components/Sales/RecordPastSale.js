@@ -13,6 +13,7 @@ import { isMakerCheckerEnabled, getCurrentUserId } from '../../utils/makerChecke
 import { isManagerOrAdminFromStorage, userMayEditFinancialFieldsFromStorage } from '../../utils/roleAccess';
 import { saleUnitPriceOverrideError } from '../../utils/saleUnitPrice';
 import ChangeReasonField from '../Approvals/ChangeReasonField';
+import CommitConfirm from '../Shared/CommitConfirm';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -92,6 +93,7 @@ function SinglePastSaleForm({
   const [stockWarnings, setStockWarnings] = useState([]);
   const [ackStockWarnings, setAckStockWarnings] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [showCommitConfirm, setShowCommitConfirm] = useState(false);
 
   useEffect(() => {
     if (!canPickServedBy) return;
@@ -359,7 +361,7 @@ function SinglePastSaleForm({
     });
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     if (!lines.length) {
       toast.error('Add at least one item.');
@@ -382,7 +384,11 @@ function SinglePastSaleForm({
       toast.error('Select a customer for partial payment or balance on account.');
       return;
     }
+    setShowCommitConfirm(true);
+  };
 
+  const confirmCommit = async () => {
+    if (submitting) return;
     setSubmitting(true);
     try {
       const payload = buildBackfillSubmitPayload({
@@ -404,6 +410,7 @@ function SinglePastSaleForm({
       });
 
       const res = await salesAPI.backfill(payload, receiptPhoto);
+      setShowCommitConfirm(false);
       handleSaleBackfillResponse(res, {
         onApplied: (data) => {
           toast.success(`Past sale recorded as ${data.sale_number}`);
@@ -420,6 +427,7 @@ function SinglePastSaleForm({
       const data = error.response?.data;
       if (data?.stock_warnings?.length) {
         setStockWarnings(data.stock_warnings);
+        setShowCommitConfirm(false);
         toast.warning(data.error || 'Review stock warnings and confirm to continue.');
         return;
       }
@@ -430,10 +438,24 @@ function SinglePastSaleForm({
         data?.detail ||
         error.message;
       toast.error(typeof msg === 'string' ? msg : 'Could not record sale');
+      setShowCommitConfirm(false);
     } finally {
       setSubmitting(false);
     }
   };
+
+  const commitRows = [
+    { label: 'When', value: occurredAt || '—' },
+    { label: 'Items', value: String(lines.length) },
+    { label: 'Total', value: formatCurrency(total), emphasis: true },
+    {
+      label: 'Paid',
+      value: formatCurrency(parseFloat(amountPaid) || 0),
+      tone: 'success',
+    },
+    { label: 'Method', value: paymentMethod },
+    allowPartial ? { label: 'Partial', value: 'Yes — balance on account' } : null,
+  ].filter(Boolean);
 
   return (
     <>
@@ -823,6 +845,19 @@ function SinglePastSaleForm({
           onClose={() => setVariantPickerProduct(null)}
         />
       ) : null}
+    <CommitConfirm
+      open={showCommitConfirm}
+      onOpenChange={(open) => {
+        if (!open && !submitting) setShowCommitConfirm(false);
+      }}
+      title="Confirm past sale?"
+      description="Review the backdated sale summary, then confirm to record it."
+      rows={commitRows}
+      submitting={submitting}
+      confirmText={mcOn ? 'Submit for approval' : 'Confirm & record sale'}
+      onConfirm={confirmCommit}
+      variant="warning"
+    />
     </>
   );
 }

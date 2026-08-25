@@ -3,10 +3,12 @@ import { productsAPI, customersAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
 import VariantSelector from '../POS/VariantSelector';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
+import { SaleCommitConfirm } from '../POS/v2/SaleCommitConfirm';
 import SearchableSelect from '../Shared/SearchableSelect';
 import CustomerFormModal from '../Customers/CustomerFormModal';
 import { toast } from '../../utils/toast';
 import { shouldOpenVariantPicker } from '../../utils/variantSelector';
+import { buildSaleCommitSummary } from '../../utils/saleCommitSummary';
 import { cn } from '../../lib/cn';
 import { Button } from '../ui/button';
 
@@ -46,7 +48,9 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
   });
   const [showPartialPaymentConfirm, setShowPartialPaymentConfirm] = useState(false);
   const [showExcessPaymentConfirm, setShowExcessPaymentConfirm] = useState(false);
+  const [showSaleCommitConfirm, setShowSaleCommitConfirm] = useState(false);
   const [pendingSaleData, setPendingSaleData] = useState(null);
+  const [saleCommitSummary, setSaleCommitSummary] = useState(null);
   const [excessPaymentChoice, setExcessPaymentChoice] = useState('change'); // 'change' or 'wallet'
   const [showCustomerFormModal, setShowCustomerFormModal] = useState(false);
 
@@ -563,9 +567,21 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
       toast.error('Please select a customer for non-cash payments', 8000);
       return;
     }
-    
-    // If we get here, proceed with normal sale (full payment or installments)
-    await processSale(false);
+
+    const paid =
+      paymentType === 'pay_now'
+        ? (parseFloat(amountPaid) || 0) + (totals.walletToUse || 0)
+        : 0;
+    setSaleCommitSummary(
+      buildSaleCommitSummary({
+        total: totals.grandTotal,
+        received: paymentType === 'installments' ? 0 : paid,
+        paymentMethod: paymentType === 'installments' ? 'installments' : paymentMethod,
+        itemCount: validRows.reduce((n, row) => n + (parseFloat(row.quantity) || 0), 0),
+        customerName: selectedCustomer?.name || null,
+      })
+    );
+    setShowSaleCommitConfirm(true);
   };
 
 
@@ -1325,6 +1341,21 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
         confirmText="Yes, Proceed"
         cancelText="Cancel"
         type="primary"
+      />
+
+      <SaleCommitConfirm
+        open={showSaleCommitConfirm}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowSaleCommitConfirm(false);
+            setSaleCommitSummary(null);
+          }
+        }}
+        summary={saleCommitSummary}
+        onConfirm={() => {
+          setShowSaleCommitConfirm(false);
+          processSale(false);
+        }}
       />
       
       {/* Excess Payment Confirmation Dialog */}

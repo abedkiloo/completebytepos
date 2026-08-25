@@ -108,6 +108,7 @@ describe('StockAdjustmentModal', () => {
     fireEvent.change(inputs[0], { target: { value: '2' } });
     fireEvent.change(inputs[1], { target: { value: '-1' } });
     fireEvent.click(screen.getByRole('button', { name: /apply adjustment/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /confirm & adjust/i }));
 
     await waitFor(() => {
       expect(inventoryAPI.adjust).toHaveBeenCalledTimes(2);
@@ -127,6 +128,7 @@ describe('StockAdjustmentModal', () => {
 
     fireEvent.change(screen.getAllByPlaceholderText('+5 or −2')[0], { target: { value: '5' } });
     fireEvent.click(screen.getByRole('button', { name: /apply adjustment/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /confirm & adjust/i }));
 
     await waitFor(() => {
       expect(toast.warning).toHaveBeenCalledWith(PENDING_APPROVAL_MESSAGE);

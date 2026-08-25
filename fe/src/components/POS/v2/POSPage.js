@@ -28,6 +28,7 @@ import { Cart } from './Cart';
 import { CheckoutPanel } from './CheckoutPanel';
 import { CustomerPicker } from './CustomerPicker';
 import { PartialPaymentConfirm, ExcessPaymentConfirm } from './PaymentConfirmDialogs';
+import { SaleCommitConfirm } from './SaleCommitConfirm';
 import ReceiptDialog from './ReceiptDialog';
 
 import VariantSelector from '../VariantSelector';
@@ -409,6 +410,14 @@ export default function POSPage() {
         submitting={state.submitting}
         allowWallet={state.allowExcessToWallet}
         onConfirm={(choice) => state.submitSale({ excessChoice: choice })}
+      />
+
+      <SaleCommitConfirm
+        open={state.showSaleCommitConfirm}
+        onOpenChange={state.setShowSaleCommitConfirm}
+        summary={state.pendingSaleData}
+        submitting={state.submitting}
+        onConfirm={() => state.submitSale({ allowPartial: false, excessChoice: 'change' })}
       />
 
       <PosCartRecoveryDialog

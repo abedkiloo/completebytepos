@@ -3,6 +3,7 @@ import { inventoryAPI, productsAPI, branchesAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import SearchableSelect from '../Shared/SearchableSelect';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
+import CommitConfirm from '../Shared/CommitConfirm';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import ChangeReasonField from '../Approvals/ChangeReasonField';
@@ -180,6 +181,18 @@ const StockTransferModal = ({ isOpen, onClose, onSuccess, product }) => {
   };
 
   const selectedProduct = product || products.find(p => p.id === parseInt(formData.product_id));
+  const destinationBranch = branches.find(b => b.id === parseInt(formData.to_branch_id));
+  const transferCommitRows = [
+    { label: 'Product', value: selectedProduct?.name || '—' },
+    { label: 'To branch', value: destinationBranch?.name || '—' },
+    {
+      label: 'Quantity',
+      value: String(formData.quantity || ''),
+      tone: 'warning',
+      emphasis: true,
+    },
+    formData.reference ? { label: 'Reference', value: formData.reference } : null,
+  ].filter(Boolean);
 
   // Transform products for SearchableSelect component
   const productOptions = products.map(prod => ({
@@ -345,15 +358,18 @@ const StockTransferModal = ({ isOpen, onClose, onSuccess, product }) => {
         </div>
       </div>
 
-      <ConfirmDialog
-        isOpen={showConfirm}
-        title="Confirm Stock Transfer"
-        message={`Do you want to transfer ${formData.quantity} units of ${selectedProduct?.name || 'the selected product'} to ${branches.find(b => b.id === parseInt(formData.to_branch_id))?.name || 'the selected branch'}?`}
+      <CommitConfirm
+        open={showConfirm}
+        onOpenChange={(open) => {
+          if (!open && !loading) setShowConfirm(false);
+        }}
+        title="Confirm stock transfer?"
+        description="Review the transfer details, then confirm to move stock between branches."
+        rows={transferCommitRows}
+        submitting={loading}
+        confirmText={makerCheckerOn ? 'Submit for approval' : 'Confirm & transfer'}
         onConfirm={confirmTransfer}
-        onCancel={() => setShowConfirm(false)}
-        confirmText="Yes, Transfer"
-        cancelText="Cancel"
-        type="info"
+        variant="warning"
       />
 
       <ConfirmDialog

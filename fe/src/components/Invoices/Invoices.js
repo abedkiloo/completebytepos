@@ -3,6 +3,7 @@ import { invoicesAPI, paymentsAPI, customersAPI, salesAPI, productsAPI } from '.
 import { formatCurrency } from '../../utils/formatters';
 import { toast } from '../../utils/toast';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
+import CommitConfirm from '../Shared/CommitConfirm';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { PageShell, PageHeader, PageLoading, EmptyState, FilterBar, SearchField, FilterPills } from '../page';
 import { Button } from '../ui/button';
@@ -33,6 +34,9 @@ const Invoices = () => {
   }, [searchQuery]);
   const [showModal, setShowModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showPaymentCommitConfirm, setShowPaymentCommitConfirm] = useState(false);
+  const [pendingPaymentPayload, setPendingPaymentPayload] = useState(null);
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [customers, setCustomers] = useState([]);
@@ -442,46 +446,79 @@ const Invoices = () => {
     }
   };
 
-  const handlePaymentSubmit = async (e) => {
+  const handlePaymentSubmit = (e) => {
     e.preventDefault();
     
     if (!selectedInvoice) return;
     
+    if (!paymentTrackingAllowed()) {
+      toast.error('Recording payments is disabled in module settings.');
+      return;
+    }
+
+    const validation = validatePaymentAmount(paymentData.amount, selectedInvoice);
+    if (!validation.ok) {
+      toast.error(validation.error);
+      return;
+    }
+
+    const paymentPayload = formatPaymentPayload({
+      invoiceId: selectedInvoice.id,
+      amount: validation.amount,
+      payment_method: paymentData.payment_method,
+      payment_date: paymentData.payment_date,
+      reference: paymentData.reference,
+      notes: paymentData.notes,
+    });
+    setPendingPaymentPayload({
+      payload: paymentPayload,
+      amount: validation.amount,
+      balanceAfter: parseInvoiceBalance(selectedInvoice) - validation.amount,
+    });
+    setShowPaymentCommitConfirm(true);
+  };
+
+  const confirmPaymentCommit = async () => {
+    if (!pendingPaymentPayload || !selectedInvoice || paymentSubmitting) return;
+    setPaymentSubmitting(true);
     try {
-      if (!paymentTrackingAllowed()) {
-        toast.error('Recording payments is disabled in module settings.');
-        return;
-      }
-
-      const validation = validatePaymentAmount(paymentData.amount, selectedInvoice);
-      if (!validation.ok) {
-        toast.error(validation.error);
-        return;
-      }
-
-      const paymentPayload = formatPaymentPayload({
-        invoiceId: selectedInvoice.id,
-        amount: validation.amount,
-        payment_method: paymentData.payment_method,
-        payment_date: paymentData.payment_date,
-        reference: paymentData.reference,
-        notes: paymentData.notes,
-      });
-
-      await paymentsAPI.create(paymentPayload);
-      const balanceAfter = parseInvoiceBalance(selectedInvoice) - validation.amount;
+      await paymentsAPI.create(pendingPaymentPayload.payload);
       const msg =
-        balanceAfter > 0.01
-          ? `Partial payment recorded. Remaining balance: ${formatCurrency(balanceAfter)}`
+        pendingPaymentPayload.balanceAfter > 0.01
+          ? `Partial payment recorded. Remaining balance: ${formatCurrency(pendingPaymentPayload.balanceAfter)}`
           : 'Payment recorded — invoice fully settled.';
       toast.success(msg);
+      setShowPaymentCommitConfirm(false);
+      setPendingPaymentPayload(null);
       setShowPaymentModal(false);
       loadInvoices();
       setSelectedInvoice(null);
     } catch (error) {
       toast.error('Failed to record payment: ' + (error.response?.data?.error || error.message));
+      setShowPaymentCommitConfirm(false);
+    } finally {
+      setPaymentSubmitting(false);
     }
   };
+
+  const paymentCommitRows = pendingPaymentPayload
+    ? [
+        { label: 'Invoice', value: selectedInvoice?.invoice_number || selectedInvoice?.number || `#${selectedInvoice?.id}` },
+        {
+          label: 'Amount',
+          value: formatCurrency(pendingPaymentPayload.amount),
+          tone: 'success',
+          emphasis: true,
+        },
+        { label: 'Method', value: paymentData.payment_method },
+        paymentData.payment_date ? { label: 'Date', value: paymentData.payment_date } : null,
+        paymentData.reference ? { label: 'Reference', value: paymentData.reference } : null,
+        {
+          label: 'Balance after',
+          value: formatCurrency(Math.max(0, pendingPaymentPayload.balanceAfter)),
+        },
+      ].filter(Boolean)
+    : [];
 
   const handleCustomerChange = (e) => {
     const customerId = e.target.value;
@@ -1044,7 +1081,24 @@ const Invoices = () => {
           </div>
         )}
 
-        {/* Delete Confirm Dialog */}
+        {/* Payment + delete confirms */}
+        <CommitConfirm
+          open={showPaymentCommitConfirm}
+          onOpenChange={(open) => {
+            if (!open && !paymentSubmitting) {
+              setShowPaymentCommitConfirm(false);
+              setPendingPaymentPayload(null);
+            }
+          }}
+          title="Confirm invoice payment?"
+          description="Review the payment details, then confirm to record it against this invoice."
+          rows={paymentCommitRows}
+          submitting={paymentSubmitting}
+          confirmText="Confirm & record payment"
+          onConfirm={confirmPaymentCommit}
+          variant="info"
+        />
+
         <ConfirmDialog
           isOpen={showDeleteConfirm}
           title="Delete Invoice"

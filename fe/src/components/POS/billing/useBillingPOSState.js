@@ -33,6 +33,7 @@ import {
 } from '../../../utils/posCartRecovery';
 import { evaluatePartialPaymentToggle } from '../../../utils/billingPartialPayment';
 import { paymentReferenceRequired } from '../../../utils/paymentMethods';
+import { buildSaleCommitSummary } from '../../../utils/saleCommitSummary';
 import {
   normalizeMoney,
   saleUnitPriceOverrideError,
@@ -86,6 +87,8 @@ export function useBillingPOSState() {
   const [partialPaymentCustomerPrompt, setPartialPaymentCustomerPrompt] = useState(false);
   const [amountPaid, setAmountPaid] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [pendingCheckout, setPendingCheckout] = useState(null);
+  const [showSaleCommitConfirm, setShowSaleCommitConfirm] = useState(false);
 
   const [lastSale, setLastSale] = useState(null);
   const [showReceipt, setShowReceipt] = useState(false);
@@ -536,15 +539,61 @@ export function useBillingPOSState() {
       }
     }
 
+    const amountPaidValue = paymentMethod === 'other' ? total : paid;
+    const customerName =
+      selectedCustomer && !isWalkInCustomer(selectedCustomer)
+        ? selectedCustomer.name
+        : null;
+    setPendingCheckout({
+      holdingId: id,
+      paid: amountPaidValue,
+      paymentMethod,
+      paymentReference: paymentReferenceRequired(paymentMethod)
+        ? String(paymentReference || '').trim()
+        : '',
+      partialPayment,
+      summary: buildSaleCommitSummary({
+        total,
+        received: amountPaidValue,
+        paymentMethod,
+        itemCount: cart.reduce((n, i) => n + (Number(i.quantity) || 0), 0),
+        customerName,
+        paymentReference,
+      }),
+    });
+    setShowSaleCommitConfirm(true);
+  }, [
+    submitting,
+    cart,
+    holdingId,
+    buildHoldingPayload,
+    amountPaid,
+    paymentReference,
+    paymentMethod,
+    partialPayment,
+    allowPartialPayment,
+    requireCustomer,
+    selectedCustomer,
+    total,
+  ]);
+
+  const confirmCheckout = useCallback(async () => {
+    if (submitting || !pendingCheckout) return;
+    const {
+      holdingId: id,
+      paid,
+      paymentMethod: method,
+      paymentReference: reference,
+      partialPayment: allowPartial,
+    } = pendingCheckout;
+
     setSubmitting(true);
     try {
       const res = await salesAPI.checkout(id, {
-        payment_method: paymentMethod,
-        payment_reference: paymentReferenceRequired(paymentMethod)
-          ? String(paymentReference || '').trim()
-          : '',
-        amount_paid: paymentMethod === 'other' ? total : paid,
-        allow_partial_payment: partialPayment,
+        payment_method: method,
+        payment_reference: reference,
+        amount_paid: paid,
+        allow_partial_payment: allowPartial,
         excess_payment_choice: 'change',
       });
       const sale = {
@@ -562,10 +611,12 @@ export function useBillingPOSState() {
       setTaxPct(0);
       setSelectedCustomer(WALK_IN_CUSTOMER);
       setCustomerQuery('');
+      setPendingCheckout(null);
+      setShowSaleCommitConfirm(false);
       toast.success(
-        paid === 0 && total > 0
+        paid === 0 && parseFloat(res.data.total) > 0
           ? 'Sale completed. Full amount added to customer account.'
-          : paid < total
+          : paid < parseFloat(res.data.total)
             ? 'Sale completed. Balance added to customer account.'
             : 'Sale completed'
       );
@@ -579,20 +630,13 @@ export function useBillingPOSState() {
     } finally {
       setSubmitting(false);
     }
-  }, [
-    submitting,
-    cart.length,
-    holdingId,
-    buildHoldingPayload,
-    amountPaid,
-    paymentReference,
-    paymentMethod,
-    partialPayment,
-    allowPartialPayment,
-    requireCustomer,
-    selectedCustomer,
-    total,
-  ]);
+  }, [submitting, pendingCheckout]);
+
+  const cancelSaleCommitConfirm = useCallback(() => {
+    if (submitting) return;
+    setShowSaleCommitConfirm(false);
+    setPendingCheckout(null);
+  }, [submitting]);
 
   const filteredCustomers = useMemo(() => {
     const q = customerQuery.trim().toLowerCase();
@@ -658,6 +702,11 @@ export function useBillingPOSState() {
     removeLine,
     clearCart,
     checkout,
+    confirmCheckout,
+    cancelSaleCommitConfirm,
+    pendingCheckout,
+    showSaleCommitConfirm,
+    setShowSaleCommitConfirm,
     variantPickerProduct,
     setVariantPickerProduct,
     lastSale,
