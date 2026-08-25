@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { inventoryAPI, productsAPI, variantsAPI } from '../../services/api';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { inventoryAPI, variantsAPI } from '../../services/api';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -8,8 +8,9 @@ import ChangeReasonField from '../Approvals/ChangeReasonField';
 import { toast } from '../../utils/toast';
 import { variantDisplayLabel } from '../../utils/variantCombinations';
 import {
-  formatStockProductOptionLabel,
+  fetchTrackedStockProducts,
   findProductById,
+  toStockProductSelectOptions,
 } from '../../utils/stockProductOptions';
 import {
   isMakerCheckerEnabled,
@@ -27,7 +28,9 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
     notes: '',
   });
   const [products, setProducts] = useState([]);
+  const [productSearch, setProductSearch] = useState('');
   const [variants, setVariants] = useState([]);
+  const searchRequestId = useRef(0);
   const [variantAdjustments, setVariantAdjustments] = useState({});
   const [variantsLoading, setVariantsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -61,18 +64,23 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
     loadVariants(contextProductId);
   }, [contextProductId, variantMode]);
 
-  const loadProducts = async () => {
+  const loadProducts = async (search = '') => {
+    const requestId = ++searchRequestId.current;
     try {
-      const response = await productsAPI.list({
-        track_stock: 'true',
-        is_active: 'true',
-        page_size: 1000,
-      });
-      const productsData = response.data.results || response.data || [];
-      setProducts(Array.isArray(productsData) ? productsData : []);
+      const list = await fetchTrackedStockProducts({ search });
+      if (requestId !== searchRequestId.current) return;
+      setProducts(list);
     } catch (err) {
+      if (requestId !== searchRequestId.current) return;
+      setProducts([]);
     }
   };
+
+  useEffect(() => {
+    if (product) return undefined;
+    const timer = setTimeout(() => loadProducts(productSearch), 300);
+    return () => clearTimeout(timer);
+  }, [productSearch, product]);
 
   const loadVariants = async (productId) => {
     setVariantsLoading(true);
@@ -94,10 +102,7 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
     }
   };
 
-  const productOptions = products.map((prod) => ({
-    id: prod.id,
-    name: formatStockProductOptionLabel(prod),
-  }));
+  const productOptions = toStockProductSelectOptions(products);
 
   const handleProductChange = (e) => {
     const productId = e.target.value;
@@ -279,6 +284,8 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
                   placeholder="Search and select product..."
                   name="product_id"
                   searchable
+                  onSearchTermChange={setProductSearch}
+                  noResultsHint="Keep typing — search looks up the full catalog."
                 />
                 <small className="form-text">
                   Variant products show per-variant add/remove fields after you select them.

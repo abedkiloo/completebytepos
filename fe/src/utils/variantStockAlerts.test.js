@@ -1,4 +1,5 @@
 import {
+  filterVariantsForStockAlert,
   parseProductFiltersFromSearch,
   productFiltersToSearchParams,
   productHasLowStock,
@@ -55,5 +56,27 @@ describe('variantStockAlerts', () => {
       out_of_stock: true,
       is_active: '',
     });
+  });
+
+  it('keeps only out-of-stock variants when that filter is on', () => {
+    const variants = [
+      { id: 1, is_active: true, stock_quantity: 0 },
+      { id: 2, is_active: true, stock_quantity: 400 },
+      { id: 3, is_active: true, stock_quantity: 419 },
+    ];
+    expect(
+      filterVariantsForStockAlert(variants, product, { outOfStock: true }).map((v) => v.id)
+    ).toEqual([1]);
+  });
+
+  it('keeps only low-stock variants when that filter is on', () => {
+    const variants = [
+      { id: 1, is_active: true, stock_quantity: 0 },
+      { id: 2, is_active: true, stock_quantity: 4, low_stock_threshold: 10 },
+      { id: 3, is_active: true, stock_quantity: 50 },
+    ];
+    expect(
+      filterVariantsForStockAlert(variants, product, { lowStock: true }).map((v) => v.id)
+    ).toEqual([2]);
   });
 });

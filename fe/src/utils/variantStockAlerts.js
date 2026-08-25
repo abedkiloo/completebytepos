@@ -55,6 +55,24 @@ export function variantStockTone(variant, product) {
   return 'default';
 }
 
+/**
+ * When stock alert filters are on, only keep matching variant rows.
+ * Simple products (no variants) are handled at the product-list level.
+ */
+export function filterVariantsForStockAlert(
+  variants,
+  product,
+  { outOfStock = false, lowStock = false } = {}
+) {
+  const list = Array.isArray(variants) ? variants : [];
+  if (!outOfStock && !lowStock) return list;
+  return list.filter((variant) => {
+    if (outOfStock && variantIsOutOfStock(variant)) return true;
+    if (lowStock && variantIsLowStock(variant, product)) return true;
+    return false;
+  });
+}
+
 export function summaryFilterFromCard(label) {
   switch (label) {
     case 'Active':

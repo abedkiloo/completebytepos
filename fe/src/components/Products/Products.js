@@ -32,6 +32,7 @@ import PendingApprovalBadges from '../Approvals/PendingApprovalBadges';
 import { formatCurrency } from '../../utils/formatters';
 import { catalogSellableStock } from '../../utils/catalogStock';
 import {
+  filterVariantsForStockAlert,
   parseProductFiltersFromSearch,
   productFiltersToSearchParams,
   productHasLowStock,
@@ -750,6 +751,10 @@ const Products = () => {
                         showLowStock={showLowStock}
                         expanded={expandedProductIds.includes(product.id)}
                         onToggleExpand={() => toggleExpand(product.id)}
+                        stockAlertFilter={{
+                          outOfStock: filters.out_of_stock,
+                          lowStock: filters.low_stock,
+                        }}
                       />
                       {expandedProductIds.includes(product.id) && (
                         <VariantRows
@@ -759,6 +764,10 @@ const Products = () => {
                           showSku={showSku}
                           showLowStock={showLowStock}
                           catalogOnly={catalogOnly}
+                          stockAlertFilter={{
+                            outOfStock: filters.out_of_stock,
+                            lowStock: filters.low_stock,
+                          }}
                           onEdit={() => openEdit(product)}
                           onSetStock={
                             canSetStock && product.track_stock
@@ -1136,9 +1145,11 @@ function ProductRow({
   showLowStock = true,
   expanded = false,
   onToggleExpand = () => {},
+  stockAlertFilter = { outOfStock: false, lowStock: false },
 }) {
   const sellingPrice = parseFloat(product.selling_price ?? product.price ?? 0);
   const pricePending = catalogOnly && sellingPrice <= 0;
+  const alertFiltering = stockAlertFilter.outOfStock || stockAlertFilter.lowStock;
 
   const isExpanded = !!expanded;
 
@@ -1193,7 +1204,7 @@ function ProductRow({
               {showSku && product.sku && (
                 <span className="font-mono text-[11px]">{product.sku}</span>
               )}
-              {product.has_variants && (
+              {product.has_variants && !alertFiltering && (
                 <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
                   {product.variants_count ??
                     (product.available_sizes_detail?.length || 0) +
@@ -1201,12 +1212,17 @@ function ProductRow({
                   variants
                 </Badge>
               )}
-              {showLowStock && productHasLowStock(product) && (
+              {product.has_variants && alertFiltering && (
+                <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                  {stockAlertFilter.outOfStock ? 'Out-of-stock variants' : 'Low-stock variants'}
+                </Badge>
+              )}
+              {showLowStock && !alertFiltering && productHasLowStock(product) && (
                 <Badge variant="warning" className="px-1.5 py-0 text-[10px]">
                   Low stock
                 </Badge>
               )}
-              {showLowStock && productHasOutOfStock(product) && (
+              {showLowStock && !alertFiltering && productHasOutOfStock(product) && (
                 <Badge variant="destructive" className="px-1.5 py-0 text-[10px]">
                   Out of stock
                 </Badge>
@@ -1259,7 +1275,11 @@ function ProductRow({
         </td>
       )}
       <td className="px-4 py-3 text-right">
-        <StockCell product={product} onSetStock={onSetStock} />
+        <StockCell
+          product={product}
+          onSetStock={onSetStock}
+          alertFiltering={alertFiltering}
+        />
       </td>
       {showStatus && (
       <td className="px-4 py-3">
@@ -1323,9 +1343,13 @@ function ProductThumb({ product }) {
   );
 }
 
-function StockCell({ product, onSetStock }) {
+function StockCell({ product, onSetStock, alertFiltering = false }) {
   if (!product.track_stock) {
     return <span className="text-xs text-muted-foreground">Not tracked</span>;
+  }
+  // Under stock-alert filters, parent totals mix in-stock siblings — show variants only.
+  if (alertFiltering && product.has_variants) {
+    return <span className="text-xs text-muted-foreground">See variants</span>;
   }
   const qty = product.has_variants
     ? catalogSellableStock(product)
@@ -1371,6 +1395,7 @@ function VariantRows({
   showSku = false,
   showLowStock = true,
   catalogOnly = false,
+  stockAlertFilter = { outOfStock: false, lowStock: false },
   onEdit,
   onSetStock,
 }) {
@@ -1404,6 +1429,15 @@ function VariantRows({
     };
   }, [variantListKey]);
 
+  const visibleVariants = useMemo(
+    () =>
+      filterVariantsForStockAlert(variants, product, {
+        outOfStock: stockAlertFilter.outOfStock,
+        lowStock: stockAlertFilter.lowStock,
+      }),
+    [variants, product, stockAlertFilter.outOfStock, stockAlertFilter.lowStock]
+  );
+
   if (loading) {
     return (
       <tr>
@@ -1412,15 +1446,18 @@ function VariantRows({
     );
   }
 
-  if (!variants.length) {
+  if (!visibleVariants.length) {
+    const filtering = stockAlertFilter.outOfStock || stockAlertFilter.lowStock;
     return (
       <tr>
-        <td colSpan={8} className="px-4 py-2 text-sm text-muted-foreground">No variants</td>
+        <td colSpan={8} className="px-4 py-2 text-sm text-muted-foreground">
+          {filtering ? 'No matching out-of-stock / low-stock variants' : 'No variants'}
+        </td>
       </tr>
     );
   }
 
-  return variants.map((v) => {
+  return visibleVariants.map((v) => {
     const stockTone = variantStockTone(v, product);
     const qtyClass =
       stockTone === 'destructive'

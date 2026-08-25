@@ -148,7 +148,7 @@ describe('StockAdjustmentModal', () => {
       expect(productsAPI.list).toHaveBeenCalledWith({
         track_stock: 'true',
         is_active: 'true',
-        page_size: 1000,
+        page_size: 200,
       });
     });
     expect(screen.getByText('Product *')).toBeInTheDocument();
