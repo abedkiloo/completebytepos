@@ -37,6 +37,7 @@ import {
   UserCog,
   Palette,
   NotebookPen,
+  Wallet,
 } from 'lucide-react';
 
 import { modulesAPI, storeSettingsAPI } from '../../services/api';
@@ -112,6 +113,7 @@ const NAV_SECTIONS = [
     module: 'customers',
     items: [
       { to: '/customers', label: 'Customers', icon: UsersIcon },
+      { to: '/customers/debt', label: 'Debt Management', icon: Wallet },
     ],
   },
   {

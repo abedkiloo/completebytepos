@@ -1,4 +1,8 @@
-import { dailyTasksAPI, pendingChangesAPI } from '../services/api';
+/**
+ * Nav badge helpers for pending tasks, approvals, and customer debtors.
+ */
+
+import { dailyTasksAPI, pendingChangesAPI, customersAPI } from '../services/api';
 
 export const NAV_BADGES_REFRESH_EVENT = 'navBadgesRefresh';
 
@@ -19,15 +23,20 @@ export function navBadgeCountForItem(item, counts = {}) {
   const path = item.to.split('?')[0];
   if (path === '/daily-notes') return counts.pendingTasks || 0;
   if (path === '/pending-approvals') return counts.pendingApprovals || 0;
+  if (path === '/customers/debt') return counts.debtors || 0;
   return 0;
 }
 
 /**
- * Load open task + approval queue sizes for the signed-in user.
- * Callers should gate `mayFetchTasks` / `mayFetchApprovals` by permission.
+ * Load open task + approval + debtor queue sizes for the signed-in user.
+ * Callers should gate fetch flags by permission / feature settings.
  */
-export async function fetchNavBadgeCounts({ mayFetchTasks = false, mayFetchApprovals = false } = {}) {
-  const counts = { pendingTasks: 0, pendingApprovals: 0 };
+export async function fetchNavBadgeCounts({
+  mayFetchTasks = false,
+  mayFetchApprovals = false,
+  mayFetchDebtors = false,
+} = {}) {
+  const counts = { pendingTasks: 0, pendingApprovals: 0, debtors: 0 };
 
   const tasksPromise = mayFetchTasks
     ? dailyTasksAPI.pending().then((res) => (Array.isArray(res.data) ? res.data.length : 0)).catch(() => 0)
@@ -40,8 +49,20 @@ export async function fetchNavBadgeCounts({ mayFetchTasks = false, mayFetchAppro
         .catch(() => 0)
     : Promise.resolve(0);
 
-  const [pendingTasks, pendingApprovals] = await Promise.all([tasksPromise, approvalsPromise]);
+  const debtorsPromise = mayFetchDebtors
+    ? customersAPI
+        .debtorCount()
+        .then((res) => Number(res.data?.count) || 0)
+        .catch(() => 0)
+    : Promise.resolve(0);
+
+  const [pendingTasks, pendingApprovals, debtors] = await Promise.all([
+    tasksPromise,
+    approvalsPromise,
+    debtorsPromise,
+  ]);
   counts.pendingTasks = pendingTasks;
   counts.pendingApprovals = pendingApprovals;
+  counts.debtors = debtors;
   return counts;
 }

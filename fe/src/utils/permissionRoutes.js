@@ -23,6 +23,7 @@ export const ROUTE_MODULE_MAP = {
   '/normal-sale': 'sales',
   '/sales': 'sales',
   '/customers': 'customers',
+  '/customers/debt': 'customers',
   '/invoices': 'invoicing',
   '/reports': 'reports',
   '/audit-log': 'reports',

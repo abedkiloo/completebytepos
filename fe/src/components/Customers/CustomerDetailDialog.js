@@ -7,6 +7,7 @@ import { getStoredAuth, isManagerOrAdminFromStorage } from '../../utils/roleAcce
 import { userCanRefundSales, handleSaleRefundResponse } from '../../utils/saleRefund';
 import { pendingApprovalToastMessage } from '../../utils/makerChecker';
 import { getWalletDebtAmount } from '../../utils/walletDisplay';
+import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 import {
   Dialog,
   DialogContent,
@@ -220,6 +221,7 @@ export default function CustomerDetailDialog({
         onSuccess={(updated) => {
           onCustomerUpdated?.(updated);
           setWalletPaymentOpen(false);
+          dispatchNavBadgesRefresh();
         }}
       />
     </>

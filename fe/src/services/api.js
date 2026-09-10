@@ -360,6 +360,9 @@ export const customersAPI = {
     api.get(`/sales/customers/${id}/wallet-transactions/`, { params }),
   receiveWalletPayment: (id, data) =>
     api.post(`/sales/customers/${id}/receive-wallet-payment/`, data),
+  debtSummary: () => api.get('/sales/customers/debt-summary/'),
+  debtors: (params) => api.get('/sales/customers/debtors/', { params }),
+  debtorCount: () => api.get('/sales/customers/debtor-count/'),
 };
 
 export const invoicesAPI = {

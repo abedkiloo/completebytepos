@@ -141,6 +141,9 @@ CUSTOMERS_PERMS = RequirePermPerAction('customers', {
     'destroy': 'delete',
     'wallet_transactions': 'view',
     'receive_wallet_payment': 'update',
+    'debt_summary': 'view',
+    'debtors': 'view',
+    'debtor_count': 'view',
 })
 
 INVOICES_PERMS = RequirePermPerAction('invoicing', {
@@ -768,6 +771,58 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                     queryset = queryset.none()
         
         return queryset
+
+    @action(detail=False, methods=['get'], url_path='debt-summary')
+    def debt_summary(self, request):
+        """Dashboard cards + aging buckets for Debt Management."""
+        from sales.customer_module_settings import customers_show_wallet_balance
+        from sales.debt_management import build_debt_summary, serialize_debt_summary
+
+        if not customers_show_wallet_balance():
+            return self._feature_disabled_response('Wallet balance')
+        return Response(serialize_debt_summary(build_debt_summary()))
+
+    @action(detail=False, methods=['get'], url_path='debtors')
+    def debtors(self, request):
+        """Paginated customers with wallet debt (negative balance)."""
+        from sales.customer_module_settings import customers_show_wallet_balance
+        from sales.debt_management import list_debtors
+
+        if not customers_show_wallet_balance():
+            return self._feature_disabled_response('Wallet balance')
+        try:
+            page = int(request.query_params.get('page', 1))
+        except (TypeError, ValueError):
+            page = 1
+        try:
+            page_size = int(request.query_params.get('page_size', 25))
+        except (TypeError, ValueError):
+            page_size = 25
+        results, count = list_debtors(
+            search=request.query_params.get('search'),
+            aging_bucket=request.query_params.get('aging_bucket') or None,
+            ordering=request.query_params.get('ordering') or '-debt_amount',
+            page=page,
+            page_size=page_size,
+        )
+        return Response(
+            {
+                'count': count,
+                'page': max(1, page),
+                'page_size': min(100, max(1, page_size)),
+                'results': results,
+            }
+        )
+
+    @action(detail=False, methods=['get'], url_path='debtor-count')
+    def debtor_count(self, request):
+        """Lightweight count for nav badge."""
+        from sales.customer_module_settings import customers_show_wallet_balance
+        from sales.debt_management import debtor_count as count_debtors
+
+        if not customers_show_wallet_balance():
+            return Response({'count': 0})
+        return Response({'count': count_debtors()})
 
     @action(detail=True, methods=['get'], url_path='wallet-transactions')
     def wallet_transactions(self, request, pk=None):

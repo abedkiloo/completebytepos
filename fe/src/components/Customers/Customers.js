@@ -50,6 +50,7 @@ import {
   customersShowStatus,
 } from '../../utils/customerDisplay';
 import { getWalletDebtAmount } from '../../utils/walletDisplay';
+import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 import { CustomerWalletBalance } from './CustomerWalletBalance';
 import ReceiveWalletPaymentDialog from './ReceiveWalletPaymentDialog';
 import CustomerDetailDialog from './CustomerDetailDialog';
@@ -489,6 +490,7 @@ const Customers = () => {
             prev.map((c) => (c.id === updated.id ? { ...c, wallet_balance: updated.wallet_balance } : c))
           );
           setWalletPaymentCustomer(null);
+          dispatchNavBadgesRefresh();
         }}
       />
 
