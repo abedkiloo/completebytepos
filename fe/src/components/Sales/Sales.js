@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Receipt, RotateCcw, ShoppingCart, Clock } from 'lucide-react';
+import { Calendar, Receipt, RotateCcw, ShoppingCart, Clock } from 'lucide-react';
 import { salesAPI } from '../../services/api';
 import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
@@ -293,6 +293,12 @@ const Sales = () => {
           }
         >
           <ReportExportButtons slug="sales-history" params={exportParams} />
+          <Button variant="outline" asChild>
+            <Link to="/sales/daily">
+              <Calendar className="h-4 w-4" />
+              Daily sales
+            </Link>
+          </Button>
           <Button variant="outline" asChild>
             <Link to="/sales/record-past">
               <Clock className="h-4 w-4" />

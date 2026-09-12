@@ -11,9 +11,6 @@ from typing import Any, Iterable, Optional
 
 from django.http import HttpResponse
 from django.utils import timezone
-from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill
-from openpyxl.utils import get_column_letter
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import A4, landscape
@@ -201,6 +198,13 @@ def render_csv(payload: Any) -> bytes:
 
 
 def render_xlsx(payload: Any, title: str = 'Report') -> bytes:
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
+    except ImportError as exc:
+        raise RuntimeError('openpyxl must be installed to export Excel files.') from exc
+
     workbook = Workbook()
     default = workbook.active
     sheets = flatten_payload(payload)

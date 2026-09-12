@@ -106,10 +106,16 @@ const Reports = () => {
   }, [reportParam, filters, reportSettings]);
 
   useEffect(() => {
-    if (reportParam && reportParam !== 'sales-by-person') {
+    if (reportParam === 'daily-sales') {
+      navigate('/sales/daily', { replace: true });
+    } else if (reportParam && reportParam !== 'sales-by-person') {
       loadReport();
     }
-  }, [loadReport, reportParam]);
+  }, [loadReport, reportParam, navigate]);
+
+  if (reportParam === 'daily-sales') {
+    return <PageLoading rows={6} />;
+  }
 
   // If no report param, show the new operational Reports hub. The legacy
   // ReportsList page is still reachable at ?report=__legacy__ for parity

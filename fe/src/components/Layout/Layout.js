@@ -104,6 +104,7 @@ const NAV_SECTIONS = [
       { to: '/categories', label: 'Categories', icon: FolderTree, salesCatalogItem: true, module: 'products' },
       { to: '/product-attributes', label: 'Sizes & colors', icon: Palette, salesCatalogItem: true, module: 'products', feature: ['products', 'product_variants'] },
       { to: '/normal-sale', label: 'Normal Sale', icon: Briefcase, feature: ['sales', 'normal_sale'] },
+      { to: '/sales/daily', label: 'Daily Sales', icon: Calendar, feature: ['sales', 'sales_history'] },
       { to: '/sales', label: 'Sales History', icon: DollarSign, feature: ['sales', 'sales_history'] },
     ],
   },

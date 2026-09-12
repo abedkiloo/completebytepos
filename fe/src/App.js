@@ -25,6 +25,7 @@ const Products = lazy(() => import('./components/Products/Products'));
 const Categories = lazy(() => import('./components/Categories/Categories'));
 const ProductAttributes = lazy(() => import('./components/Products/ProductAttributes'));
 const Sales = lazy(() => import('./components/Sales/Sales'));
+const DailySales = lazy(() => import('./components/Sales/DailySalesPage'));
 const RecordPastSale = lazy(() => import('./components/Sales/RecordPastSale'));
 const Inventory = lazy(() => import('./components/Inventory/Inventory'));
 const Barcodes = lazy(() => import('./components/Barcodes/Barcodes'));
@@ -161,6 +162,7 @@ function App() {
                 <Route path="/categories" element={<Categories />} />
                 <Route path="/product-attributes" element={<ProductAttributes />} />
                 <Route path="/sales" element={<Sales />} />
+                <Route path="/sales/daily" element={<DailySales />} />
                 <Route path="/sales/record-past" element={<RecordPastSale />} />
                 <Route path="/inventory" element={<Inventory />} />
                 <Route path="/barcodes" element={<Barcodes />} />

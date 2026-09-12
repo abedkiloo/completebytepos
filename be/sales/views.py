@@ -130,6 +130,7 @@ SALES_PERMS = RequirePermPerAction('sales', {
     'backfill_import_csv': 'create',
     'backfill_import_template': 'view',
     'export': 'view',
+    'daily': 'view',
 })
 
 CUSTOMERS_PERMS = RequirePermPerAction('customers', {
@@ -449,6 +450,36 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 'total': float(month_sales.aggregate(total=Sum('total'))['total'] or 0),
             }
         return Response(payload)
+
+    @action(detail=False, methods=['get'], url_path='daily')
+    def daily(self, request):
+        """Daily sales tracking — orders breakdown (paid vs debt) and daily summaries."""
+        from .daily_sales import get_daily_sales_report
+
+        date_str = request.query_params.get('date')
+        payment_status = request.query_params.get('payment_status')
+        payment_method = request.query_params.get('payment_method')
+        search = request.query_params.get('search')
+        ordering = request.query_params.get('ordering', '-occurred_at')
+        page = request.query_params.get('page', 1)
+        page_size = request.query_params.get('page_size', 25)
+
+        base_qs = self.sale_service.build_queryset({}, request=request)
+
+        try:
+            report = get_daily_sales_report(
+                date_str=date_str,
+                payment_status=payment_status,
+                payment_method=payment_method,
+                search=search,
+                ordering=ordering,
+                page=page,
+                page_size=page_size,
+                base_queryset=base_qs,
+            )
+            return Response(report)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['get'], url_path='export')
     def export(self, request):

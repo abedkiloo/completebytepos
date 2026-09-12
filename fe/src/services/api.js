@@ -348,6 +348,7 @@ export const salesAPI = {
   },
   backfillImportTemplate: () =>
     api.get('/sales/backfill-import-template/', { responseType: 'blob' }),
+  daily: (params) => api.get('/sales/daily/', { params }),
 };
 
 export const customersAPI = {
