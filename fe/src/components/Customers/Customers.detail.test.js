@@ -1,9 +1,15 @@
 /**
- * Smoke + row-click wiring: full drill-down flow is covered in CustomerDetailDialog.test.js
+ * Customers list navigates to the dedicated detail screen (no popup).
  */
 import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { customersAPI } from '../../services/api';
+
+const mockNavigate = jest.fn();
+
+jest.mock('react-router-dom', () => ({
+  useNavigate: () => mockNavigate,
+}));
 
 jest.mock('../../hooks/useDebouncedValue', () => ({
   useDebouncedValue: (value) => value,
@@ -28,11 +34,6 @@ jest.mock('../../hooks/useStoreSettings', () => ({
 }));
 
 jest.mock('./ReceiveWalletPaymentDialog', () => () => null);
-jest.mock('./CustomerDetailDialog', () => ({
-  __esModule: true,
-  default: ({ customer, open }) =>
-    open && customer ? <div data-testid="customer-detail">{customer.name}</div> : null,
-}));
 jest.mock('../ConfirmDialog/ConfirmDialog', () => () => null);
 jest.mock('../page', () => ({
   PageShell: ({ children }) => children,
@@ -65,12 +66,12 @@ describe('Customers module', () => {
     expect(typeof Customers).toBe('function');
   });
 
-  it('opens CustomerDetailDialog when a table row is clicked', async () => {
+  it('navigates to customer detail when a table row is clicked', async () => {
     const Customers = require('./Customers').default;
     render(<Customers />);
 
     await waitFor(() => expect(screen.getByText('Martha')).toBeInTheDocument());
     fireEvent.click(screen.getByText('Martha'));
-    expect(await screen.findByTestId('customer-detail')).toHaveTextContent('Martha');
+    expect(mockNavigate).toHaveBeenCalledWith('/customers/1');
   });
 });

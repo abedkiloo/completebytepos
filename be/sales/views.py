@@ -146,6 +146,7 @@ CUSTOMERS_PERMS = RequirePermPerAction('customers', {
     'debt_summary': 'view',
     'debtors': 'view',
     'debtor_count': 'view',
+    'lifetime_detail': 'view',
 })
 
 INVOICES_PERMS = RequirePermPerAction('invoicing', {
@@ -882,9 +883,46 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             return Response({'count': 0})
         return Response({'count': count_debtors()})
 
+    @action(detail=True, methods=['get'], url_path='detail')
+    def lifetime_detail(self, request, pk=None):
+        """Lifetime customer profile: standing, orders, and debt/payment trail."""
+        from sales.customer_detail import get_customer_detail
+
+        try:
+            orders_page = int(request.query_params.get('orders_page', 1))
+        except (TypeError, ValueError):
+            orders_page = 1
+        try:
+            orders_page_size = int(request.query_params.get('orders_page_size', 25))
+        except (TypeError, ValueError):
+            orders_page_size = 25
+        try:
+            ledger_page = int(request.query_params.get('ledger_page', 1))
+        except (TypeError, ValueError):
+            ledger_page = 1
+        try:
+            ledger_page_size = int(request.query_params.get('ledger_page_size', 50))
+        except (TypeError, ValueError):
+            ledger_page_size = 50
+
+        try:
+            payload = get_customer_detail(
+                customer_id=int(pk),
+                orders_page=orders_page,
+                orders_page_size=orders_page_size,
+                ledger_page=ledger_page,
+                ledger_page_size=ledger_page_size,
+            )
+        except (LookupError, Customer.DoesNotExist):
+            return Response({'error': 'Customer not found.'}, status=status.HTTP_404_NOT_FOUND)
+        except (TypeError, ValueError):
+            return Response({'error': 'Invalid customer id.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(payload)
+
     @action(detail=True, methods=['get'], url_path='wallet-transactions')
     def wallet_transactions(self, request, pk=None):
         from sales.customer_module_settings import customers_show_wallet_balance
+        from sales.customer_detail import serialize_ledger_entry
 
         if not customers_show_wallet_balance():
             return self._feature_disabled_response('Wallet balance')
@@ -895,8 +933,8 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             .select_related('sale', 'created_by')
             .order_by('-created_at')[:limit]
         )
-        serializer = CustomerWalletTransactionSerializer(transactions, many=True)
-        return Response(serializer.data)
+        # Prefer rich debt-trail rows; keep list shape for existing clients.
+        return Response([serialize_ledger_entry(txn) for txn in transactions])
 
     @transaction.atomic
     @action(detail=True, methods=['post'], url_path='receive-wallet-payment')

@@ -39,14 +39,17 @@ export function DataTableBody({ children }) {
   return <tbody className="[&_tr:last-child]:border-0">{children}</tbody>;
 }
 
-export function DataTableRow({ children, className, inactive }) {
+export function DataTableRow({ children, className, inactive, onClick, ...rest }) {
   return (
     <tr
+      onClick={onClick}
       className={cn(
         'border-b transition-colors hover:bg-muted/30',
+        onClick && 'cursor-pointer',
         inactive && 'opacity-60',
         className
       )}
+      {...rest}
     >
       {children}
     </tr>

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import {
   Plus,
@@ -19,6 +20,7 @@ import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { formatCurrency } from '../../utils/formatters';
 import { toast } from '../../utils/toast';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
+import { customerDetailPath } from '../../utils/customerDetail';
 
 import {
   Dialog,
@@ -53,7 +55,6 @@ import { getWalletDebtAmount } from '../../utils/walletDisplay';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 import { CustomerWalletBalance } from './CustomerWalletBalance';
 import ReceiveWalletPaymentDialog from './ReceiveWalletPaymentDialog';
-import CustomerDetailDialog from './CustomerDetailDialog';
 
 const EMPTY_FORM = {
   name: '',
@@ -71,6 +72,7 @@ const EMPTY_FORM = {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const Customers = () => {
+  const navigate = useNavigate();
   const { settings: customerModuleSettings } = useModuleSettings('customers');
   const { settings: storeSettings } = useStoreSettings();
 
@@ -102,7 +104,6 @@ const Customers = () => {
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [walletPaymentCustomer, setWalletPaymentCustomer] = useState(null);
-  const [detailCustomer, setDetailCustomer] = useState(null);
   const [pagination, setPagination] = useState({
     page: 1,
     page_size: DEFAULT_PAGE_SIZE,
@@ -450,7 +451,7 @@ const Customers = () => {
                       canEdit={canEdit}
                       canDelete={canDelete}
                       canRecordWalletPayment={canRecordWalletPayment}
-                      onView={() => setDetailCustomer(customer)}
+                      onView={() => navigate(customerDetailPath(customer.id))}
                       onEdit={() => openEdit(customer)}
                       onDelete={() => setPendingDelete(customer)}
                       onReceivePayment={() => setWalletPaymentCustomer(customer)}
@@ -491,29 +492,6 @@ const Customers = () => {
           );
           setWalletPaymentCustomer(null);
           dispatchNavBadgesRefresh();
-        }}
-      />
-
-      <CustomerDetailDialog
-        customer={detailCustomer}
-        open={!!detailCustomer}
-        onOpenChange={(next) => {
-          if (!next) setDetailCustomer(null);
-        }}
-        showOutstanding={showOutstanding}
-        showWallet={showWallet}
-        canRecordWalletPayment={canRecordWalletPayment}
-        onCustomerUpdated={(updated) => {
-          if (updated?.id) {
-            setCustomers((prev) =>
-              prev.map((c) => (c.id === updated.id ? { ...c, ...updated } : c))
-            );
-            setDetailCustomer((prev) =>
-              prev?.id === updated.id ? { ...prev, ...updated } : prev
-            );
-          } else {
-            loadCustomers();
-          }
         }}
       />
 

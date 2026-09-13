@@ -13,6 +13,7 @@ const moduleSettingsState = {
 };
 
 // react-router-dom v7 named exports (MemoryRouter) are undefined under CRA Jest ESM interop.
+const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({
   MemoryRouter: ({ children }) => <>{children}</>,
   Link: ({ to, children, ...props }) => (
@@ -20,6 +21,7 @@ jest.mock('react-router-dom', () => ({
       {children}
     </a>
   ),
+  useNavigate: () => mockNavigate,
 }));
 
 jest.mock('../../hooks/useDebouncedValue', () => ({
@@ -208,6 +210,7 @@ function renderPage() {
 describe('DebtManagementPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockNavigate.mockClear();
     moduleSettingsState.settings = {
       show_wallet_balance: true,
       enable_wallet_payment: true,
@@ -271,18 +274,20 @@ describe('DebtManagementPage', () => {
     });
   });
 
-  it('loads wallet history when History is clicked', async () => {
+  it('navigates to customer detail ledger when History is clicked', async () => {
     renderPage();
     await screen.findByText('Alice Debtor');
 
     fireEvent.click(screen.getByRole('button', { name: /History/i }));
 
-    expect(await screen.findByTestId('history-dialog')).toBeInTheDocument();
-    await waitFor(() => {
-      expect(customersAPI.walletTransactions).toHaveBeenCalledWith(9, { limit: 40 });
-    });
-    expect(screen.getByText(/Debt added/i)).toBeInTheDocument();
-    expect(screen.getByText(/SALE-1/)).toBeInTheDocument();
+    expect(mockNavigate).toHaveBeenCalledWith('/customers/9?tab=ledger');
+  });
+
+  it('links Customer action to the detail screen', async () => {
+    renderPage();
+    await screen.findByText('Alice Debtor');
+    const link = screen.getByRole('link', { name: /Customer/i });
+    expect(link).toHaveAttribute('href', '/customers/9');
   });
 
   it('shows empty state when wallet balance feature is off', () => {

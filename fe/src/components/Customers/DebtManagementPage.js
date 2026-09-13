@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Wallet,
   Users,
@@ -25,20 +25,13 @@ import {
   AGING_BUCKET_LABELS,
   AGING_BUCKET_OPTIONS,
   emptyDebtSummary,
-  walletTxnLabel,
 } from '../../utils/debtManagement';
+import { customerDetailPath } from '../../utils/customerDetail';
 import ReceiveWalletPaymentDialog from './ReceiveWalletPaymentDialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
 import SearchableSelect from '../Shared/SearchableSelect';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '../ui/dialog';
 import {
   PageShell,
   PageHeader,
@@ -66,6 +59,7 @@ const ORDER_OPTIONS = [
 ];
 
 export default function DebtManagementPage() {
+  const navigate = useNavigate();
   const { permissions } = getStoredAuth();
   const { settings: customerSettings, loading: settingsLoading } = useModuleSettings('customers');
   const showWallet = customersShowWalletBalance(customerSettings);
@@ -84,9 +78,6 @@ export default function DebtManagementPage() {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(DEFAULT_PAGE_SIZE);
   const [payCustomer, setPayCustomer] = useState(null);
-  const [historyCustomer, setHistoryCustomer] = useState(null);
-  const [historyTxns, setHistoryTxns] = useState([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
 
   const loadSummary = useCallback(async () => {
     if (!showWallet) {
@@ -143,21 +134,6 @@ export default function DebtManagementPage() {
     await Promise.all([loadSummary(), loadDebtors()]);
     dispatchNavBadgesRefresh();
   }, [loadSummary, loadDebtors]);
-
-  const openHistory = async (row) => {
-    setHistoryCustomer(row);
-    setHistoryLoading(true);
-    setHistoryTxns([]);
-    try {
-      const res = await customersAPI.walletTransactions(row.id, { limit: 40 });
-      setHistoryTxns(res.data || []);
-    } catch {
-      toast.error('Could not load wallet history');
-      setHistoryTxns([]);
-    } finally {
-      setHistoryLoading(false);
-    }
-  };
 
   const agingCards = useMemo(
     () =>
@@ -357,13 +333,18 @@ export default function DebtManagementPage() {
                           Receive payment
                         </Button>
                       )}
-                      <Button variant="outline" size="sm" onClick={() => openHistory(row)}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          navigate(customerDetailPath(row.id, { tab: 'ledger' }))
+                        }
+                      >
                         <History className="mr-1 h-3.5 w-3.5" />
                         History
                       </Button>
                       <Link
-                        to="/customers"
-                        state={{ focusCustomerId: row.id }}
+                        to={customerDetailPath(row.id)}
                         className="inline-flex h-8 items-center gap-1 rounded-md px-2.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
@@ -389,83 +370,6 @@ export default function DebtManagementPage() {
           refreshAll();
         }}
       />
-
-      <Dialog
-        open={Boolean(historyCustomer)}
-        onOpenChange={(open) => {
-          if (!open) {
-            setHistoryCustomer(null);
-            setHistoryTxns([]);
-          }
-        }}
-      >
-        <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Wallet history — {historyCustomer?.name}</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            Balance {formatCurrency(historyCustomer?.wallet_balance)} · owed{' '}
-            {formatCurrency(historyCustomer?.debt_amount)}
-          </p>
-          {historyLoading ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
-          ) : historyTxns.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">No transactions yet.</p>
-          ) : (
-            <ul className="space-y-2">
-              {historyTxns.map((txn) => (
-                <li
-                  key={txn.id}
-                  className="rounded-md border px-3 py-2 text-sm"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="font-medium">{walletTxnLabel(txn.source_type)}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {formatDateTime(txn.created_at)}
-                        {txn.sale_number || txn.sale?.sale_number
-                          ? ` · ${txn.sale_number || txn.sale.sale_number}`
-                          : ''}
-                      </div>
-                      {txn.notes ? (
-                        <div className="mt-1 text-xs text-muted-foreground">{txn.notes}</div>
-                      ) : null}
-                    </div>
-                    <div
-                      className={`shrink-0 font-semibold tabular-nums ${
-                        txn.transaction_type === 'credit' ? 'text-success' : 'text-destructive'
-                      }`}
-                    >
-                      {txn.transaction_type === 'credit' ? '+' : '−'}
-                      {formatCurrency(txn.amount)}
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-          <DialogFooter className="gap-2 sm:justify-between">
-            {canCollect && historyCustomer && (
-              <Button
-                onClick={() => {
-                  setPayCustomer({
-                    id: historyCustomer.id,
-                    name: historyCustomer.name,
-                    phone: historyCustomer.phone,
-                    wallet_balance: historyCustomer.wallet_balance,
-                  });
-                  setHistoryCustomer(null);
-                }}
-              >
-                Receive payment
-              </Button>
-            )}
-            <Button variant="outline" onClick={() => setHistoryCustomer(null)}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </PageShell>
   );
 }

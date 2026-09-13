@@ -189,6 +189,9 @@ export default function CustomerDailyDetailPage() {
             Daily Sales
           </Link>
         </Button>
+        <Button variant="outline" asChild>
+          <Link to={`/customers/${customer.id}`}>Full profile</Link>
+        </Button>
         {canCollect && Number(customer.wallet_debt) > 0 ? (
           <Button onClick={() => setPayOpen(true)}>
             <Wallet className="mr-1.5 h-4 w-4" />
