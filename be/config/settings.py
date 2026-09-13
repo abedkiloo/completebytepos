@@ -9,7 +9,18 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from config.database import build_databases
-from config.env import env_bool, env_csv_or_lines, env_int, env_list, env_path, env_str, merge_unique_list
+from config.env import (
+    env_bool,
+    env_csv_or_lines,
+    env_int,
+    env_list,
+    env_path,
+    env_str,
+    is_ip_like_host,
+    merge_unique_list,
+    normalize_public_host,
+    public_host_origins,
+)
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -36,12 +47,16 @@ _DOCKER_ALLOWED_HOSTS = [
     'frontend',
     'completebytepos_backend',
 ]
-PUBLIC_HOST = env_str('PUBLIC_HOST') or env_str('SERVER_IP') or env_str('SERVER_PUBLIC_IP')
+PUBLIC_HOST = normalize_public_host(
+    env_str('PUBLIC_HOST') or env_str('SERVER_IP') or env_str('SERVER_PUBLIC_IP')
+)
+# Hostnames only — strip accidental https:// from ALLOWED_HOSTS (common misconfig).
 ALLOWED_HOSTS = merge_unique_list(
-    env_list('ALLOWED_HOSTS', _DOCKER_ALLOWED_HOSTS),
+    [normalize_public_host(h) for h in env_list('ALLOWED_HOSTS', _DOCKER_ALLOWED_HOSTS)],
     _DOCKER_ALLOWED_HOSTS,
     [PUBLIC_HOST] if PUBLIC_HOST else [],
 )
+_PUBLIC_ORIGINS = public_host_origins(PUBLIC_HOST)
 
 # ---------------------------------------------------------------------------
 # Application
@@ -173,12 +188,21 @@ MEDIA_PUBLIC_PORT = env_int('MEDIA_PUBLIC_PORT', 0) or None
 # prefer relative /media/ URLs from the API (absolute base is set in production).
 if not MEDIA_PUBLIC_BASE_URL and PUBLIC_HOST and not DEBUG:
     _fe_port = env_str('FRONTEND_PORT', '3000')
-    MEDIA_PUBLIC_BASE_URL = f'http://{PUBLIC_HOST}:{_fe_port}'
-    if MEDIA_PUBLIC_PORT is None:
-        try:
-            MEDIA_PUBLIC_PORT = int(_fe_port)
-        except ValueError:
-            MEDIA_PUBLIC_PORT = 3000
+    _use_https = env_bool('USE_SECURE_PROXY_SSL_HEADER', False) or not is_ip_like_host(
+        PUBLIC_HOST
+    )
+    _scheme = 'https' if _use_https else 'http'
+    # Domain behind host nginx on :443 — no :3000 in browser URLs.
+    if _use_https and not is_ip_like_host(PUBLIC_HOST) and ':' not in PUBLIC_HOST:
+        MEDIA_PUBLIC_BASE_URL = f'{_scheme}://{PUBLIC_HOST}'
+        MEDIA_PUBLIC_PORT = None
+    else:
+        MEDIA_PUBLIC_BASE_URL = f'{_scheme}://{PUBLIC_HOST}:{_fe_port}'
+        if MEDIA_PUBLIC_PORT is None:
+            try:
+                MEDIA_PUBLIC_PORT = int(_fe_port)
+            except ValueError:
+                MEDIA_PUBLIC_PORT = 3000
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -240,13 +264,7 @@ CSRF_TRUSTED_ORIGINS = merge_unique_list(
             'http://localhost:8000',
         ],
     ),
-    [
-        f'http://{PUBLIC_HOST}',
-        f'http://{PUBLIC_HOST}:3000',
-        f'http://{PUBLIC_HOST}:8000',
-    ]
-    if PUBLIC_HOST
-    else [],
+    _PUBLIC_ORIGINS,
 )
 CSRF_COOKIE_HTTPONLY = env_bool('CSRF_COOKIE_HTTPONLY', False)
 CSRF_COOKIE_SAMESITE = env_str('CSRF_COOKIE_SAMESITE', 'Lax')
@@ -275,13 +293,7 @@ _default_cors_origins = [
 ]
 CORS_ALLOWED_ORIGINS = merge_unique_list(
     env_csv_or_lines('CORS_ALLOWED_ORIGINS', _default_cors_origins),
-    [
-        f'http://{PUBLIC_HOST}',
-        f'http://{PUBLIC_HOST}:3000',
-        f'http://{PUBLIC_HOST}:8000',
-    ]
-    if PUBLIC_HOST
-    else [],
+    _PUBLIC_ORIGINS,
 )
 
 _extra_cors_headers = env_csv_or_lines(

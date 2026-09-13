@@ -44,9 +44,12 @@ const SetupGate = ({ children }) => {
         <div className="w-full max-w-md space-y-3 rounded-lg border bg-background p-6 text-center">
           <p className="font-medium">Cannot reach the server</p>
           <p className="text-sm text-muted-foreground">
-            The app loaded, but the API returned an error or timed out. If you
-            see 502, the backend container is up but nginx cannot reach Gunicorn
-            — wait for migrate to finish, then retry. Use port 3000 only.
+            The app loaded, but the API returned an error or timed out. A 400
+            usually means the domain is missing from Django{' '}
+            <code className="text-xs">ALLOWED_HOSTS</code> /{' '}
+            <code className="text-xs">PUBLIC_HOST</code>. A 502 means nginx
+            cannot reach Gunicorn yet — wait for migrate, then retry. Prefer the
+            HTTPS domain (or port 3000 on bare IP), not :8000.
           </p>
           <button
             type="button"

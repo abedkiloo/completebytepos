@@ -147,13 +147,21 @@ PUBLIC_HOST=193.37.213.177
 ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,backend,193.37.213.177
 ```
 
-**Production VPS example:**
+**Production VPS example (HTTPS domain → host nginx → Docker :3000):**
 
 ```bash
 REACT_APP_API_URL=/api
-PUBLIC_HOST=your-domain.com
+PUBLIC_HOST=shop.omuwenga.com
+ALLOWED_HOSTS=shop.omuwenga.com,www.shop.omuwenga.com,localhost,127.0.0.1,backend,completebytepos_backend
 DEBUG=False
+USE_SECURE_PROXY_SSL_HEADER=True
+CSRF_COOKIE_SECURE=True
+SESSION_COOKIE_SECURE=True
 ```
+
+If the SPA loads but shows “Cannot reach the server” and `/api/...` returns **400**,
+Django rejected the `Host` header — set `PUBLIC_HOST` / `ALLOWED_HOSTS` to the domain,
+then `docker compose up -d --force-recreate backend`.
 
 ### Shell exports override `.env`
 
