@@ -50,6 +50,25 @@ describe('roleAccess', () => {
     expect(canAccessRoute(PERSONA.MANAGER, '/reports')).toBe(true);
   });
 
+  test('daily sales route requires sales.daily_sales for managers', () => {
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([{ module: 'sales', action: 'view', name: 'sales.view' }])
+    );
+    expect(canAccessRoute(PERSONA.MANAGER, '/sales/daily')).toBe(false);
+    expect(canAccessRoute(PERSONA.MANAGER, '/sales/daily/customers/1')).toBe(false);
+
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([
+        { module: 'sales', action: 'view', name: 'sales.view' },
+        { module: 'sales', action: 'daily_sales', name: 'sales.daily_sales' },
+      ])
+    );
+    expect(canAccessRoute(PERSONA.MANAGER, '/sales/daily')).toBe(true);
+    expect(canAccessRoute(PERSONA.MANAGER, '/sales/daily/customers/1')).toBe(true);
+  });
+
   test('super admin can access all app modules', () => {
     const paths = [
       '/categories',

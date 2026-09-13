@@ -9,7 +9,7 @@ const TONE_STYLES = {
   success: 'bg-success/15 text-success',
 };
 
-export function SummaryCard({ icon: Icon, label, value, tone = 'default', className }) {
+export function SummaryCard({ icon: Icon, label, value, subtext, tone = 'default', className }) {
   return (
     <Card className={cn('overflow-hidden', className)}>
       <CardContent className="flex items-center gap-3 p-3">
@@ -28,6 +28,9 @@ export function SummaryCard({ icon: Icon, label, value, tone = 'default', classN
             {label}
           </p>
           <p className="truncate text-lg font-bold tabular-nums text-foreground">{value}</p>
+          {subtext ? (
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">{subtext}</p>
+          ) : null}
         </div>
       </CardContent>
     </Card>

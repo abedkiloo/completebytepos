@@ -46,15 +46,21 @@ jest.mock('../../utils/roleAccess', () => ({
   getStoredAuth: () => ({
     permissions: [
       { module: 'sales', action: 'view' },
+      { module: 'sales', action: 'daily_sales' },
       { module: 'customers', action: 'update' },
     ],
   }),
   hasPermission: (_perms, mod, act) => {
-    if (mod === 'sales' && act === 'view') return true;
+    if (mod === 'sales' && (act === 'view' || act === 'daily_sales')) return true;
     if (mod === 'customers' && act === 'update') return true;
     return false;
   },
   isManagerOrAdminFromStorage: () => true,
+}));
+
+jest.mock('../../utils/dailySalesAccess', () => ({
+  canViewDailySalesFromStorage: jest.fn(() => true),
+  dailySalesCustomerPath: (id, date) => `/sales/daily/customers/${id}?date=${date}`,
 }));
 
 jest.mock('../../utils/saleRefund', () => ({
@@ -91,6 +97,7 @@ jest.mock('lucide-react', () => {
     AlertCircle: Icon,
     ExternalLink: Icon,
     Clock: Icon,
+    ArrowLeft: Icon,
   };
 });
 
@@ -203,6 +210,7 @@ jest.mock('../page', () => ({
 }));
 
 import { salesAPI } from '../../services/api';
+import { canViewDailySalesFromStorage } from '../../utils/dailySalesAccess';
 import DailySalesPage from './DailySalesPage';
 
 const MOCK_SUMMARY = {
@@ -298,6 +306,7 @@ describe('DailySalesPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockSearchParams = new URLSearchParams('date=2026-09-12');
+    canViewDailySalesFromStorage.mockReturnValue(true);
     salesAPI.daily.mockResolvedValue({
       data: {
         date: '2026-09-12',
@@ -383,6 +392,53 @@ describe('DailySalesPage', () => {
     fireEvent.click(settleButtons[0]);
 
     expect(await screen.findByTestId('receive-wallet-dialog')).toHaveTextContent('Bob Debtor');
+  });
+
+  it('links customer name to customer day detail', async () => {
+    render(<DailySalesPage />);
+    await screen.findByText('Bob Debtor');
+    const link = screen.getByRole('link', { name: 'Bob Debtor' });
+    expect(link).toHaveAttribute('href', '/sales/daily/customers/5?date=2026-09-12');
+    expect(screen.getAllByRole('link', { name: /View day/i }).length).toBeGreaterThan(0);
+  });
+
+  it('shows restricted empty state without permission', async () => {
+    canViewDailySalesFromStorage.mockReturnValue(false);
+    render(<DailySalesPage />);
+    expect(await screen.findByText(/Daily Sales is restricted/i)).toBeInTheDocument();
+    expect(salesAPI.daily).not.toHaveBeenCalled();
+  });
+
+  it('settles debt and refreshes daily report', async () => {
+    render(<DailySalesPage />);
+    await screen.findByText('Bob Debtor');
+    fireEvent.click(screen.getAllByRole('button', { name: /Settle/i })[0]);
+    fireEvent.click(screen.getByRole('button', { name: /Mock Confirm Settle/i }));
+    await waitFor(() => {
+      expect(salesAPI.daily.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it('filters by Fully Paid tab', async () => {
+    render(<DailySalesPage />);
+    await screen.findByText('SALE-PAID-01');
+    fireEvent.click(screen.getByRole('button', { name: /Fully Paid/i }));
+    await waitFor(() => {
+      expect(salesAPI.daily).toHaveBeenCalledWith(
+        expect.objectContaining({ payment_status: 'paid' })
+      );
+    });
+  });
+
+  it('jumps to Today from a past date', async () => {
+    render(<DailySalesPage />);
+    await screen.findByText('SALE-PAID-01');
+    fireEvent.click(screen.getByRole('button', { name: /^Today$/i }));
+    await waitFor(() => {
+      expect(salesAPI.daily).toHaveBeenCalledWith(
+        expect.objectContaining({ date: expect.any(String) })
+      );
+    });
   });
 
   it('renders empty state when no orders exist on that date', async () => {

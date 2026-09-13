@@ -21,6 +21,7 @@ export const ROUTE_MODULE_MAP = {
   '/pos': 'sales',
   '/pos/billing': 'sales',
   '/normal-sale': 'sales',
+  '/sales/daily': 'sales',
   '/sales': 'sales',
   '/customers': 'customers',
   '/customers/debt': 'customers',
@@ -72,6 +73,18 @@ export const NAV_SECTION_MODULES = {
   employees: 'employees',
   inventory: ['products', 'categories', 'barcodes'],
 };
+
+/** Path prefixes that need a specific permission action (beyond module enablement). */
+export const ROUTE_PERMISSION_GATES = [
+  { prefix: '/sales/daily', module: 'sales', action: 'daily_sales' },
+];
+
+export function routePermissionGateForPath(pathname, gates = ROUTE_PERMISSION_GATES) {
+  const match = [...gates]
+    .sort((a, b) => b.prefix.length - a.prefix.length)
+    .find((g) => pathname === g.prefix || pathname.startsWith(`${g.prefix}/`));
+  return match || null;
+}
 
 /** Modules that should unlock a route when granted to a custom/edited role. */
 export const GRANTABLE_ROUTE_MODULES = Object.keys(PERMISSION_MODULE_ROUTES);

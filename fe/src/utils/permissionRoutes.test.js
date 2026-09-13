@@ -82,4 +82,20 @@ describe('permissionRoutes registry', () => {
     expect(navSectionGrantedByPermissions('accounting', perms)).toBe(true);
     expect(navSectionGrantedByPermissions('invoicing', perms)).toBe(false);
   });
+
+  test('routePermissionGateForPath gates daily sales tracker', () => {
+    const { routePermissionGateForPath } = require('./permissionRoutes');
+    expect(routePermissionGateForPath('/sales/daily')).toEqual(
+      expect.objectContaining({ module: 'sales', action: 'daily_sales' })
+    );
+    expect(routePermissionGateForPath('/sales/daily/customers/9')).toEqual(
+      expect.objectContaining({ action: 'daily_sales' })
+    );
+    expect(routePermissionGateForPath('/sales')).toBeNull();
+  });
+
+  test('moduleForPath prefers /sales/daily over /sales', () => {
+    expect(moduleForPath('/sales/daily')).toBe('sales');
+    expect(moduleForPath('/sales/daily/customers/1')).toBe('sales');
+  });
 });

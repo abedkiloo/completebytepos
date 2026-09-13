@@ -53,6 +53,7 @@ PERMISSIONS_DATA = [
     ('sales', 'delete', 'Delete sales'),
     ('sales', 'refund', 'Refund completed sales'),
     ('sales', 'export', 'Export sales'),
+    ('sales', 'daily_sales', 'View daily sales tracker (paid vs debt by day)'),
     ('pos', 'view', 'Access POS'),
     ('pos', 'create', 'Create sales via POS'),
     ('barcodes', 'view', 'View barcodes'),
@@ -160,6 +161,7 @@ ROLE_SCREEN_MATRIX = {
         'Users & Roles',
         'Products / Categories / Inventory',
         'POS + Terminal POS',
+        'Daily Sales Tracker',
         'Reports hub',
         'Accounting / Expenses / Income',
         'System settings',
@@ -224,6 +226,8 @@ def _manager_queryset():
             action='approve',
             module__in=_MANAGER_NO_APPROVE_MODULES,
         )
+        # Daily Sales Tracker is admin-grantable; not in default manager pack.
+        .exclude(module='sales', action='daily_sales')
     )
 
 

@@ -256,3 +256,133 @@ def get_daily_sales_report(
             'has_previous': page_obj.has_previous(),
         },
     }
+
+
+def _aggregate_sales_day(sales: List[Sale]) -> Dict[str, Any]:
+    total_sales = Decimal('0.00')
+    total_paid = Decimal('0.00')
+    total_debt = Decimal('0.00')
+    paid_count = 0
+    debt_count = 0
+    partial_count = 0
+
+    for sale in sales:
+        s_total = Decimal(str(sale.total or 0))
+        s_paid = Decimal(str(sale.amount_paid or 0))
+        paid_amount, debt_amount, status = classify_sale_payment(s_total, s_paid)
+        total_sales += s_total
+        total_paid += paid_amount
+        total_debt += debt_amount
+        if status == 'paid':
+            paid_count += 1
+        elif status == 'debt':
+            debt_count += 1
+        else:
+            partial_count += 1
+            debt_count += 1
+
+    day_status = 'good'
+    if total_debt > 0 and total_paid > 0:
+        day_status = 'mixed'
+    elif total_debt > 0:
+        day_status = 'debt'
+
+    return {
+        'orders_count': len(sales),
+        'total_sales': str(total_sales.quantize(Decimal('0.01'))),
+        'total_paid': str(total_paid.quantize(Decimal('0.01'))),
+        'total_debt_incurred': str(total_debt.quantize(Decimal('0.01'))),
+        'paid_orders_count': paid_count,
+        'debt_orders_count': debt_count,
+        'partial_orders_count': partial_count,
+        'day_standing': day_status,
+    }
+
+
+def get_customer_day_detail(
+    *,
+    customer_id: int,
+    date_str: Optional[str] = None,
+    base_queryset: Optional[Any] = None,
+) -> Dict[str, Any]:
+    """Customer profile + standing + orders/summary for a single business day."""
+    from sales.models import Customer
+
+    try:
+        customer = Customer.objects.get(pk=customer_id)
+    except Customer.DoesNotExist as exc:
+        raise LookupError('Customer not found.') from exc
+
+    target_date, start_of_day, end_of_day = parse_target_date(date_str)
+
+    if base_queryset is not None:
+        qs = base_queryset
+    else:
+        qs = Sale.objects.all().select_related('customer', 'cashier', 'served_by')
+
+    day_sales = list(
+        qs.filter(
+            status='completed',
+            customer_id=customer.id,
+            occurred_at__gte=start_of_day,
+            occurred_at__lte=end_of_day,
+        )
+        .prefetch_related('items__product', 'items__refund_lines')
+        .order_by('-occurred_at')
+    )
+
+    day_summary = _aggregate_sales_day(day_sales)
+
+    wallet_balance = Decimal(str(customer.wallet_balance or 0))
+    wallet_debt = abs(wallet_balance) if wallet_balance < 0 else Decimal('0.00')
+    wallet_credit = wallet_balance if wallet_balance > 0 else Decimal('0.00')
+    standing = 'good' if wallet_debt == 0 else 'debt'
+
+    settlements_today = (
+        CustomerWalletTransaction.objects.filter(
+            customer_id=customer.id,
+            source_type='debt_settlement',
+            created_at__gte=start_of_day,
+            created_at__lte=end_of_day,
+        ).aggregate(s=Sum('amount'))['s']
+        or Decimal('0.00')
+    )
+
+    lifetime_sales = Sale.objects.filter(customer_id=customer.id, status='completed')
+    lifetime_count = lifetime_sales.count()
+    lifetime_total = lifetime_sales.aggregate(t=Sum('total'))['t'] or Decimal('0.00')
+
+    return {
+        'date': target_date.isoformat(),
+        'customer': {
+            'id': customer.id,
+            'name': customer.name,
+            'phone': customer.phone or '',
+            'email': customer.email or '',
+            'customer_code': customer.customer_code,
+            'customer_type': customer.customer_type,
+            'city': customer.city or '',
+            'address': customer.address or '',
+            'is_active': customer.is_active,
+            'wallet_balance': str(wallet_balance.quantize(Decimal('0.01'))),
+            'wallet_debt': str(wallet_debt.quantize(Decimal('0.01'))),
+            'wallet_credit': str(wallet_credit.quantize(Decimal('0.01'))),
+            'standing': standing,
+            'total_outstanding': str(
+                Decimal(str(customer.total_outstanding or 0)).quantize(Decimal('0.01'))
+            ),
+        },
+        'day_summary': {
+            **day_summary,
+            'debt_collected': str(Decimal(str(settlements_today)).quantize(Decimal('0.01'))),
+        },
+        'standing_summary': {
+            'standing': standing,
+            'wallet_balance': str(wallet_balance.quantize(Decimal('0.01'))),
+            'wallet_debt': str(wallet_debt.quantize(Decimal('0.01'))),
+            'wallet_credit': str(wallet_credit.quantize(Decimal('0.01'))),
+            'lifetime_orders': lifetime_count,
+            'lifetime_sales_total': str(Decimal(str(lifetime_total)).quantize(Decimal('0.01'))),
+        },
+        'orders': [serialize_daily_order(sale) for sale in day_sales],
+    }

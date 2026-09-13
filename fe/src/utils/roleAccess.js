@@ -14,7 +14,10 @@ import {
   ROUTE_MODULE_MAP,
   PERMISSION_MODULE_ROUTES,
   routesFromPermissionList,
+  routePermissionGateForPath,
 } from './permissionRoutes';
+
+export { ROUTE_MODULE_MAP, PERMISSION_MODULE_ROUTES as MODULE_ROUTE_PREFIXES };
 
 export const PERSONA = {
   SUPER_ADMIN: 'super_admin',
@@ -141,8 +144,6 @@ function pathMatchesPrefix(pathname, prefix) {
   return pathname === prefix || pathname.startsWith(`${prefix}/`);
 }
 
-export { ROUTE_MODULE_MAP, PERMISSION_MODULE_ROUTES as MODULE_ROUTE_PREFIXES } from './permissionRoutes';
-
 export function hasAnyPermissionForModule(permissions, moduleOrModules) {
   if (!Array.isArray(permissions)) return false;
   const modules = Array.isArray(moduleOrModules) ? moduleOrModules : [moduleOrModules];
@@ -186,6 +187,14 @@ export function canAccessRoute(persona, pathname, options = {}) {
   const list = allowed === null ? APP_ROUTE_PREFIXES : allowed || ALLOWED_ROUTE_PREFIXES[PERSONA.SALES];
   const routeAllowed = list.some((prefix) => pathMatchesPrefix(pathname, prefix));
   if (!routeAllowed) return false;
+
+  const gate = routePermissionGateForPath(pathname);
+  if (gate) {
+    const { permissions } = getStoredAuth();
+    if (!hasPermission(permissions, gate.module, gate.action)) {
+      return false;
+    }
+  }
 
   const pathKey = Object.keys(ROUTE_MODULE_MAP)
     .filter((p) => pathname === p || pathname.startsWith(`${p}/`))

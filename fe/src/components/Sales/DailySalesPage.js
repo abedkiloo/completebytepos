@@ -4,23 +4,22 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
-  DollarSign,
   Receipt,
-  RotateCcw,
   Search,
   ShoppingCart,
   TrendingDown,
-  Users,
   Wallet,
   CheckCircle2,
-  AlertCircle,
-  ExternalLink,
 } from 'lucide-react';
 
 import { salesAPI } from '../../services/api';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { toast } from '../../utils/toast';
 import { getStoredAuth, hasPermission, isManagerOrAdminFromStorage } from '../../utils/roleAccess';
+import {
+  canViewDailySalesFromStorage,
+  dailySalesCustomerPath,
+} from '../../utils/dailySalesAccess';
 import { userCanRefundSales, saleIsRefundable, handleSaleRefundResponse } from '../../utils/saleRefund';
 import { pendingApprovalToastMessage } from '../../utils/makerChecker';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
@@ -133,6 +132,7 @@ export default function DailySalesPage() {
   const [payCustomer, setPayCustomer] = useState(null);
 
   const { permissions } = getStoredAuth();
+  const allowed = canViewDailySalesFromStorage();
   const canRefund = userCanRefundSales(permissions, {
     isManagerOrAdmin: isManagerOrAdminFromStorage(),
   });
@@ -153,6 +153,10 @@ export default function DailySalesPage() {
   };
 
   const loadDailySales = useCallback(async () => {
+    if (!allowed) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const params = {
@@ -178,7 +182,7 @@ export default function DailySalesPage() {
     } finally {
       setLoading(false);
     }
-  }, [date, page, debouncedSearch, paymentStatusTab, paymentMethod]);
+  }, [allowed, date, page, debouncedSearch, paymentStatusTab, paymentMethod]);
 
   useEffect(() => {
     loadDailySales();
@@ -233,6 +237,22 @@ export default function DailySalesPage() {
   };
 
   const formattedDateTitle = useMemo(() => formatDateLabel(date), [date]);
+
+  if (!allowed) {
+    return (
+      <PageShell>
+        <EmptyState
+          icon={Receipt}
+          title="Daily Sales is restricted"
+          description="Ask a Super Admin to grant the sales.daily_sales permission for your role."
+          actionLabel="Back to Sales History"
+          onAction={() => {
+            window.location.assign('/sales');
+          }}
+        />
+      </PageShell>
+    );
+  }
 
   return (
     <PageShell>
@@ -501,9 +521,16 @@ export default function DailySalesPage() {
                     <DataTableCell>
                       {order.customer ? (
                         <div>
-                          <div className="font-medium">{order.customer.name}</div>
+                          <Link
+                            to={dailySalesCustomerPath(order.customer.id, date)}
+                            className="font-medium text-primary hover:underline"
+                          >
+                            {order.customer.name}
+                          </Link>
                           <div className="text-xs text-muted-foreground">
-                            {[order.customer.phone, order.customer.customer_code].filter(Boolean).join(' · ')}
+                            {[order.customer.phone, order.customer.customer_code]
+                              .filter(Boolean)
+                              .join(' · ')}
                           </div>
                         </div>
                       ) : (
@@ -587,17 +614,13 @@ export default function DailySalesPage() {
                             Settle
                           </Button>
                         )}
-                        {order.customer && (
-                          <Button variant="ghost" size="sm" asChild>
-                            <Link
-                              to="/customers"
-                              state={{ focusCustomerId: order.customer.id }}
-                              title="View Customer"
-                            >
-                              <ExternalLink className="h-3.5 w-3.5" />
+                        {order.customer ? (
+                          <Button variant="outline" size="sm" asChild>
+                            <Link to={dailySalesCustomerPath(order.customer.id, date)}>
+                              View day
                             </Link>
                           </Button>
-                        )}
+                        ) : null}
                       </div>
                     </DataTableCell>
                   </DataTableRow>

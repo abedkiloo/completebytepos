@@ -149,8 +149,10 @@ export function canSeeNavItem(item, sectionId, ctx) {
   }
 
   if (item.permission) {
-    const [mod, action] = item.permission;
-    if (!hasPermission(permissions, mod, action)) return false;
+    if (!isSuperAdmin) {
+      const [mod, action] = item.permission;
+      if (!hasPermission(permissions, mod, action)) return false;
+    }
   }
 
   return true;

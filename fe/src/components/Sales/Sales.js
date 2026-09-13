@@ -7,6 +7,7 @@ import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { toast } from '../../utils/toast';
 import { getStoredAuth, isManagerOrAdminFromStorage } from '../../utils/roleAccess';
+import { canViewDailySalesFromStorage } from '../../utils/dailySalesAccess';
 import { userCanRefundSales, saleIsRefundable, handleSaleRefundResponse } from '../../utils/saleRefund';
 import { pendingApprovalToastMessage } from '../../utils/makerChecker';
 import { saleDisplayItemCount, saleDisplayTotal } from '../../utils/saleItemDisplay';
@@ -45,6 +46,7 @@ const Sales = () => {
   const canRefund = userCanRefundSales(permissions, {
     isManagerOrAdmin: isManagerOrAdminFromStorage(),
   });
+  const canViewDaily = canViewDailySalesFromStorage();
   const [filters, setFilters] = useState({
     date_from: '',
     date_to: '',
@@ -293,12 +295,14 @@ const Sales = () => {
           }
         >
           <ReportExportButtons slug="sales-history" params={exportParams} />
-          <Button variant="outline" asChild>
-            <Link to="/sales/daily">
-              <Calendar className="h-4 w-4" />
-              Daily sales
-            </Link>
-          </Button>
+          {canViewDaily ? (
+            <Button variant="outline" asChild>
+              <Link to="/sales/daily">
+                <Calendar className="h-4 w-4" />
+                Daily sales
+              </Link>
+            </Button>
+          ) : null}
           <Button variant="outline" asChild>
             <Link to="/sales/record-past">
               <Clock className="h-4 w-4" />

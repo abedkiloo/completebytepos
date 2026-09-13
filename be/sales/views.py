@@ -130,7 +130,8 @@ SALES_PERMS = RequirePermPerAction('sales', {
     'backfill_import_csv': 'create',
     'backfill_import_template': 'view',
     'export': 'view',
-    'daily': 'view',
+    'daily': 'daily_sales',
+    'daily_customer': 'daily_sales',
 })
 
 CUSTOMERS_PERMS = RequirePermPerAction('customers', {
@@ -480,6 +481,32 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             return Response(report)
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(
+        detail=False,
+        methods=['get'],
+        url_path=r'daily/customer/(?P<customer_id>[^/.]+)',
+    )
+    def daily_customer(self, request, customer_id=None):
+        """Customer day drill-down from Daily Sales Tracker."""
+        from .daily_sales import get_customer_day_detail
+
+        date_str = request.query_params.get('date')
+        base_qs = self.sale_service.build_queryset({}, request=request)
+        try:
+            payload = get_customer_day_detail(
+                customer_id=int(customer_id),
+                date_str=date_str,
+                base_queryset=base_qs,
+            )
+            return Response(payload)
+        except (TypeError, ValueError):
+            return Response(
+                {'error': 'Invalid customer id or date.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except LookupError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_404_NOT_FOUND)
 
     @action(detail=False, methods=['get'], url_path='export')
     def export(self, request):
