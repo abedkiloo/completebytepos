@@ -37,7 +37,7 @@ def assert_site_ready_for_order(site, *, min_media: int = MIN_SITE_MEDIA) -> Non
         raise FieldOrderTransitionError({'site': 'Site is required.'})
     if not site.has_pin:
         errors['location'] = 'Site map pin is required before submit.'
-    if site.media.count() < min_media:
+    if min_media > 0 and site.media.count() < min_media:
         errors['media'] = f'At least {min_media} site photo(s) required.'
     if site.customer_id is None:
         errors['customer'] = 'Site must have a customer before submit.'

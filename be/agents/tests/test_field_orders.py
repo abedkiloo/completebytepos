@@ -127,7 +127,7 @@ class FieldOrderAPITestCase(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('location', res.data)
 
-    def test_submit_without_media_fails(self):
+    def test_submit_without_media_ok(self):
         site = CustomerSite.objects.create(
             customer=self.customer,
             latitude='-1.2',
@@ -140,8 +140,9 @@ class FieldOrderAPITestCase(APITestCase):
         FieldOrderLine.objects.create(
             order=order, product=self.product, quantity=1, unit_price=10, product_name='Cement',
         )
-        with self.assertRaises(FieldOrderTransitionError):
-            submit_order(order)
+        submit_order(order)
+        order.refresh_from_db()
+        self.assertEqual(order.status, FieldOrder.STATUS_SUBMITTED)
 
     def test_agent_create_submit_dispatch_pack_assign(self):
         order_id = self._create_order()
@@ -222,6 +223,51 @@ class FieldOrderAPITestCase(APITestCase):
         self.assertIn('FieldOrder', str(order))
         self.assertIn('Line', str(line))
         self.assertEqual(line.line_total, 10)
+
+    def test_place_visit_order_one_shot(self):
+        res = self.client.post(
+            '/api/agents/field-orders/place/',
+            {
+                'customer_id': self.customer.id,
+                'latitude': '-1.2921',
+                'longitude': '36.8219',
+                'accuracy': 8.5,
+                'landmark': 'Blue gate',
+                'label': '',
+                'notes': 'Urgent',
+                'lines': [
+                    {
+                        'product_id': self.product.id,
+                        'quantity': '2',
+                        'unit_price': '500.00',
+                    },
+                ],
+            },
+            format='json',
+        )
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.data)
+        self.assertEqual(res.data['status'], 'submitted')
+        self.assertEqual(res.data['customer_name'], self.customer.name)
+        self.assertEqual(len(res.data['lines']), 1)
+        self.assertEqual(res.data['site_detail']['status'], 'finalized')
+        self.assertTrue(res.data['site_detail']['has_pin'])
+
+    def test_dispatch_list_filters_and_pack(self):
+        order_id = self._create_order()
+        self.client.post(f'/api/agents/field-orders/{order_id}/submit/')
+        self._auth(self.dispatch_user)
+
+        listed = self.client.get(
+            '/api/dispatch/field-orders/',
+            {'status': 'awaiting_pack', 'search': 'FO Cust'},
+        )
+        self.assertEqual(listed.status_code, status.HTTP_200_OK, listed.data)
+        rows = listed.data['results'] if isinstance(listed.data, dict) else listed.data
+        self.assertTrue(any(o['id'] == order_id for o in rows))
+
+        packed = self.client.post(f'/api/dispatch/field-orders/{order_id}/pack/')
+        self.assertEqual(packed.status_code, status.HTTP_200_OK, packed.data)
+        self.assertEqual(packed.data['status'], 'ready')
 
     def test_create_missing_product_and_empty_lines(self):
         bad = self.client.post(

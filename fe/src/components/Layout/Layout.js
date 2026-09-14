@@ -38,6 +38,7 @@ import {
   Palette,
   NotebookPen,
   Wallet,
+  MapPin,
 } from 'lucide-react';
 
 import { modulesAPI, storeSettingsAPI } from '../../services/api';
@@ -106,6 +107,7 @@ const NAV_SECTIONS = [
       { to: '/normal-sale', label: 'Normal Sale', icon: Briefcase, feature: ['sales', 'normal_sale'] },
       { to: '/sales/daily', label: 'Daily Sales', icon: Calendar, feature: ['sales', 'sales_history'], permission: ['sales', 'daily_sales'] },
       { to: '/sales', label: 'Sales History', icon: DollarSign, feature: ['sales', 'sales_history'] },
+      { to: '/sales/field', label: 'Field sales', icon: MapPin, permission: ['dispatch', 'view'] },
     ],
   },
   {

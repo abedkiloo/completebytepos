@@ -67,7 +67,8 @@ class AgentAPITestCase(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('location', res.data)
 
-    def test_cannot_finalize_without_media(self):
+    def test_finalize_without_media_ok(self):
+        """Photos are optional for visit-order locations."""
         site = CustomerSite.objects.create(
             customer=self.customer,
             latitude='-1.2921000',
@@ -75,8 +76,9 @@ class AgentAPITestCase(APITestCase):
             created_by=self.agent_user,
         )
         res = self.client.post(f'/api/agents/sites/{site.id}/finalize/')
-        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('media', res.data)
+        self.assertEqual(res.status_code, status.HTTP_200_OK, res.data)
+        self.assertEqual(res.data['status'], 'finalized')
+        self.assertEqual(res.data['media_count'], 0)
 
     def test_cannot_finalize_without_customer(self):
         site = CustomerSite.objects.create(
@@ -155,7 +157,7 @@ class AgentAPITestCase(APITestCase):
 
         cfg = self.client.get('/api/agents/sites/config/')
         self.assertEqual(cfg.status_code, status.HTTP_200_OK)
-        self.assertEqual(cfg.data['min_site_media'], 1)
+        self.assertEqual(cfg.data['min_site_media'], 0)
 
     def test_media_list_and_delete(self):
         site = CustomerSite.objects.create(
@@ -173,7 +175,7 @@ class AgentAPITestCase(APITestCase):
         deleted = self.client.delete(f'/api/agents/sites/{site.id}/media/{m1.id}/')
         self.assertEqual(deleted.status_code, status.HTTP_204_NO_CONTENT)
 
-    def test_cannot_delete_last_media_when_finalized(self):
+    def test_can_delete_media_when_finalized_photos_optional(self):
         site = CustomerSite.objects.create(
             customer=self.customer,
             latitude='-1.2',
@@ -183,7 +185,7 @@ class AgentAPITestCase(APITestCase):
         media = SiteMedia.objects.create(site=site, image=_png(), created_by=self.agent_user)
         finalize_site(site)
         res = self.client.delete(f'/api/agents/sites/{site.id}/media/{media.id}/')
-        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(res.status_code, status.HTTP_204_NO_CONTENT)
 
     def test_patch_site_and_str(self):
         site = CustomerSite.objects.create(

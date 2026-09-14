@@ -30,31 +30,81 @@ QUEUE_STATUSES = (
 )
 
 
+def _apply_field_order_filters(qs, params):
+    """Shared date / status / customer filters for admin + queue."""
+    status_filter = params.get('status')
+    if status_filter:
+        # Convenience buckets for the admin Field Sales UI.
+        if status_filter == 'awaiting_pack':
+            qs = qs.filter(
+                status__in=(
+                    FieldOrder.STATUS_SUBMITTED,
+                    FieldOrder.STATUS_PACKING,
+                ),
+            )
+        elif status_filter == 'dispatched':
+            qs = qs.filter(
+                status__in=(
+                    FieldOrder.STATUS_OUT_FOR_DELIVERY,
+                    FieldOrder.STATUS_DONE,
+                ),
+            )
+        else:
+            qs = qs.filter(status=status_filter)
+
+    date_from = params.get('date_from')
+    if date_from:
+        qs = qs.filter(created_at__date__gte=date_from)
+    date_to = params.get('date_to')
+    if date_to:
+        qs = qs.filter(created_at__date__lte=date_to)
+
+    search = (params.get('search') or '').strip()
+    if search:
+        from django.db.models import Q
+
+        q = (
+            Q(customer__name__icontains=search)
+            | Q(customer__phone__icontains=search)
+            | Q(site__label__icontains=search)
+            | Q(notes__icontains=search)
+        )
+        if search.isdigit():
+            q = q | Q(pk=int(search))
+        qs = qs.filter(q)
+    return qs
+
+
 class DispatchQueueViewSet(viewsets.ReadOnlyModelViewSet):
-    """Dispatcher board: submitted / packing / ready orders."""
+    """
+    Dispatcher / admin board for field (visit) orders.
+
+    - list: all field orders with date/status/customer filters
+    - queue: submitted/packing/ready only (mobile pack board)
+    - pack: mark ready for pickup
+    - assign: hand to delivery agent
+    """
 
     serializer_class = FieldOrderSerializer
     permission_classes = [IsAuthenticated, DISPATCH_PERMS]
     queryset = FieldOrder.objects.select_related(
         'site', 'customer', 'created_by', 'assigned_delivery_agent',
-    ).prefetch_related('lines', 'site__media')
+    ).prefetch_related('lines', 'lines__variant', 'site__media')
 
     def get_queryset(self):
-        qs = super().get_queryset().filter(status__in=QUEUE_STATUSES)
-        status_filter = self.request.query_params.get('status')
-        if status_filter:
-            qs = qs.filter(status=status_filter)
-        return qs
+        qs = super().get_queryset()
+        return _apply_field_order_filters(qs, self.request.query_params)
 
     def _order(self, pk):
         return FieldOrder.objects.select_related(
             'site', 'customer', 'created_by', 'assigned_delivery_agent',
-        ).prefetch_related('lines', 'site__media').get(pk=pk)
+        ).prefetch_related('lines', 'lines__variant', 'site__media').get(pk=pk)
 
     @action(detail=False, methods=['get'], url_path='queue')
     def queue(self, request):
+        qs = self.get_queryset().filter(status__in=QUEUE_STATUSES)
         ser = FieldOrderSerializer(
-            self.get_queryset(), many=True, context={'request': request},
+            qs, many=True, context={'request': request},
         )
         return Response(ser.data)
 

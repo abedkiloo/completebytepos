@@ -685,5 +685,14 @@ export const permissionsAPI = {
   byDomain: () => api.get('/accounts/permissions/by_domain/'),
 };
 
+/** Field / visit orders — admin pack board under Sales. */
+export const dispatchAPI = {
+  list: (params) => api.get('/dispatch/field-orders/', { params }),
+  get: (id) => api.get(`/dispatch/field-orders/${id}/`),
+  queue: () => api.get('/dispatch/queue/'),
+  pack: (id) => api.post(`/dispatch/field-orders/${id}/pack/`),
+  assign: (id, data) => api.post(`/dispatch/field-orders/${id}/assign/`, data),
+};
+
 export default api;
 

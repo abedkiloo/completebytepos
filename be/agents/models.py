@@ -175,6 +175,13 @@ class FieldOrderLine(models.Model):
         on_delete=models.PROTECT,
         related_name='field_order_lines',
     )
+    variant = models.ForeignKey(
+        'products.ProductVariant',
+        on_delete=models.PROTECT,
+        related_name='field_order_lines',
+        null=True,
+        blank=True,
+    )
     quantity = models.DecimalField(max_digits=12, decimal_places=3)
     unit_price = models.DecimalField(max_digits=12, decimal_places=2)
     product_name = models.CharField(max_length=255, blank=True)

@@ -10,19 +10,21 @@ class SiteFinalizeError(ValidationError):
 
 def assert_can_finalize(site: CustomerSite, *, min_media: int = MIN_SITE_MEDIA) -> None:
     """
-    Hard rule: finalized sites need confirmed pin + ≥ min_media photos + customer.
+    Hard rule: finalized sites need confirmed pin + customer.
+    Photos are optional when min_media is 0 (visit-order flow).
     """
     errors = {}
     if site.latitude is None or site.longitude is None:
         errors['location'] = 'Map pin (latitude and longitude) is required.'
     if site.customer_id is None:
         errors['customer'] = 'Customer is required before finalize.'
-    media_count = site.media.count()
-    if media_count < min_media:
-        errors['media'] = (
-            f'At least {min_media} site photo(s) required '
-            f'(have {media_count}).'
-        )
+    if min_media > 0:
+        media_count = site.media.count()
+        if media_count < min_media:
+            errors['media'] = (
+                f'At least {min_media} site photo(s) required '
+                f'(have {media_count}).'
+            )
     if errors:
         raise SiteFinalizeError(errors)
 

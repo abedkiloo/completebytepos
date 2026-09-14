@@ -11,6 +11,12 @@ const STATUS_VARIANT = {
   completed: 'success',
   holding: 'warning',
   cancelled: 'destructive',
+  draft: 'secondary',
+  submitted: 'warning',
+  packing: 'warning',
+  ready: 'success',
+  out_for_delivery: 'success',
+  done: 'success',
 };
 
 export function ActiveStatusBadge({ active, labels }) {

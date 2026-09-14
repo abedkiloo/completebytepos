@@ -31,7 +31,7 @@ describe('permissionRoutes registry', () => {
     const backendUiModules = [
       'invoicing', 'sales', 'pos', 'reports', 'products', 'categories',
       'inventory', 'barcodes', 'expenses', 'income', 'accounting',
-      'daily_notes', 'suppliers', 'employees', 'customers',
+      'daily_notes', 'suppliers', 'employees', 'customers', 'dispatch',
     ];
     for (const mod of backendUiModules) {
       expect(PERMISSION_MODULE_ROUTES[mod]).toBeTruthy();
@@ -90,6 +90,9 @@ describe('permissionRoutes registry', () => {
     );
     expect(routePermissionGateForPath('/sales/daily/customers/9')).toEqual(
       expect.objectContaining({ action: 'daily_sales' })
+    );
+    expect(routePermissionGateForPath('/sales/field')).toEqual(
+      expect.objectContaining({ module: 'dispatch', action: 'view' })
     );
     expect(routePermissionGateForPath('/sales')).toBeNull();
   });

@@ -1,9 +1,9 @@
-"""Site visit config — documented defaults for mobile + API validation."""
+"""Site visit / delivery-location config for mobile + API validation."""
 
-# Minimum SiteMedia rows required before a CustomerSite may finalize.
-MIN_SITE_MEDIA = 1
+# Photos are optional for visit-orders (pin + customer are required).
+MIN_SITE_MEDIA = 0
 
-# Soft guidance for clients (enforced client-side; server checks count only).
+# Soft guidance for clients when photos are attached.
 MAX_SITE_MEDIA = 10
 
 # Suggested max compressed image size for clients (bytes).
