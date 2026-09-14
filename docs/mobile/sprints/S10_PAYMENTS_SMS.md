@@ -50,7 +50,15 @@ Agents/cashiers can request an M-Pesa STK prompt; system records PaymentIntent; 
 
 ## Definition of Done
 
-- [ ] Sandbox STK success path tested
-- [ ] SMS template matches agreed copy structure
-- [ ] Android collect flow uses intents
-- [ ] Coverage gates green
+- [x] Sandbox STK success path tested (FakeDaraja + FE wait/query)
+- [x] SMS template matches agreed copy structure
+- [x] Android collect flow uses intents (POS / debt settle / delivery Request M-Pesa)
+- [x] Coverage gates green (BE payments+messaging 100%; FE `lib/features/payments` 100%)
+
+## Android smoke notes
+
+1. Online only: offline shows “M-Pesa STK requires a connection”.
+2. POS → M-Pesa → enter phone → Send prompt → wait → Done only after server `paid`.
+3. Debt settle with customer phone → same wait UI → wallet receive uses receipt ref.
+4. Delivery stop → Request M-Pesa → amount dialog → wait → `collect` with `defer_stk` + receipt notes.
+5. Paid + `sms_sent` shows “SMS sent” confirmation.

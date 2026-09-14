@@ -8,6 +8,7 @@ import {
   inventoryReportEnabled,
   inventoryShowMovementCost,
   inventoryAllowMovementUndo,
+  movementSignedQuantity,
 } from './inventoryDisplay';
 
 describe('inventoryDisplay', () => {
@@ -44,5 +45,12 @@ describe('inventoryDisplay', () => {
     expect(inventoryReportEnabled(off)).toBe(false);
     expect(inventoryShowMovementCost(off)).toBe(false);
     expect(inventoryAllowMovementUndo(off)).toBe(false);
+  });
+
+  test('movementSignedQuantity prefers stock_delta so sales display as removals', () => {
+    expect(movementSignedQuantity({ quantity: 10, stock_delta: -10 })).toBe(-10);
+    expect(movementSignedQuantity({ quantity: 5, stock_delta: 5 })).toBe(5);
+    expect(movementSignedQuantity({ quantity: 3 })).toBe(3);
+    expect(movementSignedQuantity({})).toBe(0);
   });
 });

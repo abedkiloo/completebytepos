@@ -56,6 +56,9 @@ Fastest path: follow [`COPY_PASTE_STARTER.md`](./COPY_PASTE_STARTER.md).
 - [`sprints/`](./sprints/) — one prompt per sprint  
 - [`UX_MENTAL_MODELS.md`](./UX_MENTAL_MODELS.md) — screen psychology & motion  
 - [`COVERAGE_POLICY.md`](./COVERAGE_POLICY.md) — how 98% is measured  
-- [`DECISIONS.md`](./DECISIONS.md) — fill in during S00 (state mgmt, maps, DB)  
+- [`DECISIONS.md`](./DECISIONS.md) — S00 decisions (path, Riverpod, Drift, maps, tokens)  
+- [`API_MOBILE_CONTRACT.md`](./API_MOBILE_CONTRACT.md) — endpoint table + S07–S10 gaps  
+- [`SCREEN_INVENTORY.md`](./SCREEN_INVENTORY.md) — screens by persona + sprint  
 - [`BACKLOG.md`](./BACKLOG.md) — deferred items  
+- Flutter app root: `omuwenga/mobile/` (sibling of `CompleteBytePOS/`)  
 - Canvas: `flutter-sprint-build-pack` — sprint roadmap overview

@@ -20,6 +20,7 @@ import {
   inventoryShowOutOfStockAlerts,
   inventoryReportEnabled,
   inventoryShowMovementCost,
+  movementSignedQuantity,
 } from '../../utils/inventoryDisplay';
 import SearchableSelect from '../Shared/SearchableSelect';
 import StockAdjustmentModal from './StockAdjustmentModal';
@@ -357,7 +358,9 @@ const Inventory = () => {
                   <DataTableHead align="right">Actions</DataTableHead>
                 </DataTableHeader>
                 <DataTableBody>
-                  {movements.map((movement) => (
+                  {movements.map((movement) => {
+                    const qty = movementSignedQuantity(movement);
+                    return (
                     <DataTableRow key={movement.id}>
                       <DataTableCell className="whitespace-nowrap text-muted-foreground">
                         {formatDateTime(movement.created_at)}
@@ -378,14 +381,14 @@ const Inventory = () => {
                         align="right"
                         className={cn(
                           'font-semibold tabular-nums',
-                          movement.quantity > 0 ? 'text-success' : 'text-destructive'
+                          qty > 0 ? 'text-success' : 'text-destructive'
                         )}
                       >
-                        {movement.quantity > 0 ? '+' : ''}
-                        {formatNumber(movement.quantity)}
+                        {qty > 0 ? '+' : ''}
+                        {formatNumber(qty)}
                       </DataTableCell>
                       <DataTableCell align="right" className="tabular-nums">
-                        {formatNumber(movement.stock_after || 0)}
+                        {formatNumber(movement.stock_after ?? 0)}
                       </DataTableCell>
                       <DataTableCell className="text-muted-foreground">
                         {movement.user_name || '—'}
@@ -410,7 +413,8 @@ const Inventory = () => {
                         )}
                       </DataTableCell>
                     </DataTableRow>
-                  ))}
+                    );
+                  })}
                 </DataTableBody>
               </DataTable>
             )}

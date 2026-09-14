@@ -38,6 +38,53 @@ class StockMovementServiceTestCase(TestCase):
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock_quantity, 15)
 
+    def test_purchase_records_stock_before_and_after(self):
+        movement = self.service.purchase_stock(
+            product_id=self.product.id,
+            variant_id=None,
+            quantity=5,
+            unit_cost=Decimal('5.00'),
+            user=self.user,
+        )
+        self.assertEqual(movement.stock_before, 10)
+        self.assertEqual(movement.stock_after, 15)
+
+    def test_updating_movement_does_not_reapply_stock(self):
+        movement = self.service.purchase_stock(
+            product_id=self.product.id,
+            variant_id=None,
+            quantity=5,
+            unit_cost=Decimal('5.00'),
+            user=self.user,
+        )
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 15)
+        movement.notes = 'metadata only'
+        movement.save()
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 15)
+        movement.refresh_from_db()
+        self.assertEqual(movement.stock_after, 15)
+
+    def test_build_queryset_date_to_includes_today(self):
+        self.service.purchase_stock(
+            product_id=self.product.id,
+            variant_id=None,
+            quantity=1,
+            unit_cost=Decimal('5.00'),
+            user=self.user,
+        )
+        qs = self.service.build_queryset({'date_to': timezone.localdate().isoformat()})
+        self.assertEqual(qs.count(), 1)
+
+    def test_inclusive_end_datetime_date_only_covers_end_of_day(self):
+        from inventory.services import inclusive_end_datetime
+
+        end = inclusive_end_datetime('2026-09-14')
+        self.assertEqual(end.date().isoformat(), '2026-09-14')
+        self.assertEqual(end.hour, 23)
+        self.assertEqual(end.minute, 59)
+
     def test_purchase_rejects_non_positive_quantity(self):
         with self.assertRaises(ValidationError):
             self.service.purchase_stock(

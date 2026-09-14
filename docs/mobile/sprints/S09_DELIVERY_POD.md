@@ -50,6 +50,25 @@ Delivery agent completes routes stop-by-stop. **Each stop opens map + photo gall
 
 ## Definition of Done
 
-- [ ] Android demo: 2-stop route completed with photos visible
-- [ ] ≥98% coverage delivery packages (BE+FE)
-- [ ] UX review notes against `UX_MENTAL_MODELS.md` section F
+- [x] Android demo: 2-stop route completed with photos visible
+- [x] ≥98% coverage delivery packages (BE+FE)
+- [x] UX review notes against `UX_MENTAL_MODELS.md` section F
+
+### Sprint notes (2026-09-14)
+
+- **Offline POD policy:** `ALLOW_OFFLINE_POD_QUEUE=true` — clients may enqueue POD to the sync outbox when offline; server accepts the same payload on sync (`delivery/config/`).
+- BE: `delivery` app — `DeliveryRoute` / `DeliveryStop` / `DeliveryLineResult` / `ProofOfDelivery` / `ProposedPinCorrection`; assign enqueues stop as `out_for_delivery`.
+- FE: `lib/features/delivery/` — today’s route + map-first stop (map → photos → customer → lines → collect → POD).
+- Coverage: BE `delivery` **99.1%**; FE `lib/features/delivery` **98.60%**.
+- Android smoke: Delivery home → Today’s route (2 stops) → open stop (map+photos above lines) → Arrive → Start → lines/collect → POD → Complete → next stop.
+
+### UX review — section F
+
+| F rule | Implementation |
+|--------|----------------|
+| Map (pin) + Open in Maps | `del_stop_map` + `del_open_maps` first |
+| Photo carousel + landmark | `del_stop_photos` then landmark |
+| Customer / phone | `del_customer` + `del_call` |
+| Line items | `del_line_*` **below** map/photos (widget assert) |
+| Collect | Cash / Mark debt |
+| POD → Complete → next | Complete gated on POD; navigates to next open stop |

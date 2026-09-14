@@ -61,6 +61,16 @@ class StockMovement(models.Model):
     )
     reference = models.CharField(max_length=100, blank=True)  # Sale number, PO number, etc.
     notes = models.TextField(blank=True)
+    stock_before = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text='On-hand quantity immediately before this movement was applied',
+    )
+    stock_after = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text='On-hand quantity immediately after this movement was applied',
+    )
     user = models.ForeignKey(
         User, 
         on_delete=models.SET_NULL, 
@@ -91,9 +101,10 @@ class StockMovement(models.Model):
         if self.unit_cost and not self.total_cost:
             self.total_cost = abs(self.quantity) * self.unit_cost
 
-        # If the caller is updating only metadata fields (e.g. marking a movement
-        # as undone), persist the row but do NOT re-run the stock side-effect.
-        # This contract is relied on by InventoryViewSet.undo and similar flows.
+        # Stock side-effect runs on CREATE only. Later saves (notes, reference,
+        # created_at backfills, undo markers) must not re-apply the delta —
+        # that made historical After values look frozen and could double-count.
+        is_create = self._state.adding
         update_fields = kwargs.get('update_fields')
         skip_stock_update = bool(
             update_fields
@@ -102,7 +113,7 @@ class StockMovement(models.Model):
 
         super().save(*args, **kwargs)
 
-        if skip_stock_update:
+        if skip_stock_update or not is_create:
             return
 
         self._apply_stock_effect()
@@ -150,47 +161,61 @@ class StockMovement(models.Model):
         ProductVariant.stock_quantity directly.
         """
         delta = self._stock_delta()
-        if delta == 0:
-            return
 
         # Run the locked read + checked write in a savepoint so a negative-stock
         # ValidationError rolls back cleanly inside an outer atomic block.
         with transaction.atomic():
             if self.variant_id:
-                if not self.variant.product.track_stock:
-                    return
                 locked = ProductVariant.objects.select_for_update().get(pk=self.variant_id)
+                before = int(locked.stock_quantity or 0)
+                if not locked.product.track_stock or delta == 0:
+                    self._persist_snapshot(before, before)
+                    return
                 if not self._allow_negative_stock_for_sale():
-                    self._guard_negative(locked.stock_quantity, delta, str(locked))
+                    self._guard_negative(before, delta, str(locked))
                 update_kwargs = {'stock_quantity': F('stock_quantity') + delta}
                 if self.movement_type == 'purchase' and self.unit_cost and delta > 0:
                     update_kwargs['cost'] = self._weighted_average_cost(
-                        old_qty=locked.stock_quantity,
+                        old_qty=before,
                         old_cost=locked.cost if locked.cost is not None else locked.product.cost,
                         added_qty=delta,
                         added_unit_cost=self.unit_cost,
                     )
                 ProductVariant.objects.filter(pk=self.variant_id).update(**update_kwargs)
+                self._persist_snapshot(before, before + delta)
                 product = locked.product
                 if product.has_variants and product.track_stock:
                     from products.stock_utils import sync_product_stock_from_variants
 
                     sync_product_stock_from_variants(product)
             else:
-                if not self.product.track_stock:
-                    return
                 locked = Product.objects.select_for_update().get(pk=self.product_id)
+                before = int(locked.stock_quantity or 0)
+                if not locked.track_stock or delta == 0:
+                    self._persist_snapshot(before, before)
+                    return
                 if not self._allow_negative_stock_for_sale():
-                    self._guard_negative(locked.stock_quantity, delta, locked.name)
+                    self._guard_negative(before, delta, locked.name)
                 update_kwargs = {'stock_quantity': F('stock_quantity') + delta}
                 if self.movement_type == 'purchase' and self.unit_cost and delta > 0:
                     update_kwargs['cost'] = self._weighted_average_cost(
-                        old_qty=locked.stock_quantity,
+                        old_qty=before,
                         old_cost=locked.cost,
                         added_qty=delta,
                         added_unit_cost=self.unit_cost,
                     )
                 Product.objects.filter(pk=self.product_id).update(**update_kwargs)
+                self._persist_snapshot(before, before + delta)
+
+    def _persist_snapshot(self, before: int, after: int) -> None:
+        """Store running-balance snapshots without re-entering ``save()``."""
+        self.stock_before = before
+        self.stock_after = after
+        if self.pk:
+            type(self).objects.filter(pk=self.pk).update(
+                stock_before=before,
+                stock_after=after,
+            )
 
     @staticmethod
     def _guard_negative(current_qty: int, delta: int, target_label: str) -> None:

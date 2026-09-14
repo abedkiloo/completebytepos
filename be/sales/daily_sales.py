@@ -105,6 +105,7 @@ def get_daily_sales_report(
     page_size: int = 25,
     branch_id: Optional[int] = None,
     base_queryset: Optional[Any] = None,
+    cashier_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Compile daily sales summaries, metrics, and filtered order list for a specific date."""
     target_date, start_of_day, end_of_day = parse_target_date(date_str)
@@ -125,6 +126,11 @@ def get_daily_sales_report(
 
     if branch_id:
         base_qs = base_qs.filter(branch_id=branch_id)
+
+    if cashier_id:
+        base_qs = base_qs.filter(
+            Q(cashier_id=cashier_id) | Q(served_by_id=cashier_id)
+        )
 
     # Compute daily aggregates across all completed sales of that day
     all_day_sales = list(base_qs)

@@ -52,8 +52,10 @@ Use this when designing or reviewing screens. Each screen answers:
 ## Critical flows — screen-by-screen
 
 ### A. Auth
-- Login → (optional biometric unlock) → Persona home.
-- Errors: inline, not toast-only. Lockout messaging clear.
+- **Login job:** Prove who I am → username/password → Sign in.
+- Success → persona home (cashier / manager / admin). Session expiry → clear message → login.
+- Errors: inline banner (`login_error`), never stack traces or token material.
+- Biometric unlock deferred (BACKLOG).
 
 ### B. POS lite
 1. Catalog/search (scanner icon always visible)

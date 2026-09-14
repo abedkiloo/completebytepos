@@ -72,6 +72,28 @@
         "daily_notes/models.py"
       ],
       "minimum_percent": 96
+    },
+    {
+      "name": "agents",
+      "include": [
+        "agents/config.py",
+        "agents/models.py",
+        "agents/services.py",
+        "agents/serializers.py",
+        "agents/views.py",
+        "agents/order_services.py",
+        "agents/order_serializers.py",
+        "agents/order_views.py",
+        "agents/push.py"
+      ],
+      "minimum_percent": 98
+    },
+    {
+      "name": "dispatch",
+      "include": [
+        "dispatch/views.py"
+      ],
+      "minimum_percent": 98
     }
   ],
   "ramp_up": [

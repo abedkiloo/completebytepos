@@ -55,8 +55,8 @@ Horizontal slide between steps. Cannot skip 1–2.
 
 ## Definition of Done
 
-- [ ] Android: place pin + upload photo + save site against API
-- [ ] BE new module coverage ≥98%
-- [ ] FE feature coverage ≥98%
-- [ ] Agent permission pack documented in role_definitions
-- [ ] Delivery-agent “view model” documented (fields stop UI will need)
+- [x] Android: place pin + upload photo + save site against API
+- [x] BE new module coverage ≥98%
+- [x] FE feature coverage ≥98%
+- [x] Agent permission pack documented in role_definitions
+- [x] Delivery-agent “view model” documented (fields stop UI will need)

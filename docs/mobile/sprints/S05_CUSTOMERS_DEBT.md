@@ -39,6 +39,15 @@ Manage customers on mobile and settle wallet debt (Receive payment) with the sam
 
 ## Definition of Done
 
-- [ ] Settle debt on Android against API
-- [ ] Permission `customers.update` gated
-- [ ] ≥98% coverage on customers feature package
+- [x] Settle debt on Android against API
+- [x] Permission `customers.update` gated
+- [x] ≥98% coverage on customers feature package
+
+**Flutter coverage:** ≥98% on `lib/features/customers` (98.59%)
+
+```bash
+cd mobile
+flutter analyze
+flutter test --coverage
+dart run tools/check_coverage.dart --min=98 --paths=lib/features/customers
+```

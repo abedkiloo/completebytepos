@@ -21,12 +21,12 @@ Exclusions must be listed in the sprint completion notes. Do not exclude busines
 
 ```bash
 flutter test --coverage
-# Optional: fail under 98% using a small script added in S01, e.g.
-# dart run tools/check_coverage.dart --min=98 --paths=lib/features/auth,lib/core
+dart run tools/check_coverage.dart --min=98 \
+  --paths=lib/core,lib/design_system,lib/features,lib/app \
+  --exclude=lib/main.dart
 ```
 
-Until the script exists: manually inspect `coverage/lcov.info` for sprint paths and report %.
-
+Logic lives in `mobile/lib/core/coverage/lcov_gate.dart` (unit-tested). The CLI wrapper is `mobile/tools/check_coverage.dart`.
 ## How to run (Django)
 
 ```bash

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { inventoryAPI } from '../../services/api';
 import { formatCurrency, formatNumber, formatDateTime } from '../../utils/formatters';
+import { movementSignedQuantity } from '../../utils/inventoryDisplay';
 import { PageLoading } from '../page';
 import { Badge } from '../ui/badge';
 import { cn } from '../../lib/cn';
@@ -72,7 +73,9 @@ const StockHistoryModal = ({ product, onClose, showCost = true }) => {
                   </tr>
                 </thead>
                 <tbody>
-                  {history.map((movement) => (
+                  {history.map((movement) => {
+                    const qty = movementSignedQuantity(movement);
+                    return (
                     <tr key={movement.id} className="border-b last:border-0 hover:bg-muted/30">
                       <td className="whitespace-nowrap px-3 py-2">{formatDateTime(movement.created_at)}</td>
                       <td className="px-3 py-2">
@@ -83,11 +86,11 @@ const StockHistoryModal = ({ product, onClose, showCost = true }) => {
                       <td
                         className={cn(
                           'px-3 py-2 tabular-nums',
-                          movement.quantity > 0 ? 'text-emerald-700' : 'text-destructive'
+                          qty > 0 ? 'text-emerald-700' : 'text-destructive'
                         )}
                       >
-                        {movement.quantity > 0 ? '+' : ''}
-                        {formatNumber(movement.quantity)}
+                        {qty > 0 ? '+' : ''}
+                        {formatNumber(qty)}
                       </td>
                       {showCost ? (
                         <td className="px-3 py-2 tabular-nums">
@@ -99,12 +102,13 @@ const StockHistoryModal = ({ product, onClose, showCost = true }) => {
                           {movement.total_cost ? formatCurrency(movement.total_cost) : '-'}
                         </td>
                       ) : null}
-                      <td className="px-3 py-2 tabular-nums">{formatNumber(movement.stock_before || 0)}</td>
-                      <td className="px-3 py-2 tabular-nums">{formatNumber(movement.stock_after || 0)}</td>
+                      <td className="px-3 py-2 tabular-nums">{formatNumber(movement.stock_before ?? 0)}</td>
+                      <td className="px-3 py-2 tabular-nums">{formatNumber(movement.stock_after ?? 0)}</td>
                       <td className="px-3 py-2">{movement.user_name || '-'}</td>
                       <td className="px-3 py-2">{movement.reference || '-'}</td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

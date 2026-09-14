@@ -12,7 +12,7 @@ from .serializers import (
     StockPurchaseSerializer, StockTransferSerializer,
     BulkStockAdjustmentSerializer, InventoryReportSerializer
 )
-from .services import StockMovementService
+from .services import StockMovementService, inclusive_end_datetime, inclusive_start_datetime
 from products.models import Product, ProductVariant
 from settings.utils import get_current_branch, get_current_tenant, is_branch_support_enabled
 from accounts.permissions import RequirePermPerAction
@@ -62,7 +62,9 @@ INVENTORY_PERMS = RequirePermPerAction('inventory', {
 
 
 class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
-    queryset = StockMovement.objects.all().select_related('product', 'user')
+    queryset = StockMovement.objects.all().select_related(
+        'product', 'user', 'variant', 'variant__size', 'variant__color'
+    )
     serializer_class = StockMovementSerializer
     permission_classes = [IsAuthenticated, INVENTORY_PERMS]
     audit_module = 'inventory'
@@ -599,9 +601,9 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         queryset = StockMovement.objects.all()
         
         if date_from:
-            queryset = queryset.filter(created_at__gte=date_from)
+            queryset = queryset.filter(created_at__gte=inclusive_start_datetime(date_from))
         if date_to:
-            queryset = queryset.filter(created_at__lte=date_to)
+            queryset = queryset.filter(created_at__lte=inclusive_end_datetime(date_to))
         
         movements = queryset.values('movement_type').annotate(
             count=Count('id'),
@@ -627,7 +629,9 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         try:
             movements = StockMovement.objects.filter(
                 product_id=product_id
-            ).select_related('product', 'user').order_by('-created_at')
+            ).select_related(
+                'product', 'user', 'variant', 'variant__size', 'variant__color'
+            ).order_by('-created_at')
             
             serializer = self.get_serializer(movements, many=True)
             return Response(serializer.data)

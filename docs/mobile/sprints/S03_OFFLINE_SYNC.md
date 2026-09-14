@@ -40,6 +40,23 @@ Install the offline foundation: local database, outbox queue, client UUIDs, conn
 
 ## Definition of Done
 
-- [ ] Sync package ≥98% coverage
-- [ ] Demo: airplane mode enqueue → reconnect drains queue (instrumented test or manual + unit proof)
-- [ ] No silent data loss paths without failing tests
+- [x] Sync package ≥98% coverage
+- [x] Demo: airplane mode enqueue → reconnect drains queue (instrumented test or manual + unit proof)
+- [x] No silent data loss paths without failing tests
+
+### Sprint notes (S03 completion)
+
+**Flutter coverage:** ≥98% on `lib/sync` + `lib/core/network`  
+(excluding generated Drift, table defs, `ConnectivityPlusMonitor`, `SecurePiiKeyStore`, `AppDatabase` file opener).
+
+```bash
+dart run tools/check_coverage.dart --min=98 \
+  --paths=lib/sync,lib/core/network \
+  --exclude=lib/sync/data/app_database.g.dart,lib/sync/data/tables.dart,lib/sync/data/app_database.dart,lib/sync/application/connectivity_plus_monitor.dart,lib/sync/data/secure_pii_key_store.dart
+```
+
+**Demo proof:** `test/sync/application/sync_engine_test.dart` — offline enqueue stays pending; reconnect drain marks synced; permanent HTTP failures never silently drop.
+
+**Backend:** `be/idempotency/` middleware + model; document offline-safe matrix in `API_MOBILE_CONTRACT.md`.
+
+**Encryption:** AES field-level via `AesPiiCipher` + key in secure storage (prod override); product `encryptedPayload` column ready for PII attributes.

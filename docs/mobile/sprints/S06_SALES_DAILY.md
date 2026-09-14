@@ -39,6 +39,6 @@ Cashiers/managers browse sales history; managers/admins with `sales.daily_sales`
 
 ## Definition of Done
 
-- [ ] Android: history + daily sales smoke for admin
-- [ ] Manager without `daily_sales` cannot open route
-- [ ] ≥98% on history + daily_sales feature packages
+- [x] Android: history + daily sales smoke for admin
+- [x] Manager without `daily_sales` cannot open route
+- [x] ≥98% on history + daily_sales feature packages

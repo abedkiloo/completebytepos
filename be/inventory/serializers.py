@@ -10,19 +10,18 @@ class StockMovementSerializer(serializers.ModelSerializer):
     variant_detail = ProductVariantSerializer(source='variant', read_only=True)
     variant_info = serializers.SerializerMethodField()
     user_name = serializers.CharField(source='user.username', read_only=True)
-    stock_before = serializers.SerializerMethodField()
-    stock_after = serializers.SerializerMethodField()
+    stock_delta = serializers.SerializerMethodField()
     
     class Meta:
         model = StockMovement
         fields = [
             'id', 'product', 'product_name', 'product_sku', 'product_detail',
             'variant', 'variant_detail', 'variant_info',
-            'movement_type', 'quantity', 'unit_cost', 'total_cost',
+            'movement_type', 'quantity', 'stock_delta', 'unit_cost', 'total_cost',
             'reference', 'notes', 'user', 'user_name',
             'stock_before', 'stock_after', 'created_at'
         ]
-        read_only_fields = ['created_at', 'total_cost']
+        read_only_fields = ['created_at', 'total_cost', 'stock_before', 'stock_after', 'stock_delta']
     
     def get_variant_info(self, obj):
         """Get variant information as string"""
@@ -34,27 +33,10 @@ class StockMovementSerializer(serializers.ModelSerializer):
                 parts.append(f"Color: {obj.variant.color.name}")
             return " - ".join(parts) if parts else None
         return None
-    
-    def get_stock_before(self, obj):
-        # Calculate stock before this movement by reversing the movement
-        if obj.variant:
-            current_stock = obj.variant.stock_quantity
-        else:
-            current_stock = obj.product.stock_quantity
-        
-        if obj.movement_type == 'sale':
-            return current_stock + abs(obj.quantity)
-        elif obj.movement_type in ['purchase', 'return']:
-            return max(0, current_stock - abs(obj.quantity))
-        elif obj.movement_type == 'adjustment':
-            return current_stock - obj.quantity
-        else:
-            return current_stock + abs(obj.quantity)
-    
-    def get_stock_after(self, obj):
-        if obj.variant:
-            return obj.variant.stock_quantity
-        return obj.product.stock_quantity
+
+    def get_stock_delta(self, obj):
+        """Signed change this movement applied to on-hand stock."""
+        return obj._stock_delta()
 
     def to_representation(self, instance):
         from inventory.module_settings import apply_stock_movement_representation_flags

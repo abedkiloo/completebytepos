@@ -3,6 +3,7 @@
 from decimal import Decimal
 
 from django.contrib.auth.models import User
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -252,6 +253,56 @@ class InventoryViewsTestCase(ManagerAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         results = response.data.get('results', response.data)
         self.assertTrue(all(m['product'] == self.product.id for m in results))
+
+    def test_purchase_returns_running_balance_snapshot(self):
+        """After must be this movement's balance, not live product stock."""
+        response = self.client.post(
+            '/api/inventory/purchase/',
+            {
+                'product_id': self.product.id,
+                'quantity': 10,
+                'unit_cost': '60.00',
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data['stock_before'], 20)
+        self.assertEqual(response.data['stock_after'], 30)
+        self.assertEqual(response.data['stock_delta'], 10)
+
+    def test_list_after_values_differ_across_movements(self):
+        """Regression: every row used to show current stock, so After looked frozen."""
+        self.client.post(
+            '/api/inventory/purchase/',
+            {'product_id': self.product.id, 'quantity': 10, 'unit_cost': '60.00'},
+            format='json',
+        )
+        self.client.post(
+            '/api/inventory/adjust/',
+            {'product_id': self.product.id, 'quantity': -4, 'notes': 'shrink'},
+            format='json',
+        )
+        response = self.client.get('/api/inventory/', {'product': self.product.id})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.data.get('results', response.data)
+        by_type = {m['movement_type']: m for m in results}
+        self.assertEqual(by_type['purchase']['stock_before'], 20)
+        self.assertEqual(by_type['purchase']['stock_after'], 30)
+        self.assertEqual(by_type['adjustment']['stock_before'], 30)
+        self.assertEqual(by_type['adjustment']['stock_after'], 26)
+        self.assertEqual(by_type['adjustment']['stock_delta'], -4)
+
+    def test_date_to_includes_movements_from_that_day(self):
+        self.client.post(
+            '/api/inventory/purchase/',
+            {'product_id': self.product.id, 'quantity': 1, 'unit_cost': '60.00'},
+            format='json',
+        )
+        today = timezone.localdate().isoformat()
+        response = self.client.get('/api/inventory/', {'date_to': today})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.data.get('results', response.data)
+        self.assertGreaterEqual(len(results), 1)
 
 
 class InventoryPermissionsTestCase(SalesAPITestCase):

@@ -33,6 +33,12 @@ urlpatterns = [
     path('api/suppliers/', include('suppliers.urls')),
     path('api/employees/', include('employees.urls')),
     path('api/daily-notes/', include('daily_notes.urls')),
+    path('api/agents/', include('agents.urls')),
+    path('api/dispatch/', include('dispatch.urls')),
+    path('api/delivery/', include('delivery.urls')),
+    path('api/payments/', include('payments.urls')),
+    path('api/messaging/', include('messaging.urls')),
+    path('api/public/', include('payments.urls_public')),
     path('api/approvals/', include('approvals.urls')),
 ]
 

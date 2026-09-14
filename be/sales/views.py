@@ -465,6 +465,7 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         ordering = request.query_params.get('ordering', '-occurred_at')
         page = request.query_params.get('page', 1)
         page_size = request.query_params.get('page_size', 25)
+        cashier_id = request.query_params.get('cashier_id')
 
         base_qs = self.sale_service.build_queryset({}, request=request)
 
@@ -478,9 +479,10 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 page=page,
                 page_size=page_size,
                 base_queryset=base_qs,
+                cashier_id=int(cashier_id) if cashier_id not in (None, '') else None,
             )
             return Response(report)
-        except ValueError as exc:
+        except (ValueError, TypeError) as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(

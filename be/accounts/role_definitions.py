@@ -11,6 +11,9 @@ from accounts.models import Permission, Role
 ROLE_SUPER_ADMIN = 'Super Admin'
 ROLE_MANAGER = 'Manager'
 ROLE_SALES = 'Sales Personnel'
+ROLE_FIELD_AGENT = 'Field Agent'
+ROLE_DISPATCHER = 'Dispatcher'
+ROLE_DELIVERY_AGENT = 'Delivery Agent'
 
 # Legacy names kept for migrations / existing DB rows; not created on fresh install.
 LEGACY_ROLE_NAMES = ('Admin', 'Administrator', 'Cashier')
@@ -54,6 +57,17 @@ PERMISSIONS_DATA = [
     ('sales', 'refund', 'Refund completed sales'),
     ('sales', 'export', 'Export sales'),
     ('sales', 'daily_sales', 'View daily sales tracker (paid vs debt by day)'),
+    ('agents', 'view', 'View field agent sites and visits'),
+    ('agents', 'create', 'Create field agent sites and media'),
+    ('agents', 'update', 'Update sites, upload media, finalize visits'),
+    ('dispatch', 'view', 'View field-order dispatch queue'),
+    ('dispatch', 'update', 'Pack and assign field orders'),
+    ('delivery', 'view', 'View delivery routes and stops'),
+    ('delivery', 'update', 'Arrive, deliver, collect, POD, complete stops'),
+    ('payments', 'view', 'View payment intents'),
+    ('payments', 'create', 'Create payment intents and send STK'),
+    ('messaging', 'view', 'View message outbox'),
+    ('messaging', 'create', 'Queue SMS receipts and reminders'),
     ('pos', 'view', 'Access POS'),
     ('pos', 'create', 'Create sales via POS'),
     ('barcodes', 'view', 'View barcodes'),
@@ -182,6 +196,21 @@ ROLE_SCREEN_MATRIX = {
         'Customers (add walk-in / credit)',
         'Products & categories (add / import — manager sets prices)',
     ],
+    ROLE_FIELD_AGENT: [
+        'New site visit (map → photos → customer)',
+        'Customers (lookup / create for site assignment)',
+        'Field orders (cart → review → submit)',
+    ],
+    ROLE_DISPATCHER: [
+        'Dispatch queue (submitted / packing / ready)',
+        'Pack field orders (allocate-on-pack)',
+        'Assign delivery agent',
+    ],
+    ROLE_DELIVERY_AGENT: [
+        'Today’s route (ordered stops)',
+        'Map-first stop delivery + POD',
+        'Collect cash / mark debt',
+    ],
 }
 
 
@@ -218,7 +247,8 @@ def _manager_queryset():
                 'products', 'categories', 'suppliers', 'inventory',
                 'sales', 'pos', 'barcodes', 'reports', 'expenses',
                 'income', 'customers', 'invoicing', 'bank_accounts',
-                'money_transfer', 'accounting', 'daily_notes',
+                'money_transfer', 'accounting', 'daily_notes', 'dispatch',
+                'delivery', 'payments', 'messaging',
             ],
         )
         .exclude(action='delete')
@@ -235,15 +265,48 @@ def _sales_queryset():
     return Permission.objects.filter(
         module__in=[
             'products', 'categories', 'sales', 'pos', 'barcodes',
-            'customers', 'invoicing', 'daily_notes',
+            'customers', 'invoicing', 'daily_notes', 'payments',
         ],
         action__in=['view', 'create', 'update', 'import'],
+    ) | Permission.objects.filter(
+        module='messaging', action__in=['view', 'create'],
+    )
+
+
+def _field_agent_queryset():
+    """Field agents: sites + media + catalog browse + customer lookup."""
+    return (
+        Permission.objects.filter(
+            module__in=['agents', 'customers'],
+            action__in=['view', 'create', 'update'],
+        )
+        | Permission.objects.filter(module='products', action='view')
+    )
+
+
+def _dispatcher_queryset():
+    return Permission.objects.filter(
+        module='dispatch',
+        action__in=['view', 'update'],
+    )
+
+
+def _delivery_agent_queryset():
+    return (
+        Permission.objects.filter(
+            module='delivery',
+            action__in=['view', 'update'],
+        )
+        | Permission.objects.filter(
+            module='payments',
+            action__in=['view', 'create'],
+        )
     )
 
 
 def sync_default_roles(created_by=None):
     """
-    Upsert the three system roles. Default permission sets are applied only when
+    Upsert system roles. Default permission sets are applied only when
     a role is first created so admin edits in the Roles UI are preserved.
     """
     all_perms = Permission.objects.all()
@@ -283,6 +346,42 @@ def sync_default_roles(created_by=None):
     if sales_created:
         sales.permissions.set(_sales_queryset())
 
+    field_agent, agent_created = Role.objects.update_or_create(
+        name=ROLE_FIELD_AGENT,
+        defaults={
+            'description': 'Field visits — map pin, site photos, customer sites (orders in S08)',
+            'is_system_role': True,
+            'is_active': True,
+            'created_by': created_by,
+        },
+    )
+    if agent_created:
+        field_agent.permissions.set(_field_agent_queryset())
+
+    dispatcher, dispatcher_created = Role.objects.update_or_create(
+        name=ROLE_DISPATCHER,
+        defaults={
+            'description': 'Store dispatch — pack field orders and assign delivery agents',
+            'is_system_role': True,
+            'is_active': True,
+            'created_by': created_by,
+        },
+    )
+    if dispatcher_created:
+        dispatcher.permissions.set(_dispatcher_queryset())
+
+    delivery_agent, delivery_created = Role.objects.update_or_create(
+        name=ROLE_DELIVERY_AGENT,
+        defaults={
+            'description': 'On-road delivery — map-first stops, lines, collect, POD',
+            'is_system_role': True,
+            'is_active': True,
+            'created_by': created_by,
+        },
+    )
+    if delivery_created:
+        delivery_agent.permissions.set(_delivery_agent_queryset())
+
     # Deactivate legacy duplicate roles so the UI shows a clean trio.
     Role.objects.filter(name__in=LEGACY_ROLE_NAMES).update(is_active=False)
 
@@ -290,6 +389,9 @@ def sync_default_roles(created_by=None):
         ROLE_SUPER_ADMIN: super_admin,
         ROLE_MANAGER: manager,
         ROLE_SALES: sales,
+        ROLE_FIELD_AGENT: field_agent,
+        ROLE_DISPATCHER: dispatcher,
+        ROLE_DELIVERY_AGENT: delivery_agent,
     }
 
 

@@ -46,7 +46,8 @@ Do **not** shrink the web SPA into a WebView. This is a native Flutter product.
 ## Architecture standards
 
 ```
-apps/mobile/   (or mobile/ at repo root — choose once in S01 and stick to it)
+# Chosen in S00: omuwenga/mobile/ (sibling of CompleteBytePOS/)
+mobile/
   lib/
     app/           # bootstrap, router, DI
     core/          # theme, network, errors, secure storage, result types
@@ -57,7 +58,7 @@ apps/mobile/   (or mobile/ at repo root — choose once in S01 and stick to it)
   integration_test/
 ```
 
-- **State:** prefer predictable patterns (Riverpod or Bloc — pick in S01; do not mix both).
+- **State:** Riverpod (chosen S00). Do not introduce Bloc.
 - **Networking:** typed API clients; interceptors for auth refresh; idempotency keys on writes.
 - **IDs:** client-generated UUIDs for offline-capable creates.
 - **Local DB:** Drift/Isar/Hive — pick in S03; encrypted where PII is stored.

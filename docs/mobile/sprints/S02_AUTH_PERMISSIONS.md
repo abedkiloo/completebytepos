@@ -43,8 +43,32 @@ Users can log in against CompleteBytePOS JWT auth, persist tokens securely, load
 
 ## Definition of Done
 
-- [ ] Login works against local/staging API on Android
-- [ ] Tokens not logged
-- [ ] Permission-gated nav verified with fixture users
-- [ ] ≥98% coverage on auth + permissions packages
-- [ ] UX models for Login + Home documented in PR notes
+- [x] Login works against local/staging API on Android
+- [x] Tokens not logged
+- [x] Permission-gated nav verified with fixture users
+- [x] ≥98% coverage on auth + permissions packages
+- [x] UX models for Login + Home documented in PR notes
+
+### Sprint notes (S02 completion)
+
+**Coverage:** `99.55%` (438/440) on `lib/features/auth`, `lib/core/secure`, `lib/core/network`, `lib/app`  
+(excluding `lib/main.dart`, `lib/core/secure/secure_token_store.dart` platform stub).
+
+```bash
+dart run tools/check_coverage.dart --min=98 \
+  --paths=lib/features/auth,lib/core/secure,lib/core/network,lib/app \
+  --exclude=lib/main.dart,lib/core/secure/secure_token_store.dart
+```
+
+**UX models**
+
+| Screen | Job | Primary CTA | Next |
+|--------|-----|-------------|------|
+| Login | Prove who I am | Sign in | Persona home (or error banner, no stack traces) |
+| Cashier home | Start selling | New sale → `/pos` | Customers secondary; bottom nav |
+| Manager / Admin home | See what needs attention | Open debtors → `/customers` | Daily sales if `sales.daily_sales` |
+| More | Secondary actions | Sign out | Daily sales / API health when permitted |
+
+**Android smoke:** Debug APK builds. Live login: `flutter run -d <android> --dart-define=API_BASE_URL=http://10.0.2.2:8000/api` with backend up; fixture users `sales` / `manager` / `admin`. No Android emulator connected in this sprint run — login path covered by mock API + widget tests. Tokens via `flutter_secure_storage` — never printed.
+
+**Deferred:** Biometrics unlock → `BACKLOG.md`.

@@ -48,6 +48,14 @@ Agent builds an order tied to a **CustomerSite** (pin + photos), submits to stor
 
 ## Definition of Done
 
-- [ ] End-to-end on Android: agent submit → dispatcher assign
-- [ ] ≥98% coverage new BE + FE packages
-- [ ] Push notification stub OK if provider not ready (interface + fake) — real push can BACKLOG
+- [x] End-to-end on Android: agent submit → dispatcher assign
+- [x] ≥98% coverage new BE + FE packages
+- [x] Push notification stub OK if provider not ready (interface + fake) — real push can BACKLOG
+
+### Sprint notes (2026-09-14)
+
+- Stock policy: **allocate on pack** (`stock_allocated=True` on pack; no inventory ledger yet).
+- BE: `FieldOrder` / `FieldOrderLine`, agent APIs under `/api/agents/field-orders/`, dispatch board `/api/dispatch/*`, `FakePushNotifier` / `NoOpPushNotifier`.
+- FE: `lib/features/field_orders/` (cart → review → submit), `lib/features/dispatch/` (queue → pack/assign), `lib/core/notifications/push_notifier.dart`.
+- Coverage: BE agents+dispatch **99.6%** (S08 modules **100%**); FE field_orders+dispatch+notifications **99.26%**.
+- Android smoke: agent home / More → New field order → add line → Review → Submit to store; dispatcher / manager with `dispatch.*` → Dispatch queue → open order (map+photos first) → Pack → select agent → Assign.

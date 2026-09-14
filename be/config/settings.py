@@ -86,8 +86,14 @@ INSTALLED_APPS = [
     'suppliers',
     'employees',
     'daily_notes',
+    'agents',
+    'dispatch',
+    'delivery',
+    'payments',
+    'messaging',
     'settings',
     'approvals',
+    'idempotency',
 ]
 
 MIDDLEWARE = [
@@ -97,6 +103,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'idempotency.middleware.IdempotencyMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -425,3 +432,20 @@ LOGGING = {
         },
     },
 }
+
+# ---------------------------------------------------------------------------
+# Daraja / SMS (S10) — secrets from env only; never exposed to mobile clients
+# ---------------------------------------------------------------------------
+DARAJA_ENV = env_str('DARAJA_ENV', 'sandbox')
+DARAJA_CONSUMER_KEY = env_str('DARAJA_CONSUMER_KEY', '')
+DARAJA_CONSUMER_SECRET = env_str('DARAJA_CONSUMER_SECRET', '')
+DARAJA_SHORTCODE = env_str('DARAJA_SHORTCODE', '174379')
+DARAJA_PASSKEY = env_str('DARAJA_PASSKEY', '')
+DARAJA_CALLBACK_URL = env_str('DARAJA_CALLBACK_URL', '')
+SMS_BRAND_BLURB = env_str(
+    'SMS_BRAND_BLURB',
+    'Thank you for shopping with CompleteBytePOS.',
+)
+PUBLIC_INVOICE_BASE_URL = env_str('PUBLIC_INVOICE_BASE_URL', 'https://example.com/i')
+AFRICASTALKING_API_KEY = env_str('AFRICASTALKING_API_KEY', '')
+AFRICASTALKING_USERNAME = env_str('AFRICASTALKING_USERNAME', '')

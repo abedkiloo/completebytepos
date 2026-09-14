@@ -43,3 +43,10 @@ export function inventoryShowMovementCost(settings) {
 export function inventoryAllowMovementUndo(settings) {
   return isModuleFlagEnabled(settings, 'allow_movement_undo', true);
 }
+
+export function movementSignedQuantity(movement) {
+  if (movement && movement.stock_delta != null) {
+    return movement.stock_delta;
+  }
+  return movement?.quantity ?? 0;
+}

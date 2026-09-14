@@ -35,8 +35,8 @@ Prepare to build without coding the app yet: audit the existing API, lock design
 
 ## Definition of Done
 
-- [ ] Decisions documented
-- [ ] API contract draft reviewed against live `be/` routes
-- [ ] Screen inventory covers store + agent + delivery flows from requirements
-- [ ] Map-pin + photo hard rule appears in screen inventory for agent order wizard
-- [ ] Master prompt path confirmed for S01
+- [x] Decisions documented → `docs/mobile/DECISIONS.md` (path `omuwenga/mobile/`, Riverpod, Drift, Google Maps, GoRouter)
+- [x] API contract draft reviewed against live `be/` routes → `docs/mobile/API_MOBILE_CONTRACT.md`
+- [x] Screen inventory covers store + agent + delivery flows from requirements → `docs/mobile/SCREEN_INVENTORY.md`
+- [x] Map-pin + photo hard rule appears in screen inventory for agent order wizard (`AG-SITE-MAP` / `AG-SITE-PHOTO` / `AG-ORDER-REVIEW`)
+- [x] Master prompt path confirmed for S01 → paste `MASTER_PROMPT.md` then `sprints/S01_FOUNDATION.md`; `flutter create` in `omuwenga/mobile/`
