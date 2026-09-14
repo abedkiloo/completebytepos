@@ -270,7 +270,7 @@ class AssignOrderSerializer(serializers.Serializer):
         try:
             return User.objects.get(pk=value)
         except User.DoesNotExist as exc:
-            raise serializers.ValidationError('Delivery agent not found.') from exc
+            raise serializers.ValidationError('Delivery driver not found.') from exc
 
     def save(self, **kwargs):
         order = self.context['order']

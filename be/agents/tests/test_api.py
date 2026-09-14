@@ -63,7 +63,7 @@ class AgentAPITestCase(APITestCase):
         SiteMedia.objects.create(site=site, image=_png(), created_by=self.agent_user)
         with self.assertRaises(SiteFinalizeError):
             assert_can_finalize(site)
-        res = self.client.post(f'/api/agents/sites/{site.id}/finalize/')
+        res = self.client.post(f'/api/visits/sites/{site.id}/finalize/')
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('location', res.data)
 
@@ -75,7 +75,7 @@ class AgentAPITestCase(APITestCase):
             longitude='36.8219000',
             created_by=self.agent_user,
         )
-        res = self.client.post(f'/api/agents/sites/{site.id}/finalize/')
+        res = self.client.post(f'/api/visits/sites/{site.id}/finalize/')
         self.assertEqual(res.status_code, status.HTTP_200_OK, res.data)
         self.assertEqual(res.data['status'], 'finalized')
         self.assertEqual(res.data['media_count'], 0)
@@ -87,13 +87,13 @@ class AgentAPITestCase(APITestCase):
             created_by=self.agent_user,
         )
         SiteMedia.objects.create(site=site, image=_png(), created_by=self.agent_user)
-        res = self.client.post(f'/api/agents/sites/{site.id}/finalize/')
+        res = self.client.post(f'/api/visits/sites/{site.id}/finalize/')
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('customer', res.data)
 
     def test_finalize_success_flow(self):
         create = self.client.post(
-            '/api/agents/sites/',
+            '/api/visits/sites/',
             {
                 'customer': self.customer.id,
                 'label': 'Gate A',
@@ -109,25 +109,25 @@ class AgentAPITestCase(APITestCase):
         site_id = create.data['id']
 
         upload = self.client.post(
-            f'/api/agents/sites/{site_id}/media/',
+            f'/api/visits/sites/{site_id}/media/',
             {'image': _png(), 'caption': 'Entrance'},
             format='multipart',
         )
         self.assertEqual(upload.status_code, status.HTTP_201_CREATED, upload.data)
 
-        fin = self.client.post(f'/api/agents/sites/{site_id}/finalize/')
+        fin = self.client.post(f'/api/visits/sites/{site_id}/finalize/')
         self.assertEqual(fin.status_code, status.HTTP_200_OK, fin.data)
         self.assertEqual(fin.data['status'], 'finalized')
         self.assertTrue(fin.data['has_pin'])
         self.assertGreaterEqual(fin.data['media_count'], 1)
 
-    def test_sales_role_denied_agents_api(self):
+    def test_sales_role_denied_sites_api(self):
         token = RefreshToken.for_user(self.sales_user)
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
-        res = self.client.get('/api/agents/sites/')
+        res = self.client.get('/api/visits/sites/')
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_field_agent_role_has_agents_permissions(self):
+    def test_field_sales_role_has_sites_permissions(self):
         self.assertTrue(
             self.agent_user.profile.has_permission('agents', 'view'),
         )
@@ -150,12 +150,12 @@ class AgentAPITestCase(APITestCase):
             created_by=self.agent_user,
         )
         listed = self.client.get(
-            f'/api/agents/sites/?customer={self.customer.id}&status=draft',
+            f'/api/visits/sites/?customer={self.customer.id}&status=draft',
         )
         self.assertEqual(listed.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(len(listed.data), 1)
 
-        cfg = self.client.get('/api/agents/sites/config/')
+        cfg = self.client.get('/api/visits/sites/config/')
         self.assertEqual(cfg.status_code, status.HTTP_200_OK)
         self.assertEqual(cfg.data['min_site_media'], 0)
 
@@ -168,11 +168,11 @@ class AgentAPITestCase(APITestCase):
         )
         m1 = SiteMedia.objects.create(site=site, image=_png('a.png'), created_by=self.agent_user)
         SiteMedia.objects.create(site=site, image=_png('b.png'), created_by=self.agent_user)
-        listed = self.client.get(f'/api/agents/sites/{site.id}/media/')
+        listed = self.client.get(f'/api/visits/sites/{site.id}/media/')
         self.assertEqual(listed.status_code, status.HTTP_200_OK)
         self.assertEqual(len(listed.data), 2)
 
-        deleted = self.client.delete(f'/api/agents/sites/{site.id}/media/{m1.id}/')
+        deleted = self.client.delete(f'/api/visits/sites/{site.id}/media/{m1.id}/')
         self.assertEqual(deleted.status_code, status.HTTP_204_NO_CONTENT)
 
     def test_can_delete_media_when_finalized_photos_optional(self):
@@ -184,7 +184,7 @@ class AgentAPITestCase(APITestCase):
         )
         media = SiteMedia.objects.create(site=site, image=_png(), created_by=self.agent_user)
         finalize_site(site)
-        res = self.client.delete(f'/api/agents/sites/{site.id}/media/{media.id}/')
+        res = self.client.delete(f'/api/visits/sites/{site.id}/media/{media.id}/')
         self.assertEqual(res.status_code, status.HTTP_204_NO_CONTENT)
 
     def test_patch_site_and_str(self):
@@ -200,7 +200,7 @@ class AgentAPITestCase(APITestCase):
         self.assertIn('Media', str(media))
 
         patched = self.client.patch(
-            f'/api/agents/sites/{site.id}/',
+            f'/api/visits/sites/{site.id}/',
             {'landmark': 'Near mango tree'},
             format='json',
         )
@@ -214,7 +214,7 @@ class AgentAPITestCase(APITestCase):
             longitude='36.8',
             created_by=self.agent_user,
         )
-        res = self.client.delete(f'/api/agents/sites/{site.id}/media/99999/')
+        res = self.client.delete(f'/api/visits/sites/{site.id}/media/99999/')
         self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_finalized_cannot_clear_pin(self):
@@ -227,7 +227,7 @@ class AgentAPITestCase(APITestCase):
         SiteMedia.objects.create(site=site, image=_png(), created_by=self.agent_user)
         finalize_site(site)
         res = self.client.patch(
-            f'/api/agents/sites/{site.id}/',
+            f'/api/visits/sites/{site.id}/',
             {'latitude': None, 'longitude': None},
             format='json',
         )
@@ -269,7 +269,7 @@ class AgentAPITestCase(APITestCase):
                 site=site, image=_png(f'f{i}.png'), created_by=self.agent_user,
             )
         blocked = self.client.post(
-            f'/api/agents/sites/{site.id}/media/',
+            f'/api/visits/sites/{site.id}/media/',
             {'image': _png('overflow.png')},
             format='multipart',
         )
@@ -284,7 +284,7 @@ class AgentAPITestCase(APITestCase):
             created_by=self.agent_user,
         )
         self.assertIn('Site', str(site))
-        detail = self.client.get(f'/api/agents/sites/{site.id}/')
+        detail = self.client.get(f'/api/visits/sites/{site.id}/')
         self.assertEqual(detail.status_code, status.HTTP_200_OK)
-        deleted = self.client.delete(f'/api/agents/sites/{site.id}/')
+        deleted = self.client.delete(f'/api/visits/sites/{site.id}/')
         self.assertEqual(deleted.status_code, status.HTTP_204_NO_CONTENT)

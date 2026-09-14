@@ -173,7 +173,7 @@ const FieldSalesPage = () => {
     <PageShell>
       <PageHeader
         title="Field sales"
-        description="Visit orders from sales agents — filter by day, status, or customer, and mark packed orders ready for pickup."
+        description="Visit orders from the field — filter by day, status, or customer, and mark packed orders ready for pickup."
       >
         <Button variant="outline" onClick={loadOrders} disabled={loading}>
           <RefreshCw className="h-4 w-4" />

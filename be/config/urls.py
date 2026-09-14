@@ -33,7 +33,8 @@ urlpatterns = [
     path('api/suppliers/', include('suppliers.urls')),
     path('api/employees/', include('employees.urls')),
     path('api/daily-notes/', include('daily_notes.urls')),
-    path('api/agents/', include('agents.urls')),
+    path('api/visits/', include('agents.urls')),
+    path('api/agents/', include('agents.urls')),  # alias — same viewsets
     path('api/dispatch/', include('dispatch.urls')),
     path('api/delivery/', include('delivery.urls')),
     path('api/payments/', include('payments.urls')),

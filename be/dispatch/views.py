@@ -82,7 +82,7 @@ class DispatchQueueViewSet(viewsets.ReadOnlyModelViewSet):
     - list: all field orders with date/status/customer filters
     - queue: submitted/packing/ready only (mobile pack board)
     - pack: mark ready for pickup
-    - assign: hand to delivery agent
+    - assign: hand to delivery driver
     """
 
     serializer_class = FieldOrderSerializer

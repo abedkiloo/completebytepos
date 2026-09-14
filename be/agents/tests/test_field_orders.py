@@ -89,7 +89,7 @@ class FieldOrderAPITestCase(APITestCase):
 
     def _create_order(self):
         res = self.client.post(
-            '/api/agents/field-orders/',
+            '/api/visits/field-orders/',
             {
                 'site_id': self.site.id,
                 'client_uuid': str(uuid.uuid4()),
@@ -123,7 +123,7 @@ class FieldOrderAPITestCase(APITestCase):
         FieldOrderLine.objects.create(
             order=order, product=self.product, quantity=1, unit_price=10, product_name='Cement',
         )
-        res = self.client.post(f'/api/agents/field-orders/{order.id}/submit/')
+        res = self.client.post(f'/api/visits/field-orders/{order.id}/submit/')
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('location', res.data)
 
@@ -146,7 +146,7 @@ class FieldOrderAPITestCase(APITestCase):
 
     def test_agent_create_submit_dispatch_pack_assign(self):
         order_id = self._create_order()
-        sub = self.client.post(f'/api/agents/field-orders/{order_id}/submit/')
+        sub = self.client.post(f'/api/visits/field-orders/{order_id}/submit/')
         self.assertEqual(sub.status_code, status.HTTP_200_OK, sub.data)
         self.assertEqual(sub.data['status'], 'submitted')
 
@@ -170,7 +170,7 @@ class FieldOrderAPITestCase(APITestCase):
 
     def test_assign_requires_agent(self):
         order_id = self._create_order()
-        self.client.post(f'/api/agents/field-orders/{order_id}/submit/')
+        self.client.post(f'/api/visits/field-orders/{order_id}/submit/')
         self._auth(self.dispatch_user)
         self.client.post(f'/api/dispatch/field-orders/{order_id}/pack/')
         res = self.client.post(
@@ -180,11 +180,11 @@ class FieldOrderAPITestCase(APITestCase):
         )
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_sales_denied_field_orders_and_dispatch(self):
+    def test_sales_can_list_field_orders_but_not_dispatch(self):
         self._auth(self.sales_user)
         self.assertEqual(
-            self.client.get('/api/agents/field-orders/').status_code,
-            status.HTTP_403_FORBIDDEN,
+            self.client.get('/api/visits/field-orders/').status_code,
+            status.HTTP_200_OK,
         )
         self.assertEqual(
             self.client.get('/api/dispatch/queue/').status_code,
@@ -226,7 +226,7 @@ class FieldOrderAPITestCase(APITestCase):
 
     def test_place_visit_order_one_shot(self):
         res = self.client.post(
-            '/api/agents/field-orders/place/',
+            '/api/visits/field-orders/place/',
             {
                 'customer_id': self.customer.id,
                 'latitude': '-1.2921',
@@ -254,7 +254,7 @@ class FieldOrderAPITestCase(APITestCase):
 
     def test_dispatch_list_filters_and_pack(self):
         order_id = self._create_order()
-        self.client.post(f'/api/agents/field-orders/{order_id}/submit/')
+        self.client.post(f'/api/visits/field-orders/{order_id}/submit/')
         self._auth(self.dispatch_user)
 
         listed = self.client.get(
@@ -271,13 +271,13 @@ class FieldOrderAPITestCase(APITestCase):
 
     def test_create_missing_product_and_empty_lines(self):
         bad = self.client.post(
-            '/api/agents/field-orders/',
+            '/api/visits/field-orders/',
             {'site_id': self.site.id, 'lines': []},
             format='json',
         )
         self.assertEqual(bad.status_code, status.HTTP_400_BAD_REQUEST)
         missing = self.client.post(
-            '/api/agents/field-orders/',
+            '/api/visits/field-orders/',
             {
                 'site_id': self.site.id,
                 'lines': [{'product_id': 999999, 'quantity': '1'}],

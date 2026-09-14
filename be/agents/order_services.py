@@ -95,7 +95,7 @@ def pack_order(order: FieldOrder) -> FieldOrder:
 def assign_delivery_agent(order: FieldOrder, agent) -> FieldOrder:
     if agent is None:
         raise FieldOrderTransitionError({
-            'delivery_agent_id': 'Delivery agent is required.',
+            'delivery_agent_id': 'Delivery driver is required.',
         })
     if order.status not in (
         FieldOrder.STATUS_READY,
@@ -104,7 +104,7 @@ def assign_delivery_agent(order: FieldOrder, agent) -> FieldOrder:
         # Allow assign from ready; if still packing, pack first.
         if order.status == FieldOrder.STATUS_SUBMITTED:
             raise FieldOrderTransitionError({
-                'status': 'Pack the order before assigning a delivery agent.',
+                'status': 'Pack the order before assigning a delivery driver.',
             })
         raise FieldOrderTransitionError({
             'status': f'Cannot assign from status {order.status}.',

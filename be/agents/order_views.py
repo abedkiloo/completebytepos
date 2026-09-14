@@ -15,7 +15,7 @@ from .order_serializers import (
 from .order_services import FieldOrderTransitionError
 
 FIELD_ORDER_PERMS = RequirePermPerAction(
-    'agents',
+    'sales',
     {
         'list': 'view',
         'retrieve': 'view',

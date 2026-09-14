@@ -135,7 +135,7 @@ class FieldOrderExtraTests(APITestCase):
 
     def test_list_filters_and_default_unit_price(self):
         order_id = self.client.post(
-            '/api/agents/field-orders/',
+            '/api/visits/field-orders/',
             {
                 'site_id': self.site.id,
                 'notes': 'n',
@@ -144,7 +144,7 @@ class FieldOrderExtraTests(APITestCase):
             },
             format='json',
         ).data['id']
-        listed = self.client.get('/api/agents/field-orders/?status=draft&mine=1')
+        listed = self.client.get('/api/visits/field-orders/?status=draft&mine=1')
         self.assertEqual(listed.status_code, status.HTTP_200_OK)
         rows = listed.data if isinstance(listed.data, list) else listed.data.get('results', [])
         self.assertTrue(any(o['id'] == order_id for o in rows))
@@ -156,7 +156,7 @@ class FieldOrderExtraTests(APITestCase):
 
         agent_token = RefreshToken.for_user(self.agent)
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {agent_token.access_token}')
-        self.client.post(f'/api/agents/field-orders/{order_id}/submit/')
+        self.client.post(f'/api/visits/field-orders/{order_id}/submit/')
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
         packed = self.client.post(f'/api/dispatch/field-orders/{order_id}/pack/')
         self.assertEqual(packed.status_code, status.HTTP_200_OK)
@@ -189,7 +189,7 @@ class FieldOrderExtraTests(APITestCase):
 
     def test_create_unknown_site(self):
         res = self.client.post(
-            '/api/agents/field-orders/',
+            '/api/visits/field-orders/',
             {'site_id': 999999, 'lines': [{'product_id': self.product.id, 'quantity': '1'}]},
             format='json',
         )

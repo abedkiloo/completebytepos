@@ -21,7 +21,7 @@ class Permission(models.Model):
         ('employees', 'Employee Management'),
         ('customers', 'Customer Management'),
         ('invoicing', 'Invoicing'),
-        ('agents', 'Field Agents'),
+        ('agents', 'Customer sites'),
         ('dispatch', 'Dispatch'),
         ('delivery', 'Delivery'),
         ('payments', 'Payments'),

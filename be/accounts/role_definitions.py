@@ -11,9 +11,9 @@ from accounts.models import Permission, Role
 ROLE_SUPER_ADMIN = 'Super Admin'
 ROLE_MANAGER = 'Manager'
 ROLE_SALES = 'Sales Personnel'
-ROLE_FIELD_AGENT = 'Field Agent'
+ROLE_FIELD_AGENT = 'Field Sales'  # was Field Agent
 ROLE_DISPATCHER = 'Dispatcher'
-ROLE_DELIVERY_AGENT = 'Delivery Agent'
+ROLE_DELIVERY_AGENT = 'Delivery Driver'  # was Delivery Agent
 
 # Legacy names kept for migrations / existing DB rows; not created on fresh install.
 LEGACY_ROLE_NAMES = ('Admin', 'Administrator', 'Cashier')
@@ -57,8 +57,8 @@ PERMISSIONS_DATA = [
     ('sales', 'refund', 'Refund completed sales'),
     ('sales', 'export', 'Export sales'),
     ('sales', 'daily_sales', 'View daily sales tracker (paid vs debt by day)'),
-    ('agents', 'view', 'View field agent sites and visits'),
-    ('agents', 'create', 'Create field agent sites and media'),
+    ('agents', 'view', 'View customer sites and visit media'),
+    ('agents', 'create', 'Create customer sites and media'),
     ('agents', 'update', 'Update sites, upload media, finalize visits'),
     ('dispatch', 'view', 'View field-order dispatch queue'),
     ('dispatch', 'update', 'Pack and assign field orders'),
@@ -197,14 +197,14 @@ ROLE_SCREEN_MATRIX = {
         'Products & categories (add / import — manager sets prices)',
     ],
     ROLE_FIELD_AGENT: [
-        'New site visit (map → photos → customer)',
-        'Customers (lookup / create for site assignment)',
-        'Field orders (cart → review → submit)',
+        'Visit orders (customer → products → pin → place)',
+        'POS / sales (same as Sales)',
+        'Customers (lookup / create)',
     ],
     ROLE_DISPATCHER: [
         'Dispatch queue (submitted / packing / ready)',
         'Pack field orders (allocate-on-pack)',
-        'Assign delivery agent',
+        'Assign delivery driver',
     ],
     ROLE_DELIVERY_AGENT: [
         'Today’s route (ordered stops)',
@@ -274,13 +274,13 @@ def _sales_queryset():
 
 
 def _field_agent_queryset():
-    """Field agents: sites + media + catalog browse + customer lookup."""
+    """Field Sales permission pack — sales + customers (visit orders are normal sales)."""
     return (
-        Permission.objects.filter(
-            module__in=['agents', 'customers'],
+        _sales_queryset()
+        | Permission.objects.filter(
+            module='agents',
             action__in=['view', 'create', 'update'],
         )
-        | Permission.objects.filter(module='products', action='view')
     )
 
 
@@ -304,11 +304,18 @@ def _delivery_agent_queryset():
     )
 
 
+def _rename_role(old: str, new: str) -> None:
+    Role.objects.filter(name=old).exclude(name=new).update(name=new)
+
+
 def sync_default_roles(created_by=None):
     """
     Upsert system roles. Default permission sets are applied only when
     a role is first created so admin edits in the Roles UI are preserved.
     """
+    _rename_role('Field Agent', ROLE_FIELD_AGENT)
+    _rename_role('Delivery Agent', ROLE_DELIVERY_AGENT)
+
     all_perms = Permission.objects.all()
 
     super_admin, _ = Role.objects.update_or_create(
@@ -349,7 +356,7 @@ def sync_default_roles(created_by=None):
     field_agent, agent_created = Role.objects.update_or_create(
         name=ROLE_FIELD_AGENT,
         defaults={
-            'description': 'Field visits — map pin, site photos, customer sites (orders in S08)',
+            'description': 'Customer visits — map pin, site photos, visit orders and POS sales',
             'is_system_role': True,
             'is_active': True,
             'created_by': created_by,
@@ -361,7 +368,7 @@ def sync_default_roles(created_by=None):
     dispatcher, dispatcher_created = Role.objects.update_or_create(
         name=ROLE_DISPATCHER,
         defaults={
-            'description': 'Store dispatch — pack field orders and assign delivery agents',
+            'description': 'Store dispatch — pack visit orders and assign delivery drivers',
             'is_system_role': True,
             'is_active': True,
             'created_by': created_by,
