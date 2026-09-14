@@ -263,6 +263,14 @@ be/media/
 media/
 uploads/
 
+# Django test MEDIA_ROOT (generated during manage.py test)
+be/test_media/
+test_media/
+
+# Coverage artifacts
+be/coverage.json
+coverage.json
+
 # Static files (collected static)
 be/staticfiles/
 staticfiles/
