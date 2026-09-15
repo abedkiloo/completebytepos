@@ -534,12 +534,16 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         from sales.history_export import build_sales_history_report
 
         payload = build_sales_history_report(queryset)
-        return maybe_export_report(
+        response = maybe_export_report(
             request,
             payload,
             title='Sales history',
             slug='sales-history',
         )
+        if response is not None and payload.get('summary', {}).get('truncated'):
+            response['X-Export-Truncated'] = '1'
+            response['X-Export-Total-Count'] = str(payload['summary']['sales_count'])
+        return response
 
     def _resolve_branch(self, request, branch_id=None):
         try:

@@ -25,6 +25,7 @@ from settings.models import Branch
 from settings.utils import get_current_branch, get_current_tenant, is_branch_support_enabled
 from settings.feature_flags import is_product_variants_enabled
 from services.base import BaseService
+from services.datetime_filters import inclusive_end_datetime, inclusive_start_datetime
 
 HOLDING_MAX_AGE = timedelta(hours=12)
 import logging
@@ -83,11 +84,11 @@ class SaleService(BaseService):
                         queryset = queryset.none()
         
         # Date filters — business date (when the sale happened)
-        date_from = filters.get('date_from')
+        date_from = inclusive_start_datetime(filters.get('date_from'))
         if date_from:
             queryset = queryset.filter(occurred_at__gte=date_from)
 
-        date_to = filters.get('date_to')
+        date_to = inclusive_end_datetime(filters.get('date_to'))
         if date_to:
             queryset = queryset.filter(occurred_at__lte=date_to)
         
@@ -631,8 +632,10 @@ class SaleService(BaseService):
         """Get comprehensive sale statistics"""
         queryset = self.model.objects.filter(status='completed')
         
+        date_from = inclusive_start_datetime(date_from)
         if date_from:
             queryset = queryset.filter(occurred_at__gte=date_from)
+        date_to = inclusive_end_datetime(date_to)
         if date_to:
             queryset = queryset.filter(occurred_at__lte=date_to)
         

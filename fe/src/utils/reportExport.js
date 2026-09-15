@@ -4,6 +4,7 @@
  */
 
 import { buildPdfFilename, downloadAuthenticatedFile } from './pdfDownload';
+import { toast } from './toast';
 
 export const REPORT_EXPORT_PATHS = {
   sales: '/reports/sales/',
@@ -91,6 +92,21 @@ export async function downloadReportExport(apiClient, { slug, params = {}, forma
   const filename = reportExportFilename(slug, fmt);
   await downloadAuthenticatedFile(apiClient, path, filename, {
     emptyMessage: `The ${fmt.toUpperCase()} file was empty`,
+    onDownloaded: (response) => {
+      if (slug !== 'sales-history') {
+        return;
+      }
+      const truncated = response.headers?.['x-export-truncated'];
+      if (truncated !== '1' && String(truncated || '').toLowerCase() !== 'true') {
+        return;
+      }
+      const total = response.headers?.['x-export-total-count'];
+      toast.warning(
+        total
+          ? `Export includes a subset of your sales (${total} match these filters). Download again with narrower dates if needed.`
+          : 'Export includes a subset of your sales. Narrow filters to export everything.'
+      );
+    },
   });
   return filename;
 }

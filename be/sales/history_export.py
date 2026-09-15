@@ -5,11 +5,13 @@ from django.db.models.functions import TruncDate
 
 from sales.models import SaleItem
 
-SALES_HISTORY_EXPORT_LIMIT = 2000
+SALES_HISTORY_EXPORT_LIMIT = 10000
 
 
-def build_sales_history_report(queryset, *, limit=SALES_HISTORY_EXPORT_LIMIT):
+def build_sales_history_report(queryset, *, limit=None):
     """Summary + transaction rows for PDF/Excel/CSV of sales history."""
+    if limit is None:
+        limit = SALES_HISTORY_EXPORT_LIMIT
     sales_count = queryset.count()
     total_revenue = queryset.aggregate(total=Sum('total'))['total'] or 0
     items_sold = (

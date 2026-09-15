@@ -2,7 +2,9 @@
 
 from decimal import Decimal
 
+from django.utils import timezone
 from rest_framework import status
+from unittest.mock import patch
 
 from products.models import Category, Product
 from sales.history_export import SALES_HISTORY_EXPORT_LIMIT, build_sales_history_report
@@ -130,7 +132,35 @@ class SalesHistoryExportTests(ManagerAPITestCase):
         self.assertEqual(empty['summary']['sales_count'], 0)
         self.assertEqual(empty['summary']['items_sold'], 0)
         self.assertEqual(empty['sales'], [])
-        self.assertEqual(SALES_HISTORY_EXPORT_LIMIT, 2000)
+        self.assertEqual(SALES_HISTORY_EXPORT_LIMIT, 10000)
+
+    def test_build_queryset_same_day_date_to_includes_afternoon_sale(self):
+        from datetime import datetime, time
+
+        today = timezone.localdate()
+        afternoon = timezone.make_aware(datetime.combine(today, time(15, 30)))
+        Sale.objects.filter(pk=self.sale.pk).update(occurred_at=afternoon)
+        day_str = today.isoformat()
+        qs = SaleService().build_queryset(
+            {'date_from': day_str, 'date_to': day_str},
+            request=None,
+        )
+        self.assertEqual(qs.count(), 1)
+
+    @patch('sales.history_export.SALES_HISTORY_EXPORT_LIMIT', 1)
+    def test_export_sets_truncation_headers(self):
+        Sale.objects.create(
+            status='completed',
+            payment_method='mpesa',
+            subtotal=Decimal('20.00'),
+            total=Decimal('20.00'),
+            amount_paid=Decimal('20.00'),
+            cashier=self.manager_user,
+        )
+        response = self.client.get('/api/sales/export/', {'format': 'csv'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.get('X-Export-Truncated'), '1')
+        self.assertEqual(response.get('X-Export-Total-Count'), '2')
 
     def test_walk_in_row_labels(self):
         Sale.objects.filter(pk=self.sale.pk).update(payment_method='', cashier=None)

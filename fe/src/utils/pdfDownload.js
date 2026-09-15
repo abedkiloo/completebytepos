@@ -70,7 +70,7 @@ export async function downloadAuthenticatedFile(
   apiClient,
   path,
   filename,
-  { emptyMessage = 'File was empty', failedMessage = 'Failed to download file' } = {}
+  { emptyMessage = 'File was empty', failedMessage = 'Failed to download file', onDownloaded } = {}
 ) {
   try {
     const response = await apiClient.get(path, { responseType: 'blob' });
@@ -83,7 +83,11 @@ export async function downloadAuthenticatedFile(
       throw new Error(emptyMessage);
     }
     const blob = response.data;
+    if (typeof onDownloaded === 'function') {
+      onDownloaded(response);
+    }
     saveBlobAsFile(blob, filename);
+    return response;
   } catch (err) {
     if (err.response?.data instanceof Blob) {
       const message = await readErrorFromBlob(err.response.data);

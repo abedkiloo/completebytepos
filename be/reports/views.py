@@ -2,11 +2,12 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.db.models import Sum, Count, F, Q
+from django.db.models import Sum, Count, F, Q, Max
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 from datetime import datetime, timedelta
 from functools import wraps
+from decimal import Decimal
 from sales.models import Sale, SaleItem, Invoice, Customer, Payment
 from products.models import Product
 from inventory.models import StockMovement
@@ -22,6 +23,42 @@ from .module_settings import (
     apply_report_response_flags,
 )
 from .export import maybe_export_report
+
+
+def request_date_bounds(request):
+    from services.datetime_filters import inclusive_end_datetime, inclusive_start_datetime
+
+    return (
+        inclusive_start_datetime(request.query_params.get('date_from')),
+        inclusive_end_datetime(request.query_params.get('date_to')),
+    )
+
+
+def sale_report_queryset(date_from=None, date_to=None):
+    qs = Sale.objects.exclude(status='holding')
+    if date_from:
+        qs = qs.filter(occurred_at__gte=date_from)
+    if date_to:
+        qs = qs.filter(occurred_at__lte=date_to)
+    return qs
+
+
+def _stock_movement_date_bounds(request):
+    from services.datetime_filters import inclusive_end_datetime, inclusive_start_datetime
+
+    return (
+        inclusive_start_datetime(request.query_params.get('date_from')),
+        inclusive_end_datetime(request.query_params.get('date_to')),
+    )
+
+
+def _customer_wallet_outstanding(wallet_balance):
+    if wallet_balance is None:
+        return 0.0
+    balance = Decimal(wallet_balance)
+    if balance < 0:
+        return float(-balance)
+    return 0.0
 
 
 REPORTS_PERMS = RequirePermPerAction('reports', {
@@ -99,15 +136,9 @@ class ReportViewSet(viewsets.ViewSet):
     @gated_report_action('sales')
     def sales(self, request):
         """Sales report with date filtering"""
-        date_from = request.query_params.get('date_from', None)
-        date_to = request.query_params.get('date_to', None)
-        
-        queryset = Sale.objects.all()
-        
-        if date_from:
-            queryset = queryset.filter(created_at__gte=date_from)
-        if date_to:
-            queryset = queryset.filter(created_at__lte=date_to)
+        date_from, date_to = request_date_bounds(request)
+
+        queryset = sale_report_queryset(date_from, date_to)
         
         summary = queryset.aggregate(
             total_sales=Count('id'),
@@ -128,7 +159,7 @@ class ReportViewSet(viewsets.ViewSet):
         # Postgres and MySQL alike (the previous .extra() with a literal
         # date(...) call was SQLite-only).
         daily_sales = list(
-            queryset.annotate(day=TruncDate('created_at'))
+            queryset.annotate(day=TruncDate('occurred_at'))
             .values('day')
             .annotate(count=Count('id'), total=Sum('total'))
             .order_by('-day')
@@ -152,15 +183,14 @@ class ReportViewSet(viewsets.ViewSet):
     @gated_report_action('products')
     def products(self, request):
         """Product sales report"""
-        date_from = request.query_params.get('date_from', None)
-        date_to = request.query_params.get('date_to', None)
-        
-        queryset = SaleItem.objects.all()
-        
+        date_from, date_to = request_date_bounds(request)
+
+        queryset = SaleItem.objects.exclude(sale__status='holding')
+
         if date_from:
-            queryset = queryset.filter(sale__created_at__gte=date_from)
+            queryset = queryset.filter(sale__occurred_at__gte=date_from)
         if date_to:
-            queryset = queryset.filter(sale__created_at__lte=date_to)
+            queryset = queryset.filter(sale__occurred_at__lte=date_to)
         
         product_sales = queryset.values(
             'product__id',
@@ -236,11 +266,10 @@ class ReportViewSet(viewsets.ViewSet):
     @gated_report_action('purchase')
     def purchase(self, request):
         """Purchase report from stock movements"""
-        date_from = request.query_params.get('date_from', None)
-        date_to = request.query_params.get('date_to', None)
-        
+        date_from, date_to = _stock_movement_date_bounds(request)
+
         queryset = StockMovement.objects.filter(movement_type='purchase')
-        
+
         if date_from:
             queryset = queryset.filter(created_at__gte=date_from)
         if date_to:
@@ -311,11 +340,10 @@ class ReportViewSet(viewsets.ViewSet):
     @gated_report_action('supplier')
     def supplier(self, request):
         """Supplier report - based on purchase movements"""
-        date_from = request.query_params.get('date_from', None)
-        date_to = request.query_params.get('date_to', None)
-        
+        date_from, date_to = _stock_movement_date_bounds(request)
+
         queryset = StockMovement.objects.filter(movement_type='purchase')
-        
+
         if date_from:
             queryset = queryset.filter(created_at__gte=date_from)
         if date_to:
@@ -350,49 +378,33 @@ class ReportViewSet(viewsets.ViewSet):
     @gated_report_action('customer')
     def customer(self, request):
         """
-        Customer report.
-
-        Note: the ``Sale`` model has no direct ``customer`` FK - customer
-        linkage flows through ``Invoice``. We aggregate via the Invoice table
-        so this report actually returns real data (the previous
-        ``sales.values('customer__id')`` query silently returned all-NULL
-        groups).
+        Customer report from POS / sales history (``Sale.customer``), not invoices alone.
         """
-        date_from = request.query_params.get('date_from')
-        date_to = request.query_params.get('date_to')
-
-        invoices_qs = Invoice.objects.exclude(customer__isnull=True)
-        if date_from:
-            invoices_qs = invoices_qs.filter(created_at__gte=date_from)
-        if date_to:
-            invoices_qs = invoices_qs.filter(created_at__lte=date_to)
-
+        date_from, date_to = request_date_bounds(request)
+        qs = sale_report_queryset(date_from, date_to).exclude(customer__isnull=True)
         rows = list(
-            invoices_qs.values('customer__id', 'customer__name')
+            qs.values('customer__id', 'customer__name', 'customer__wallet_balance')
             .annotate(
                 total_purchases=Sum('total'),
-                outstanding=Sum('balance'),
                 order_count=Count('id'),
+                last_purchase=Max('occurred_at'),
             )
             .order_by('-total_purchases')
         )
 
         customers = []
         for item in rows:
-            last_invoice = (
-                invoices_qs.filter(customer_id=item['customer__id'])
-                .order_by('-created_at').first()
-            )
             count = item['order_count'] or 0
             total = float(item['total_purchases'] or 0)
+            last = item.get('last_purchase')
             customers.append({
                 'id': item['customer__id'],
                 'name': item['customer__name'] or 'Unknown',
                 'total_purchases': total,
-                'outstanding': float(item['outstanding'] or 0),
+                'outstanding': _customer_wallet_outstanding(item.get('customer__wallet_balance')),
                 'order_count': count,
                 'avg_order_value': (total / count) if count else 0,
-                'last_purchase': last_invoice.created_at.isoformat() if last_invoice else None,
+                'last_purchase': last.isoformat() if last else None,
             })
 
         summary = {
@@ -486,15 +498,9 @@ class ReportViewSet(viewsets.ViewSet):
     @gated_report_action('tax')
     def tax(self, request):
         """Tax report"""
-        date_from = request.query_params.get('date_from', None)
-        date_to = request.query_params.get('date_to', None)
-        
-        sales_queryset = Sale.objects.all()
-        
-        if date_from:
-            sales_queryset = sales_queryset.filter(created_at__gte=date_from)
-        if date_to:
-            sales_queryset = sales_queryset.filter(created_at__lte=date_to)
+        date_from, date_to = request_date_bounds(request)
+
+        sales_queryset = sale_report_queryset(date_from, date_to)
         
         summary = sales_queryset.aggregate(
             total_tax=Sum('tax_amount'),
@@ -508,10 +514,11 @@ class ReportViewSet(viewsets.ViewSet):
         
         # Tax breakdown by transaction
         tax_breakdown = []
-        for sale in sales_queryset.order_by('-created_at')[:100]:
+        for sale in sales_queryset.order_by('-occurred_at')[:100]:
             if sale.tax_amount and sale.tax_amount > 0:
+                when = sale.occurred_at or sale.created_at
                 tax_breakdown.append({
-                    'date': sale.created_at.isoformat(),
+                    'date': when.isoformat(),
                     'transaction_type': 'Sale',
                     'taxable_amount': float(sale.subtotal),
                     'tax_amount': float(sale.tax_amount),
@@ -526,34 +533,33 @@ class ReportViewSet(viewsets.ViewSet):
     @gated_report_action('profit_loss')
     def profit_loss(self, request):
         """Profit & Loss report"""
-        date_from = request.query_params.get('date_from', None)
-        date_to = request.query_params.get('date_to', None)
-        
+        date_from, date_to = request_date_bounds(request)
+
         # Sales revenue
-        sales_queryset = Sale.objects.all()
-        if date_from:
-            sales_queryset = sales_queryset.filter(created_at__gte=date_from)
-        if date_to:
-            sales_queryset = sales_queryset.filter(created_at__lte=date_to)
+        sales_queryset = sale_report_queryset(date_from, date_to)
         
         total_revenue = sales_queryset.aggregate(total=Sum('total'))['total'] or 0
         
         # Expenses
         expenses_queryset = Expense.objects.filter(status='approved')
         if date_from:
-            expenses_queryset = expenses_queryset.filter(expense_date__gte=date_from)
+            expenses_queryset = expenses_queryset.filter(
+                expense_date__gte=date_from.date() if hasattr(date_from, 'date') else date_from
+            )
         if date_to:
-            expenses_queryset = expenses_queryset.filter(expense_date__lte=date_to)
-        
+            expenses_queryset = expenses_queryset.filter(
+                expense_date__lte=date_to.date() if hasattr(date_to, 'date') else date_to
+            )
+
         total_expenses = expenses_queryset.aggregate(total=Sum('amount'))['total'] or 0
-        
+
         # Purchases (cost of goods)
         purchases_queryset = StockMovement.objects.filter(movement_type='purchase')
         if date_from:
             purchases_queryset = purchases_queryset.filter(created_at__gte=date_from)
         if date_to:
             purchases_queryset = purchases_queryset.filter(created_at__lte=date_to)
-        
+
         total_purchases = purchases_queryset.aggregate(total=Sum('total_cost'))['total'] or 0
         
         net_profit = float(total_revenue) - float(total_expenses) - float(total_purchases)
@@ -573,7 +579,9 @@ class ReportViewSet(viewsets.ViewSet):
         for i in range(12):
             month_start = timezone.now().replace(month=i+1, day=1)
             month_end = timezone.now().replace(month=i+1, day=28)
-            month_sales = sales_queryset.filter(created_at__gte=month_start, created_at__lte=month_end).aggregate(total=Sum('total'))['total'] or 0
+            month_sales = sales_queryset.filter(
+                occurred_at__gte=month_start, occurred_at__lte=month_end
+            ).aggregate(total=Sum('total'))['total'] or 0
             month_expenses = expenses_queryset.filter(expense_date__gte=month_start.date(), expense_date__lte=month_end.date()).aggregate(total=Sum('amount'))['total'] or 0
             monthly_breakdown.append({
                 'month': month_start.strftime('%B %Y'),
@@ -597,7 +605,7 @@ class ReportViewSet(viewsets.ViewSet):
         end_date = timezone.make_aware(datetime(year, 12, 31, 23, 59, 59))
         
         # Sales
-        sales_queryset = Sale.objects.filter(created_at__gte=start_date, created_at__lte=end_date)
+        sales_queryset = sale_report_queryset(start_date, end_date)
         total_sales = sales_queryset.aggregate(total=Sum('total'))['total'] or 0
         
         # Expenses
@@ -614,7 +622,7 @@ class ReportViewSet(viewsets.ViewSet):
         prev_year = year - 1
         prev_start = timezone.make_aware(datetime(prev_year, 1, 1))
         prev_end = timezone.make_aware(datetime(prev_year, 12, 31, 23, 59, 59))
-        prev_sales = Sale.objects.filter(created_at__gte=prev_start, created_at__lte=prev_end).aggregate(total=Sum('total'))['total'] or 0
+        prev_sales = sale_report_queryset(prev_start, prev_end).aggregate(total=Sum('total'))['total'] or 0
         growth_rate = ((float(total_sales) - float(prev_sales)) / float(prev_sales) * 100) if prev_sales > 0 else 0
         
         summary = {
@@ -634,7 +642,9 @@ class ReportViewSet(viewsets.ViewSet):
             else:
                 month_end = timezone.make_aware(datetime(year, month + 1, 1)) - timedelta(days=1)
             
-            month_sales = sales_queryset.filter(created_at__gte=month_start, created_at__lte=month_end).aggregate(total=Sum('total'))['total'] or 0
+            month_sales = sales_queryset.filter(
+                occurred_at__gte=month_start, occurred_at__lte=month_end
+            ).aggregate(total=Sum('total'))['total'] or 0
             month_expenses = expenses_queryset.filter(expense_date__month=month).aggregate(total=Sum('amount'))['total'] or 0
             monthly_data.append({
                 'month': month_start.strftime('%B'),
@@ -667,11 +677,7 @@ class ReportViewSet(viewsets.ViewSet):
           trend:     [{ date: 'YYYY-MM-DD', revenue, sales_count }]
         """
         start, end, label = resolve_period(request)
-        qs = Sale.objects.all()
-        if start:
-            qs = qs.filter(created_at__gte=start)
-        if end:
-            qs = qs.filter(created_at__lte=end)
+        qs = sale_report_queryset(start, end)
 
         agg = qs.aggregate(
             sales_count=Count('id'),
@@ -696,7 +702,7 @@ class ReportViewSet(viewsets.ViewSet):
 
         # Daily trend via TruncDate so it works on SQLite, Postgres and MySQL.
         trend = list(
-            qs.annotate(day=TruncDate('created_at'))
+            qs.annotate(day=TruncDate('occurred_at'))
             .values('day')
             .annotate(revenue=Sum('total'), sales_count=Count('id'))
             .order_by('day')
@@ -733,11 +739,13 @@ class ReportViewSet(viewsets.ViewSet):
         horizontal bar chart.
         """
         start, end, label = resolve_period(request)
-        qs = SaleItem.objects.select_related('product', 'product__category')
+        qs = SaleItem.objects.select_related('product', 'product__category').exclude(
+            sale__status='holding'
+        )
         if start:
-            qs = qs.filter(sale__created_at__gte=start)
+            qs = qs.filter(sale__occurred_at__gte=start)
         if end:
-            qs = qs.filter(sale__created_at__lte=end)
+            qs = qs.filter(sale__occurred_at__lte=end)
 
         rows = list(
             qs.values('product__id', 'product__name', 'product__sku', 'product__category__name')
@@ -777,13 +785,11 @@ class ReportViewSet(viewsets.ViewSet):
         """
         start, end, label = resolve_period(request)
 
-        sales = Sale.objects.all()
+        sales = sale_report_queryset(start, end)
         payments = Payment.objects.all()
         if start:
-            sales = sales.filter(created_at__gte=start)
             payments = payments.filter(payment_date__gte=start)
         if end:
-            sales = sales.filter(created_at__lte=end)
             payments = payments.filter(payment_date__lte=end)
 
         sales_by_method = {
@@ -942,10 +948,18 @@ class ReportViewSet(viewsets.ViewSet):
         # Sort: oldest overdue first.
         invoices_list.sort(key=lambda r: r['days_overdue'], reverse=True)
 
+        invoice_outstanding = sum(buckets.values())
+        wallet_debt = Customer.objects.filter(wallet_balance__lt=0).aggregate(
+            total=Sum('wallet_balance')
+        )['total']
+        wallet_outstanding = float(-(wallet_debt or 0)) if wallet_debt else 0.0
+
         return Response({
             'period': label,
             'summary': {
-                'total_outstanding': sum(buckets.values()),
+                'total_outstanding': invoice_outstanding + wallet_outstanding,
+                'invoice_outstanding': invoice_outstanding,
+                'wallet_outstanding': wallet_outstanding,
                 'invoice_count': len(invoices_list),
                 'overdue_count': sum(1 for r in invoices_list if r['days_overdue'] > 0),
                 'new_invoices_in_period': new_invoices.count(),

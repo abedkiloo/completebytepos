@@ -52,6 +52,15 @@ class ReportsExtendedTestCase(ManagerAPITestCase):
             unit_price=Decimal('100.00'),
             subtotal=Decimal('100.00'),
         )
+        cls.sale_with_customer = Sale.objects.create(
+            customer=cls.customer,
+            status='completed',
+            payment_method='cash',
+            subtotal=Decimal('50.00'),
+            total=Decimal('50.00'),
+            amount_paid=Decimal('50.00'),
+            cashier=cls.manager_user,
+        )
         cls.invoice = Invoice.objects.create(
             customer=cls.customer,
             subtotal=Decimal('1000.00'),
@@ -107,12 +116,15 @@ class ReportsExtendedTestCase(ManagerAPITestCase):
         self.assertGreaterEqual(len(response.data['income']), 1)
         self.assertGreater(float(response.data['summary']['total_income'] or 0), 0)
 
-    def test_customer_report_from_invoices(self):
+    def test_customer_report_from_pos_sales(self):
         response = self.client.get('/api/reports/customer/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('customers', response.data)
         names = [c['name'] for c in response.data['customers']]
         self.assertIn('Report Customer Ltd', names)
+        row = next(c for c in response.data['customers'] if c['name'] == 'Report Customer Ltd')
+        self.assertGreaterEqual(row['order_count'], 1)
+        self.assertGreaterEqual(row['total_purchases'], 50.0)
         self.assertGreaterEqual(response.data['summary']['total_customers'], 1)
 
     def test_invoice_report_lists_open_invoices(self):
