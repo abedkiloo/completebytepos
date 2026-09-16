@@ -12,6 +12,7 @@ from __future__ import annotations
 from rest_framework.exceptions import ValidationError
 
 from approvals.permissions import is_maker_checker_enabled
+from approvals.permissions import user_has_admin_checker_override
 
 PROPOSAL_REASON_FIELD = 'proposal_reason'
 
@@ -55,7 +56,10 @@ def validate_checker_not_maker(approved_by, created_by_id) -> None:
         return
     if not created_by_id or not approved_by:
         return
-    if created_by_id == approved_by.id and not getattr(approved_by, 'is_superuser', False):
+    if (
+        created_by_id == approved_by.id
+        and not user_has_admin_checker_override(approved_by)
+    ):
         raise ValidationError(
             'You cannot approve your own submission when maker-checker is enabled.'
         )

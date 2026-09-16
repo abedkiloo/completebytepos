@@ -477,7 +477,22 @@ export function canApproveFinancialRecord(
   if (makerId == null || currentUserId == null) {
     return true;
   }
-  return Number(makerId) !== Number(currentUserId);
+  if (Number(makerId) === Number(currentUserId)) {
+    try {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const profile = JSON.parse(localStorage.getItem('profile') || '{}');
+      const role = profile?.role;
+      const isAdmin =
+        Boolean(user?.is_superuser) ||
+        Boolean(profile?.is_super_admin) ||
+        role === 'admin' ||
+        role === 'super_admin';
+      return isAdmin;
+    } catch {
+      return false;
+    }
+  }
+  return true;
 }
 
 export function financialSubmitSuccessMessage(settings) {

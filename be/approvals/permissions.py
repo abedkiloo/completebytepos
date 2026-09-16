@@ -42,9 +42,19 @@ def user_can_check(user, action_type: str) -> bool:
     return False
 
 
+def user_has_admin_checker_override(user) -> bool:
+    """Only Admin/Super Admin may approve a change they submitted."""
+    if not user or not getattr(user, 'is_authenticated', False):
+        return False
+    if user.is_superuser:
+        return True
+    profile = getattr(user, 'profile', None)
+    return bool(profile and profile.role in ('admin', 'super_admin'))
+
+
 def user_may_approve_change(user, change) -> bool:
     if not user_can_check(user, change.action_type):
         return False
     if change.made_by_id and change.made_by_id == user.id:
-        return bool(user.is_superuser)
+        return user_has_admin_checker_override(user)
     return True

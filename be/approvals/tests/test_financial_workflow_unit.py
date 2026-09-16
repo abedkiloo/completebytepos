@@ -17,6 +17,7 @@ from approvals.financial_workflow import (
     validate_checker_not_maker,
     validate_locked_record_update,
 )
+from accounts.models import UserProfile
 from expenses.models import Expense
 from settings.models import StoreSettings
 
@@ -46,6 +47,23 @@ class FinancialWorkflowUnitTests(TestCase):
 
     def test_validate_checker_not_maker_blocks_self_approve(self):
         user = User.objects.create_user('maker', password='x')
+        with self.assertRaises(ValidationError):
+            validate_checker_not_maker(user, user.id)
+
+    def test_admin_can_override_self_approval(self):
+        user = User.objects.create_user('admin-maker', password='x')
+        UserProfile.objects.update_or_create(
+            user=user,
+            defaults={'role': 'admin'},
+        )
+        validate_checker_not_maker(user, user.id)
+
+    def test_manager_cannot_override_self_approval(self):
+        user = User.objects.create_user('manager-maker', password='x')
+        UserProfile.objects.update_or_create(
+            user=user,
+            defaults={'role': 'manager'},
+        )
         with self.assertRaises(ValidationError):
             validate_checker_not_maker(user, user.id)
 

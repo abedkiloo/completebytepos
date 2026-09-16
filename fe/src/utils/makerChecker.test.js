@@ -378,6 +378,21 @@ describe('makerChecker', () => {
     expect(getCurrentUserId()).toBe(5);
   });
 
+  it('allows only admins to override financial self-approval', () => {
+    localStorage.setItem('user', JSON.stringify({ id: 5 }));
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([{ name: 'expenses.approve', module: 'expenses', action: 'approve' }]),
+    );
+    const settings = { maker_checker_enabled: true };
+
+    localStorage.setItem('profile', JSON.stringify({ role: 'admin' }));
+    expect(canApproveFinancialRecord({ created_by: 5 }, settings, 5, 'expenses')).toBe(true);
+
+    localStorage.setItem('profile', JSON.stringify({ role: 'manager' }));
+    expect(canApproveFinancialRecord({ created_by: 5 }, settings, 5, 'expenses')).toBe(false);
+  });
+
   it('financialSubmitSuccessMessage only when MC enabled', () => {
     expect(financialSubmitSuccessMessage({ maker_checker_enabled: true })).toContain('checker');
     expect(financialSubmitSuccessMessage({ maker_checker_enabled: false })).toBeNull();

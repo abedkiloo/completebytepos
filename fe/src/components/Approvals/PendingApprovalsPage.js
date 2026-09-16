@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { ClipboardCheck, Loader2, Check, X } from 'lucide-react';
-import { pendingChangesAPI } from '../../services/api';
+import { expensesAPI, pendingChangesAPI } from '../../services/api';
 import { PageShell, PageHeader, PageLoading } from '../page';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
@@ -9,12 +9,16 @@ import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { toast } from '../../utils/toast';
-import { formatDateTime } from '../../utils/formatters';
+import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { userMayEditFinancialFieldsFromStorage } from '../../utils/roleAccess';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
-import { needsExtremePriceConfirm } from '../../utils/makerChecker';
+import {
+  canApproveFinancialRecord,
+  needsExtremePriceConfirm,
+} from '../../utils/makerChecker';
 import { describeApprovalSummary, formatApprovalValue } from '../../utils/approvalDisplay';
 import { backfillRejectionSuccessMessage } from '../../utils/recordPastSaleBackfill';
+import { useStoreSettings } from '../../hooks/useStoreSettings';
 import ApprovalChangeTable from './ApprovalChangeTable';
 
 function PendingRow({ row, onResolved }) {
@@ -173,22 +177,111 @@ function PendingRow({ row, onResolved }) {
   );
 }
 
+function PendingExpenseRow({ expense, settings, onResolved }) {
+  const [busy, setBusy] = useState(false);
+  const canApprove = canApproveFinancialRecord(
+    expense,
+    settings,
+    undefined,
+    'expenses',
+  );
+
+  const approve = async () => {
+    setBusy(true);
+    try {
+      await expensesAPI.approve(expense.id);
+      toast.success('Expense approved');
+      onResolved();
+      dispatchNavBadgesRefresh();
+    } catch (err) {
+      toast.error(
+        err.response?.data?.error ||
+          'Could not approve this expense',
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card className="border-l-4 border-l-amber-400">
+      <CardContent className="space-y-4 pt-6">
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="secondary">Expense approval</Badge>
+            <Badge variant="outline">{formatCurrency(expense.amount)}</Badge>
+          </div>
+          <h3 className="text-base font-semibold leading-snug">
+            {expense.description || expense.expense_number}
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            Requested by {expense.created_by_name || 'a team member'} ·{' '}
+            {formatDateTime(expense.created_at)}
+          </p>
+        </div>
+
+        <div className="rounded-md bg-muted/30 px-3 py-2 text-sm">
+          <p><span className="font-medium">Reference: </span>{expense.expense_number}</p>
+          <p><span className="font-medium">Category: </span>{expense.category_name || '—'}</p>
+          {expense.vendor ? (
+            <p><span className="font-medium">Vendor: </span>{expense.vendor}</p>
+          ) : null}
+        </div>
+
+        {canApprove ? (
+          <Button type="button" size="sm" onClick={approve} disabled={busy}>
+            <Check className="mr-1 h-4 w-4" />
+            Approve expense
+          </Button>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            This submission requires approval from another checker.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function PendingApprovalsPage() {
   const allowed = userMayEditFinancialFieldsFromStorage();
   const [rows, setRows] = useState([]);
+  const [pendingExpenses, setPendingExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { settings: storeSettings } = useStoreSettings();
 
   const load = useCallback(async () => {
     setLoading(true);
-    try {
-      const res = await pendingChangesAPI.pending();
-      setRows(Array.isArray(res.data) ? res.data : []);
-    } catch {
-      toast.error('Could not load pending approvals');
+    const [changesResult, expensesResult] = await Promise.allSettled([
+      pendingChangesAPI.pending(),
+      expensesAPI.list({
+        status: 'pending',
+        show_all: 'true',
+        page_size: 100,
+      }),
+    ]);
+
+    if (changesResult.status === 'fulfilled') {
+      setRows(Array.isArray(changesResult.value.data) ? changesResult.value.data : []);
+    } else {
       setRows([]);
-    } finally {
-      setLoading(false);
     }
+
+    if (expensesResult.status === 'fulfilled') {
+      const data = expensesResult.value.data;
+      const expenseRows = data?.results || data || [];
+      setPendingExpenses(Array.isArray(expenseRows) ? expenseRows : []);
+    } else {
+      setPendingExpenses([]);
+    }
+
+    if (
+      changesResult.status === 'rejected' &&
+      expensesResult.status === 'rejected'
+    ) {
+      toast.error('Could not load pending approvals');
+    }
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -203,7 +296,7 @@ export default function PendingApprovalsPage() {
     <PageShell>
       <PageHeader
         title="Approvals waiting for you"
-        description="Review price, stock, and catalog changes from your team before they go live in the shop."
+        description="Review financial, price, stock, and catalog changes from your team before they go live."
         icon={ClipboardCheck}
       />
       <div className="mb-4 flex justify-end">
@@ -213,7 +306,7 @@ export default function PendingApprovalsPage() {
       </div>
       {loading ? (
         <PageLoading />
-      ) : rows.length === 0 ? (
+      ) : rows.length === 0 && pendingExpenses.length === 0 ? (
         <Card>
           <CardContent className="py-10 text-center text-muted-foreground">
             All clear — no changes waiting for your approval.
@@ -221,6 +314,14 @@ export default function PendingApprovalsPage() {
         </Card>
       ) : (
         <div className="space-y-4">
+          {pendingExpenses.map((expense) => (
+            <PendingExpenseRow
+              key={`expense-${expense.id}`}
+              expense={expense}
+              settings={storeSettings}
+              onResolved={load}
+            />
+          ))}
           {rows.map((row) => (
             <PendingRow key={row.id} row={row} onResolved={load} />
           ))}

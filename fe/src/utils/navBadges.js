@@ -2,7 +2,12 @@
  * Nav badge helpers for pending tasks, approvals, and customer debtors.
  */
 
-import { dailyTasksAPI, pendingChangesAPI, customersAPI } from '../services/api';
+import {
+  dailyTasksAPI,
+  pendingChangesAPI,
+  customersAPI,
+  expensesAPI,
+} from '../services/api';
 
 export const NAV_BADGES_REFRESH_EVENT = 'navBadgesRefresh';
 
@@ -43,10 +48,21 @@ export async function fetchNavBadgeCounts({
     : Promise.resolve(0);
 
   const approvalsPromise = mayFetchApprovals
-    ? pendingChangesAPI
-        .pending()
-        .then((res) => (Array.isArray(res.data) ? res.data.length : 0))
-        .catch(() => 0)
+    ? Promise.all([
+        pendingChangesAPI
+          .pending()
+          .then((res) => (Array.isArray(res.data) ? res.data.length : 0))
+          .catch(() => 0),
+        expensesAPI
+          .list({ status: 'pending', show_all: 'true', page_size: 1 })
+          .then((res) => {
+            if (Number.isFinite(Number(res.data?.count))) {
+              return Number(res.data.count);
+            }
+            return Array.isArray(res.data) ? res.data.length : 0;
+          })
+          .catch(() => 0),
+      ]).then(([changes, expenses]) => changes + expenses)
     : Promise.resolve(0);
 
   const debtorsPromise = mayFetchDebtors

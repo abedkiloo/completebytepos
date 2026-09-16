@@ -12,6 +12,7 @@ import {
 } from '../../utils/makerChecker';
 import { findCategoryByName } from '../../utils/expenseFilters';
 import { CATALOG_FETCH_PAGE_SIZE } from '../../config/pagination';
+import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 
 const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }) => {
   const [formData, setFormData] = useState({
@@ -178,7 +179,10 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
         await expensesAPI.create(payload);
       }
       const mcMsg = financialSubmitSuccessMessage(storeSettings);
-      if (mcMsg) toast.warning(mcMsg);
+      if (mcMsg) {
+        toast.warning(mcMsg);
+        dispatchNavBadgesRefresh();
+      }
       else toast.success(expense ? 'Expense updated' : 'Expense created');
       setShowCommitConfirm(false);
       onSave();

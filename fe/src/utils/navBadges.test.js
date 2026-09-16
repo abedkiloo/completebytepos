@@ -16,9 +16,17 @@ jest.mock('../services/api', () => ({
   customersAPI: {
     debtorCount: jest.fn(),
   },
+  expensesAPI: {
+    list: jest.fn(),
+  },
 }));
 
-import { dailyTasksAPI, pendingChangesAPI, customersAPI } from '../services/api';
+import {
+  dailyTasksAPI,
+  pendingChangesAPI,
+  customersAPI,
+  expensesAPI,
+} from '../services/api';
 
 describe('navBadges', () => {
   beforeEach(() => {
@@ -42,6 +50,7 @@ describe('navBadges', () => {
   test('fetchNavBadgeCounts loads all queues when allowed', async () => {
     dailyTasksAPI.pending.mockResolvedValue({ data: [{ id: 1 }, { id: 2 }] });
     pendingChangesAPI.pending.mockResolvedValue({ data: [{ id: 9 }] });
+    expensesAPI.list.mockResolvedValue({ data: { count: 3, results: [] } });
     customersAPI.debtorCount.mockResolvedValue({ data: { count: 5 } });
 
     await expect(
@@ -50,7 +59,12 @@ describe('navBadges', () => {
         mayFetchApprovals: true,
         mayFetchDebtors: true,
       })
-    ).resolves.toEqual({ pendingTasks: 2, pendingApprovals: 1, debtors: 5 });
+    ).resolves.toEqual({ pendingTasks: 2, pendingApprovals: 4, debtors: 5 });
+    expect(expensesAPI.list).toHaveBeenCalledWith({
+      status: 'pending',
+      show_all: 'true',
+      page_size: 1,
+    });
   });
 
   test('fetchNavBadgeCounts skips disallowed queues', async () => {
@@ -67,6 +81,7 @@ describe('navBadges', () => {
     });
     expect(dailyTasksAPI.pending).not.toHaveBeenCalled();
     expect(pendingChangesAPI.pending).not.toHaveBeenCalled();
+    expect(expensesAPI.list).not.toHaveBeenCalled();
     expect(customersAPI.debtorCount).not.toHaveBeenCalled();
   });
 
