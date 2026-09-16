@@ -5,6 +5,7 @@ from decimal import Decimal
 from django.core.cache import cache
 from rest_framework import status
 
+from accounts.models import Permission
 from sales.models import Customer, CustomerWalletTransaction
 from settings.models import ModuleSetting
 from settings.settings_service import SettingsService
@@ -120,6 +121,20 @@ class CustomerWalletAPITests(ManagerAPITestCase):
             format='json',
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_receive_wallet_payment_requires_debt_update_permission(self):
+        self.manager_role.permissions.remove(
+            Permission.objects.get(module='debt_management', action='update')
+        )
+
+        response = self.client.post(
+            f'/api/sales/customers/{self.customer.id}/receive-wallet-payment/',
+            {'amount': '50.00', 'payment_method': 'cash'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn('debt_management.update', str(response.data))
 
     def test_wallet_transactions_forbidden_when_wallet_hidden(self):
         SettingsService.set('customers', 'show_wallet_balance', False)

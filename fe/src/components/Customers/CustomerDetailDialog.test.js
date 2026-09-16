@@ -188,6 +188,10 @@ describe('CustomerDetailDialog', () => {
       target: { value: 'Wrong item' },
     });
     fireEvent.click(screen.getByRole('button', { name: /Confirm void \/ refund/i }));
+    const commitButtons = await screen.findAllByRole('button', {
+      name: /Confirm void \/ refund/i,
+    });
+    fireEvent.click(commitButtons[commitButtons.length - 1]);
 
     await waitFor(() => {
       expect(salesAPI.refund).toHaveBeenCalledWith(99, {

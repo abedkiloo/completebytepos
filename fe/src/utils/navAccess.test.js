@@ -22,6 +22,13 @@ const ctx = (persona, overrides = {}) => ({
 describe('navAccess', () => {
   beforeEach(() => {
     localStorage.clear();
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([
+        { module: 'pos', action: 'view', name: 'pos.view' },
+        { module: 'customers', action: 'view', name: 'customers.view' },
+      ])
+    );
   });
 
   test('sales persona only sees allowed sales paths', () => {

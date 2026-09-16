@@ -64,7 +64,7 @@ export default function DebtManagementPage() {
   const { settings: customerSettings, loading: settingsLoading } = useModuleSettings('customers');
   const showWallet = customersShowWalletBalance(customerSettings);
   const canCollect =
-    hasPermission(permissions, 'customers', 'update') &&
+    hasPermission(permissions, 'debt_management', 'update') &&
     customersEnableWalletPayment(customerSettings);
 
   const [summary, setSummary] = useState(emptyDebtSummary());

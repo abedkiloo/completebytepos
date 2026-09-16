@@ -188,9 +188,9 @@ export function canAccessRoute(persona, pathname, options = {}) {
   const routeAllowed = list.some((prefix) => pathMatchesPrefix(pathname, prefix));
   if (!routeAllowed) return false;
 
+  const { permissions } = getStoredAuth();
   const gate = routePermissionGateForPath(pathname);
   if (gate) {
-    const { permissions } = getStoredAuth();
     if (!hasPermission(permissions, gate.module, gate.action)) {
       return false;
     }
@@ -199,6 +199,12 @@ export function canAccessRoute(persona, pathname, options = {}) {
   const pathKey = Object.keys(ROUTE_MODULE_MAP)
     .filter((p) => pathname === p || pathname.startsWith(`${p}/`))
     .sort((a, b) => b.length - a.length)[0];
+  if (pathKey && !gate) {
+    const permissionModule = ROUTE_MODULE_MAP[pathKey];
+    if (!hasAnyPermissionForModule(permissions, permissionModule)) {
+      return false;
+    }
+  }
   if (!pathKey || !moduleSettings || loadingModules) {
     return true;
   }

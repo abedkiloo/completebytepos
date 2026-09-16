@@ -44,6 +44,15 @@ describe('roleAccess — custom role permissions', () => {
     expect(canAccessRoute(PERSONA.SALES, '/invoices')).toBe(true);
   });
 
+  test('customer permission does not grant the debt management route', () => {
+    storePermissions([perm('customers', 'view')]);
+    expect(canAccessRoute(PERSONA.SALES, '/customers')).toBe(true);
+    expect(canAccessRoute(PERSONA.SALES, '/customers/debt')).toBe(false);
+
+    storePermissions([perm('debt_management', 'view')]);
+    expect(canAccessRoute(PERSONA.SALES, '/customers/debt')).toBe(true);
+  });
+
   test('hasAnyPermissionForModule accepts single or multiple modules', () => {
     const perms = [perm('expenses', 'view')];
     expect(hasAnyPermissionForModule(perms, 'expenses')).toBe(true);

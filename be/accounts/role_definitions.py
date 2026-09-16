@@ -80,6 +80,9 @@ PERMISSIONS_DATA = [
     ('customers', 'update', 'Update customers'),
     ('customers', 'delete', 'Delete customers'),
     ('customers', 'export', 'Export customers'),
+    ('debt_management', 'view', 'View debt management and aging reports'),
+    ('debt_management', 'update', 'Collect and record customer debt payments'),
+    ('debt_management', 'export', 'Export debt management reports'),
     ('invoicing', 'view', 'View invoices and payments'),
     ('invoicing', 'create', 'Create invoices and record payments'),
     ('invoicing', 'update', 'Update invoices'),
@@ -247,6 +250,7 @@ def _manager_queryset():
                 'products', 'categories', 'suppliers', 'inventory',
                 'sales', 'pos', 'barcodes', 'reports', 'expenses',
                 'income', 'customers', 'invoicing', 'bank_accounts',
+                'debt_management',
                 'money_transfer', 'accounting', 'daily_notes', 'dispatch',
                 'delivery', 'payments', 'messaging',
             ],
@@ -265,7 +269,7 @@ def _sales_queryset():
     return Permission.objects.filter(
         module__in=[
             'products', 'categories', 'sales', 'pos', 'barcodes',
-            'customers', 'invoicing', 'daily_notes', 'payments',
+            'customers', 'debt_management', 'invoicing', 'daily_notes', 'payments',
         ],
         action__in=['view', 'create', 'update', 'import'],
     ) | Permission.objects.filter(

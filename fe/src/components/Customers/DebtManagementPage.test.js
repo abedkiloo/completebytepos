@@ -44,12 +44,12 @@ jest.mock('../../hooks/useModuleSettings', () => ({
 jest.mock('../../utils/roleAccess', () => ({
   getStoredAuth: () => ({
     permissions: [
-      { module: 'customers', action: 'view', name: 'customers.view' },
-      { module: 'customers', action: 'update', name: 'customers.update' },
+      { module: 'debt_management', action: 'view', name: 'debt_management.view' },
+      { module: 'debt_management', action: 'update', name: 'debt_management.update' },
     ],
   }),
   hasPermission: (_perms, module, action) =>
-    module === 'customers' && (action === 'view' || action === 'update'),
+    module === 'debt_management' && (action === 'view' || action === 'update'),
 }));
 
 jest.mock('../../utils/navBadges', () => ({

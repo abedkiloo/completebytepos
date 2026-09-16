@@ -68,7 +68,8 @@ export default function CustomerDetailPage() {
   const [payOpen, setPayOpen] = useState(false);
 
   const { permissions } = getStoredAuth();
-  const canCollect = hasPermission(permissions, 'customers', 'update');
+  const canViewDebt = hasPermission(permissions, 'debt_management', 'view');
+  const canCollect = hasPermission(permissions, 'debt_management', 'update');
   const canRefund = userCanRefundSales(permissions, {
     isManagerOrAdmin: isManagerOrAdminFromStorage(),
   });
@@ -187,7 +188,7 @@ export default function CustomerDetailPage() {
             Customers
           </Link>
         </Button>
-        {walletDebt > 0 && (
+        {canViewDebt && walletDebt > 0 && (
           <Button variant="outline" size="sm" asChild>
             <Link to="/customers/debt">Debt board</Link>
           </Button>

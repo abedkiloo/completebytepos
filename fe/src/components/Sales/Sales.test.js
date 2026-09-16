@@ -13,6 +13,10 @@ jest.mock('react-router-dom', () => ({
 
 jest.mock('../../utils/roleAccess', () => ({
   getStoredAuth: () => ({ permissions: [{ module: 'sales', action: 'refund' }] }),
+  hasPermission: (permissions, module, action) =>
+    permissions.some((permission) =>
+      permission.module === module && permission.action === action
+    ),
   isManagerOrAdminFromStorage: () => true,
 }));
 

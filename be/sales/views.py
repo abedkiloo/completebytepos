@@ -26,7 +26,7 @@ from inventory.models import StockMovement
 from settings.utils import get_current_branch, get_current_tenant, is_branch_support_enabled
 from .services import SaleService, InvoiceService, PaymentService, CustomerService
 from .module_settings import sales_validate_stock_before_sale
-from accounts.permissions import RequirePermPerAction
+from accounts.permissions import RequirePerm, RequirePermPerAction
 from utils.audit_mixin import AuditedModelViewSetMixin
 from utils.validation_errors import validation_error_message
 from utils.pdf_generator import create_invoice_pdf
@@ -142,10 +142,6 @@ CUSTOMERS_PERMS = RequirePermPerAction('customers', {
     'partial_update': 'update',
     'destroy': 'delete',
     'wallet_transactions': 'view',
-    'receive_wallet_payment': 'update',
-    'debt_summary': 'view',
-    'debtors': 'view',
-    'debtor_count': 'view',
     'lifetime_detail': 'view',
 })
 
@@ -837,7 +833,12 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         
         return queryset
 
-    @action(detail=False, methods=['get'], url_path='debt-summary')
+    @action(
+        detail=False,
+        methods=['get'],
+        url_path='debt-summary',
+        permission_classes=[IsAuthenticated, RequirePerm('debt_management', 'view')],
+    )
     def debt_summary(self, request):
         """Dashboard cards + aging buckets for Debt Management."""
         from sales.customer_module_settings import customers_show_wallet_balance
@@ -847,7 +848,12 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             return self._feature_disabled_response('Wallet balance')
         return Response(serialize_debt_summary(build_debt_summary()))
 
-    @action(detail=False, methods=['get'], url_path='debtors')
+    @action(
+        detail=False,
+        methods=['get'],
+        url_path='debtors',
+        permission_classes=[IsAuthenticated, RequirePerm('debt_management', 'view')],
+    )
     def debtors(self, request):
         """Paginated customers with wallet debt (negative balance)."""
         from sales.customer_module_settings import customers_show_wallet_balance
@@ -879,7 +885,12 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             }
         )
 
-    @action(detail=False, methods=['get'], url_path='debtor-count')
+    @action(
+        detail=False,
+        methods=['get'],
+        url_path='debtor-count',
+        permission_classes=[IsAuthenticated, RequirePerm('debt_management', 'view')],
+    )
     def debtor_count(self, request):
         """Lightweight count for nav badge."""
         from sales.customer_module_settings import customers_show_wallet_balance
@@ -943,7 +954,12 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         return Response([serialize_ledger_entry(txn) for txn in transactions])
 
     @transaction.atomic
-    @action(detail=True, methods=['post'], url_path='receive-wallet-payment')
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='receive-wallet-payment',
+        permission_classes=[IsAuthenticated, RequirePerm('debt_management', 'update')],
+    )
     def receive_wallet_payment(self, request, pk=None):
         from sales.customer_module_settings import (
             customers_enable_wallet_payment,

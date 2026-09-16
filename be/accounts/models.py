@@ -20,6 +20,7 @@ class Permission(models.Model):
         ('suppliers', 'Suppliers'),
         ('employees', 'Employee Management'),
         ('customers', 'Customer Management'),
+        ('debt_management', 'Debt Management'),
         ('invoicing', 'Invoicing'),
         ('agents', 'Customer sites'),
         ('dispatch', 'Dispatch'),

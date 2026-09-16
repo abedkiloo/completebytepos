@@ -11,6 +11,16 @@ import { cacheStoreSettings } from './storeSettingsCache';
 describe('roleAccess', () => {
   beforeEach(() => {
     localStorage.clear();
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([
+        { module: 'pos', action: 'view', name: 'pos.view' },
+        { module: 'reports', action: 'view', name: 'reports.view' },
+        { module: 'products', action: 'view', name: 'products.view' },
+        { module: 'categories', action: 'view', name: 'categories.view' },
+        { module: 'daily_notes', action: 'view', name: 'daily_notes.view' },
+      ])
+    );
   });
 
   test('resolvePersona detects super admin', () => {
@@ -115,6 +125,10 @@ describe('roleAccess', () => {
 
   test('sales cannot access products when catalog add is off', () => {
     cacheStoreSettings({ allow_sales_add_products: false });
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([{ module: 'pos', action: 'view', name: 'pos.view' }])
+    );
     expect(canAccessRoute(PERSONA.SALES, '/products')).toBe(false);
     expect(canAccessRoute(PERSONA.SALES, '/categories')).toBe(false);
     expect(canAccessRoute(PERSONA.SALES, '/product-attributes')).toBe(false);

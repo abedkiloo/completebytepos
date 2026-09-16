@@ -79,7 +79,7 @@ import NavCountBadge from './NavCountBadge';
  *  - `items`   — leaf links. Optional `feature` is checked against module
  *                feature flags. Optional `requireSuperAdmin` gates by role.
  */
-const NAV_SECTIONS = [
+export const NAV_SECTIONS = [
   {
     id: 'main',
     label: 'Main',
@@ -99,14 +99,14 @@ const NAV_SECTIONS = [
     label: 'Sales',
     module: 'sales',
     items: [
-      { to: '/pos', label: 'POS', icon: ShoppingCart, feature: ['sales', 'pos'] },
-      { to: '/pos/billing', label: 'Terminal POS', icon: Receipt, feature: ['sales', 'billing_pos'] },
-      { to: '/products', label: 'Products', icon: Package, salesCatalogItem: true, module: 'products' },
-      { to: '/categories', label: 'Categories', icon: FolderTree, salesCatalogItem: true, module: 'products' },
-      { to: '/product-attributes', label: 'Sizes & colors', icon: Palette, salesCatalogItem: true, module: 'products', feature: ['products', 'product_variants'] },
-      { to: '/normal-sale', label: 'Normal Sale', icon: Briefcase, feature: ['sales', 'normal_sale'] },
+      { to: '/pos', label: 'POS', icon: ShoppingCart, feature: ['sales', 'pos'], permission: ['pos', 'view'] },
+      { to: '/pos/billing', label: 'Terminal POS', icon: Receipt, feature: ['sales', 'billing_pos'], permission: ['pos', 'view'] },
+      { to: '/products', label: 'Products', icon: Package, salesCatalogItem: true, module: 'products', permission: ['products', 'view'] },
+      { to: '/categories', label: 'Categories', icon: FolderTree, salesCatalogItem: true, module: 'products', permission: ['categories', 'view'] },
+      { to: '/product-attributes', label: 'Sizes & colors', icon: Palette, salesCatalogItem: true, module: 'products', feature: ['products', 'product_variants'], permission: ['products', 'view'] },
+      { to: '/normal-sale', label: 'Normal Sale', icon: Briefcase, feature: ['sales', 'normal_sale'], permission: ['sales', 'create'] },
       { to: '/sales/daily', label: 'Daily Sales', icon: Calendar, feature: ['sales', 'sales_history'], permission: ['sales', 'daily_sales'] },
-      { to: '/sales', label: 'Sales History', icon: DollarSign, feature: ['sales', 'sales_history'] },
+      { to: '/sales', label: 'Sales History', icon: DollarSign, feature: ['sales', 'sales_history'], permission: ['sales', 'view'] },
       { to: '/sales/field', label: 'Field sales', icon: MapPin, permission: ['dispatch', 'view'] },
     ],
   },
@@ -115,8 +115,13 @@ const NAV_SECTIONS = [
     label: 'Customers',
     module: 'customers',
     items: [
-      { to: '/customers', label: 'Customers', icon: UsersIcon },
-      { to: '/customers/debt', label: 'Debt Management', icon: Wallet },
+      { to: '/customers', label: 'Customers', icon: UsersIcon, permission: ['customers', 'view'] },
+      {
+        to: '/customers/debt',
+        label: 'Debt Management',
+        icon: Wallet,
+        permission: ['debt_management', 'view'],
+      },
     ],
   },
   {
@@ -124,7 +129,7 @@ const NAV_SECTIONS = [
     label: 'Employees',
     module: 'employees',
     items: [
-      { to: '/employees', label: 'Employees', icon: UserCog, feature: ['employees', 'employee_management'] },
+      { to: '/employees', label: 'Employees', icon: UserCog, feature: ['employees', 'employee_management'], permission: ['employees', 'view'] },
     ],
   },
   {
@@ -132,11 +137,11 @@ const NAV_SECTIONS = [
     label: 'Inventory',
     module: 'products',
     items: [
-      { to: '/products', label: 'Products', icon: Package },
-      { to: '/categories', label: 'Categories', icon: FolderTree },
-      { to: '/product-attributes', label: 'Sizes & colors', icon: Palette, feature: ['products', 'product_variants'] },
-      { to: '/barcodes', label: 'Print Barcode', icon: Barcode, module: 'barcodes' },
-      { to: '/barcodes', label: 'Print QR Code', icon: QrCode, module: 'barcodes' },
+      { to: '/products', label: 'Products', icon: Package, permission: ['products', 'view'] },
+      { to: '/categories', label: 'Categories', icon: FolderTree, permission: ['categories', 'view'] },
+      { to: '/product-attributes', label: 'Sizes & colors', icon: Palette, feature: ['products', 'product_variants'], permission: ['products', 'view'] },
+      { to: '/barcodes', label: 'Print Barcode', icon: Barcode, module: 'barcodes', permission: ['barcodes', 'view'] },
+      { to: '/barcodes', label: 'Print QR Code', icon: QrCode, module: 'barcodes', permission: ['barcodes', 'view'] },
     ],
   },
   {
@@ -144,9 +149,9 @@ const NAV_SECTIONS = [
     label: 'Stock',
     module: 'stock',
     items: [
-      { to: '/inventory?view=movements', label: 'Manage Stock', icon: BarChart3, feature: ['stock', 'manage_stock'] },
-      { to: '/inventory?action=adjust', label: 'Stock adjustment', icon: Scale, feature: ['stock', 'stock_adjustments'] },
-      { to: '/inventory?action=transfer', label: 'Stock Transfer', icon: ArrowLeftRight, feature: ['stock', 'stock_transfers'] },
+      { to: '/inventory?view=movements', label: 'Manage Stock', icon: BarChart3, feature: ['stock', 'manage_stock'], permission: ['inventory', 'view'] },
+      { to: '/inventory?action=adjust', label: 'Stock adjustment', icon: Scale, feature: ['stock', 'stock_adjustments'], permission: ['inventory', 'update'] },
+      { to: '/inventory?action=transfer', label: 'Stock Transfer', icon: ArrowLeftRight, feature: ['stock', 'stock_transfers'], permission: ['inventory', 'update'] },
     ],
   },
   {
@@ -154,7 +159,7 @@ const NAV_SECTIONS = [
     label: 'Suppliers',
     module: 'suppliers',
     items: [
-      { to: '/suppliers', label: 'Suppliers', icon: Factory },
+      { to: '/suppliers', label: 'Suppliers', icon: Factory, permission: ['suppliers', 'view'] },
     ],
   },
   {
@@ -170,14 +175,14 @@ const NAV_SECTIONS = [
     label: 'Reports',
     module: 'reports',
     items: [
-      { to: '/reports?report=sales', label: 'Sales Summary', icon: BarChart3, match: 'report=sales' },
-      { to: '/reports?report=sales-by-person', label: 'Sales by staff', icon: UsersIcon, match: 'report=sales-by-person' },
-      { to: '/reports?report=sales-by-method', label: 'Sales by Payment', icon: CreditCard, match: 'report=sales-by-method' },
+      { to: '/reports?report=sales', label: 'Sales Summary', icon: BarChart3, match: 'report=sales', permission: ['reports', 'view'] },
+      { to: '/reports?report=sales-by-person', label: 'Sales by staff', icon: UsersIcon, match: 'report=sales-by-person', permission: ['reports', 'view'] },
+      { to: '/reports?report=sales-by-method', label: 'Sales by Payment', icon: CreditCard, match: 'report=sales-by-method', permission: ['reports', 'view'] },
       { to: '/sales/daily', label: 'Daily Sales', icon: Calendar, permission: ['sales', 'daily_sales'] },
-      { to: '/reports?report=products', label: 'Product Performance', icon: Boxes, match: 'report=products' },
-      { to: '/reports?report=inventory', label: 'Inventory Overview', icon: PieChart, match: 'report=inventory' },
-      { to: '/audit-log', label: 'Audit log', icon: ScrollText, managerOnly: true },
-      { to: '/pending-approvals', label: 'Pending approvals', icon: ClipboardCheck, managerOnly: true },
+      { to: '/reports?report=products', label: 'Product Performance', icon: Boxes, match: 'report=products', permission: ['reports', 'view'] },
+      { to: '/reports?report=inventory', label: 'Inventory Overview', icon: PieChart, match: 'report=inventory', permission: ['reports', 'view'] },
+      { to: '/audit-log', label: 'Audit log', icon: ScrollText, managerOnly: true, permission: ['reports', 'view'] },
+      { to: '/pending-approvals', label: 'Pending approvals', icon: ClipboardCheck, managerOnly: true, permission: ['reports', 'view'] },
     ],
   },
   {
@@ -185,10 +190,10 @@ const NAV_SECTIONS = [
     label: 'Finance & Accounts',
     module: 'accounting',
     items: [
-      { to: '/accounting', label: 'Accounting', icon: Calculator },
-      { to: '/expenses', label: 'Expenses', icon: TrendingDown, module: 'expenses' },
-      { to: '/expenses/categories', label: 'Expense Categories', icon: FolderTree, module: 'expenses' },
-      { to: '/income', label: 'Income', icon: TrendingUp, module: 'income' },
+      { to: '/accounting', label: 'Accounting', icon: Calculator, permission: ['accounting', 'view'] },
+      { to: '/expenses', label: 'Expenses', icon: TrendingDown, module: 'expenses', permission: ['expenses', 'view'] },
+      { to: '/expenses/categories', label: 'Expense Categories', icon: FolderTree, module: 'expenses', permission: ['expenses', 'view'] },
+      { to: '/income', label: 'Income', icon: TrendingUp, module: 'income', permission: ['income', 'view'] },
     ],
   },
   {
@@ -196,11 +201,11 @@ const NAV_SECTIONS = [
     label: 'Settings',
     module: 'settings',
     items: [
-      { to: '/users', label: 'User Management', icon: UsersIcon, feature: ['settings', 'user_management'] },
-      { to: '/roles', label: 'Role Management', icon: ShieldCheck, feature: ['settings', 'role_management'] },
-      { to: '/module-settings', label: 'Module Settings', icon: KeyRound, requireSuperAdmin: true },
-      { to: '/system-settings', label: 'System Settings', icon: SlidersHorizontal, requireSuperAdmin: true },
-      { to: '/branches', label: 'Branch Management', icon: Building2, requireSuperAdmin: true },
+      { to: '/users', label: 'User Management', icon: UsersIcon, feature: ['settings', 'user_management'], permission: ['users', 'view'] },
+      { to: '/roles', label: 'Role Management', icon: ShieldCheck, feature: ['settings', 'role_management'], permission: ['roles', 'view'] },
+      { to: '/module-settings', label: 'Module Settings', icon: KeyRound, requireSuperAdmin: true, permission: ['modules', 'view'] },
+      { to: '/system-settings', label: 'System Settings', icon: SlidersHorizontal, requireSuperAdmin: true, permission: ['settings', 'view'] },
+      { to: '/branches', label: 'Branch Management', icon: Building2, requireSuperAdmin: true, permission: ['settings', 'manage'] },
     ],
   },
 ];

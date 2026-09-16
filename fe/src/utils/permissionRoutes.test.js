@@ -31,7 +31,8 @@ describe('permissionRoutes registry', () => {
     const backendUiModules = [
       'invoicing', 'sales', 'pos', 'reports', 'products', 'categories',
       'inventory', 'barcodes', 'expenses', 'income', 'accounting',
-      'daily_notes', 'suppliers', 'employees', 'customers', 'dispatch',
+      'daily_notes', 'suppliers', 'employees', 'customers', 'debt_management',
+      'dispatch',
     ];
     for (const mod of backendUiModules) {
       expect(PERMISSION_MODULE_ROUTES[mod]).toBeTruthy();
@@ -60,8 +61,9 @@ describe('permissionRoutes registry', () => {
   });
 
   test('moduleForPath resolves longest matching prefix', () => {
-    expect(moduleForPath('/pos/billing')).toBe('sales');
+    expect(moduleForPath('/pos/billing')).toBe('pos');
     expect(moduleForPath('/invoices/123')).toBe('invoicing');
+    expect(moduleForPath('/customers/debt')).toBe('debt_management');
     expect(moduleForPath('/unknown')).toBeNull();
   });
 
@@ -85,6 +87,9 @@ describe('permissionRoutes registry', () => {
 
   test('routePermissionGateForPath gates daily sales tracker', () => {
     const { routePermissionGateForPath } = require('./permissionRoutes');
+    expect(routePermissionGateForPath('/customers/debt')).toEqual(
+      expect.objectContaining({ module: 'debt_management', action: 'view' })
+    );
     expect(routePermissionGateForPath('/sales/daily')).toEqual(
       expect.objectContaining({ module: 'sales', action: 'daily_sales' })
     );

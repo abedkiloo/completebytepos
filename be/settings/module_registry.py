@@ -511,6 +511,7 @@ PERMISSION_MODULE_DOMAIN: dict[str, str] = {
     'sales': 'commerce',
     'pos': 'commerce',
     'customers': 'commerce',
+    'debt_management': 'commerce',
     'invoicing': 'commerce',
     'inventory': 'inventory',
     'stock': 'inventory',

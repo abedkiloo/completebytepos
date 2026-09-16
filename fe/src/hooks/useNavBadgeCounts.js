@@ -35,7 +35,7 @@ export function useNavBadgeCounts() {
 
   const mayFetchDebtors =
     !customersLoading &&
-    hasPermission(permissions, 'customers', 'view') &&
+    hasPermission(permissions, 'debt_management', 'view') &&
     customersShowWalletBalance(customerSettings);
 
   const refresh = useCallback(async () => {

@@ -7,6 +7,7 @@ from django.core.cache import cache
 from django.utils import timezone
 from rest_framework import status
 
+from accounts.models import Permission
 from sales.models import Customer, CustomerWalletTransaction
 from sales.debt_management import (
     aging_bucket_for_days,
@@ -94,6 +95,19 @@ class DebtManagementAPITests(ManagerAPITestCase):
         response = self.client.get('/api/sales/customers/debtor-count/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['count'], 1)
+
+    def test_customer_view_permission_does_not_grant_debt_management(self):
+        self.manager_role.permissions.remove(
+            Permission.objects.get(module='debt_management', action='view')
+        )
+        self.assertTrue(
+            self.manager_role.permissions.filter(module='customers', action='view').exists()
+        )
+
+        response = self.client.get('/api/sales/customers/debt-summary/')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn('debt_management.view', str(response.data))
 
     def test_debt_summary_forbidden_when_wallet_hidden(self):
         SettingsService.set('customers', 'show_wallet_balance', False)
