@@ -21,6 +21,7 @@ import {
   usersEnableInlineRoleAssignment,
 } from '../../utils/userDisplay';
 import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
 import {
   PageShell,
   PageHeader,
@@ -261,7 +262,16 @@ const Users = () => {
             <DataTableBody>
               {filteredUsers.map((user) => (
                 <DataTableRow key={user.id}>
-                  <DataTableCell className="font-medium">{user.username}</DataTableCell>
+                  <DataTableCell className="font-medium">
+                    <div className="flex flex-col gap-1">
+                      <span>{user.username}</span>
+                      {user.profile?.must_change_password ? (
+                        <Badge variant="warning" className="w-fit font-medium">
+                          Must change on login
+                        </Badge>
+                      ) : null}
+                    </div>
+                  </DataTableCell>
                   {showFullName ? (
                   <DataTableCell>
                     {[user.first_name, user.last_name].filter(Boolean).join(' ') || '—'}

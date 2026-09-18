@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 from django.db import transaction
 from rest_framework import serializers
 
+from accounts.role_definitions import ROLE_DELIVERY_AGENT
 from products.models import Product, ProductVariant
 from products.status_rules import get_operational_variant
 from sales.models import Customer
@@ -18,6 +19,16 @@ from .order_services import (
 from .push import get_push_notifier
 from .serializers import CustomerSiteSerializer, SiteMediaSerializer
 from .services import finalize_site
+
+
+def user_is_delivery_driver(user: User) -> bool:
+    """True when the user holds the Delivery Driver custom role."""
+    if user is None or not getattr(user, 'is_active', False):
+        return False
+    profile = getattr(user, 'profile', None)
+    role = getattr(profile, 'custom_role', None) if profile else None
+    name = (getattr(role, 'name', None) or '').strip()
+    return name == ROLE_DELIVERY_AGENT
 
 
 def _variant_label(variant: ProductVariant | None) -> str:
@@ -114,25 +125,35 @@ class FieldOrderSerializer(serializers.ModelSerializer):
     assigned_delivery_agent_id = serializers.IntegerField(
         read_only=True, allow_null=True,
     )
+    assigned_delivery_agent_name = serializers.SerializerMethodField()
 
     class Meta:
         model = FieldOrder
         fields = (
             'id', 'site', 'site_detail', 'site_media', 'customer', 'customer_name',
             'status', 'notes', 'client_uuid', 'lines',
-            'assigned_delivery_agent_id', 'stock_allocated',
+            'assigned_delivery_agent_id', 'assigned_delivery_agent_name',
+            'stock_allocated',
             'packed_at', 'assigned_at', 'created_by',
             'created_at', 'updated_at',
         )
         read_only_fields = (
             'id', 'status', 'stock_allocated', 'packed_at', 'assigned_at',
             'created_by', 'created_at', 'updated_at', 'site_detail',
-            'site_media', 'customer_name', 'assigned_delivery_agent_id', 'lines',
+            'site_media', 'customer_name', 'assigned_delivery_agent_id',
+            'assigned_delivery_agent_name', 'lines',
         )
 
     def get_site_media(self, obj):
         media = obj.site.media.all() if obj.site_id else []
         return SiteMediaSerializer(media, many=True, context=self.context).data
+
+    def get_assigned_delivery_agent_name(self, obj):
+        agent = obj.assigned_delivery_agent
+        if agent is None:
+            return None
+        full = f'{agent.first_name} {agent.last_name}'.strip()
+        return full or agent.username
 
 
 class FieldOrderCreateSerializer(serializers.Serializer):
@@ -268,9 +289,14 @@ class AssignOrderSerializer(serializers.Serializer):
 
     def validate_delivery_agent_id(self, value):
         try:
-            return User.objects.get(pk=value)
+            user = User.objects.select_related('profile__custom_role').get(pk=value)
         except User.DoesNotExist as exc:
             raise serializers.ValidationError('Delivery driver not found.') from exc
+        if not user_is_delivery_driver(user):
+            raise serializers.ValidationError(
+                'User is not a delivery driver.',
+            )
+        return user
 
     def save(self, **kwargs):
         order = self.context['order']

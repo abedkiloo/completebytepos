@@ -74,11 +74,16 @@ const Dashboard = () => {
   useEffect(() => {
     const load = async () => {
       try {
-        const { permissions } = getStoredAuth();
+        const { permissions, user } = getStoredAuth();
         const canViewReports = hasPermission(permissions, 'reports', 'view');
-
+        const personaHint = resolvePersona({
+          user,
+          profile: getStoredAuth().profile,
+          is_super_admin: user?.is_superuser,
+        });
+        // Sales agents always use scoped sales summary (never store-wide reports KPIs).
         const dashboardPromise =
-          canViewReports && dashboardReportsEnabled
+          canViewReports && dashboardReportsEnabled && personaHint !== 'sales'
             ? reportsAPI.dashboard()
             : salesAPI.dashboardSummary();
 
@@ -117,30 +122,37 @@ const Dashboard = () => {
   };
 
   const kpis = useMemo(() => {
+    const ownOnly = persona === 'sales';
     const items = [
       {
-        label: "Today's sales",
+        label: ownOnly ? 'Your sales today' : "Today's sales",
         value: formatCurrency(data.today?.total || 0),
         hint: `${data.today?.sales_count || 0} order${data.today?.sales_count === 1 ? '' : 's'}${
-          persona !== 'sales' ? ' today' : ''
+          ownOnly ? ' by you' : ' today'
         }`,
       },
       {
-        label: 'This week',
+        label: ownOnly ? 'Your week' : 'This week',
         value: formatCurrency(data.week?.total || 0),
         hint: `${data.week?.sales_count || 0} order${data.week?.sales_count === 1 ? '' : 's'} in the last 7 days`,
       },
     ];
 
-    if (canViewMonthRevenue) {
+    if (canViewMonthRevenue && !ownOnly) {
       items.push({
-        label: persona === 'sales' ? 'This month' : 'Month revenue',
+        label: 'Month revenue',
         value: formatCurrency(data.month?.total || data.total_sales || 0),
         hint: 'Completed sales',
       });
+    } else if (canViewMonthRevenue && ownOnly) {
+      items.push({
+        label: 'Your month',
+        value: formatCurrency(data.month?.total || data.total_sales || 0),
+        hint: 'Your completed sales',
+      });
     }
 
-    if (persona !== 'sales') {
+    if (!ownOnly) {
       items.push({
         label: 'Low stock SKUs',
         value: formatNumber(data.low_stock_count || lowStockProducts.length),

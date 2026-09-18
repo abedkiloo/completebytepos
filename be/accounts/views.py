@@ -24,6 +24,11 @@ from accounts.module_settings import (
     users_show_phone,
 )
 from accounts.user_write import prepare_user_write_data, apply_profile_updates
+from accounts.password_policy import (
+    set_must_change_password,
+    user_must_change_password,
+    validate_new_password,
+)
 # Module settings moved to settings app
 from settings.models import ModuleSettings, ModuleFeature
 from settings.module_catalog import get_enabled_modules_flat
@@ -576,18 +581,36 @@ class UserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        is_self = user.id == current_user.id
+
         # Users can change their own password, admins can change any
-        if user.id != current_user.id:
+        if not is_self:
             if not (current_user.is_staff or (hasattr(current_user, 'profile') and current_user.profile and current_user.profile.is_admin)):
                 return Response(
                     {'error': 'Permission denied'},
                     status=status.HTTP_403_FORBIDDEN
                 )
+
+        error = validate_new_password(
+            new_password,
+            user=user,
+            reject_reuse=is_self,
+        )
+        if error:
+            return Response(
+                {'error': error},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         user.set_password(new_password)
         user.save()
+        # Admin-set password must be changed on next login; self-service clears the flag.
+        set_must_change_password(user, not is_self)
         
-        return Response({'message': 'Password changed successfully'})
+        return Response({
+            'message': 'Password changed successfully',
+            'must_change_password': user_must_change_password(user),
+        })
     
     @action(detail=False, methods=['get'])
     def search(self, request):
@@ -697,6 +720,7 @@ class AuthViewSet(viewsets.ViewSet):
                 'profile': profile,
                 'permissions': permissions,
                 'enabled_modules': enabled_modules,
+                'must_change_password': user_must_change_password(user),
                 'access': str(refresh.access_token),
                 'refresh': str(refresh),
             }
@@ -775,6 +799,7 @@ class AuthViewSet(viewsets.ViewSet):
             'profile': profile,
             'permissions': permissions,
             'enabled_modules': enabled_modules,
+            'must_change_password': user_must_change_password(request.user),
             'is_super_admin': request.user.is_superuser or (hasattr(request.user, 'profile') and request.user.profile and request.user.profile.is_super_admin),
             'is_admin': request.user.is_staff or (hasattr(request.user, 'profile') and request.user.profile and request.user.profile.is_admin),
         })

@@ -12,6 +12,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.models import Role, UserProfile
 from accounts.role_definitions import (
+    ROLE_DELIVERY_AGENT,
     ROLE_DISPATCHER,
     ROLE_FIELD_AGENT,
     ROLE_SALES,
@@ -57,6 +58,12 @@ class FieldOrderAPITestCase(APITestCase):
             is_active=True,
         )
         cls.driver = User.objects.create_user('fo_driver', password='x')
+        UserProfile.objects.create(
+            user=cls.driver,
+            role='delivery',
+            custom_role=Role.objects.get(name=ROLE_DELIVERY_AGENT),
+            is_active=True,
+        )
         cls.sales_user = User.objects.create_user('fo_sales', password='x')
         UserProfile.objects.create(
             user=cls.sales_user,

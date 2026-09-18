@@ -368,6 +368,7 @@ export const customersAPI = {
   debtSummary: () => api.get('/sales/customers/debt-summary/'),
   debtors: (params) => api.get('/sales/customers/debtors/', { params }),
   debtorCount: () => api.get('/sales/customers/debtor-count/'),
+  debtCollections: (params) => api.get('/sales/customers/debt-collections/', { params }),
 };
 
 export const invoicesAPI = {
@@ -690,6 +691,7 @@ export const dispatchAPI = {
   list: (params) => api.get('/dispatch/field-orders/', { params }),
   get: (id) => api.get(`/dispatch/field-orders/${id}/`),
   queue: () => api.get('/dispatch/queue/'),
+  drivers: () => api.get('/dispatch/drivers/'),
   pack: (id) => api.post(`/dispatch/field-orders/${id}/pack/`),
   assign: (id, data) => api.post(`/dispatch/field-orders/${id}/assign/`, data),
 };

@@ -2,6 +2,9 @@ import {
   AGING_BUCKET_LABELS,
   emptyDebtSummary,
   walletTxnLabel,
+  getTodayDateString,
+  shiftDate,
+  formatDateLabel,
 } from './debtManagement';
 
 describe('debtManagement utils', () => {
@@ -19,5 +22,15 @@ describe('debtManagement utils', () => {
   it('maps wallet source types to readable labels', () => {
     expect(walletTxnLabel('debt_settlement')).toBe('Payment received');
     expect(walletTxnLabel('debt')).toBe('Debt added');
+  });
+
+  it('shifts collection dates across month boundaries', () => {
+    expect(shiftDate('2026-09-12', 1)).toBe('2026-09-13');
+    expect(shiftDate('2026-03-01', -1)).toBe('2026-02-28');
+  });
+
+  it('labels today in formatDateLabel', () => {
+    const today = getTodayDateString();
+    expect(formatDateLabel(today)).toContain('Today');
   });
 });

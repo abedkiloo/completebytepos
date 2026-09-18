@@ -32,12 +32,18 @@ describe('userFormPayload', () => {
       expect(payload.custom_role_id).toBe(3);
     });
 
-    it('omits password on edit', () => {
+    it('omits password on edit when blank', () => {
       const payload = buildUserPayload(
         { ...baseForm, password: '' },
         { ...allOptions, isEdit: true }
       );
       expect(payload.password).toBeUndefined();
+      expect(payload.username).toBeUndefined();
+    });
+
+    it('includes password on edit when set', () => {
+      const payload = buildUserPayload(baseForm, { ...allOptions, isEdit: true });
+      expect(payload.password).toBe('secret12');
       expect(payload.username).toBeUndefined();
     });
 
@@ -67,12 +73,20 @@ describe('userFormPayload', () => {
       expect(errors.password).toBeDefined();
     });
 
-    it('skips password on edit', () => {
+    it('skips password on edit when blank', () => {
       const errors = validateUserForm(
         { ...baseForm, password: '' },
         { ...allOptions, isEdit: true }
       );
       expect(errors.password).toBeUndefined();
+    });
+
+    it('validates password length on edit when set', () => {
+      const errors = validateUserForm(
+        { ...baseForm, password: '123' },
+        { ...allOptions, isEdit: true }
+      );
+      expect(errors.password).toBeDefined();
     });
 
     it('validates email format when provided', () => {

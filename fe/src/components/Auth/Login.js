@@ -230,7 +230,11 @@ const Login = () => {
       const { purgeStaleRetailCartDrafts } = await import('../../utils/posCartRecovery');
       purgeStaleRetailCartDrafts();
 
-      navigate('/');
+      navigate(
+        profile?.must_change_password || user?.profile?.must_change_password
+          ? '/change-password'
+          : '/'
+      );
     } catch (err) {
       setError(
         err.response?.data?.error ||

@@ -30,6 +30,56 @@ export function emptyDebtSummary() {
   };
 }
 
+export function emptyDebtCollections() {
+  return {
+    date: '',
+    count: 0,
+    total: '0.00',
+    results: [],
+  };
+}
+
+/** Local calendar date as YYYY-MM-DD (not UTC). */
+export function getTodayDateString() {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export function shiftDate(dateStr, offsetDays) {
+  if (!dateStr) return getTodayDateString();
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dateObj = new Date(y, m - 1, d);
+  dateObj.setDate(dateObj.getDate() + offsetDays);
+  const ry = dateObj.getFullYear();
+  const rm = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const rd = String(dateObj.getDate()).padStart(2, '0');
+  return `${ry}-${rm}-${rd}`;
+}
+
+export function formatDateLabel(dateStr) {
+  if (!dateStr) return '';
+  const todayStr = getTodayDateString();
+  const yesterdayStr = shiftDate(todayStr, -1);
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dateObj = new Date(y, m - 1, d);
+  const formatted = dateObj.toLocaleDateString(undefined, {
+    weekday: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+  if (dateStr === todayStr) {
+    return `Today · ${formatted}`;
+  }
+  if (dateStr === yesterdayStr) {
+    return `Yesterday · ${formatted}`;
+  }
+  return formatted;
+}
+
 export function walletTxnLabel(sourceType) {
   switch (sourceType) {
     case 'debt':

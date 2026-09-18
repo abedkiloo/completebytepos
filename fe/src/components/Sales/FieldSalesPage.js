@@ -73,12 +73,20 @@ function canMarkReady(order) {
   return ['submitted', 'packing'].includes(order?.status);
 }
 
+function canAssignDriver(order) {
+  return ['ready', 'packing'].includes(order?.status)
+    && !order?.assigned_delivery_agent_id;
+}
+
 const FieldSalesPage = () => {
   const { permissions } = getStoredAuth();
   const canPack = hasPermission(permissions, 'dispatch', 'update');
   const [orders, setOrders] = useState([]);
+  const [drivers, setDrivers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [packingId, setPackingId] = useState(null);
+  const [assigningId, setAssigningId] = useState(null);
+  const [selectedDriverId, setSelectedDriverId] = useState('');
   const [selected, setSelected] = useState(null);
   const [filters, setFilters] = useState({
     date_from: '',
@@ -91,6 +99,16 @@ const FieldSalesPage = () => {
     page_size: DEFAULT_PAGE_SIZE,
     count: 0,
   });
+
+  const loadDrivers = useCallback(async () => {
+    if (!canPack) return;
+    try {
+      const response = await dispatchAPI.drivers();
+      setDrivers(Array.isArray(response.data) ? response.data : []);
+    } catch {
+      setDrivers([]);
+    }
+  }, [canPack]);
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
@@ -130,6 +148,10 @@ const FieldSalesPage = () => {
     loadOrders();
   }, [loadOrders]);
 
+  useEffect(() => {
+    loadDrivers();
+  }, [loadDrivers]);
+
   const handleFilterChange = (key, value) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
     setPagination((prev) => ({ ...prev, page: 1 }));
@@ -158,6 +180,41 @@ const FieldSalesPage = () => {
     }
   };
 
+  const handleAssign = async (order) => {
+    if (!canPack || !canAssignDriver(order) || !selectedDriverId) {
+      toast.error('Select a delivery driver first');
+      return;
+    }
+    setAssigningId(order.id);
+    try {
+      await dispatchAPI.assign(order.id, {
+        delivery_agent_id: Number(selectedDriverId),
+      });
+      toast.success(`Order #${order.id} assigned to driver`);
+      await loadOrders();
+      if (selected?.id === order.id) {
+        const refreshed = await dispatchAPI.get(order.id);
+        setSelected(refreshed.data);
+      }
+    } catch (error) {
+      const detail =
+        error.response?.data?.delivery_agent_id
+        || error.response?.data?.status
+        || error.response?.data?.detail
+        || error.response?.data?.error
+        || error.message;
+      toast.error(
+        typeof detail === 'string'
+          ? detail
+          : Array.isArray(detail)
+            ? detail[0]
+            : 'Could not assign driver',
+      );
+    } finally {
+      setAssigningId(null);
+    }
+  };
+
   const emptyMessage = useMemo(() => {
     if (filters.status === 'awaiting_pack') {
       return 'No visit orders waiting to be packed.';
@@ -173,7 +230,7 @@ const FieldSalesPage = () => {
     <PageShell>
       <PageHeader
         title="Field sales"
-        description="Visit orders from the field — filter by day, status, or customer, and mark packed orders ready for pickup."
+        description="Visit orders from the field — pack, assign a delivery driver, or leave ready for drivers to claim."
       >
         <Button variant="outline" onClick={loadOrders} disabled={loading}>
           <RefreshCw className="h-4 w-4" />
@@ -370,6 +427,32 @@ const FieldSalesPage = () => {
                   <p className="text-muted-foreground">{selected.notes}</p>
                 </div>
               ) : null}
+              {selected.assigned_delivery_agent_name ? (
+                <div className="text-sm">
+                  <div className="font-medium">Delivery driver</div>
+                  <p className="text-muted-foreground">
+                    {selected.assigned_delivery_agent_name}
+                  </p>
+                </div>
+              ) : null}
+              {canPack && canAssignDriver(selected) ? (
+                <div className="text-sm space-y-2">
+                  <div className="font-medium">Assign delivery driver</div>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={selectedDriverId}
+                    onChange={(e) => setSelectedDriverId(e.target.value)}
+                    data-testid="field-sales-driver-select"
+                  >
+                    <option value="">Select driver…</option>
+                    {drivers.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.display_name || d.username}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
             </div>
             <div className="flex justify-end gap-2 border-t px-4 py-3">
               {canPack && canMarkReady(selected) ? (
@@ -379,6 +462,15 @@ const FieldSalesPage = () => {
                 >
                   <PackageCheck className="h-4 w-4" />
                   Mark ready for pickup
+                </Button>
+              ) : null}
+              {canPack && canAssignDriver(selected) ? (
+                <Button
+                  onClick={() => handleAssign(selected)}
+                  disabled={assigningId === selected.id || !selectedDriverId}
+                  data-testid="field-sales-assign"
+                >
+                  {assigningId === selected.id ? 'Assigning…' : 'Assign driver'}
                 </Button>
               ) : null}
               <Button variant="outline" onClick={() => setSelected(null)}>

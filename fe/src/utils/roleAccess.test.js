@@ -56,6 +56,7 @@ describe('roleAccess', () => {
 
   test('canAccessRoute for sales blocks users admin', () => {
     expect(canAccessRoute(PERSONA.SALES, '/pos')).toBe(true);
+    expect(canAccessRoute(PERSONA.SALES, '/change-password')).toBe(true);
     expect(canAccessRoute(PERSONA.SALES, '/users')).toBe(false);
     expect(canAccessRoute(PERSONA.MANAGER, '/reports')).toBe(true);
   });

@@ -126,6 +126,10 @@ class UserProfile(models.Model):
     )
     phone_number = models.CharField(max_length=20, blank=True)
     is_active = models.BooleanField(default=True, help_text='User account status')
+    must_change_password = models.BooleanField(
+        default=False,
+        help_text='If true, the user must choose a new password after signing in.',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(

@@ -11,7 +11,7 @@ class UserProfileInline(admin.StackedInline):
     can_delete = False
     verbose_name_plural = 'Profile'
     fk_name = 'user'
-    fields = ('role', 'custom_role', 'phone_number', 'is_active')
+    fields = ('role', 'custom_role', 'phone_number', 'is_active', 'must_change_password')
 
 
 class UserAdmin(BaseUserAdmin):

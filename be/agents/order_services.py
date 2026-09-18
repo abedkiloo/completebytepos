@@ -127,5 +127,28 @@ def assign_delivery_agent(order: FieldOrder, agent) -> FieldOrder:
     return order
 
 
+def claim_ready_order(order: FieldOrder, agent) -> FieldOrder:
+    """
+    Delivery driver self-assign for unassigned ready orders.
+
+    Dispatch assign always wins: already-assigned orders cannot be claimed.
+    """
+    if agent is None:
+        raise FieldOrderTransitionError({
+            'delivery_agent_id': 'Delivery driver is required.',
+        })
+    if order.status != FieldOrder.STATUS_READY:
+        raise FieldOrderTransitionError({
+            'status': f'Only ready orders can be claimed (have {order.status}).',
+        })
+    if order.assigned_delivery_agent_id is not None:
+        raise FieldOrderTransitionError({
+            'delivery_agent_id': (
+                'Order already assigned. Dispatch assignment takes priority.'
+            ),
+        })
+    return assign_delivery_agent(order, agent)
+
+
 def cancel_order(order: FieldOrder) -> FieldOrder:
     return transition(order, FieldOrder.STATUS_CANCELLED)

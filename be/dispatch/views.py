@@ -4,6 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from accounts.permissions import RequirePermPerAction
+from accounts.role_definitions import ROLE_DELIVERY_AGENT
 from agents.models import FieldOrder
 from agents.order_serializers import (
     AssignOrderSerializer,
@@ -11,6 +12,7 @@ from agents.order_serializers import (
     PackOrderSerializer,
 )
 from agents.order_services import FieldOrderTransitionError
+from django.contrib.auth.models import User
 
 DISPATCH_PERMS = RequirePermPerAction(
     'dispatch',
@@ -18,6 +20,7 @@ DISPATCH_PERMS = RequirePermPerAction(
         'list': 'view',
         'retrieve': 'view',
         'queue': 'view',
+        'drivers': 'view',
         'pack': 'update',
         'assign': 'update',
     },
@@ -99,6 +102,28 @@ class DispatchQueueViewSet(viewsets.ReadOnlyModelViewSet):
         return FieldOrder.objects.select_related(
             'site', 'customer', 'created_by', 'assigned_delivery_agent',
         ).prefetch_related('lines', 'lines__variant', 'site__media').get(pk=pk)
+
+    @action(detail=False, methods=['get'], url_path='drivers')
+    def drivers(self, request):
+        """Active users with the Delivery Driver role for assign pickers."""
+        qs = (
+            User.objects.filter(
+                is_active=True,
+                profile__custom_role__name=ROLE_DELIVERY_AGENT,
+                profile__is_active=True,
+            )
+            .select_related('profile')
+            .order_by('first_name', 'last_name', 'username')
+        )
+        payload = []
+        for u in qs:
+            full = f'{u.first_name} {u.last_name}'.strip()
+            payload.append({
+                'id': u.id,
+                'username': u.username,
+                'display_name': full or u.username,
+            })
+        return Response(payload)
 
     @action(detail=False, methods=['get'], url_path='queue')
     def queue(self, request):

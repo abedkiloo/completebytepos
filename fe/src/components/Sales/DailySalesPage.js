@@ -167,6 +167,11 @@ export default function DailySalesPage() {
       if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
       if (paymentStatusTab && paymentStatusTab !== 'all') params.payment_status = paymentStatusTab;
       if (paymentMethod) params.payment_method = paymentMethod;
+      // Sales agents: own sales only (backend also enforces).
+      if (!isManagerOrAdminFromStorage()) {
+        const { user } = getStoredAuth();
+        if (user?.id) params.cashier_id = user.id;
+      }
 
       const res = await salesAPI.daily(params);
       const data = res.data || {};
@@ -258,7 +263,11 @@ export default function DailySalesPage() {
     <PageShell>
       <PageHeader
         title="Daily Sales Tracker"
-        description="Monitor daily sales revenue, upfront payments collected, and credit orders taken as debt."
+        description={
+          isManagerOrAdminFromStorage()
+            ? 'Monitor daily sales revenue, upfront payments collected, and credit orders taken as debt.'
+            : 'Your sales only — revenue, payments collected, and credit you booked today.'
+        }
       >
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" asChild>

@@ -7,6 +7,10 @@ from accounts.module_settings import (
     apply_profile_representation_flags,
     validate_user_write,
 )
+from accounts.password_policy import (
+    set_must_change_password,
+    validate_new_password,
+)
 
 
 class PermissionSerializer(serializers.ModelSerializer):
@@ -151,11 +155,11 @@ class UserProfileSerializer(serializers.ModelSerializer):
         model = UserProfile
         fields = [
             'id', 'role', 'role_display', 'custom_role', 'custom_role_id',
-            'phone_number', 'is_active',
+            'phone_number', 'is_active', 'must_change_password',
             'is_super_admin', 'is_admin', 'is_manager',
             'created_at', 'updated_at', 'created_by'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'created_by']
+        read_only_fields = ['created_at', 'updated_at', 'created_by', 'must_change_password']
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -212,11 +216,19 @@ class UserSerializer(serializers.ModelSerializer):
         if password:
             instance.set_password(password)
         instance.save()
+        if password:
+            request = self.context.get('request')
+            actor = getattr(request, 'user', None) if request else None
+            set_by_admin = actor is None or not getattr(actor, 'is_authenticated', False) or actor.id != instance.id
+            set_must_change_password(instance, set_by_admin)
         return instance
 
     def validate_password(self, value):
         if value is None or value == '':
             return None
+        error = validate_new_password(value)
+        if error:
+            raise serializers.ValidationError(error.replace('new_password is required', 'Password is required'))
         return value
 
 
@@ -241,6 +253,14 @@ class UserCreateSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         return validate_user_write(attrs)
+
+    def validate_password(self, value):
+        error = validate_new_password(value)
+        if error:
+            raise serializers.ValidationError(
+                error.replace('new_password is required', 'Password is required')
+            )
+        return value
     
     def create(self, validated_data):
         role = validated_data.pop('role', 'cashier')
@@ -253,11 +273,12 @@ class UserCreateSerializer(serializers.ModelSerializer):
             **validated_data
         )
         
-        # Create profile
+        # Create profile — admin-chosen password must be changed on first login.
         profile_data = {
             'user': user,
             'role': role,
             'phone_number': phone_number,
+            'must_change_password': True,
             'created_by': self.context['request'].user
         }
         if custom_role_id:

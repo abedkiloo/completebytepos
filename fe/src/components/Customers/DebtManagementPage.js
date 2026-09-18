@@ -8,6 +8,9 @@ import {
   History,
   Search,
   ExternalLink,
+  ChevronLeft,
+  ChevronRight,
+  X,
 } from 'lucide-react';
 
 import { customersAPI } from '../../services/api';
@@ -25,6 +28,10 @@ import {
   AGING_BUCKET_LABELS,
   AGING_BUCKET_OPTIONS,
   emptyDebtSummary,
+  emptyDebtCollections,
+  getTodayDateString,
+  shiftDate,
+  formatDateLabel,
 } from '../../utils/debtManagement';
 import { customerDetailPath } from '../../utils/customerDetail';
 import ReceiveWalletPaymentDialog from './ReceiveWalletPaymentDialog';
@@ -78,6 +85,10 @@ export default function DebtManagementPage() {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(DEFAULT_PAGE_SIZE);
   const [payCustomer, setPayCustomer] = useState(null);
+  const [showCollections, setShowCollections] = useState(false);
+  const [collectionDate, setCollectionDate] = useState(getTodayDateString);
+  const [collections, setCollections] = useState(emptyDebtCollections());
+  const [collectionsLoading, setCollectionsLoading] = useState(false);
 
   const loadSummary = useCallback(async () => {
     if (!showWallet) {
@@ -120,6 +131,23 @@ export default function DebtManagementPage() {
     }
   }, [showWallet, debouncedSearch, agingBucket, ordering, page, pageSize]);
 
+  const loadCollections = useCallback(async (dateStr) => {
+    if (!showWallet) {
+      setCollections(emptyDebtCollections());
+      return;
+    }
+    setCollectionsLoading(true);
+    try {
+      const res = await customersAPI.debtCollections({ date: dateStr, page_size: 200 });
+      setCollections({ ...emptyDebtCollections(), ...(res.data || {}), date: dateStr });
+    } catch (err) {
+      setCollections({ ...emptyDebtCollections(), date: dateStr });
+      toast.error(err.response?.data?.error || 'Could not load collections');
+    } finally {
+      setCollectionsLoading(false);
+    }
+  }, [showWallet]);
+
   useEffect(() => {
     if (settingsLoading) return;
     loadSummary();
@@ -130,10 +158,19 @@ export default function DebtManagementPage() {
     loadDebtors();
   }, [settingsLoading, loadDebtors]);
 
+  useEffect(() => {
+    if (settingsLoading || !showCollections) return;
+    loadCollections(collectionDate);
+  }, [settingsLoading, showCollections, collectionDate, loadCollections]);
+
   const refreshAll = useCallback(async () => {
-    await Promise.all([loadSummary(), loadDebtors()]);
+    const jobs = [loadSummary(), loadDebtors()];
+    if (showCollections) {
+      jobs.push(loadCollections(collectionDate));
+    }
+    await Promise.all(jobs);
     dispatchNavBadgesRefresh();
-  }, [loadSummary, loadDebtors]);
+  }, [loadSummary, loadDebtors, showCollections, collectionDate, loadCollections]);
 
   const agingCards = useMemo(
     () =>
@@ -195,7 +232,12 @@ export default function DebtManagementPage() {
           icon={Banknote}
           label="Collected today"
           value={formatCurrency(summary.collected_today)}
+          subtext="Tap to see who paid"
           tone={Number(summary.collected_today) > 0 ? 'success' : 'default'}
+          onClick={() => {
+            setCollectionDate(getTodayDateString());
+            setShowCollections(true);
+          }}
         />
       </div>
 
@@ -222,6 +264,148 @@ export default function DebtManagementPage() {
           </button>
         ))}
       </div>
+
+      {showCollections ? (
+        <section
+          className="rounded-lg border bg-card p-4 shadow-sm"
+          aria-labelledby="debt-collections-heading"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 id="debt-collections-heading" className="text-base font-semibold">
+                Collections
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Who paid and how much on {formatDateLabel(collectionDate)}.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowCollections(false)}
+              aria-label="Close collections"
+            >
+              <X className="h-4 w-4" />
+              Close
+            </Button>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setCollectionDate((prev) => shiftDate(prev, -1))}
+              aria-label="Previous day"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Input
+              type="date"
+              value={collectionDate}
+              onChange={(e) => setCollectionDate(e.target.value || getTodayDateString())}
+              className="h-9 w-[11.5rem]"
+              aria-label="Collection date"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setCollectionDate((prev) => shiftDate(prev, 1))}
+              disabled={collectionDate >= getTodayDateString()}
+              aria-label="Next day"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            {collectionDate !== getTodayDateString() ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setCollectionDate(getTodayDateString())}
+              >
+                Today
+              </Button>
+            ) : null}
+            <p className="ml-auto text-sm font-medium tabular-nums">
+              {collections.count} payment{collections.count === 1 ? '' : 's'} ·{' '}
+              {formatCurrency(collections.total)}
+            </p>
+          </div>
+
+          {collectionsLoading ? (
+            <div className="mt-4">
+              <PageLoading rows={4} />
+            </div>
+          ) : collections.results.length === 0 ? (
+            <div className="mt-4">
+              <EmptyState
+                icon={Banknote}
+                title="No collections on this day"
+                description="Debt payments recorded here will list the customer and amount."
+              />
+            </div>
+          ) : (
+            <div className="mt-4">
+              <DataTable>
+                <DataTableHeader>
+                  <DataTableHead>Time</DataTableHead>
+                  <DataTableHead>Customer</DataTableHead>
+                  <DataTableHead align="right">Amount paid</DataTableHead>
+                  <DataTableHead align="right">Balance after</DataTableHead>
+                  <DataTableHead>Received by</DataTableHead>
+                  <DataTableHead>Notes</DataTableHead>
+                </DataTableHeader>
+                <DataTableBody>
+                  {collections.results.map((row) => {
+                    const remaining = Number(row.balance_after);
+                    const stillOwes = !Number.isNaN(remaining) && remaining < 0;
+                    return (
+                      <DataTableRow key={row.id}>
+                        <DataTableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                          {row.created_at ? formatDateTime(row.created_at) : '—'}
+                        </DataTableCell>
+                        <DataTableCell>
+                          <Link
+                            to={customerDetailPath(row.customer_id, { tab: 'ledger' })}
+                            className="font-medium hover:underline"
+                          >
+                            {row.customer_name || 'Customer'}
+                          </Link>
+                          <div className="text-xs text-muted-foreground">
+                            {[row.customer_phone, row.customer_code].filter(Boolean).join(' · ') ||
+                              '—'}
+                          </div>
+                        </DataTableCell>
+                        <DataTableCell align="right" className="font-semibold text-success">
+                          {formatCurrency(row.amount)}
+                        </DataTableCell>
+                        <DataTableCell
+                          align="right"
+                          className={
+                            stillOwes
+                              ? 'text-sm text-destructive'
+                              : 'text-sm text-muted-foreground'
+                          }
+                        >
+                          {stillOwes ? formatCurrency(Math.abs(remaining)) : 'Settled'}
+                        </DataTableCell>
+                        <DataTableCell className="text-sm text-muted-foreground">
+                          {row.received_by || '—'}
+                        </DataTableCell>
+                        <DataTableCell className="max-w-[16rem] truncate text-sm text-muted-foreground">
+                          {[row.reference, row.notes].filter(Boolean).join(' · ') || '—'}
+                        </DataTableCell>
+                      </DataTableRow>
+                    );
+                  })}
+                </DataTableBody>
+              </DataTable>
+            </div>
+          )}
+        </section>
+      ) : null}
 
       <FilterBar>
         <FilterField label="Search" className="min-w-[200px] flex-[2]">

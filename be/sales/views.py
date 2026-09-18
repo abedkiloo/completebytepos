@@ -189,7 +189,7 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         query_params = self.request.query_params
         
         # Extract all filter parameters
-        for param in ['branch_id', 'show_all', 'date_from', 'date_to', 'payment_method', 'search', 'customer_id', 'status']:
+        for param in ['branch_id', 'show_all', 'date_from', 'date_to', 'payment_method', 'search', 'customer_id', 'status', 'cashier_id']:
             if param in query_params:
                 filters[param] = query_params.get(param)
 
@@ -463,6 +463,22 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         page_size = request.query_params.get('page_size', 25)
         cashier_id = request.query_params.get('cashier_id')
 
+        from sales.visibility import user_sees_all_sales
+
+        # Sales agents cannot request another cashier's daily report.
+        if not user_sees_all_sales(request.user):
+            cashier_id = request.user.id
+        elif cashier_id not in (None, ''):
+            try:
+                cashier_id = int(cashier_id)
+            except (TypeError, ValueError):
+                return Response(
+                    {'error': 'Invalid cashier_id'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            cashier_id = None
+
         base_qs = self.sale_service.build_queryset({}, request=request)
 
         try:
@@ -475,7 +491,7 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 page=page,
                 page_size=page_size,
                 base_queryset=base_qs,
-                cashier_id=int(cashier_id) if cashier_id not in (None, '') else None,
+                cashier_id=cashier_id,
             )
             return Response(report)
         except (ValueError, TypeError) as exc:
@@ -899,6 +915,34 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         if not customers_show_wallet_balance():
             return Response({'count': 0})
         return Response({'count': count_debtors()})
+
+    @action(
+        detail=False,
+        methods=['get'],
+        url_path='debt-collections',
+        permission_classes=[IsAuthenticated, RequirePerm('debt_management', 'view')],
+    )
+    def debt_collections(self, request):
+        """Debt payments received on a given local day (who paid, how much)."""
+        from sales.customer_module_settings import customers_show_wallet_balance
+        from sales.debt_management import list_debt_collections, parse_collection_date
+
+        if not customers_show_wallet_balance():
+            return self._feature_disabled_response('Wallet balance')
+        try:
+            on_date = parse_collection_date(request.query_params.get('date'))
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            page = int(request.query_params.get('page', 1))
+        except (TypeError, ValueError):
+            page = 1
+        try:
+            page_size = int(request.query_params.get('page_size', 50))
+        except (TypeError, ValueError):
+            page_size = 50
+        payload = list_debt_collections(on_date=on_date, page=page, page_size=page_size)
+        return Response(payload)
 
     @action(detail=True, methods=['get'], url_path='detail')
     def lifetime_detail(self, request, pk=None):

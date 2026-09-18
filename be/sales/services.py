@@ -121,7 +121,26 @@ class SaleService(BaseService):
             queryset = queryset.filter(status=status)
         elif filters.get('include_holding') not in (True, 'true', '1', 1):
             queryset = queryset.exclude(status='holding')
-        
+
+        # Sales agents only see their own sales; managers/admins see store-wide.
+        from sales.visibility import own_sales_q, user_sees_all_sales
+
+        if request is not None and getattr(request, 'user', None) is not None:
+            user = request.user
+            if getattr(user, 'is_authenticated', False):
+                if user_sees_all_sales(user):
+                    cashier_id = filters.get('cashier_id')
+                    if cashier_id not in (None, ''):
+                        try:
+                            cid = int(cashier_id)
+                            queryset = queryset.filter(
+                                Q(cashier_id=cid) | Q(served_by_id=cid)
+                            )
+                        except (TypeError, ValueError):
+                            queryset = queryset.none()
+                else:
+                    queryset = queryset.filter(own_sales_q(user))
+
         return queryset
     
     def validate_sale_items(

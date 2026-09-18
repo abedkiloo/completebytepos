@@ -14,4 +14,9 @@ urlpatterns = [
         DispatchQueueViewSet.as_view({'get': 'queue'}),
         name='dispatch-queue',
     ),
+    path(
+        'drivers/',
+        DispatchQueueViewSet.as_view({'get': 'drivers'}),
+        name='dispatch-drivers',
+    ),
 ]

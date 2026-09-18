@@ -30,6 +30,17 @@ export function clearSessionTeardownFlag() {
   sessionStorage.removeItem(SESSION_TEARDOWN_KEY);
 }
 
+export function storedMustChangePassword() {
+  try {
+    const profile = JSON.parse(localStorage.getItem('profile') || 'null');
+    if (profile?.must_change_password) return true;
+    const user = JSON.parse(localStorage.getItem('user') || 'null');
+    return Boolean(user?.profile?.must_change_password);
+  } catch {
+    return false;
+  }
+}
+
 export function isAuthenticated() {
   if (isSessionTeardownActive()) return false;
   return Boolean(

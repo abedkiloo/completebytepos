@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
 from django.db.models import Max, Min, Q, Sum
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 
 from sales.models import Customer, CustomerWalletTransaction, Sale
 
@@ -36,9 +37,31 @@ def empty_aging() -> Dict[str, Dict[str, Any]]:
     }
 
 
+def _local_day_bounds(day=None):
+    """Inclusive start/end datetimes for a local calendar day."""
+    day = day or timezone.localdate()
+    start = datetime.combine(day, time.min)
+    end = datetime.combine(day, time.max)
+    if timezone.is_naive(start):
+        tz = timezone.get_current_timezone()
+        start = timezone.make_aware(start, tz)
+        end = timezone.make_aware(end, tz)
+    return start, end
+
+
 def _start_of_today():
-    today = timezone.localdate()
-    return timezone.make_aware(datetime.combine(today, datetime.min.time()))
+    start, _end = _local_day_bounds()
+    return start
+
+
+def parse_collection_date(value) -> date:
+    """Parse YYYY-MM-DD; None means today. Raises ValueError if invalid."""
+    if value in (None, ''):
+        return timezone.localdate()
+    parsed = parse_date(str(value).strip()[:10])
+    if parsed is None:
+        raise ValueError('Invalid date. Use YYYY-MM-DD.')
+    return parsed
 
 
 def _debtor_queryset(search: Optional[str] = None, is_active: bool = True):
@@ -240,3 +263,70 @@ def list_debtors(
 
 def debtor_count() -> int:
     return _debtor_queryset().count()
+
+
+def _user_label(user) -> str:
+    if not user:
+        return ''
+    full = (user.get_full_name() or '').strip()
+    return full or user.get_username()
+
+
+def list_debt_collections(
+    *,
+    on_date=None,
+    page: int = 1,
+    page_size: int = 50,
+) -> Dict[str, Any]:
+    """
+    Debt payments (wallet settlements) for one local calendar day.
+
+    Each row is one payment: who paid, how much, when, and who recorded it.
+    """
+    day = on_date or timezone.localdate()
+    start, end = _local_day_bounds(day)
+    page = max(1, int(page or 1))
+    page_size = min(200, max(1, int(page_size or 50)))
+
+    qs = (
+        CustomerWalletTransaction.objects.filter(
+            source_type='debt_settlement',
+            created_at__gte=start,
+            created_at__lte=end,
+        )
+        .select_related('customer', 'created_by', 'sale')
+        .order_by('-created_at', '-id')
+    )
+    total_amount = qs.aggregate(total=Sum('amount'))['total'] or Decimal('0')
+    count = qs.count()
+    start_idx = (page - 1) * page_size
+    rows = list(qs[start_idx : start_idx + page_size])
+
+    results = []
+    for txn in rows:
+        customer = txn.customer
+        results.append(
+            {
+                'id': txn.id,
+                'customer_id': txn.customer_id,
+                'customer_name': customer.name if customer else '',
+                'customer_phone': (customer.phone or '') if customer else '',
+                'customer_code': (customer.customer_code or '') if customer else '',
+                'amount': str(Decimal(str(txn.amount)).quantize(Decimal('0.01'))),
+                'balance_after': str(Decimal(str(txn.balance_after)).quantize(Decimal('0.01'))),
+                'reference': txn.reference or '',
+                'notes': txn.notes or '',
+                'sale_number': txn.sale.sale_number if txn.sale_id and txn.sale else None,
+                'received_by': _user_label(txn.created_by),
+                'created_at': txn.created_at.isoformat() if txn.created_at else None,
+            }
+        )
+
+    return {
+        'date': day.isoformat(),
+        'count': count,
+        'page': page,
+        'page_size': page_size,
+        'total': str(Decimal(str(total_amount)).quantize(Decimal('0.01'))),
+        'results': results,
+    }

@@ -6,6 +6,7 @@ import { PageLoading } from './components/page';
 import { getPersonaFromStorage, isSuperAdminFromStorage } from './utils/navAccess';
 import { authAPI } from './services/api';
 import { canAccessRoute, persistMeResponse } from './utils/roleAccess';
+import { storedMustChangePassword } from './utils/authSession';
 import { normalizeModuleSettings, readCachedModules } from './utils/moduleCache';
 import SetupGate from './components/Installation/SetupGate';
 import AppLayout from './components/Layout/AppLayout';
@@ -18,6 +19,7 @@ import './styles/app-shell-mobile.css';
 import './styles/forms-compact.css';
 
 const Login = lazy(() => import('./components/Auth/Login'));
+const ChangePassword = lazy(() => import('./components/Auth/ChangePassword'));
 const Dashboard = lazy(() => import('./components/Dashboard/Dashboard'));
 const POS = lazy(() => import('./components/POS/v2/POSPage'));
 const BillingPOS = lazy(() => import('./components/POS/billing/BillingPOSPage'));
@@ -89,6 +91,18 @@ const ProtectedRoute = () => {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
+  const mustChangePassword = storedMustChangePassword();
+  const onChangePassword = location.pathname === '/change-password';
+  if (mustChangePassword && !onChangePassword) {
+    return <Navigate to="/change-password" replace />;
+  }
+  if (!mustChangePassword && onChangePassword) {
+    return <Navigate to="/" replace />;
+  }
+  if (onChangePassword) {
+    return <Outlet />;
+  }
+
   const persona = getPersonaFromStorage();
   const isSuperAdmin = isSuperAdminFromStorage();
   const moduleSettings = normalizeModuleSettings(readCachedModules());
@@ -156,6 +170,7 @@ function App() {
             <Route path="/install" element={<Installation />} />
             <Route path="/login" element={<Login />} />
             <Route element={<ProtectedRoute />}>
+              <Route path="/change-password" element={<ChangePassword />} />
               {/* Full-screen POS — no sidebar shell */}
               <Route path="/pos" element={<POS />} />
               <Route element={<AppLayout />}>

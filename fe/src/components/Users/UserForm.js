@@ -230,25 +230,26 @@ const UserForm = ({
               </div>
             ) : null}
 
-            {!user && (
-              <FormField
-                label="Password"
+            <FormField
+              label={user ? 'Set password' : 'Temporary password'}
+              name="password"
+              htmlFor="password"
+              required={!user}
+              errors={errors}
+              hint="They will choose a new password the next time they sign in on the web or the app."
+            >
+              <input
+                type="password"
+                id="password"
                 name="password"
-                htmlFor="password"
-                required
-                errors={errors}
-              >
-                <input
-                  type="password"
-                  id="password"
-                  name="password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  minLength={6}
-                  aria-invalid={Boolean(errors.password)}
-                />
-              </FormField>
-            )}
+                value={formData.password}
+                onChange={handleChange}
+                minLength={6}
+                autoComplete="new-password"
+                placeholder={user ? 'Leave blank to keep the current password' : ''}
+                aria-invalid={Boolean(errors.password)}
+              />
+            </FormField>
 
             {showInlineRoles ? (
               <div className="form-row">

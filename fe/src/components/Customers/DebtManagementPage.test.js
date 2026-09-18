@@ -29,12 +29,13 @@ jest.mock('../../hooks/useDebouncedValue', () => ({
 }));
 
 jest.mock('../../services/api', () => ({
-  customersAPI: {
-    debtSummary: jest.fn(),
-    debtors: jest.fn(),
-    walletTransactions: jest.fn(),
-    receiveWalletPayment: jest.fn(),
-  },
+    customersAPI: {
+      debtSummary: jest.fn(),
+      debtors: jest.fn(),
+      debtCollections: jest.fn(),
+      walletTransactions: jest.fn(),
+      receiveWalletPayment: jest.fn(),
+    },
 }));
 
 jest.mock('../../hooks/useModuleSettings', () => ({
@@ -72,8 +73,9 @@ jest.mock('lucide-react', () => {
     History: Icon,
     Search: Icon,
     ExternalLink: Icon,
-    Inbox: Icon,
-    Loader2: Icon,
+    ChevronLeft: Icon,
+    ChevronRight: Icon,
+    X: Icon,
   };
 });
 
@@ -142,12 +144,19 @@ jest.mock('../page', () => ({
   ),
   PageLoading: () => <div>Loading…</div>,
   EmptyState: ({ title }) => <div>{title}</div>,
-  SummaryCard: ({ label, value }) => (
-    <div>
-      <span>{label}</span>
-      <span>{value}</span>
-    </div>
-  ),
+  SummaryCard: ({ label, value, onClick, subtext }) =>
+    onClick ? (
+      <button type="button" onClick={onClick}>
+        <span>{label}</span>
+        <span>{value}</span>
+        {subtext ? <span>{subtext}</span> : null}
+      </button>
+    ) : (
+      <div>
+        <span>{label}</span>
+        <span>{value}</span>
+      </div>
+    ),
   FilterBar: ({ children }) => <div>{children}</div>,
   FilterField: ({ label, children }) => (
     <label>
@@ -233,6 +242,28 @@ describe('DebtManagementPage', () => {
         },
       ],
     });
+    customersAPI.debtCollections.mockResolvedValue({
+      data: {
+        date: '2026-09-18',
+        count: 1,
+        total: '40.00',
+        results: [
+          {
+            id: 88,
+            customer_id: 12,
+            customer_name: 'Bob Payer',
+            customer_phone: '0700333444',
+            customer_code: 'C-12',
+            amount: '40.00',
+            balance_after: '-10.00',
+            reference: 'CASH',
+            notes: 'Partial',
+            received_by: 'manager',
+            created_at: '2026-09-18T10:15:00Z',
+          },
+        ],
+      },
+    });
   });
 
   it('renders dashboard summary and debtor row', async () => {
@@ -250,6 +281,20 @@ describe('DebtManagementPage', () => {
     expect(screen.getByText(/0700111222/)).toBeInTheDocument();
     expect(customersAPI.debtSummary).toHaveBeenCalled();
     expect(customersAPI.debtors).toHaveBeenCalled();
+  });
+
+  it('opens daily collections from the collected today card', async () => {
+    renderPage();
+    await screen.findByText('Alice Debtor');
+
+    fireEvent.click(screen.getByRole('button', { name: /Collected today/i }));
+
+    expect(await screen.findByRole('heading', { name: /^Collections$/i })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(customersAPI.debtCollections).toHaveBeenCalled();
+    });
+    expect(await screen.findByText('Bob Payer')).toBeInTheDocument();
+    expect(screen.getByText(/Amount paid/i)).toBeInTheDocument();
   });
 
   it('opens receive payment dialog from row action', async () => {

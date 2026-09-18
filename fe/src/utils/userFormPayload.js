@@ -19,9 +19,10 @@ export function buildUserPayload(formData, options) {
 
   if (!isEdit) {
     payload.username = formData.username.trim();
-    if (formData.password) {
-      payload.password = formData.password;
-    }
+  }
+
+  if (formData.password) {
+    payload.password = formData.password;
   }
 
   if (showEmail) {
@@ -69,6 +70,13 @@ export function validateUserForm(formData, options) {
       );
       if (minErr) errors.password = minErr;
     }
+  } else if (formData.password) {
+    const minErr = minLength(
+      formData.password,
+      6,
+      'Password must be at least 6 characters'
+    );
+    if (minErr) errors.password = minErr;
   }
 
   if (showEmail && formData.email.trim()) {

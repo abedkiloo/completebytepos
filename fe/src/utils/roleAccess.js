@@ -28,6 +28,7 @@ export const PERSONA = {
 /** All in-app routes (keep in sync with App.js). */
 export const APP_ROUTE_PREFIXES = [
   '/',
+  '/change-password',
   '/pos',
   '/products',
   '/categories',
@@ -70,7 +71,7 @@ const SUPER_ADMIN_ONLY_PREFIXES = new Set([
 export const ALLOWED_ROUTE_PREFIXES = {
   [PERSONA.SUPER_ADMIN]: null,
   [PERSONA.MANAGER]: APP_ROUTE_PREFIXES.filter((p) => !SUPER_ADMIN_ONLY_PREFIXES.has(p)),
-  [PERSONA.SALES]: ['/', '/pos', '/customers'],
+  [PERSONA.SALES]: ['/', '/change-password', '/pos', '/customers'],
 };
 
 export function getStoredAuth() {

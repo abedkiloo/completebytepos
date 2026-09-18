@@ -130,3 +130,61 @@ class DebtManagementAPITests(ManagerAPITestCase):
         )
         summary = build_debt_summary()
         self.assertEqual(summary['collected_today'], Decimal('25.00'))
+
+    def test_list_debt_collections_for_a_day(self):
+        from sales.debt_management import list_debt_collections
+
+        today_pay = CustomerWalletTransaction.objects.create(
+            customer=self.debtor,
+            transaction_type='credit',
+            source_type='debt_settlement',
+            amount=Decimal('40.00'),
+            balance_after=Decimal('-160.00'),
+            notes='Cash at counter',
+            created_by=self.manager_user,
+        )
+        old_pay = CustomerWalletTransaction.objects.create(
+            customer=self.debtor,
+            transaction_type='credit',
+            source_type='debt_settlement',
+            amount=Decimal('10.00'),
+            balance_after=Decimal('-190.00'),
+        )
+        CustomerWalletTransaction.objects.filter(pk=old_pay.pk).update(
+            created_at=timezone.now() - timedelta(days=2),
+        )
+
+        payload = list_debt_collections()
+        self.assertEqual(payload['count'], 1)
+        self.assertEqual(Decimal(payload['total']), Decimal('40.00'))
+        row = payload['results'][0]
+        self.assertEqual(row['id'], today_pay.id)
+        self.assertEqual(row['customer_name'], 'Owed Customer')
+        self.assertEqual(Decimal(row['amount']), Decimal('40.00'))
+        self.assertEqual(row['received_by'], self.manager_user.username)
+
+    def test_debt_collections_api(self):
+        CustomerWalletTransaction.objects.create(
+            customer=self.debtor,
+            transaction_type='credit',
+            source_type='debt_settlement',
+            amount=Decimal('15.50'),
+            balance_after=Decimal('-184.50'),
+            created_by=self.manager_user,
+        )
+        today = timezone.localdate().isoformat()
+        response = self.client.get(
+            '/api/sales/customers/debt-collections/',
+            {'date': today},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(Decimal(response.data['total']), Decimal('15.50'))
+        self.assertEqual(response.data['results'][0]['customer_name'], 'Owed Customer')
+
+    def test_debt_collections_rejects_bad_date(self):
+        response = self.client.get(
+            '/api/sales/customers/debt-collections/',
+            {'date': 'not-a-date'},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)

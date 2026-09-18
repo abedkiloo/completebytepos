@@ -11,7 +11,13 @@ from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.models import Role, UserProfile
-from accounts.role_definitions import ROLE_DISPATCHER, ROLE_FIELD_AGENT, ensure_permissions, sync_default_roles
+from accounts.role_definitions import (
+    ROLE_DELIVERY_AGENT,
+    ROLE_DISPATCHER,
+    ROLE_FIELD_AGENT,
+    ensure_permissions,
+    sync_default_roles,
+)
 from agents.models import CustomerSite, FieldOrder, FieldOrderLine, SiteMedia
 from agents.order_services import (
     FieldOrderTransitionError,
@@ -49,6 +55,10 @@ class FieldOrderExtraTests(APITestCase):
             custom_role=Role.objects.get(name=ROLE_DISPATCHER), is_active=True,
         )
         cls.driver = User.objects.create_user('fo2_drv', password='x')
+        UserProfile.objects.create(
+            user=cls.driver, role='delivery',
+            custom_role=Role.objects.get(name=ROLE_DELIVERY_AGENT), is_active=True,
+        )
         cls.customer = Customer.objects.create(name='C2', phone='0722')
         cls.product = Product.objects.create(name='Sand', sku='SND-1', price=100, cost=50)
         cls.site = CustomerSite.objects.create(
