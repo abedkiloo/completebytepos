@@ -184,6 +184,13 @@ class DailySalesAPITests(SuperAdminAPITestCase):
         self.assertEqual(Decimal(summary['total_collected']), Decimal('1900.00'))
         self.assertEqual(len(data['orders']), 3)
 
+        collections = data['collections']
+        self.assertEqual(collections['count'], 1)
+        self.assertEqual(Decimal(collections['total']), Decimal('400.00'))
+        self.assertEqual(len(collections['results']), 1)
+        self.assertEqual(collections['results'][0]['customer_name'], 'Daily Debtor')
+        self.assertEqual(Decimal(collections['results'][0]['amount']), Decimal('400.00'))
+
     def test_filter_by_payment_status_paid(self):
         url = f'/api/sales/daily/?date={self.target_date_str}&payment_status=paid'
         response = self.client.get(url)

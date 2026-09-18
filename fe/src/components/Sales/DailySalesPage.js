@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
+  Banknote,
   Calendar,
   ChevronLeft,
   ChevronRight,
@@ -104,6 +105,21 @@ const EMPTY_SUMMARY = {
   payment_methods: {},
 };
 
+const EMPTY_COLLECTIONS = {
+  date: '',
+  count: 0,
+  total: '0.00',
+  results: [],
+};
+
+const ORDER_TABS = ['all', 'paid', 'debt', 'partial'];
+const VALID_TABS = [...ORDER_TABS, 'collected'];
+
+function tabFromSearchParams(searchParams) {
+  const tab = searchParams.get('tab');
+  return VALID_TABS.includes(tab) ? tab : 'all';
+}
+
 export default function DailySalesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialDate = searchParams.get('date') || getTodayDateString();
@@ -111,10 +127,12 @@ export default function DailySalesPage() {
   const [date, setDate] = useState(initialDate);
   const [summary, setSummary] = useState(EMPTY_SUMMARY);
   const [orders, setOrders] = useState([]);
+  const [collections, setCollections] = useState(EMPTY_COLLECTIONS);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 300);
-  const [paymentStatusTab, setPaymentStatusTab] = useState('all');
+  const [paymentStatusTab, setPaymentStatusTab] = useState(() => tabFromSearchParams(searchParams));
+  const showingCollections = paymentStatusTab === 'collected';
   const [paymentMethod, setPaymentMethod] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({
@@ -152,6 +170,17 @@ export default function DailySalesPage() {
     });
   };
 
+  const handleTabChange = (tab) => {
+    setPaymentStatusTab(tab);
+    setPage(1);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (tab === 'all') next.delete('tab');
+      else next.set('tab', tab);
+      return next;
+    });
+  };
+
   const loadDailySales = useCallback(async () => {
     if (!allowed) {
       setLoading(false);
@@ -164,9 +193,11 @@ export default function DailySalesPage() {
         page,
         page_size: 25,
       };
-      if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
-      if (paymentStatusTab && paymentStatusTab !== 'all') params.payment_status = paymentStatusTab;
-      if (paymentMethod) params.payment_method = paymentMethod;
+      if (!showingCollections && debouncedSearch.trim()) params.search = debouncedSearch.trim();
+      if (ORDER_TABS.includes(paymentStatusTab) && paymentStatusTab !== 'all') {
+        params.payment_status = paymentStatusTab;
+      }
+      if (!showingCollections && paymentMethod) params.payment_method = paymentMethod;
       // Sales agents: own sales only (backend also enforces).
       if (!isManagerOrAdminFromStorage()) {
         const { user } = getStoredAuth();
@@ -177,17 +208,19 @@ export default function DailySalesPage() {
       const data = res.data || {};
       setSummary(data.summary || EMPTY_SUMMARY);
       setOrders(data.orders || []);
+      setCollections({ ...EMPTY_COLLECTIONS, ...(data.collections || {}) });
       if (data.pagination) {
         setPagination(data.pagination);
       }
     } catch (err) {
       toast.error('Failed to load daily sales: ' + (err.response?.data?.error || err.message));
       setOrders([]);
+      setCollections(EMPTY_COLLECTIONS);
       setSummary(EMPTY_SUMMARY);
     } finally {
       setLoading(false);
     }
-  }, [allowed, date, page, debouncedSearch, paymentStatusTab, paymentMethod]);
+  }, [allowed, date, page, debouncedSearch, paymentStatusTab, paymentMethod, showingCollections]);
 
   useEffect(() => {
     loadDailySales();
@@ -242,6 +275,26 @@ export default function DailySalesPage() {
   };
 
   const formattedDateTitle = useMemo(() => formatDateLabel(date), [date]);
+
+  const visibleCollections = useMemo(() => {
+    const rows = collections.results || [];
+    const query = search.trim().toLowerCase();
+    if (!query) return rows;
+    return rows.filter((row) =>
+      [
+        row.customer_name,
+        row.customer_phone,
+        row.customer_code,
+        row.received_by,
+        row.notes,
+        row.reference,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(query)
+    );
+  }, [collections.results, search]);
 
   if (!allowed) {
     return (
@@ -358,8 +411,9 @@ export default function DailySalesPage() {
           icon={Wallet}
           label="Prior Debt Collected"
           value={formatCurrency(summary.total_debt_collected)}
-          subtext={`${summary.debt_settlement_count} payment${summary.debt_settlement_count === 1 ? '' : 's'} received`}
+          subtext={`${summary.debt_settlement_count} payment${summary.debt_settlement_count === 1 ? '' : 's'} · tap to see who paid`}
           tone={Number(summary.total_debt_collected) > 0 ? 'success' : 'default'}
+          onClick={() => handleTabChange('collected')}
         />
       </div>
 
@@ -386,47 +440,44 @@ export default function DailySalesPage() {
             <Button
               variant={paymentStatusTab === 'all' ? 'default' : 'ghost'}
               size="sm"
-              onClick={() => {
-                setPaymentStatusTab('all');
-                setPage(1);
-              }}
+              onClick={() => handleTabChange('all')}
             >
               All Orders ({summary.orders_count})
             </Button>
             <Button
               variant={paymentStatusTab === 'paid' ? 'default' : 'ghost'}
               size="sm"
-              onClick={() => {
-                setPaymentStatusTab('paid');
-                setPage(1);
-              }}
+              onClick={() => handleTabChange('paid')}
             >
               Fully Paid ({summary.paid_orders_count})
             </Button>
             <Button
               variant={paymentStatusTab === 'debt' ? 'default' : 'ghost'}
               size="sm"
-              onClick={() => {
-                setPaymentStatusTab('debt');
-                setPage(1);
-              }}
+              onClick={() => handleTabChange('debt')}
             >
               Taken as Debt ({summary.debt_orders_count})
             </Button>
             <Button
               variant={paymentStatusTab === 'partial' ? 'default' : 'ghost'}
               size="sm"
-              onClick={() => {
-                setPaymentStatusTab('partial');
-                setPage(1);
-              }}
+              onClick={() => handleTabChange('partial')}
             >
               Partial Only ({summary.partial_orders_count})
+            </Button>
+            <Button
+              variant={showingCollections ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => handleTabChange('collected')}
+            >
+              Debt collected ({summary.debt_settlement_count})
             </Button>
           </div>
 
           <div className="text-xs text-muted-foreground">
-            Showing {orders.length} of {pagination.count} matching orders
+            {showingCollections
+              ? `Showing ${visibleCollections.length} of ${collections.count} payments`
+              : `Showing ${orders.length} of ${pagination.count} matching orders`}
           </div>
         </div>
 
@@ -441,11 +492,14 @@ export default function DailySalesPage() {
                   setSearch(e.target.value);
                   setPage(1);
                 }}
-                placeholder="Search sale #, customer, cashier…"
+                placeholder={
+                  showingCollections ? 'Search customer, staff, notes…' : 'Search sale #, customer, cashier…'
+                }
                 className="h-10 pl-9"
               />
             </div>
           </FilterField>
+          {!showingCollections ? (
           <FilterField label="Payment Method">
             <SearchableSelect
               value={paymentMethod}
@@ -463,11 +517,84 @@ export default function DailySalesPage() {
               placeholder="All methods"
             />
           </FilterField>
+          ) : null}
         </FilterBar>
       </div>
 
-      {/* Orders Table */}
-      {loading && orders.length === 0 ? (
+      {showingCollections ? (
+        loading && visibleCollections.length === 0 && collections.count === 0 ? (
+          <PageLoading rows={6} />
+        ) : visibleCollections.length === 0 ? (
+          <EmptyState
+            icon={Banknote}
+            title="No collections on this day"
+            description={
+              search
+                ? 'Try adjusting your search query.'
+                : `No debt payments recorded for ${formattedDateTitle}.`
+            }
+          />
+        ) : (
+          <DataTable>
+            <DataTableHeader>
+              <DataTableHead>Time</DataTableHead>
+              <DataTableHead>Customer</DataTableHead>
+              <DataTableHead align="right">Amount paid</DataTableHead>
+              <DataTableHead align="right">Balance after</DataTableHead>
+              <DataTableHead>Received by</DataTableHead>
+              <DataTableHead>Notes</DataTableHead>
+            </DataTableHeader>
+            <DataTableBody>
+              {visibleCollections.map((row) => {
+                const remaining = Number(row.balance_after);
+                const stillOwes = !Number.isNaN(remaining) && remaining < 0;
+                return (
+                  <DataTableRow key={row.id}>
+                    <DataTableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                      {row.created_at ? formatDateTime(row.created_at) : '—'}
+                    </DataTableCell>
+                    <DataTableCell>
+                      {row.customer_id ? (
+                        <>
+                          <Link
+                            to={dailySalesCustomerPath(row.customer_id, date)}
+                            className="font-medium text-primary hover:underline"
+                          >
+                            {row.customer_name || 'Customer'}
+                          </Link>
+                          <div className="text-xs text-muted-foreground">
+                            {[row.customer_phone, row.customer_code].filter(Boolean).join(' · ') ||
+                              '—'}
+                          </div>
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground text-xs italic">Customer</span>
+                      )}
+                    </DataTableCell>
+                    <DataTableCell align="right" className="font-semibold text-success">
+                      {formatCurrency(row.amount)}
+                    </DataTableCell>
+                    <DataTableCell
+                      align="right"
+                      className={
+                        stillOwes ? 'text-sm text-destructive' : 'text-sm text-muted-foreground'
+                      }
+                    >
+                      {stillOwes ? formatCurrency(Math.abs(remaining)) : 'Settled'}
+                    </DataTableCell>
+                    <DataTableCell className="text-sm text-muted-foreground">
+                      {row.received_by || '—'}
+                    </DataTableCell>
+                    <DataTableCell className="max-w-[16rem] truncate text-sm text-muted-foreground">
+                      {[row.reference, row.notes].filter(Boolean).join(' · ') || '—'}
+                    </DataTableCell>
+                  </DataTableRow>
+                );
+              })}
+            </DataTableBody>
+          </DataTable>
+        )
+      ) : loading && orders.length === 0 ? (
         <PageLoading rows={6} />
       ) : orders.length === 0 ? (
         <EmptyState

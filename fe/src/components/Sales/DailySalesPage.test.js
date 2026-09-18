@@ -98,6 +98,7 @@ jest.mock('lucide-react', () => {
     ExternalLink: Icon,
     Clock: Icon,
     ArrowLeft: Icon,
+    Banknote: Icon,
   };
 });
 
@@ -182,13 +183,20 @@ jest.mock('../page', () => ({
       <p>{description}</p>
     </div>
   ),
-  SummaryCard: ({ label, value, subtext }) => (
-    <div>
-      <span>{label}</span>
-      <span>{value}</span>
-      {subtext && <span>{subtext}</span>}
-    </div>
-  ),
+  SummaryCard: ({ label, value, subtext, onClick }) =>
+    onClick ? (
+      <button type="button" onClick={onClick}>
+        <span>{label}</span>
+        <span>{value}</span>
+        {subtext && <span>{subtext}</span>}
+      </button>
+    ) : (
+      <div>
+        <span>{label}</span>
+        <span>{value}</span>
+        {subtext && <span>{subtext}</span>}
+      </div>
+    ),
   FilterBar: ({ children }) => <div>{children}</div>,
   FilterField: ({ label, children }) => (
     <label>
@@ -228,6 +236,27 @@ const MOCK_SUMMARY = {
     cash: { count: 1, total: '1000.00' },
     mpesa: { count: 1, total: '500.00' },
   },
+};
+
+const MOCK_COLLECTIONS = {
+  date: '2026-09-12',
+  count: 1,
+  total: '400.00',
+  results: [
+    {
+      id: 88,
+      customer_id: 7,
+      customer_name: 'Eve Payer',
+      customer_phone: '0700999888',
+      customer_code: 'CUST-007',
+      amount: '400.00',
+      balance_after: '-2100.00',
+      reference: 'SETTLE-TARGET',
+      notes: 'Partial settle',
+      received_by: 'alice',
+      created_at: '2026-09-12T11:00:00Z',
+    },
+  ],
 };
 
 const MOCK_ORDERS = [
@@ -312,6 +341,7 @@ describe('DailySalesPage', () => {
         date: '2026-09-12',
         summary: MOCK_SUMMARY,
         orders: MOCK_ORDERS,
+        collections: MOCK_COLLECTIONS,
         pagination: {
           count: 3,
           page: 1,
@@ -453,5 +483,48 @@ describe('DailySalesPage', () => {
 
     render(<DailySalesPage />);
     expect(await screen.findByText(/No orders found/i)).toBeInTheDocument();
+  });
+
+  it('shows who paid and how much on the Debt collected tab', async () => {
+    render(<DailySalesPage />);
+    await screen.findByText('SALE-PAID-01');
+
+    fireEvent.click(screen.getByRole('button', { name: /^Debt collected/i }));
+
+    expect(await screen.findByText('Eve Payer')).toBeInTheDocument();
+    expect(screen.getByText(/Amount paid/i)).toBeInTheDocument();
+    expect(screen.getByText(/Received by/i)).toBeInTheDocument();
+    expect(screen.queryByText('SALE-PAID-01')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Eve Payer' })).toHaveAttribute(
+      'href',
+      '/sales/daily/customers/7?date=2026-09-12'
+    );
+  });
+
+  it('opens Debt collected from the Prior Debt Collected card', async () => {
+    render(<DailySalesPage />);
+    await screen.findByText('SALE-PAID-01');
+
+    fireEvent.click(screen.getByRole('button', { name: /Prior Debt Collected/i }));
+
+    expect(await screen.findByText('Eve Payer')).toBeInTheDocument();
+    expect(screen.queryByText('SALE-PAID-01')).not.toBeInTheDocument();
+  });
+
+  it('shows empty collections state when nobody paid that day', async () => {
+    salesAPI.daily.mockResolvedValue({
+      data: {
+        date: '2026-09-12',
+        summary: { ...MOCK_SUMMARY, total_debt_collected: '0.00', debt_settlement_count: 0 },
+        orders: MOCK_ORDERS,
+        collections: { date: '2026-09-12', count: 0, total: '0.00', results: [] },
+        pagination: { count: 3, page: 1, page_size: 25, total_pages: 1 },
+      },
+    });
+
+    render(<DailySalesPage />);
+    await screen.findByText('SALE-PAID-01');
+    fireEvent.click(screen.getByRole('button', { name: /^Debt collected/i }));
+    expect(await screen.findByText(/No collections on this day/i)).toBeInTheDocument();
   });
 });

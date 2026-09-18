@@ -10,6 +10,7 @@ from django.core.paginator import Paginator
 from django.db.models import F, Q, Sum
 from django.utils import timezone
 
+from sales.debt_management import list_debt_collections
 from sales.models import CustomerWalletTransaction, Sale
 
 
@@ -166,16 +167,10 @@ def get_daily_sales_report(
         by_method_breakdown[method]['count'] += 1
         by_method_breakdown[method]['total'] += p_amount
 
-    # Settlements of prior customer debts collected on that day
-    settlements_qs = CustomerWalletTransaction.objects.filter(
-        source_type='debt_settlement',
-        created_at__gte=start_of_day,
-        created_at__lte=end_of_day,
-    )
-    total_debt_collected = (
-        settlements_qs.aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
-    )
-    debt_settlement_count = settlements_qs.count()
+    # Settlements of prior customer debts collected on that day (who paid, how much)
+    collections = list_debt_collections(on_date=target_date, page=1, page_size=200)
+    total_debt_collected = Decimal(str(collections.get('total') or 0))
+    debt_settlement_count = int(collections.get('count') or 0)
 
     total_cash_in = total_paid_upfront + Decimal(str(total_debt_collected))
 
@@ -253,6 +248,7 @@ def get_daily_sales_report(
             },
         },
         'orders': serialized_orders,
+        'collections': collections,
         'pagination': {
             'count': paginator.count,
             'page': page_obj.number,
