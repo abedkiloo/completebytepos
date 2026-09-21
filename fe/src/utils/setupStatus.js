@@ -3,16 +3,20 @@ import { installAPI } from '../services/api';
 const CACHE_KEY = 'setup_status_cache';
 const CACHE_MS = 30_000;
 
-function readCache() {
+function readCache({ ignoreExpiry = false } = {}) {
   try {
     const raw = sessionStorage.getItem(CACHE_KEY);
     if (!raw) return null;
     const { at, data } = JSON.parse(raw);
-    if (Date.now() - at > CACHE_MS) return null;
+    if (!ignoreExpiry && Date.now() - at > CACHE_MS) return null;
     return data;
   } catch {
     return null;
   }
+}
+
+export function getCachedSetupStatus({ ignoreExpiry = false } = {}) {
+  return readCache({ ignoreExpiry });
 }
 
 export function clearSetupStatusCache() {

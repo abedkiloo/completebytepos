@@ -95,6 +95,13 @@ class MustChangePasswordTestCase(TransactionTestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data['must_change_password'])
 
+    def test_flagged_user_can_load_setup_status(self):
+        """SetupGate wraps the whole SPA; blocking this 403s the entire UI."""
+        self._auth(self.cashier)
+        response = self.client.get('/api/settings/setup-status/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('needs_install', response.data)
+
     def test_self_change_clears_flag_and_rejects_reuse(self):
         self._auth(self.cashier)
         reuse = self.client.post(

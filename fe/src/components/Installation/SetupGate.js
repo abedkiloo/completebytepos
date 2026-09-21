@@ -1,7 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { PageLoading } from '../page';
-import { fetchSetupStatus } from '../../utils/setupStatus';
+import { fetchSetupStatus, getCachedSetupStatus } from '../../utils/setupStatus';
+
+function isPasswordChangeBlocked(err) {
+  return err?.response?.data?.error === 'password_change_required';
+}
+
+function fallbackStatus(err) {
+  const cached = getCachedSetupStatus({ ignoreExpiry: true });
+  if (cached) return cached;
+  if (isPasswordChangeBlocked(err)) {
+    return { installed: true, needs_install: false };
+  }
+  return null;
+}
 
 /**
  * Redirects to /install when the API reports an uninitialized database.
@@ -9,7 +22,7 @@ import { fetchSetupStatus } from '../../utils/setupStatus';
  */
 const SetupGate = ({ children }) => {
   const location = useLocation();
-  const [status, setStatus] = useState(null);
+  const [status, setStatus] = useState(() => getCachedSetupStatus());
   const [error, setError] = useState(false);
   const [retryTick, setRetryTick] = useState(0);
 
@@ -19,7 +32,6 @@ const SetupGate = ({ children }) => {
   useEffect(() => {
     let cancelled = false;
     setError(false);
-    setStatus(null);
     fetchSetupStatus({ force: true })
       .then((data) => {
         if (!cancelled) {
@@ -27,16 +39,22 @@ const SetupGate = ({ children }) => {
           setStatus(data);
         }
       })
-      .catch(() => {
-        if (!cancelled) {
-          setError(true);
-          setStatus(null);
+      .catch((err) => {
+        if (cancelled) return;
+        const recovered = fallbackStatus(err);
+        if (recovered) {
+          setError(false);
+          setStatus(recovered);
+          return;
         }
+        setError(true);
+        setStatus(null);
       });
     return () => {
       cancelled = true;
     };
-  }, [location.pathname, location.search, retryTick]);
+    // Pathname changes (login → change-password → home) must not blank the SPA.
+  }, [isInstallPath, allowReinstall, retryTick]);
 
   if (error) {
     return (

@@ -18,6 +18,9 @@ _ALWAYS_ALLOWED = (
     '/api/token/',
     '/api/token/refresh/',
     '/api/token/verify/',
+    '/api/settings/setup-status/',
+    '/api/settings/fresh-install/',
+    '/api/settings/store-settings/',
 )
 
 
