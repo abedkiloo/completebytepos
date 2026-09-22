@@ -4,6 +4,8 @@ import { Link } from 'react-router-dom';
 import { expensesAPI } from '../../services/api';
 import { CATALOG_FETCH_PAGE_SIZE } from '../../config/pagination';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
+import CommitConfirm from '../Shared/CommitConfirm';
+import { expenseCategoryCommitRows } from '../../utils/formCommitSummary';
 import { toast } from '../../utils/toast';
 import { formatApiError } from '../../utils/apiErrors';
 import { isSuperAdminFromStorage } from '../../utils/navAccess';
@@ -39,6 +41,7 @@ export default function ExpenseCategories() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [showCommitConfirm, setShowCommitConfirm] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
 
   const loadCategories = useCallback(async () => {
@@ -80,12 +83,17 @@ export default function ExpenseCategories() {
     setShowForm(true);
   };
 
-  const handleSave = async (e) => {
+  const handleSave = (e) => {
     e.preventDefault();
     if (!form.name.trim()) {
       toast.error('Category name is required');
       return;
     }
+    setShowCommitConfirm(true);
+  };
+
+  const confirmSave = async () => {
+    if (saving) return;
     setSaving(true);
     try {
       const payload = {
@@ -104,6 +112,7 @@ export default function ExpenseCategories() {
           toast.success('Category created');
         }
       }
+      setShowCommitConfirm(false);
       setShowForm(false);
       setEditing(null);
       setForm(EMPTY_FORM);
@@ -311,6 +320,18 @@ export default function ExpenseCategories() {
         confirmText="Delete"
         cancelText="Cancel"
         type="danger"
+      />
+      <CommitConfirm
+        open={showCommitConfirm}
+        onOpenChange={(open) => {
+          if (!open && !saving) setShowCommitConfirm(false);
+        }}
+        title={editing ? 'Update this expense category?' : 'Create this expense category?'}
+        description="Review the category details, then confirm to save."
+        rows={expenseCategoryCommitRows(form, { isEdit: !!editing })}
+        submitting={saving}
+        confirmText={editing ? 'Confirm & update' : 'Confirm & create'}
+        onConfirm={confirmSave}
       />
     </PageShell>
   );

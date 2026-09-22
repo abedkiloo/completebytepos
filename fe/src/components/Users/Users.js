@@ -4,6 +4,8 @@ import { usersAPI, rolesAPI } from '../../services/api';
 import UserForm from './UserForm';
 import SearchableSelect from '../Shared/SearchableSelect';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
+import CommitConfirm from '../Shared/CommitConfirm';
+import { assignRoleRows } from '../../utils/formCommitSummary';
 import { toast } from '../../utils/toast';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
@@ -63,6 +65,8 @@ const Users = () => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [pendingRole, setPendingRole] = useState(null);
+  const [assigningRole, setAssigningRole] = useState(false);
 
   useEffect(() => {
     loadUsers();
@@ -122,15 +126,25 @@ const Users = () => {
     }
   };
 
-  const handleAssignRole = async (user, roleId) => {
+  const requestAssignRole = (user, roleId, roleLabel) => {
+    if (!roleId || roleId === user.profile?.role) return;
+    setPendingRole({ user, roleId, roleLabel });
+  };
+
+  const confirmAssignRole = async () => {
+    if (!pendingRole) return;
+    setAssigningRole(true);
     try {
-      await usersAPI.assignRole(user.id, roleId);
+      await usersAPI.assignRole(pendingRole.user.id, pendingRole.roleId);
       toast.success('Role assigned successfully');
+      setPendingRole(null);
       loadUsers();
     } catch (error) {
       toast.error(
         'Failed to assign role: ' + (error.response?.data?.error || error.message)
       );
+    } finally {
+      setAssigningRole(false);
     }
   };
 
@@ -290,9 +304,13 @@ const Users = () => {
                       }
                       onChange={(e) => {
                         const roleId = e.target.value;
-                        if (roleId && roleId !== user.profile?.role) {
-                          handleAssignRole(user, roleId);
-                        }
+                        const option = [
+                          { id: 'super_admin', name: 'Super Admin' },
+                          { id: 'manager', name: 'Manager' },
+                          { id: 'cashier', name: 'Cashier' },
+                          ...roles.map((role) => ({ id: role.id, name: role.name })),
+                        ].find((opt) => String(opt.id) === String(roleId));
+                        requestAssignRole(user, roleId, option?.name || roleId);
                       }}
                       className="role-select max-w-[160px]"
                       options={[
@@ -378,6 +396,19 @@ const Users = () => {
           busy={deleting}
           onConfirm={confirmDelete}
           onCancel={() => (deleting ? null : setPendingDelete(null))}
+        />
+        <CommitConfirm
+          open={!!pendingRole}
+          onOpenChange={(open) => {
+            if (!open && !assigningRole) setPendingRole(null);
+          }}
+          title="Change this user's role?"
+          description="They will get the new permissions immediately."
+          rows={assignRoleRows(pendingRole?.user, pendingRole?.roleLabel)}
+          submitting={assigningRole}
+          confirmText="Confirm & assign"
+          onConfirm={confirmAssignRole}
+          variant="warning"
         />
       </PageShell>
   );

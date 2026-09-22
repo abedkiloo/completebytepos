@@ -4,6 +4,7 @@ import { formatCurrency } from '../../utils/formatters';
 import { toast } from '../../utils/toast';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import CommitConfirm from '../Shared/CommitConfirm';
+import { invoiceCommitRows, invoiceSendRows } from '../../utils/formCommitSummary';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { PageShell, PageHeader, PageLoading, EmptyState, FilterBar, SearchField, FilterPills } from '../page';
 import { Button } from '../ui/button';
@@ -35,6 +36,10 @@ const Invoices = () => {
   const [showModal, setShowModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showPaymentCommitConfirm, setShowPaymentCommitConfirm] = useState(false);
+  const [showInvoiceCommitConfirm, setShowInvoiceCommitConfirm] = useState(false);
+  const [invoiceSubmitting, setInvoiceSubmitting] = useState(false);
+  const [pendingSend, setPendingSend] = useState(null);
+  const [sendingInvoice, setSendingInvoice] = useState(false);
   const [pendingPaymentPayload, setPendingPaymentPayload] = useState(null);
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -241,17 +246,26 @@ const Invoices = () => {
     }
   };
 
-  const handleSendInvoice = async (invoice) => {
+  const handleSendInvoice = (invoice) => {
     if (!canSendInvoice) {
       toast.error('Sending invoices is disabled in module settings.');
       return;
     }
+    setPendingSend(invoice);
+  };
+
+  const confirmSendInvoice = async () => {
+    if (!pendingSend) return;
+    setSendingInvoice(true);
     try {
-      await invoicesAPI.send(invoice.id);
+      await invoicesAPI.send(pendingSend.id);
       toast.success('Invoice sent — receivable recorded in accounting.');
+      setPendingSend(null);
       loadInvoices();
     } catch (error) {
       toast.error('Failed to send invoice: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setSendingInvoice(false);
     }
   };
 
@@ -290,7 +304,7 @@ const Invoices = () => {
     }
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
 
     if (!selectedInvoice && !canCreateInvoice) {
@@ -298,10 +312,21 @@ const Invoices = () => {
       return;
     }
 
+    const formattedItems = formatInvoiceItemsForApi(formData.items);
+    if (!selectedInvoice && !formData.sale_id) {
+      if (!formattedItems || formattedItems.length === 0) {
+        toast.error('An invoice must have at least one item. Please add items to the invoice or create from a sale.');
+        return;
+      }
+    }
+    setShowInvoiceCommitConfirm(true);
+  };
+
+  const confirmInvoiceCommit = async () => {
+    if (invoiceSubmitting) return;
+    setInvoiceSubmitting(true);
     try {
-      // Format items for API - only include items with product_id
       const formattedItems = formatInvoiceItemsForApi(formData.items);
-      
       const { status: _status, ...formWithoutStatus } = formData;
       const invoiceData = {
         ...formWithoutStatus,
@@ -314,15 +339,7 @@ const Invoices = () => {
         items: formattedItems,
         sale_id: formData.sale_id || null,
       };
-      
-      // Validate that invoice has items when creating manually (not from sale)
-      if (!selectedInvoice && !invoiceData.sale_id) {
-        if (!formattedItems || formattedItems.length === 0) {
-          toast.error('An invoice must have at least one item. Please add items to the invoice or create from a sale.');
-          return;
-        }
-      }
-      
+
       if (selectedInvoice) {
         await invoicesAPI.update(selectedInvoice.id, invoiceData);
         toast.success('Invoice updated successfully');
@@ -330,11 +347,14 @@ const Invoices = () => {
         await invoicesAPI.create(invoiceData);
         toast.success('Invoice created successfully');
       }
+      setShowInvoiceCommitConfirm(false);
       setShowModal(false);
       loadInvoices();
       setSelectedInvoice(null);
     } catch (error) {
       toast.error('Failed to save invoice: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setInvoiceSubmitting(false);
     }
   };
 
@@ -1081,8 +1101,33 @@ const Invoices = () => {
           </div>
         )}
 
-        {/* Payment + delete confirms */}
         <CommitConfirm
+          open={showInvoiceCommitConfirm}
+          onOpenChange={(open) => {
+            if (!open && !invoiceSubmitting) setShowInvoiceCommitConfirm(false);
+          }}
+          title={selectedInvoice ? 'Update this invoice?' : 'Create this invoice?'}
+          description="Review the invoice summary, then confirm to save."
+          rows={invoiceCommitRows(formData, {
+            isEdit: !!selectedInvoice,
+            formatMoney: formatCurrency,
+          })}
+          submitting={invoiceSubmitting}
+          confirmText={selectedInvoice ? 'Confirm & update' : 'Confirm & create'}
+          onConfirm={confirmInvoiceCommit}
+        />
+        <CommitConfirm
+          open={!!pendingSend}
+          onOpenChange={(open) => {
+            if (!open && !sendingInvoice) setPendingSend(null);
+          }}
+          title="Send this invoice?"
+          description="This records the receivable in accounting."
+          rows={invoiceSendRows(pendingSend || {}, formatCurrency)}
+          submitting={sendingInvoice}
+          confirmText="Confirm & send"
+          onConfirm={confirmSendInvoice}
+        />
           open={showPaymentCommitConfirm}
           onOpenChange={(open) => {
             if (!open && !paymentSubmitting) {

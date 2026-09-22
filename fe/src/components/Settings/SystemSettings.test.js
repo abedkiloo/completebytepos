@@ -55,6 +55,7 @@ describe('SystemSettings backdate limit save', () => {
     expect(screen.queryByLabelText(/Reason for this settings change/i)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Save store settings/i }));
+    fireEvent.click(await screen.findByTestId('commit-confirm-ok'));
 
     await waitFor(() => {
       expect(storeSettingsAPI.update).toHaveBeenCalledWith({ backfill_max_days: 90 });
@@ -82,6 +83,7 @@ describe('SystemSettings backdate limit save', () => {
 
     fireEvent.change(reason, { target: { value: 'Legal footer update' } });
     fireEvent.click(screen.getByRole('button', { name: /Save store settings/i }));
+    fireEvent.click(await screen.findByTestId('commit-confirm-ok'));
 
     await waitFor(() => {
       expect(storeSettingsAPI.update).toHaveBeenCalledWith({

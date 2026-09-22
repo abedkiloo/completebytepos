@@ -169,6 +169,7 @@ describe('ProductForm integration', () => {
 
     await fillNameAndEnableVariants();
     fireEvent.click(screen.getByRole('button', { name: /create/i }));
+    fireEvent.click(await screen.findByTestId('commit-confirm-ok'));
 
     await waitFor(() => {
       expect(productsAPI.create).toHaveBeenCalled();
@@ -201,6 +202,7 @@ describe('ProductForm integration', () => {
       target: { name: 'reorder_quantity', value: '24' },
     });
     fireEvent.click(screen.getByRole('button', { name: /create/i }));
+    fireEvent.click(await screen.findByTestId('commit-confirm-ok'));
 
     await waitFor(() => {
       expect(productsAPI.create).toHaveBeenCalled();
@@ -237,6 +239,7 @@ describe('ProductForm integration', () => {
 
     await screen.findByTestId('variants-panel');
     fireEvent.click(screen.getByRole('button', { name: /update/i }));
+    fireEvent.click(await screen.findByTestId('commit-confirm-ok'));
 
     await waitFor(() => {
       expect(productsAPI.update).toHaveBeenCalled();
@@ -340,6 +343,7 @@ describe('ProductForm integration', () => {
 
     await fillNameAndEnableVariants();
     fireEvent.click(screen.getByRole('button', { name: /create/i }));
+    fireEvent.click(await screen.findByTestId('commit-confirm-ok'));
 
     await waitFor(() => {
       expect(productsAPI.create).toHaveBeenCalled();

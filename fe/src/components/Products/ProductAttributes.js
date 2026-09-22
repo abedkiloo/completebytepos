@@ -4,6 +4,8 @@ import { sizesAPI, colorsAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import { useProductVariantsEnabled } from '../../hooks/useProductVariantsEnabled';
 import { Button } from '../ui/button';
+import CommitConfirm from '../Shared/CommitConfirm';
+import { attributeDeleteRows, attributeSaveRows } from '../../utils/formCommitSummary';
 import {
   PageShell,
   PageHeader,
@@ -32,6 +34,10 @@ const ProductAttributes = () => {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ name: '', code: '', hex_code: '', display_order: 0, is_active: true });
+  const [showCommitConfirm, setShowCommitConfirm] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -77,12 +83,18 @@ const ProductAttributes = () => {
     setFormOpen(true);
   };
 
-  const handleSave = async (e) => {
+  const handleSave = (e) => {
     e.preventDefault();
     if (!form.name.trim()) {
       toast.error('Name is required');
       return;
     }
+    setShowCommitConfirm(true);
+  };
+
+  const confirmSave = async () => {
+    if (saving) return;
+    setSaving(true);
     try {
       if (tab === 'sizes') {
         const payload = {
@@ -103,22 +115,33 @@ const ProductAttributes = () => {
         else await colorsAPI.create(payload);
       }
       toast.success(editing ? 'Updated' : 'Created');
+      setShowCommitConfirm(false);
       setFormOpen(false);
       load();
     } catch (err) {
       toast.error(err.response?.data?.name?.[0] || err.response?.data?.detail || 'Save failed');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleDelete = async (row) => {
-    if (!window.confirm(`Delete "${row.name}"? Products using it may be affected.`)) return;
+  const requestDelete = (row) => {
+    setPendingDelete(row);
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDelete || deleting) return;
+    setDeleting(true);
     try {
-      if (tab === 'sizes') await sizesAPI.delete(row.id);
-      else await colorsAPI.delete(row.id);
+      if (tab === 'sizes') await sizesAPI.delete(pendingDelete.id);
+      else await colorsAPI.delete(pendingDelete.id);
       toast.success('Deleted');
+      setPendingDelete(null);
       load();
     } catch {
       toast.error('Delete failed — item may be in use');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -225,7 +248,7 @@ const ProductAttributes = () => {
                       variant="ghost"
                       size="sm"
                       className="text-destructive"
-                      onClick={() => handleDelete(row)}
+                      onClick={() => requestDelete(row)}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -302,13 +325,38 @@ const ProductAttributes = () => {
               <button type="button" className="btn btn-secondary" onClick={() => setFormOpen(false)}>
                 Cancel
               </button>
-              <button type="button" className="btn btn-primary" onClick={handleSave}>
+              <button type="button" className="btn btn-primary" onClick={handleSave} disabled={saving}>
                 {editing ? 'Update' : 'Create'}
               </button>
             </div>
           </div>
         </div>
       )}
+      <CommitConfirm
+        open={showCommitConfirm}
+        onOpenChange={(open) => {
+          if (!open && !saving) setShowCommitConfirm(false);
+        }}
+        title={editing ? `Update this ${tab === 'colors' ? 'color' : 'size'}?` : `Create this ${tab === 'colors' ? 'color' : 'size'}?`}
+        description="Review the details, then confirm to save."
+        rows={attributeSaveRows(form, { kind: tab, isEdit: !!editing })}
+        submitting={saving}
+        confirmText={editing ? 'Confirm & update' : 'Confirm & create'}
+        onConfirm={confirmSave}
+      />
+      <CommitConfirm
+        open={!!pendingDelete}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setPendingDelete(null);
+        }}
+        title={tab === 'colors' ? 'Delete this color?' : 'Delete this size?'}
+        description="Products using it may be affected."
+        rows={attributeDeleteRows(pendingDelete || {}, tab)}
+        submitting={deleting}
+        confirmText="Confirm & delete"
+        variant="danger"
+        onConfirm={confirmDelete}
+      />
     </PageShell>
   );
 };

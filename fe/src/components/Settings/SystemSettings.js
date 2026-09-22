@@ -22,6 +22,8 @@ import {
 import ModuleSettingsCard from './ModuleSettingsCard';
 import { MODULE_SETTINGS_CARDS } from './moduleSettingsCards';
 import SettingToggleRow from './SettingToggleRow';
+import CommitConfirm from '../Shared/CommitConfirm';
+import { settingsCommitRows } from '../../utils/formCommitSummary';
 
 function StoreCheckboxRow({ id, checked, onChange, disabled, label, description }) {
   return (
@@ -41,6 +43,8 @@ export default function SystemSettings() {
   const [form, setForm] = useState(null);
   const [logoFile, setLogoFile] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [showCommitConfirm, setShowCommitConfirm] = useState(false);
+  const [commitKind, setCommitKind] = useState('save');
   const [changeReason, setChangeReason] = useState('');
   const [openModule, setOpenModule] = useState('products');
   const makerCheckerOn = isMakerCheckerEnabled(settings);
@@ -62,7 +66,7 @@ export default function SystemSettings() {
   const dirtyPayload = form ? buildStoreSettingsUpdatePayload(form, settings) : {};
   const needsReason = makerCheckerOn && storeSettingsEditNeedsReason(form, settings);
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!form) return;
     if (!(form.enabled_payment_methods || []).length) {
       toast.warning('Select at least one payment method.');
@@ -76,6 +80,29 @@ export default function SystemSettings() {
       toast.warning('Enter a reason for these store setting changes.');
       return;
     }
+    setCommitKind('save');
+    setShowCommitConfirm(true);
+  };
+
+  const confirmCommit = async () => {
+    if (saving) return;
+    if (commitKind === 'clearLogo') {
+      setSaving(true);
+      try {
+        const res = await storeSettingsAPI.update({ clear_receipt_logo: true });
+        applyLocal(res.data);
+        setForm((prev) => ({ ...prev, receipt_logo_url: null }));
+        setShowCommitConfirm(false);
+        toast.success('Receipt logo removed');
+      } catch (err) {
+        setShowCommitConfirm(false);
+        toast.error('Could not remove logo');
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
     setSaving(true);
     try {
       const payload = { ...dirtyPayload };
@@ -105,12 +132,14 @@ export default function SystemSettings() {
       setLogoFile(null);
       setChangeReason('');
       window.dispatchEvent(new CustomEvent('storeSettingsUpdated', { detail: data }));
+      setShowCommitConfirm(false);
       if (isPendingApprovalResponse(res.status)) {
         toast.warning(pendingApprovalToastMessage());
       } else {
         toast.success('System settings saved');
       }
     } catch (err) {
+      setShowCommitConfirm(false);
       const detail = err.response?.data;
       const msg =
         (typeof detail === 'object' &&
@@ -124,18 +153,9 @@ export default function SystemSettings() {
     }
   };
 
-  const clearLogo = async () => {
-    setSaving(true);
-    try {
-      const res = await storeSettingsAPI.update({ clear_receipt_logo: true });
-      applyLocal(res.data);
-      setForm((prev) => ({ ...prev, receipt_logo_url: null }));
-      toast.success('Receipt logo removed');
-    } catch (err) {
-      toast.error('Could not remove logo');
-    } finally {
-      setSaving(false);
-    }
+  const clearLogo = () => {
+    setCommitKind('clearLogo');
+    setShowCommitConfirm(true);
   };
 
   if (!form) {
@@ -399,6 +419,26 @@ export default function SystemSettings() {
           ))}
         </TabsContent>
       </Tabs>
+      <CommitConfirm
+        open={showCommitConfirm}
+        onOpenChange={(open) => {
+          if (!open && !saving) setShowCommitConfirm(false);
+        }}
+        title={commitKind === 'clearLogo' ? 'Remove the receipt logo?' : 'Save these store settings?'}
+        description={
+          commitKind === 'clearLogo'
+            ? 'The logo will be removed from receipts after you confirm.'
+            : 'Review the changes, then confirm to save.'
+        }
+        rows={settingsCommitRows(dirtyPayload, {
+          hasLogo: !!logoFile,
+          clearingLogo: commitKind === 'clearLogo',
+        })}
+        submitting={saving}
+        confirmText={commitKind === 'clearLogo' ? 'Confirm & remove' : 'Confirm & save'}
+        variant={commitKind === 'clearLogo' ? 'warning' : 'info'}
+        onConfirm={confirmCommit}
+      />
     </PageShell>
   );
 }

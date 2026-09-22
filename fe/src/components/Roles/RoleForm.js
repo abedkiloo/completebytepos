@@ -10,6 +10,8 @@ import {
   rolePermissionsChanged,
 } from '../../utils/makerChecker';
 import { toast } from '../../utils/toast';
+import CommitConfirm from '../Shared/CommitConfirm';
+import { roleCommitRows } from '../../utils/formCommitSummary';
 import { cn } from '../../lib/cn';
 import { DOMAIN_ORDER, DOMAIN_LABELS } from '../../utils/moduleDomains';
 import { Button } from '../ui/button';
@@ -85,6 +87,7 @@ const RoleForm = ({ role, permissions, permissionCatalog, showPermissionCatalog 
   const [domainCatalog, setDomainCatalog] = useState([]);
   const [expandedDomains, setExpandedDomains] = useState({});
   const [changeReason, setChangeReason] = useState('');
+  const [showCommitConfirm, setShowCommitConfirm] = useState(false);
   const { settings: storeSettings } = useStoreSettings();
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
   const permChangeNeedsReason =
@@ -182,8 +185,17 @@ const RoleForm = ({ role, permissions, permissionCatalog, showPermissionCatalog 
 
   const totalPermissions = flattenCatalog(domainCatalog).length;
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
+    if (permChangeNeedsReason && !changeReason.trim()) {
+      toast.warning('Please add a short reason so a manager can review this permission change.');
+      return;
+    }
+    setShowCommitConfirm(true);
+  };
+
+  const confirmCommit = async () => {
+    if (loading) return;
     setLoading(true);
     setErrors({});
 
@@ -194,11 +206,6 @@ const RoleForm = ({ role, permissions, permissionCatalog, showPermissionCatalog 
       permission_ids: formData.permission_ids,
     };
     if (permChangeNeedsReason) {
-      if (!changeReason.trim()) {
-        toast.warning('Please add a short reason so a manager can review this permission change.');
-        setLoading(false);
-        return;
-      }
       payload.reason = changeReason.trim();
     }
 
@@ -214,10 +221,12 @@ const RoleForm = ({ role, permissions, permissionCatalog, showPermissionCatalog 
         await rolesAPI.create(payload);
         toast.success('Role created successfully');
       }
+      setShowCommitConfirm(false);
       setTimeout(() => {
         onClose();
       }, 500);
     } catch (error) {
+      setShowCommitConfirm(false);
       if (error.response?.data) {
         setErrors(error.response.data);
         const errorMessage =
@@ -445,6 +454,18 @@ const RoleForm = ({ role, permissions, permissionCatalog, showPermissionCatalog 
           </button>
         </div>
       </div>
+      <CommitConfirm
+        open={showCommitConfirm}
+        onOpenChange={(open) => {
+          if (!open && !loading) setShowCommitConfirm(false);
+        }}
+        title={role ? 'Update this role?' : 'Create this role?'}
+        description="Review the role and permissions, then confirm to save."
+        rows={roleCommitRows(formData, { isEdit: !!role })}
+        submitting={loading}
+        confirmText={role ? 'Confirm & update' : 'Confirm & create'}
+        onConfirm={confirmCommit}
+      />
     </div>
   );
 };

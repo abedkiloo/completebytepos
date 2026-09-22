@@ -37,7 +37,8 @@
     "test:unit": "react-scripts test --watchAll=false --testPathPattern=\"src/(utils|config|hooks)/\"",
     "test:coverage": "react-scripts test --watchAll=false --coverage --testPathPattern=\"src/(utils|config|hooks)/\"",
     "test:coverage:features": "react-scripts test --watchAll=false --coverage --testPathPattern=\"CategoryForm.test|Dashboard.test|SearchableSelect.test|ReportExportButtons.test|ChangeReasonField.test\" --collectCoverageFrom=\"src/components/Products/CategoryForm.js\" --collectCoverageFrom=\"src/components/Dashboard/Dashboard.js\" --collectCoverageFrom=\"src/components/Shared/SearchableSelect.js\" --collectCoverageFrom=\"src/components/Reports/ReportExportButtons.js\" --collectCoverageFrom=\"src/components/Approvals/ChangeReasonField.js\" --coverageThreshold='{\"global\":{\"lines\":98,\"statements\":94,\"functions\":88,\"branches\":75}}'",
-    "test:coverage:commit-confirm": "react-scripts test --watchAll=false --coverage --testPathPattern=\"commitConfirm|CommitConfirm|saleCommitSummary|SaleCommitConfirm\" --collectCoverageFrom=\"src/utils/commitConfirm.js\" --collectCoverageFrom=\"src/components/Shared/CommitConfirm.js\" --collectCoverageFrom=\"src/utils/saleCommitSummary.js\" --collectCoverageFrom=\"src/components/POS/v2/SaleCommitConfirm.js\" --coverageThreshold='{\"global\":{\"lines\":98,\"statements\":98,\"functions\":98,\"branches\":90}}'",
+    "test:coverage:commit-confirm": "react-scripts test --watchAll=false --coverage --testPathPattern=\"commitConfirm|CommitConfirm|saleCommitSummary|SaleCommitConfirm|formCommitSummary\" --collectCoverageFrom=\"src/utils/commitConfirm.js\" --collectCoverageFrom=\"src/components/Shared/CommitConfirm.js\" --collectCoverageFrom=\"src/utils/saleCommitSummary.js\" --collectCoverageFrom=\"src/utils/formCommitSummary.js\" --collectCoverageFrom=\"src/components/POS/v2/SaleCommitConfirm.js\" --coverageThreshold='{\"global\":{\"lines\":98,\"statements\":98,\"functions\":98,\"branches\":90}}'",
+    "test:coverage:field-sales": "react-scripts test --watchAll=false --coverage --testPathPattern=\"fieldSalesCommit|FieldSalesPage.test\" --collectCoverageFrom=\"src/utils/fieldSalesCommit.js\" --collectCoverageFrom=\"src/components/Sales/FieldSalesPage.js\" --coverageThreshold='{\"global\":{\"lines\":98,\"statements\":98,\"functions\":90,\"branches\":80}}'",
     "test:coverage:daily-sales": "react-scripts test --watchAll=false --coverage --testPathPattern=\"DailySalesPage.test|CustomerDailyDetailPage.test|dailySalesAccess.test\" --collectCoverageFrom=\"src/utils/dailySalesAccess.js\" --coverageThreshold='{\"global\":{\"lines\":98,\"statements\":98,\"functions\":98,\"branches\":85}}'",
     "test:coverage:all": "react-scripts test --watchAll=false --coverage --testPathPattern=\"src/(utils|config|hooks)/|Display\\.test|moduleSettingsCache|FeatureFlag|sellingPrice\" --coverageThreshold='{}'",
     "test:flags": "react-scripts test --watchAll=false --testPathPattern=\"Display|moduleSettingsCache|FeatureFlag|useModuleSettings|productDisplay|sellingPrice|sessionIdle|Products.module|billingInvoice|BillingPOSPage\"",
@@ -79,6 +80,8 @@
       "src/utils/approvalDisplay.js",
       "src/utils/saleRefund.js",
       "src/utils/commitConfirm.js",
+      "src/utils/fieldSalesCommit.js",
+      "src/utils/formCommitSummary.js",
       "src/utils/saleCommitSummary.js",
       "src/utils/posCartRecovery.js",
       "src/utils/billingCartLine.js",
@@ -161,6 +164,18 @@
       },
       "./src/utils/productAccess.js": {
         "branches": 93,
+        "functions": 98,
+        "lines": 98,
+        "statements": 98
+      },
+      "./src/utils/fieldSalesCommit.js": {
+        "branches": 90,
+        "functions": 98,
+        "lines": 98,
+        "statements": 98
+      },
+      "./src/utils/formCommitSummary.js": {
+        "branches": 90,
         "functions": 98,
         "lines": 98,
         "statements": 98

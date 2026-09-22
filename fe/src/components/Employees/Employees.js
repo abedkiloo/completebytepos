@@ -15,6 +15,8 @@ import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { formatCurrency } from '../../utils/formatters';
 import { toast } from '../../utils/toast';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
+import CommitConfirm from '../Shared/CommitConfirm';
+import { employeeCommitRows } from '../../utils/formCommitSummary';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import {
@@ -100,6 +102,7 @@ export default function Employees() {
   const [editing, setEditing] = useState(null);
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [showCommitConfirm, setShowCommitConfirm] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [pagination, setPagination] = useState({
@@ -211,6 +214,11 @@ export default function Employees() {
       toast.error('Employee ID, position, and hire date are required');
       return;
     }
+    setShowCommitConfirm(true);
+  };
+
+  const confirmCommit = async () => {
+    if (saving) return;
     setSaving(true);
     try {
       const payload = buildPayload();
@@ -221,6 +229,7 @@ export default function Employees() {
         await employeesAPI.create(payload);
         toast.success('Employee created');
       }
+      setShowCommitConfirm(false);
       setShowModal(false);
       loadEmployees();
       loadStatistics();
@@ -552,6 +561,18 @@ export default function Employees() {
         busy={deleting}
         onConfirm={confirmDelete}
         onCancel={() => !deleting && setPendingDelete(null)}
+      />
+      <CommitConfirm
+        open={showCommitConfirm}
+        onOpenChange={(open) => {
+          if (!open && !saving) setShowCommitConfirm(false);
+        }}
+        title={editing ? 'Update this employee?' : 'Create this employee?'}
+        description="Review the employee details, then confirm to save."
+        rows={employeeCommitRows(formData, { isEdit: !!editing })}
+        submitting={saving}
+        confirmText={editing ? 'Confirm & update' : 'Confirm & create'}
+        onConfirm={confirmCommit}
       />
     </PageShell>
   );

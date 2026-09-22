@@ -20,6 +20,8 @@ import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { formatCurrency } from '../../utils/formatters';
 import { toast } from '../../utils/toast';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
+import CommitConfirm from '../Shared/CommitConfirm';
+import { customerCommitRows } from '../../utils/formCommitSummary';
 import { customerDetailPath } from '../../utils/customerDetail';
 
 import {
@@ -100,6 +102,7 @@ const Customers = () => {
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [formErrors, setFormErrors] = useState({});
   const [saving, setSaving] = useState(false);
+  const [showCommitConfirm, setShowCommitConfirm] = useState(false);
 
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -235,6 +238,11 @@ const Customers = () => {
       return;
     }
 
+    setShowCommitConfirm(true);
+  };
+
+  const confirmCommit = async () => {
+    if (saving) return;
     const payload = {
       name: formData.name.trim(),
       customer_type: formData.customer_type,
@@ -257,11 +265,11 @@ const Customers = () => {
         await customersAPI.create(payload);
         toast.success('Customer created');
       }
+      setShowCommitConfirm(false);
       setShowModal(false);
       setEditingCustomer(null);
       loadCustomers();
     } catch (error) {
-      // Field-level DRF errors → inline; otherwise toast.
       const data = error.response?.data;
       if (data && typeof data === 'object' && !data.error && !data.detail) {
         const backendErrors = {};
@@ -510,6 +518,18 @@ const Customers = () => {
         busy={deleting}
         onConfirm={confirmDelete}
         onCancel={() => (deleting ? null : setPendingDelete(null))}
+      />
+      <CommitConfirm
+        open={showCommitConfirm}
+        onOpenChange={(open) => {
+          if (!open && !saving) setShowCommitConfirm(false);
+        }}
+        title={editingCustomer ? 'Update this customer?' : 'Create this customer?'}
+        description="Review the customer details, then confirm to save."
+        rows={customerCommitRows(formData, { isEdit: !!editingCustomer })}
+        submitting={saving}
+        confirmText={editingCustomer ? 'Confirm & update' : 'Confirm & create'}
+        onConfirm={confirmCommit}
       />
       </PageShell>
   );

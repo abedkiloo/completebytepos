@@ -80,6 +80,10 @@ describe('CategoryForm submit', () => {
     jest.clearAllMocks();
   });
 
+  async function confirmCommit() {
+    fireEvent.click(await screen.findByTestId('commit-confirm-ok'));
+  }
+
   it('creates a category and optional parent', async () => {
     categoriesAPI.create.mockResolvedValue({ data: { id: 9, name: 'Soda' } });
     const onSave = jest.fn();
@@ -105,6 +109,7 @@ describe('CategoryForm submit', () => {
     fireEvent.click(screen.getByLabelText('Active'));
     fireEvent.click(screen.getByLabelText('Active'));
     fireEvent.click(screen.getByRole('button', { name: 'Create category' }));
+    await confirmCommit();
 
     await waitFor(() => {
       expect(categoriesAPI.create).toHaveBeenCalledWith({
@@ -153,6 +158,7 @@ describe('CategoryForm submit', () => {
     expect(screen.getByRole('heading', { name: 'Add subcategory' })).toBeInTheDocument();
     expect(screen.getByDisplayValue('Drinks')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Create subcategory' }));
+    await confirmCommit();
 
     await waitFor(() => {
       expect(onResolveDuplicate).toHaveBeenCalledWith('Soda');
@@ -172,6 +178,7 @@ describe('CategoryForm submit', () => {
       target: { name: 'name', value: 'Tea' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Create category' }));
+    await confirmCommit();
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('Duplicate name');
     });
@@ -181,6 +188,7 @@ describe('CategoryForm submit', () => {
       target: { name: 'name', value: 'Tea' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Create category' }));
+    await confirmCommit();
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('Failed to create category: offline');
     });
@@ -211,6 +219,7 @@ describe('CategoryForm submit', () => {
       />
     );
     fireEvent.click(screen.getByRole('button', { name: 'Create subcategory' }));
+    await confirmCommit();
     await waitFor(() => {
       expect(categoriesAPI.create).toHaveBeenCalledWith({
         name: 'Diet',
@@ -238,6 +247,7 @@ describe('CategoryForm submit', () => {
       />
     );
     fireEvent.click(screen.getByRole('button', { name: 'Create subcategory' }));
+    await confirmCommit();
     await waitFor(() => {
       expect(onResolveDuplicate).toHaveBeenCalledWith('Soda');
     });
@@ -254,11 +264,13 @@ describe('CategoryForm submit', () => {
       target: { name: 'name', value: 'Juice' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Create category' }));
+    await confirmCommit();
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('Invalid parent');
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Create category' }));
+    await confirmCommit();
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('Failed to create category: Unknown error');
     });

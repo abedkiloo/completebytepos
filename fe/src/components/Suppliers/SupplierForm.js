@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { suppliersAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import SearchableSelect from '../Shared/SearchableSelect';
+import CommitConfirm from '../Shared/CommitConfirm';
+import { supplierCommitRows } from '../../utils/formCommitSummary';
 
 const SupplierForm = ({
   supplier,
@@ -42,6 +44,7 @@ const SupplierForm = ({
   });
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+  const [showCommitConfirm, setShowCommitConfirm] = useState(false);
 
   useEffect(() => {
     if (supplier) {
@@ -117,6 +120,11 @@ const SupplierForm = ({
       return;
     }
 
+    setShowCommitConfirm(true);
+  };
+
+  const confirmCommit = async () => {
+    if (loading) return;
     setLoading(true);
     try {
       const submitData = {
@@ -134,12 +142,12 @@ const SupplierForm = ({
         response = await suppliersAPI.create(submitData);
         toast.success('Supplier created successfully');
       }
-      
-      // Call onSave with the new/updated supplier
+      setShowCommitConfirm(false);
       if (onSave) {
         onSave(response.data);
       }
     } catch (error) {
+      setShowCommitConfirm(false);
       if (error.response?.data) {
         setErrors(error.response.data);
         const errorMessage = error.response.data.error || 
@@ -474,6 +482,18 @@ const SupplierForm = ({
           </button>
         </div>
       </div>
+      <CommitConfirm
+        open={showCommitConfirm}
+        onOpenChange={(open) => {
+          if (!open && !loading) setShowCommitConfirm(false);
+        }}
+        title={supplier ? 'Update this supplier?' : 'Create this supplier?'}
+        description="Review the supplier details, then confirm to save."
+        rows={supplierCommitRows(formData, { isEdit: !!supplier })}
+        submitting={loading}
+        confirmText={supplier ? 'Confirm & update' : 'Confirm & create'}
+        onConfirm={confirmCommit}
+      />
     </div>
   );
 };

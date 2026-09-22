@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { categoriesAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import SearchableSelect from '../Shared/SearchableSelect';
+import CommitConfirm from '../Shared/CommitConfirm';
+import { categoryCommitRows } from '../../utils/formCommitSummary';
 
 const CategoryForm = ({
   isOpen,
@@ -21,6 +23,7 @@ const CategoryForm = ({
   });
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+  const [showCommitConfirm, setShowCommitConfirm] = useState(false);
   const allowBackdropClose = useRef(false);
 
   const isSubcategory = Boolean(parentCategory);
@@ -86,6 +89,11 @@ const CategoryForm = ({
     e.preventDefault();
     if (!validate()) return;
 
+    setShowCommitConfirm(true);
+  };
+
+  const confirmCommit = async () => {
+    if (loading) return;
     setLoading(true);
     try {
       const submitData = {
@@ -104,9 +112,11 @@ const CategoryForm = ({
       toast.success(
         isSubcategory ? 'Subcategory created successfully' : 'Category created successfully'
       );
+      setShowCommitConfirm(false);
       if (onSave) onSave(response.data);
       onClose();
     } catch (error) {
+      setShowCommitConfirm(false);
       if (error.response?.data) {
         setErrors(error.response.data);
         const nameErrors = error.response.data.name;
@@ -126,6 +136,7 @@ const CategoryForm = ({
         ) {
           const resolved = await onResolveDuplicate(formData.name.trim());
           if (resolved) {
+            setShowCommitConfirm(false);
             return;
           }
         }
@@ -243,6 +254,18 @@ const CategoryForm = ({
           </button>
         </div>
       </div>
+      <CommitConfirm
+        open={showCommitConfirm}
+        onOpenChange={(open) => {
+          if (!open && !loading) setShowCommitConfirm(false);
+        }}
+        title={isSubcategory ? 'Create this subcategory?' : 'Create this category?'}
+        description="Review the details, then confirm to save."
+        rows={categoryCommitRows(formData, { isSubcategory })}
+        submitting={loading}
+        confirmText="Confirm & create"
+        onConfirm={confirmCommit}
+      />
     </div>,
     document.body
   );

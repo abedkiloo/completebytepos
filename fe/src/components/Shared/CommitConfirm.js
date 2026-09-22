@@ -105,11 +105,17 @@ export function CommitConfirm({
         ) : null}
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange?.(false)} disabled={submitting}>
+          <Button
+            variant="outline"
+            data-testid="commit-confirm-cancel"
+            onClick={() => onOpenChange?.(false)}
+            disabled={submitting}
+          >
             {cancelText}
           </Button>
           <Button
             variant={variant === 'danger' ? 'destructive' : 'default'}
+            data-testid="commit-confirm-ok"
             onClick={onConfirm}
             disabled={submitting}
           >

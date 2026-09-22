@@ -5,8 +5,19 @@ import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { toast } from '../../utils/toast';
 import { getStoredAuth, hasPermission } from '../../utils/roleAccess';
+import {
+  assignCommitRows,
+  assignDriverError,
+  canAssignDriver,
+  canMarkReady,
+  fieldOrderLineSummary,
+  fieldOrderTotal,
+  packCommitRows,
+  packReadyError,
+} from '../../utils/fieldSalesCommit';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+import CommitConfirm from '../Shared/CommitConfirm';
 import {
   PageShell,
   PageHeader,
@@ -47,37 +58,6 @@ const STATUS_LABELS = {
   cancelled: 'Cancelled',
 };
 
-function orderLineSummary(order) {
-  const lines = Array.isArray(order?.lines) ? order.lines : [];
-  if (!lines.length) return '—';
-  const qty = lines.reduce((sum, line) => sum + Number(line.quantity || 0), 0);
-  const names = lines
-    .slice(0, 2)
-    .map((line) => line.product_name || `Product #${line.product_id}`)
-    .join(', ');
-  const more = lines.length > 2 ? ` +${lines.length - 2}` : '';
-  return `${names}${more} · qty ${qty}`;
-}
-
-function orderTotal(order) {
-  const lines = Array.isArray(order?.lines) ? order.lines : [];
-  return lines.reduce((sum, line) => {
-    const qty = Number(line.quantity || 0);
-    const price = Number(line.unit_price || 0);
-    const total = line.line_total != null ? Number(line.line_total) : qty * price;
-    return sum + (Number.isFinite(total) ? total : 0);
-  }, 0);
-}
-
-function canMarkReady(order) {
-  return ['submitted', 'packing'].includes(order?.status);
-}
-
-function canAssignDriver(order) {
-  return ['ready', 'packing'].includes(order?.status)
-    && !order?.assigned_delivery_agent_id;
-}
-
 const FieldSalesPage = () => {
   const { permissions } = getStoredAuth();
   const canPack = hasPermission(permissions, 'dispatch', 'update');
@@ -88,6 +68,7 @@ const FieldSalesPage = () => {
   const [assigningId, setAssigningId] = useState(null);
   const [selectedDriverId, setSelectedDriverId] = useState('');
   const [selected, setSelected] = useState(null);
+  const [pending, setPending] = useState(null);
   const [filters, setFilters] = useState({
     date_from: '',
     date_to: '',
@@ -157,17 +138,19 @@ const FieldSalesPage = () => {
     setPagination((prev) => ({ ...prev, page: 1 }));
   };
 
-  const handleMarkReady = async (order) => {
-    if (!canPack || !canMarkReady(order)) return;
+  const refreshSelected = async (orderId) => {
+    if (selected?.id !== orderId) return;
+    const refreshed = await dispatchAPI.get(orderId);
+    setSelected(refreshed.data);
+  };
+
+  const executePack = async (order) => {
     setPackingId(order.id);
     try {
       await dispatchAPI.pack(order.id);
       toast.success(`Order #${order.id} marked ready for pickup`);
       await loadOrders();
-      if (selected?.id === order.id) {
-        const refreshed = await dispatchAPI.get(order.id);
-        setSelected(refreshed.data);
-      }
+      await refreshSelected(order.id);
     } catch (error) {
       const detail =
         error.response?.data?.status
@@ -180,11 +163,7 @@ const FieldSalesPage = () => {
     }
   };
 
-  const handleAssign = async (order) => {
-    if (!canPack || !canAssignDriver(order) || !selectedDriverId) {
-      toast.error('Select a delivery driver first');
-      return;
-    }
+  const executeAssign = async (order) => {
     setAssigningId(order.id);
     try {
       await dispatchAPI.assign(order.id, {
@@ -192,10 +171,7 @@ const FieldSalesPage = () => {
       });
       toast.success(`Order #${order.id} assigned to driver`);
       await loadOrders();
-      if (selected?.id === order.id) {
-        const refreshed = await dispatchAPI.get(order.id);
-        setSelected(refreshed.data);
-      }
+      await refreshSelected(order.id);
     } catch (error) {
       const detail =
         error.response?.data?.delivery_agent_id
@@ -214,6 +190,47 @@ const FieldSalesPage = () => {
       setAssigningId(null);
     }
   };
+
+  const requestPack = (order) => {
+    const error = packReadyError(order, canPack);
+    if (error) {
+      toast.error(error);
+      return;
+    }
+    setPending({ type: 'pack', order });
+  };
+
+  const requestAssign = (order) => {
+    const error = assignDriverError(order, selectedDriverId, canPack);
+    if (error) {
+      toast.error(error);
+      return;
+    }
+    setPending({ type: 'assign', order });
+  };
+
+  const confirmPending = async () => {
+    const action = pending;
+    if (!action) return;
+    try {
+      if (action.type === 'pack') {
+        await executePack(action.order);
+        return;
+      }
+      await executeAssign(action.order);
+    } finally {
+      setPending(null);
+    }
+  };
+
+  const pendingDriver = drivers.find(
+    (driver) => String(driver.id) === String(selectedDriverId),
+  );
+  const pendingRows = pending?.type === 'assign'
+    ? assignCommitRows(pending.order, pendingDriver, formatCurrency)
+    : pending
+      ? packCommitRows(pending.order, formatCurrency)
+      : [];
 
   const emptyMessage = useMemo(() => {
     if (filters.status === 'awaiting_pack') {
@@ -244,6 +261,7 @@ const FieldSalesPage = () => {
             type="date"
             value={filters.date_from}
             onChange={(e) => handleFilterChange('date_from', e.target.value)}
+            data-testid="field-sales-date-from"
           />
         </FilterField>
         <FilterField label="To">
@@ -251,6 +269,7 @@ const FieldSalesPage = () => {
             type="date"
             value={filters.date_to}
             onChange={(e) => handleFilterChange('date_to', e.target.value)}
+            data-testid="field-sales-date-to"
           />
         </FilterField>
         <FilterField label="Status">
@@ -258,6 +277,7 @@ const FieldSalesPage = () => {
             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             value={filters.status}
             onChange={(e) => handleFilterChange('status', e.target.value)}
+            data-testid="field-sales-status"
           >
             {STATUS_OPTIONS.map((opt) => (
               <option key={opt.value || 'all'} value={opt.value}>
@@ -326,9 +346,9 @@ const FieldSalesPage = () => {
                     </div>
                   </DataTableCell>
                   <DataTableCell className="max-w-[220px] truncate text-sm">
-                    {orderLineSummary(order)}
+                    {fieldOrderLineSummary(order)}
                   </DataTableCell>
-                  <DataTableCell>{formatCurrency(orderTotal(order))}</DataTableCell>
+                  <DataTableCell>{formatCurrency(fieldOrderTotal(order))}</DataTableCell>
                   <DataTableCell>
                     <StatusBadge
                       status={order.status}
@@ -352,8 +372,9 @@ const FieldSalesPage = () => {
                     {canPack && canMarkReady(order) ? (
                       <Button
                         size="sm"
-                        onClick={() => handleMarkReady(order)}
+                        onClick={() => requestPack(order)}
                         disabled={packingId === order.id}
+                        data-testid={`field-sales-pack-${order.id}`}
                       >
                         <PackageCheck className="h-4 w-4" />
                         {packingId === order.id ? 'Packing…' : 'Mark ready'}
@@ -457,8 +478,9 @@ const FieldSalesPage = () => {
             <div className="flex justify-end gap-2 border-t px-4 py-3">
               {canPack && canMarkReady(selected) ? (
                 <Button
-                  onClick={() => handleMarkReady(selected)}
+                  onClick={() => requestPack(selected)}
                   disabled={packingId === selected.id}
+                  data-testid="field-sales-pack-detail"
                 >
                   <PackageCheck className="h-4 w-4" />
                   Mark ready for pickup
@@ -466,8 +488,8 @@ const FieldSalesPage = () => {
               ) : null}
               {canPack && canAssignDriver(selected) ? (
                 <Button
-                  onClick={() => handleAssign(selected)}
-                  disabled={assigningId === selected.id || !selectedDriverId}
+                  onClick={() => requestAssign(selected)}
+                  disabled={assigningId === selected.id}
                   data-testid="field-sales-assign"
                 >
                   {assigningId === selected.id ? 'Assigning…' : 'Assign driver'}
@@ -480,6 +502,23 @@ const FieldSalesPage = () => {
           </div>
         </div>
       ) : null}
+
+      <CommitConfirm
+        open={!!pending}
+        onOpenChange={(open) => {
+          if (!open && packingId == null && assigningId == null) setPending(null);
+        }}
+        title={pending?.type === 'assign' ? 'Assign this order?' : 'Pack this order?'}
+        description={
+          pending?.type === 'assign'
+            ? 'The driver will see it on their route after you confirm.'
+            : 'Stock will be allocated and the order marked ready for pickup.'
+        }
+        rows={pendingRows}
+        onConfirm={confirmPending}
+        submitting={packingId != null || assigningId != null}
+        confirmText={pending?.type === 'assign' ? 'Confirm & assign' : 'Confirm & pack'}
+      />
     </PageShell>
   );
 };

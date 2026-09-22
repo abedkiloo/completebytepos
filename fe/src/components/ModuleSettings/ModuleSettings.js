@@ -19,6 +19,8 @@ import { Separator } from '../ui/separator';
 import { cn } from '../../lib/cn';
 import { MODULE_ICONS, getFeatureTip } from './moduleSettingsConfig';
 import { MODULE_PRESETS } from '../../utils/modulePresets';
+import CommitConfirm from '../Shared/CommitConfirm';
+import { moduleToggleRows, presetApplyRows, featureToggleRows } from '../../utils/formCommitSummary';
 
 function syncModulesCache(data) {
   if (!data) return;
@@ -35,6 +37,7 @@ const ModuleSettings = () => {
   const [saving, setSaving] = useState({});
   const [expanded, setExpanded] = useState({});
   const [applyingPreset, setApplyingPreset] = useState(null);
+  const [pendingCommit, setPendingCommit] = useState(null);
 
   const isSuperAdmin = isSuperAdminFromStorage();
 
@@ -64,18 +67,16 @@ const ModuleSettings = () => {
     loadModules();
   }, [loadModules]);
 
-  const handleApplyPreset = async (presetId) => {
+  const handleApplyPreset = (presetId) => {
     if (!isSuperAdmin) {
       toast.error('Only super admins can apply presets');
       return;
     }
-    if (
-      !window.confirm(
-        'This will enable/disable modules to match the preset. Continue?'
-      )
-    ) {
-      return;
-    }
+    const preset = presets.find((item) => item.id === presetId) || { id: presetId };
+    setPendingCommit({ type: 'preset', preset });
+  };
+
+  const applyPreset = async (presetId) => {
     setApplyingPreset(presetId);
     try {
       const response = await modulesAPI.applyPreset(presetId);
@@ -90,17 +91,15 @@ const ModuleSettings = () => {
     }
   };
 
-  const handleToggleModule = async (module) => {
+  const handleToggleModule = (module) => {
     if (!isSuperAdmin) {
       toast.error('Only super admins can change modules');
       return;
     }
-    if (module.module_name === 'settings' && module.is_enabled) {
-      if (!window.confirm('Disabling Settings locks out configuration. Continue?')) {
-        return;
-      }
-    }
+    setPendingCommit({ type: 'module', module });
+  };
 
+  const toggleModule = async (module) => {
     setSaving((p) => ({ ...p, [module.id]: true }));
     try {
       const next = !module.is_enabled;
@@ -140,7 +139,12 @@ const ModuleSettings = () => {
       await loadModules();
       return;
     }
+    setPendingCommit({ type: 'feature', module, featureKey, feature });
+  };
 
+  const toggleFeature = async (module, featureKey) => {
+    const feature = module.features?.[featureKey];
+    if (!feature?.id) return;
     setSaving((p) => ({ ...p, [`f-${feature.id}`]: true }));
     try {
       const next = !feature.is_enabled;
@@ -155,6 +159,43 @@ const ModuleSettings = () => {
       setSaving((p) => ({ ...p, [`f-${feature.id}`]: false }));
     }
   };
+
+  const confirmPending = async () => {
+    const pending = pendingCommit;
+    if (!pending) return;
+    if (pending.type === 'preset') {
+      await applyPreset(pending.preset.id);
+    } else if (pending.type === 'module') {
+      await toggleModule(pending.module);
+    } else if (pending.type === 'feature') {
+      await toggleFeature(pending.module, pending.featureKey);
+    }
+    setPendingCommit(null);
+  };
+
+  const pendingSubmitting = Boolean(applyingPreset) || Object.values(saving).some(Boolean);
+  const pendingTitle =
+    pendingCommit?.type === 'preset'
+      ? 'Apply this module preset?'
+      : pendingCommit?.type === 'feature'
+        ? pendingCommit.feature?.is_enabled
+          ? 'Turn this feature off?'
+          : 'Turn this feature on?'
+        : pendingCommit?.module?.is_enabled
+          ? 'Disable this module?'
+          : 'Enable this module?';
+  const pendingRows =
+    pendingCommit?.type === 'preset'
+      ? presetApplyRows(pendingCommit.preset)
+      : pendingCommit?.type === 'feature'
+        ? featureToggleRows(pendingCommit.feature, !pendingCommit.feature?.is_enabled)
+        : pendingCommit?.module
+          ? moduleToggleRows(pendingCommit.module, !pendingCommit.module.is_enabled)
+          : [];
+  const pendingDanger =
+    (pendingCommit?.type === 'module' && pendingCommit.module?.is_enabled) ||
+    (pendingCommit?.type === 'feature' && pendingCommit.feature?.is_enabled) ||
+    pendingCommit?.type === 'preset';
 
   const renderModuleCard = (module, { nested = false } = {}) => {
     const Icon = MODULE_ICONS[module.module_name] || Layers;
@@ -357,6 +398,25 @@ const ModuleSettings = () => {
             </section>
           ))}
         </div>
+      <CommitConfirm
+        open={!!pendingCommit}
+        onOpenChange={(open) => {
+          if (!open && !pendingSubmitting) setPendingCommit(null);
+        }}
+        title={pendingTitle}
+        description={
+          pendingCommit?.type === 'preset'
+            ? 'This will enable and disable modules to match the preset.'
+            : pendingCommit?.type === 'module' && pendingCommit.module?.module_name === 'settings' && pendingCommit.module?.is_enabled
+              ? 'Disabling Settings locks out configuration until a super admin turns it back on.'
+              : 'Review the change, then confirm to apply it.'
+        }
+        rows={pendingRows}
+        submitting={pendingSubmitting}
+        confirmText="Confirm & apply"
+        variant={pendingDanger ? 'warning' : 'info'}
+        onConfirm={confirmPending}
+      />
       </PageShell>
   );
 };

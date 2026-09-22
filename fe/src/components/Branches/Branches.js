@@ -3,6 +3,8 @@ import { Plus } from 'lucide-react';
 import { branchesAPI, usersAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
+import CommitConfirm from '../Shared/CommitConfirm';
+import { branchCommitRows } from '../../utils/formCommitSummary';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -13,6 +15,8 @@ const Branches = () => {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showCommitConfirm, setShowCommitConfirm] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [selectedBranch, setSelectedBranch] = useState(null);
   const [users, setUsers] = useState([]);
   const [formData, setFormData] = useState({
@@ -110,9 +114,18 @@ const Branches = () => {
     }
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
-    
+    if (!formData.name?.trim()) {
+      toast.error('Branch name is required');
+      return;
+    }
+    setShowCommitConfirm(true);
+  };
+
+  const confirmCommit = async () => {
+    if (saving) return;
+    setSaving(true);
     try {
       const branchData = {
         ...formData,
@@ -126,11 +139,14 @@ const Branches = () => {
         await branchesAPI.create(branchData);
         toast.success('Branch created successfully');
       }
+      setShowCommitConfirm(false);
       setShowModal(false);
       loadBranches();
       setSelectedBranch(null);
     } catch (error) {
       toast.error('Failed to save branch: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -370,7 +386,19 @@ const Branches = () => {
           cancelText="Cancel"
           type="danger"
         />
-    </PageShell>
+        <CommitConfirm
+          open={showCommitConfirm}
+          onOpenChange={(open) => {
+            if (!open && !saving) setShowCommitConfirm(false);
+          }}
+          title={selectedBranch ? 'Update this branch?' : 'Create this branch?'}
+          description="Review the branch details, then confirm to save."
+          rows={branchCommitRows(formData, { isEdit: !!selectedBranch })}
+          submitting={saving}
+          confirmText={selectedBranch ? 'Confirm & update' : 'Confirm & create'}
+          onConfirm={confirmCommit}
+        />
+      </PageShell>
   );
 };
 

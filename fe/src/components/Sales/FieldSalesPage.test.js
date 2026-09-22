@@ -1,0 +1,256 @@
+import React from 'react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import FieldSalesPage from './FieldSalesPage';
+import { dispatchAPI } from '../../services/api';
+import { toast } from '../../utils/toast';
+import { getStoredAuth, hasPermission } from '../../utils/roleAccess';
+
+jest.mock('../../services/api', () => ({
+  dispatchAPI: {
+    list: jest.fn(),
+    get: jest.fn(),
+    drivers: jest.fn(),
+    pack: jest.fn(),
+    assign: jest.fn(),
+  },
+}));
+
+jest.mock('../../utils/toast', () => ({
+  toast: { error: jest.fn(), success: jest.fn(), warning: jest.fn() },
+}));
+
+jest.mock('../../utils/roleAccess', () => ({
+  getStoredAuth: jest.fn(),
+  hasPermission: jest.fn(),
+}));
+
+const submittedOrder = {
+  id: 44,
+  status: 'submitted',
+  customer_name: 'Ada',
+  created_at: '2026-09-18T10:00:00Z',
+  notes: 'Call first',
+  site_detail: {
+    label: 'Gate',
+    latitude: -1.2,
+    longitude: 36.8,
+    landmark: 'Blue gate',
+  },
+  lines: [
+    {
+      id: 1,
+      product_id: 12,
+      product_name: 'Cement',
+      quantity: 2,
+      unit_price: 150,
+      line_total: 300,
+    },
+    {
+      product_id: 13,
+      variant_id: 2,
+      product_name: 'Sand',
+      quantity: 1,
+      unit_price: 80,
+    },
+  ],
+};
+
+const emptyCartOrder = {
+  id: 45,
+  status: 'submitted',
+  customer_name: '',
+  created_at: '2026-09-18T11:00:00Z',
+  site_detail: { latitude: -1.3, longitude: 36.9 },
+  lines: [],
+};
+
+const readyOrder = {
+  id: 46,
+  status: 'ready',
+  customer_name: 'Ben',
+  created_at: '2026-09-18T12:00:00Z',
+  stock_allocated: true,
+  assigned_delivery_agent_name: null,
+  site_detail: {},
+  lines: [
+    { product_id: 9, product_name: 'Nails', quantity: 3, unit_price: 10, line_total: 30 },
+  ],
+};
+
+function mockAuth(canPack = true) {
+  getStoredAuth.mockReturnValue({ permissions: [{ module: 'dispatch', action: 'update' }] });
+  hasPermission.mockReturnValue(canPack);
+}
+
+function mockList(orders, count = orders.length) {
+  dispatchAPI.list.mockResolvedValue({ data: { results: orders, count } });
+}
+
+describe('FieldSalesPage', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAuth(true);
+    dispatchAPI.drivers.mockResolvedValue({
+      data: [{ id: 3, display_name: 'Jane Driver' }],
+    });
+    dispatchAPI.pack.mockResolvedValue({ data: { ...submittedOrder, status: 'ready' } });
+    dispatchAPI.assign.mockResolvedValue({ data: { ...readyOrder, assigned_delivery_agent_id: 3 } });
+    dispatchAPI.get.mockResolvedValue({ data: { ...submittedOrder, status: 'ready' } });
+  });
+
+  test('shows confirmation summary before packing and does not POST on cancel', async () => {
+    mockList([submittedOrder]);
+    render(<FieldSalesPage />);
+
+    expect(await screen.findByTestId('field-sales-pack-44')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('field-sales-pack-44'));
+    expect(await screen.findByText('Pack this order?')).toBeInTheDocument();
+    expect(screen.getAllByText('Ada').length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByTestId('commit-confirm-cancel'));
+    await waitFor(() => {
+      expect(screen.queryByText('Pack this order?')).not.toBeInTheDocument();
+    });
+    expect(dispatchAPI.pack).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId('field-sales-pack-44'));
+    fireEvent.click(await screen.findByTestId('commit-confirm-ok'));
+    await waitFor(() => expect(dispatchAPI.pack).toHaveBeenCalledWith(44));
+    expect(toast.success).toHaveBeenCalled();
+  });
+
+  test('validates empty carts and missing driver before opening confirm', async () => {
+    mockList([emptyCartOrder, readyOrder]);
+    render(<FieldSalesPage />);
+
+    fireEvent.click(await screen.findByTestId('field-sales-pack-45'));
+    expect(toast.error).toHaveBeenCalledWith('This order has no products to pack.');
+    expect(dispatchAPI.pack).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: /^#46$/ }));
+    expect(await screen.findByTestId('field-sales-assign')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('field-sales-assign'));
+    expect(toast.error).toHaveBeenCalledWith('Select a delivery driver first.');
+    expect(dispatchAPI.assign).not.toHaveBeenCalled();
+  });
+
+  test('assigns from the detail pane after confirmation', async () => {
+    mockList([readyOrder]);
+    render(<FieldSalesPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /View/i }));
+    fireEvent.change(await screen.findByTestId('field-sales-driver-select'), {
+      target: { value: '3' },
+    });
+    fireEvent.click(screen.getByTestId('field-sales-assign'));
+    expect(await screen.findByText('Assign this order?')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('commit-confirm-ok'));
+    await waitFor(() =>
+      expect(dispatchAPI.assign).toHaveBeenCalledWith(46, { delivery_agent_id: 3 }),
+    );
+    expect(toast.success).toHaveBeenCalled();
+  });
+
+  test('surfaces pack and assign API errors', async () => {
+    mockList([submittedOrder, readyOrder]);
+    dispatchAPI.pack.mockRejectedValue({ response: { data: { status: 'Already packed' } } });
+    dispatchAPI.assign.mockRejectedValue({
+      response: { data: { delivery_agent_id: ['Invalid driver'] } },
+    });
+    render(<FieldSalesPage />);
+
+    fireEvent.click(await screen.findByTestId('field-sales-pack-44'));
+    fireEvent.click(await screen.findByTestId('commit-confirm-ok'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Already packed'));
+
+    fireEvent.click(screen.getByRole('button', { name: /^#46$/ }));
+    fireEvent.change(await screen.findByTestId('field-sales-driver-select'), {
+      target: { value: '3' },
+    });
+    fireEvent.click(screen.getByTestId('field-sales-assign'));
+    fireEvent.click(await screen.findByTestId('commit-confirm-ok'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Invalid driver'));
+  });
+
+  test('load error then empty refresh', async () => {
+    dispatchAPI.list.mockRejectedValueOnce({ response: { data: { detail: 'Nope' } } });
+    render(<FieldSalesPage />);
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Nope'));
+
+    dispatchAPI.list.mockResolvedValue({ data: { results: [], count: 0 } });
+    fireEvent.click(screen.getAllByRole('button', { name: /Refresh/i })[0]);
+    await waitFor(() => expect(screen.getByText('No field sales')).toBeInTheDocument());
+  });
+
+  test('array payload, packed label, and view-only mode', async () => {
+    dispatchAPI.list.mockResolvedValue({ data: [readyOrder] });
+    dispatchAPI.drivers.mockRejectedValue(new Error('drivers down'));
+    render(<FieldSalesPage />);
+    expect(await screen.findByText('#46')).toBeInTheDocument();
+    expect(screen.getByText('Packed')).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('field-sales-status'), { target: { value: 'done' } });
+    fireEvent.change(screen.getByPlaceholderText('Name, phone, or order #'), {
+      target: { value: ' ada ' },
+    });
+    fireEvent.change(screen.getByTestId('field-sales-date-from'), {
+      target: { value: '2026-09-01' },
+    });
+    fireEvent.change(screen.getByTestId('field-sales-date-to'), {
+      target: { value: '2026-09-18' },
+    });
+    await waitFor(() => expect(dispatchAPI.list).toHaveBeenCalled());
+  });
+
+  test('hides pack actions without dispatch permission', async () => {
+    mockAuth(false);
+    mockList([submittedOrder]);
+    render(<FieldSalesPage />);
+    expect(await screen.findByText('#44')).toBeInTheDocument();
+    expect(screen.queryByTestId('field-sales-pack-44')).not.toBeInTheDocument();
+  });
+
+  test('generic API fallbacks and assigned-driver detail', async () => {
+    const assigned = {
+      ...readyOrder,
+      id: 47,
+      assigned_delivery_agent_id: 3,
+      assigned_delivery_agent_name: 'Jane Driver',
+      status: 'mystery_status',
+    };
+    dispatchAPI.list.mockRejectedValueOnce({});
+    render(<FieldSalesPage />);
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('Failed to load field sales'),
+    );
+
+    dispatchAPI.list.mockResolvedValue({ data: { results: [assigned], count: 1 } });
+    dispatchAPI.pack.mockRejectedValue({ message: 'offline' });
+    fireEvent.click(screen.getAllByRole('button', { name: /Refresh/i })[0]);
+    fireEvent.click(await screen.findByRole('button', { name: /View/i }));
+    expect(screen.getByText('Jane Driver')).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: /^Close$/i })[0]);
+  });
+
+  test('paginates when there are more orders than one page', async () => {
+    mockList([submittedOrder], 25);
+    render(<FieldSalesPage />);
+    fireEvent.click((await screen.findAllByRole('button', { name: /Next/i }))[0]);
+    await waitFor(() =>
+      expect(dispatchAPI.list).toHaveBeenCalledWith(
+        expect.objectContaining({ page: 2 }),
+      ),
+    );
+  });
+
+  test('detail pack refreshes the selected order and shows location extras', async () => {
+    mockList([submittedOrder]);
+    render(<FieldSalesPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /View/i }));
+    expect(screen.getByText('Blue gate')).toBeInTheDocument();
+    expect(screen.getByText('Call first')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('field-sales-pack-detail'));
+    fireEvent.click(await screen.findByTestId('commit-confirm-ok'));
+    await waitFor(() => expect(dispatchAPI.pack).toHaveBeenCalledWith(44));
+    await waitFor(() => expect(dispatchAPI.get).toHaveBeenCalledWith(44));
+  });
+});

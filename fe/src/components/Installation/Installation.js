@@ -10,6 +10,8 @@ import { cn } from '../../lib/cn';
 import { MODULE_PRESETS, DEFAULT_MODULE_PRESET } from '../../utils/modulePresets';
 import { clearSetupStatusCache, markSetupInstalled } from '../../utils/setupStatus';
 import { persistMeResponse } from '../../utils/roleAccess';
+import CommitConfirm from '../Shared/CommitConfirm';
+import { installCommitRows } from '../../utils/formCommitSummary';
 
 const Installation = () => {
   const navigate = useNavigate();
@@ -18,22 +20,20 @@ const Installation = () => {
   const [steps, setSteps] = useState([]);
   const [modulePreset, setModulePreset] = useState(DEFAULT_MODULE_PRESET);
   const [includeTestData, setIncludeTestData] = useState(false);
+  const [showCommitConfirm, setShowCommitConfirm] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [credentials, setCredentials] = useState(null);
 
   const primaryCreds = credentials?.primary || credentials;
   const allUsers = credentials?.users || (primaryCreds ? [primaryCreds] : []);
 
-  const handleInstall = async () => {
+  const handleInstall = () => {
     if (installing) return;
-    if (
-      !window.confirm(
-        'This will reset the database and run a fresh install. All existing data will be lost. Continue?'
-      )
-    ) {
-      return;
-    }
+    setShowCommitConfirm(true);
+  };
 
+  const confirmInstall = async () => {
+    if (installing) return;
     setInstalling(true);
     setSteps([]);
     setCompleted(false);
@@ -51,6 +51,7 @@ const Installation = () => {
         setCredentials(response.data.credentials);
         markSetupInstalled();
         setCompleted(true);
+        setShowCommitConfirm(false);
         toast.success('Installation complete');
       } else {
         throw new Error(response.data.error || 'Installation failed');
@@ -267,6 +268,22 @@ const Installation = () => {
           )}
         </CardContent>
       </Card>
+      <CommitConfirm
+        open={showCommitConfirm}
+        onOpenChange={(open) => {
+          if (!open && !installing) setShowCommitConfirm(false);
+        }}
+        title="Run a fresh installation?"
+        description="This resets the database. All existing data will be lost."
+        rows={installCommitRows({
+          preset: MODULE_PRESETS.find((item) => item.id === modulePreset)?.label || modulePreset,
+          includeTestData,
+        })}
+        submitting={installing}
+        confirmText="Confirm & install"
+        variant="danger"
+        onConfirm={confirmInstall}
+      />
     </div>
   );
 };

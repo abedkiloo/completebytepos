@@ -20,14 +20,25 @@ import { describeApprovalSummary, formatApprovalValue } from '../../utils/approv
 import { backfillRejectionSuccessMessage } from '../../utils/recordPastSaleBackfill';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import ApprovalChangeTable from './ApprovalChangeTable';
+import CommitConfirm from '../Shared/CommitConfirm';
+import { approvalCommitRows, approvalExpenseRows } from '../../utils/formCommitSummary';
 
 function PendingRow({ row, onResolved }) {
   const [rejectReason, setRejectReason] = useState('');
   const [showReject, setShowReject] = useState(false);
   const [extremeConfirm, setExtremeConfirm] = useState(false);
+  const [showApproveConfirm, setShowApproveConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const extremeRequired = needsExtremePriceConfirm(row);
   const { headline, action, item } = describeApprovalSummary(row);
+
+  const requestApprove = () => {
+    if (extremeRequired && !extremeConfirm) {
+      toast.warning('Please confirm the large price change before approving.');
+      return;
+    }
+    setShowApproveConfirm(true);
+  };
 
   const approve = async () => {
     if (extremeRequired && !extremeConfirm) {
@@ -40,6 +51,7 @@ function PendingRow({ row, onResolved }) {
         extreme_price_confirmed: extremeRequired ? extremeConfirm : false,
       });
       toast.success('Approved — the change is now live');
+      setShowApproveConfirm(false);
       onResolved();
       dispatchNavBadgesRefresh();
     } catch (err) {
@@ -152,7 +164,7 @@ function PendingRow({ row, onResolved }) {
             <Button
               type="button"
               size="sm"
-              onClick={approve}
+              onClick={requestApprove}
               disabled={busy || (extremeRequired && !extremeConfirm)}
             >
               <Check className="mr-1 h-4 w-4" />
@@ -173,12 +185,25 @@ function PendingRow({ row, onResolved }) {
 
         <p className="sr-only">{headline}</p>
       </CardContent>
+      <CommitConfirm
+        open={showApproveConfirm}
+        onOpenChange={(open) => {
+          if (!open && !busy) setShowApproveConfirm(false);
+        }}
+        title="Approve this change?"
+        description="This makes the requested change live."
+        rows={approvalCommitRows(row)}
+        submitting={busy}
+        confirmText="Confirm & approve"
+        onConfirm={approve}
+      />
     </Card>
   );
 }
 
 function PendingExpenseRow({ expense, settings, onResolved }) {
   const [busy, setBusy] = useState(false);
+  const [showApproveConfirm, setShowApproveConfirm] = useState(false);
   const canApprove = canApproveFinancialRecord(
     expense,
     settings,
@@ -191,6 +216,7 @@ function PendingExpenseRow({ expense, settings, onResolved }) {
     try {
       await expensesAPI.approve(expense.id);
       toast.success('Expense approved');
+      setShowApproveConfirm(false);
       onResolved();
       dispatchNavBadgesRefresh();
     } catch (err) {
@@ -229,7 +255,7 @@ function PendingExpenseRow({ expense, settings, onResolved }) {
         </div>
 
         {canApprove ? (
-          <Button type="button" size="sm" onClick={approve} disabled={busy}>
+          <Button type="button" size="sm" onClick={() => setShowApproveConfirm(true)} disabled={busy}>
             <Check className="mr-1 h-4 w-4" />
             Approve expense
           </Button>
@@ -239,6 +265,18 @@ function PendingExpenseRow({ expense, settings, onResolved }) {
           </p>
         )}
       </CardContent>
+      <CommitConfirm
+        open={showApproveConfirm}
+        onOpenChange={(open) => {
+          if (!open && !busy) setShowApproveConfirm(false);
+        }}
+        title="Approve this expense?"
+        description="This records the expense as approved."
+        rows={approvalExpenseRows(expense)}
+        submitting={busy}
+        confirmText="Confirm & approve"
+        onConfirm={approve}
+      />
     </Card>
   );
 }

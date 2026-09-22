@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { customersAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import SearchableSelect from '../Shared/SearchableSelect';
+import CommitConfirm from '../Shared/CommitConfirm';
+import { customerCommitRows } from '../../utils/formCommitSummary';
 
 const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
   const [formData, setFormData] = useState({
@@ -18,6 +20,7 @@ const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
   });
   const [formErrors, setFormErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const [showCommitConfirm, setShowCommitConfirm] = useState(false);
 
   const handleClose = () => {
     // Reset form when closing
@@ -34,6 +37,7 @@ const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
       is_active: true,
     });
     setFormErrors({});
+    setShowCommitConfirm(false);
     onClose();
   };
 
@@ -66,7 +70,12 @@ const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
       toast.error(Object.values(errors)[0], 5000);
       return;
     }
-    
+
+    setShowCommitConfirm(true);
+  };
+
+  const confirmCommit = async () => {
+    if (loading) return;
     setLoading(true);
     
     // Prepare clean data
@@ -268,6 +277,18 @@ const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
           </button>
         </div>
       </div>
+      <CommitConfirm
+        open={showCommitConfirm}
+        onOpenChange={(open) => {
+          if (!open && !loading) setShowCommitConfirm(false);
+        }}
+        title="Create this customer?"
+        description="Review the customer details, then confirm to save."
+        rows={customerCommitRows(formData)}
+        submitting={loading}
+        confirmText="Confirm & create"
+        onConfirm={confirmCommit}
+      />
     </div>
   );
 };

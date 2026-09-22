@@ -9,6 +9,8 @@ import {
   firstErrorField,
 } from '../../utils/formValidation';
 import { buildUserPayload, validateUserForm } from '../../utils/userFormPayload';
+import CommitConfirm from '../Shared/CommitConfirm';
+import { userCommitRows } from '../../utils/formCommitSummary';
 
 const UserForm = ({
   user,
@@ -37,6 +39,7 @@ const UserForm = ({
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [showCommitConfirm, setShowCommitConfirm] = useState(false);
 
   const formOptions = {
     isEdit: !!user,
@@ -102,6 +105,11 @@ const UserForm = ({
       return;
     }
 
+    setShowCommitConfirm(true);
+  };
+
+  const confirmCommit = async () => {
+    if (loading) return;
     setLoading(true);
     setErrors({});
 
@@ -116,9 +124,11 @@ const UserForm = ({
         toast.success('User created successfully');
       }
 
+      setShowCommitConfirm(false);
       if (onSave) onSave();
       onClose();
     } catch (error) {
+      setShowCommitConfirm(false);
       if (error.response?.data) {
         const apiErrors = normalizeApiErrors(error.response.data);
         setErrors(apiErrors);
@@ -344,6 +354,18 @@ const UserForm = ({
           </button>
         </div>
       </div>
+      <CommitConfirm
+        open={showCommitConfirm}
+        onOpenChange={(open) => {
+          if (!open && !loading) setShowCommitConfirm(false);
+        }}
+        title={user ? 'Update this user?' : 'Create this user?'}
+        description="Review the account details, then confirm to save."
+        rows={userCommitRows(formData, { isEdit: !!user })}
+        submitting={loading}
+        confirmText={user ? 'Confirm & update' : 'Confirm & create'}
+        onConfirm={confirmCommit}
+      />
     </div>
   );
 };

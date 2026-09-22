@@ -6,6 +6,8 @@ import { toast } from '../../utils/toast';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
 import { useProductVariantsEnabled } from '../../hooks/useProductVariantsEnabled';
 import SearchableSelect from '../Shared/SearchableSelect';
+import CommitConfirm from '../Shared/CommitConfirm';
+import { productCommitRows } from '../../utils/formCommitSummary';
 import CategoryForm from './CategoryForm';
 import SupplierForm from '../Suppliers/SupplierForm';
 import {
@@ -130,6 +132,7 @@ const ProductForm = ({
   const [image, setImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [showCommitConfirm, setShowCommitConfirm] = useState(false);
   const [errors, setErrors] = useState({});
   const [subcategories, setSubcategories] = useState([]);
   const [subcategorySearchTerm, setSubcategorySearchTerm] = useState('');
@@ -561,6 +564,49 @@ const ProductForm = ({
       }
     }
 
+    const payloadForReason = { ...formData };
+    if (payloadForReason.has_variants) {
+      delete payloadForReason.selling_price;
+      delete payloadForReason.mrp;
+      delete payloadForReason.cost;
+      delete payloadForReason.stock_quantity;
+    }
+    const needsReason =
+      makerCheckerOn &&
+      product &&
+      (productEditNeedsReason(payloadForReason, product, {
+        financialFieldsLocked: makerCheckerFinancialLocked,
+        variantProduct: payloadForReason.has_variants,
+        fieldAccess,
+      }) ||
+        sensitiveVariantDraftApplies);
+    if (needsReason) {
+      const reasonError = stockReasonValidationMessage(changeReason);
+      if (reasonError) {
+        toast.warning(
+          reasonError === 'A reason is required for stock changes.'
+            ? 'Enter a reason below — price, cost, or stock changes need manager approval.'
+            : reasonError
+        );
+        return;
+      }
+    } else if (makerCheckerOn && !product && sensitiveVariantDraftApplies) {
+      const reasonError = stockReasonValidationMessage(changeReason);
+      if (reasonError) {
+        toast.warning(
+          reasonError === 'A reason is required for stock changes.'
+            ? 'Enter a reason below — variant price or cost changes need manager approval.'
+            : reasonError
+        );
+        return;
+      }
+    }
+
+    setShowCommitConfirm(true);
+  };
+
+  const confirmCommit = async () => {
+    if (loading) return;
     setLoading(true);
     try {
       const payload = { ...formData };
@@ -722,10 +768,12 @@ const ProductForm = ({
         }
       }
 
+      setShowCommitConfirm(false);
       setTimeout(() => {
         onSave();
       }, 200);
     } catch (error) {
+      setShowCommitConfirm(false);
       if (error.response?.data) {
         const raw = error.response.data;
         const mapped = {};
@@ -1194,6 +1242,19 @@ const ProductForm = ({
           </button>
         </div>
       </div>
+
+      <CommitConfirm
+        open={showCommitConfirm}
+        onOpenChange={(open) => {
+          if (!open && !loading) setShowCommitConfirm(false);
+        }}
+        title={product ? 'Update this product?' : 'Create this product?'}
+        description="Review the product details, then confirm to save."
+        rows={productCommitRows(formData, { isEdit: !!product })}
+        submitting={loading}
+        confirmText={product ? 'Confirm & update' : 'Confirm & create'}
+        onConfirm={confirmCommit}
+      />
 
       {/* Category Form - Nested Slide-in Panel */}
       <CategoryForm

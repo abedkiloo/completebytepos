@@ -486,18 +486,6 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
   };
 
   const handleSubmit = async () => {
-    // For installments, customer is recommended but not strictly required
-    // For pay_now with cash, customer can be optional
-    if (!selectedCustomer && paymentType === 'installments') {
-      const proceed = window.confirm(
-        'No customer selected. Installment payments typically require a customer. ' +
-        'Do you want to proceed without a customer?'
-      );
-      if (!proceed) {
-        return;
-      }
-    }
-
     // Filter out empty rows
     const validRows = productRows.filter(row => row.product_id);
     
