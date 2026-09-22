@@ -15,11 +15,12 @@ For coverage layout and 95% targets by layer, see [TESTING.md](./TESTING.md).
 3. [Environment configuration](#environment-configuration)
 4. [First-time organization setup](#first-time-organization-setup)
 5. [VPS / remote server deployment](#vps--remote-server-deployment)
-6. [Local development (without Docker)](#local-development-without-docker)
-7. [Default users](#default-users)
-8. [Verification checklist](#verification-checklist)
-9. [Running tests](#running-tests)
-10. [Troubleshooting](#troubleshooting)
+6. [UAT on the same VPS](#uat-on-the-same-vps)
+7. [Local development (without Docker)](#local-development-without-docker)
+8. [Default users](#default-users)
+9. [Verification checklist](#verification-checklist)
+10. [Running tests](#running-tests)
+11. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -255,7 +256,9 @@ docker exec completebytepos_backend python manage.py setup_new_organization
 
 | Port | Purpose |
 |------|---------|
-| 3000 | Web UI (nginx in prod, or React dev) |
+| 80 / 443 | Public HTTPS (Caddy/nginx on the host) |
+| 3000 | Production web UI (nginx in Docker) |
+| 3100 | UAT web UI (`./run_docker.sh --uat`) |
 | 8000 | Backend API (needed for **dev** mode; prod binds **127.0.0.1** only — use :3000 `/api`) |
 | 5432 | PostgreSQL — **127.0.0.1** only; use an SSH tunnel for remote admin |
 
@@ -290,6 +293,65 @@ Prod compose defaults are sized for ≈2 GB RAM. Override in `.env` if the box i
 After changing compose or `.env`: `docker compose up -d`. Nginx gzip/keepalive needs a **frontend image rebuild**.
 
 Watch live pressure with `docker stats`.
+
+---
+
+## UAT on the same VPS
+
+Production (`shop.omuwenga.com`) and UAT share one VPS and the same images/code, but **not** the same database, env file, ports, or volumes.
+
+| | Production | UAT |
+|--|------------|-----|
+| Env file | `.env` | `.env.uat` |
+| Compose project | directory default | `omuwenga-uat` |
+| Containers | `completebytepos_*` | `omuwenga-uat_*` |
+| App port | 3000 | 3100 |
+| Gunicorn (localhost) | 8000 | 8001 |
+| Postgres (localhost) | 5432 | 5433 |
+| Public host | shop.omuwenga.com | uat.omuwenga.com |
+| Gunicorn workers | 2 (default) | 1 (leave RAM for prod) |
+
+### 1. DNS
+
+Point an A record for **uat.omuwenga.com** at the same VPS IP as shop.
+
+### 2. Env file
+
+```bash
+cp .env.uat.example .env.uat
+nano .env.uat   # unique SECRET_KEY and POSTGRES_PASSWORD (never copy prod)
+```
+
+### 3. Start UAT (does not stop production)
+
+```bash
+./run_docker.sh --uat
+docker exec omuwenga-uat_backend python manage.py setup_new_organization
+```
+
+Web and mobile clients stay on `/api` through nginx. Point a UAT build at `https://uat.omuwenga.com`.
+
+### 4. Host reverse proxy
+
+Terminate TLS by hostname. Example Caddyfile is in `deploy/Caddyfile.example`:
+
+- `shop.omuwenga.com` → `127.0.0.1:3000`
+- `uat.omuwenga.com` → `127.0.0.1:3100`
+
+### 5. Stop / rebuild
+
+```bash
+./stop_docker.sh            # prod + dev only; UAT keeps running
+./stop_docker.sh --uat      # UAT only
+./stop_docker.sh --all      # everything
+./run_docker.sh --uat --rebuild   # after UI changes on UAT
+```
+
+Do **not** run `docker compose down -v` on the default project — that would wipe production Postgres. To reset UAT data only:
+
+```bash
+docker compose -p omuwenga-uat --env-file .env.uat down -v
+```
 
 ---
 

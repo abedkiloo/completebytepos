@@ -15,11 +15,18 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+STACK="dev"
+COMPOSE_PROJECT=""
+ENV_FILE=".env"
+NAME_FILTER="completebytepos"
+BACKEND_CONTAINER="completebytepos_backend"
+FRONTEND_CONTAINER="completebytepos_frontend"
 
 echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}CompleteBytePOS - Docker Mode${NC}"
 echo -e "${BLUE}  Dev:  ./run_docker.sh${NC}"
 echo -e "${BLUE}  Prod: ./run_docker.sh --prod  (React build + nginx)${NC}"
+echo -e "${BLUE}  UAT:  ./run_docker.sh --uat   (.env.uat, uat.omuwenga.com)${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
@@ -54,23 +61,37 @@ check_docker() {
     print_success "Docker is ready"
 }
 
-# Stop existing containers
+compose() {
+    local extra=()
+    if [ -n "$COMPOSE_PROJECT" ]; then
+        extra+=(-p "$COMPOSE_PROJECT")
+    fi
+    if [ -n "$ENV_FILE" ] && [ -f "$PROJECT_ROOT/$ENV_FILE" ]; then
+        extra+=(--env-file "$ENV_FILE")
+    fi
+    $COMPOSE_CMD "${extra[@]}" "$@"
+}
+
+# Stop only the stack we are about to replace. UAT and prod must coexist.
 stop_existing() {
-    print_info "Stopping existing containers..."
+    print_info "Stopping colliding containers for $STACK..."
     cd "$PROJECT_ROOT"
-    
-    # Stop dev containers
-    if [ -f "docker-compose.dev.yml" ]; then
+
+    if [ -f "docker-compose.dev.yml" ] && [ "$STACK" != "uat" ]; then
         $COMPOSE_CMD -f docker-compose.dev.yml down 2>/dev/null || true
     fi
-    
-    # Stop regular containers
+
+    if [ "$STACK" = "uat" ]; then
+        compose -f docker-compose.yml down 2>/dev/null || true
+        return
+    fi
+
     $COMPOSE_CMD down 2>/dev/null || true
 }
 
 # Production: static React build + nginx (see fe/Dockerfile, docs/DEPLOYMENT.md)
 start_containers_prod() {
-    print_info "Building and starting Docker containers in PRODUCTION mode..."
+    print_info "Building and starting Docker containers ($STACK)..."
     print_info "Frontend: npm run build → nginx (static files, NOT react-scripts start)"
     cd "$PROJECT_ROOT"
 
@@ -78,22 +99,22 @@ start_containers_prod() {
 
     if [ "$1" == "--rebuild" ]; then
         print_info "Rebuilding production images from scratch..."
-        $COMPOSE_CMD -f $COMPOSE_FILE build --no-cache
+        compose -f $COMPOSE_FILE build --no-cache
     else
-        $COMPOSE_CMD -f $COMPOSE_FILE build
+        compose -f $COMPOSE_FILE build
     fi
 
-    $COMPOSE_CMD -f $COMPOSE_FILE up -d
+    compose -f $COMPOSE_FILE up -d
 
     print_info "Waiting for services to be ready..."
     sleep 8
 
-    if docker ps | grep -q completebytepos_backend && docker ps | grep -q completebytepos_frontend; then
-        print_success "Production containers are running"
+    if docker ps | grep -q "$BACKEND_CONTAINER" && docker ps | grep -q "$FRONTEND_CONTAINER"; then
+        print_success "$STACK containers are running"
         run_migrations
     else
         print_error "Some containers failed to start!"
-        $COMPOSE_CMD -f $COMPOSE_FILE logs
+        compose -f $COMPOSE_FILE logs
         exit 1
     fi
 }
@@ -101,24 +122,32 @@ start_containers_prod() {
 show_status_prod() {
     echo ""
     echo -e "${GREEN}========================================${NC}"
-    echo -e "${GREEN}Production stack is up${NC}"
+    echo -e "${GREEN}$STACK stack is up${NC}"
     echo -e "${GREEN}========================================${NC}"
     echo ""
-    echo -e "Frontend (nginx + React build): ${BLUE}http://localhost:3000${NC}"
-    echo -e "Backend API (via nginx proxy):  ${BLUE}http://localhost:3000/api${NC}"
-    echo -e "Admin Panel:                  ${BLUE}http://localhost:8000/admin${NC}"
+    if [ "$STACK" = "uat" ]; then
+        echo -e "UAT (nginx + React build): ${BLUE}http://127.0.0.1:3100${NC}  →  ${BLUE}https://uat.omuwenga.com${NC}"
+        echo -e "API (via nginx proxy):     ${BLUE}http://127.0.0.1:3100/api${NC}"
+        echo -e "Direct Gunicorn (localhost): ${BLUE}http://127.0.0.1:8001/admin${NC}"
+    else
+        echo -e "Frontend (nginx + React build): ${BLUE}http://localhost:3000${NC}"
+        echo -e "Backend API (via nginx proxy):  ${BLUE}http://localhost:3000/api${NC}"
+        echo -e "Admin Panel:                  ${BLUE}http://localhost:8000/admin${NC}"
+    fi
     echo ""
-    echo -e "${YELLOW}This is NOT the dev server.${NC} UI changes require: ${BLUE}./run_docker.sh --prod --rebuild${NC}"
+    echo -e "${YELLOW}This is NOT the dev server.${NC} UI changes require: ${BLUE}./run_docker.sh --${STACK} --rebuild${NC}"
     echo ""
-    docker ps --filter "name=completebytepos" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+    docker ps --filter "name=${NAME_FILTER}" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
     echo ""
-    echo -e "Logs: ${YELLOW}$COMPOSE_CMD -f docker-compose.yml logs -f${NC}"
-    echo -e "Stop: ${YELLOW}./stop_docker.sh${NC}"
+    echo -e "Logs: ${YELLOW}compose logs -f${NC}  (project: ${COMPOSE_PROJECT:-default})"
+    echo -e "Stop: ${YELLOW}./stop_docker.sh${NC}$([ "$STACK" = "uat" ] && echo " --uat")"
     echo ""
 
-    if curl -sI http://localhost:3000/ 2>/dev/null | grep -qi nginx; then
+    local probe_port=3000
+    [ "$STACK" = "uat" ] && probe_port=3100
+    if curl -sI "http://localhost:${probe_port}/" 2>/dev/null | grep -qi nginx; then
         print_success "Frontend is nginx serving the production build"
-    elif curl -s http://localhost:3000/ >/dev/null 2>&1; then
+    elif curl -s "http://localhost:${probe_port}/" >/dev/null 2>&1; then
         print_success "Frontend is responding"
     else
         print_warning "Frontend may still be starting"
@@ -174,26 +203,26 @@ run_migrations() {
     sleep 3
     
     # Check if backend container is running
-    if ! docker ps | grep -q completebytepos_backend; then
+    if ! docker ps | grep -q "$BACKEND_CONTAINER"; then
         print_warning "Backend container not running, skipping migration check"
         return
     fi
     
     # Run makemigrations (create new migrations if needed)
-    if docker exec completebytepos_backend python manage.py makemigrations --noinput 2>/dev/null; then
+    if docker exec "$BACKEND_CONTAINER" python manage.py makemigrations --noinput 2>/dev/null; then
         print_success "Migration files checked/created"
     else
         print_warning "makemigrations had issues (this is usually OK if no new migrations needed)"
     fi
     
     # Run migrate (apply migrations)
-    if docker exec completebytepos_backend python manage.py migrate --noinput; then
+    if docker exec "$BACKEND_CONTAINER" python manage.py migrate --noinput; then
         print_success "Database migrations applied"
     else
         print_error "Failed to run migrations!"
-        print_info "Common fix: POSTGRES_PASSWORD in .env must match the existing postgres volume."
-        print_info "  Align DB_PASSWORD with POSTGRES_PASSWORD, or reset DB: docker compose -f docker-compose.dev.yml down -v"
-        print_info "Full logs: $COMPOSE_CMD -f $COMPOSE_FILE logs backend"
+        print_info "Common fix: POSTGRES_PASSWORD in $ENV_FILE must match the existing postgres volume."
+        print_info "  Align DB_PASSWORD with POSTGRES_PASSWORD, or reset UAT DB only: docker compose -p omuwenga-uat --env-file .env.uat down -v"
+        print_info "Full logs: compose -f docker-compose.yml logs backend"
         return 1
     fi
 }
@@ -270,6 +299,18 @@ populate_test_data() {
 
 ensure_env_file() {
     cd "$PROJECT_ROOT"
+    if [ "$STACK" = "uat" ]; then
+        if [ ! -f ".env.uat" ]; then
+            if [ -f ".env.uat.example" ]; then
+                cp .env.uat.example .env.uat
+                print_warning "Created .env.uat from .env.uat.example — set SECRET_KEY and DB password before use."
+            else
+                print_error "Missing .env.uat. Copy .env.uat.example to .env.uat."
+                exit 1
+            fi
+        fi
+        return
+    fi
     if [ ! -f ".env" ]; then
         if [ -f ".env.example" ]; then
             cp .env.example .env
@@ -281,20 +322,41 @@ ensure_env_file() {
     fi
 }
 
+configure_stack() {
+    case "$STACK" in
+        uat)
+            COMPOSE_PROJECT="omuwenga-uat"
+            ENV_FILE=".env.uat"
+            NAME_FILTER="omuwenga-uat"
+            BACKEND_CONTAINER="omuwenga-uat_backend"
+            FRONTEND_CONTAINER="omuwenga-uat_frontend"
+            ;;
+        prod|dev)
+            COMPOSE_PROJECT=""
+            ENV_FILE=".env"
+            NAME_FILTER="completebytepos"
+            BACKEND_CONTAINER="completebytepos_backend"
+            FRONTEND_CONTAINER="completebytepos_frontend"
+            ;;
+    esac
+}
+
 # Main
 main() {
-    check_docker
-    ensure_env_file
-    stop_existing
-
     PROD_MODE=false
     REBUILD=false
     for arg in "$@"; do
         case "$arg" in
-            --prod|--production) PROD_MODE=true ;;
+            --prod|--production) PROD_MODE=true; STACK="prod" ;;
+            --uat) STACK="uat"; PROD_MODE=true ;;
             --rebuild) REBUILD=true ;;
         esac
     done
+
+    configure_stack
+    check_docker
+    ensure_env_file
+    stop_existing
 
     if [ "$PROD_MODE" = true ]; then
         if [ "$REBUILD" = true ]; then

@@ -76,7 +76,9 @@ be/*.sqlite3-journal
 .env.production.local
 .env.*.local
 *.env
+.env.uat
 !.env.example
+!.env.uat.example
 !**/.env.example
 .envrc
 secrets.json

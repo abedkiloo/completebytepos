@@ -1,0 +1,14 @@
+# Host reverse proxy for prod + UAT on one VPS.
+# Install Caddy, copy this to /etc/caddy/Caddyfile, then: systemctl reload caddy
+#
+# DNS A records (both to the same VPS IP):
+#   shop.omuwenga.com
+#   uat.omuwenga.com
+
+shop.omuwenga.com {
+	reverse_proxy 127.0.0.1:3000
+}
+
+uat.omuwenga.com {
+	reverse_proxy 127.0.0.1:3100
+}
