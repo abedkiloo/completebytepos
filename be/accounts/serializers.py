@@ -11,6 +11,7 @@ from accounts.password_policy import (
     set_must_change_password,
     validate_new_password,
 )
+from utils.field_types import email_error, email_error_messages, raise_field_error
 
 
 class PermissionSerializer(serializers.ModelSerializer):
@@ -180,6 +181,17 @@ class UserSerializer(serializers.ModelSerializer):
             'date_joined', 'profile', 'permissions'
         ]
         read_only_fields = ['date_joined']
+        extra_kwargs = {
+            'email': {
+                'required': False,
+                'allow_blank': True,
+                'error_messages': email_error_messages(),
+            },
+        }
+
+    def validate_email(self, value):
+        raise_field_error(email_error(value))
+        return (value or '').strip() if value else value
 
     def to_representation(self, instance):
         return apply_user_representation_flags(super().to_representation(instance))
@@ -255,6 +267,17 @@ class UserCreateSerializer(serializers.ModelSerializer):
             'password', 'is_staff', 'is_active',
             'role', 'custom_role_id', 'phone_number'
         ]
+        extra_kwargs = {
+            'email': {
+                'required': False,
+                'allow_blank': True,
+                'error_messages': email_error_messages(),
+            },
+        }
+
+    def validate_email(self, value):
+        raise_field_error(email_error(value))
+        return (value or '').strip() if value else value
 
     def validate_phone_number(self, value):
         from utils.phone import validate_optional_phone

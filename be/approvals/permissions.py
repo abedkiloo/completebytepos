@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from approvals.registry import CHECKER_MODULE_BY_ACTION
+from approvals.registry import ACTION_SALE_ROLLBACK, CHECKER_MODULE_BY_ACTION
 
 
 def is_maker_checker_enabled() -> bool:
@@ -29,6 +29,12 @@ def user_can_check(user, action_type: str) -> bool:
     """Checker: super admin/staff or has module ``approve`` for this action."""
     if not user or not getattr(user, 'is_authenticated', False):
         return False
+    if action_type == ACTION_SALE_ROLLBACK:
+        # Sale rollback is admin-gated even when a manager is staff.
+        return user_has_admin_checker_override(user) or (
+            getattr(user, 'profile', None)
+            and user.profile.has_permission('settings', 'approve')
+        )
     if user.is_superuser or user.is_staff:
         return True
     profile = getattr(user, 'profile', None)

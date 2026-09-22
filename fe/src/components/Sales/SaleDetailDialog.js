@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from '../ui/dialog';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
-import { saleIsRefundable } from '../../utils/saleRefund';
+import { saleIsRefundable, saleIsRollbackable } from '../../utils/saleRefund';
 import {
   saleAmountRefunded,
   saleFinalStatusLabel,
@@ -29,6 +29,8 @@ export default function SaleDetailDialog({
   onOpenChange,
   onRefund,
   canRefund = false,
+  onRollback,
+  canRollback = false,
   onPrint,
   showCustomerName = true,
   showAdminDetails = true,
@@ -250,6 +252,12 @@ export default function SaleDetailDialog({
 
         <DialogFooter className="flex-wrap gap-2 sm:justify-between">
           <div>
+            {canRollback && saleIsRollbackable(sale) && onRollback ? (
+              <Button variant="destructive" onClick={() => onRollback(sale)}>
+                <RotateCcw className="mr-1 h-4 w-4" />
+                Roll back
+              </Button>
+            ) : null}
             {canRefund && saleIsRefundable(sale) && onRefund ? (
               <Button variant="destructive" onClick={() => onRefund(sale)}>
                 <RotateCcw className="mr-1 h-4 w-4" />

@@ -4,9 +4,10 @@ from decimal import Decimal
 
 from django.contrib.auth.models import User
 from rest_framework import status
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.models import Role, UserProfile
-from accounts.role_definitions import ROLE_MANAGER, ROLE_SUPER_ADMIN, sync_default_roles
+from accounts.role_definitions import ROLE_SUPER_ADMIN, sync_default_roles
 from approvals.models import PendingChange
 from approvals.registry import ACTION_SALE_REFUND
 from products.models import Category, Product
@@ -85,21 +86,7 @@ class SaleRefundMakerCheckerAPITests(ManagerAPITestCase):
         self.assertEqual(deny.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_checker_approval_applies_refund(self):
-        maker = User.objects.create_user('refund_maker', password='x')
-        maker_role = Role.objects.get(name=ROLE_MANAGER)
-        UserProfile.objects.create(
-            user=maker,
-            role='manager',
-            custom_role=maker_role,
-            is_active=True,
-        )
-        maker_client = self.client.__class__()
-        from rest_framework_simplejwt.tokens import RefreshToken
-
-        token = RefreshToken.for_user(maker)
-        maker_client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
-
-        queued = maker_client.post(
+        queued = self.client.post(
             f'/api/sales/{self.sale.id}/refund/',
             {'reason': 'Duplicate lines', 'full': True},
             format='json',

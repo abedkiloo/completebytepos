@@ -19,6 +19,7 @@ from approvals.registry import (
     ACTION_ROLE_PERMISSIONS,
     ACTION_SALE_COMPLETED_EDIT,
     ACTION_SALE_REFUND,
+    ACTION_SALE_ROLLBACK,
     ACTION_SALE_BACKFILL,
     ACTION_STOCK_ADJUST,
     ACTION_STOCK_PURCHASE,
@@ -59,6 +60,9 @@ def apply_pending_change(change: PendingChange) -> None:
         return
     if change.entity_type == 'sales.Sale' and change.action_type == ACTION_SALE_REFUND:
         _apply_sale_refund(change)
+        return
+    if change.entity_type == 'sales.Sale' and change.action_type == ACTION_SALE_ROLLBACK:
+        _apply_sale_rollback(change)
         return
     if change.entity_type == 'sales.SaleBackfill' and change.action_type == ACTION_SALE_BACKFILL:
         _apply_sale_backfill(change)
@@ -244,6 +248,33 @@ def _apply_sale_refund(change: PendingChange) -> None:
         from utils.audit_events import log_sale_refunded
 
         log_sale_refunded(None, sale, refund)
+    except Exception:
+        pass
+
+
+def _apply_sale_rollback(change: PendingChange) -> None:
+    from sales.models import Sale
+    from sales.rollback import rollback_sale
+
+    sale = Sale.objects.get(pk=change.entity_id)
+    checker = change.checked_by
+    if not checker:
+        raise ValidationError('Rollback approval requires an admin checker.')
+
+    refund = rollback_sale(sale=sale, reason=change.reason, user=checker)
+    payload = dict(change.apply_payload or {})
+    change.apply_payload = {
+        **payload,
+        'refund_id': refund.id,
+        'refund_number': refund.refund_number,
+        'refund_type': refund.refund_type,
+    }
+    change.save(update_fields=['apply_payload'])
+
+    try:
+        from utils.audit_events import log_sale_rolled_back
+
+        log_sale_rolled_back(None, sale, refund)
     except Exception:
         pass
 

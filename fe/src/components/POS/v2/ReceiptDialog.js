@@ -113,7 +113,7 @@ export default function ReceiptDialog({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className="left-[50%] top-[3vh] flex max-h-[94dvh] w-[calc(100%-1rem)] max-w-[380px] translate-x-[-50%] translate-y-0 flex-col gap-0 overflow-hidden p-0 sm:max-w-[380px]"
+          className="left-[50%] top-[3vh] flex max-h-[94dvh] w-[calc(100%-1rem)] max-w-[300px] translate-x-[-50%] translate-y-0 flex-col gap-0 overflow-hidden p-0 sm:max-w-[300px]"
           description={`Receipt for sale ${sale.sale_number}. Print or send via WhatsApp.`}
         >
           <DialogHeader className="shrink-0 border-b px-3 py-2.5">
@@ -178,18 +178,18 @@ export default function ReceiptDialog({
               onClick={doPrint}
               disabled={printing}
               variant="success"
-              size="cashier-lg"
+              size="cashier"
               data-testid="receipt-print-button"
-              className="w-full min-h-16 text-lg font-semibold shadow-md"
+              className="w-full min-h-11 text-sm font-semibold shadow-md"
             >
               {printing ? (
                 <>
-                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin" />
                   Opening print…
                 </>
               ) : (
                 <>
-                  <Printer className="h-5 w-5" />
+                  <Printer className="h-4 w-4" />
                   {printedOnce ? 'Print again' : 'Print receipt'}
                 </>
               )}

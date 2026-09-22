@@ -408,6 +408,7 @@ class SaleRefund(models.Model):
     REFUND_TYPE_CHOICES = [
         ('full', 'Full refund'),
         ('partial', 'Partial refund'),
+        ('rollback', 'Rollback'),
     ]
 
     sale = models.ForeignKey(Sale, on_delete=models.PROTECT, related_name='refunds')

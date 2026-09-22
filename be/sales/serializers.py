@@ -16,6 +16,15 @@ from .models import (
     CustomerWalletTransaction,
 )
 from products.serializers import ProductSerializer
+from sales.payment_reference import mpesa_receipt_error, normalize_mpesa_receipt
+from utils.field_types import (
+    NAME_EXAMPLE,
+    email_error,
+    email_error_messages,
+    money_error_messages,
+    raise_field_error,
+    required_text_error,
+)
 
 
 class CustomerSerializer(serializers.ModelSerializer):
@@ -38,22 +47,18 @@ class CustomerSerializer(serializers.ModelSerializer):
     
     def validate_name(self, value):
         """Validate customer name"""
-        if not value or not value.strip():
-            raise serializers.ValidationError('Customer name is required')
-        if len(value.strip()) < 2:
-            raise serializers.ValidationError('Customer name must be at least 2 characters')
+        raise_field_error(
+            required_text_error(
+                value, label='customer name', example=NAME_EXAMPLE, min_length=2
+            )
+        )
         return value.strip()
     
     def validate_email(self, value):
         """Validate email format if provided"""
-        if value and value.strip():
-            from django.core.validators import validate_email
-            from django.core.exceptions import ValidationError
-            try:
-                validate_email(value.strip())
-            except ValidationError:
-                raise serializers.ValidationError('Please enter a valid email address')
-            return value.strip()
+        raise_field_error(email_error(value))
+        if value and str(value).strip():
+            return str(value).strip()
         return value
 
     def validate_phone(self, value):
@@ -66,8 +71,11 @@ class CustomerSerializer(serializers.ModelSerializer):
         from sales.customer_module_settings import validate_customer_write
 
         # Ensure name is provided
-        if not attrs.get('name') or not attrs.get('name').strip():
-            raise serializers.ValidationError({'name': 'Customer name is required'})
+        name_error = required_text_error(
+            attrs.get('name'), label='customer name', example=NAME_EXAMPLE, min_length=2
+        )
+        if name_error:
+            raise serializers.ValidationError({'name': name_error})
 
         return validate_customer_write(attrs)
 
@@ -119,13 +127,27 @@ class CustomerWalletTransactionSerializer(serializers.ModelSerializer):
 
 
 class ReceiveWalletPaymentSerializer(serializers.Serializer):
-    amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal('0.01'))
+    amount = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.01'),
+        error_messages=money_error_messages(allow_zero=False),
+    )
     payment_method = serializers.ChoiceField(
         choices=[('cash', 'Cash'), ('mpesa', 'M-PESA'), ('card', 'Card'), ('other', 'Other')],
         default='cash',
     )
     reference = serializers.CharField(required=False, allow_blank=True, max_length=100)
     notes = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        method = attrs.get('payment_method')
+        if method == 'mpesa':
+            error = mpesa_receipt_error(attrs.get('reference'))
+            if error:
+                raise serializers.ValidationError({'reference': error})
+            attrs['reference'] = normalize_mpesa_receipt(attrs.get('reference'))
+        return attrs
 
 
 class SaleItemSerializer(serializers.ModelSerializer):
@@ -229,6 +251,7 @@ class SaleSerializer(serializers.ModelSerializer):
     amount_refunded = serializers.SerializerMethodField()
     refundable_remaining = serializers.SerializerMethodField()
     can_refund = serializers.SerializerMethodField()
+    can_rollback = serializers.SerializerMethodField()
     
     class Meta:
         model = Sale
@@ -242,6 +265,7 @@ class SaleSerializer(serializers.ModelSerializer):
             'occurred_at', 'entry_source', 'client_channel', 'backfill_reason', 'is_late_entry',
             'backfill_receipt_photo_url',
             'items', 'item_count', 'amount_refunded', 'refundable_remaining', 'can_refund',
+            'can_rollback',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
@@ -282,6 +306,11 @@ class SaleSerializer(serializers.ModelSerializer):
             and obj.refund_status != 'refunded'
             and obj.refundable_remaining() > 0
         )
+
+    def get_can_rollback(self, obj):
+        from sales.rollback import sale_has_pending_rollback, sale_is_rollbackable
+
+        return sale_is_rollbackable(obj) and not sale_has_pending_rollback(obj)
 
     def to_representation(self, instance):
         refunded_qty = self._refunded_qty_by_sale_item(instance)
@@ -363,6 +392,7 @@ class SaleCreateSerializer(serializers.Serializer):
         required=False, 
         allow_null=True,
         default=0,
+        error_messages=money_error_messages(allow_zero=True),
         help_text='Amount paid. Can be null/0 for installments, required for pay_now'
     )
     notes = serializers.CharField(required=False, allow_blank=True)
@@ -376,7 +406,11 @@ class SaleCreateSerializer(serializers.Serializer):
     # For normal sales, invoice is always created
     customer_id = serializers.IntegerField(required=False, allow_null=True)
     customer_name = serializers.CharField(required=False, allow_blank=True)
-    customer_email = serializers.EmailField(required=False, allow_blank=True)
+    customer_email = serializers.EmailField(
+        required=False,
+        allow_blank=True,
+        error_messages=email_error_messages(),
+    )
     customer_phone = serializers.CharField(required=False, allow_blank=True)
     customer_address = serializers.CharField(required=False, allow_blank=True)
     due_date = serializers.DateField(required=False, allow_null=True)
@@ -628,7 +662,11 @@ class InvoiceCreateSerializer(serializers.Serializer):
     branch_id = serializers.IntegerField(required=False, allow_null=True, help_text='Branch ID (optional, uses current branch if not provided)')
     customer_id = serializers.IntegerField(required=False, allow_null=True)
     customer_name = serializers.CharField(required=False, allow_blank=True)
-    customer_email = serializers.EmailField(required=False, allow_blank=True)
+    customer_email = serializers.EmailField(
+        required=False,
+        allow_blank=True,
+        error_messages=email_error_messages(),
+    )
     customer_phone = serializers.CharField(required=False, allow_blank=True)
     customer_address = serializers.CharField(required=False, allow_blank=True)
     items = serializers.ListField(

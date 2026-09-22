@@ -29,6 +29,7 @@ jest.mock('../../services/api', () => ({
     dailyCustomer: jest.fn(),
     get: jest.fn(),
     refund: jest.fn(),
+    rollback: jest.fn(),
   },
 }));
 
@@ -51,6 +52,7 @@ jest.mock('../../utils/roleAccess', () => ({
 
 jest.mock('../../utils/saleRefund', () => ({
   userCanRefundSales: () => true,
+  userCanRollbackSales: () => false,
   handleSaleRefundResponse: () => ({ handled: true }),
 }));
 
@@ -101,6 +103,7 @@ jest.mock('./SaleDetailDialog', () => ({
     open && sale ? <div data-testid="sale-detail-dialog">Receipt: {sale.sale_number}</div> : null,
 }));
 jest.mock('./RefundSaleDialog', () => () => null);
+jest.mock('./SaleRollbackDialog', () => () => null);
 jest.mock('../Customers/ReceiveWalletPaymentDialog', () => ({
   __esModule: true,
   default: ({ open, customer, onSuccess }) =>

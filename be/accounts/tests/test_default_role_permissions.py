@@ -92,6 +92,12 @@ class DefaultRolePermissionTests(TestCase):
         self.assertFalse(self._has(self.manager_role, 'settings', 'approve'))
         self.assertFalse(self._has(self.sales_role, 'settings', 'approve'))
 
+    def test_manager_lacks_sale_rollback_and_accounting_correct(self):
+        self.assertFalse(self._has(self.manager_role, 'sales', 'rollback'))
+        self.assertFalse(self._has(self.manager_role, 'accounting', 'correct'))
+        self.assertTrue(self._has(self.super_role, 'sales', 'rollback'))
+        self.assertTrue(self._has(self.super_role, 'accounting', 'correct'))
+
     def test_ensure_permissions_creates_settings_approve_row(self):
         ensure_permissions()
         self.assertTrue(

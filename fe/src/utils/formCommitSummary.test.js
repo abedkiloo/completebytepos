@@ -21,6 +21,7 @@ import {
   presetApplyRows,
   featureToggleRows,
   approvalExpenseRows,
+  saleRollbackRows,
 } from './formCommitSummary';
 
 describe('formCommitSummary', () => {
@@ -100,5 +101,9 @@ describe('formCommitSummary', () => {
     expect(approvalExpenseRows()[0].value).toBe('—');
     expect(approvalExpenseRows({ description: 'Fuel', amount: 20 })[0].value).toBe('Fuel');
     expect(approvalExpenseRows({ expense_number: 'EXP-1' })[0].value).toBe('EXP-1');
+    expect(saleRollbackRows()[0].value).toBe('—');
+    expect(saleRollbackRows({ sale_number: 'S-1', total: 100 }, 'wrong till')[2].value).toContain(
+      'admin approval'
+    );
   });
 });

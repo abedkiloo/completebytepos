@@ -1,6 +1,4 @@
-/**
- * Invoice API payload helpers (align with be/sales/invoice_items.py).
- */
+import { paymentAmountMessage, parsePaymentAmount } from './formValidation';
 
 export function resolveLineProductId(item) {
   const raw = item?.product_id ?? item?.product;
@@ -40,10 +38,11 @@ export function validatePaymentAmount(rawAmount, invoice) {
     return { ok: false, error: 'This invoice has no remaining balance.' };
   }
 
-  const amount = parseFloat(String(rawAmount ?? '').trim());
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return { ok: false, error: 'Enter a payment amount greater than zero.' };
+  const amountError = paymentAmountMessage(rawAmount);
+  if (amountError) {
+    return { ok: false, error: amountError };
   }
+  const amount = parsePaymentAmount(rawAmount);
   if (amount > balance + 0.001) {
     return {
       ok: false,

@@ -243,3 +243,38 @@ class ExpenseServiceTestCase(TestCase):
         stats = self.service.get_expense_statistics()
         self.assertLess(stats['total_expenses'], 999.0)
         self.assertTrue(any(row['status'] == 'pending' for row in stats['by_status']))
+
+    def test_void_approved_expense_reverses_journals(self):
+        from accounting.models import Transaction
+        from accounting.reversal import transaction_is_reversed
+
+        expense = Expense.objects.create(
+            category=self.cat,
+            description='Wrong vendor',
+            amount=Decimal('75.00'),
+            expense_date=timezone.now().date(),
+            status='pending',
+            created_by=self.user,
+        )
+        self.service.approve_expense(expense, self.user)
+        txn = Transaction.objects.get(reference_type='expense', reference_id=expense.id)
+        voided = self.service.void_expense(expense, reason='wrong vendor', user=self.user)
+        self.assertEqual(voided.status, 'voided')
+        self.assertIn('VOIDED', voided.notes)
+        self.assertTrue(transaction_is_reversed(txn))
+        with self.assertRaises(ValidationError):
+            self.service.void_expense(voided, reason='again', user=self.user)
+
+    def test_void_pending_requires_reason(self):
+        expense = Expense.objects.create(
+            category=self.cat,
+            description='Draft',
+            amount=Decimal('10.00'),
+            expense_date=timezone.now().date(),
+            status='pending',
+            created_by=self.user,
+        )
+        with self.assertRaises(ValidationError):
+            self.service.void_expense(expense, reason='', user=self.user)
+        voided = self.service.void_expense(expense, reason='never posted', user=self.user)
+        self.assertEqual(voided.status, 'voided')

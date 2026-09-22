@@ -15,7 +15,7 @@ export const PAYMENT_METHODS = [
     requiresAmount: true,
     requiresReference: true,
     referenceLabel: 'M-Pesa code',
-    referencePlaceholder: 'e.g. QHX1ABC2DE',
+    referencePlaceholder: 'e.g. QHX7K2L9M1',
   },
   {
     id: 'wallet',

@@ -8,10 +8,11 @@ import SearchableSelect from '../Shared/SearchableSelect';
 import { toast } from '../../utils/toast';
 import { getStoredAuth, isManagerOrAdminFromStorage } from '../../utils/roleAccess';
 import { canViewDailySalesFromStorage } from '../../utils/dailySalesAccess';
-import { userCanRefundSales, saleIsRefundable, handleSaleRefundResponse } from '../../utils/saleRefund';
+import { userCanRefundSales, saleIsRefundable, handleSaleRefundResponse, userCanRollbackSales, saleIsRollbackable } from '../../utils/saleRefund';
 import { pendingApprovalToastMessage } from '../../utils/makerChecker';
 import { saleDisplayItemCount, saleDisplayTotal } from '../../utils/saleItemDisplay';
 import RefundSaleDialog from './RefundSaleDialog';
+import SaleRollbackDialog from './SaleRollbackDialog';
 import SaleDetailDialog from './SaleDetailDialog';
 import SaleChannelIcon from './SaleChannelIcon';
 import ReportExportButtons from '../Reports/ReportExportButtons';
@@ -43,10 +44,13 @@ const Sales = () => {
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [refundSale, setRefundSale] = useState(null);
   const [refundSubmitting, setRefundSubmitting] = useState(false);
+  const [rollbackSale, setRollbackSale] = useState(null);
+  const [rollbackSubmitting, setRollbackSubmitting] = useState(false);
   const { permissions } = getStoredAuth();
   const canRefund = userCanRefundSales(permissions, {
     isManagerOrAdmin: isManagerOrAdminFromStorage(),
   });
+  const canRollback = userCanRollbackSales(permissions);
   const canViewDaily = canViewDailySalesFromStorage();
   const [filters, setFilters] = useState({
     date_from: '',
@@ -141,6 +145,39 @@ const Sales = () => {
       toast.error(typeof msg === 'string' ? msg : 'Refund failed');
     } finally {
       setRefundSubmitting(false);
+    }
+  };
+
+  const openRollbackDialog = async (sale) => {
+    try {
+      const response = await salesAPI.get(sale.id);
+      setRollbackSale(response.data);
+    } catch (error) {
+      toast.error('Failed to load sale: ' + (error.response?.data?.error || error.message));
+    }
+  };
+
+  const handleRollbackSubmit = async (payload) => {
+    if (!rollbackSale) return;
+    setRollbackSubmitting(true);
+    try {
+      const res = await salesAPI.rollback(rollbackSale.id, payload);
+      handleSaleRefundResponse(res, {
+        onApplied: (data) => toast.success(`Sale rolled back as ${data.refund_number}`),
+        onPending: () => toast.success(pendingApprovalToastMessage()),
+      });
+      setRollbackSale(null);
+      if (selectedSale?.id === rollbackSale.id) {
+        const refreshed = await salesAPI.get(rollbackSale.id);
+        setSelectedSale(refreshed.data);
+      }
+      loadSales();
+    } catch (error) {
+      const data = error.response?.data;
+      const msg = data?.reason?.[0] || data?.error || data?.detail || error.message;
+      toast.error(typeof msg === 'string' ? msg : 'Rollback failed');
+    } finally {
+      setRollbackSubmitting(false);
     }
   };
 
@@ -430,6 +467,17 @@ const Sales = () => {
                     </DataTableCell>
                     <DataTableCell align="right">
                       <div className="flex justify-end gap-1">
+                        {canRollback && saleIsRollbackable(sale) && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive"
+                            onClick={() => openRollbackDialog(sale)}
+                          >
+                            <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                            Roll back
+                          </Button>
+                        )}
                         {canRefund && saleIsRefundable(sale) && (
                           <Button
                             variant="ghost"
@@ -463,9 +511,14 @@ const Sales = () => {
           open={showReceiptModal}
           onOpenChange={setShowReceiptModal}
           canRefund={canRefund}
+          canRollback={canRollback}
           onRefund={(sale) => {
             setShowReceiptModal(false);
             openRefundDialog(sale);
+          }}
+          onRollback={(sale) => {
+            setShowReceiptModal(false);
+            openRollbackDialog(sale);
           }}
           onPrint={handlePrintReceipt}
         />
@@ -478,6 +531,16 @@ const Sales = () => {
           }}
           onSubmit={handleRefundSubmit}
           submitting={refundSubmitting}
+        />
+
+        <SaleRollbackDialog
+          sale={rollbackSale}
+          open={Boolean(rollbackSale)}
+          onOpenChange={(open) => {
+            if (!open) setRollbackSale(null);
+          }}
+          onSubmit={handleRollbackSubmit}
+          submitting={rollbackSubmitting}
         />
       </PageShell>
   );

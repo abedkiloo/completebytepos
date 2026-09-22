@@ -13,8 +13,14 @@ class NormalizePhoneNumberTests(TestCase):
         self.assertEqual(normalize_phone_number('   '), '')
 
     def test_blank_required_raises(self):
-        with self.assertRaises(PhoneNumberError):
+        with self.assertRaises(PhoneNumberError) as ctx:
             normalize_phone_number('', required=True)
+        self.assertIn('0712 345 678', str(ctx.exception))
+
+    def test_letters_explain_expected_format(self):
+        with self.assertRaises(PhoneNumberError) as ctx:
+            normalize_phone_number('not-a-phone')
+        self.assertIn('Letters are not allowed', str(ctx.exception))
 
     def test_local_zero_prefix_becomes_254(self):
         self.assertEqual(normalize_phone_number('0712345678'), '254712345678')

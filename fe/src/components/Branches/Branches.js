@@ -5,6 +5,7 @@ import { toast } from '../../utils/toast';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import CommitConfirm from '../Shared/CommitConfirm';
 import { branchCommitRows } from '../../utils/formCommitSummary';
+import { emailMessage, phoneMessage, required } from '../../utils/formValidation';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -116,8 +117,19 @@ const Branches = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!formData.name?.trim()) {
-      toast.error('Branch name is required');
+    const nameErr = required(formData.name, 'Enter branch name, e.g. Westlands');
+    if (nameErr) {
+      toast.error(nameErr);
+      return;
+    }
+    const emailErr = emailMessage(formData.email);
+    if (emailErr) {
+      toast.error(emailErr);
+      return;
+    }
+    const phoneErr = phoneMessage(formData.phone);
+    if (phoneErr) {
+      toast.error(phoneErr);
       return;
     }
     setShowCommitConfirm(true);

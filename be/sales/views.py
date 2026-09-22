@@ -125,6 +125,7 @@ SALES_PERMS = RequirePermPerAction('sales', {
     'checkout': 'create',
     'cancel_holding': 'update',
     'refund': 'refund',
+    'rollback': 'rollback',
     'backfill': 'create',
     'backfill_preflight': 'create',
     'backfill_import_csv': 'create',
@@ -713,6 +714,49 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
         sale.refresh_from_db()
         log_sale_refunded(request, sale, refund)
+        return Response(
+            SaleRefundSerializer(refund).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=['post'])
+    @transaction.atomic
+    def rollback(self, request, pk=None):
+        """Request or apply a full sale reversal. Non-admins queue for admin approval."""
+        from approvals.permissions import user_has_admin_checker_override
+        from approvals.rollback_integration import queue_sale_rollback
+        from approvals.serializers import PendingChangeSerializer
+        from sales.rollback import rollback_sale
+
+        sale = self.get_object()
+        reason = (request.data.get('reason') or '').strip()
+        if not user_has_admin_checker_override(request.user):
+            try:
+                pending = queue_sale_rollback(request, sale, reason=reason)
+            except ValidationError as e:
+                payload = getattr(e, 'message_dict', None) or {'error': validation_error_message(e)}
+                return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {
+                    'message': (
+                        'Rollback submitted for admin approval — '
+                        'stock and accounts stay unchanged until it is approved.'
+                    ),
+                    'pending_change': PendingChangeSerializer(pending).data,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+
+        try:
+            refund = rollback_sale(sale=sale, reason=reason, user=request.user)
+        except ValidationError as e:
+            payload = getattr(e, 'message_dict', None) or {'error': validation_error_message(e)}
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+        from utils.audit_events import log_sale_rolled_back
+
+        sale.refresh_from_db()
+        log_sale_rolled_back(request, sale, refund)
         return Response(
             SaleRefundSerializer(refund).data,
             status=status.HTTP_201_CREATED,

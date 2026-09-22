@@ -1,7 +1,10 @@
 import {
   userCanRefundSales,
+  userCanRollbackSales,
   saleIsRefundable,
+  saleIsRollbackable,
   buildFullRefundPayload,
+  buildRollbackPayload,
   buildPartialRefundPayload,
   refundStatusLabel,
   handleSaleRefundResponse,
@@ -14,6 +17,22 @@ describe('saleRefund', () => {
     expect(userCanRefundSales(refundPerm)).toBe(true);
     expect(userCanRefundSales([], { isManagerOrAdmin: true })).toBe(true);
     expect(userCanRefundSales([])).toBe(false);
+  });
+
+  it('checks rollback only from the explicit permission', () => {
+    const rollbackPerm = [{ module: 'sales', action: 'rollback', name: 'sales.rollback' }];
+    expect(userCanRollbackSales(rollbackPerm)).toBe(true);
+    expect(userCanRollbackSales([])).toBe(false);
+    expect(userCanRollbackSales(refundPerm)).toBe(false);
+  });
+
+  it('detects rollbackable completed sales', () => {
+    expect(saleIsRollbackable({ status: 'completed', refund_status: 'none' })).toBe(true);
+    expect(saleIsRollbackable({ status: 'completed' })).toBe(true);
+    expect(saleIsRollbackable({ status: 'completed', can_rollback: false })).toBe(false);
+    expect(saleIsRollbackable({ status: 'completed', refund_status: 'partial' })).toBe(false);
+    expect(saleIsRollbackable({ status: 'holding' })).toBe(false);
+    expect(saleIsRollbackable(null)).toBe(false);
   });
 
   it('detects refundable completed sales', () => {
@@ -34,6 +53,9 @@ describe('saleRefund', () => {
     expect(buildFullRefundPayload('  Customer return  ')).toEqual({
       full: true,
       reason: 'Customer return',
+    });
+    expect(buildRollbackPayload('  duplicate till  ')).toEqual({
+      reason: 'duplicate till',
     });
     expect(
       buildPartialRefundPayload('Damaged', [{ id: 3, quantity: 1 }])

@@ -228,6 +228,24 @@ class IncomeServiceTestCase(TestCase):
         )
         self.assertGreaterEqual(stats['total_income'], 90.0)
 
+    def test_void_approved_income_reverses_journals(self):
+        from accounting.models import Transaction
+        from accounting.reversal import transaction_is_reversed
+
+        income = Income.objects.create(
+            category=self.cat,
+            description='Wrong payer',
+            amount=Decimal('40.00'),
+            income_date=timezone.now().date(),
+            status='pending',
+            created_by=self.user,
+        )
+        self.service.approve_income(income, self.user)
+        txn = Transaction.objects.get(reference_type='income', reference_id=income.id)
+        voided = self.service.void_income(income, reason='wrong payer', user=self.user)
+        self.assertEqual(voided.status, 'voided')
+        self.assertTrue(transaction_is_reversed(txn))
+
     def test_build_queryset_invalid_category_returns_empty(self):
         qs = self.service.build_queryset({'category': 'x', 'show_all': 'true'})
         self.assertEqual(qs.count(), 0)

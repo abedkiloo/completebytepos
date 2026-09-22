@@ -16,6 +16,7 @@ import {
   STOCK_OPENING_LABEL,
   STOCK_OPENING_HINT,
 } from '../../utils/productDisplay';
+import { moneyMessage, required } from '../../utils/formValidation';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import { useProductUnits } from '../../hooks/useProductUnits';
 import ChangeReasonField from '../Approvals/ChangeReasonField';
@@ -441,17 +442,23 @@ const ProductForm = ({
   const validate = () => {
     const newErrors = {};
     
-    if (!formData.name.trim()) {
-      newErrors.name = 'Product name is required';
-    }
+    const nameErr = required(formData.name, 'Enter product name, e.g. Sugar 2kg');
+    if (nameErr) newErrors.name = nameErr;
     
     if (showPricingFields && !formData.has_variants) {
-      if (!formData.selling_price || parseFloat(formData.selling_price) < 0) {
-        newErrors.selling_price = 'Selling price is required';
-      }
+      const sellingErr = moneyMessage(formData.selling_price, {
+        allowZero: true,
+        label: 'selling price',
+      });
+      if (sellingErr) newErrors.selling_price = sellingErr;
 
-      if (showMrp && formData.mrp && parseFloat(formData.mrp) < 0) {
-        newErrors.mrp = 'MRP must be zero or positive';
+      if (showMrp) {
+        const mrpErr = moneyMessage(formData.mrp, {
+          allowZero: true,
+          required: false,
+          label: 'MRP',
+        });
+        if (mrpErr) newErrors.mrp = mrpErr;
       }
 
       if (
@@ -473,8 +480,13 @@ const ProductForm = ({
       }
     }
 
-    if (showCostField && !formData.has_variants && formData.cost && parseFloat(formData.cost) < 0) {
-      newErrors.cost = 'Cost must be positive';
+    if (showCostField && !formData.has_variants) {
+      const costErr = moneyMessage(formData.cost, {
+        allowZero: true,
+        required: false,
+        label: 'cost',
+      });
+      if (costErr) newErrors.cost = costErr;
     }
     
     setErrors(newErrors);

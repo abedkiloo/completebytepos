@@ -23,6 +23,11 @@ import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import CommitConfirm from '../Shared/CommitConfirm';
 import { customerCommitRows } from '../../utils/formCommitSummary';
 import { customerDetailPath } from '../../utils/customerDetail';
+import {
+  emailMessage,
+  personNameMessage,
+  phoneMessage,
+} from '../../utils/formValidation';
 
 import {
   Dialog,
@@ -70,8 +75,6 @@ const EMPTY_FORM = {
   notes: '',
   is_active: true,
 };
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const Customers = () => {
   const navigate = useNavigate();
@@ -218,14 +221,17 @@ const Customers = () => {
 
   const validate = () => {
     const errors = {};
-    const name = formData.name?.trim() || '';
-    if (!name) errors.name = 'Customer name is required';
-    else if (name.length < 2) errors.name = 'Name must be at least 2 characters';
+    const nameErr = personNameMessage(formData.name, {
+      label: 'customer name',
+      example: 'Jane Wambua',
+    });
+    if (nameErr) errors.name = nameErr;
 
-    const email = formData.email?.trim() || '';
-    if (email && !EMAIL_RE.test(email)) {
-      errors.email = 'Please enter a valid email address';
-    }
+    const emailErr = emailMessage(formData.email);
+    if (emailErr) errors.email = emailErr;
+
+    const phoneErr = phoneMessage(formData.phone);
+    if (phoneErr) errors.phone = phoneErr;
     return errors;
   };
 
@@ -764,7 +770,7 @@ function CustomerFormDialog({
                   id="cust-name"
                   value={formData.name}
                   onChange={(e) => onChange('name', e.target.value)}
-                  placeholder="Jane Doe"
+                  placeholder="Jane Wambua"
                   autoFocus
                 />
               </Field>
@@ -788,7 +794,7 @@ function CustomerFormDialog({
                     type="email"
                     value={formData.email}
                     onChange={(e) => onChange('email', e.target.value)}
-                    placeholder="jane@example.com"
+                    placeholder="name@example.com"
                   />
               </Field>
 
@@ -799,7 +805,7 @@ function CustomerFormDialog({
                   inputMode="tel"
                   value={formData.phone}
                   onChange={(e) => onChange('phone', e.target.value)}
-                  placeholder="+254…"
+                  placeholder="0712 345 678"
                 />
               </Field>
 

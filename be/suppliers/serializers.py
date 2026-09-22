@@ -1,4 +1,7 @@
 from rest_framework import serializers
+from decimal import Decimal
+
+from utils.field_types import email_error, email_error_messages, money_error_messages, raise_field_error
 from .models import Supplier
 
 
@@ -32,6 +35,10 @@ class SupplierSerializer(serializers.ModelSerializer):
         from utils.phone import validate_optional_phone
 
         return validate_optional_phone(value)
+
+    def validate_email(self, value):
+        raise_field_error(email_error(value))
+        return (value or '').strip() if value else value
     
     class Meta:
         model = Supplier
@@ -45,6 +52,17 @@ class SupplierSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at'
         ]
         read_only_fields = ['supplier_code', 'created_at', 'updated_at', 'created_by']
+        extra_kwargs = {
+            'email': {'error_messages': email_error_messages(), 'required': False, 'allow_blank': True},
+            'credit_limit': {
+                'min_value': Decimal('0'),
+                'error_messages': money_error_messages(allow_zero=True),
+            },
+            'account_balance': {
+                'min_value': Decimal('0'),
+                'error_messages': money_error_messages(allow_zero=True),
+            },
+        }
 
 
 class SupplierListSerializer(serializers.ModelSerializer):

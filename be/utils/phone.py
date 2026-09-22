@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from utils.field_types import PHONE_EXAMPLE
+
 
 class PhoneNumberError(ValueError):
     """Invalid or incomplete phone number."""
@@ -33,12 +35,14 @@ def normalize_phone_number(
     raw = '' if value is None else str(value).strip()
     if not raw:
         if required:
-            raise PhoneNumberError('Phone number is required.')
+            raise PhoneNumberError(f'Enter a Kenyan mobile, e.g. {PHONE_EXAMPLE}')
         return ''
 
     digits = ''.join(c for c in raw if c.isdigit())
     if not digits:
-        raise PhoneNumberError('Enter a valid phone number.')
+        raise PhoneNumberError(
+            f'Enter a Kenyan mobile, e.g. {PHONE_EXAMPLE}. Letters are not allowed.'
+        )
 
     country = default_country or default_country_code()
 
@@ -55,16 +59,16 @@ def normalize_phone_number(
         return digits
     else:
         raise PhoneNumberError(
-            f'Enter a valid phone number with country code (default {country}).'
+            f'Enter a Kenyan mobile, e.g. {PHONE_EXAMPLE}. You entered {len(digits)} digits.'
         )
 
     if country == '254' and len(digits) != 12:
         raise PhoneNumberError(
-            'Enter a valid Kenyan number (07…, 7…, or 254…).'
+            f'Enter a Kenyan mobile, e.g. {PHONE_EXAMPLE}. You entered {len(digits)} digits (need 12 with 254).'
         )
     if len(digits) < 10 or len(digits) > 15:
         raise PhoneNumberError(
-            f'Enter a valid phone number with country code (default {country}).'
+            f'Enter a Kenyan mobile, e.g. {PHONE_EXAMPLE}. You entered {len(digits)} digits.'
         )
     return digits
 

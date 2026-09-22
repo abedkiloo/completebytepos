@@ -13,6 +13,12 @@ import {
 import { findCategoryByName } from '../../utils/expenseFilters';
 import { CATALOG_FETCH_PAGE_SIZE } from '../../config/pagination';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
+import {
+  dateMessage,
+  moneyMessage,
+  required,
+  requiredChoiceMessage,
+} from '../../utils/formValidation';
 
 const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }) => {
   const [formData, setFormData] = useState({
@@ -70,18 +76,14 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
   const validate = () => {
     const newErrors = {};
 
-    if (!formData.category) {
-      newErrors.category = 'Category is required';
-    }
-    if (!formData.amount || parseFloat(formData.amount) <= 0) {
-      newErrors.amount = 'Amount must be greater than 0';
-    }
-    if (!formData.description.trim()) {
-      newErrors.description = 'Description is required';
-    }
-    if (!formData.expense_date) {
-      newErrors.expense_date = 'Expense date is required';
-    }
+    const categoryErr = requiredChoiceMessage(formData.category, 'category');
+    if (categoryErr) newErrors.category = categoryErr;
+    const amountErr = moneyMessage(formData.amount);
+    if (amountErr) newErrors.amount = amountErr;
+    const descErr = required(formData.description, 'Enter a description, e.g. Shop rent for September');
+    if (descErr) newErrors.description = descErr;
+    const dateErr = dateMessage(formData.expense_date, { label: 'expense date' });
+    if (dateErr) newErrors.expense_date = dateErr;
     if (makerCheckerOn && !proposalReason.trim()) {
       newErrors.proposal_reason = 'A reason is required when maker-checker is enabled.';
     }

@@ -18,6 +18,7 @@ import {
   getVariantRowLabel,
   normalizeFkId,
 } from '../../utils/variantSelector';
+import { integerMessage } from '../../utils/formValidation';
 
 const VariantSelector = ({
   product,
@@ -223,14 +224,20 @@ const VariantSelector = ({
       return;
     }
 
-    const numValue = parseInt(inputValue, 10);
-
-    if (Number.isNaN(numValue)) {
-      setQuantityError('Please enter a valid number');
+    const qtyErr = integerMessage(inputValue, {
+      required: true,
+      min: 1,
+      label: 'quantity',
+      example: '3',
+    });
+    if (qtyErr) {
+      setQuantityError(qtyErr);
       setQuantity(1);
       setQuantityInput('1');
       return;
     }
+
+    const numValue = parseInt(inputValue, 10);
 
     const maxStock = getVariantStock();
     const minValue = 1;

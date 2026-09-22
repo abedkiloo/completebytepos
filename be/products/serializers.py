@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from products.stock_utils import apply_catalog_variant_representation
 from .models import Category, Product, Size, Color, ProductVariant, UnitOfMeasure
+from utils.field_types import integer_error_messages, money_error_messages
+from decimal import Decimal
 
 
 def _map_selling_price_fields(data):
@@ -171,7 +173,13 @@ class ProductVariantSerializer(serializers.ModelSerializer):
     color_name = serializers.CharField(source='color.name', read_only=True)
     color_hex = serializers.CharField(source='color.hex_code', read_only=True)
     selling_price = serializers.DecimalField(
-        source='price', max_digits=10, decimal_places=2, required=False, allow_null=True
+        source='price',
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+        min_value=Decimal('0'),
+        error_messages=money_error_messages(allow_zero=True),
     )
     effective_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     effective_mrp = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
@@ -198,7 +206,12 @@ class ProductVariantSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'updated_at']
         extra_kwargs = {
             'sku': {'required': False, 'allow_blank': True},
-            'price': {'required': False, 'allow_null': True},
+            'price': {
+                'required': False,
+                'allow_null': True,
+                'min_value': Decimal('0'),
+                'error_messages': money_error_messages(allow_zero=True),
+            },
             'product': {'required': False},
             'size': {'required': False},
             'color': {'required': False},
@@ -444,7 +457,12 @@ class ProductSerializer(serializers.ModelSerializer):
     supplier_name_display = serializers.SerializerMethodField()
     supplier_detail = serializers.SerializerMethodField()
     selling_price = serializers.DecimalField(
-        source='price', max_digits=10, decimal_places=2, required=False
+        source='price',
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+        min_value=Decimal('0'),
+        error_messages=money_error_messages(allow_zero=True),
     )
     variant_combinations = serializers.JSONField(required=False, write_only=True)
 
@@ -470,9 +488,29 @@ class ProductSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'updated_at']
         extra_kwargs = {
             'sku': {'required': False, 'allow_blank': True},
-            'price': {'required': False},
-            'mrp': {'required': False},
-            'cost': {'required': False},
+            'price': {
+                'required': False,
+                'min_value': Decimal('0'),
+                'error_messages': money_error_messages(allow_zero=True),
+            },
+            'mrp': {
+                'required': False,
+                'min_value': Decimal('0'),
+                'error_messages': money_error_messages(allow_zero=True),
+            },
+            'cost': {
+                'required': False,
+                'min_value': Decimal('0'),
+                'error_messages': money_error_messages(allow_zero=True),
+            },
+            'stock_quantity': {
+                'min_value': 0,
+                'error_messages': integer_error_messages(label='stock quantity'),
+            },
+            'low_stock_threshold': {
+                'min_value': 0,
+                'error_messages': integer_error_messages(label='low-stock threshold'),
+            },
         }
     
     def to_internal_value(self, data):

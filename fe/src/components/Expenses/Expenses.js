@@ -135,13 +135,24 @@ const Expenses = () => {
 
   const confirmDeleteAction = async () => {
     if (!confirmDelete) return;
+    const expense = expenses.find((row) => row.id === confirmDelete);
+    const posted = expense && ['approved', 'paid'].includes(expense.status);
 
     try {
-      await expensesAPI.delete(confirmDelete);
+      if (posted) {
+        await expensesAPI.void(confirmDelete, {
+          reason: 'Corrected — journals reversed so books stay balanced',
+        });
+        toast.success('Expense voided. Journals reversed so the books stay balanced.');
+      } else {
+        await expensesAPI.delete(confirmDelete);
+        toast.success('Expense deleted successfully');
+      }
       loadExpenses();
-      toast.success('Expense deleted successfully');
     } catch (error) {
-      toast.error('Failed to delete expense: ' + (error.response?.data?.error || error.message));
+      toast.error(
+        'Failed to correct expense: ' + (error.response?.data?.error || error.message)
+      );
     } finally {
       setConfirmDelete(null);
     }
@@ -365,6 +376,7 @@ const Expenses = () => {
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
+                        {expense.status !== 'voided' && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -373,6 +385,7 @@ const Expenses = () => {
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
+                        )}
                       </div>
                     </DataTableCell>
                   </DataTableRow>
@@ -394,11 +407,11 @@ const Expenses = () => {
 
       <ConfirmDialog
         isOpen={!!confirmDelete}
-        title="Delete Expense"
-        message="Are you sure you want to delete this expense?"
+        title="Correct expense"
+        message="Posted expenses are voided (not erased) and journals are reversed so cash and P&L stay balanced. Continue?"
         onConfirm={confirmDeleteAction}
         onCancel={() => setConfirmDelete(null)}
-        confirmText="Delete"
+        confirmText="Void / correct"
         cancelText="Cancel"
         type="danger"
       />

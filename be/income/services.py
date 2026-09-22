@@ -148,6 +148,31 @@ class IncomeService(BaseService):
             logger.error(f"Error creating journal entry for income: {e}")
         
         return income
+
+    @transaction.atomic
+    def void_income(self, income: Income, *, reason: str, user) -> Income:
+        """Void posted income and reverse its journals so cash and revenue match."""
+        reason = (reason or '').strip()
+        if not reason:
+            raise ValidationError({'reason': 'A reason is required to void income.'})
+        if income.status == 'voided':
+            raise ValidationError('This income is already voided.')
+        if income.status in ('approved', 'received'):
+            from accounting.reversal import reverse_source_documents
+
+            reverse_source_documents(
+                'income',
+                income.id,
+                reason=reason,
+                user=user,
+            )
+        elif income.status not in ('pending', 'rejected'):
+            raise ValidationError('This income cannot be voided.')
+        income.status = 'voided'
+        note = f'VOIDED: {reason}'
+        income.notes = f'{income.notes}\n{note}'.strip() if income.notes else note
+        income.save(update_fields=['status', 'notes', 'updated_at'])
+        return income
     
     def get_income_statistics(self, branch: Optional[Branch] = None,
                              date_from: Optional[str] = None,

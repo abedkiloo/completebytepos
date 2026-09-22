@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { dailyTasksAPI, usersAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
+import { dateMessage, required } from '../../utils/formValidation';
 
 const DailyTaskForm = ({ task, defaultDate, canAssignToOthers = false, onClose, onSave }) => {
   const [formData, setFormData] = useState({
@@ -60,8 +61,14 @@ const DailyTaskForm = ({ task, defaultDate, canAssignToOthers = false, onClose, 
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.title.trim()) {
-      toast.warning('Enter a task title.');
+    const dateErr = dateMessage(formData.task_date, { label: 'task date' });
+    if (dateErr) {
+      toast.warning(dateErr);
+      return;
+    }
+    const titleErr = required(formData.title, 'Enter a task title, e.g. Restock sugar 2kg');
+    if (titleErr) {
+      toast.warning(titleErr);
       return;
     }
     setLoading(true);

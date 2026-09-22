@@ -16,7 +16,7 @@ import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { toast } from '../../utils/toast';
 import { getStoredAuth, hasPermission, isManagerOrAdminFromStorage } from '../../utils/roleAccess';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
-import { userCanRefundSales, handleSaleRefundResponse } from '../../utils/saleRefund';
+import { userCanRefundSales, userCanRollbackSales, handleSaleRefundResponse } from '../../utils/saleRefund';
 import { pendingApprovalToastMessage } from '../../utils/makerChecker';
 import {
   formatDebtTrail,
@@ -31,6 +31,7 @@ import { CustomerWalletBalance } from './CustomerWalletBalance';
 import SaleDetailDialog from '../Sales/SaleDetailDialog';
 import SaleChannelIcon from '../Sales/SaleChannelIcon';
 import RefundSaleDialog from '../Sales/RefundSaleDialog';
+import SaleRollbackDialog from '../Sales/SaleRollbackDialog';
 import ReceiveWalletPaymentDialog from './ReceiveWalletPaymentDialog';
 import {
   PageShell,
@@ -66,6 +67,8 @@ export default function CustomerDetailPage() {
   const [saleDetailOpen, setSaleDetailOpen] = useState(false);
   const [refundSale, setRefundSale] = useState(null);
   const [refundSubmitting, setRefundSubmitting] = useState(false);
+  const [rollbackSale, setRollbackSale] = useState(null);
+  const [rollbackSubmitting, setRollbackSubmitting] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
 
   const { permissions } = getStoredAuth();
@@ -74,6 +77,7 @@ export default function CustomerDetailPage() {
   const canRefund = userCanRefundSales(permissions, {
     isManagerOrAdmin: isManagerOrAdminFromStorage(),
   });
+  const canRollback = userCanRollbackSales(permissions);
 
   const load = useCallback(async () => {
     if (!customerId) return;
@@ -148,6 +152,24 @@ export default function CustomerDetailPage() {
       toast.error(err.response?.data?.error || err.message);
     } finally {
       setRefundSubmitting(false);
+    }
+  };
+
+  const handleRollbackSubmit = async (payload) => {
+    if (!rollbackSale) return;
+    setRollbackSubmitting(true);
+    try {
+      const res = await salesAPI.rollback(rollbackSale.id, payload);
+      handleSaleRefundResponse(res, {
+        onApplied: (data) => toast.success(`Sale rolled back as ${data.refund_number}`),
+        onPending: () => toast.success(pendingApprovalToastMessage()),
+      });
+      setRollbackSale(null);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || err.message || 'Rollback failed');
+    } finally {
+      setRollbackSubmitting(false);
     }
   };
 
@@ -417,9 +439,14 @@ export default function CustomerDetailPage() {
         open={saleDetailOpen}
         onOpenChange={setSaleDetailOpen}
         canRefund={canRefund}
+        canRollback={canRollback}
         onRefund={(sale) => {
           setSaleDetailOpen(false);
           setRefundSale(sale);
+        }}
+        onRollback={(sale) => {
+          setSaleDetailOpen(false);
+          setRollbackSale(sale);
         }}
       />
 
@@ -431,6 +458,16 @@ export default function CustomerDetailPage() {
         }}
         submitting={refundSubmitting}
         onSubmit={handleRefundSubmit}
+      />
+
+      <SaleRollbackDialog
+        sale={rollbackSale}
+        open={!!rollbackSale}
+        onOpenChange={(open) => {
+          if (!open) setRollbackSale(null);
+        }}
+        submitting={rollbackSubmitting}
+        onSubmit={handleRollbackSubmit}
       />
 
       <ReceiveWalletPaymentDialog

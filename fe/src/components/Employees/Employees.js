@@ -17,6 +17,14 @@ import { toast } from '../../utils/toast';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import CommitConfirm from '../Shared/CommitConfirm';
 import { employeeCommitRows } from '../../utils/formCommitSummary';
+import {
+  dateMessage,
+  emailMessage,
+  moneyMessage,
+  personNameMessage,
+  phoneMessage,
+  required,
+} from '../../utils/formValidation';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import {
@@ -206,13 +214,57 @@ export default function Employees() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.first_name.trim() || !formData.last_name.trim()) {
-      toast.error('First and last name are required');
+    const firstErr = personNameMessage(formData.first_name, {
+      label: 'first name',
+      example: 'Jane',
+      min: 1,
+    });
+    if (firstErr) {
+      toast.error(firstErr);
       return;
     }
-    if (!formData.employee_id.trim() || !formData.position.trim() || !formData.hire_date) {
-      toast.error('Employee ID, position, and hire date are required');
+    const lastErr = personNameMessage(formData.last_name, {
+      label: 'last name',
+      example: 'Wambua',
+      min: 1,
+    });
+    if (lastErr) {
+      toast.error(lastErr);
       return;
+    }
+    const idErr = required(formData.employee_id, 'Enter employee ID, e.g. EMP-0042');
+    if (idErr) {
+      toast.error(idErr);
+      return;
+    }
+    const posErr = required(formData.position, 'Enter position, e.g. Cashier');
+    if (posErr) {
+      toast.error(posErr);
+      return;
+    }
+    const hireErr = dateMessage(formData.hire_date, { label: 'hire date' });
+    if (hireErr) {
+      toast.error(hireErr);
+      return;
+    }
+    if (showContact) {
+      const emailErr = emailMessage(formData.email);
+      if (emailErr) {
+        toast.error(emailErr);
+        return;
+      }
+      const phoneErr = phoneMessage(formData.phone);
+      if (phoneErr) {
+        toast.error(phoneErr);
+        return;
+      }
+    }
+    if (showSalary && formData.salary !== '') {
+      const salaryErr = moneyMessage(formData.salary, { allowZero: true, label: 'salary' });
+      if (salaryErr) {
+        toast.error(salaryErr);
+        return;
+      }
     }
     setShowCommitConfirm(true);
   };

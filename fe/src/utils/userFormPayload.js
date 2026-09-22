@@ -2,7 +2,7 @@
  * User form payload builder + client validation (mirrors admin user API).
  */
 
-import { required, minLength } from './formValidation';
+import { required, minLength, emailMessage, phoneMessage } from './formValidation';
 
 export function buildUserPayload(formData, options) {
   const {
@@ -52,10 +52,10 @@ export function buildUserPayload(formData, options) {
 }
 
 export function validateUserForm(formData, options) {
-  const { isEdit, showEmail } = options;
+  const { isEdit, showEmail, showPhone } = options;
   const errors = {};
 
-  const usernameErr = required(formData.username, 'Username is required');
+  const usernameErr = required(formData.username, 'Enter a username, e.g. jane.wambua');
   if (usernameErr) errors.username = usernameErr;
 
   if (!isEdit) {
@@ -80,10 +80,13 @@ export function validateUserForm(formData, options) {
   }
 
   if (showEmail && formData.email.trim()) {
-    const email = formData.email.trim();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      errors.email = 'Enter a valid email address';
-    }
+    const emailErr = emailMessage(formData.email);
+    if (emailErr) errors.email = emailErr;
+  }
+
+  if (showPhone) {
+    const phoneErr = phoneMessage(formData.phone_number);
+    if (phoneErr) errors.phone_number = phoneErr;
   }
 
   return errors;

@@ -4,6 +4,7 @@ import { toast } from '../../utils/toast';
 import SearchableSelect from '../Shared/SearchableSelect';
 import CommitConfirm from '../Shared/CommitConfirm';
 import { supplierCommitRows } from '../../utils/formCommitSummary';
+import { emailMessage, moneyMessage, phoneMessage, required } from '../../utils/formValidation';
 
 const SupplierForm = ({
   supplier,
@@ -93,21 +94,23 @@ const SupplierForm = ({
   const validate = () => {
     const newErrors = {};
     
-    if (!formData.name.trim()) {
-      newErrors.name = 'Supplier name is required';
-    }
-    
-    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = 'Invalid email format';
-    }
-    
-    if (parseFloat(formData.credit_limit) < 0) {
-      newErrors.credit_limit = 'Credit limit cannot be negative';
-    }
-    
-    if (parseFloat(formData.account_balance) < 0) {
-      newErrors.account_balance = 'Account balance cannot be negative';
-    }
+    const nameErr = required(formData.name, 'Enter supplier name, e.g. Bidco Africa');
+    if (nameErr) newErrors.name = nameErr;
+
+    const emailErr = emailMessage(formData.email);
+    if (emailErr) newErrors.email = emailErr;
+
+    const phoneErr = phoneMessage(formData.phone);
+    if (phoneErr) newErrors.phone = phoneErr;
+
+    const altPhoneErr = phoneMessage(formData.alternate_phone);
+    if (altPhoneErr) newErrors.alternate_phone = altPhoneErr;
+
+    const creditErr = moneyMessage(formData.credit_limit, { allowZero: true, required: false });
+    if (creditErr) newErrors.credit_limit = creditErr;
+
+    const balanceErr = moneyMessage(formData.account_balance, { allowZero: true, required: false });
+    if (balanceErr) newErrors.account_balance = balanceErr;
     
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -240,7 +243,9 @@ const SupplierForm = ({
                     name="phone"
                     value={formData.phone}
                     onChange={handleChange}
+                    placeholder="0712 345 678"
                   />
+                  {errors.phone && <span className="error">{errors.phone}</span>}
                 </div>
                 <div className="form-group">
                   <label>Alternate Phone</label>
@@ -249,7 +254,9 @@ const SupplierForm = ({
                     name="alternate_phone"
                     value={formData.alternate_phone}
                     onChange={handleChange}
+                    placeholder="0712 345 678"
                   />
+                  {errors.alternate_phone && <span className="error">{errors.alternate_phone}</span>}
                 </div>
               </div>
             </div>

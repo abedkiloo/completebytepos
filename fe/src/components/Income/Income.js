@@ -130,13 +130,24 @@ const Income = () => {
 
   const confirmDeleteAction = async () => {
     if (!confirmDelete) return;
-    
+    const record = incomes.find((row) => row.id === confirmDelete);
+    const posted = record && ['approved', 'received'].includes(record.status);
+
     try {
-      await incomeAPI.delete(confirmDelete);
+      if (posted) {
+        await incomeAPI.void(confirmDelete, {
+          reason: 'Corrected — journals reversed so books stay balanced',
+        });
+        toast.success('Income voided. Journals reversed so the books stay balanced.');
+      } else {
+        await incomeAPI.delete(confirmDelete);
+        toast.success('Income deleted successfully');
+      }
       loadIncomes();
-      toast.success('Income deleted successfully');
     } catch (error) {
-      toast.error('Failed to delete income: ' + (error.response?.data?.error || error.message));
+      toast.error(
+        'Failed to correct income: ' + (error.response?.data?.error || error.message)
+      );
     } finally {
       setConfirmDelete(null);
     }
@@ -305,6 +316,7 @@ const Income = () => {
                         <Button variant="ghost" size="sm" onClick={() => handleEdit(income)}>
                           <Pencil className="h-4 w-4" />
                         </Button>
+                        {income.status !== 'voided' && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -313,6 +325,7 @@ const Income = () => {
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
+                        )}
                       </div>
                     </DataTableCell>
                   </DataTableRow>
@@ -335,11 +348,11 @@ const Income = () => {
       {/* Confirm Delete Dialog */}
       <ConfirmDialog
         isOpen={!!confirmDelete}
-        title="Delete Income"
-        message="Are you sure you want to delete this income?"
+        title="Correct income"
+        message="Posted income is voided (not erased) and journals are reversed so cash and revenue stay balanced. Continue?"
         onConfirm={confirmDeleteAction}
         onCancel={() => setConfirmDelete(null)}
-        confirmText="Delete"
+        confirmText="Void / correct"
         cancelText="Cancel"
         type="danger"
       />

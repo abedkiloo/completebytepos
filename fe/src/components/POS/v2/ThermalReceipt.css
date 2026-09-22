@@ -14,8 +14,8 @@
   background: #ffffff;
   color: #000000;
   font-family: 'SF Mono', Menlo, Consolas, 'Courier New', monospace;
-  font-size: 9.5pt;
-  line-height: 1.22;
+  font-size: 9pt;
+  line-height: 1.18;
   font-variant-numeric: tabular-nums;
 }
 .receipt-thermal__header {
@@ -23,7 +23,7 @@
   margin-bottom: 1mm;
 }
 .receipt-thermal__store {
-  font-size: 11.5pt;
+  font-size: 10.5pt;
   font-weight: 700;
   letter-spacing: 0.3px;
   text-transform: uppercase;
@@ -123,20 +123,32 @@
   font-size: 8.5pt;
   letter-spacing: 0.5px;
 }
+.receipt-thermal__reach-us {
+  display: inline-block;
+  margin: 1.5mm 0 1mm;
+  padding: 1.1mm 1.6mm;
+  border: 1px solid #000;
+  border-radius: 2px;
+  font-size: 8pt;
+  font-weight: 700;
+  line-height: 1.2;
+  text-decoration: none;
+  color: #000;
+}
 
 /* On-screen preview in Receipt dialog — full width, tighter type */
 .receipt-thermal--preview {
   width: 100%;
   max-width: 100%;
-  padding: 1.5mm 1.25mm 2mm;
-  font-size: 8pt;
-  line-height: 1.18;
+  padding: 1.1mm 1mm 1.5mm;
+  font-size: 7.25pt;
+  line-height: 1.15;
 }
 .receipt-thermal--preview .receipt-thermal__header {
   margin-bottom: 0.75mm;
 }
 .receipt-thermal--preview .receipt-thermal__store {
-  font-size: 9.5pt;
+  font-size: 8.75pt;
   letter-spacing: 0.2px;
 }
 .receipt-thermal--preview .receipt-thermal__branch {
@@ -152,10 +164,15 @@
   gap: 1.5mm;
 }
 .receipt-thermal--preview .receipt-thermal__row--emphasised {
-  font-size: 9pt;
+  font-size: 8.25pt;
 }
 .receipt-thermal--preview .receipt-thermal__row--emphasised .receipt-thermal__row-right--price {
-  font-size: 9.5pt;
+  font-size: 8.75pt;
+}
+.receipt-thermal--preview .receipt-thermal__reach-us {
+  margin: 1mm 0 0.75mm;
+  padding: 0.8mm 1.2mm;
+  font-size: 7pt;
 }
 .receipt-thermal--preview .receipt-thermal__item-sku {
   font-size: 7pt;

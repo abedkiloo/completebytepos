@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { dailyNotesAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
+import { dateMessage, required } from '../../utils/formValidation';
 
 const DailyNoteForm = ({ note, defaultDate, onClose, onSave }) => {
   const [formData, setFormData] = useState({
@@ -29,8 +30,17 @@ const DailyNoteForm = ({ note, defaultDate, onClose, onSave }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.content.trim()) {
-      toast.warning('Write something in the note.');
+    const dateErr = dateMessage(formData.note_date, { label: 'note date' });
+    if (dateErr) {
+      toast.warning(dateErr);
+      return;
+    }
+    const contentErr = required(
+      formData.content,
+      'Write the note, e.g. Stock count completed at close of day'
+    );
+    if (contentErr) {
+      toast.warning(contentErr);
       return;
     }
     setLoading(true);

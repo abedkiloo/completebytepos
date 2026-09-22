@@ -304,6 +304,7 @@ const UserForm = ({
                   value={formData.phone_number}
                   onChange={handleChange}
                   aria-invalid={Boolean(errors.phone_number)}
+                  placeholder="0712 345 678"
                 />
               </FormField>
             ) : null}

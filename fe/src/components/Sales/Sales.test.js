@@ -22,7 +22,9 @@ jest.mock('../../utils/roleAccess', () => ({
 
 jest.mock('../../utils/saleRefund', () => ({
   userCanRefundSales: () => false,
+  userCanRollbackSales: () => false,
   saleIsRefundable: () => false,
+  saleIsRollbackable: () => false,
   handleSaleRefundResponse: jest.fn(),
 }));
 
@@ -31,6 +33,7 @@ jest.mock('../../services/api', () => ({
     list: jest.fn(),
     get: jest.fn(),
     refund: jest.fn(),
+    rollback: jest.fn(),
   },
   reportsAPI: {
     exportFile: jest.fn(),

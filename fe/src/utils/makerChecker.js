@@ -54,6 +54,12 @@ const REASON_CONTEXT_COPY = {
     summary:
       'This void/refund will be submitted for manager approval. Stock, wallet, and accounts stay unchanged until it is approved.',
   },
+  sale_rollback: {
+    label: 'Reason for sale rollback',
+    placeholder: 'e.g. Wrong customer, duplicate checkout, cashier error',
+    summary:
+      'This rollback is submitted for admin approval. Stock, wallet, and accounts stay unchanged until an admin approves it in Pending approvals.',
+  },
   sale_backfill: {
     label: 'Reason for late entry',
     placeholder: 'Why is this sale being entered now? (e.g. busy day, paper receipt only)',

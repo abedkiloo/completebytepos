@@ -2,12 +2,17 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import ReceiveWalletPaymentDialog from './ReceiveWalletPaymentDialog';
 import { customersAPI } from '../../services/api';
+import { toast } from '../../utils/toast';
 
 jest.mock('../../services/api', () => ({
   customersAPI: {
     walletTransactions: jest.fn(),
     receiveWalletPayment: jest.fn(),
   },
+}));
+
+jest.mock('../../utils/toast', () => ({
+  toast: { success: jest.fn(), error: jest.fn(), warning: jest.fn(), info: jest.fn() },
 }));
 
 const debtor = {
@@ -42,6 +47,9 @@ describe('ReceiveWalletPaymentDialog', () => {
     await waitFor(() => {
       expect(screen.getByLabelText(/Payment amount/i)).toHaveValue(150);
     });
+    expect(
+      screen.getByText(/KES amount with up to 2 decimal places, e.g. 250.00/i)
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Record payment/i }));
     fireEvent.click(await screen.findByRole('button', { name: /Confirm & record payment/i }));
@@ -74,5 +82,83 @@ describe('ReceiveWalletPaymentDialog', () => {
     fireEvent.change(screen.getByLabelText(/Payment amount/i), { target: { value: '20' } });
     fireEvent.click(screen.getByRole('button', { name: /Pay full debt/i }));
     expect(screen.getByLabelText(/Payment amount/i)).toHaveValue(150);
+  });
+
+  it('shows what amount is expected when the number is invalid', async () => {
+    render(
+      <ReceiveWalletPaymentDialog
+        open
+        customer={debtor}
+        onOpenChange={jest.fn()}
+        onSuccess={jest.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Payment amount/i)).toHaveValue(150);
+    });
+
+    fireEvent.change(screen.getByLabelText(/Payment amount/i), {
+      target: { value: '0' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Record payment/i }));
+
+    expect(customersAPI.receiveWalletPayment).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(
+      'Amount must be greater than zero, e.g. 250.00'
+    );
+    expect(screen.getByText(/greater than zero, e.g. 250.00/i)).toBeInTheDocument();
+  });
+
+  it('requires an M-Pesa receipt code before recording', async () => {
+    render(
+      <ReceiveWalletPaymentDialog
+        open
+        customer={debtor}
+        onOpenChange={jest.fn()}
+        onSuccess={jest.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/Payment method/i), {
+      target: { value: 'mpesa' },
+    });
+    expect(screen.getByLabelText(/M-Pesa code/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/10 letters and numbers from the M-Pesa SMS/i)
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Record payment/i }));
+    expect(customersAPI.receiveWalletPayment).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(
+      'Enter the 10-character M-Pesa code from the SMS, e.g. QHX7K2L9M1'
+    );
+    expect(
+      screen.getByText(/Enter the 10-character M-Pesa code from the SMS/i)
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/M-Pesa code/i), {
+      target: { value: 'AB12' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Record payment/i }));
+    expect(toast.error).toHaveBeenCalledWith(
+      'Expected 10 characters (you entered 4), e.g. QHX7K2L9M1'
+    );
+    expect(screen.getByText(/you entered 4/i)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/M-Pesa code/i), {
+      target: { value: ' qhx 7k2 l9m1 ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Record payment/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Confirm & record payment/i }));
+
+    await waitFor(() => {
+      expect(customersAPI.receiveWalletPayment).toHaveBeenCalledWith(3, {
+        amount: 150,
+        payment_method: 'mpesa',
+        reference: 'QHX7K2L9M1',
+        notes: '',
+      });
+    });
   });
 });

@@ -1,4 +1,4 @@
-/** Value for controlled numeric text inputs — allows clearing while editing. */
+import { AMOUNT_EXAMPLE, QUANTITY_EXAMPLE } from './formValidation';
 export function editableNumericString(value) {
   if (value === '' || value === null || value === undefined) {
     return '';
@@ -52,13 +52,13 @@ export function variantDraftNumericValidationMessage(
   } = {}
 ) {
   if (draft.price !== undefined && draft.price !== '' && !isValidOptionalDecimal(draft.price)) {
-    return `Enter a valid number for price on variant ${label}.`;
+    return `Enter a KES amount for price on variant ${label}, e.g. ${AMOUNT_EXAMPLE}.`;
   }
   if (canEditMrp && draft.mrp !== undefined && draft.mrp !== '' && !isValidOptionalDecimal(draft.mrp)) {
-    return `Enter a valid number for MRP on variant ${label}.`;
+    return `Enter a KES amount for MRP on variant ${label}, e.g. ${AMOUNT_EXAMPLE}.`;
   }
   if (canEditCost && draft.cost !== undefined && draft.cost !== '' && !isValidOptionalDecimal(draft.cost)) {
-    return `Enter a valid number for cost on variant ${label}.`;
+    return `Enter a KES amount for cost on variant ${label}, e.g. ${AMOUNT_EXAMPLE}.`;
   }
   if (
     allowStockInput &&
@@ -66,14 +66,14 @@ export function variantDraftNumericValidationMessage(
     draft.stock_quantity !== '' &&
     !isValidOptionalInteger(draft.stock_quantity)
   ) {
-    return `Enter a valid whole number for ${stockLabel} on variant ${label}.`;
+    return `Enter a whole number for ${stockLabel} on variant ${label}, e.g. ${QUANTITY_EXAMPLE}.`;
   }
   if (
     draft.low_stock_threshold !== undefined &&
     draft.low_stock_threshold !== '' &&
     !isValidOptionalInteger(draft.low_stock_threshold)
   ) {
-    return `Enter a valid whole number for low stock threshold on variant ${label}.`;
+    return `Enter a whole number for low stock threshold on variant ${label}, e.g. ${QUANTITY_EXAMPLE}.`;
   }
   return null;
 }

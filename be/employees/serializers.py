@@ -1,4 +1,15 @@
 from rest_framework import serializers
+from decimal import Decimal
+
+from utils.field_types import (
+    NAME_EXAMPLE,
+    date_error_messages,
+    email_error,
+    email_error_messages,
+    money_error_messages,
+    raise_field_error,
+    required_text_error,
+)
 from .models import Employee
 
 
@@ -18,11 +29,41 @@ class EmployeeSerializer(serializers.ModelSerializer):
             'is_active'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'created_by']
-    
+        extra_kwargs = {
+            'email': {
+                'required': False,
+                'allow_blank': True,
+                'error_messages': email_error_messages(),
+            },
+            'hire_date': {'error_messages': date_error_messages(label='hire date')},
+            'salary': {
+                'min_value': Decimal('0'),
+                'required': False,
+                'allow_null': True,
+                'error_messages': money_error_messages(allow_zero=True),
+            },
+        }
+
     def get_created_by_username(self, obj):
         if obj.created_by:
             return obj.created_by.username
         return None
+
+    def validate_first_name(self, value):
+        raise_field_error(
+            required_text_error(value, label='first name', example=NAME_EXAMPLE, min_length=1)
+        )
+        return value.strip()
+
+    def validate_last_name(self, value):
+        raise_field_error(
+            required_text_error(value, label='last name', example='Wambua', min_length=1)
+        )
+        return value.strip()
+
+    def validate_email(self, value):
+        raise_field_error(email_error(value))
+        return (value or '').strip() if value else value
 
     def validate(self, attrs):
         from employees.module_settings import validate_employee_write

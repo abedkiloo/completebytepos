@@ -1,4 +1,7 @@
 from rest_framework import serializers
+from decimal import Decimal
+
+from utils.field_types import money_error_messages, date_error_messages
 from .models import BankAccount, BankTransaction
 
 
@@ -16,6 +19,12 @@ class BankAccountSerializer(serializers.ModelSerializer):
             'transaction_count', 'created_at', 'updated_at'
         ]
         read_only_fields = ['current_balance', 'created_at', 'updated_at']
+        extra_kwargs = {
+            'opening_balance': {
+                'min_value': Decimal('0'),
+                'error_messages': money_error_messages(allow_zero=True),
+            },
+        }
 
 
 class BankTransactionSerializer(serializers.ModelSerializer):
@@ -30,4 +39,13 @@ class BankTransactionSerializer(serializers.ModelSerializer):
             'transaction_date', 'created_by', 'created_by_name', 'created_at'
         ]
         read_only_fields = ['transaction_number', 'created_at']
+        extra_kwargs = {
+            'amount': {
+                'min_value': Decimal('0.01'),
+                'error_messages': money_error_messages(allow_zero=False),
+            },
+            'transaction_date': {
+                'error_messages': date_error_messages(label='transaction date'),
+            },
+        }
 

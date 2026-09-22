@@ -39,6 +39,7 @@ jest.mock('../../services/api', () => ({
     daily: jest.fn(),
     get: jest.fn(),
     refund: jest.fn(),
+    rollback: jest.fn(),
   },
 }));
 
@@ -66,7 +67,9 @@ jest.mock('../../utils/dailySalesAccess', () => ({
 
 jest.mock('../../utils/saleRefund', () => ({
   userCanRefundSales: () => true,
+  userCanRollbackSales: () => false,
   saleIsRefundable: () => true,
+  saleIsRollbackable: () => false,
   handleSaleRefundResponse: () => ({ handled: true }),
 }));
 
@@ -150,6 +153,11 @@ jest.mock('./SaleDetailDialog', () => ({
 }));
 
 jest.mock('./RefundSaleDialog', () => ({
+  __esModule: true,
+  default: () => null,
+}));
+
+jest.mock('./SaleRollbackDialog', () => ({
   __esModule: true,
   default: () => null,
 }));

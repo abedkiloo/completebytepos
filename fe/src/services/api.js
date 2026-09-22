@@ -318,6 +318,7 @@ export const salesAPI = {
   checkout: (id, data) => api.post(`/sales/${id}/checkout/`, data),
   cancelHolding: (id) => api.post(`/sales/${id}/cancel-holding/`),
   refund: (id, data) => api.post(`/sales/${id}/refund/`, data),
+  rollback: (id, data) => api.post(`/sales/${id}/rollback/`, data),
   backfill: (data, photoFile) => {
     if (photoFile) {
       const body = new FormData();
@@ -482,6 +483,7 @@ export const expensesAPI = {
   create: (data) => api.post('/expenses/', data),
   update: (id, data) => api.put(`/expenses/${id}/`, data),
   delete: (id) => api.delete(`/expenses/${id}/`),
+  void: (id, data) => api.post(`/expenses/${id}/void/`, data),
   approve: (id) => api.post(`/expenses/${id}/approve/`),
   statistics: () => api.get('/expenses/statistics/'),
   categories: {
@@ -515,6 +517,7 @@ export const accountingAPI = {
     list: (params) => api.get('/accounting/transactions/', { params }),
     get: (id) => api.get(`/accounting/transactions/${id}/`),
     create: (data) => api.post('/accounting/transactions/', data),
+    reverse: (id, data) => api.post(`/accounting/transactions/${id}/reverse/`, data),
   },
   reports: {
     balanceSheet: (params) => api.get('/accounting/reports/balance_sheet/', { params }),
@@ -560,6 +563,7 @@ export const incomeAPI = {
   create: (data) => api.post('/income/', data),
   update: (id, data) => api.put(`/income/${id}/`, data),
   delete: (id) => api.delete(`/income/${id}/`),
+  void: (id, data) => api.post(`/income/${id}/void/`, data),
   approve: (id) => api.post(`/income/${id}/approve/`),
   statistics: () => api.get('/income/statistics/'),
   categories: {

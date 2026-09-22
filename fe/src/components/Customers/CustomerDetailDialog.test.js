@@ -9,6 +9,7 @@ jest.mock('../../services/api', () => ({
     receipt: jest.fn(),
     get: jest.fn(),
     refund: jest.fn(),
+    rollback: jest.fn(),
   },
   customersAPI: {
     walletTransactions: jest.fn(),
@@ -19,6 +20,7 @@ jest.mock('../../services/api', () => ({
 jest.mock('../../utils/roleAccess', () => ({
   getStoredAuth: () => ({ permissions: [] }),
   isManagerOrAdminFromStorage: () => true,
+  hasPermission: () => false,
 }));
 
 jest.mock('../../utils/makerChecker', () => ({

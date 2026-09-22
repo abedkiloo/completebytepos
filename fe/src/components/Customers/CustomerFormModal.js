@@ -4,6 +4,7 @@ import { toast } from '../../utils/toast';
 import SearchableSelect from '../Shared/SearchableSelect';
 import CommitConfirm from '../Shared/CommitConfirm';
 import { customerCommitRows } from '../../utils/formCommitSummary';
+import { emailMessage, personNameMessage, phoneMessage } from '../../utils/formValidation';
 
 const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
   const [formData, setFormData] = useState({
@@ -49,20 +50,17 @@ const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
     
     // Client-side validation
     const errors = {};
-    
-    if (!formData.name || !formData.name.trim()) {
-      errors.name = 'Customer name is required';
-    } else if (formData.name.trim().length < 2) {
-      errors.name = 'Customer name must be at least 2 characters';
-    }
-    
-    // Validate email format if provided
-    if (formData.email && formData.email.trim()) {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(formData.email.trim())) {
-        errors.email = 'Please enter a valid email address';
-      }
-    }
+    const nameErr = personNameMessage(formData.name, {
+      label: 'customer name',
+      example: 'Jane Wambua',
+    });
+    if (nameErr) errors.name = nameErr;
+
+    const emailErr = emailMessage(formData.email);
+    if (emailErr) errors.email = emailErr;
+
+    const phoneErr = phoneMessage(formData.phone);
+    if (phoneErr) errors.phone = phoneErr;
     
     // If there are client-side errors, show them and return
     if (Object.keys(errors).length > 0) {
@@ -205,8 +203,14 @@ const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
                 <input
                   type="text"
                   value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  onChange={(e) => {
+                    setFormData({ ...formData, phone: e.target.value });
+                    if (formErrors.phone) setFormErrors({ ...formErrors, phone: '' });
+                  }}
+                  className={formErrors.phone ? 'error' : ''}
+                  placeholder="0712 345 678"
                 />
+                {formErrors.phone && <span className="error-text">{formErrors.phone}</span>}
               </div>
             </div>
             

@@ -176,6 +176,31 @@ class ExpenseService(BaseService):
             logger.error(f"Error creating journal entry for expense: {e}")
         
         return expense
+
+    @transaction.atomic
+    def void_expense(self, expense: Expense, *, reason: str, user) -> Expense:
+        """Void a posted expense and reverse its journals so P&L and cash match."""
+        reason = (reason or '').strip()
+        if not reason:
+            raise ValidationError({'reason': 'A reason is required to void an expense.'})
+        if expense.status == 'voided':
+            raise ValidationError('This expense is already voided.')
+        if expense.status in ('approved', 'paid'):
+            from accounting.reversal import reverse_source_documents
+
+            reverse_source_documents(
+                'expense',
+                expense.id,
+                reason=reason,
+                user=user,
+            )
+        elif expense.status not in ('pending', 'rejected'):
+            raise ValidationError('This expense cannot be voided.')
+        expense.status = 'voided'
+        note = f'VOIDED: {reason}'
+        expense.notes = f'{expense.notes}\n{note}'.strip() if expense.notes else note
+        expense.save(update_fields=['status', 'notes', 'updated_at'])
+        return expense
     
     def get_expense_statistics(self, branch: Optional[Branch] = None,
                               date_from: Optional[str] = None,

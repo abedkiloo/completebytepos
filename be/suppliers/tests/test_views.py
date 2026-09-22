@@ -64,7 +64,7 @@ class SupplierViewsTestCase(ManagerAPITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         supplier.refresh_from_db()
-        self.assertEqual(supplier.phone, '0700111222')
+        self.assertEqual(supplier.phone, '254700111222')
 
 
 class SupplierPermissionsTestCase(SalesAPITestCase):

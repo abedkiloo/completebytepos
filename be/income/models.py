@@ -36,6 +36,7 @@ class Income(models.Model):
         ('approved', 'Approved'),
         ('rejected', 'Rejected'),
         ('received', 'Received'),
+        ('voided', 'Voided'),
     ]
 
     income_number = models.CharField(max_length=50, unique=True, editable=False, db_index=True)

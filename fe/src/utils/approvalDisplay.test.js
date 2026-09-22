@@ -11,6 +11,7 @@ describe('approvalDisplay', () => {
   test('formatActionTypeLabel maps known actions', () => {
     expect(formatActionTypeLabel('product_price')).toBe('Selling price change');
     expect(formatActionTypeLabel('stock_adjust')).toBe('Stock adjustment');
+    expect(formatActionTypeLabel('sale_rollback')).toBe('Sale rollback');
     expect(formatActionTypeLabel('unknown_action')).toBe('unknown action');
   });
 

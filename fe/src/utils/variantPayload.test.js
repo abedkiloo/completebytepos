@@ -51,7 +51,7 @@ describe('numeric field validators', () => {
         { price: 'ten' },
         { label: 'Large / Blue' }
       )
-    ).toBe('Enter a valid number for price on variant Large / Blue.');
+      ).toBe('Enter a KES amount for price on variant Large / Blue, e.g. 250.00.');
   });
 });
 

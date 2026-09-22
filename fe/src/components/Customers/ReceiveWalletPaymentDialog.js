@@ -18,6 +18,14 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import CommitConfirm from '../Shared/CommitConfirm';
+import {
+  AMOUNT_EXAMPLE,
+  MPESA_RECEIPT_EXAMPLE,
+  paymentAmountMessage,
+  parsePaymentAmount,
+  mpesaReceiptMessage,
+  normalizeMpesaReceipt,
+} from '../../utils/formValidation';
 
 const PAYMENT_METHODS = [
   { value: 'cash', label: 'Cash' },
@@ -49,6 +57,7 @@ export default function ReceiveWalletPaymentDialog({
   const [loadingTxns, setLoadingTxns] = useState(false);
   const [showCommitConfirm, setShowCommitConfirm] = useState(false);
   const [pendingAmount, setPendingAmount] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const debtAmount = getWalletDebtAmount(customer?.wallet_balance);
 
@@ -56,6 +65,7 @@ export default function ReceiveWalletPaymentDialog({
     if (!open || !customer?.id) {
       setForm(EMPTY_FORM);
       setTransactions([]);
+      setFieldErrors({});
       return;
     }
     setForm((prev) => ({
@@ -84,18 +94,32 @@ export default function ReceiveWalletPaymentDialog({
 
   const updateField = (key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+    setFieldErrors((prev) => {
+      if (!prev[key] && !(key === 'payment_method' && prev.reference)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      if (key === 'payment_method') delete next.reference;
+      return next;
+    });
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!customer?.id || submitting) return;
 
-    const amount = parseFloat(form.amount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      toast.error('Enter a valid payment amount');
+    const errors = {};
+    const amountError = paymentAmountMessage(form.amount);
+    if (amountError) errors.amount = amountError;
+    if (form.payment_method === 'mpesa') {
+      const codeError = mpesaReceiptMessage(form.reference);
+      if (codeError) errors.reference = codeError;
+    }
+    if (Object.keys(errors).length) {
+      setFieldErrors(errors);
+      toast.error(errors.amount || errors.reference);
       return;
     }
-    setPendingAmount(amount);
+    setPendingAmount(parsePaymentAmount(form.amount));
     setShowCommitConfirm(true);
   };
 
@@ -106,7 +130,10 @@ export default function ReceiveWalletPaymentDialog({
       const res = await customersAPI.receiveWalletPayment(customer.id, {
         amount: pendingAmount,
         payment_method: form.payment_method,
-        reference: form.reference.trim(),
+        reference:
+          form.payment_method === 'mpesa'
+            ? normalizeMpesaReceipt(form.reference)
+            : form.reference.trim(),
         notes: form.notes.trim(),
       });
       toast.success('Payment recorded');
@@ -145,7 +172,12 @@ export default function ReceiveWalletPaymentDialog({
             emphasis: true,
           },
           { label: 'Method', value: methodLabel },
-          form.reference.trim() ? { label: 'Reference', value: form.reference.trim() } : null,
+          form.reference.trim()
+            ? {
+                label: form.payment_method === 'mpesa' ? 'M-Pesa code' : 'Reference',
+                value: form.reference.trim(),
+              }
+            : null,
           debtAmount > 0
             ? { label: 'Current debt', value: formatCurrency(debtAmount) }
             : null,
@@ -191,7 +223,8 @@ export default function ReceiveWalletPaymentDialog({
                 min="0.01"
                 value={form.amount}
                 onChange={(e) => updateField('amount', e.target.value)}
-                placeholder="Enter amount"
+                placeholder={AMOUNT_EXAMPLE}
+                aria-invalid={Boolean(fieldErrors.amount)}
                 className="min-w-[12rem] flex-1"
                 required
               />
@@ -206,6 +239,12 @@ export default function ReceiveWalletPaymentDialog({
                 </Button>
               )}
             </div>
+            <p className="text-xs text-muted-foreground">
+              KES amount with up to 2 decimal places, e.g. {AMOUNT_EXAMPLE}
+            </p>
+            {fieldErrors.amount ? (
+              <p className="text-xs text-destructive">{fieldErrors.amount}</p>
+            ) : null}
           </div>
 
           <div className="space-y-2">
@@ -225,13 +264,33 @@ export default function ReceiveWalletPaymentDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="wallet-payment-reference">Reference</Label>
+            <Label htmlFor="wallet-payment-reference">
+              {form.payment_method === 'mpesa' ? 'M-Pesa code *' : 'Reference'}
+            </Label>
             <Input
               id="wallet-payment-reference"
               value={form.reference}
               onChange={(e) => updateField('reference', e.target.value)}
-              placeholder="Receipt or M-Pesa code (optional)"
+              placeholder={
+                form.payment_method === 'mpesa'
+                  ? MPESA_RECEIPT_EXAMPLE
+                  : 'Receipt or payment reference (optional)'
+              }
+              aria-invalid={Boolean(fieldErrors.reference)}
+              maxLength={form.payment_method === 'mpesa' ? 14 : undefined}
             />
+            {form.payment_method === 'mpesa' ? (
+              <p className="text-xs text-muted-foreground">
+                10 letters and numbers from the M-Pesa SMS, e.g. {MPESA_RECEIPT_EXAMPLE}
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Optional for cash; required for card.
+              </p>
+            )}
+            {fieldErrors.reference ? (
+              <p className="text-xs text-destructive">{fieldErrors.reference}</p>
+            ) : null}
           </div>
 
           <div className="space-y-2">

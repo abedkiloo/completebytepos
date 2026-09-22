@@ -30,6 +30,7 @@ EXPENSES_PERMS = RequirePermPerAction('expenses', {
     'update': 'update',
     'partial_update': 'update',
     'destroy': 'delete',
+    'void': 'delete',
     'statistics': 'view',
     'approve': 'approve',
     'reject': 'approve',
@@ -152,6 +153,23 @@ class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         except (ValidationError, DjangoValidationError) as e:
             detail = getattr(e, 'detail', None) or str(e)
             return Response({'error': detail}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    def void(self, request, pk=None):
+        """Void an expense and reverse posted journals."""
+        expense = self.get_object()
+        reason = (request.data.get('reason') or '').strip()
+        try:
+            voided = self.expense_service.void_expense(
+                expense, reason=reason, user=request.user
+            )
+        except (ValidationError, DjangoValidationError) as e:
+            payload = getattr(e, 'message_dict', None)
+            if payload:
+                return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+            detail = getattr(e, 'detail', None) or str(e)
+            return Response({'error': detail}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(voided).data)
 
     @action(detail=False, methods=['get'])
     def statistics(self, request):

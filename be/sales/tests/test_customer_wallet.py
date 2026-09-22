@@ -98,12 +98,41 @@ class CustomerWalletAPITests(ManagerAPITestCase):
     def test_receive_wallet_payment_settles_full_debt(self):
         response = self.client.post(
             f'/api/sales/customers/{self.customer.id}/receive-wallet-payment/',
-            {'amount': '250.00', 'payment_method': 'mpesa', 'reference': 'ABC123'},
+            {'amount': '250.00', 'payment_method': 'mpesa', 'reference': 'QHX7K2L9M1'},
             format='json',
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.customer.refresh_from_db()
         self.assertEqual(self.customer.wallet_balance, Decimal('0.00'))
+
+    def test_receive_wallet_payment_mpesa_requires_receipt_code(self):
+        response = self.client.post(
+            f'/api/sales/customers/{self.customer.id}/receive-wallet-payment/',
+            {'amount': '50.00', 'payment_method': 'mpesa'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('reference', response.data)
+        self.assertIn('10-character', str(response.data['reference']))
+
+    def test_receive_wallet_payment_mpesa_rejects_short_code(self):
+        response = self.client.post(
+            f'/api/sales/customers/{self.customer.id}/receive-wallet-payment/',
+            {'amount': '50.00', 'payment_method': 'mpesa', 'reference': 'AB12'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('reference', response.data)
+        self.assertIn('you entered 4', str(response.data['reference']))
+
+    def test_receive_wallet_payment_mpesa_rejects_symbols(self):
+        response = self.client.post(
+            f'/api/sales/customers/{self.customer.id}/receive-wallet-payment/',
+            {'amount': '50.00', 'payment_method': 'mpesa', 'reference': 'QHX-7K2L9'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('letters and numbers only', str(response.data['reference']))
 
     def test_receive_wallet_payment_rejects_zero_amount(self):
         response = self.client.post(
@@ -112,6 +141,7 @@ class CustomerWalletAPITests(ManagerAPITestCase):
             format='json',
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('greater than zero', str(response.data['amount']))
 
     def test_receive_wallet_payment_forbidden_when_disabled(self):
         SettingsService.set('customers', 'enable_wallet_payment', False)

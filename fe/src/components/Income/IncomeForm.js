@@ -10,6 +10,11 @@ import {
   financialSubmitSuccessMessage,
   isMakerCheckerEnabled,
 } from '../../utils/makerChecker';
+import {
+  dateMessage,
+  moneyMessage,
+  required,
+} from '../../utils/formValidation';
 
 const IncomeForm = ({ income, categories, onClose, onSave }) => {
   const [formData, setFormData] = useState({
@@ -64,15 +69,12 @@ const IncomeForm = ({ income, categories, onClose, onSave }) => {
   const validate = () => {
     const newErrors = {};
     
-    if (!formData.amount || parseFloat(formData.amount) <= 0) {
-      newErrors.amount = 'Amount must be greater than 0';
-    }
-    if (!formData.description.trim()) {
-      newErrors.description = 'Description is required';
-    }
-    if (!formData.income_date) {
-      newErrors.income_date = 'Income date is required';
-    }
+    const amountErr = moneyMessage(formData.amount);
+    if (amountErr) newErrors.amount = amountErr;
+    const descErr = required(formData.description, 'Enter a description, e.g. Consulting fee');
+    if (descErr) newErrors.description = descErr;
+    const dateErr = dateMessage(formData.income_date, { label: 'income date' });
+    if (dateErr) newErrors.income_date = dateErr;
     if (makerCheckerOn && !proposalReason.trim()) {
       newErrors.proposal_reason = 'A reason is required when maker-checker is enabled.';
     }

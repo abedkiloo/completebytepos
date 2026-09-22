@@ -213,3 +213,12 @@ export function approvalExpenseRows(expense = {}) {
     { label: 'Action', value: 'Approve expense', tone: 'success' },
   ]);
 }
+
+export function saleRollbackRows(sale = {}, reason = '') {
+  return compactCommitRows([
+    { label: 'Sale', value: sale.sale_number || '—', emphasis: true },
+    sale.total != null ? { label: 'Amount', value: String(sale.total) } : null,
+    { label: 'After confirm', value: 'Queued for admin approval — books reverse when approved', tone: 'danger' },
+    reason ? { label: 'Reason', value: reason } : null,
+  ]);
+}

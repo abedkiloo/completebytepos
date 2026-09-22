@@ -22,6 +22,7 @@ export const ACTION_TYPE_LABELS = {
   role_permissions: 'Role permissions change',
   sale_completed_edit: 'Completed sale edit',
   sale_refund: 'Sale void / refund',
+  sale_rollback: 'Sale rollback',
   sale_backfill: 'Record past sale',
 };
 
@@ -64,6 +65,8 @@ export const FIELD_LABELS = {
   notes: 'Notes',
   permissions: 'Permissions',
   refund_mode: 'Refund type',
+  rollback_mode: 'Rollback type',
+  effect: 'Effect',
   lines: 'Lines to return',
   amount: 'Refund amount',
   sale_total: 'Sale total',

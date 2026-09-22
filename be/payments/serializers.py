@@ -1,9 +1,11 @@
 from rest_framework import serializers
+from decimal import Decimal
 
 from sales.models import Customer
 
 from .models import PaymentIntent
 from . import services
+from utils.field_types import money_error_messages
 
 
 class PaymentIntentSerializer(serializers.ModelSerializer):
@@ -30,7 +32,12 @@ class PaymentIntentSerializer(serializers.ModelSerializer):
 
 
 class CreateIntentSerializer(serializers.Serializer):
-    amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    amount = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        min_value=Decimal('0.01'),
+        error_messages=money_error_messages(allow_zero=False),
+    )
     phone = serializers.CharField(max_length=20)
     purpose = serializers.ChoiceField(
         choices=[c[0] for c in PaymentIntent.PURPOSE_CHOICES],
@@ -40,6 +47,14 @@ class CreateIntentSerializer(serializers.Serializer):
     customer_id = serializers.IntegerField(required=False, allow_null=True)
     customer_name = serializers.CharField(required=False, allow_blank=True, default='')
     client_uuid = serializers.UUIDField(required=False, allow_null=True)
+
+    def validate_phone(self, value):
+        from utils.phone import PhoneNumberError, normalize_phone_number
+
+        try:
+            return normalize_phone_number(value, required=True)
+        except PhoneNumberError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
 
     def create(self, validated_data):
         request = self.context['request']

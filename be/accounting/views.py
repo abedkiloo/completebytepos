@@ -38,6 +38,7 @@ ACCOUNTING_PERMS = RequirePermPerAction('accounting', {
     'general_ledger': 'view',
     'cash_flow': 'view',
     'account_statement': 'view',
+    'reverse': 'correct',
 })
 
 
@@ -333,6 +334,28 @@ class TransactionViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         audited_perform_create(self, serializer, created_by=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def reverse(self, request, pk=None):
+        """Admin correction: post opposite journals so the books stay balanced."""
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        from accounting.reversal import reverse_posted_transaction
+
+        txn = self.get_object()
+        reason = (request.data.get('reason') or '').strip()
+        try:
+            reversed_txn = reverse_posted_transaction(
+                txn, reason=reason, user=request.user
+            )
+        except DjangoValidationError as e:
+            payload = getattr(e, 'message_dict', None)
+            if payload:
+                return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            TransactionSerializer(reversed_txn).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class AccountingReportViewSet(viewsets.ViewSet):

@@ -55,6 +55,7 @@ PERMISSIONS_DATA = [
     ('sales', 'update', 'Update sales'),
     ('sales', 'delete', 'Delete sales'),
     ('sales', 'refund', 'Refund completed sales'),
+    ('sales', 'rollback', 'Request sale rollbacks (takes effect after admin approval)'),
     ('sales', 'export', 'Export sales'),
     ('sales', 'daily_sales', 'View daily sales tracker (paid vs debt by day)'),
     ('sales', 'view_all', 'View all staff sales (store-wide today / week / month)'),
@@ -112,6 +113,7 @@ PERMISSIONS_DATA = [
     ('accounting', 'view', 'View accounting'),
     ('accounting', 'create', 'Create journal entries'),
     ('accounting', 'update', 'Update accounting'),
+    ('accounting', 'correct', 'Reverse posted journals to correct errors'),
     ('accounting', 'export', 'Export accounting reports'),
     ('users', 'view', 'View users'),
     ('users', 'create', 'Create users'),
@@ -264,6 +266,9 @@ def _manager_queryset():
         # Daily Sales Tracker + store-wide sales totals are admin-grantable.
         .exclude(module='sales', action='daily_sales')
         .exclude(module='sales', action='view_all')
+        # Sale rollback and journal correction stay admin unless explicitly checked.
+        .exclude(module='sales', action='rollback')
+        .exclude(module='accounting', action='correct')
     )
 
 

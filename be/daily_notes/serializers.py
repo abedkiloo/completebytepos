@@ -4,6 +4,7 @@ from rest_framework import serializers
 
 from .access import user_may_view_all_daily_notes
 from .models import DailyNote, DailyTask
+from utils.field_types import date_error_messages, raise_field_error, required_text_error
 
 
 def _author_display(user) -> str:
@@ -31,6 +32,17 @@ class DailyNoteSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
         read_only_fields = ['author', 'created_at', 'updated_at']
+        extra_kwargs = {
+            'note_date': {'error_messages': date_error_messages(label='note date')},
+        }
+
+    def validate_content(self, value):
+        raise_field_error(
+            required_text_error(
+                value, label='note', example='Stock count completed at close of day', min_length=1
+            )
+        )
+        return value.strip()
 
     def get_author_name(self, obj):
         return _author_display(obj.author)
@@ -66,6 +78,17 @@ class DailyTaskSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
         read_only_fields = ['author', 'completed_at', 'created_at', 'updated_at']
+        extra_kwargs = {
+            'task_date': {'error_messages': date_error_messages(label='task date')},
+        }
+
+    def validate_title(self, value):
+        raise_field_error(
+            required_text_error(
+                value, label='task title', example='Restock sugar 2kg', min_length=1
+            )
+        )
+        return value.strip()
 
     def get_author_name(self, obj):
         return _author_display(obj.author)

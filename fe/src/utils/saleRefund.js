@@ -9,6 +9,19 @@ export function userCanRefundSales(permissions, { isManagerOrAdmin = false } = {
   return hasPermission(permissions, 'sales', 'refund');
 }
 
+/** Admin correction — only the explicit checkbox, never inferred from manager role. */
+export function userCanRollbackSales(permissions) {
+  return hasPermission(permissions, 'sales', 'rollback');
+}
+
+export function saleIsRollbackable(sale) {
+  if (!sale) return false;
+  if (sale.can_rollback === false) return false;
+  if (sale.status !== 'completed') return false;
+  const status = sale.refund_status || 'none';
+  return status === 'none';
+}
+
 export function saleIsRefundable(sale) {
   if (!sale) return false;
   if (sale.status !== 'completed') return false;
@@ -19,6 +32,10 @@ export function saleIsRefundable(sale) {
 
 export function buildFullRefundPayload(reason) {
   return { full: true, reason: String(reason || '').trim() };
+}
+
+export function buildRollbackPayload(reason) {
+  return { reason: String(reason || '').trim() };
 }
 
 export function buildPartialRefundPayload(reason, items) {

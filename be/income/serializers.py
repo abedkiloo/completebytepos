@@ -1,4 +1,12 @@
 from rest_framework import serializers
+from decimal import Decimal
+
+from utils.field_types import (
+    date_error_messages,
+    money_error_messages,
+    raise_field_error,
+    required_text_error,
+)
 from .models import IncomeCategory, Income
 
 
@@ -18,6 +26,15 @@ class IncomeSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
     created_by_name = serializers.CharField(source='created_by.username', read_only=True)
     approved_by_name = serializers.CharField(source='approved_by.username', read_only=True)
+    amount = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.01'),
+        error_messages=money_error_messages(allow_zero=False),
+    )
+    income_date = serializers.DateField(
+        error_messages=date_error_messages(label='income date'),
+    )
     
     class Meta:
         model = Income
@@ -29,4 +46,12 @@ class IncomeSerializer(serializers.ModelSerializer):
             'notes', 'created_at', 'updated_at'
         ]
         read_only_fields = ['income_number', 'created_at', 'updated_at']
+
+    def validate_description(self, value):
+        raise_field_error(
+            required_text_error(
+                value, label='description', example='Consulting fee', min_length=1
+            )
+        )
+        return value.strip()
 

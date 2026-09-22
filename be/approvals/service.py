@@ -24,6 +24,7 @@ from approvals.registry import (
     ACTION_PRODUCT_PRICE,
     ACTION_PRODUCT_STOCK,
     ACTION_SALE_REFUND,
+    ACTION_SALE_ROLLBACK,
     ACTION_SALE_BACKFILL,
     ACTION_STOCK_ADJUST,
     ACTION_STOCK_PURCHASE,
@@ -105,10 +106,11 @@ def submit_change(
     reason: str,
     apply_payload: dict | None = None,
     batch_id: str = '',
+    require_maker_checker: bool = True,
 ) -> PendingChange:
     if not reason or not str(reason).strip():
         raise ValidationError({'reason': 'A reason is required for maker-checker proposals.'})
-    if not is_maker_checker_enabled():
+    if require_maker_checker and not is_maker_checker_enabled():
         raise ValidationError('Maker-checker is not enabled.')
 
     change = PendingChange.objects.create(
@@ -203,6 +205,16 @@ def validate_before_approval(change: PendingChange, *, extreme_price_confirmed: 
         if amount > sale.refundable_remaining():
             raise ValidationError(
                 'Refund amount exceeds remaining refundable balance; reject or adjust.'
+            )
+
+    if change.action_type == ACTION_SALE_ROLLBACK:
+        from sales.models import Sale
+        from sales.rollback import sale_is_rollbackable
+
+        sale = Sale.objects.get(pk=change.entity_id)
+        if not sale_is_rollbackable(sale):
+            raise ValidationError(
+                'Sale can no longer be rolled back; reject this request.'
             )
 
     if change.action_type == ACTION_SALE_BACKFILL:

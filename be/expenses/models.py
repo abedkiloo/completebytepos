@@ -35,6 +35,7 @@ class Expense(models.Model):
         ('approved', 'Approved'),
         ('rejected', 'Rejected'),
         ('paid', 'Paid'),
+        ('voided', 'Voided'),
     ]
 
     expense_number = models.CharField(max_length=50, unique=True, editable=False, db_index=True)

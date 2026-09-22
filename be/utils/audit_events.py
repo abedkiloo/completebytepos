@@ -67,6 +67,23 @@ def log_sale_refunded(request, sale, refund):
     )
 
 
+def log_sale_rolled_back(request, sale, refund):
+    log_domain_event(
+        request,
+        'rollback',
+        refund,
+        module='sales',
+        changes={
+            'sale_number': getattr(sale, 'sale_number', ''),
+            'refund_number': getattr(refund, 'refund_number', ''),
+            'refund_type': getattr(refund, 'refund_type', ''),
+            'amount': _money(getattr(refund, 'amount', None)),
+            'reason': (getattr(refund, 'reason', '') or '')[:500],
+            'sale_refund_status': getattr(sale, 'refund_status', ''),
+        },
+    )
+
+
 def log_holding_cancelled(request, holding):
     log_domain_event(
         request,

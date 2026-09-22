@@ -2,6 +2,9 @@ import React, { forwardRef } from 'react';
 import { formatCurrency } from '../../../utils/formatters';
 import { normalizeSaleForReceipt } from '../../../utils/saleItemDisplay';
 
+export const RECEIPT_REACH_US_PHONE = '0718515142';
+export const RECEIPT_REACH_US_LABEL = `You can reach us via ${RECEIPT_REACH_US_PHONE}`;
+
 /**
  * Thermal-printer-friendly receipt body.
  *
@@ -11,7 +14,7 @@ import { normalizeSaleForReceipt } from '../../../utils/saleItemDisplay';
  *   address / phone / VAT id
  *   ================
  *   Receipt #SOM-001
- *   Date · Cashier · Customer
+ *   Date · Served by · Customer
  *   ----------------
  *   Item name
  *     qty × unit ............ line total
@@ -47,7 +50,8 @@ export const ThermalReceipt = forwardRef(function ThermalReceipt(
   const receipt = normalizeSaleForReceipt(sale);
   const items = receipt.items || [];
   const dateLabel = formatReceiptDate(sale.created_at);
-  const cashierLabel = sale.cashier_name || sale.cashier || '';
+  const servedByLabel =
+    sale.served_by_name || sale.cashier_name || sale.cashier || '';
   const balance = (parseFloat(receipt.total) || 0) - (parseFloat(receipt.amount_paid) || 0);
   const change = parseFloat(receipt.change) || 0;
   const isPaymentMpesa = sale.payment_method === 'mpesa';
@@ -95,7 +99,7 @@ export const ThermalReceipt = forwardRef(function ThermalReceipt(
       <section className="receipt-thermal__meta">
         <ReceiptRow left="Receipt" right={sale.sale_number || '—'} bold />
         <ReceiptRow left="Date" right={dateLabel} />
-        {cashierLabel && <ReceiptRow left="Cashier" right={cashierLabel} />}
+        {servedByLabel && <ReceiptRow left="Served by" right={servedByLabel} />}
       </section>
 
       <SingleRule />
@@ -191,6 +195,13 @@ export const ThermalReceipt = forwardRef(function ThermalReceipt(
 
       <footer className="receipt-thermal__footer">
         <p className="receipt-thermal__thanks">{store.receiptFooter}</p>
+        <a
+          className="receipt-thermal__reach-us"
+          href={`tel:${RECEIPT_REACH_US_PHONE}`}
+          data-testid="receipt-reach-us"
+        >
+          {RECEIPT_REACH_US_LABEL}
+        </a>
         <p className="receipt-thermal__sale-no">{sale.sale_number || ''}</p>
       </footer>
     </article>
@@ -295,8 +306,8 @@ export const THERMAL_RECEIPT_CSS = String.raw`
   background: #ffffff;
   color: #000000;
   font-family: 'SF Mono', Menlo, Consolas, 'Courier New', monospace;
-  font-size: 9.5pt;
-  line-height: 1.22;
+  font-size: 9pt;
+  line-height: 1.18;
   font-variant-numeric: tabular-nums;
 }
 .receipt-thermal__header {
@@ -304,7 +315,7 @@ export const THERMAL_RECEIPT_CSS = String.raw`
   margin-bottom: 1mm;
 }
 .receipt-thermal__store {
-  font-size: 11.5pt;
+  font-size: 10.5pt;
   font-weight: 700;
   letter-spacing: 0.3px;
   text-transform: uppercase;
@@ -403,6 +414,18 @@ export const THERMAL_RECEIPT_CSS = String.raw`
   margin: 0;
   font-size: 8.5pt;
   letter-spacing: 0.5px;
+}
+.receipt-thermal__reach-us {
+  display: inline-block;
+  margin: 1.5mm 0 1mm;
+  padding: 1.1mm 1.6mm;
+  border: 1px solid #000;
+  border-radius: 2px;
+  font-size: 8pt;
+  font-weight: 700;
+  line-height: 1.2;
+  text-decoration: none;
+  color: #000;
 }
 .receipt-thermal--58mm {
   width: 58mm;

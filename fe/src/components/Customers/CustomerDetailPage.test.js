@@ -22,6 +22,7 @@ jest.mock('../../services/api', () => ({
   salesAPI: {
     get: jest.fn(),
     refund: jest.fn(),
+    rollback: jest.fn(),
   },
 }));
 
@@ -46,12 +47,14 @@ jest.mock('../../utils/navBadges', () => ({
 
 jest.mock('../../utils/saleRefund', () => ({
   userCanRefundSales: () => true,
+  userCanRollbackSales: () => false,
   handleSaleRefundResponse: jest.fn(),
 }));
 
 jest.mock('./ReceiveWalletPaymentDialog', () => () => null);
 jest.mock('../Sales/SaleDetailDialog', () => () => null);
 jest.mock('../Sales/RefundSaleDialog', () => () => null);
+jest.mock('../Sales/SaleRollbackDialog', () => () => null);
 
 jest.mock('lucide-react', () => {
   const React = require('react');

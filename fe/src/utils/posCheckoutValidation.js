@@ -1,6 +1,4 @@
-/**
- * POS checkout pre-flight checks (pure helpers for tests + usePOSState).
- */
+import { AMOUNT_EXAMPLE, moneyMessage, parseMoney } from './formValidation';
 
 export function isRegisteredPosCustomer(customer) {
   return Boolean(customer?.id && customer.id !== 'walk-in');
@@ -25,17 +23,15 @@ export function evaluatePosAmountReceived(receivedAmount, options = {}) {
     }
     return {
       ok: false,
-      message: 'Enter the amount received from the customer.',
+      message: `Enter the amount received, e.g. ${AMOUNT_EXAMPLE}`,
     };
   }
 
-  const received = parseFloat(receivedAmount);
-  if (!Number.isFinite(received) || received < 0) {
-    return {
-      ok: false,
-      message: 'Enter a valid amount received.',
-    };
+  const formatErr = moneyMessage(receivedAmount, { allowZero: true });
+  if (formatErr) {
+    return { ok: false, message: formatErr };
   }
+  const received = parseMoney(receivedAmount, { allowZero: true });
 
   if (received === 0) {
     if (allowPartialPayment && hasRegisteredCustomer) {
@@ -69,13 +65,14 @@ export function evaluateBillingAmountPaid(rawPaid, options = {}) {
     if (accountMode) {
       return { ok: true, paid: 0, creditSale: true, fullPayLater: true };
     }
-    return { ok: false, message: 'Enter amount received' };
+    return { ok: false, message: `Enter the amount received, e.g. ${AMOUNT_EXAMPLE}` };
   }
 
-  const paid = parseFloat(rawPaid);
-  if (!Number.isFinite(paid) || paid < 0) {
-    return { ok: false, message: 'Enter amount received' };
+  const formatErr = moneyMessage(rawPaid, { allowZero: true });
+  if (formatErr) {
+    return { ok: false, message: formatErr };
   }
+  const paid = parseMoney(rawPaid, { allowZero: true });
 
   if (paid === 0) {
     if (accountMode) {
