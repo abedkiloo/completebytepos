@@ -26,7 +26,7 @@ echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}CompleteBytePOS - Docker Mode${NC}"
 echo -e "${BLUE}  Dev:  ./run_docker.sh${NC}"
 echo -e "${BLUE}  Prod: ./run_docker.sh --prod  (React build + nginx)${NC}"
-echo -e "${BLUE}  UAT:  ./run_docker.sh --uat   (.env.uat, uat.omuwenga.com)${NC}"
+echo -e "${BLUE}  UAT:  ./run_docker.sh --uat   (uat.omuwenga.com + api.uat.omuwenga.com)${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
@@ -126,9 +126,10 @@ show_status_prod() {
     echo -e "${GREEN}========================================${NC}"
     echo ""
     if [ "$STACK" = "uat" ]; then
-        echo -e "UAT (nginx + React build): ${BLUE}http://127.0.0.1:3100${NC}  →  ${BLUE}https://uat.omuwenga.com${NC}"
-        echo -e "API (via nginx proxy):     ${BLUE}http://127.0.0.1:3100/api${NC}"
-        echo -e "Direct Gunicorn (localhost): ${BLUE}http://127.0.0.1:8001/admin${NC}"
+        echo -e "UAT UI (nginx):            ${BLUE}http://127.0.0.1:3100${NC}  →  ${BLUE}https://uat.omuwenga.com${NC}"
+        echo -e "UAT API (nginx /api):      ${BLUE}http://127.0.0.1:3100/api${NC}"
+        echo -e "UAT API host:              ${BLUE}http://127.0.0.1:8001${NC}  →  ${BLUE}https://api.uat.omuwenga.com${NC}"
+        echo -e "Django admin:              ${BLUE}https://api.uat.omuwenga.com/admin${NC}"
     else
         echo -e "Frontend (nginx + React build): ${BLUE}http://localhost:3000${NC}"
         echo -e "Backend API (via nginx proxy):  ${BLUE}http://localhost:3000/api${NC}"

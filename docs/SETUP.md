@@ -308,12 +308,16 @@ Production (`shop.omuwenga.com`) and UAT share one VPS and the same images/code,
 | App port | 3000 | 3100 |
 | Gunicorn (localhost) | 8000 | 8001 |
 | Postgres (localhost) | 5432 | 5433 |
-| Public host | shop.omuwenga.com | uat.omuwenga.com |
+| Public UI | shop.omuwenga.com | uat.omuwenga.com |
+| Public API | (via shop `/api`) | api.uat.omuwenga.com |
 | Gunicorn workers | 2 (default) | 1 (leave RAM for prod) |
 
 ### 1. DNS
 
-Point an A record for **uat.omuwenga.com** at the same VPS IP as shop.
+Point A records at the same VPS IP as shop:
+
+- **uat.omuwenga.com** — frontend
+- **api.uat.omuwenga.com** — backend (Gunicorn, Django admin, mobile API)
 
 ### 2. Env file
 
@@ -329,7 +333,7 @@ nano .env.uat   # unique SECRET_KEY and POSTGRES_PASSWORD (never copy prod)
 docker exec omuwenga-uat_backend python manage.py setup_new_organization
 ```
 
-Web and mobile clients stay on `/api` through nginx. Point a UAT build at `https://uat.omuwenga.com`.
+The UAT web app still calls `/api` on `https://uat.omuwenga.com` (nginx proxies to Gunicorn). Mobile and Postman should use `https://api.uat.omuwenga.com/api`. Django admin: `https://api.uat.omuwenga.com/admin`.
 
 ### 4. Host reverse proxy
 
@@ -337,6 +341,7 @@ Terminate TLS by hostname. Example Caddyfile is in `deploy/Caddyfile.example`:
 
 - `shop.omuwenga.com` → `127.0.0.1:3000`
 - `uat.omuwenga.com` → `127.0.0.1:3100`
+- `api.uat.omuwenga.com` → `127.0.0.1:8001`
 
 ### 5. Stop / rebuild
 
