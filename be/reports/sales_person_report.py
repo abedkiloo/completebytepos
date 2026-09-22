@@ -208,6 +208,7 @@ class SalesPersonReportService:
                     'refunded': round(refunded, 2),
                     'net': round(_decimal_float(sale.total) - refunded, 2),
                     'refund_status': sale.refund_status,
+                    'client_channel': sale.client_channel or 'unknown',
                 })
 
         period_display = label

@@ -321,6 +321,7 @@ export function useBillingPOSState() {
       customer_id: customerIdForSale(selectedCustomer),
       tax_amount: parseFloat(taxAmount.toFixed(2)),
       discount_amount: parseFloat(discountAmount.toFixed(2)),
+      client_channel: 'web',
     }),
     [holdingId, cart, selectedCustomer, taxAmount, discountAmount]
   );
@@ -595,6 +596,7 @@ export function useBillingPOSState() {
         amount_paid: paid,
         allow_partial_payment: allowPartial,
         excess_payment_choice: 'change',
+        client_channel: 'web',
       });
       const sale = {
         ...res.data,

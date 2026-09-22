@@ -84,6 +84,9 @@ async function refreshAccessToken() {
 // Request interceptor - Add JWT token and branch ID to requests
 api.interceptors.request.use(
   (config) => {
+    config.headers = config.headers || {};
+    config.headers['X-Client-Channel'] = 'web';
+
     const token = getToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;

@@ -50,7 +50,15 @@ def apply_profile_updates(user: User, profile_data: dict) -> None:
     if 'role' in profile_data and users_enable_inline_role_assignment():
         profile.role = profile_data['role']
     if 'phone_number' in profile_data and users_show_phone():
-        profile.phone_number = profile_data.get('phone_number') or ''
+        from utils.phone import PhoneNumberError, normalize_phone_number
+        from rest_framework.exceptions import ValidationError as DrfValidationError
+
+        try:
+            profile.phone_number = normalize_phone_number(
+                profile_data.get('phone_number') or ''
+            )
+        except PhoneNumberError as exc:
+            raise DrfValidationError({'phone_number': str(exc)}) from exc
     if 'custom_role' in profile_data:
         profile.custom_role = None
     elif 'custom_role_id' in profile_data and users_enable_inline_role_assignment():

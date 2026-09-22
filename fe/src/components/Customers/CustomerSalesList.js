@@ -10,6 +10,7 @@ import {
 } from '../../utils/saleItemDisplay';
 import { Skeleton } from '../ui/skeleton';
 import { ListPaginationRail } from '../page';
+import SaleChannelIcon from '../Sales/SaleChannelIcon';
 
 /**
  * Paginated completed sales for a customer; row click opens sale detail.
@@ -97,7 +98,10 @@ export default function CustomerSalesList({ customerId, onSelectSale }) {
                       onClick={() => onSelectSale?.(sale)}
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="font-medium">{sale.sale_number}</div>
+                        <div className="flex items-center gap-1.5 font-medium">
+                          <SaleChannelIcon channel={sale.client_channel} />
+                          {sale.sale_number}
+                        </div>
                         <div className="text-xs text-muted-foreground">
                           {formatDateTime(sale.created_at)} · {itemCount}{' '}
                           {itemCount === 1 ? 'unit' : 'units'} · {sale.payment_method || '—'}

@@ -34,6 +34,11 @@ class EmployeeSerializer(serializers.ModelSerializer):
 
         return apply_employee_representation_flags(super().to_representation(instance))
 
+    def validate_phone(self, value):
+        from utils.phone import validate_optional_phone
+
+        return validate_optional_phone(value)
+
     def validate_employee_id(self, value):
         """Ensure employee_id is unique"""
         if self.instance:

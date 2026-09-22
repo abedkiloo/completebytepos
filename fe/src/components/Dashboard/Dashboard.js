@@ -20,6 +20,7 @@ import { Badge } from '../ui/badge';
 import { Skeleton } from '../ui/skeleton';
 import { cn } from '../../lib/cn';
 import { PageShell } from '../page';
+import SaleChannelIcon from '../Sales/SaleChannelIcon';
 import {
   getDefaultPosRoute,
   isBillingPosEnabled,
@@ -34,6 +35,7 @@ import {
   getStoredAuth,
   hasPermission,
   resolvePersona,
+  userSeesAllSalesFromStorage,
 } from '../../utils/roleAccess';
 
 const QUICK_ACTIONS = {
@@ -76,14 +78,10 @@ const Dashboard = () => {
       try {
         const { permissions, user } = getStoredAuth();
         const canViewReports = hasPermission(permissions, 'reports', 'view');
-        const personaHint = resolvePersona({
-          user,
-          profile: getStoredAuth().profile,
-          is_super_admin: user?.is_superuser,
-        });
-        // Sales agents always use scoped sales summary (never store-wide reports KPIs).
+        const seesAllSales = userSeesAllSalesFromStorage();
+        // Store-wide reports KPIs only for admin / sales.view_all; others use scoped summary.
         const dashboardPromise =
-          canViewReports && dashboardReportsEnabled && personaHint !== 'sales'
+          canViewReports && dashboardReportsEnabled && seesAllSales
             ? reportsAPI.dashboard()
             : salesAPI.dashboardSummary();
 
@@ -122,7 +120,7 @@ const Dashboard = () => {
   };
 
   const kpis = useMemo(() => {
-    const ownOnly = persona === 'sales';
+    const ownOnly = !userSeesAllSalesFromStorage();
     const items = [
       {
         label: ownOnly ? 'Your sales today' : "Today's sales",
@@ -163,7 +161,6 @@ const Dashboard = () => {
 
     return items;
   }, [
-    persona,
     data,
     canViewMonthRevenue,
     lowStockProducts.length,
@@ -350,8 +347,11 @@ const Dashboard = () => {
                       className="flex items-center justify-between gap-2 py-3 first:pt-0 last:pb-0"
                     >
                       <div className="min-w-0">
-                        <p className="truncate font-medium text-sm">
-                          {sale.sale_number || `Sale #${sale.id}`}
+                        <p className="truncate font-medium text-sm inline-flex items-center gap-1.5">
+                          <SaleChannelIcon channel={sale.client_channel} />
+                          <span className="truncate">
+                            {sale.sale_number || `Sale #${sale.id}`}
+                          </span>
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {sale.created_at

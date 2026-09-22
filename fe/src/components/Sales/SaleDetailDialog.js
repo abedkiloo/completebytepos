@@ -2,6 +2,7 @@ import React from 'react';
 import { RotateCcw } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import SaleChannelIcon, { saleChannelLabel } from './SaleChannelIcon';
 import {
   Dialog,
   DialogContent,
@@ -47,7 +48,10 @@ export default function SaleDetailDialog({
       <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">
-            <span>Sale — {sale.sale_number}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <SaleChannelIcon channel={sale.client_channel} className="h-4 w-4" />
+              <span>Sale — {sale.sale_number}</span>
+            </span>
             {showAdminDetails && duplicateLines ? (
               <Badge variant="outline" className="text-xs text-amber-800 border-amber-300">
                 Duplicate lines
@@ -66,6 +70,13 @@ export default function SaleDetailDialog({
             <p>
               <strong>Sale number:</strong> {sale.sale_number}
             </p>
+            {saleChannelLabel(sale.client_channel) ? (
+              <p className="inline-flex items-center gap-1.5">
+                <strong>Recorded on:</strong>
+                <SaleChannelIcon channel={sale.client_channel} />
+                {saleChannelLabel(sale.client_channel)}
+              </p>
+            ) : null}
             <p>
               <strong>Date:</strong> {formatDateTime(sale.occurred_at || sale.created_at)}
             </p>

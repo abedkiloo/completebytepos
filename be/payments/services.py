@@ -19,12 +19,12 @@ class PaymentTransitionError(ValidationError):
 
 
 def normalize_phone(phone: str) -> str:
-    digits = ''.join(c for c in (phone or '') if c.isdigit())
-    if digits.startswith('0') and len(digits) == 10:
-        digits = '254' + digits[1:]
-    if digits.startswith('254') and len(digits) == 12:
-        return digits
-    raise PaymentTransitionError({'phone': 'Use a valid KE MSISDN (07… or 254…).'})
+    from utils.phone import PhoneNumberError, normalize_phone_number
+
+    try:
+        return normalize_phone_number(phone, required=True)
+    except PhoneNumberError as exc:
+        raise PaymentTransitionError({'phone': str(exc)})
 
 
 @transaction.atomic

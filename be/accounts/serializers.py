@@ -150,6 +150,11 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         return apply_profile_representation_flags(super().to_representation(instance))
+
+    def validate_phone_number(self, value):
+        from utils.phone import validate_optional_phone
+
+        return validate_optional_phone(value)
     
     class Meta:
         model = UserProfile
@@ -250,6 +255,11 @@ class UserCreateSerializer(serializers.ModelSerializer):
             'password', 'is_staff', 'is_active',
             'role', 'custom_role_id', 'phone_number'
         ]
+
+    def validate_phone_number(self, value):
+        from utils.phone import validate_optional_phone
+
+        return validate_optional_phone(value)
 
     def validate(self, attrs):
         return validate_user_write(attrs)

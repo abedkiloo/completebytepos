@@ -91,6 +91,7 @@ def serialize_daily_order(sale: Sale) -> Dict[str, Any]:
         'refund_status': sale.refund_status,
         'amount_refunded': str(sale.amount_refunded.quantize(Decimal('0.01'))),
         'is_late_entry': sale.is_late_entry,
+        'client_channel': sale.client_channel or 'unknown',
         'notes': sale.notes or '',
     }
 

@@ -55,6 +55,11 @@ class CustomerSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError('Please enter a valid email address')
             return value.strip()
         return value
+
+    def validate_phone(self, value):
+        from utils.phone import validate_optional_phone
+
+        return validate_optional_phone(value)
     
     def validate(self, attrs):
         """Additional validation"""
@@ -234,13 +239,14 @@ class SaleSerializer(serializers.ModelSerializer):
             'delivery_method', 'delivery_cost',
             'shipping_address', 'shipping_location',
             'payment_method', 'payment_reference', 'amount_paid', 'change', 'notes',
-            'occurred_at', 'entry_source', 'backfill_reason', 'is_late_entry',
+            'occurred_at', 'entry_source', 'client_channel', 'backfill_reason', 'is_late_entry',
             'backfill_receipt_photo_url',
             'items', 'item_count', 'amount_refunded', 'refundable_remaining', 'can_refund',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
             'sale_number', 'created_at', 'updated_at', 'refund_status', 'entry_source',
+            'client_channel',
         ]
 
     def get_item_count(self, obj):
@@ -302,6 +308,7 @@ class HoldingSaleSerializer(serializers.Serializer):
     notes = serializers.CharField(required=False, allow_blank=True, default='')
     holding_id = serializers.IntegerField(required=False, allow_null=True)
     branch_id = serializers.IntegerField(required=False, allow_null=True)
+    client_channel = serializers.CharField(required=False, allow_blank=True, max_length=16)
 
     def validate(self, attrs):
         from sales.module_settings import apply_sale_module_settings
@@ -322,6 +329,7 @@ class CheckoutHoldingSerializer(serializers.Serializer):
     )
     use_wallet = serializers.BooleanField(default=False)
     wallet_amount = serializers.DecimalField(max_digits=10, decimal_places=2, default=0, required=False)
+    client_channel = serializers.CharField(required=False, allow_blank=True, max_length=16)
 
     def validate(self, attrs):
         from sales.module_settings import apply_sale_module_settings
@@ -433,7 +441,18 @@ class SaleCreateSerializer(serializers.Serializer):
         default='change',
         help_text='How to handle excess payment: "change" to return change, "wallet" to add to customer wallet'
     )
-    
+    client_channel = serializers.CharField(required=False, allow_blank=True, max_length=16)
+
+    def validate_customer_phone(self, value):
+        from utils.phone import validate_optional_phone
+
+        return validate_optional_phone(value)
+
+    def validate_client_channel(self, value):
+        from sales.client_channel import normalize_client_channel
+
+        return normalize_client_channel(value)
+
     def validate(self, attrs):
         """Validate payment based on sale type and payment plan"""
         sale_type = attrs.get('sale_type', 'pos')

@@ -10,6 +10,7 @@ import {
 } from '../../ui/dialog';
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
+import SaleChannelIcon from '../../Sales/SaleChannelIcon';
 import { toast } from '../../../utils/toast';
 import { formatCurrency } from '../../../utils/formatters';
 import { isManagerOrAdminFromStorage, getStoredAuth } from '../../../utils/roleAccess';
@@ -119,7 +120,8 @@ export default function ReceiptDialog({
             <DialogTitle className="flex items-center gap-2 text-base">
               <ReceiptIcon className="h-5 w-5 text-primary" />
               Receipt
-              <span className="text-xs font-normal text-muted-foreground">
+              <span className="inline-flex items-center gap-1 text-xs font-normal text-muted-foreground">
+                <SaleChannelIcon channel={sale.client_channel} className="h-3 w-3" />
                 {sale.sale_number}
               </span>
               {printedOnce && (

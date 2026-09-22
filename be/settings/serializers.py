@@ -60,6 +60,11 @@ class TenantSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Tenant code already exists")
         return value
 
+    def validate_phone(self, value):
+        from utils.phone import validate_optional_phone
+
+        return validate_optional_phone(value)
+
 
 class TenantListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for tenant lists"""
@@ -116,6 +121,11 @@ class BranchSerializer(serializers.ModelSerializer):
         if queryset.exists():
             raise serializers.ValidationError("Branch code already exists for this tenant")
         return value
+
+    def validate_phone(self, value):
+        from utils.phone import validate_optional_phone
+
+        return validate_optional_phone(value)
 
 
 class BranchListSerializer(serializers.ModelSerializer):

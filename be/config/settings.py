@@ -164,6 +164,8 @@ LANGUAGE_CODE = env_str('LANGUAGE_CODE', 'en-us')
 TIME_ZONE = env_str('TIME_ZONE', 'Africa/Nairobi')
 USE_I18N = True
 USE_TZ = True
+# Digits only, no plus. Applied when saving customer/user/supplier/employee phones.
+DEFAULT_PHONE_COUNTRY_CODE = env_str('DEFAULT_PHONE_COUNTRY_CODE', '254')
 
 # ---------------------------------------------------------------------------
 # Static / media

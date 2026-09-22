@@ -132,6 +132,25 @@ export function isManagerOrAdminFromStorage() {
   return persona === PERSONA.SUPER_ADMIN || persona === PERSONA.MANAGER;
 }
 
+/**
+ * Store-wide sales totals (today / week / month / daily tracker for all cashiers).
+ * Default: Super Admin / Admin only. Grant sales.view_all to open it for others.
+ */
+export function userSeesAllSalesFromStorage() {
+  const { permissions, user, profile } = getStoredAuth();
+  if (user?.is_superuser) return true;
+  if (profile?.is_super_admin) return true;
+  const legacy = (profile?.role || '').toString();
+  if (legacy === 'super_admin' || legacy === 'admin') return true;
+  const roleName = (
+    profile?.custom_role?.name
+    || profile?.role_display
+    || ''
+  ).toString().trim();
+  if (['Super Admin', 'Admin', 'Administrator'].includes(roleName)) return true;
+  return hasPermission(permissions, 'sales', 'view_all');
+}
+
 export function hasPermission(permissions, module, action) {
   if (!Array.isArray(permissions)) return false;
   const key = `${module}.${action}`;

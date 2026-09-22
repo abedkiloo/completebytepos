@@ -392,6 +392,23 @@ docker exec omuwenga-uat_backend python manage.py seed_uat_sofa_catalog --revert
 
 SKUs start with `UAT-SOFA-`. `--revert` does not touch production-like products or the default users.
 
+### 3c. Backfill existing phone numbers (country prefix)
+
+New contacts are stored with a country prefix (default `254`). To update numbers already in the database:
+
+```bash
+# Preview
+./normalize_phone_numbers.sh --dry-run
+# Write
+./normalize_phone_numbers.sh
+
+# UAT stack
+./normalize_phone_numbers.sh --uat --dry-run
+./normalize_phone_numbers.sh --uat
+```
+
+Or: `docker exec completebytepos_backend python manage.py normalize_phone_numbers --dry-run`
+
 ### 4. Host reverse proxy
 
 Terminate TLS by hostname. Example Caddyfile is in `deploy/Caddyfile.example`:

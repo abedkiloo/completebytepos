@@ -9,6 +9,7 @@ import {
   saleItemNetQuantity,
   saleItemNetSubtotal,
 } from '../../../utils/saleItemDisplay';
+import SaleChannelIcon from '../../Sales/SaleChannelIcon';
 
 /**
  * Recent completed sales for the selected customer (one batch per sale).
@@ -83,7 +84,10 @@ export default function CustomerRecentSales({ customerId }) {
                   )}
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="truncate font-medium">{sale.sale_number}</span>
+                      <span className="truncate font-medium inline-flex items-center gap-1.5 min-w-0">
+                        <SaleChannelIcon channel={sale.client_channel} />
+                        <span className="truncate">{sale.sale_number}</span>
+                      </span>
                       <span className="shrink-0 tabular-nums font-medium">
                         {formatCurrency(displayTotal)}
                       </span>

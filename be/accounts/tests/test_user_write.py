@@ -46,10 +46,10 @@ class ApplyProfileUpdatesTests(TestCase):
         )
 
     def test_creates_profile_when_missing(self):
-        apply_profile_updates(self.user, {'role': 'cashier', 'phone_number': '123'})
+        apply_profile_updates(self.user, {'role': 'cashier', 'phone_number': '0712345678'})
         self.user.refresh_from_db()
         self.assertTrue(hasattr(self.user, 'profile'))
-        self.assertEqual(self.user.profile.phone_number, '123')
+        self.assertEqual(self.user.profile.phone_number, '254712345678')
 
     def test_updates_role_and_custom_role(self):
         UserProfile.objects.create(user=self.user, role='cashier')

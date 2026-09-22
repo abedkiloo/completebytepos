@@ -465,7 +465,7 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
         from sales.visibility import user_sees_all_sales
 
-        # Sales agents cannot request another cashier's daily report.
+        # Non-admin users cannot request another cashier's daily report.
         if not user_sees_all_sales(request.user):
             cashier_id = request.user.id
         elif cashier_id not in (None, ''):
@@ -596,6 +596,8 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             )
         created = not data.get('holding_id')
         try:
+            from sales.client_channel import resolve_client_channel
+
             holding = self.sale_service.save_holding_sale(
                 request.user,
                 data.get('items', []),
@@ -605,6 +607,7 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 discount_amount=Decimal(str(data.get('discount_amount', 0))),
                 notes=data.get('notes', ''),
                 holding_id=data.get('holding_id'),
+                client_channel=resolve_client_channel(request, data),
             )
         except ValidationError as e:
             return Response(
@@ -635,6 +638,8 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             )
 
         try:
+            from sales.client_channel import resolve_client_channel
+
             sale = self.sale_service.complete_holding_sale(
                 holding,
                 payment_method=serializer.validated_data['payment_method'],
@@ -646,6 +651,7 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 excess_payment_choice=serializer.validated_data.get('excess_payment_choice', 'change'),
                 use_wallet=serializer.validated_data.get('use_wallet', False),
                 wallet_amount=Decimal(str(serializer.validated_data.get('wallet_amount', 0))),
+                client_channel=resolve_client_channel(request, serializer.validated_data),
             )
         except ValidationError as e:
             return Response(

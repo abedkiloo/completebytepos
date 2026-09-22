@@ -122,7 +122,7 @@ class SaleService(BaseService):
         elif filters.get('include_holding') not in (True, 'true', '1', 1):
             queryset = queryset.exclude(status='holding')
 
-        # Sales agents only see their own sales; managers/admins see store-wide.
+        # Own sales only unless admin / sales.view_all.
         from sales.visibility import own_sales_q, user_sees_all_sales
 
         if request is not None and getattr(request, 'user', None) is not None:
@@ -353,6 +353,7 @@ class SaleService(BaseService):
         discount_amount: Decimal = Decimal('0'),
         notes: str = '',
         holding_id: Optional[int] = None,
+        client_channel: Optional[str] = None,
     ) -> Sale:
         """
         Create or update a holding (draft) sale. Does NOT move stock or post
@@ -391,6 +392,8 @@ class SaleService(BaseService):
             holding.amount_paid = Decimal('0')
             holding.change = Decimal('0')
             holding.notes = notes or holding.notes
+            if client_channel:
+                holding.client_channel = client_channel
             holding.save()
         else:
             holding = self.model.objects.create(
@@ -407,6 +410,7 @@ class SaleService(BaseService):
                 amount_paid=Decimal('0'),
                 change=Decimal('0'),
                 notes=notes,
+                client_channel=client_channel or 'unknown',
             )
 
         for item_data in validated_items:
@@ -435,6 +439,7 @@ class SaleService(BaseService):
         use_wallet: bool = False,
         wallet_amount: Decimal = Decimal('0'),
         payment_reference: str = '',
+        client_channel: Optional[str] = None,
     ) -> Sale:
         """Finalise a holding sale: stock, journal entry, status=completed."""
         if holding.status != 'holding':
@@ -512,6 +517,8 @@ class SaleService(BaseService):
         holding.payment_method = payment_method
         holding.payment_reference = payment_reference
         holding.status = 'completed'
+        if client_channel:
+            holding.client_channel = client_channel
         holding.save()
 
         self._apply_sale_payment(customer, holding, user, payment_result)
@@ -604,6 +611,7 @@ class SaleService(BaseService):
             notes=sale_data.get('notes', ''),
             occurred_at=occurred_at,
             entry_source=entry_source,
+            client_channel=sale_data.get('client_channel') or 'unknown',
             backfill_reason=sale_data.get('backfill_reason', ''),
         )
         
@@ -1062,6 +1070,9 @@ class SaleService(BaseService):
             'delivery_cost': delivery_cost,
             'customer': customer,
         }
+        from sales.client_channel import resolve_client_channel
+
+        sale_data['client_channel'] = resolve_client_channel(request, validated_data)
         if validated_data.get('_backfill'):
             from sales.backfill_policy import resolve_backfill_served_by
 

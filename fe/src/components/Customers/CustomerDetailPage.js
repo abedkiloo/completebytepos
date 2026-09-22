@@ -29,6 +29,7 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { CustomerWalletBalance } from './CustomerWalletBalance';
 import SaleDetailDialog from '../Sales/SaleDetailDialog';
+import SaleChannelIcon from '../Sales/SaleChannelIcon';
 import RefundSaleDialog from '../Sales/RefundSaleDialog';
 import ReceiveWalletPaymentDialog from './ReceiveWalletPaymentDialog';
 import {
@@ -276,7 +277,10 @@ export default function CustomerDetailPage() {
                         onClick={() => openSale(order)}
                       >
                         <DataTableCell className="font-medium">
-                          {order.sale_number}
+                          <span className="inline-flex items-center gap-1.5">
+                            <SaleChannelIcon channel={order.client_channel} />
+                            {order.sale_number}
+                          </span>
                         </DataTableCell>
                         <DataTableCell className="text-muted-foreground text-sm whitespace-nowrap">
                           {formatDateTime(order.occurred_at || order.created_at)}

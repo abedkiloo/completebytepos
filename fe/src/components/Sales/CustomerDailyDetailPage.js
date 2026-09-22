@@ -30,6 +30,7 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
 import SaleDetailDialog from './SaleDetailDialog';
+import SaleChannelIcon from './SaleChannelIcon';
 import RefundSaleDialog from './RefundSaleDialog';
 import ReceiveWalletPaymentDialog from '../Customers/ReceiveWalletPaymentDialog';
 import {
@@ -369,9 +370,10 @@ export default function CustomerDailyDetailPage() {
                   <DataTableCell>
                     <button
                       type="button"
-                      className="font-medium text-primary hover:underline"
+                      className="font-medium text-primary hover:underline inline-flex items-center gap-1.5"
                       onClick={() => openReceipt(order)}
                     >
+                      <SaleChannelIcon channel={order.client_channel} />
                       {order.sale_number}
                     </button>
                     <div className="text-xs text-muted-foreground">

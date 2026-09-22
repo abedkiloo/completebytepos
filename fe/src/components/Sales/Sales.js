@@ -13,6 +13,7 @@ import { pendingApprovalToastMessage } from '../../utils/makerChecker';
 import { saleDisplayItemCount, saleDisplayTotal } from '../../utils/saleItemDisplay';
 import RefundSaleDialog from './RefundSaleDialog';
 import SaleDetailDialog from './SaleDetailDialog';
+import SaleChannelIcon from './SaleChannelIcon';
 import ReportExportButtons from '../Reports/ReportExportButtons';
 import { salesHistoryExportParams } from '../../utils/reportExport';
 import { Button } from '../ui/button';
@@ -399,9 +400,10 @@ const Sales = () => {
                     <DataTableCell>
                       <button
                         type="button"
-                        className="font-medium text-primary hover:underline"
+                        className="font-medium text-primary hover:underline inline-flex items-center gap-1.5"
                         onClick={() => handleViewReceipt(sale)}
                       >
+                        <SaleChannelIcon channel={sale.client_channel} />
                         {sale.sale_number}
                       </button>
                       {sale.is_late_entry ? (

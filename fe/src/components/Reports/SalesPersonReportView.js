@@ -11,6 +11,7 @@ import { R } from './reportUI';
 import PeriodPills from './PeriodPills';
 import { DEFAULT_REPORT_PERIOD } from '../../utils/reportPeriods';
 import ReportExportButtons from './ReportExportButtons';
+import SaleChannelIcon from '../Sales/SaleChannelIcon';
 
 function currentMonthValue() {
   const now = new Date();
@@ -216,7 +217,12 @@ export default function SalesPersonReportView() {
                   <tbody>
                     {data.transactions.map((tx) => (
                       <tr key={tx.sale_id}>
-                        <td>{tx.sale_number}</td>
+                        <td>
+                          <span className="inline-flex items-center gap-1.5">
+                            <SaleChannelIcon channel={tx.client_channel} />
+                            {tx.sale_number}
+                          </span>
+                        </td>
                         <td>{formatDateTime(tx.date)}</td>
                         <td className="capitalize">{tx.payment_method}</td>
                         <td>{formatCurrency(tx.net)}</td>

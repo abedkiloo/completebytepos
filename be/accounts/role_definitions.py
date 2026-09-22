@@ -57,6 +57,7 @@ PERMISSIONS_DATA = [
     ('sales', 'refund', 'Refund completed sales'),
     ('sales', 'export', 'Export sales'),
     ('sales', 'daily_sales', 'View daily sales tracker (paid vs debt by day)'),
+    ('sales', 'view_all', 'View all staff sales (store-wide today / week / month)'),
     ('agents', 'view', 'View customer sites and visit media'),
     ('agents', 'create', 'Create customer sites and media'),
     ('agents', 'update', 'Update sites, upload media, finalize visits'),
@@ -184,7 +185,7 @@ ROLE_SCREEN_MATRIX = {
         'System settings',
     ],
     ROLE_MANAGER: [
-        'Dashboard (operations KPIs)',
+        'Dashboard (your sales today/week/month; grant sales.view_all for store-wide)',
         'Products / Categories / Inventory',
         'Stock purchase & transfers',
         'POS + Terminal POS',
@@ -193,7 +194,7 @@ ROLE_SCREEN_MATRIX = {
         'Expenses / Income (no user admin)',
     ],
     ROLE_SALES: [
-        'Dashboard (today sales + quick POS)',
+        'Dashboard (your sales today/week/month + quick POS)',
         'POS (/pos)',
         'Terminal POS (/pos/billing)',
         'Customers (add walk-in / credit)',
@@ -260,8 +261,9 @@ def _manager_queryset():
             action='approve',
             module__in=_MANAGER_NO_APPROVE_MODULES,
         )
-        # Daily Sales Tracker is admin-grantable; not in default manager pack.
+        # Daily Sales Tracker + store-wide sales totals are admin-grantable.
         .exclude(module='sales', action='daily_sales')
+        .exclude(module='sales', action='view_all')
     )
 
 

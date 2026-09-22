@@ -118,6 +118,12 @@ class Sale(models.Model):
         ('normal', 'Normal sale'),
         ('backfill', 'Past sale entry'),
     ]
+
+    CLIENT_CHANNEL_CHOICES = [
+        ('web', 'Web'),
+        ('mobile', 'Mobile app'),
+        ('unknown', 'Unknown'),
+    ]
     
     PAYMENT_METHODS = [
         ('cash', 'Cash'),
@@ -235,6 +241,13 @@ class Sale(models.Model):
         choices=ENTRY_SOURCE_CHOICES,
         default='pos',
         db_index=True,
+    )
+    client_channel = models.CharField(
+        max_length=16,
+        choices=CLIENT_CHANNEL_CHOICES,
+        default='unknown',
+        db_index=True,
+        help_text='Whether this sale was recorded from the web POS or the mobile app.',
     )
     backfill_reason = models.TextField(
         blank=True,

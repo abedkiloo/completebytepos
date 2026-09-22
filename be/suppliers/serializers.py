@@ -22,6 +22,16 @@ class SupplierSerializer(serializers.ModelSerializer):
         from suppliers.module_settings import apply_supplier_representation_flags
 
         return apply_supplier_representation_flags(super().to_representation(instance))
+
+    def validate_phone(self, value):
+        from utils.phone import validate_optional_phone
+
+        return validate_optional_phone(value)
+
+    def validate_alternate_phone(self, value):
+        from utils.phone import validate_optional_phone
+
+        return validate_optional_phone(value)
     
     class Meta:
         model = Supplier

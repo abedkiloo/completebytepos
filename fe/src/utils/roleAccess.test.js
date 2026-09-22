@@ -4,6 +4,7 @@ import {
   hasPermission,
   canAccessRoute,
   isManagerOrAdminFromStorage,
+  userSeesAllSalesFromStorage,
 } from './roleAccess';
 import { cacheModuleSettings } from './moduleSettingsCache';
 import { cacheStoreSettings } from './storeSettingsCache';
@@ -152,6 +153,32 @@ describe('roleAccess', () => {
       JSON.stringify({ role: 'manager', custom_role: { name: 'Manager' } })
     );
     expect(isManagerOrAdminFromStorage()).toBe(true);
+  });
+
+  test('userSeesAllSalesFromStorage is admin or sales.view_all only', () => {
+    localStorage.setItem('user', JSON.stringify({ id: 1, username: 'mgr' }));
+    localStorage.setItem(
+      'profile',
+      JSON.stringify({ role: 'manager', custom_role: { name: 'Manager' } })
+    );
+    localStorage.setItem('permissions', JSON.stringify([]));
+    expect(userSeesAllSalesFromStorage()).toBe(false);
+
+    localStorage.setItem(
+      'profile',
+      JSON.stringify({ role: 'admin', custom_role: { name: 'Admin' } })
+    );
+    expect(userSeesAllSalesFromStorage()).toBe(true);
+
+    localStorage.setItem(
+      'profile',
+      JSON.stringify({ role: 'manager', custom_role: { name: 'Manager' } })
+    );
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([{ module: 'sales', action: 'view_all', name: 'sales.view_all' }])
+    );
+    expect(userSeesAllSalesFromStorage()).toBe(true);
   });
 
   test('system-settings is super-admin only', () => {

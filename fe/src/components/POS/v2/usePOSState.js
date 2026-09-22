@@ -651,6 +651,7 @@ export function usePOSState() {
             ? selectedCustomer.id
             : null,
         sale_type: 'pos',
+        client_channel: 'web',
         allow_partial_payment: !!allowPartial,
         excess_payment_choice: excessChoice || 'change',
       };

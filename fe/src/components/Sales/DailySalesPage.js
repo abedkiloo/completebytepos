@@ -16,13 +16,19 @@ import {
 import { salesAPI } from '../../services/api';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { toast } from '../../utils/toast';
-import { getStoredAuth, hasPermission, isManagerOrAdminFromStorage } from '../../utils/roleAccess';
+import {
+  getStoredAuth,
+  hasPermission,
+  isManagerOrAdminFromStorage,
+  userSeesAllSalesFromStorage,
+} from '../../utils/roleAccess';
 import {
   canViewDailySalesFromStorage,
   dailySalesCustomerPath,
 } from '../../utils/dailySalesAccess';
 import { userCanRefundSales, saleIsRefundable, handleSaleRefundResponse } from '../../utils/saleRefund';
 import { pendingApprovalToastMessage } from '../../utils/makerChecker';
+import SaleChannelIcon from './SaleChannelIcon';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 
@@ -198,8 +204,8 @@ export default function DailySalesPage() {
         params.payment_status = paymentStatusTab;
       }
       if (!showingCollections && paymentMethod) params.payment_method = paymentMethod;
-      // Sales agents: own sales only (backend also enforces).
-      if (!isManagerOrAdminFromStorage()) {
+      // Own sales only unless admin / sales.view_all (backend also enforces).
+      if (!userSeesAllSalesFromStorage()) {
         const { user } = getStoredAuth();
         if (user?.id) params.cashier_id = user.id;
       }
@@ -317,7 +323,7 @@ export default function DailySalesPage() {
       <PageHeader
         title="Daily Sales Tracker"
         description={
-          isManagerOrAdminFromStorage()
+          userSeesAllSalesFromStorage()
             ? 'Monitor daily sales revenue, upfront payments collected, and credit orders taken as debt.'
             : 'Your sales only — revenue, payments collected, and credit you booked today.'
         }
@@ -639,9 +645,10 @@ export default function DailySalesPage() {
                     <DataTableCell>
                       <button
                         type="button"
-                        className="font-medium text-primary hover:underline text-left block"
+                        className="font-medium text-primary hover:underline text-left inline-flex items-center gap-1.5"
                         onClick={() => handleViewReceipt(order)}
                       >
+                        <SaleChannelIcon channel={order.client_channel} />
                         {order.sale_number}
                       </button>
                       <div className="text-xs text-muted-foreground whitespace-nowrap">

@@ -56,6 +56,7 @@ jest.mock('../../utils/roleAccess', () => ({
     return false;
   },
   isManagerOrAdminFromStorage: () => true,
+  userSeesAllSalesFromStorage: () => true,
 }));
 
 jest.mock('../../utils/dailySalesAccess', () => ({

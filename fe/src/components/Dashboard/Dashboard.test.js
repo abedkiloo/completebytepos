@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import Dashboard from './Dashboard';
 import { reportsAPI, productsAPI, salesAPI, authAPI } from '../../services/api';
-import { getStoredAuth, hasPermission, resolvePersona } from '../../utils/roleAccess';
+import { getStoredAuth, hasPermission, resolvePersona, userSeesAllSalesFromStorage } from '../../utils/roleAccess';
 import {
   getDefaultPosRoute,
   isBillingPosEnabled,
@@ -25,6 +25,7 @@ jest.mock('../../utils/roleAccess', () => ({
   getStoredAuth: jest.fn(),
   hasPermission: jest.fn(),
   resolvePersona: jest.fn(),
+  userSeesAllSalesFromStorage: jest.fn(),
 }));
 
 jest.mock('../../utils/moduleFeatures', () => ({
@@ -58,6 +59,7 @@ describe('Dashboard', () => {
     });
     hasPermission.mockReturnValue(true);
     resolvePersona.mockReturnValue('manager');
+    userSeesAllSalesFromStorage.mockReturnValue(true);
     getDefaultPosRoute.mockReturnValue('/pos');
     isBillingPosEnabled.mockReturnValue(false);
     isRetailPosEnabled.mockReturnValue(true);
@@ -76,6 +78,14 @@ describe('Dashboard', () => {
     });
     productsAPI.list.mockResolvedValue({
       data: { results: [{ id: 4, name: 'Milk', sku: 'M-1', stock_quantity: 2 }] },
+    });
+    salesAPI.dashboardSummary.mockResolvedValue({
+      data: {
+        today: { sales_count: 2, total: 150 },
+        week: { sales_count: 3, total: 200, days: weekDays },
+        month: { total: 800 },
+        growth: { sales: 0 },
+      },
     });
     salesAPI.list.mockResolvedValue({
       data: {
@@ -129,6 +139,7 @@ describe('Dashboard', () => {
 
   it('uses sales quick actions and billing POS copy', async () => {
     resolvePersona.mockReturnValue('sales');
+    userSeesAllSalesFromStorage.mockReturnValue(false);
     isBillingPosEnabled.mockReturnValue(true);
     isRetailPosEnabled.mockReturnValue(false);
     getDefaultPosRoute.mockReturnValue('/pos/billing');
@@ -175,6 +186,18 @@ describe('Dashboard', () => {
         growth: { sales: 4 },
       },
     });
+    salesAPI.dashboardSummary.mockResolvedValue({
+      data: {
+        today: { sales_count: 1, total: 40 },
+        week: {
+          sales_count: 1,
+          total: 40,
+          days: [{ date: '2026-08-18', label: 'Tue', sales_count: 1, total: 40 }],
+        },
+        month: { total: 40 },
+        growth: { sales: 4 },
+      },
+    });
     salesAPI.list.mockResolvedValue({
       data: [{ id: 9, status: 'completed', total: 40 }],
     });
@@ -184,11 +207,10 @@ describe('Dashboard', () => {
       expect(screen.getAllByText(/Start sale/).length).toBeGreaterThan(0);
     });
     expect(screen.getByText('Retail POS checkout')).toBeInTheDocument();
-    expect(screen.getByText('This month')).toBeInTheDocument();
-    expect(screen.getByText('1 order today')).toBeInTheDocument();
+    expect(screen.getByText('Month revenue')).toBeInTheDocument();
+    expect(screen.getAllByText(/1 order today/).length).toBeGreaterThan(0);
     expect(screen.getByText('Sale #9')).toBeInTheDocument();
     expect(screen.getByText('—')).toBeInTheDocument();
-    expect(screen.queryByText('Low stock SKUs')).not.toBeInTheDocument();
     expect(screen.getByText(/walk-in cash\/card sales/)).toBeInTheDocument();
   });
 
