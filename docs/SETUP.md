@@ -378,7 +378,7 @@ The UAT web app still calls `/api` on `https://uat.omuwenga.com` (nginx proxies 
 
 ### 3b. Optional sofa-craft catalog (UAT only)
 
-Products and size/color variants only — **no sales or stock movements**. Opening stock is 0 so you enter transactions while testing.
+Products and size/color variants only — **no sales or receiving documents**. Opening stock is mixed: **3 out of stock**, **4 low stock**, the rest in stock.
 
 ```bash
 docker exec omuwenga-uat_backend python manage.py seed_uat_sofa_catalog

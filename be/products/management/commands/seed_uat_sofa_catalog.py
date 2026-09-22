@@ -12,6 +12,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from products.models import Category, Color, Product, ProductVariant, Size
+from products.stock_utils import sync_product_stock_from_variants
 
 SKU_PREFIX = 'UAT-SOFA-'
 BARCODE_PREFIX = '8908'
@@ -43,7 +44,16 @@ UPHOLSTERY_COLORS = ('Cream', 'Charcoal', 'Navy', 'Burgundy')
 WOOD_COLORS = ('Walnut', 'Black', 'Beige')
 METAL_COLORS = ('Black', 'Charcoal')
 
-# Catalog only: stock stays 0 so testers record receiving/sales themselves.
+# Opening stock for UAT browsing. Testers still enter sales/receiving themselves.
+OK_STOCK = 80
+OK_VARIANT_STOCK = 40
+LOW_STOCK = 3  # at/under low_stock_threshold (5) but not zero
+OUT_STOCK = 0
+
+# Exactly 3 products fully out of stock; 4 fully low; the rest healthy.
+OUT_OF_STOCK_SKUS = ('DACRON', 'WOOD-GLUE', 'FAUX-LEATHER')
+LOW_STOCK_SKUS = ('STAPLES', 'WEBBING', 'PIPING', 'THROW-COVER')
+
 CATALOG = [
     {
         'subcategory': 'UAT Fabric & Upholstery',
@@ -343,6 +353,7 @@ class Command(BaseCommand):
                 size_codes = item['sizes']
                 color_names = item['colors']
                 has_variants = bool(size_codes or color_names)
+                stock_qty = self._opening_stock(item['sku'], has_variants)
 
                 product, created = Product.objects.update_or_create(
                     sku=sku,
@@ -354,15 +365,14 @@ class Command(BaseCommand):
                         'mrp': Decimal(item['mrp']),
                         'price': Decimal(item['price']),
                         'cost': Decimal(item['cost']),
-                        'stock_quantity': 0,
+                        'stock_quantity': stock_qty,
                         'low_stock_threshold': 5,
                         'unit': item['unit'],
                         'track_stock': True,
                         'is_active': True,
                         'has_variants': has_variants,
                         'description': (
-                            f"{item['name']} for sofa-set making. "
-                            'UAT seed — no opening stock; receive stock during testing.'
+                            f"{item['name']} for sofa-set making. UAT seed catalog."
                         ),
                     },
                 )
@@ -389,7 +399,7 @@ class Command(BaseCommand):
                             'size': size,
                             'color': color,
                             'barcode': v_barcode,
-                            'stock_quantity': 0,
+                            'stock_quantity': stock_qty,
                             'low_stock_threshold': 5,
                             'is_active': True,
                             'price': None,
@@ -400,9 +410,12 @@ class Command(BaseCommand):
                     if v_created:
                         created_variants += 1
 
+                sync_product_stock_from_variants(product)
+
         self.stdout.write(self.style.SUCCESS(
             f'UAT sofa catalog ready: {created_products} new products, '
-            f'{created_variants} new variants. Stock is 0 (no transactions).'
+            f'{created_variants} new variants. '
+            '3 out of stock, 4 low stock, remaining in stock.'
         ))
         self.stdout.write('Revert later with: python manage.py seed_uat_sofa_catalog --revert')
 
@@ -412,6 +425,13 @@ class Command(BaseCommand):
         if sizes:
             return [(s, None) for s in sizes]
         return [(None, c) for c in colors]
+
+    def _opening_stock(self, sku_suffix, has_variants):
+        if sku_suffix in OUT_OF_STOCK_SKUS:
+            return OUT_STOCK
+        if sku_suffix in LOW_STOCK_SKUS:
+            return LOW_STOCK
+        return OK_VARIANT_STOCK if has_variants else OK_STOCK
 
     def _ensure_sizes(self):
         by_code = {}

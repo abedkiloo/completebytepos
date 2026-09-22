@@ -2,23 +2,45 @@ from django.core.management import call_command
 from django.test import TestCase
 
 from products.models import Category, Product, ProductVariant, Size
+from products.stock_alerts import product_has_low_stock, product_has_out_of_stock
 
 
 class SeedUatSofaCatalogTests(TestCase):
-    def test_seeds_sofa_craft_products_with_variants_and_zero_stock(self):
+    def test_seeds_sofa_craft_products_with_mixed_stock(self):
         call_command('seed_uat_sofa_catalog')
 
-        products = Product.objects.filter(sku__startswith='UAT-SOFA-')
-        self.assertGreaterEqual(products.count(), 15)
-        self.assertTrue(products.filter(has_variants=True).exists())
-        self.assertTrue(products.filter(has_variants=False).exists())
-        self.assertFalse(products.exclude(stock_quantity=0).exists())
+        products = list(Product.objects.filter(sku__startswith='UAT-SOFA-'))
+        self.assertGreaterEqual(len(products), 15)
+        self.assertTrue(any(p.has_variants for p in products))
+        self.assertTrue(any(not p.has_variants for p in products))
+
+        out_skus = {'UAT-SOFA-DACRON', 'UAT-SOFA-WOOD-GLUE', 'UAT-SOFA-FAUX-LEATHER'}
+        low_skus = {
+            'UAT-SOFA-STAPLES',
+            'UAT-SOFA-WEBBING',
+            'UAT-SOFA-PIPING',
+            'UAT-SOFA-THROW-COVER',
+        }
+        out = [p for p in products if product_has_out_of_stock(p)]
+        low = [
+            p for p in products
+            if product_has_low_stock(p) and not product_has_out_of_stock(p)
+        ]
+        ok = [
+            p for p in products
+            if not product_has_out_of_stock(p) and not product_has_low_stock(p)
+        ]
+
+        self.assertEqual({p.sku for p in out}, out_skus)
+        self.assertEqual({p.sku for p in low}, low_skus)
+        self.assertEqual(len(out), 3)
+        self.assertEqual(len(low), 4)
+        self.assertGreater(len(ok), 0)
 
         velvet = Product.objects.get(sku='UAT-SOFA-VELVET')
-        self.assertTrue(velvet.has_variants)
         variants = ProductVariant.objects.filter(product=velvet)
-        self.assertEqual(variants.count(), 8)  # 2 widths × 4 colors
-        self.assertFalse(variants.exclude(stock_quantity=0).exists())
+        self.assertEqual(variants.count(), 8)
+        self.assertTrue(variants.filter(stock_quantity__gt=5).exists())
         self.assertTrue(variants.filter(size__isnull=False, color__isnull=False).exists())
 
         foam = Product.objects.get(sku='UAT-SOFA-HD-FOAM')
