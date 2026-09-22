@@ -376,6 +376,22 @@ Same stack as `./run_docker.sh --uat`. Use `./run_uat.sh --clear-cache` to wipe 
 
 The UAT web app still calls `/api` on `https://uat.omuwenga.com` (nginx proxies to Gunicorn). Mobile and Postman should use `https://api.uat.omuwenga.com/api`. Django admin: `https://api.uat.omuwenga.com/admin`.
 
+### 3b. Optional sofa-craft catalog (UAT only)
+
+Products and size/color variants only — **no sales or stock movements**. Opening stock is 0 so you enter transactions while testing.
+
+```bash
+docker exec omuwenga-uat_backend python manage.py seed_uat_sofa_catalog
+```
+
+Remove it when you are done:
+
+```bash
+docker exec omuwenga-uat_backend python manage.py seed_uat_sofa_catalog --revert
+```
+
+SKUs start with `UAT-SOFA-`. `--revert` does not touch production-like products or the default users.
+
 ### 4. Host reverse proxy
 
 Terminate TLS by hostname. Example Caddyfile is in `deploy/Caddyfile.example`:
