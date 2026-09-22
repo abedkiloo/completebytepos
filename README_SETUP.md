@@ -284,6 +284,8 @@ python manage.py migrate
 
 ## Production Deployment
 
+Canonical VPS steps (prod + UAT on one box): **[docs/SETUP.md](docs/SETUP.md)**.
+
 ### Docker (frontend = React production build)
 
 Use the **production** compose stack so the UI is a static build (CRA `npm run build` + nginx), not the dev server:
@@ -294,15 +296,33 @@ Use the **production** compose stack so the UI is a static build (CRA `npm run b
 
 After UI changes, rebuild: `./run_docker.sh --prod --rebuild`
 
-Details: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+### UAT on the same VPS
+
+Own database, env, and ports. Frontend `uat.omuwenga.com`, backend `api.uat.omuwenga.com`.
+
+```bash
+cp .env.uat.example .env.uat   # unique SECRET_KEY and DB password
+./run_uat.sh
+docker exec omuwenga-uat_backend python manage.py setup_new_organization
+```
+
+Host reverse proxy (`deploy/Caddyfile.example`):
+
+- `shop.omuwenga.com` → `127.0.0.1:3000`
+- `uat.omuwenga.com` → `127.0.0.1:3100`
+- `api.uat.omuwenga.com` → `127.0.0.1:8001`
+
+`./stop_uat.sh` stops UAT only. `./stop_production.sh` stops production only.
+
+Details: [docs/SETUP.md](docs/SETUP.md#uat-on-the-same-vps) · [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 
 ### Checklist (any host)
 
-1. Set `DEBUG=False` and a strong `SECRET_KEY` (see `.env.production.example`)
-2. Set proper `ALLOWED_HOSTS`
+1. Set `DEBUG=False` and a strong `SECRET_KEY` (see `.env.production.example` / `.env.uat.example`)
+2. Set proper `ALLOWED_HOSTS` (UAT must include `uat.omuwenga.com` and `api.uat.omuwenga.com`)
 3. Frontend: run `npm run build` and serve `fe/build` with nginx (never `npm start` in production)
-4. Backend: Gunicorn behind nginx; proxy `/api` to Django
-5. Configure SSL/HTTPS and database backups
+4. Backend: Gunicorn behind nginx/Caddy; proxy `/api` to Django
+5. Configure SSL/HTTPS and database backups (UAT volume is separate from prod)
 
 ---
 

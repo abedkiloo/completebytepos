@@ -1,8 +1,8 @@
 # Docker Compose — PRODUCTION (and UAT on the same VPS)
 #
 # Frontend: npm run build → nginx (port 80 in container).
-# Start prod: ./run_docker.sh --prod
-# Start UAT:  ./run_docker.sh --uat   (uses .env.uat, project omuwenga-uat)
+# Start prod: ./run_production.sh   (or ./run_docker.sh --prod)
+# Start UAT:  ./run_uat.sh          (or ./run_docker.sh --uat)
 #
 # Requires .env (copy from .env.example). PostgreSQL is the default database.
 # Load defaults (~2 GB VPS): 2 Gunicorn workers × 4 threads, Postgres 128MB shared_buffers.

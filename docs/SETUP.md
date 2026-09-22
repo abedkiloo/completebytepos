@@ -84,6 +84,22 @@ docker compose up -d --build
 
 After UI changes: `./run_docker.sh --prod --rebuild`
 
+### 3b. UAT stack (same VPS, own database)
+
+```bash
+cp .env.uat.example .env.uat
+./run_uat.sh
+docker exec omuwenga-uat_backend python manage.py setup_new_organization
+```
+
+| Service | URL |
+|---------|-----|
+| App (nginx + static React) | https://uat.omuwenga.com |
+| API (same-origin via nginx) | https://uat.omuwenga.com/api |
+| Public API / Django admin | https://api.uat.omuwenga.com |
+
+See [UAT on the same VPS](#uat-on-the-same-vps).
+
 ### 4. Complete organization setup (required)
 
 Docker startup runs `init_modules` and `create_users` but **does not** create a tenant/branch by default. Run:
@@ -122,23 +138,25 @@ A fresh database has **no** sizes/colors until you add them on that page or run 
 
 ## Environment configuration
 
-### Single source of truth: root `.env`
+### Single source of truth: root `.env` (and `.env.uat`)
 
-Docker Compose reads **`CompleteBytePOS/.env`** (repository root, beside `be/` and `fe/`).
+Docker Compose reads env files from **`CompleteBytePOS/`** (repository root, beside `be/` and `fe/`).
 
 | File | Used by |
 |------|---------|
-| `.env` (root) | Docker Compose, backend container (`env_file`) |
+| `.env` (root) | Prod and local Docker (`./run_docker.sh --prod`) |
+| `.env.uat` | UAT only (`./run_docker.sh --uat`) — never copy prod secrets into this file |
 | `fe/.env` | Only when running `npm start` **on the host** (not required for Docker) |
 
 **Important:** Keep **one** active `REACT_APP_API_URL` line in root `.env`. Duplicate keys (especially `/api` at the bottom) override the correct value.
 
 ### `REACT_APP_API_URL` by mode
 
-| Mode | Compose file | Set in root `.env` |
-|------|--------------|-------------------|
-| **Dev Docker** (UI on :3000, webpack) | `docker-compose.dev.yml` | `http://YOUR_SERVER_IP:8000/api` or `http://localhost:8000/api` |
-| **Prod Docker** (nginx proxies `/api`) | `docker-compose.yml` | Baked as `/api` (compose ignores a `:8000` value in `.env`) |
+| Mode | Compose file | Env file | `REACT_APP_API_URL` |
+|------|--------------|----------|---------------------|
+| **Dev Docker** (UI on :3000, webpack) | `docker-compose.dev.yml` | `.env` | `http://YOUR_SERVER_IP:8000/api` or `http://localhost:8000/api` |
+| **Prod Docker** (nginx proxies `/api`) | `docker-compose.yml` | `.env` | Baked as `/api` (compose ignores a `:8000` value) |
+| **UAT Docker** (nginx proxies `/api`) | `docker-compose.yml` (`-p omuwenga-uat`) | `.env.uat` | Baked as `/api`; mobile uses `https://api.uat.omuwenga.com/api` |
 
 **Remote dev VPS example:**
 
@@ -160,9 +178,27 @@ CSRF_COOKIE_SECURE=True
 SESSION_COOKIE_SECURE=True
 ```
 
+**UAT VPS example (frontend + dedicated API host):**
+
+```bash
+# .env.uat — copy from .env.uat.example
+REACT_APP_API_URL=/api
+PUBLIC_HOST=uat.omuwenga.com
+ALLOWED_HOSTS=uat.omuwenga.com,api.uat.omuwenga.com,localhost,127.0.0.1,backend,omuwenga-uat_backend
+CORS_ALLOWED_ORIGINS=https://uat.omuwenga.com,https://api.uat.omuwenga.com
+CSRF_TRUSTED_ORIGINS=https://uat.omuwenga.com,https://api.uat.omuwenga.com
+DEBUG=False
+USE_SECURE_PROXY_SSL_HEADER=True
+CSRF_COOKIE_SECURE=True
+SESSION_COOKIE_SECURE=True
+FRONTEND_PORT=3100
+BACKEND_PORT=8001
+POSTGRES_PORT=5435
+```
+
 If the SPA loads but shows “Cannot reach the server” and `/api/...` returns **400**,
-Django rejected the `Host` header — set `PUBLIC_HOST` / `ALLOWED_HOSTS` to the domain,
-then `docker compose up -d --force-recreate backend`.
+Django rejected the `Host` header — set `PUBLIC_HOST` / `ALLOWED_HOSTS` to the domain
+(include `api.uat.omuwenga.com` on UAT), then recreate the backend container.
 
 ### Shell exports override `.env`
 
@@ -181,6 +217,7 @@ docker exec completebytepos_frontend printenv REACT_APP_API_URL
 |--------|--------|
 | Root `.env` for dev frontend | `docker compose -f docker-compose.dev.yml up -d --force-recreate frontend` |
 | `REACT_APP_*` for prod build | Rebuild frontend image: `docker compose build frontend` then `up -d` |
+| `.env.uat` / UAT UI | `./run_docker.sh --uat --rebuild` |
 
 ### Dev fallback in code
 
@@ -259,8 +296,10 @@ docker exec completebytepos_backend python manage.py setup_new_organization
 | 80 / 443 | Public HTTPS (Caddy/nginx on the host) |
 | 3000 | Production web UI (nginx in Docker) |
 | 3100 | UAT web UI (`./run_docker.sh --uat`) |
-| 8000 | Backend API (needed for **dev** mode; prod binds **127.0.0.1** only — use :3000 `/api`) |
-| 5432 | PostgreSQL — **127.0.0.1** only; use an SSH tunnel for remote admin |
+| 8000 | Prod Gunicorn — **127.0.0.1** only (Caddy/`/api` on :3000). Open 8000 only for **dev** mode. |
+| 8001 | UAT Gunicorn — **127.0.0.1** only; public entry is `api.uat.omuwenga.com` |
+| 5432 | Prod PostgreSQL — **127.0.0.1** only; use an SSH tunnel for remote admin |
+| 5435 | UAT PostgreSQL — **127.0.0.1** only (`POSTGRES_PORT=5435`) |
 
 ### Do not run dev mode on a small production VPS
 
@@ -276,7 +315,7 @@ SESSION_COOKIE_SECURE=True
 USE_SECURE_PROXY_SSL_HEADER=True
 ```
 
-Add your public URL to `CSRF_TRUSTED_ORIGINS` and `CORS_ALLOWED_ORIGINS`.
+Add your public URL to `CSRF_TRUSTED_ORIGINS` and `CORS_ALLOWED_ORIGINS`. On UAT that is both `https://uat.omuwenga.com` and `https://api.uat.omuwenga.com`.
 
 ### Resource tuning (small VPS)
 
@@ -307,7 +346,7 @@ Production (`shop.omuwenga.com`) and UAT share one VPS and the same images/code,
 | Containers | `completebytepos_*` | `omuwenga-uat_*` |
 | App port | 3000 | 3100 |
 | Gunicorn (localhost) | 8000 | 8001 |
-| Postgres (localhost) | 5432 | 5433 |
+| Postgres (localhost) | 5432 | 5435 |
 | Public UI | shop.omuwenga.com | uat.omuwenga.com |
 | Public API | (via shop `/api`) | api.uat.omuwenga.com |
 | Gunicorn workers | 2 (default) | 1 (leave RAM for prod) |
@@ -329,9 +368,11 @@ nano .env.uat   # unique SECRET_KEY and POSTGRES_PASSWORD (never copy prod)
 ### 3. Start UAT (does not stop production)
 
 ```bash
-./run_docker.sh --uat
+./run_uat.sh
 docker exec omuwenga-uat_backend python manage.py setup_new_organization
 ```
+
+Same stack as `./run_docker.sh --uat`. Use `./run_uat.sh --clear-cache` to wipe Docker build cache first.
 
 The UAT web app still calls `/api` on `https://uat.omuwenga.com` (nginx proxies to Gunicorn). Mobile and Postman should use `https://api.uat.omuwenga.com/api`. Django admin: `https://api.uat.omuwenga.com/admin`.
 
@@ -346,10 +387,10 @@ Terminate TLS by hostname. Example Caddyfile is in `deploy/Caddyfile.example`:
 ### 5. Stop / rebuild
 
 ```bash
-./stop_docker.sh            # prod + dev only; UAT keeps running
-./stop_docker.sh --uat      # UAT only
+./stop_uat.sh               # UAT only (same as ./stop_docker.sh --uat)
+./stop_production.sh        # prod only
 ./stop_docker.sh --all      # everything
-./run_docker.sh --uat --rebuild   # after UI changes on UAT
+./run_uat.sh                # rebuild UAT from scratch (like ./run_production.sh)
 ```
 
 Do **not** run `docker compose down -v` on the default project — that would wipe production Postgres. To reset UAT data only:
@@ -357,6 +398,8 @@ Do **not** run `docker compose down -v` on the default project — that would wi
 ```bash
 docker compose -p omuwenga-uat --env-file .env.uat down -v
 ```
+
+If `run_uat.sh` fails with **port already allocated**, something else on the VPS already bound that port. Inspect with `ss -tlnp | grep 5435` or `docker ps`. Django still uses `db:5432` inside Docker; only the host publish uses `POSTGRES_PORT`.
 
 ---
 
@@ -421,10 +464,16 @@ Run after install or deploy:
 ```bash
 # Containers up
 docker ps --filter name=completebytepos
+docker ps --filter name=omuwenga-uat
 
-# API health (public endpoint through nginx)
+# Prod API health (through nginx)
 curl -s http://YOUR_HOST:3000/api/healthz/
 curl -s http://YOUR_HOST:3000/api/settings/setup-status/ | python3 -m json.tool
+
+# UAT: UI via nginx, API host via Caddy
+curl -sI https://uat.omuwenga.com/ | head -5
+curl -s https://api.uat.omuwenga.com/api/healthz/
+curl -s https://api.uat.omuwenga.com/api/settings/setup-status/ | python3 -m json.tool
 
 # Expect: "installed": true, "tenant_count": >= 1
 
@@ -581,8 +630,10 @@ Production and dev backends typically run (see `docker-compose*.yml`):
 | [DEPLOYMENT.md](./DEPLOYMENT.md) | Production build, nginx, `REACT_APP_*` bake time |
 | [POS_UX_ROLES_AND_TESTING.md](./POS_UX_ROLES_AND_TESTING.md) | Roles, personas, test matrix |
 | [README_SETUP.md](../README_SETUP.md) | Legacy local `setup.py` / `run.py` flow |
-| [.env.example](../.env.example) | All environment variables |
+| [.env.example](../.env.example) | Prod / local environment variables |
+| [.env.uat.example](../.env.uat.example) | UAT env (`uat.omuwenga.com` + `api.uat.omuwenga.com`) |
+| [Caddyfile.example](../deploy/Caddyfile.example) | Host TLS: shop, uat, api.uat |
 
 ---
 
-**Last updated:** aligns with Docker Compose dev/prod split, `create_users` bootstrap, and `setup_new_organization` for tenant/branch seeding.
+**Last updated:** one-VPS prod + UAT (`uat.omuwenga.com` UI, `api.uat.omuwenga.com` API), Docker Compose `create_users` bootstrap, and `setup_new_organization` for tenant/branch seeding.

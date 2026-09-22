@@ -13,8 +13,8 @@ CompleteBytePOS follows the [Create React App production build](https://create-r
 | Mode | Command | Frontend |
 |------|---------|----------|
 | **Development** | `./run_docker.sh` | React dev server (hot reload) |
-| **Production** | `./run_docker.sh --prod` | Built static files + nginx (`shop.omuwenga.com` → :3000) |
-| **UAT (same VPS)** | `./run_docker.sh --uat` | UI `uat.omuwenga.com` → :3100; API `api.uat.omuwenga.com` → :8001 |
+| **Production** | `./run_production.sh` or `./run_docker.sh --prod` | Built static files + nginx (`shop.omuwenga.com` → :3000) |
+| **UAT (same VPS)** | `./run_uat.sh` or `./run_docker.sh --uat` | UI `uat.omuwenga.com` → :3100; API `api.uat.omuwenga.com` → :8001 |
 
 Production stack (`docker-compose.yml`):
 
