@@ -124,6 +124,35 @@ services:
       retries: 3
       start_period: 20s
 
+  # Dumps Postgres to a .sql file on the *host* disk every two weeks.
+  # Files live in BACKUP_HOST_DIR (default ./backups), not in the postgres volume.
+  backup:
+    image: postgres:16-alpine
+    container_name: ${STACK_NAME:-completebytepos}_backup
+    environment:
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: ${POSTGRES_USER:-completebytepos}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-completebytepos}
+      PGDATABASE: ${POSTGRES_DB:-completebytepos}
+      STACK_NAME: ${STACK_NAME:-completebytepos}
+      BACKUP_DIR: /backups
+      BACKUP_INTERVAL_DAYS: ${BACKUP_INTERVAL_DAYS:-14}
+      BACKUP_KEEP: ${BACKUP_KEEP:-8}
+      TZ: ${TIME_ZONE:-Africa/Nairobi}
+    volumes:
+      - ${BACKUP_HOST_DIR:-./backups}:/backups
+      - ./scripts/backup_postgres.sh:/usr/local/bin/backup_postgres.sh:ro
+      - ./scripts/backup_loop.sh:/usr/local/bin/backup_loop.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/backup_loop.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 96m
+    networks:
+      - completebytepos_network
+
 volumes:
   backend_static:
   backend_media:

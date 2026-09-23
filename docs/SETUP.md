@@ -335,6 +335,40 @@ Watch live pressure with `docker stats`.
 
 ---
 
+## Database backups (every 2 weeks)
+
+The `backup` service dumps Postgres to a **plain `.sql` file on the host disk** (not into the `postgres_data` volume). It dumps on first start, then every 14 days, and keeps the newest 8 files.
+
+| | Production | UAT |
+|--|------------|-----|
+| Container | `completebytepos_backup` | `omuwenga-uat_backup` |
+| Host folder | `BACKUP_HOST_DIR` (default `./backups`) | `./backups/uat` |
+
+On a VPS, put dumps outside the app tree, e.g. in `.env`:
+
+```bash
+BACKUP_HOST_DIR=/var/backups/completebytepos
+BACKUP_INTERVAL_DAYS=14
+BACKUP_KEEP=8
+```
+
+Then `mkdir -p /var/backups/completebytepos` and `docker compose up -d backup`.
+
+Dump now (without waiting 14 days):
+
+```bash
+docker exec completebytepos_backup env FORCE=1 /usr/local/bin/backup_postgres.sh
+```
+
+Restore (overwrites the live database):
+
+```bash
+cat backups/completebytepos_completebytepos_YYYYMMDD_HHMMSS.sql \
+  | docker exec -i completebytepos_db psql -U completebytepos -d completebytepos
+```
+
+---
+
 ## UAT on the same VPS
 
 Production (`shop.omuwenga.com`) and UAT share one VPS and the same images/code, but **not** the same database, env file, ports, or volumes.

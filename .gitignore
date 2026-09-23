@@ -278,6 +278,9 @@ be/staticfiles/
 staticfiles/
 static/
 
+# Host SQL dumps from the fortnightly backup job
+backups/
+
 # Database
 be/db.sqlite3
 be/db.sqlite3-journal
