@@ -144,7 +144,7 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
             _f('barcode_printing', 'Barcode printing', '', 1),
             _f('qr_printing', 'QR printing', '', 2, enabled=False),
             _f('product_variants', 'Variants (size/color)', '', 3, enabled=False),
-            _f('product_images', 'Product images', '', 4, enabled=False),
+            _f('product_images', 'Product images', '', 4),
             _f('bulk_operations', 'Bulk actions', '', 5),
             _f('csv_import_export', 'CSV import/export', '', 6),
         ],

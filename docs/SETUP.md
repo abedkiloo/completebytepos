@@ -3,6 +3,7 @@
 This guide covers **first-time installation**, **Docker (dev & production)**, **VPS deployment**, **organization setup (tenant & branch)**, **environment variables**, and **common fixes**.
 
 For production build details (nginx, static assets), see [DEPLOYMENT.md](./DEPLOYMENT.md).  
+For Google Maps keys (web, Android, iOS, Routes API) and depot pin, see [MAPS.md](./MAPS.md).  
 For roles, personas, and testing, see [POS_UX_ROLES_AND_TESTING.md](./POS_UX_ROLES_AND_TESTING.md).  
 For coverage layout and 95% targets by layer, see [TESTING.md](./TESTING.md).
 

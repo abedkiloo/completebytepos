@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import FieldSalesPage from './FieldSalesPage';
-import { dispatchAPI } from '../../services/api';
+import { dispatchAPI, deliveryAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import { getStoredAuth, hasPermission } from '../../utils/roleAccess';
 
@@ -13,6 +13,10 @@ jest.mock('../../services/api', () => ({
     createDriver: jest.fn(),
     pack: jest.fn(),
     assign: jest.fn(),
+  },
+  deliveryAPI: {
+    todayGeometry: jest.fn(),
+    staffGeometry: jest.fn(),
   },
 }));
 
@@ -97,6 +101,19 @@ describe('FieldSalesPage', () => {
     dispatchAPI.pack.mockResolvedValue({ data: { ...submittedOrder, status: 'ready' } });
     dispatchAPI.assign.mockResolvedValue({ data: { ...readyOrder, assigned_delivery_agent_id: 3 } });
     dispatchAPI.get.mockResolvedValue({ data: { ...submittedOrder, status: 'ready' } });
+    deliveryAPI.staffGeometry.mockResolvedValue({
+      data: {
+        source: 'straight',
+        depot: { latitude: -1.29, longitude: 36.82, label: 'HQ', placeholder: true },
+        path: [
+          { latitude: -1.29, longitude: 36.82 },
+          { latitude: -1.30, longitude: 36.80 },
+        ],
+        stops: [
+          { id: 4, sequence: 1, label: 'Blue gate', latitude: -1.30, longitude: 36.80 },
+        ],
+      },
+    });
   });
 
   test('shows confirmation summary before packing and does not POST on cancel', async () => {
@@ -150,6 +167,27 @@ describe('FieldSalesPage', () => {
       expect(dispatchAPI.assign).toHaveBeenCalledWith(46, { delivery_agent_id: 3 }),
     );
     expect(toast.success).toHaveBeenCalled();
+  });
+
+  test('shows assigning label while the assign request is in flight', async () => {
+    let finish;
+    dispatchAPI.assign.mockImplementation(
+      () => new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    mockList([readyOrder]);
+    render(<FieldSalesPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /View/i }));
+    fireEvent.change(await screen.findByTestId('field-sales-driver-select'), {
+      target: { value: '3' },
+    });
+    fireEvent.click(screen.getByTestId('field-sales-assign'));
+    fireEvent.click(await screen.findByTestId('commit-confirm-ok'));
+    expect(await screen.findByText('Assigning…')).toBeInTheDocument();
+    finish({ data: { ...readyOrder, assigned_delivery_agent_id: 3 } });
+    await waitFor(() => expect(dispatchAPI.assign).toHaveBeenCalled());
+    fireEvent.click(screen.getAllByRole('button', { name: /^Close$/i })[0]);
   });
 
   test('surfaces pack and assign API errors', async () => {
@@ -257,11 +295,63 @@ describe('FieldSalesPage', () => {
 
   test('opens add-driver dialog from the field sales header', async () => {
     mockList([readyOrder]);
+    dispatchAPI.createDriver.mockResolvedValue({
+      data: { id: 9, display_name: 'New Driver', temporary_password: 'tmp9' },
+    });
     render(<FieldSalesPage />);
     fireEvent.click(await screen.findByTestId('field-sales-add-driver'));
     expect(screen.getByTestId('add-driver-dialog')).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: /View/i }));
     fireEvent.click(screen.getByTestId('field-sales-add-driver-detail'));
     expect(screen.getAllByTestId('add-driver-dialog').length).toBeGreaterThan(0);
+    fireEvent.change(screen.getByTestId('add-driver-name'), { target: { value: 'New Driver' } });
+    fireEvent.change(screen.getByTestId('add-driver-phone'), { target: { value: '0712345678' } });
+    fireEvent.click(screen.getByTestId('add-driver-save'));
+    expect(await screen.findByTestId('add-driver-temp-password')).toHaveTextContent('tmp9');
+    fireEvent.click(screen.getByTestId('add-driver-done'));
+  });
+
+  test('ignores invalid or duplicate drivers from add-driver', async () => {
+    mockList([readyOrder]);
+    dispatchAPI.createDriver
+      .mockResolvedValueOnce({ data: { display_name: 'No Id' } })
+      .mockResolvedValueOnce({ data: { id: 3, display_name: 'Jane Driver' } });
+    render(<FieldSalesPage />);
+    fireEvent.click(await screen.findByTestId('field-sales-add-driver'));
+    fireEvent.change(screen.getByTestId('add-driver-name'), { target: { value: 'No Id' } });
+    fireEvent.change(screen.getByTestId('add-driver-phone'), { target: { value: '0712345678' } });
+    fireEvent.click(screen.getByTestId('add-driver-save'));
+    expect(await screen.findByTestId('add-driver-done')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('add-driver-done'));
+    fireEvent.click(screen.getByTestId('field-sales-add-driver'));
+    fireEvent.change(screen.getByTestId('add-driver-name'), { target: { value: 'Jane Driver' } });
+    fireEvent.change(screen.getByTestId('add-driver-phone'), { target: { value: '0712345678' } });
+    fireEvent.click(screen.getByTestId('add-driver-save'));
+    expect(await screen.findByTestId('add-driver-done')).toBeInTheDocument();
+  });
+
+  test('loads a planned driver map for staff', async () => {
+    mockList([readyOrder]);
+    render(<FieldSalesPage />);
+    fireEvent.click(await screen.findByTestId('field-sales-driver-map'));
+    expect(await screen.findByTestId('field-sales-map-panel')).toBeInTheDocument();
+    await waitFor(() => expect(deliveryAPI.staffGeometry).toHaveBeenCalled());
+    expect(await screen.findByTestId('delivery-route-map-fallback')).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('field-sales-map-driver'), { target: { value: '3' } });
+    await waitFor(() =>
+      expect(deliveryAPI.staffGeometry).toHaveBeenCalledWith(
+        expect.objectContaining({ agent_id: '3' }),
+      ),
+    );
+  });
+
+  test('driver map fetch error still shows the panel', async () => {
+    mockList([readyOrder]);
+    deliveryAPI.staffGeometry.mockRejectedValue(new Error('offline'));
+    render(<FieldSalesPage />);
+    fireEvent.click(await screen.findByTestId('field-sales-driver-map'));
+    expect(await screen.findByTestId('field-sales-map-panel')).toBeInTheDocument();
+    await waitFor(() => expect(deliveryAPI.staffGeometry).toHaveBeenCalled());
+    expect(await screen.findByTestId('delivery-route-map-empty')).toBeInTheDocument();
   });
 });

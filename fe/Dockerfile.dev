@@ -6,6 +6,8 @@ WORKDIR /app
 # Optional — leave unset for server IP auto-detect; set for forced URL
 ARG REACT_APP_API_URL=
 ENV REACT_APP_API_URL=$REACT_APP_API_URL
+ARG REACT_APP_GOOGLE_MAPS_KEY=REPLACE_WITH_MAPS_JS_API_KEY
+ENV REACT_APP_GOOGLE_MAPS_KEY=$REACT_APP_GOOGLE_MAPS_KEY
 
 # Install dependencies (will be cached if package.json doesn't change)
 COPY package*.json ./

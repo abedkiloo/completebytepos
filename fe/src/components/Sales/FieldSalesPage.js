@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { MapPin, PackageCheck, Plus, RefreshCw } from 'lucide-react';
-import { dispatchAPI } from '../../services/api';
+import { dispatchAPI, deliveryAPI } from '../../services/api';
 import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { toast } from '../../utils/toast';
@@ -19,6 +19,8 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import CommitConfirm from '../Shared/CommitConfirm';
 import AddDriverDialog from './AddDriverDialog';
+import DeliveryRouteMap from './DeliveryRouteMap';
+import { localISODate } from '../../maps/mapsConfig';
 import {
   PageShell,
   PageHeader,
@@ -71,6 +73,10 @@ const FieldSalesPage = () => {
   const [selected, setSelected] = useState(null);
   const [pending, setPending] = useState(null);
   const [showAddDriver, setShowAddDriver] = useState(false);
+  const [showDriverMap, setShowDriverMap] = useState(false);
+  const [mapDriverId, setMapDriverId] = useState('');
+  const [mapGeometry, setMapGeometry] = useState(null);
+  const [mapLoading, setMapLoading] = useState(false);
   const [filters, setFilters] = useState({
     date_from: '',
     date_to: '',
@@ -84,14 +90,13 @@ const FieldSalesPage = () => {
   });
 
   const loadDrivers = useCallback(async () => {
-    if (!canPack) return;
     try {
       const response = await dispatchAPI.drivers();
       setDrivers(Array.isArray(response.data) ? response.data : []);
     } catch {
       setDrivers([]);
     }
-  }, [canPack]);
+  }, []);
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
@@ -134,6 +139,28 @@ const FieldSalesPage = () => {
   useEffect(() => {
     loadDrivers();
   }, [loadDrivers]);
+
+  useEffect(() => {
+    if (!showDriverMap) return undefined;
+    const agentId = mapDriverId || (drivers[0] ? String(drivers[0].id) : '');
+    if (!agentId) return undefined;
+    if (!mapDriverId) setMapDriverId(agentId);
+    let cancelled = false;
+    setMapLoading(true);
+    deliveryAPI.staffGeometry({
+      agent_id: agentId,
+      date: filters.date_from || localISODate(),
+    }).then((response) => {
+      if (!cancelled) setMapGeometry(response.data);
+    }).catch(() => {
+      if (!cancelled) setMapGeometry(null);
+    }).finally(() => {
+      if (!cancelled) setMapLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [showDriverMap, mapDriverId, drivers, filters.date_from]);
 
   const handleFilterChange = (key, value) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -255,6 +282,14 @@ const FieldSalesPage = () => {
           <RefreshCw className="h-4 w-4" />
           Refresh
         </Button>
+        <Button
+          variant="outline"
+          onClick={() => setShowDriverMap((open) => !open)}
+          data-testid="field-sales-driver-map"
+        >
+          <MapPin className="h-4 w-4" />
+          {showDriverMap ? 'Hide map' : 'Driver map'}
+        </Button>
         {canPack ? (
           <Button
             variant="outline"
@@ -266,6 +301,40 @@ const FieldSalesPage = () => {
           </Button>
         ) : null}
       </PageHeader>
+
+      {showDriverMap ? (
+        <div className="rounded-lg border bg-background p-4 space-y-3" data-testid="field-sales-map-panel">
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="text-sm font-medium" htmlFor="field-sales-map-driver">Driver</label>
+              <select
+                id="field-sales-map-driver"
+                className="mt-1 flex h-10 min-w-[12rem] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={mapDriverId}
+                onChange={(e) => setMapDriverId(e.target.value)}
+                data-testid="field-sales-map-driver"
+              >
+                {drivers.length === 0 ? (
+                  <option value="">No drivers</option>
+                ) : null}
+                {drivers.map((driver) => (
+                  <option key={driver.id} value={driver.id}>
+                    {driver.display_name || driver.username || `Driver #${driver.id}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Planned path for this driver (shop → numbered stops). Live tracking comes later.
+            </p>
+          </div>
+          {mapLoading ? (
+            <p className="text-sm text-muted-foreground">Loading route…</p>
+          ) : (
+            <DeliveryRouteMap geometry={mapGeometry} />
+          )}
+        </div>
+      ) : null}
 
       <FilterBar>
         <FilterField label="From">

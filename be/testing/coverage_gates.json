@@ -94,6 +94,17 @@
         "dispatch/views.py"
       ],
       "minimum_percent": 98
+    },
+    {
+      "name": "delivery_maps",
+      "include": [
+        "delivery/maps/access.py",
+        "delivery/maps/config.py",
+        "delivery/maps/polyline.py",
+        "delivery/maps/google_routes.py",
+        "delivery/maps/geometry.py"
+      ],
+      "minimum_percent": 98
     }
   ],
   "ramp_up": [

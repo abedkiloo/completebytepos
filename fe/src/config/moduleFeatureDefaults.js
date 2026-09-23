@@ -9,7 +9,6 @@ const EXPLICIT_FALSE = {
   products: {
     qr_printing: false,
     product_variants: false,
-    product_images: false,
   },
   suppliers: {
     supplier_products: false,

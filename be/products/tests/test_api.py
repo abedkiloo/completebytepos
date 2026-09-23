@@ -486,6 +486,45 @@ class ProductAPITestCase(TransactionTestCase):
         
         product = Product.objects.get(sku='IMG-001')
         self.assertIsNotNone(product.image)
+
+    def test_update_product_image(self):
+        """Existing products can receive an image on edit."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+        import io
+
+        token = self.get_auth_token(self.superuser)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+        product = Product.objects.create(
+            name='No picture yet',
+            sku='IMG-EDIT-001',
+            category=self.main_category,
+            price=Decimal('80.00'),
+            cost=Decimal('40.00'),
+        )
+        self.assertFalse(bool(product.image))
+
+        img = Image.new('RGB', (80, 80), color='blue')
+        img_io = io.BytesIO()
+        img.save(img_io, format='JPEG')
+        img_io.seek(0)
+        image_file = SimpleUploadedFile(
+            'edit_image.jpg',
+            img_io.read(),
+            content_type='image/jpeg',
+        )
+
+        response = self.client.patch(
+            f'/api/products/{product.id}/',
+            {'image': image_file, 'name': 'No picture yet'},
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        product.refresh_from_db()
+        self.assertTrue(bool(product.image))
+        self.assertIn('image_url', response.data)
+        self.assertTrue(response.data['image_url'])
     
     def test_product_variants_creation(self):
         """Test that product variants are created correctly"""

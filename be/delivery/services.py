@@ -84,6 +84,8 @@ def create_stop_for_order(route: DeliveryRoute, order: FieldOrder, *, sequence: 
             delivered_quantity=Decimal('0'),
             returned_quantity=Decimal('0'),
         )
+    from .maps.geometry import invalidate_route_geometry
+    invalidate_route_geometry(route)
     return stop
 
 

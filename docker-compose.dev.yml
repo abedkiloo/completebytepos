@@ -92,6 +92,7 @@ services:
       args:
         # Unset = browser auto-detects http://<host>:8000/api (not localhost)
         - REACT_APP_API_URL=${REACT_APP_API_URL:-}
+        - REACT_APP_GOOGLE_MAPS_KEY=${REACT_APP_GOOGLE_MAPS_KEY:-REPLACE_WITH_MAPS_JS_API_KEY}
     container_name: completebytepos_frontend
     hostname: frontend
     ports:
@@ -103,6 +104,7 @@ services:
     working_dir: /app
     environment:
       - REACT_APP_API_URL=${REACT_APP_API_URL:-}
+      - REACT_APP_GOOGLE_MAPS_KEY=${REACT_APP_GOOGLE_MAPS_KEY:-REPLACE_WITH_MAPS_JS_API_KEY}
       - REACT_APP_PROXY_TARGET=http://backend:8000
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true

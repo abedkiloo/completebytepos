@@ -5,6 +5,7 @@ import { expensesAPI } from '../../services/api';
 import { CATALOG_FETCH_PAGE_SIZE, DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import SearchableSelect from '../Shared/SearchableSelect';
+import ExpenseForm from './ExpenseForm';
 import { toast } from '../../utils/toast';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { useStoreSettings } from '../../hooks/useStoreSettings';

@@ -90,7 +90,8 @@ class BranchSerializer(serializers.ModelSerializer):
     class Meta:
         model = Branch
         fields = [
-            'id', 'tenant', 'tenant_id', 'branch_code', 'name', 'address', 'city', 'country',
+            'id', 'tenant', 'tenant_id', 'branch_code', 'name', 'address',
+            'latitude', 'longitude', 'city', 'country',
             'phone', 'email', 'is_active', 'is_headquarters',
             'manager', 'manager_name', 'created_by', 'created_by_name',
             'created_at', 'updated_at'
@@ -126,6 +127,20 @@ class BranchSerializer(serializers.ModelSerializer):
         from utils.phone import validate_optional_phone
 
         return validate_optional_phone(value)
+
+    def validate_latitude(self, value):
+        if value is None or value == '':
+            return None
+        if value < -90 or value > 90:
+            raise serializers.ValidationError('Latitude must be between -90 and 90.')
+        return value
+
+    def validate_longitude(self, value):
+        if value is None or value == '':
+            return None
+        if value < -180 or value > 180:
+            raise serializers.ValidationError('Longitude must be between -180 and 180.')
+        return value
 
 
 class BranchListSerializer(serializers.ModelSerializer):

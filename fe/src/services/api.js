@@ -732,5 +732,11 @@ export const dispatchAPI = {
   assign: (id, data) => api.post(`/dispatch/field-orders/${id}/assign/`, data),
 };
 
+/** Planned delivery maps (polyline + pins). Live GPS is not in this API. */
+export const deliveryAPI = {
+  todayGeometry: () => api.get('/delivery/routes/today/geometry/'),
+  staffGeometry: (params) => api.get('/delivery/routes/geometry/', { params }),
+};
+
 export default api;
 

@@ -278,6 +278,43 @@ describe('ProductForm integration', () => {
     expect(screen.queryByLabelText(/Opening stock/i)).not.toBeInTheDocument();
   });
 
+  test('edit product can upload an image', async () => {
+    const product = {
+      id: 3,
+      name: 'Simple Widget',
+      category: 1,
+      has_variants: false,
+      price: '50',
+      selling_price: '50',
+      stock_quantity: 12,
+      is_active: true,
+      track_stock: true,
+    };
+
+    render(
+      <ProductForm
+        product={product}
+        categories={categories}
+        onClose={jest.fn()}
+        onSave={jest.fn()}
+      />
+    );
+
+    const file = new File(['photo'], 'shelf.png', { type: 'image/png' });
+    fireEvent.change(screen.getByTestId('product-image-input'), {
+      target: { files: [file] },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /update/i }));
+    fireEvent.click(await screen.findByTestId('commit-confirm-ok'));
+
+    await waitFor(() => {
+      expect(productsAPI.update).toHaveBeenCalled();
+    });
+    const body = productsAPI.update.mock.calls[0][1];
+    expect(body).toBeInstanceOf(FormData);
+    expect(body.get('image')).toBe(file);
+  });
+
   test('blocks save when variants enabled but no combinations', async () => {
     mockVariantSetup = { keys: [], drafts: {} };
 

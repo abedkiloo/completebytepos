@@ -15,6 +15,19 @@ class DeliveryRoute(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    encoded_polyline = models.TextField(
+        blank=True,
+        default='',
+        help_text='Cached Google encoded polyline for this day’s stops. Rebuild when stops change.',
+    )
+    polyline_source = models.CharField(
+        max_length=16,
+        blank=True,
+        default='',
+        help_text='google | straight | empty',
+    )
+    geometry_fingerprint = models.CharField(max_length=2048, blank=True, default='')
+    geometry_updated_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['-route_date', 'id']

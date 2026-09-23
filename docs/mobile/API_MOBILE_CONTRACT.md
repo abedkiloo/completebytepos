@@ -123,7 +123,9 @@ Statuses: `draft → submitted → packing → ready → out_for_delivery → do
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
 | GET | `/delivery/routes/today/` | `delivery.view` | Ordered stops; syncs assigned OFD orders |
-| GET | `/delivery/config/` | `delivery.view` | `require_pod_to_complete`, `allow_offline_pod_queue` |
+| GET | `/delivery/routes/today/geometry/` | `delivery.view` | Cached depot + numbered pins + polyline (own route) |
+| GET | `/delivery/routes/geometry/` | Authenticated; own route or `dispatch.view` / manager | `?agent_id=&date=` planned path for staff |
+| GET | `/delivery/config/` | `delivery.view` | `require_pod_to_complete`, `allow_offline_pod_queue`, `maps` |
 | GET | `/delivery/stops/{id}/` | `delivery.view` | Map + media + lines first in payload |
 | POST | `/delivery/stops/{id}/arrive/` | `delivery.update` | Status transition |
 | POST | `/delivery/stops/{id}/start/` | `delivery.update` | pending→arrived→delivering |

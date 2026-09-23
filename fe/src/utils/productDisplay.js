@@ -54,5 +54,5 @@ export function productCsvImportExportEnabled(settings) {
 
 /** Product images — install-level capability (Module Settings → features). */
 export function productImagesEnabled() {
-  return isModuleFeatureEnabled('products', 'product_images', false);
+  return isModuleFeatureEnabled('products', 'product_images', true);
 }

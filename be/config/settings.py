@@ -452,3 +452,7 @@ SMS_BRAND_BLURB = env_str(
 PUBLIC_INVOICE_BASE_URL = env_str('PUBLIC_INVOICE_BASE_URL', 'https://example.com/i')
 AFRICASTALKING_API_KEY = env_str('AFRICASTALKING_API_KEY', '')
 AFRICASTALKING_USERNAME = env_str('AFRICASTALKING_USERNAME', '')
+
+# Google Maps Platform — Routes API only. Browser and app keys never live here.
+# See docs/MAPS.md. Leave the placeholder until billing keys are issued.
+GOOGLE_MAPS_SERVER_KEY = env_str('GOOGLE_MAPS_SERVER_KEY', '')

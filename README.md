@@ -10,6 +10,7 @@ A comprehensive, production-ready Point of Sale (POS) system designed for Kenyan
 ## 🚀 Quick Start
 
 > **Full setup guide (Docker, VPS, tenant/branch, env vars, troubleshooting):** [docs/SETUP.md](docs/SETUP.md)  
+> **Google Maps keys and depot pin:** [docs/MAPS.md](docs/MAPS.md)  
 > **Testing & coverage:** [docs/TESTING.md](docs/TESTING.md)
 
 ### Prerequisites
@@ -291,7 +292,10 @@ Content-Type: application/json
 {
   "access": "eyJ0eXAiOiJKV1QiLCJhbGc...",
   "refresh": "eyJ0eXAiOiJKV1QiLCJhbGc...",
-  "user": { ... }
+  "user": {
+    "id": 1,
+    "username": "admin"
+  }
 }
 ```
 

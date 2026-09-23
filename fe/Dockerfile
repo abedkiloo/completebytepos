@@ -7,6 +7,8 @@ WORKDIR /app
 # API URL is embedded at build time (REACT_APP_*). Use /api when nginx proxies to backend.
 ARG REACT_APP_API_URL=/api
 ENV REACT_APP_API_URL=$REACT_APP_API_URL
+ARG REACT_APP_GOOGLE_MAPS_KEY=REPLACE_WITH_MAPS_JS_API_KEY
+ENV REACT_APP_GOOGLE_MAPS_KEY=$REACT_APP_GOOGLE_MAPS_KEY
 
 COPY package*.json ./
 RUN npm ci --legacy-peer-deps

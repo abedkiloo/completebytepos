@@ -250,6 +250,20 @@ class Branch(models.Model):
     branch_code = models.CharField(max_length=50, db_index=True, help_text='Unique branch code within tenant')
     name = models.CharField(max_length=200, db_index=True, help_text='Branch name')
     address = models.TextField(blank=True, help_text='Branch address')
+    latitude = models.DecimalField(
+        max_digits=10,
+        decimal_places=7,
+        null=True,
+        blank=True,
+        help_text='Depot pin for delivery maps (shop start).',
+    )
+    longitude = models.DecimalField(
+        max_digits=10,
+        decimal_places=7,
+        null=True,
+        blank=True,
+        help_text='Depot pin for delivery maps (shop start).',
+    )
     city = models.CharField(max_length=100, blank=True)
     country = models.CharField(max_length=100, default='Kenya')
     phone = models.CharField(max_length=20, blank=True)

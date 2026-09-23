@@ -1,4 +1,7 @@
+from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from django.utils.dateparse import parse_date
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -10,7 +13,13 @@ from agents.order_serializers import FieldOrderSerializer
 from agents.order_services import FieldOrderTransitionError, claim_ready_order
 
 from .config import ALLOW_OFFLINE_POD_QUEUE, REQUIRE_POD_TO_COMPLETE
-from .models import DeliveryStop
+from .maps import (
+    build_route_geometry,
+    empty_geometry,
+    maps_public_config,
+    user_may_view_agent_route,
+)
+from .models import DeliveryRoute, DeliveryStop
 from .serializers import (
     CollectSerializer,
     DeliveryRouteSerializer,
@@ -73,7 +82,50 @@ def delivery_config(request):
     return Response({
         'require_pod_to_complete': REQUIRE_POD_TO_COMPLETE,
         'allow_offline_pod_queue': ALLOW_OFFLINE_POD_QUEUE,
+        'maps': maps_public_config(),
     })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, DELIVERY_VIEW])
+def today_route_geometry(request):
+    route = services.ensure_today_route(request.user)
+    return Response(build_route_geometry(route, request=request))
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def staff_route_geometry(request):
+    raw_agent = request.query_params.get('agent_id')
+    if not raw_agent:
+        return Response({'detail': 'agent_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        agent_id = int(raw_agent)
+    except (TypeError, ValueError):
+        return Response(
+            {'detail': 'agent_id must be an integer.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if not user_may_view_agent_route(request.user, agent_id):
+        return Response(
+            {'detail': 'You cannot view this driver’s route.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    date_raw = request.query_params.get('date')
+    if date_raw:
+        route_date = parse_date(date_raw)
+        if route_date is None:
+            return Response({'detail': 'Invalid date.'}, status=status.HTTP_400_BAD_REQUEST)
+    else:
+        route_date = timezone.localdate()
+    route = DeliveryRoute.objects.filter(
+        delivery_agent_id=agent_id,
+        route_date=route_date,
+    ).select_related('delivery_agent').first()
+    if route is None:
+        agent = User.objects.filter(pk=agent_id).first()
+        return Response(empty_geometry(agent_id, route_date, request=request, agent=agent))
+    return Response(build_route_geometry(route, request=request))
 
 
 @api_view(['GET'])

@@ -32,6 +32,8 @@ const Branches = () => {
     is_headquarters: false,
     manager: '',
     tenant_id: '',  // Will be set automatically from current tenant
+    latitude: '',
+    longitude: '',
   });
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -75,6 +77,8 @@ const Branches = () => {
       is_active: true,
       is_headquarters: false,
       manager: '',
+      latitude: '',
+      longitude: '',
     });
     setShowModal(true);
   };
@@ -92,6 +96,8 @@ const Branches = () => {
       is_active: branch.is_active !== undefined ? branch.is_active : true,
       is_headquarters: branch.is_headquarters || false,
       manager: branch.manager || '',
+      latitude: branch.latitude ?? '',
+      longitude: branch.longitude ?? '',
     });
     setShowModal(true);
   };
@@ -142,6 +148,8 @@ const Branches = () => {
       const branchData = {
         ...formData,
         manager: formData.manager || null,
+        latitude: formData.latitude === '' ? null : formData.latitude,
+        longitude: formData.longitude === '' ? null : formData.longitude,
       };
       
       if (selectedBranch) {
@@ -296,6 +304,33 @@ const Branches = () => {
                     placeholder="Street address"
                   />
                 </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Depot latitude</label>
+                    <input
+                      type="number"
+                      step="0.0000001"
+                      value={formData.latitude}
+                      onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
+                      placeholder="-1.2921"
+                      data-testid="branch-latitude"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Depot longitude</label>
+                    <input
+                      type="number"
+                      step="0.0000001"
+                      value={formData.longitude}
+                      onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
+                      placeholder="36.8219"
+                      data-testid="branch-longitude"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground" style={{ marginBottom: '0.75rem' }}>
+                  Shop start pin for delivery maps. Leave blank until you drop a pin (see docs/MAPS.md).
+                </p>
                 <div className="form-row">
                   <div className="form-group">
                     <label>City</label>

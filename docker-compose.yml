@@ -107,6 +107,7 @@ services:
       args:
         # Always same-origin. Do not bake :8000 from .env — Gunicorn is localhost-only.
         REACT_APP_API_URL: /api
+        REACT_APP_GOOGLE_MAPS_KEY: ${REACT_APP_GOOGLE_MAPS_KEY:-REPLACE_WITH_MAPS_JS_API_KEY}
     container_name: ${STACK_NAME:-completebytepos}_frontend
     hostname: frontend
     ports:

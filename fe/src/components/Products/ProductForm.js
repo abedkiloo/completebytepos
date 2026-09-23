@@ -12,7 +12,6 @@ import CategoryForm from './CategoryForm';
 import SupplierForm from '../Suppliers/SupplierForm';
 import {
   SELLING_PRICE_CLASS,
-  productImagesEnabled,
   STOCK_OPENING_LABEL,
   STOCK_OPENING_HINT,
 } from '../../utils/productDisplay';
@@ -73,7 +72,6 @@ const ProductForm = ({
   showCost = true,
   showMrp = true,
 }) => {
-  const imagesEnabled = productImagesEnabled();
   const variantsEnabled = useProductVariantsEnabled();
   const { settings: storeSettings } = useStoreSettings();
   const { options: unitOptions } = useProductUnits();
@@ -1161,21 +1159,28 @@ const ProductForm = ({
           </div>
           )}
 
-          {imagesEnabled && (
           <div className="form-row">
             <div className="form-group">
-              <label>Image</label>
+              <label htmlFor="product-image">
+                {product ? 'Product image' : 'Image'}
+              </label>
               <input
+                id="product-image"
                 type="file"
                 accept="image/*"
                 onChange={handleImageChange}
+                data-testid="product-image-input"
               />
               {imagePreview && (
                 <img src={imagePreview} alt="Preview" className="image-preview" />
               )}
+              {product ? (
+                <small className="form-text">
+                  Choose a file to add or replace the picture for this product.
+                </small>
+              ) : null}
             </div>
           </div>
-          )}
 
           <div className="form-group">
             <label>Description</label>
