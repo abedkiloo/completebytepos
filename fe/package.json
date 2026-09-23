@@ -38,6 +38,7 @@
     "test:coverage": "react-scripts test --watchAll=false --coverage --testPathPattern=\"src/(utils|config|hooks)/\"",
     "test:coverage:features": "react-scripts test --watchAll=false --coverage --testPathPattern=\"CategoryForm.test|Dashboard.test|SearchableSelect.test|ReportExportButtons.test|ChangeReasonField.test\" --collectCoverageFrom=\"src/components/Products/CategoryForm.js\" --collectCoverageFrom=\"src/components/Dashboard/Dashboard.js\" --collectCoverageFrom=\"src/components/Shared/SearchableSelect.js\" --collectCoverageFrom=\"src/components/Reports/ReportExportButtons.js\" --collectCoverageFrom=\"src/components/Approvals/ChangeReasonField.js\" --coverageThreshold='{\"global\":{\"lines\":98,\"statements\":94,\"functions\":88,\"branches\":75}}'",
     "test:coverage:commit-confirm": "react-scripts test --watchAll=false --coverage --testPathPattern=\"commitConfirm|CommitConfirm|saleCommitSummary|SaleCommitConfirm|formCommitSummary\" --collectCoverageFrom=\"src/utils/commitConfirm.js\" --collectCoverageFrom=\"src/components/Shared/CommitConfirm.js\" --collectCoverageFrom=\"src/utils/saleCommitSummary.js\" --collectCoverageFrom=\"src/utils/formCommitSummary.js\" --collectCoverageFrom=\"src/components/POS/v2/SaleCommitConfirm.js\" --coverageThreshold='{\"global\":{\"lines\":98,\"statements\":98,\"functions\":98,\"branches\":90}}'",
+    "test:coverage:mpesa-capture": "react-scripts test --watchAll=false --coverage --testPathPattern=\"mpesaCapture|MpesaCapture.test|StkWaitDialog.test\" --collectCoverageFrom=\"src/utils/mpesaCapture.js\" --collectCoverageFrom=\"src/components/Payments/MpesaCapture.js\" --collectCoverageFrom=\"src/components/Payments/StkWaitDialog.js\" --coverageThreshold='{\"global\":{\"lines\":98,\"statements\":90,\"functions\":90,\"branches\":80}}'",
     "test:coverage:field-sales": "react-scripts test --watchAll=false --coverage --testPathPattern=\"fieldSalesCommit|FieldSalesPage.test\" --collectCoverageFrom=\"src/utils/fieldSalesCommit.js\" --collectCoverageFrom=\"src/components/Sales/FieldSalesPage.js\" --coverageThreshold='{\"global\":{\"lines\":98,\"statements\":98,\"functions\":90,\"branches\":80}}'",
     "test:coverage:daily-sales": "react-scripts test --watchAll=false --coverage --testPathPattern=\"DailySalesPage.test|CustomerDailyDetailPage.test|dailySalesAccess.test\" --collectCoverageFrom=\"src/utils/dailySalesAccess.js\" --coverageThreshold='{\"global\":{\"lines\":98,\"statements\":98,\"functions\":98,\"branches\":85}}'",
     "test:coverage:all": "react-scripts test --watchAll=false --coverage --testPathPattern=\"src/(utils|config|hooks)/|Display\\.test|moduleSettingsCache|FeatureFlag|sellingPrice\" --coverageThreshold='{}'",
@@ -63,6 +64,7 @@
       "src/utils/categoryTree.js",
       "src/utils/walkInCustomer.js",
       "src/utils/paymentMethods.js",
+      "src/utils/mpesaCapture.js",
       "src/utils/modulePresets.js",
       "src/utils/moduleDomains.js",
       "src/utils/apiErrors.js",
@@ -176,6 +178,12 @@
       },
       "./src/utils/formCommitSummary.js": {
         "branches": 90,
+        "functions": 98,
+        "lines": 98,
+        "statements": 98
+      },
+      "./src/utils/mpesaCapture.js": {
+        "branches": 98,
         "functions": 98,
         "lines": 98,
         "statements": 98

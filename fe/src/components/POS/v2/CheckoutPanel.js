@@ -21,6 +21,18 @@ import {
 } from '../../../utils/paymentMethods';
 import { evaluatePosAmountReceived } from '../../../utils/posCheckoutValidation';
 import { AccountPaymentBlock } from '../AccountPaymentBlock';
+import MpesaCapture from '../../Payments/MpesaCapture';
+import StkWaitDialog from '../../Payments/StkWaitDialog';
+import {
+  MPESA_CAPTURE_CODE,
+  MPESA_CAPTURE_PROMPT,
+  mpesaCollectingNow,
+} from '../../../utils/mpesaCapture';
+import {
+  mpesaReceiptMessage,
+  normalizeMpesaReceipt,
+  phoneMessage,
+} from '../../../utils/formValidation';
 
 export function CheckoutPanel({
   // totals
@@ -49,6 +61,9 @@ export function CheckoutPanel({
   setReceivedAmount,
   paymentReference,
   setPaymentReference,
+  customerPhone = '',
+  customerId = null,
+  customerName = '',
 
   // submit
   submitting,
@@ -68,6 +83,10 @@ export function CheckoutPanel({
   showDelivery = true,
 }) {
   const [showExtras, setShowExtras] = useState(false);
+  const [mpesaMode, setMpesaMode] = useState(MPESA_CAPTURE_PROMPT);
+  const [mpesaPhone, setMpesaPhone] = useState(customerPhone || '');
+  const [stkOpen, setStkOpen] = useState(false);
+  const [showMpesaErrors, setShowMpesaErrors] = useState(false);
   const methods = useMemo(
     () => filterEnabledPaymentMethods(enabledPaymentMethods),
     [enabledPaymentMethods]
@@ -80,27 +99,60 @@ export function CheckoutPanel({
   }, [methods, paymentMethod, setPaymentMethod]);
 
   useEffect(() => {
-    if (!paymentReferenceRequired(paymentMethod)) {
-      setPaymentReference('');
+    if (!paymentReferenceRequired(paymentMethod) || paymentMethod === 'mpesa') {
+      if (paymentMethod !== 'mpesa') setPaymentReference('');
     }
   }, [paymentMethod, setPaymentReference]);
+
+  useEffect(() => {
+    if (customerPhone) setMpesaPhone((prev) => prev || customerPhone);
+  }, [customerPhone]);
+
+  useEffect(() => {
+    if (paymentMethod !== 'mpesa') {
+      setMpesaMode(MPESA_CAPTURE_PROMPT);
+      setShowMpesaErrors(false);
+      setStkOpen(false);
+    }
+  }, [paymentMethod]);
 
   const method = methods.find((m) => m.id === paymentMethod) || methods[0];
 
   const isCashLike = method.requiresAmount;
-  const needsReference = paymentReferenceRequired(paymentMethod);
-  const referenceOk = !needsReference || String(paymentReference || '').trim().length > 0;
+  const isMpesa = paymentMethod === 'mpesa';
   const receivedCheck = evaluatePosAmountReceived(receivedAmount, {
     allowPartialPayment,
     hasRegisteredCustomer,
     paymentOnAccount,
   });
+  const collectNow = mpesaCollectingNow(paymentMethod, receivedCheck);
+  const needsReference = paymentReferenceRequired(paymentMethod) && !isMpesa;
+  const referenceOk =
+    isMpesa || !needsReference || String(paymentReference || '').trim().length > 0;
   const canPay =
     !hasOversell &&
     itemCount > 0 &&
     total > 0 &&
     referenceOk &&
     (!isCashLike || receivedCheck.ok);
+
+  const handlePay = () => {
+    if (isMpesa && collectNow && mpesaMode === MPESA_CAPTURE_PROMPT) {
+      setShowMpesaErrors(true);
+      if (phoneMessage(mpesaPhone, { required: true })) return;
+      setStkOpen(true);
+      return;
+    }
+    if (isMpesa && collectNow && mpesaMode === MPESA_CAPTURE_CODE) {
+      setShowMpesaErrors(true);
+      if (mpesaReceiptMessage(paymentReference)) return;
+      onPay({
+        paymentReference: normalizeMpesaReceipt(paymentReference),
+      });
+      return;
+    }
+    onPay();
+  };
 
   return (
     <div className="flex flex-col border-t bg-background">
@@ -237,7 +289,20 @@ export function CheckoutPanel({
         </div>
       </div>
 
-      {needsReference ? (
+      {isMpesa ? (
+        <div className="px-3 pt-2">
+          <MpesaCapture
+            mode={mpesaMode}
+            onModeChange={setMpesaMode}
+            phone={mpesaPhone}
+            onPhoneChange={setMpesaPhone}
+            code={paymentReference}
+            onCodeChange={setPaymentReference}
+            disabled={submitting}
+            showErrors={showMpesaErrors}
+          />
+        </div>
+      ) : needsReference ? (
         <div className="px-3 pt-2">
           <Label
             htmlFor="payment-reference"
@@ -318,7 +383,7 @@ export function CheckoutPanel({
         <Button
           size="cashier-lg"
           className="w-full text-base font-semibold"
-          onClick={onPay}
+          onClick={handlePay}
           disabled={!canPay || submitting}
         >
           {submitting ? (
@@ -329,11 +394,27 @@ export function CheckoutPanel({
           ) : (
             <>
               <ReceiptIcon className="h-5 w-5" />
-              Complete sale · {formatCurrency(total)}
+              {isMpesa && collectNow && mpesaMode === MPESA_CAPTURE_PROMPT
+                ? `Send M-Pesa prompt · ${formatCurrency(receivedCheck.received || total)}`
+                : `Complete sale · ${formatCurrency(total)}`}
             </>
           )}
         </Button>
       </div>
+      <StkWaitDialog
+        open={stkOpen}
+        onOpenChange={setStkOpen}
+        amount={receivedCheck.received || total}
+        phone={mpesaPhone}
+        purpose="pos"
+        customerId={customerId}
+        customerName={customerName}
+        onPaid={(paid) => {
+          const receipt = paid?.mpesa_receipt || paid?.invoice_number || '';
+          setPaymentReference(receipt);
+          onPay({ paymentReference: receipt });
+        }}
+      />
     </div>
   );
 }

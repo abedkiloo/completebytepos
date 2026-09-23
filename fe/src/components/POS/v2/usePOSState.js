@@ -23,6 +23,8 @@ import {
 } from '../../../utils/posCartRecovery';
 import { useModuleSettings } from '../../../hooks/useModuleSettings';
 import { paymentReferenceRequired } from '../../../utils/paymentMethods';
+import { mpesaReceiptMessage } from '../../../utils/formValidation';
+import { mpesaCollectingNow } from '../../../utils/mpesaCapture';
 import {
   evaluatePosAmountReceived,
   isRegisteredPosCustomer,
@@ -614,7 +616,7 @@ export function usePOSState() {
   }, [cartDraftKey]);
 
   const buildSalePayload = useCallback(
-    ({ confirmedReceived, allowPartial, excessChoice }) => {
+    ({ confirmedReceived, allowPartial, excessChoice, paymentReference: refOverride } = {}) => {
       const received =
         confirmedReceived !== undefined
           ? confirmedReceived
@@ -629,6 +631,8 @@ export function usePOSState() {
         return parseFloat(v.toFixed(2));
       };
 
+      const reference = String(refOverride ?? paymentReference ?? '').trim();
+
       return {
         items: cart.map((item) => ({
           product_id: item.id,
@@ -642,9 +646,7 @@ export function usePOSState() {
         delivery_cost: parseFloat((deliveryEnabled ? deliveryCost : 0).toFixed(2)),
         shipping_address: deliveryEnabled && shippingAddress ? shippingAddress : null,
         payment_method: paymentMethod,
-        payment_reference: paymentReferenceRequired(paymentMethod)
-          ? String(paymentReference || '').trim()
-          : '',
+        payment_reference: paymentReferenceRequired(paymentMethod) ? reference : '',
         amount_paid: isTendered ? formatAmountPaid(received) : formatAmountPaid(total),
         customer_id:
           selectedCustomer?.id && selectedCustomer.id !== 'walk-in'
@@ -681,6 +683,7 @@ export function usePOSState() {
           confirmedReceived: pendingSaleData?.received,
           allowPartial,
           excessChoice,
+          paymentReference: pendingSaleData?.paymentReference,
         });
         const res = await salesAPI.create(payload);
         const backendTotal = parseFloat(res.data.total) || 0;
@@ -730,7 +733,7 @@ export function usePOSState() {
    * `validate_sale_items` is authoritative. Frontend just blocks the most
    * common cashier mistakes.
    */
-  const requestPayment = useCallback(() => {
+  const requestPayment = useCallback((overrides = {}) => {
     if (submitting) return;
     if (cart.length === 0) {
       toast.warning('Cart is empty');
@@ -747,7 +750,25 @@ export function usePOSState() {
       return;
     }
 
-    if (paymentReferenceRequired(paymentMethod) && !String(paymentReference || '').trim()) {
+    const paymentRef = String(overrides.paymentReference ?? paymentReference ?? '').trim();
+    if (overrides.paymentReference != null) {
+      setPaymentReference(paymentRef);
+    }
+
+    if (paymentMethod === 'mpesa') {
+      const receivedCheck = evaluatePosAmountReceived(receivedAmount, {
+        allowPartialPayment,
+        hasRegisteredCustomer: isRegisteredPosCustomer(selectedCustomer),
+        paymentOnAccount,
+      });
+      if (mpesaCollectingNow(paymentMethod, receivedCheck)) {
+        const codeError = mpesaReceiptMessage(paymentRef);
+        if (codeError) {
+          toast.warning(codeError);
+          return;
+        }
+      }
+    } else if (paymentReferenceRequired(paymentMethod) && !paymentRef) {
       toast.warning('Enter the payment reference (e.g. M-Pesa code or card details).');
       return;
     }
@@ -783,14 +804,24 @@ export function usePOSState() {
           );
           return;
         }
-        setPendingSaleData({ total, received, balance: total - received });
+        setPendingSaleData({
+          total,
+          received,
+          balance: total - received,
+          paymentReference: paymentRef,
+        });
         setShowPartialPaymentConfirm(true);
         return;
       }
 
       if (received > total && selectedCustomer && selectedCustomer.id !== 'walk-in') {
         if (allowExcessToWallet) {
-          setPendingSaleData({ total, received, excess: received - total });
+          setPendingSaleData({
+            total,
+            received,
+            excess: received - total,
+            paymentReference: paymentRef,
+          });
           setShowExcessPaymentConfirm(true);
           return;
         }
@@ -807,7 +838,7 @@ export function usePOSState() {
           paymentMethod,
           itemCount: cart.reduce((n, i) => n + (Number(i.quantity) || 0), 0),
           customerName,
-          paymentReference,
+          paymentReference: paymentRef,
         })
       );
       setShowSaleCommitConfirm(true);
@@ -825,7 +856,7 @@ export function usePOSState() {
         paymentMethod,
         itemCount: cart.reduce((n, i) => n + (Number(i.quantity) || 0), 0),
         customerName,
-        paymentReference,
+        paymentReference: paymentRef,
       })
     );
     setShowSaleCommitConfirm(true);

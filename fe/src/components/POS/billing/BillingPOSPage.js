@@ -1,5 +1,5 @@
 /* @refresh reset */
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Search,
   ScanBarcode,
@@ -38,6 +38,19 @@ import {
   paymentReferencePlaceholder,
   paymentReferenceRequired,
 } from '../../../utils/paymentMethods';
+import { evaluateBillingAmountPaid } from '../../../utils/posCheckoutValidation';
+import {
+  MPESA_CAPTURE_CODE,
+  MPESA_CAPTURE_PROMPT,
+  mpesaCollectingNow,
+} from '../../../utils/mpesaCapture';
+import {
+  mpesaReceiptMessage,
+  normalizeMpesaReceipt,
+  phoneMessage,
+} from '../../../utils/formValidation';
+import MpesaCapture from '../../Payments/MpesaCapture';
+import StkWaitDialog from '../../Payments/StkWaitDialog';
 import {
   isManagerOrAdminFromStorage,
   getStoredAuth,
@@ -67,6 +80,10 @@ export default function BillingPOSPage() {
   const searchRef = useRef(null);
   const customerSearchRef = useRef(null);
   const [showNewCustomer, setShowNewCustomer] = useState(false);
+  const [mpesaMode, setMpesaMode] = useState(MPESA_CAPTURE_PROMPT);
+  const [mpesaPhone, setMpesaPhone] = useState('');
+  const [stkOpen, setStkOpen] = useState(false);
+  const [showMpesaErrors, setShowMpesaErrors] = useState(false);
   const { settings: customerModuleSettings } = useModuleSettings('customers');
   const { permissions } = getStoredAuth();
   const canAddCustomer = canQuickAddCustomerAtPos(
@@ -76,6 +93,54 @@ export default function BillingPOSPage() {
   );
   const mayEditPricing = Boolean(userMayEditFinancialFieldsFromStorage());
   const showWalletBalance = customersShowWalletBalance(customerModuleSettings);
+  const isMpesa = state.paymentMethod === 'mpesa';
+  const paidCheck = evaluateBillingAmountPaid(state.amountPaid, {
+    paymentMethod: state.paymentMethod,
+    partialPayment: state.partialPayment,
+    hasRegisteredCustomer: !state.isWalkInCustomer(state.selectedCustomer),
+    total: state.total,
+  });
+  const collectNow = mpesaCollectingNow(state.paymentMethod, paidCheck);
+
+  useEffect(() => {
+    if (state.selectedCustomer?.phone) {
+      setMpesaPhone((prev) => prev || state.selectedCustomer.phone);
+    }
+  }, [state.selectedCustomer?.phone]);
+
+  useEffect(() => {
+    if (state.paymentMethod !== 'mpesa') {
+      setMpesaMode(MPESA_CAPTURE_PROMPT);
+      setShowMpesaErrors(false);
+      setStkOpen(false);
+    }
+  }, [state.paymentMethod]);
+
+  const handleCheckout = () => {
+    if (isMpesa && collectNow && mpesaMode === MPESA_CAPTURE_PROMPT) {
+      setShowMpesaErrors(true);
+      const phoneErr = phoneMessage(mpesaPhone, { required: true });
+      if (phoneErr) {
+        toast.warning(phoneErr);
+        return;
+      }
+      setStkOpen(true);
+      return;
+    }
+    if (isMpesa && collectNow && mpesaMode === MPESA_CAPTURE_CODE) {
+      setShowMpesaErrors(true);
+      const codeError = mpesaReceiptMessage(state.paymentReference);
+      if (codeError) {
+        toast.warning(codeError);
+        return;
+      }
+      state.checkout({
+        paymentReference: normalizeMpesaReceipt(state.paymentReference),
+      });
+      return;
+    }
+    state.checkout();
+  };
 
   if (state.loadingHolding) {
     return (
@@ -518,7 +583,20 @@ export default function BillingPOSPage() {
                   ))}
                 </div>
 
-                {paymentReferenceRequired(state.paymentMethod) ? (
+                {isMpesa ? (
+                  <div className="mt-3">
+                    <MpesaCapture
+                      mode={mpesaMode}
+                      onModeChange={setMpesaMode}
+                      phone={mpesaPhone}
+                      onPhoneChange={setMpesaPhone}
+                      code={state.paymentReference}
+                      onCodeChange={state.setPaymentReference}
+                      disabled={state.submitting}
+                      showErrors={showMpesaErrors}
+                    />
+                  </div>
+                ) : paymentReferenceRequired(state.paymentMethod) ? (
                   <div className="mt-3 space-y-1">
                     <Label
                       htmlFor="billing-payment-reference"
@@ -592,14 +670,16 @@ export default function BillingPOSPage() {
               <Button
                 className="mt-4 h-12 w-full gap-2 text-base font-semibold"
                 disabled={state.submitting || state.cart.length === 0}
-                onClick={state.checkout}
+                onClick={handleCheckout}
               >
                 {state.submitting ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
                 ) : (
                   <Check className="h-5 w-5" />
                 )}
-                Checkout · view receipt
+                {isMpesa && collectNow && mpesaMode === MPESA_CAPTURE_PROMPT
+                  ? `Send M-Pesa prompt · ${formatCurrency(paidCheck.paid || state.total)}`
+                  : 'Checkout · view receipt'}
               </Button>
             </div>
           </div>
@@ -671,11 +751,23 @@ export default function BillingPOSPage() {
         onConfirm={() => state.confirmCheckout()}
       />
 
-      <ReceiptDialog
-        sale={state.lastSale}
-        open={state.showReceipt}
-        onOpenChange={state.setShowReceipt}
-        autoPrint={settings.receipt_auto_print}
+      <StkWaitDialog
+        open={stkOpen}
+        onOpenChange={setStkOpen}
+        amount={paidCheck.paid || state.total}
+        phone={mpesaPhone}
+        purpose="pos"
+        customerId={
+          state.isWalkInCustomer(state.selectedCustomer)
+            ? null
+            : state.selectedCustomer?.id
+        }
+        customerName={state.selectedCustomer?.name || ''}
+        onPaid={(paid) => {
+          const receipt = paid?.mpesa_receipt || paid?.invoice_number || '';
+          state.setPaymentReference(receipt);
+          state.checkout({ paymentReference: receipt });
+        }}
       />
     </>
   );

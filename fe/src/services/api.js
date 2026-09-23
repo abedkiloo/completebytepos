@@ -399,6 +399,13 @@ export const paymentsAPI = {
   delete: (id) => api.delete(`/sales/payments/${id}/`),
 };
 
+export const paymentIntentsAPI = {
+  create: (data) => api.post('/payments/intents/', data),
+  get: (id) => api.get(`/payments/intents/${id}/`),
+  stk: (id) => api.post(`/payments/intents/${id}/stk/`),
+  query: (id) => api.post(`/payments/intents/${id}/query/`),
+};
+
 export const inventoryAPI = {
   list: (params) => api.get('/inventory/', { params }),
   get: (id) => api.get(`/inventory/${id}/`),

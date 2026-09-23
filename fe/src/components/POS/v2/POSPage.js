@@ -373,6 +373,13 @@ export default function POSPage() {
             setReceivedAmount={state.setReceivedAmount}
             paymentReference={state.paymentReference}
             setPaymentReference={state.setPaymentReference}
+            customerPhone={state.selectedCustomer?.phone || ''}
+            customerId={
+              isRegisteredPosCustomer(state.selectedCustomer)
+                ? state.selectedCustomer.id
+                : null
+            }
+            customerName={state.selectedCustomer?.name || ''}
             // submit
             submitting={state.submitting}
             onPay={state.requestPayment}

@@ -6,6 +6,12 @@ jest.mock('../../../services/api', () => ({
   productsAPI: {},
   customersAPI: {},
   salesAPI: {},
+  paymentIntentsAPI: {
+    create: jest.fn(),
+    get: jest.fn(),
+    stk: jest.fn(),
+    query: jest.fn(),
+  },
 }));
 jest.mock('./useBillingPOSState', () => ({
   __esModule: true,
@@ -69,6 +75,8 @@ function buildMockState(overrides = {}) {
     closePartialPaymentCustomerPrompt: jest.fn(),
     amountPaid: '',
     setAmountPaid: jest.fn(),
+    paymentReference: '',
+    setPaymentReference: jest.fn(),
     selectedCustomer: WALK_IN_CUSTOMER,
     setSelectedCustomer: jest.fn(),
     selectWalkInCustomer: jest.fn(),

@@ -33,6 +33,8 @@ import {
 } from '../../../utils/posCartRecovery';
 import { evaluatePartialPaymentToggle } from '../../../utils/billingPartialPayment';
 import { paymentReferenceRequired } from '../../../utils/paymentMethods';
+import { mpesaReceiptMessage } from '../../../utils/formValidation';
+import { mpesaCollectingNow } from '../../../utils/mpesaCapture';
 import { buildSaleCommitSummary } from '../../../utils/saleCommitSummary';
 import {
   normalizeMoney,
@@ -477,7 +479,7 @@ export function useBillingPOSState() {
     setCustomerQuery('');
   }, [holdingId]);
 
-  const checkout = useCallback(async () => {
+  const checkout = useCallback(async (overrides = {}) => {
     if (submitting) return;
     if (cart.length === 0) {
       toast.warning('Add at least one item');
@@ -504,16 +506,29 @@ export function useBillingPOSState() {
       }
     }
 
-    if (paymentReferenceRequired(paymentMethod) && !String(paymentReference || '').trim()) {
-      toast.warning('Enter the payment reference (e.g. M-Pesa code or card details).');
-      return;
+    const paymentRef = String(overrides.paymentReference ?? paymentReference ?? '').trim();
+    if (overrides.paymentReference != null) {
+      setPaymentReference(paymentRef);
     }
+
     const paidCheck = evaluateBillingAmountPaid(amountPaid, {
       paymentMethod,
       partialPayment,
       hasRegisteredCustomer: isRegisteredPosCustomer(selectedCustomer),
       total,
     });
+    if (paymentMethod === 'mpesa') {
+      if (mpesaCollectingNow(paymentMethod, paidCheck)) {
+        const codeError = mpesaReceiptMessage(paymentRef);
+        if (codeError) {
+          toast.warning(codeError);
+          return;
+        }
+      }
+    } else if (paymentReferenceRequired(paymentMethod) && !paymentRef) {
+      toast.warning('Enter the payment reference (e.g. M-Pesa code or card details).');
+      return;
+    }
     if (!paidCheck.ok) {
       toast.warning(paidCheck.message);
       return;
@@ -549,8 +564,8 @@ export function useBillingPOSState() {
       holdingId: id,
       paid: amountPaidValue,
       paymentMethod,
-      paymentReference: paymentReferenceRequired(paymentMethod)
-        ? String(paymentReference || '').trim()
+      paymentReference: paymentMethod === 'mpesa' || paymentReferenceRequired(paymentMethod)
+        ? paymentRef
         : '',
       partialPayment,
       summary: buildSaleCommitSummary({
@@ -559,7 +574,7 @@ export function useBillingPOSState() {
         paymentMethod,
         itemCount: cart.reduce((n, i) => n + (Number(i.quantity) || 0), 0),
         customerName,
-        paymentReference,
+        paymentReference: paymentRef,
       }),
     });
     setShowSaleCommitConfirm(true);

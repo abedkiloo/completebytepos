@@ -9,6 +9,25 @@ jest.mock('../../services/api', () => ({
     walletTransactions: jest.fn(),
     receiveWalletPayment: jest.fn(),
   },
+  paymentIntentsAPI: {
+    create: jest.fn(),
+    get: jest.fn(),
+    stk: jest.fn(),
+    query: jest.fn(),
+  },
+}));
+
+jest.mock('../Payments/StkWaitDialog', () => ({
+  __esModule: true,
+  default: ({ open, onPaid }) =>
+    open ? (
+      <button
+        type="button"
+        onClick={() => onPaid({ mpesa_receipt: 'QHX7K2L9M1' })}
+      >
+        mock-stk-paid
+      </button>
+    ) : null,
 }));
 
 jest.mock('../../utils/toast', () => ({
@@ -19,6 +38,7 @@ const debtor = {
   id: 3,
   name: 'Jane Debtor',
   wallet_balance: '-150.00',
+  phone: '0712345678',
 };
 
 describe('ReceiveWalletPaymentDialog', () => {
@@ -129,6 +149,7 @@ describe('ReceiveWalletPaymentDialog', () => {
     fireEvent.change(screen.getByLabelText(/Payment method/i), {
       target: { value: 'mpesa' },
     });
+    fireEvent.click(screen.getByTestId('mpesa-capture-code'));
     expect(screen.getByLabelText(/M-Pesa code/i)).toBeInTheDocument();
     expect(
       screen.getByText(/At least 4 letters and numbers from the M-Pesa SMS/i)
@@ -166,5 +187,35 @@ describe('ReceiveWalletPaymentDialog', () => {
         notes: '',
       });
     });
+  });
+
+  it('records an M-Pesa wallet payment after a prompt confirms', async () => {
+    const onSuccess = jest.fn();
+    render(
+      <ReceiveWalletPaymentDialog
+        open
+        customer={debtor}
+        onOpenChange={jest.fn()}
+        onSuccess={onSuccess}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/Payment method/i), {
+      target: { value: 'mpesa' },
+    });
+    expect(screen.getByLabelText(/Safaricom number/i)).toHaveValue('0712345678');
+    fireEvent.click(screen.getByRole('button', { name: /Record payment/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Yes, record payment/i }));
+    fireEvent.click(await screen.findByText('mock-stk-paid'));
+
+    await waitFor(() => {
+      expect(customersAPI.receiveWalletPayment).toHaveBeenCalledWith(3, {
+        amount: 150,
+        payment_method: 'mpesa',
+        reference: 'QHX7K2L9M1',
+        notes: '',
+      });
+    });
+    expect(onSuccess).toHaveBeenCalled();
   });
 });
