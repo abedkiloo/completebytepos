@@ -113,17 +113,17 @@ class CustomerWalletAPITests(ManagerAPITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('reference', response.data)
-        self.assertIn('10-character', str(response.data['reference']))
+        self.assertIn('at least 4', str(response.data['reference']))
 
     def test_receive_wallet_payment_mpesa_rejects_short_code(self):
         response = self.client.post(
             f'/api/sales/customers/{self.customer.id}/receive-wallet-payment/',
-            {'amount': '50.00', 'payment_method': 'mpesa', 'reference': 'AB12'},
+            {'amount': '50.00', 'payment_method': 'mpesa', 'reference': 'AB1'},
             format='json',
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('reference', response.data)
-        self.assertIn('you entered 4', str(response.data['reference']))
+        self.assertIn('you entered 3', str(response.data['reference']))
 
     def test_receive_wallet_payment_mpesa_rejects_symbols(self):
         response = self.client.post(

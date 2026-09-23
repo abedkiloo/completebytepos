@@ -9,7 +9,7 @@ from django.core.exceptions import ValidationError
 from utils.field_types import AMOUNT_EXAMPLE
 
 MPESA_RECEIPT_EXAMPLE = 'QHX7K2L9M1'
-MPESA_RECEIPT_LENGTH = 10
+MPESA_RECEIPT_MIN_LENGTH = 4
 
 _MPESA_CODE_RE = re.compile(r'^[A-Z0-9]+$')
 _WHITESPACE_RE = re.compile(r'\s+')
@@ -32,13 +32,15 @@ def mpesa_receipt_error(value: str | None) -> str | None:
     code = normalize_mpesa_receipt(value)
     if not code:
         return (
-            f'Enter the 10-character M-Pesa code from the SMS, e.g. {MPESA_RECEIPT_EXAMPLE}'
+            f'Enter the M-Pesa code from the SMS (at least 4 letters and numbers), '
+            f'e.g. {MPESA_RECEIPT_EXAMPLE}'
         )
     if not _MPESA_CODE_RE.fullmatch(code):
         return f'Use letters and numbers only, e.g. {MPESA_RECEIPT_EXAMPLE}'
-    if len(code) != MPESA_RECEIPT_LENGTH:
+    if len(code) < MPESA_RECEIPT_MIN_LENGTH:
         return (
-            f'Expected 10 characters (you entered {len(code)}), e.g. {MPESA_RECEIPT_EXAMPLE}'
+            f'Must be at least 4 characters (you entered {len(code)}), '
+            f'e.g. {MPESA_RECEIPT_EXAMPLE}'
         )
     return None
 

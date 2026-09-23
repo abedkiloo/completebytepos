@@ -29,10 +29,11 @@ class PaymentReferenceUnitTests(ManagerAPITestCase):
     def test_mpesa_receipt_error_explains_format(self):
         from sales.payment_reference import mpesa_receipt_error, normalize_mpesa_receipt
 
-        self.assertIn('10-character', mpesa_receipt_error(''))
+        self.assertIn('at least 4', mpesa_receipt_error(''))
         self.assertIn('letters and numbers only', mpesa_receipt_error('QHX-7K2'))
-        self.assertIn('you entered 4', mpesa_receipt_error('AB12'))
-        self.assertIn('you entered 11', mpesa_receipt_error('QHX7K2L9M1X'))
+        self.assertIn('you entered 3', mpesa_receipt_error('AB1'))
+        self.assertIsNone(mpesa_receipt_error('AB12'))
+        self.assertIsNone(mpesa_receipt_error('QHX7K2L9M1X'))
         self.assertIsNone(mpesa_receipt_error(' qhx 7k2 l9m1 '))
         self.assertEqual(normalize_mpesa_receipt(' qhx 7k2 l9m1 '), 'QHX7K2L9M1')
 

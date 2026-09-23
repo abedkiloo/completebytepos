@@ -52,7 +52,13 @@ describe('ReceiveWalletPaymentDialog', () => {
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Record payment/i }));
-    fireEvent.click(await screen.findByRole('button', { name: /Confirm & record payment/i }));
+    expect(
+      await screen.findByText(/Proceed with this payment/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Do you really want to continue with this transaction/i)
+    ).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: /Yes, record payment/i }));
 
     await waitFor(() => {
       expect(customersAPI.receiveWalletPayment).toHaveBeenCalledWith(3, {
@@ -125,32 +131,32 @@ describe('ReceiveWalletPaymentDialog', () => {
     });
     expect(screen.getByLabelText(/M-Pesa code/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/10 letters and numbers from the M-Pesa SMS/i)
+      screen.getByText(/At least 4 letters and numbers from the M-Pesa SMS/i)
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Record payment/i }));
     expect(customersAPI.receiveWalletPayment).not.toHaveBeenCalled();
     expect(toast.error).toHaveBeenCalledWith(
-      'Enter the 10-character M-Pesa code from the SMS, e.g. QHX7K2L9M1'
+      'Enter the M-Pesa code from the SMS (at least 4 letters and numbers), e.g. QHX7K2L9M1'
     );
     expect(
-      screen.getByText(/Enter the 10-character M-Pesa code from the SMS/i)
+      screen.getByText(/Enter the M-Pesa code from the SMS \(at least 4 letters and numbers\)/i)
     ).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText(/M-Pesa code/i), {
-      target: { value: 'AB12' },
+      target: { value: 'AB1' },
     });
     fireEvent.click(screen.getByRole('button', { name: /Record payment/i }));
     expect(toast.error).toHaveBeenCalledWith(
-      'Expected 10 characters (you entered 4), e.g. QHX7K2L9M1'
+      'Must be at least 4 characters (you entered 3), e.g. QHX7K2L9M1'
     );
-    expect(screen.getByText(/you entered 4/i)).toBeInTheDocument();
+    expect(screen.getByText(/you entered 3/i)).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText(/M-Pesa code/i), {
       target: { value: ' qhx 7k2 l9m1 ' },
     });
     fireEvent.click(screen.getByRole('button', { name: /Record payment/i }));
-    fireEvent.click(await screen.findByRole('button', { name: /Confirm & record payment/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Yes, record payment/i }));
 
     await waitFor(() => {
       expect(customersAPI.receiveWalletPayment).toHaveBeenCalledWith(3, {

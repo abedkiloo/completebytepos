@@ -281,7 +281,8 @@ export default function ReceiveWalletPaymentDialog({
             />
             {form.payment_method === 'mpesa' ? (
               <p className="text-xs text-muted-foreground">
-                10 letters and numbers from the M-Pesa SMS, e.g. {MPESA_RECEIPT_EXAMPLE}
+                At least 4 letters and numbers from the M-Pesa SMS, e.g.{' '}
+                {MPESA_RECEIPT_EXAMPLE}
               </p>
             ) : (
               <p className="text-xs text-muted-foreground">
@@ -352,11 +353,11 @@ export default function ReceiveWalletPaymentDialog({
           setPendingAmount(null);
         }
       }}
-      title="Confirm wallet payment?"
-      description="Review the payment, then confirm to credit the customer wallet."
+      title="Proceed with this payment?"
+      description="Do you really want to continue with this transaction? This records the payment on the customer account."
       rows={commitRows}
       submitting={submitting}
-      confirmText="Confirm & record payment"
+      confirmText="Yes, record payment"
       onConfirm={confirmCommit}
       variant="info"
     />

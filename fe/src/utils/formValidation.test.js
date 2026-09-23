@@ -116,11 +116,13 @@ describe('formValidation', () => {
     expect(parsePaymentAmount('250')).toBe(250);
   });
 
-  it('mpesaReceiptMessage explains missing, symbols, and length', () => {
-    expect(mpesaReceiptMessage('')).toContain('10-character');
+  it('mpesaReceiptMessage explains missing, symbols, and short codes', () => {
+    expect(mpesaReceiptMessage('')).toContain('at least 4 letters and numbers');
     expect(mpesaReceiptMessage('QHX-7K2')).toContain('letters and numbers only');
-    expect(mpesaReceiptMessage('ABC12')).toContain('you entered 5');
-    expect(mpesaReceiptMessage('QHX7K2L9M1X')).toContain('you entered 11');
+    expect(mpesaReceiptMessage('AB1')).toContain('you entered 3');
+    expect(mpesaReceiptMessage('AB12')).toBeUndefined();
+    expect(mpesaReceiptMessage('ABC12')).toBeUndefined();
+    expect(mpesaReceiptMessage('QHX7K2L9M1X')).toBeUndefined();
     expect(mpesaReceiptMessage(' qhx 7k2 l9m1 ')).toBeUndefined();
     expect(mpesaReceiptMessage('QHX7K2L9M1')).toBeUndefined();
     expect(normalizeMpesaReceipt(' qhx 7k2 l9m1 ')).toBe('QHX7K2L9M1');

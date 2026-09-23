@@ -4,7 +4,7 @@
 
 export const AMOUNT_EXAMPLE = '250.00';
 export const MPESA_RECEIPT_EXAMPLE = 'QHX7K2L9M1';
-export const MPESA_RECEIPT_LENGTH = 10;
+export const MPESA_RECEIPT_MIN_LENGTH = 4;
 export const EMAIL_EXAMPLE = 'name@example.com';
 export const PHONE_EXAMPLE = '0712 345 678';
 export const DATE_EXAMPLE = '2026-09-22';
@@ -146,13 +146,13 @@ export function normalizeMpesaReceipt(value) {
 export function mpesaReceiptMessage(value) {
   const code = normalizeMpesaReceipt(value);
   if (!code) {
-    return `Enter the 10-character M-Pesa code from the SMS, e.g. ${MPESA_RECEIPT_EXAMPLE}`;
+    return `Enter the M-Pesa code from the SMS (at least 4 letters and numbers), e.g. ${MPESA_RECEIPT_EXAMPLE}`;
   }
   if (!/^[A-Z0-9]+$/.test(code)) {
     return `Use letters and numbers only, e.g. ${MPESA_RECEIPT_EXAMPLE}`;
   }
-  if (code.length !== MPESA_RECEIPT_LENGTH) {
-    return `Expected 10 characters (you entered ${code.length}), e.g. ${MPESA_RECEIPT_EXAMPLE}`;
+  if (code.length < MPESA_RECEIPT_MIN_LENGTH) {
+    return `Must be at least 4 characters (you entered ${code.length}), e.g. ${MPESA_RECEIPT_EXAMPLE}`;
   }
   return undefined;
 }
