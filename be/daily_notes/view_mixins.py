@@ -43,6 +43,10 @@ class DailyAuthorScopedViewSetMixin(AuditedModelViewSetMixin):
             filters['search'] = params.get('search')
         if 'status' in params:
             filters['status'] = params.get('status')
+        if 'kind' in params:
+            filters['kind'] = params.get('kind')
+        if 'is_sticky' in params:
+            filters['is_sticky'] = params.get('is_sticky')
         return filters
 
     def get_queryset(self):

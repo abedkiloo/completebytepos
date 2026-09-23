@@ -80,6 +80,46 @@ class MoneyTransferService(BaseService):
         transfer.save()
         
         return transfer
+
+    @transaction.atomic
+    def reject_transfer(self, transfer: 'MoneyTransfer', rejected_by, reason: str) -> 'MoneyTransfer':
+        from approvals.financial_workflow import validate_checker_not_maker
+        from daily_notes.approval_notice import SOURCE_TRANSFER, notify_approval_rejected
+
+        validate_checker_not_maker(rejected_by, transfer.created_by_id)
+        reason = (reason or '').strip()
+        if not reason:
+            raise ValidationError({'rejection_reason': 'Say why you are returning this transfer.'})
+        if transfer.status != 'pending':
+            raise ValidationError('Only pending transfers can be returned to the requester.')
+        transfer.status = 'cancelled'
+        note = f'[Rejected by {getattr(rejected_by, "username", "checker")}] {reason}'
+        transfer.notes = f'{transfer.notes}\n{note}'.strip() if transfer.notes else note
+        transfer.save(update_fields=['status', 'notes', 'updated_at'])
+        notify_approval_rejected(
+            requester=transfer.created_by,
+            checker=rejected_by,
+            action_type='transfer',
+            entity_repr=transfer.transfer_number or transfer.description,
+            rejection_reason=reason,
+            source=SOURCE_TRANSFER,
+            record_id=transfer.id,
+        )
+        return transfer
+
+    @transaction.atomic
+    def resubmit_transfer(self, transfer: 'MoneyTransfer', user) -> 'MoneyTransfer':
+        if transfer.status != 'cancelled':
+            raise ValidationError('Only returned transfers can be sent back for approval.')
+        if (
+            transfer.created_by_id
+            and transfer.created_by_id != getattr(user, 'id', None)
+            and not getattr(user, 'is_superuser', False)
+        ):
+            raise ValidationError('You can only resubmit your own transfers.')
+        transfer.status = 'pending'
+        transfer.save(update_fields=['status', 'updated_at'])
+        return transfer
     
     def get_transfer_statistics(self) -> Dict[str, Any]:
         """Get comprehensive transfer statistics"""

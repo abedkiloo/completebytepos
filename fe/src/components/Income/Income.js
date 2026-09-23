@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Check, Pencil, Plus, Trash2, TrendingUp } from 'lucide-react';
+import { Check, Pencil, Plus, Trash2, TrendingUp, X } from 'lucide-react';
 import { incomeAPI } from '../../services/api';
 import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { formatCurrency, formatDate } from '../../utils/formatters';
@@ -12,6 +12,8 @@ import IncomeForm from './IncomeForm';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { toast } from '../../utils/toast';
+import { rejectionReturnedMessage } from '../../utils/approvalReturn';
+import HelpHint from '../Shared/HelpHint';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import {
@@ -163,6 +165,18 @@ const Income = () => {
     }
   };
 
+  const handleReject = async (id) => {
+    const reason = window.prompt('Why are you returning this income to the person who submitted it?');
+    if (!reason || !reason.trim()) return;
+    try {
+      await incomeAPI.reject(id, { rejection_reason: reason.trim() });
+      loadIncomes();
+      toast.success(rejectionReturnedMessage('income'));
+    } catch (error) {
+      toast.error('Could not return this income: ' + (error.response?.data?.error || error.message));
+    }
+  };
+
   const handleFormClose = () => {
     setShowForm(false);
     setEditingIncome(null);
@@ -309,9 +323,20 @@ const Income = () => {
                             undefined,
                             'income',
                           ) && (
-                          <Button variant="ghost" size="sm" onClick={() => handleApprove(income.id)}>
-                            <Check className="h-4 w-4 text-success" />
-                          </Button>
+                          <>
+                            <Button variant="ghost" size="sm" onClick={() => handleApprove(income.id)}>
+                              <Check className="h-4 w-4 text-success" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleReject(income.id)}
+                              title="Return to requester"
+                            >
+                              <X className="h-4 w-4 text-destructive" />
+                            </Button>
+                            <HelpHint actionKey="reject_change" />
+                          </>
                         )}
                         <Button variant="ghost" size="sm" onClick={() => handleEdit(income)}>
                           <Pencil className="h-4 w-4" />

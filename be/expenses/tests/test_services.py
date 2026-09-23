@@ -33,6 +33,50 @@ class ExpenseServiceTestCase(TestCase):
         self.assertEqual(approved.status, 'approved')
         self.assertEqual(approved.approved_by, self.user)
 
+    def test_reject_expense_notifies_requester(self):
+        from daily_notes.models import DailyNote, DailyTask
+
+        expense = Expense.objects.create(
+            category=self.cat,
+            description='Office rent',
+            amount=Decimal('1000.00'),
+            expense_date=timezone.now().date(),
+            status='pending',
+            created_by=self.user,
+        )
+        checker = User.objects.create_user(username='exp_rejector', password='x')
+        rejected = self.service.reject_expense(expense, checker, 'Need receipt')
+        self.assertEqual(rejected.status, 'rejected')
+        self.assertIn('Need receipt', rejected.notes)
+        note = DailyNote.objects.get(author=self.user)
+        self.assertIn('expense', note.title)
+        task = DailyTask.objects.get(assigned_to=self.user)
+        self.assertFalse(task.is_done)
+        queued = self.service.resubmit_expense(expense, self.user)
+        self.assertEqual(queued.status, 'pending')
+
+    def test_reject_expense_requires_reason_and_pending(self):
+        expense = Expense.objects.create(
+            category=self.cat,
+            description='Fuel',
+            amount=Decimal('80.00'),
+            expense_date=timezone.now().date(),
+            status='pending',
+            created_by=self.user,
+        )
+        checker = User.objects.create_user(username='exp_rejector2', password='x')
+        with self.assertRaises(ValidationError):
+            self.service.reject_expense(expense, checker, '  ')
+        expense.status = 'approved'
+        expense.save(update_fields=['status'])
+        with self.assertRaises(ValidationError):
+            self.service.reject_expense(expense, checker, 'Too late')
+        expense.status = 'rejected'
+        expense.save(update_fields=['status'])
+        other = User.objects.create_user(username='not_maker', password='x')
+        with self.assertRaises(ValidationError):
+            self.service.resubmit_expense(expense, other)
+
     def test_maker_checker_blocks_self_approve(self):
         store = StoreSettings.load()
         store.maker_checker_enabled = True

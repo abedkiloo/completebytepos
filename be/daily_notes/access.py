@@ -39,6 +39,12 @@ def user_may_view_all_daily_notes(user) -> bool:
         return False
     if user.is_superuser:
         return True
+    profile = getattr(user, 'profile', None)
+    if profile is not None and (
+        getattr(profile, 'is_super_admin', False)
+        or getattr(profile, 'role', None) in ('admin', 'super_admin')
+    ):
+        return True
     if _user_has_perm(user, 'daily_notes', 'view_all'):
         role = resolve_user_role(user)
         if role == 'super_admin':

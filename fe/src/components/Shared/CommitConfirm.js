@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, CheckCircle2, Info } from 'lucide-react';
+import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 import {
   Dialog,
@@ -12,6 +12,8 @@ import {
 import { Button } from '../ui/button';
 import { cn } from '../../lib/cn';
 import { buildCommitRows } from '../../utils/commitConfirm';
+import { getActionHelp } from '../../utils/actionHelp';
+import HelpHint from './HelpHint';
 
 const TONE_CLASS = {
   default: '',
@@ -40,6 +42,7 @@ const ICONS = {
  * @param {string} [props.confirmText]
  * @param {string} [props.cancelText]
  * @param {'info'|'warning'|'danger'} [props.variant]
+ * @param {string} [props.helpKey]
  */
 export function CommitConfirm({
   open,
@@ -52,7 +55,11 @@ export function CommitConfirm({
   confirmText = 'Confirm & save',
   cancelText = 'Cancel',
   variant = 'info',
+  helpKey,
 }) {
+  const help = helpKey ? getActionHelp(helpKey) : null;
+  const resolvedTitle = title || help?.confirmTitle || 'Confirm action?';
+  const resolvedDescription = description || help?.confirmBody;
   const summaryRows = buildCommitRows(rows);
   const Icon = ICONS[variant] || ICONS.info;
   const iconTone =
@@ -73,9 +80,10 @@ export function CommitConfirm({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Icon className={cn('h-5 w-5', iconTone)} />
-            {title || 'Confirm action?'}
+            {resolvedTitle}
+            {helpKey ? <HelpHint actionKey={helpKey} /> : null}
           </DialogTitle>
-          {description ? <DialogDescription>{description}</DialogDescription> : null}
+          {resolvedDescription ? <DialogDescription>{resolvedDescription}</DialogDescription> : null}
         </DialogHeader>
 
         {summaryRows.length > 0 ? (

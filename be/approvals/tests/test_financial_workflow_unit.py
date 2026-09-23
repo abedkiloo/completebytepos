@@ -14,6 +14,7 @@ from approvals.financial_workflow import (
     finalize_financial_create,
     prepare_financial_update,
     require_proposal_reason,
+    require_rejection_reason,
     validate_checker_not_maker,
     validate_locked_record_update,
 )
@@ -119,6 +120,32 @@ class FinancialWorkflowUnitTests(TestCase):
         prepare_financial_update(req, expense)
         expense.refresh_from_db()
         self.assertIn('[Maker-checker] Correct amount', expense.notes)
+
+    def test_require_rejection_reason(self):
+        class Req:
+            data = {}
+
+        with self.assertRaises(ValidationError):
+            require_rejection_reason(Req())
+
+        class Ok:
+            data = {'rejection_reason': 'Need receipt'}
+
+        self.assertEqual(require_rejection_reason(Ok()), 'Need receipt')
+
+    def test_prepare_financial_update_requeues_rejected(self):
+        expense = Expense.objects.create(
+            description='Returned',
+            amount=Decimal('10.00'),
+            expense_date='2026-06-02',
+            status='rejected',
+        )
+        req = MagicMock()
+        req.data = {'proposal_reason': 'Fixed amount'}
+        prepare_financial_update(req, expense)
+        expense.refresh_from_db()
+        self.assertEqual(expense.status, 'pending')
+        self.assertIn('[Maker-checker] Fixed amount', expense.notes)
 
 
 class FinancialWorkflowDisabledTests(TestCase):

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Calendar, CheckSquare, NotebookPen, Pencil, Plus, Trash2 } from 'lucide-react';
-import { dailyNotesAPI, dailyTasksAPI } from '../../services/api';
+import { Calendar, CheckSquare, NotebookPen, Pencil, Plus, Redo2, Trash2 } from 'lucide-react';
+import { dailyNotesAPI, dailyTasksAPI, expensesAPI, incomeAPI, pendingChangesAPI, transfersAPI } from '../../services/api';
 import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { toast } from '../../utils/toast';
 import { getPersonaFromStorage, getStoredAuth } from '../../utils/roleAccess';
@@ -19,6 +19,18 @@ import {
   sortDailyTasks,
   taskStatusLabel,
 } from '../../utils/dailyNotesTasks';
+import {
+  canToggleDailyNote,
+  noteKindLabel,
+  sortDailyNotes,
+} from '../../utils/dailyNotesSticky';
+import {
+  canResubmitRejection,
+  isApprovalRejectionNote,
+  isApprovalRejectionTask,
+  parseApprovalRejectionNotice,
+  resubmitSuccessMessage,
+} from '../../utils/approvalReturn';
 import DailyNoteForm from './DailyNoteForm';
 import DailyTaskForm from './DailyTaskForm';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
@@ -52,6 +64,7 @@ const DailyNotes = () => {
 
   const canToggleTask = (task) => canToggleDailyTask(task, currentUserId);
   const canEditTask = (task) => canEditDailyTask(task, currentUserId, viewAll);
+  const canToggleNote = (note) => canToggleDailyNote(note, currentUserId, viewAll);
 
   const [selectedDate, setSelectedDate] = useState(() => searchParams.get('date') || todayIso());
   const [recentDates, setRecentDates] = useState([]);
@@ -65,8 +78,11 @@ const DailyNotes = () => {
   const [confirmDeleteNote, setConfirmDeleteNote] = useState(null);
   const [confirmDeleteTask, setConfirmDeleteTask] = useState(null);
   const [togglingTaskId, setTogglingTaskId] = useState(null);
+  const [togglingNoteId, setTogglingNoteId] = useState(null);
+  const [resubmittingKey, setResubmittingKey] = useState(null);
 
   const sortedTasks = useMemo(() => sortDailyTasks(tasks), [tasks]);
+  const sortedNotes = useMemo(() => sortDailyNotes(notes), [notes]);
   const openTaskCount = useMemo(() => countOpenTasks(tasks), [tasks]);
 
   const loadRecentDates = useCallback(async () => {
@@ -140,6 +156,50 @@ const DailyNotes = () => {
     }
   };
 
+  const handleToggleNote = async (note) => {
+    if (!canToggleNote(note)) return;
+    setTogglingNoteId(note.id);
+    try {
+      const res = await dailyNotesAPI.toggleDone(note.id);
+      setNotes((prev) => prev.map((n) => (n.id === note.id ? res.data : n)));
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Could not update note');
+    } finally {
+      setTogglingNoteId(null);
+    }
+  };
+
+  const handleResubmitRejection = async (entry, kind) => {
+    const parsed = parseApprovalRejectionNotice(entry.description || entry.content);
+    if (!canResubmitRejection(parsed)) {
+      toast.warning('This notice cannot be sent back from here.');
+      return;
+    }
+    const key = `${kind}-${entry.id}`;
+    setResubmittingKey(key);
+    try {
+      if (parsed.source === 'pending_change') {
+        await pendingChangesAPI.resubmit(parsed.id);
+      } else if (parsed.source === 'expense') {
+        await expensesAPI.resubmit(parsed.id);
+      } else if (parsed.source === 'income') {
+        await incomeAPI.resubmit(parsed.id);
+      } else if (parsed.source === 'transfer') {
+        await transfersAPI.resubmit(parsed.id);
+      }
+      toast.success(resubmitSuccessMessage());
+      if (kind === 'task' && canToggleTask(entry) && !entry.is_done) {
+        const res = await dailyTasksAPI.toggleDone(entry.id);
+        setTasks((prev) => prev.map((t) => (t.id === entry.id ? res.data : t)));
+        dispatchNavBadgesRefresh();
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Could not send this back for approval');
+    } finally {
+      setResubmittingKey(null);
+    }
+  };
+
   const handleDeleteNote = async () => {
     if (!confirmDeleteNote) return;
     try {
@@ -173,7 +233,7 @@ const DailyNotes = () => {
         description={
           viewAll
             ? 'Tasks and journal entries for your team. Pick a date to see what was planned and logged.'
-            : 'Track tasks and log shift notes — managers and admin can review the team journal.'
+            : 'Track tasks and log shift notes. If an approval is returned, it appears here so you can send it back.'
         }
       >
         <div className="flex flex-wrap gap-2">
@@ -316,6 +376,24 @@ const DailyNotes = () => {
                                 ✓
                               </span>
                             )}
+                            {isApprovalRejectionTask(task) &&
+                            canResubmitRejection(
+                              parseApprovalRejectionNotice(task.description)
+                            ) ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="mt-1"
+                                disabled={resubmittingKey === `task-${task.id}`}
+                                onClick={() => handleResubmitRejection(task, 'task')}
+                              >
+                                <Redo2 className="h-3.5 w-3.5" />
+                                {resubmittingKey === `task-${task.id}`
+                                  ? 'Sending…'
+                                  : 'Send back for approval'}
+                              </Button>
+                            ) : null}
                           </div>
                         </div>
                       </div>
@@ -359,26 +437,67 @@ const DailyNotes = () => {
               <DataTable>
                 <DataTableHeader>
                   <tr>
+                    <DataTableHead className="w-10">Done</DataTableHead>
                     {viewAll && <DataTableHead>Author</DataTableHead>}
                     <DataTableHead>Title</DataTableHead>
                     <DataTableHead>Note</DataTableHead>
+                    <DataTableHead>Kind</DataTableHead>
                     <DataTableHead>Updated</DataTableHead>
                     <DataTableHead className="w-24 text-right">Actions</DataTableHead>
                   </tr>
                 </DataTableHeader>
                 <DataTableBody>
-                  {notes.map((note) => (
+                  {sortedNotes.map((note) => (
                     <DataTableRow key={note.id}>
+                      <DataTableCell>
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4"
+                          checked={Boolean(note.is_done)}
+                          disabled={!canToggleNote(note) || togglingNoteId === note.id}
+                          onChange={() => handleToggleNote(note)}
+                          aria-label={`Tick note ${note.title || note.id}`}
+                        />
+                      </DataTableCell>
                       {viewAll && (
                         <DataTableCell className="whitespace-nowrap text-sm text-muted-foreground">
                           {note.author_name || note.author_username}
+                          {note.assigned_to_name || note.assigned_role_name ? (
+                            <div>
+                              For {note.assigned_to_name || note.assigned_role_name}
+                              {note.assigned_to_name && note.assigned_role_name
+                                ? ` · ${note.assigned_role_name}`
+                                : ''}
+                            </div>
+                          ) : null}
                         </DataTableCell>
                       )}
-                      <DataTableCell className="font-medium">
+                      <DataTableCell className={`font-medium ${note.is_done ? 'text-muted-foreground line-through' : ''}`}>
                         {note.title || '—'}
                       </DataTableCell>
                       <DataTableCell>
-                        <p className="whitespace-pre-wrap text-sm">{note.content}</p>
+                        <p className={`whitespace-pre-wrap text-sm ${note.is_done ? 'text-muted-foreground line-through' : ''}`}>{note.content}</p>
+                        {isApprovalRejectionNote(note) &&
+                        canResubmitRejection(parseApprovalRejectionNotice(note.content)) ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="mt-2"
+                            disabled={resubmittingKey === `note-${note.id}`}
+                            onClick={() => handleResubmitRejection(note, 'note')}
+                          >
+                            <Redo2 className="h-3.5 w-3.5" />
+                            {resubmittingKey === `note-${note.id}`
+                              ? 'Sending…'
+                              : 'Send back for approval'}
+                          </Button>
+                        ) : null}
+                      </DataTableCell>
+                      <DataTableCell>
+                        <Badge variant={note.is_sticky ? 'destructive' : 'secondary'}>
+                          {noteKindLabel(note)}
+                        </Badge>
                       </DataTableCell>
                       <DataTableCell className="whitespace-nowrap text-sm text-muted-foreground">
                         {note.updated_at
@@ -427,6 +546,7 @@ const DailyNotes = () => {
         <DailyNoteForm
           note={editingNote}
           defaultDate={selectedDate}
+          canAssignToOthers={viewAll}
           onClose={() => {
             setShowNoteForm(false);
             setEditingNote(null);

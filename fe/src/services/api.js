@@ -86,6 +86,16 @@ api.interceptors.request.use(
   (config) => {
     config.headers = config.headers || {};
     config.headers['X-Client-Channel'] = 'web';
+    // Let the browser set multipart boundary. A hardcoded Content-Type
+    // (or the instance default application/json) drops the uploaded file.
+    if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+      if (typeof config.headers.delete === 'function') {
+        config.headers.delete('Content-Type');
+      } else {
+        delete config.headers['Content-Type'];
+        delete config.headers['content-type'];
+      }
+    }
 
     const token = getToken();
     if (token) {
@@ -275,6 +285,10 @@ export const dailyNotesAPI = {
   update: (id, data) => api.put(`/daily-notes/notes/${id}/`, data),
   delete: (id) => api.delete(`/daily-notes/notes/${id}/`),
   recentDates: () => api.get('/daily-notes/notes/recent-dates/'),
+  blocking: () => api.get('/daily-notes/notes/blocking/'),
+  toggleDone: (id) => api.post(`/daily-notes/notes/${id}/toggle-done/`),
+  staff: () => api.get('/daily-notes/notes/staff/'),
+  roles: () => api.get('/daily-notes/notes/roles/'),
 };
 
 export const dailyTasksAPI = {
@@ -473,6 +487,7 @@ export const pendingChangesAPI = {
   get: (id) => api.get(`/approvals/pending-changes/${id}/`),
   approve: (id, data = {}) => api.post(`/approvals/pending-changes/${id}/approve/`, data),
   reject: (id, data) => api.post(`/approvals/pending-changes/${id}/reject/`, data),
+  resubmit: (id, data = {}) => api.post(`/approvals/pending-changes/${id}/resubmit/`, data),
 };
 
 export const barcodesAPI = {
@@ -492,6 +507,8 @@ export const expensesAPI = {
   delete: (id) => api.delete(`/expenses/${id}/`),
   void: (id, data) => api.post(`/expenses/${id}/void/`, data),
   approve: (id) => api.post(`/expenses/${id}/approve/`),
+  reject: (id, data) => api.post(`/expenses/${id}/reject/`, data),
+  resubmit: (id) => api.post(`/expenses/${id}/resubmit/`),
   statistics: () => api.get('/expenses/statistics/'),
   categories: {
     list: (params) => api.get('/expenses/categories/', { params }),
@@ -572,6 +589,8 @@ export const incomeAPI = {
   delete: (id) => api.delete(`/income/${id}/`),
   void: (id, data) => api.post(`/income/${id}/void/`, data),
   approve: (id) => api.post(`/income/${id}/approve/`),
+  reject: (id, data) => api.post(`/income/${id}/reject/`, data),
+  resubmit: (id) => api.post(`/income/${id}/resubmit/`),
   statistics: () => api.get('/income/statistics/'),
   categories: {
     list: (params) => api.get('/income/categories/', { params }),
@@ -607,6 +626,8 @@ export const transfersAPI = {
   update: (id, data) => api.put(`/transfers/${id}/`, data),
   delete: (id) => api.delete(`/transfers/${id}/`),
   approve: (id) => api.post(`/transfers/${id}/approve/`),
+  reject: (id, data) => api.post(`/transfers/${id}/reject/`, data),
+  resubmit: (id) => api.post(`/transfers/${id}/resubmit/`),
   statistics: () => api.get('/transfers/statistics/'),
 };
 
@@ -706,6 +727,7 @@ export const dispatchAPI = {
   get: (id) => api.get(`/dispatch/field-orders/${id}/`),
   queue: () => api.get('/dispatch/queue/'),
   drivers: () => api.get('/dispatch/drivers/'),
+  createDriver: (data) => api.post('/dispatch/drivers/', data),
   pack: (id) => api.post(`/dispatch/field-orders/${id}/pack/`),
   assign: (id, data) => api.post(`/dispatch/field-orders/${id}/assign/`, data),
 };

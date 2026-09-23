@@ -14,6 +14,8 @@ from agents.order_serializers import (
 from agents.order_services import FieldOrderTransitionError
 from django.contrib.auth.models import User
 
+from .driver_create import CreateDriverSerializer, driver_payload
+
 DISPATCH_PERMS = RequirePermPerAction(
     'dispatch',
     {
@@ -21,6 +23,7 @@ DISPATCH_PERMS = RequirePermPerAction(
         'retrieve': 'view',
         'queue': 'view',
         'drivers': 'view',
+        'create_driver': 'update',
         'pack': 'update',
         'assign': 'update',
     },
@@ -103,10 +106,8 @@ class DispatchQueueViewSet(viewsets.ReadOnlyModelViewSet):
             'site', 'customer', 'created_by', 'assigned_delivery_agent',
         ).prefetch_related('lines', 'lines__variant', 'site__media').get(pk=pk)
 
-    @action(detail=False, methods=['get'], url_path='drivers')
-    def drivers(self, request):
-        """Active users with the Delivery Driver role for assign pickers."""
-        qs = (
+    def _driver_queryset(self):
+        return (
             User.objects.filter(
                 is_active=True,
                 profile__custom_role__name=ROLE_DELIVERY_AGENT,
@@ -115,15 +116,22 @@ class DispatchQueueViewSet(viewsets.ReadOnlyModelViewSet):
             .select_related('profile')
             .order_by('first_name', 'last_name', 'username')
         )
-        payload = []
-        for u in qs:
-            full = f'{u.first_name} {u.last_name}'.strip()
-            payload.append({
-                'id': u.id,
-                'username': u.username,
-                'display_name': full or u.username,
-            })
-        return Response(payload)
+
+    @action(detail=False, methods=['get'], url_path='drivers')
+    def drivers(self, request):
+        """Active users with the Delivery Driver role for assign pickers."""
+        return Response([driver_payload(u) for u in self._driver_queryset()])
+
+    @action(detail=False, methods=['post'], url_path='create-driver')
+    def create_driver(self, request):
+        """Add a Delivery Driver so field orders can be assigned immediately."""
+        ser = CreateDriverSerializer(data=request.data, context={'request': request})
+        ser.is_valid(raise_exception=True)
+        user = ser.save()
+        return Response(
+            driver_payload(user, temporary_password=user._temporary_password),
+            status=status.HTTP_201_CREATED,
+        )
 
     @action(detail=False, methods=['get'], url_path='queue')
     def queue(self, request):

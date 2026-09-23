@@ -150,6 +150,46 @@ class IncomeService(BaseService):
         return income
 
     @transaction.atomic
+    def reject_income(self, income: Income, rejected_by, reason: str) -> Income:
+        from approvals.financial_workflow import validate_checker_not_maker
+        from daily_notes.approval_notice import SOURCE_INCOME, notify_approval_rejected
+
+        validate_checker_not_maker(rejected_by, income.created_by_id)
+        reason = (reason or '').strip()
+        if not reason:
+            raise ValidationError({'rejection_reason': 'Say why you are returning this income.'})
+        if income.status != 'pending':
+            raise ValidationError('Only pending income can be returned to the requester.')
+        income.status = 'rejected'
+        note = f'[Rejected by {getattr(rejected_by, "username", "checker")}] {reason}'
+        income.notes = f'{income.notes}\n{note}'.strip() if income.notes else note
+        income.save(update_fields=['status', 'notes', 'updated_at'])
+        notify_approval_rejected(
+            requester=income.created_by,
+            checker=rejected_by,
+            action_type='income',
+            entity_repr=income.income_number or income.description,
+            rejection_reason=reason,
+            source=SOURCE_INCOME,
+            record_id=income.id,
+        )
+        return income
+
+    @transaction.atomic
+    def resubmit_income(self, income: Income, user) -> Income:
+        if income.status != 'rejected':
+            raise ValidationError('Only rejected income can be sent back for approval.')
+        if (
+            income.created_by_id
+            and income.created_by_id != getattr(user, 'id', None)
+            and not getattr(user, 'is_superuser', False)
+        ):
+            raise ValidationError('You can only resubmit your own income records.')
+        income.status = 'pending'
+        income.save(update_fields=['status', 'updated_at'])
+        return income
+
+    @transaction.atomic
     def void_income(self, income: Income, *, reason: str, user) -> Income:
         """Void posted income and reverse its journals so cash and revenue match."""
         reason = (reason or '').strip()

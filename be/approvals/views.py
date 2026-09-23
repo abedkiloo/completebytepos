@@ -11,8 +11,9 @@ from approvals.serializers import (
     ApproveChangeSerializer,
     PendingChangeSerializer,
     RejectChangeSerializer,
+    ResubmitChangeSerializer,
 )
-from approvals.service import approve_change, reject_change
+from approvals.service import approve_change, reject_change, resubmit_change
 
 
 class PendingChangeViewSet(viewsets.ReadOnlyModelViewSet):
@@ -109,6 +110,25 @@ class PendingChangeViewSet(viewsets.ReadOnlyModelViewSet):
                 change,
                 request.user,
                 body.validated_data['rejection_reason'],
+                request=request,
+            )
+        except DjangoValidationError as exc:
+            if hasattr(exc, 'message_dict'):
+                return Response(exc.message_dict, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        change.refresh_from_db()
+        return Response(PendingChangeSerializer(change).data)
+
+    @action(detail=True, methods=['post'])
+    def resubmit(self, request, pk=None):
+        change = self.get_object()
+        body = ResubmitChangeSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        try:
+            resubmit_change(
+                change,
+                request.user,
+                reason=body.validated_data.get('reason') or '',
                 request=request,
             )
         except DjangoValidationError as exc:

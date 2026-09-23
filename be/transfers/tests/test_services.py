@@ -49,6 +49,28 @@ class MoneyTransferServiceTestCase(TestCase):
         done = self.service.approve_transfer(transfer, self.user)
         self.assertEqual(done.status, 'completed')
 
+    def test_reject_transfer_notifies_requester(self):
+        from daily_notes.models import DailyNote, DailyTask
+
+        transfer = MoneyTransfer.objects.create(
+            transfer_type='bank_to_bank',
+            from_account=self.from_acct,
+            to_account=self.to_acct,
+            amount=Decimal('500.00'),
+            transfer_date=timezone.now().date(),
+            status='pending',
+            description='Float top-up',
+            created_by=self.user,
+        )
+        checker = User.objects.create_user(username='xfer_rejector', password='x')
+        rejected = self.service.reject_transfer(transfer, checker, 'Wrong account')
+        self.assertEqual(rejected.status, 'cancelled')
+        self.assertIn('Wrong account', rejected.notes)
+        self.assertTrue(DailyNote.objects.filter(author=self.user).exists())
+        self.assertTrue(DailyTask.objects.filter(assigned_to=self.user).exists())
+        queued = self.service.resubmit_transfer(transfer, self.user)
+        self.assertEqual(queued.status, 'pending')
+
     def test_maker_checker_blocks_self_approve(self):
         store = StoreSettings.load()
         store.maker_checker_enabled = True

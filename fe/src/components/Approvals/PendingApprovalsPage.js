@@ -18,6 +18,8 @@ import {
 } from '../../utils/makerChecker';
 import { describeApprovalSummary, formatApprovalValue } from '../../utils/approvalDisplay';
 import { backfillRejectionSuccessMessage } from '../../utils/recordPastSaleBackfill';
+import { getActionHelp } from '../../utils/actionHelp';
+import HelpHint from '../Shared/HelpHint';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import ApprovalChangeTable from './ApprovalChangeTable';
 import CommitConfirm from '../Shared/CommitConfirm';
@@ -68,7 +70,7 @@ function PendingRow({ row, onResolved }) {
 
   const reject = async () => {
     if (!rejectReason.trim()) {
-      toast.warning('Please say why you are rejecting this change');
+      toast.warning('Please say why you are returning this change');
       return;
     }
     setBusy(true);
@@ -144,15 +146,18 @@ function PendingRow({ row, onResolved }) {
 
         {showReject ? (
           <div className="space-y-2">
-            <Label>Why are you rejecting this?</Label>
+            <Label>Why are you returning this to the requester?</Label>
             <Input
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
               placeholder="e.g. Price is too low for this season"
             />
+            <p className="text-xs text-muted-foreground">
+              {getActionHelp('reject_change').hover}
+            </p>
             <div className="flex gap-2">
               <Button type="button" variant="destructive" size="sm" onClick={reject} disabled={busy}>
-                Confirm rejection
+                Return to requester
               </Button>
               <Button type="button" variant="ghost" size="sm" onClick={() => setShowReject(false)}>
                 Cancel
@@ -178,8 +183,9 @@ function PendingRow({ row, onResolved }) {
               disabled={busy}
             >
               <X className="mr-1 h-4 w-4" />
-              Reject
+              Return to requester
             </Button>
+            <HelpHint actionKey="reject_change" />
           </div>
         )}
 
@@ -191,7 +197,8 @@ function PendingRow({ row, onResolved }) {
           if (!open && !busy) setShowApproveConfirm(false);
         }}
         title="Approve this change?"
-        description="This makes the requested change live."
+        description={getActionHelp('approve_change').confirmBody}
+        helpKey="approve_change"
         rows={approvalCommitRows(row)}
         submitting={busy}
         confirmText="Confirm & approve"
@@ -204,6 +211,8 @@ function PendingRow({ row, onResolved }) {
 function PendingExpenseRow({ expense, settings, onResolved }) {
   const [busy, setBusy] = useState(false);
   const [showApproveConfirm, setShowApproveConfirm] = useState(false);
+  const [showReject, setShowReject] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
   const canApprove = canApproveFinancialRecord(
     expense,
     settings,
@@ -224,6 +233,24 @@ function PendingExpenseRow({ expense, settings, onResolved }) {
         err.response?.data?.error ||
           'Could not approve this expense',
       );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reject = async () => {
+    if (!rejectReason.trim()) {
+      toast.warning('Please say why you are returning this expense');
+      return;
+    }
+    setBusy(true);
+    try {
+      await expensesAPI.reject(expense.id, { rejection_reason: rejectReason.trim() });
+      toast.success(backfillRejectionSuccessMessage('expense'));
+      onResolved();
+      dispatchNavBadgesRefresh();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not return this expense');
     } finally {
       setBusy(false);
     }
@@ -255,10 +282,42 @@ function PendingExpenseRow({ expense, settings, onResolved }) {
         </div>
 
         {canApprove ? (
-          <Button type="button" size="sm" onClick={() => setShowApproveConfirm(true)} disabled={busy}>
-            <Check className="mr-1 h-4 w-4" />
-            Approve expense
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" size="sm" onClick={() => setShowApproveConfirm(true)} disabled={busy}>
+              <Check className="mr-1 h-4 w-4" />
+              Approve expense
+            </Button>
+            {showReject ? (
+              <div className="w-full space-y-2">
+                <Label>Why are you returning this expense?</Label>
+                <Input
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  placeholder="e.g. Missing receipt"
+                />
+                <div className="flex gap-2">
+                  <Button type="button" variant="destructive" size="sm" onClick={reject} disabled={busy}>
+                    Return to requester
+                  </Button>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setShowReject(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setShowReject(true)}
+                disabled={busy}
+              >
+                <X className="mr-1 h-4 w-4" />
+                Return to requester
+              </Button>
+            )}
+            <HelpHint actionKey="reject_change" />
+          </div>
         ) : (
           <p className="text-xs text-muted-foreground">
             This submission requires approval from another checker.
@@ -271,7 +330,8 @@ function PendingExpenseRow({ expense, settings, onResolved }) {
           if (!open && !busy) setShowApproveConfirm(false);
         }}
         title="Approve this expense?"
-        description="This records the expense as approved."
+        description={getActionHelp('expense').confirmBody}
+        helpKey="expense"
         rows={approvalExpenseRows(expense)}
         submitting={busy}
         confirmText="Confirm & approve"
@@ -334,7 +394,7 @@ export default function PendingApprovalsPage() {
     <PageShell>
       <PageHeader
         title="Approvals waiting for you"
-        description="Review financial, price, stock, and catalog changes from your team before they go live."
+        description="Review financial, price, stock, and catalog changes from your team before they go live. Returning a request writes a Daily notes task for the person who submitted it."
         icon={ClipboardCheck}
       />
       <div className="mb-4 flex justify-end">

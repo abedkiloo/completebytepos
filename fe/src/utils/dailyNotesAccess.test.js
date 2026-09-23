@@ -5,7 +5,6 @@ import {
   salesViewAllDailyNotes,
   userMayViewAllDailyNotes,
 } from './dailyNotesAccess';
-import { cacheModuleSettings } from './moduleSettingsCache';
 import { installLocalStorageMock } from '../test-utils';
 
 const viewAllPerm = [
@@ -57,6 +56,11 @@ describe('dailyNotesAccess', () => {
     localStorage.setItem('permissions', JSON.stringify(viewAllPerm));
     expect(userMayViewAllDailyNotes(PERSONA.SALES, { allow_sales_view_all: true })).toBe(true);
     expect(userMayViewAllDailyNotes(PERSONA.SALES, { allow_sales_view_all: false })).toBe(false);
+  });
+
+  test('legacy admin role may view all', () => {
+    localStorage.setItem('profile', JSON.stringify({ role: 'admin' }));
+    expect(userMayViewAllDailyNotes(PERSONA.SALES, {})).toBe(true);
   });
 
   test('unknown persona cannot view all', () => {

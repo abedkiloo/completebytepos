@@ -346,10 +346,10 @@ describe('recordPastSaleBackfill', () => {
 
     it('backfillRejectionSuccessMessage guides makers for sale_backfill', () => {
       expect(backfillRejectionSuccessMessage('sale_backfill')).toBe(
-        'Rejected — sent back to staff to fix on Record past sale.'
+        'Returned to the requester. They can fix it on Record past sale, and will see a Daily notes task.'
       );
       expect(backfillRejectionSuccessMessage('product_price')).toBe(
-        'Rejected — nothing was changed'
+        'Returned to the requester. They will see a Daily notes task with your reason and can send it back for approval.'
       );
     });
   });

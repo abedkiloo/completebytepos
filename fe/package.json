@@ -41,6 +41,7 @@
     "test:coverage:mpesa-capture": "react-scripts test --watchAll=false --coverage --testPathPattern=\"mpesaCapture|MpesaCapture.test|StkWaitDialog.test\" --collectCoverageFrom=\"src/utils/mpesaCapture.js\" --collectCoverageFrom=\"src/components/Payments/MpesaCapture.js\" --collectCoverageFrom=\"src/components/Payments/StkWaitDialog.js\" --coverageThreshold='{\"global\":{\"lines\":98,\"statements\":90,\"functions\":90,\"branches\":80}}'",
     "test:coverage:field-sales": "react-scripts test --watchAll=false --coverage --testPathPattern=\"fieldSalesCommit|FieldSalesPage.test\" --collectCoverageFrom=\"src/utils/fieldSalesCommit.js\" --collectCoverageFrom=\"src/components/Sales/FieldSalesPage.js\" --coverageThreshold='{\"global\":{\"lines\":98,\"statements\":98,\"functions\":90,\"branches\":80}}'",
     "test:coverage:daily-sales": "react-scripts test --watchAll=false --coverage --testPathPattern=\"DailySalesPage.test|CustomerDailyDetailPage.test|dailySalesAccess.test\" --collectCoverageFrom=\"src/utils/dailySalesAccess.js\" --coverageThreshold='{\"global\":{\"lines\":98,\"statements\":98,\"functions\":98,\"branches\":85}}'",
+    "test:coverage:action-help": "react-scripts test --watchAll=false --coverage --testPathPattern=\"actionHelp|approvalReturn|HelpHint.test|SaleCorrectionCompare.test\" --collectCoverageFrom=\"src/utils/actionHelp.js\" --collectCoverageFrom=\"src/utils/approvalReturn.js\" --collectCoverageFrom=\"src/components/Shared/HelpHint.js\" --collectCoverageFrom=\"src/components/Sales/SaleCorrectionCompare.js\" --coverageThreshold='{\"global\":{\"lines\":98,\"statements\":98,\"functions\":98,\"branches\":85}}'",
     "test:coverage:all": "react-scripts test --watchAll=false --coverage --testPathPattern=\"src/(utils|config|hooks)/|Display\\.test|moduleSettingsCache|FeatureFlag|sellingPrice\" --coverageThreshold='{}'",
     "test:flags": "react-scripts test --watchAll=false --testPathPattern=\"Display|moduleSettingsCache|FeatureFlag|useModuleSettings|productDisplay|sellingPrice|sessionIdle|Products.module|billingInvoice|BillingPOSPage\"",
     "test:e2e": "playwright test -c e2e/playwright.config.js",
@@ -90,6 +91,8 @@
       "src/utils/billingPartialPayment.js",
       "src/utils/dailyNotesAccess.js",
       "src/utils/dailyNotesTasks.js",
+      "src/utils/actionHelp.js",
+      "src/utils/approvalReturn.js",
       "src/utils/productAccess.js",
       "src/hooks/useStoreSettings.js",
       "src/hooks/useProductVariantsEnabled.js"
@@ -160,6 +163,18 @@
       },
       "./src/utils/dailyNotesTasks.js": {
         "branches": 98,
+        "functions": 98,
+        "lines": 98,
+        "statements": 98
+      },
+      "./src/utils/actionHelp.js": {
+        "branches": 90,
+        "functions": 98,
+        "lines": 98,
+        "statements": 98
+      },
+      "./src/utils/approvalReturn.js": {
+        "branches": 90,
         "functions": 98,
         "lines": 98,
         "statements": 98

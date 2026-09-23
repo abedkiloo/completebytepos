@@ -52,13 +52,13 @@ const REASON_CONTEXT_COPY = {
     label: 'Reason for void / refund',
     placeholder: 'Why is this sale being voided or refunded?',
     summary:
-      'This void/refund will be submitted for manager approval. Stock, wallet, and accounts stay unchanged until it is approved.',
+      'Use Void / refund for a customer return. You can reverse the whole sale or selected lines. The original receipt stays on record. Stock and books change only after approval.',
   },
   sale_rollback: {
     label: 'Reason for sale rollback',
     placeholder: 'e.g. Wrong customer, duplicate checkout, cashier error',
     summary:
-      'This rollback is submitted for admin approval. Stock, wallet, and accounts stay unchanged until an admin approves it in Pending approvals.',
+      'Use Roll back only when this sale should never have been recorded (duplicate till, wrong customer). It always reverses the whole sale and needs admin approval.',
   },
   sale_backfill: {
     label: 'Reason for late entry',

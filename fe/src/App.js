@@ -11,6 +11,7 @@ import { normalizeModuleSettings, readCachedModules } from './utils/moduleCache'
 import SetupGate from './components/Installation/SetupGate';
 import AppLayout from './components/Layout/AppLayout';
 import PendingTasksOnLogin from './components/DailyNotes/PendingTasksOnLogin';
+import StickyNotesGate from './components/DailyNotes/StickyNotesGate';
 import { fetchSetupStatus } from './utils/setupStatus';
 import './styles/responsive.css';
 import './styles/transitions.css';
@@ -117,6 +118,7 @@ const ProtectedRoute = () => {
 
   return (
     <>
+      <StickyNotesGate />
       <PendingTasksOnLogin />
       <Outlet />
     </>

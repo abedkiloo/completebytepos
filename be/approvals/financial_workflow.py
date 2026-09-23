@@ -91,6 +91,23 @@ def finalize_financial_create(request, instance) -> None:
 def prepare_financial_update(request, instance) -> None:
     validate_locked_record_update(instance)
     reason = require_proposal_reason(request)
+    update_fields = []
     if reason:
         append_reason_to_notes(instance, reason)
-        instance.save(update_fields=['notes'])
+        if hasattr(instance, 'notes'):
+            update_fields.append('notes')
+    if is_maker_checker_enabled() and getattr(instance, 'status', None) == 'rejected':
+        instance.status = 'pending'
+        update_fields.append('status')
+    if update_fields:
+        instance.save(update_fields=list(dict.fromkeys(update_fields)))
+
+
+def require_rejection_reason(request) -> str:
+    data = getattr(request, 'data', None) or {}
+    reason = str(data.get('rejection_reason') or data.get('reason') or '').strip()
+    if not reason:
+        raise ValidationError(
+            {'rejection_reason': 'Say why you are returning this request.'}
+        )
+    return reason

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { MapPin, PackageCheck, RefreshCw } from 'lucide-react';
+import { MapPin, PackageCheck, Plus, RefreshCw } from 'lucide-react';
 import { dispatchAPI } from '../../services/api';
 import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
@@ -18,6 +18,7 @@ import {
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import CommitConfirm from '../Shared/CommitConfirm';
+import AddDriverDialog from './AddDriverDialog';
 import {
   PageShell,
   PageHeader,
@@ -69,6 +70,7 @@ const FieldSalesPage = () => {
   const [selectedDriverId, setSelectedDriverId] = useState('');
   const [selected, setSelected] = useState(null);
   const [pending, setPending] = useState(null);
+  const [showAddDriver, setShowAddDriver] = useState(false);
   const [filters, setFilters] = useState({
     date_from: '',
     date_to: '',
@@ -253,6 +255,16 @@ const FieldSalesPage = () => {
           <RefreshCw className="h-4 w-4" />
           Refresh
         </Button>
+        {canPack ? (
+          <Button
+            variant="outline"
+            onClick={() => setShowAddDriver(true)}
+            data-testid="field-sales-add-driver"
+          >
+            <Plus className="h-4 w-4" />
+            Add driver
+          </Button>
+        ) : null}
       </PageHeader>
 
       <FilterBar>
@@ -472,6 +484,21 @@ const FieldSalesPage = () => {
                       </option>
                     ))}
                   </select>
+                  {drivers.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      No drivers yet. Add one so you can assign this order.
+                    </p>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAddDriver(true)}
+                    data-testid="field-sales-add-driver-detail"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add driver
+                  </Button>
                 </div>
               ) : null}
             </div>
@@ -502,6 +529,19 @@ const FieldSalesPage = () => {
           </div>
         </div>
       ) : null}
+
+      <AddDriverDialog
+        open={showAddDriver}
+        onClose={() => setShowAddDriver(false)}
+        onCreated={(driver) => {
+          if (!driver?.id) return;
+          setDrivers((prev) => {
+            if (prev.some((d) => d.id === driver.id)) return prev;
+            return [...prev, driver];
+          });
+          setSelectedDriverId(String(driver.id));
+        }}
+      />
 
       <CommitConfirm
         open={!!pending}

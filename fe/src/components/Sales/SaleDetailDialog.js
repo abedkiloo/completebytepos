@@ -12,6 +12,7 @@ import {
 } from '../ui/dialog';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { saleIsRefundable, saleIsRollbackable } from '../../utils/saleRefund';
+import HelpHint from '../Shared/HelpHint';
 import {
   saleAmountRefunded,
   saleFinalStatusLabel,
@@ -251,18 +252,24 @@ export default function SaleDetailDialog({
         ) : null}
 
         <DialogFooter className="flex-wrap gap-2 sm:justify-between">
-          <div>
+          <div className="flex flex-wrap items-center gap-1">
             {canRollback && saleIsRollbackable(sale) && onRollback ? (
-              <Button variant="destructive" onClick={() => onRollback(sale)}>
-                <RotateCcw className="mr-1 h-4 w-4" />
-                Roll back
-              </Button>
+              <span className="inline-flex items-center">
+                <Button variant="destructive" onClick={() => onRollback(sale)}>
+                  <RotateCcw className="mr-1 h-4 w-4" />
+                  Roll back sale
+                </Button>
+                <HelpHint actionKey="sale_rollback" />
+              </span>
             ) : null}
             {canRefund && saleIsRefundable(sale) && onRefund ? (
-              <Button variant="destructive" onClick={() => onRefund(sale)}>
-                <RotateCcw className="mr-1 h-4 w-4" />
-                Void / Refund
-              </Button>
+              <span className="inline-flex items-center">
+                <Button variant="destructive" onClick={() => onRefund(sale)}>
+                  <RotateCcw className="mr-1 h-4 w-4" />
+                  Void / refund
+                </Button>
+                <HelpHint actionKey="sale_refund" />
+              </span>
             ) : null}
           </div>
           <div className="flex gap-2">

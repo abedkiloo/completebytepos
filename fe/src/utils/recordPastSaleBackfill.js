@@ -163,9 +163,9 @@ export function backfillPendingToastMessage(resubmitPendingId, defaultPendingMes
 
 export function backfillRejectionSuccessMessage(actionType) {
   if (actionType === 'sale_backfill') {
-    return 'Rejected — sent back to staff to fix on Record past sale.';
+    return 'Returned to the requester. They can fix it on Record past sale, and will see a Daily notes task.';
   }
-  return 'Rejected — nothing was changed';
+  return 'Returned to the requester. They will see a Daily notes task with your reason and can send it back for approval.';
 }
 
 export async function linesFromBackfillPayload(items = [], deps) {

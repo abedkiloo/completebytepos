@@ -107,3 +107,17 @@ class DailyNotesAccessUnitTests(TestCase):
             custom_role=Role.objects.get(name='Super Admin'),
         )
         self.assertTrue(user_may_view_all_daily_notes(admin_user))
+
+    def test_legacy_admin_role_may_view_all(self):
+        admin_user = User.objects.create_user('legacy_admin', password='x')
+        UserProfile.objects.create(user=admin_user, role='admin')
+        self.assertTrue(user_may_view_all_daily_notes(admin_user))
+
+    def test_super_admin_custom_role_with_cashier_legacy_role(self):
+        admin_user = User.objects.create_user('sa_cashier', password='x')
+        UserProfile.objects.create(
+            user=admin_user,
+            role='cashier',
+            custom_role=Role.objects.get(name='Super Admin'),
+        )
+        self.assertTrue(user_may_view_all_daily_notes(admin_user))

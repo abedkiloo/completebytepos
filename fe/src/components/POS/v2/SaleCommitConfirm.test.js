@@ -27,6 +27,7 @@ describe('SaleCommitConfirm', () => {
     );
 
     expect(screen.getByText('Confirm sale?')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /What happens when I confirm this sale/i })).toBeInTheDocument();
     expect(screen.getByText('Ada')).toBeInTheDocument();
     expect(screen.getByText('Cash')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Confirm & complete sale/i }));

@@ -17,7 +17,16 @@ export function salesViewAllDailyNotes(settings = {}) {
 }
 
 export function userMayViewAllDailyNotes(persona, moduleSettings = {}) {
-  const { permissions } = getStoredAuth();
+  const { permissions, profile, user } = getStoredAuth();
+  if (
+    persona === PERSONA.SUPER_ADMIN ||
+    user?.is_superuser ||
+    profile?.is_super_admin ||
+    profile?.role === 'super_admin' ||
+    profile?.role === 'admin'
+  ) {
+    return true;
+  }
   if (!hasPermission(permissions, 'daily_notes', 'view_all')) {
     return false;
   }

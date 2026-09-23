@@ -25,6 +25,7 @@ TRANSFERS_PERMS = RequirePermPerAction('money_transfer', {
     'statistics': 'view',
     'approve': 'approve',
     'reject': 'approve',
+    'resubmit': 'update',
 })
 
 
@@ -71,6 +72,33 @@ class MoneyTransferViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             log_approval_event(request, approved_transfer, module='money_transfer')
             serializer = self.get_serializer(approved_transfer)
             return Response(serializer.data)
+        except (ValidationError, DjangoValidationError) as e:
+            detail = getattr(e, 'detail', None) or str(e)
+            return Response({'error': detail}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        transfer = self.get_object()
+        from approvals.financial_workflow import require_rejection_reason
+
+        try:
+            reason = require_rejection_reason(request)
+            rejected = self.transfer_service.reject_transfer(transfer, request.user, reason)
+            log_approval_event(request, rejected, module='money_transfer')
+            return Response(self.get_serializer(rejected).data)
+        except (ValidationError, DjangoValidationError) as e:
+            payload = getattr(e, 'message_dict', None)
+            if payload:
+                return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+            detail = getattr(e, 'detail', None) or str(e)
+            return Response({'error': detail}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    def resubmit(self, request, pk=None):
+        transfer = self.get_object()
+        try:
+            queued = self.transfer_service.resubmit_transfer(transfer, request.user)
+            return Response(self.get_serializer(queued).data)
         except (ValidationError, DjangoValidationError) as e:
             detail = getattr(e, 'detail', None) or str(e)
             return Response({'error': detail}, status=status.HTTP_400_BAD_REQUEST)

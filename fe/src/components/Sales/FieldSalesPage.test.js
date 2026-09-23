@@ -10,6 +10,7 @@ jest.mock('../../services/api', () => ({
     list: jest.fn(),
     get: jest.fn(),
     drivers: jest.fn(),
+    createDriver: jest.fn(),
     pack: jest.fn(),
     assign: jest.fn(),
   },
@@ -252,5 +253,15 @@ describe('FieldSalesPage', () => {
     fireEvent.click(await screen.findByTestId('commit-confirm-ok'));
     await waitFor(() => expect(dispatchAPI.pack).toHaveBeenCalledWith(44));
     await waitFor(() => expect(dispatchAPI.get).toHaveBeenCalledWith(44));
+  });
+
+  test('opens add-driver dialog from the field sales header', async () => {
+    mockList([readyOrder]);
+    render(<FieldSalesPage />);
+    fireEvent.click(await screen.findByTestId('field-sales-add-driver'));
+    expect(screen.getByTestId('add-driver-dialog')).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: /View/i }));
+    fireEvent.click(screen.getByTestId('field-sales-add-driver-detail'));
+    expect(screen.getAllByTestId('add-driver-dialog').length).toBeGreaterThan(0);
   });
 });

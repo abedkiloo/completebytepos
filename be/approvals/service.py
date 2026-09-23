@@ -278,6 +278,20 @@ def _apply_single_change(change: PendingChange, checker, request) -> PendingChan
     return change
 
 
+def _notify_change_rejected(change: PendingChange, checker, reason: str) -> None:
+    from daily_notes.approval_notice import SOURCE_PENDING_CHANGE, notify_approval_rejected
+
+    notify_approval_rejected(
+        requester=change.made_by,
+        checker=checker,
+        action_type=change.action_type,
+        entity_repr=change.entity_repr,
+        rejection_reason=reason,
+        source=SOURCE_PENDING_CHANGE,
+        record_id=change.id,
+    )
+
+
 @transaction.atomic
 def reject_change(
     change: PendingChange,
@@ -293,6 +307,7 @@ def reject_change(
         raise ValidationError({'rejection_reason': 'Rejection reason is required.'})
 
     now = timezone.now()
+    reason = str(rejection_reason).strip()
     if change.batch_id:
         batch = PendingChange.objects.filter(
             batch_id=change.batch_id,
@@ -302,19 +317,68 @@ def reject_change(
             item.status = PendingChange.STATUS_REJECTED
             item.checked_by = checker
             item.checked_at = now
-            item.rejection_reason = str(rejection_reason).strip()
+            item.rejection_reason = reason
             item.save(update_fields=['status', 'checked_by', 'checked_at', 'rejection_reason'])
             if request:
                 _audit_pending(request, item, 'pending_reject')
+            _notify_change_rejected(item, checker, reason)
         return change
 
     change.status = PendingChange.STATUS_REJECTED
     change.checked_by = checker
     change.checked_at = now
-    change.rejection_reason = str(rejection_reason).strip()
+    change.rejection_reason = reason
     change.save(update_fields=['status', 'checked_by', 'checked_at', 'rejection_reason'])
     if request:
         _audit_pending(request, change, 'pending_reject')
+    _notify_change_rejected(change, checker, reason)
+    return change
+
+
+@transaction.atomic
+def resubmit_change(
+    change: PendingChange,
+    maker,
+    reason: str = '',
+    request=None,
+) -> PendingChange:
+    """Return a rejected request to the checker queue."""
+    if change.status != PendingChange.STATUS_REJECTED:
+        raise ValidationError('Only rejected requests can be sent back for approval.')
+    if change.made_by_id and change.made_by_id != getattr(maker, 'id', None):
+        if not getattr(maker, 'is_superuser', False):
+            raise ValidationError('You can only resubmit your own requests.')
+
+    extra = str(reason or '').strip()
+    now = timezone.now()
+
+    def _requeue(item: PendingChange) -> None:
+        if extra:
+            existing = (item.reason or '').strip()
+            item.reason = f'{existing}\n[Resubmitted] {extra}'.strip() if existing else extra
+        item.status = PendingChange.STATUS_PENDING
+        item.checked_by = None
+        item.checked_at = None
+        item.rejection_reason = ''
+        fields = ['status', 'checked_by', 'checked_at', 'rejection_reason']
+        if extra:
+            fields.append('reason')
+        item.save(update_fields=fields)
+        if request:
+            _audit_pending(request, item, 'pending_resubmit')
+
+    if change.batch_id:
+        batch = PendingChange.objects.filter(
+            batch_id=change.batch_id,
+            status=PendingChange.STATUS_REJECTED,
+            made_by=change.made_by,
+        )
+        for item in batch:
+            _requeue(item)
+        change.refresh_from_db()
+        return change
+
+    _requeue(change)
     return change
 
 

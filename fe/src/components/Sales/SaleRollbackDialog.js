@@ -13,10 +13,15 @@ import { formatCurrency } from '../../utils/formatters';
 import { buildRollbackPayload, saleIsRollbackable } from '../../utils/saleRefund';
 import CommitConfirm from '../Shared/CommitConfirm';
 import { saleRollbackRows } from '../../utils/formCommitSummary';
+import SaleCorrectionCompare from './SaleCorrectionCompare';
+import HelpHint from '../Shared/HelpHint';
+import { getActionHelp } from '../../utils/actionHelp';
 
 export default function SaleRollbackDialog({ sale, open, onOpenChange, onSubmit, submitting }) {
   const [reason, setReason] = useState('');
   const [showCommitConfirm, setShowCommitConfirm] = useState(false);
+
+  const rollbackHelp = getActionHelp('sale_rollback');
 
   useEffect(() => {
     if (!open) return;
@@ -39,13 +44,13 @@ export default function SaleRollbackDialog({ sale, open, onOpenChange, onSubmit,
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Roll back sale</DialogTitle>
-            <DialogDescription>
-              Requires the sales.rollback permission. The request goes to
-              Pending approvals — stock, wallet, and journals reverse only
-              after an admin approves. Super Admin can apply immediately.
-            </DialogDescription>
+            <DialogTitle className="flex items-center gap-2">
+              Roll back a mistaken sale
+              <HelpHint actionKey="sale_rollback" />
+            </DialogTitle>
+            <DialogDescription>{rollbackHelp.hover}</DialogDescription>
           </DialogHeader>
+          <SaleCorrectionCompare highlight="sale_rollback" />
           <form onSubmit={handleSubmit} className="space-y-4">
             <p className="text-sm">
               <span className="text-muted-foreground">Sale </span>
@@ -80,8 +85,9 @@ export default function SaleRollbackDialog({ sale, open, onOpenChange, onSubmit,
         onOpenChange={(next) => {
           if (!next && !submitting) setShowCommitConfirm(false);
         }}
-        title="Submit sale rollback?"
-        description="This is sent to Pending approvals. Stock, money, and accounting reverse only after an admin approves. Super Admin can apply immediately."
+        title={rollbackHelp.confirmTitle}
+        description={rollbackHelp.confirmBody}
+        helpKey="sale_rollback"
         rows={saleRollbackRows(sale, reason)}
         confirmText="Submit for approval"
         submitting={submitting}

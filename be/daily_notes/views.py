@@ -23,6 +23,9 @@ DAILY_NOTES_PERMS = RequirePermPerAction(
         'recent_dates': 'view',
         'toggle_done': 'update',
         'pending': 'view',
+        'blocking': 'view',
+        'staff': 'view',
+        'roles': 'view',
     },
 )
 
@@ -37,6 +40,21 @@ class DailyNoteViewSet(DailyAuthorScopedViewSetMixin, viewsets.ModelViewSet):
         super().__init__(*args, **kwargs)
         self.entry_service = DailyNoteService()
 
+    def get_permissions(self):
+        if getattr(self, 'action', None) in ('blocking', 'toggle_done'):
+            return [IsAuthenticated(), RequireModuleEnabled('daily_notes')()]
+        return super().get_permissions()
+
+    def _may_toggle_note(self, instance) -> bool:
+        user = self.request.user
+        if user.is_superuser:
+            return True
+        if instance.assigned_to_id == user.id:
+            return True
+        if instance.author_id == user.id:
+            return True
+        return user_may_view_all_daily_notes(user)
+
     @action(detail=False, methods=['get'], url_path='recent-dates')
     def recent_dates(self, request):
         if not user_may_access_daily_notes(request.user):
@@ -46,6 +64,73 @@ class DailyNoteViewSet(DailyAuthorScopedViewSetMixin, viewsets.ModelViewSet):
             view_all=user_may_view_all_daily_notes(request.user),
         )
         return Response({'dates': dates})
+
+    @action(detail=False, methods=['get'], url_path='blocking')
+    def blocking(self, request):
+        notes = self.entry_service.blocking_for_user(user=request.user)
+        return Response(DailyNoteSerializer(notes, many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='toggle-done')
+    def toggle_done(self, request, pk=None):
+        try:
+            note = DailyNote.objects.select_related(
+                'author',
+                'author__profile',
+                'assigned_to',
+                'assigned_to__profile',
+                'assigned_role',
+            ).get(pk=pk)
+        except DailyNote.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if not self._may_toggle_note(note):
+            return Response(
+                {'error': 'You can only tick notes assigned to you, notes you wrote, or as an admin.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        note.is_done = not note.is_done
+        note.mark_done(done=note.is_done)
+        note.save(update_fields=['is_done', 'completed_at', 'updated_at'])
+        return Response(DailyNoteSerializer(note).data)
+
+    @action(detail=False, methods=['get'], url_path='staff')
+    def staff(self, request):
+        if not user_may_access_daily_notes(request.user):
+            return self._access_denied()
+        if not user_may_view_all_daily_notes(request.user):
+            return Response(
+                {'error': 'You can only assign notes to yourself.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        from django.contrib.auth.models import User
+        from daily_notes.serializers import _author_display
+
+        qs = (
+            User.objects.filter(is_active=True)
+            .select_related('profile')
+            .order_by('first_name', 'last_name', 'username')
+        )
+        return Response([
+            {
+                'id': u.id,
+                'username': u.username,
+                'display_name': _author_display(u),
+            }
+            for u in qs
+        ])
+
+    @action(detail=False, methods=['get'], url_path='roles')
+    def roles(self, request):
+        if not user_may_access_daily_notes(request.user):
+            return self._access_denied()
+        if not user_may_view_all_daily_notes(request.user):
+            return Response(
+                {'error': 'You can only assign notes to yourself.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        from accounts.models import Role
+
+        qs = Role.objects.filter(is_active=True).order_by('name')
+        return Response([{'id': r.id, 'name': r.name} for r in qs])
 
 
 class DailyTaskViewSet(DailyAuthorScopedViewSetMixin, viewsets.ModelViewSet):

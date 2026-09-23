@@ -23,6 +23,9 @@ import {
   saleItemVariantLabel,
 } from '../../utils/saleItemDisplay';
 import CommitConfirm from '../Shared/CommitConfirm';
+import SaleCorrectionCompare from './SaleCorrectionCompare';
+import HelpHint from '../Shared/HelpHint';
+import { getActionHelp } from '../../utils/actionHelp';
 import {
   buildDuplicateRefundQtyMap,
   detectDuplicateSaleLineGroups,
@@ -39,6 +42,7 @@ export default function RefundSaleDialog({ sale, open, onOpenChange, onSubmit, s
   const { settings: storeSettings } = useStoreSettings();
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
   const refundCopy = makerCheckerReasonCopy('sale_refund');
+  const refundHelp = getActionHelp('sale_refund');
 
   const duplicateGroups = useMemo(
     () => detectDuplicateSaleLineGroups(sale?.items || []),
@@ -123,8 +127,12 @@ export default function RefundSaleDialog({ sale, open, onOpenChange, onSubmit, s
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Void or refund sale {sale.sale_number}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            Void or refund sale {sale.sale_number}
+            <HelpHint actionKey="sale_refund" />
+          </DialogTitle>
         </DialogHeader>
+        <SaleCorrectionCompare highlight="sale_refund" />
         {!refundable ? (
           <p className="text-sm text-muted-foreground">
             This sale cannot be voided (already fully refunded or not completed).
@@ -282,8 +290,9 @@ export default function RefundSaleDialog({ sale, open, onOpenChange, onSubmit, s
           setPendingPayload(null);
         }
       }}
-      title="Confirm void / refund?"
-      description="This reverses stock, revenue, and customer balances for the selected quantities. The original sale stays on record."
+      title={refundHelp.confirmTitle}
+      description={refundHelp.confirmBody}
+      helpKey="sale_refund"
       rows={commitRows}
       submitting={submitting}
       confirmText={makerCheckerOn ? 'Submit for approval' : 'Confirm void / refund'}

@@ -132,6 +132,22 @@ describe('CommitConfirm', () => {
     expect(screen.getByText('Odd?')).toBeInTheDocument();
   });
 
+  test('helpKey adds hover education', () => {
+    render(
+      <CommitConfirm
+        open
+        title=""
+        description=""
+        helpKey="sale_refund"
+        rows={[]}
+        onConfirm={jest.fn()}
+      />
+    );
+    expect(screen.getByText(/Confirm void \/ refund/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /what is void \/ refund/i })).toBeInTheDocument();
+    expect(screen.getByText(/Do not use this to undo a mistaken checkout/i)).toBeInTheDocument();
+  });
+
   test('works without onOpenChange handler', () => {
     render(
       <CommitConfirm open title="No handler" onConfirm={jest.fn()} />

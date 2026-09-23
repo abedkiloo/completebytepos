@@ -117,7 +117,7 @@ describe('SaleDetailDialog', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Void \/ Refund/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Void \/ refund$/i }));
     expect(onRefund).toHaveBeenCalledWith(sale);
   });
 
@@ -136,7 +136,7 @@ describe('SaleDetailDialog', () => {
       />
     );
 
-    expect(screen.queryByRole('button', { name: /Void \/ Refund/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Void \/ refund$/i })).not.toBeInTheDocument();
   });
 
   it('hides admin block when showAdminDetails is false', () => {

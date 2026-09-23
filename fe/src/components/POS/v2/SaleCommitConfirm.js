@@ -16,6 +16,7 @@ import {
   saleCommitConfirmLabel,
   saleCommitTitle,
 } from '../../../utils/saleCommitSummary';
+import HelpHint from '../../Shared/HelpHint';
 
 /**
  * Pre-commit confirmation with payment summary. Use before salesAPI.create /
@@ -39,6 +40,12 @@ export function SaleCommitConfirm({
           <DialogTitle className="flex items-center gap-2">
             <CheckCircle2 className="h-5 w-5 text-primary" />
             {title}
+            <HelpHint
+              title="Record this sale"
+              body="This saves a new sale. After save, use Void / refund for a customer return, or Roll back if this checkout was a mistake."
+              contrast=""
+              label="What happens when I confirm this sale?"
+            />
           </DialogTitle>
           <DialogDescription>
             Review the payment summary, then confirm to save this sale. This cannot be

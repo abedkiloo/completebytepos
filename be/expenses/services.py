@@ -178,6 +178,46 @@ class ExpenseService(BaseService):
         return expense
 
     @transaction.atomic
+    def reject_expense(self, expense: Expense, rejected_by, reason: str) -> Expense:
+        from approvals.financial_workflow import validate_checker_not_maker
+        from daily_notes.approval_notice import SOURCE_EXPENSE, notify_approval_rejected
+
+        validate_checker_not_maker(rejected_by, expense.created_by_id)
+        reason = (reason or '').strip()
+        if not reason:
+            raise ValidationError({'rejection_reason': 'Say why you are returning this expense.'})
+        if expense.status != 'pending':
+            raise ValidationError('Only pending expenses can be returned to the requester.')
+        expense.status = 'rejected'
+        note = f'[Rejected by {getattr(rejected_by, "username", "checker")}] {reason}'
+        expense.notes = f'{expense.notes}\n{note}'.strip() if expense.notes else note
+        expense.save(update_fields=['status', 'notes', 'updated_at'])
+        notify_approval_rejected(
+            requester=expense.created_by,
+            checker=rejected_by,
+            action_type='expense',
+            entity_repr=expense.expense_number or expense.description,
+            rejection_reason=reason,
+            source=SOURCE_EXPENSE,
+            record_id=expense.id,
+        )
+        return expense
+
+    @transaction.atomic
+    def resubmit_expense(self, expense: Expense, user) -> Expense:
+        if expense.status != 'rejected':
+            raise ValidationError('Only rejected expenses can be sent back for approval.')
+        if (
+            expense.created_by_id
+            and expense.created_by_id != getattr(user, 'id', None)
+            and not getattr(user, 'is_superuser', False)
+        ):
+            raise ValidationError('You can only resubmit your own expenses.')
+        expense.status = 'pending'
+        expense.save(update_fields=['status', 'updated_at'])
+        return expense
+
+    @transaction.atomic
     def void_expense(self, expense: Expense, *, reason: str, user) -> Expense:
         """Void a posted expense and reverse its journals so P&L and cash match."""
         reason = (reason or '').strip()

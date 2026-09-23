@@ -82,6 +82,27 @@ class DailyNoteServiceTests(TestCase):
         self.assertEqual(len(dates), 2)
         self.assertEqual(dates[0], self.today)
 
+    def test_assignee_sees_sticky_note_and_blocking(self):
+        DailyNote.objects.create(
+            note_date=self.today,
+            content='Must count till',
+            is_sticky=True,
+            author=self.bob,
+            assigned_to=self.alice,
+        )
+        qs = self.service.build_queryset(user=self.alice, view_all=False)
+        self.assertEqual(qs.filter(is_sticky=True).count(), 1)
+        blocking = self.service.blocking_for_user(user=self.alice)
+        self.assertEqual(len(blocking), 1)
+        empty = self.service.blocking_for_user(user=self.bob)
+        self.assertEqual(len(empty), 0)
+        sticky = self.service.build_queryset(
+            user=self.alice,
+            view_all=True,
+            filters={'kind': 'sticky'},
+        )
+        self.assertEqual(sticky.count(), 1)
+
 
 class DailyTaskServiceTests(TestCase):
     def setUp(self):

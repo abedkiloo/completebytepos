@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Check, Pencil, Plus, RefreshCw, Trash2, TrendingDown } from 'lucide-react';
+import { Check, Pencil, Plus, RefreshCw, Trash2, TrendingDown, X } from 'lucide-react';
 import { expensesAPI } from '../../services/api';
 import { CATALOG_FETCH_PAGE_SIZE, DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
@@ -16,7 +16,8 @@ import {
   buildExpenseListParams,
   normalizeFilterChangeValue,
 } from '../../utils/expenseFilters';
-import ExpenseForm from './ExpenseForm';
+import { rejectionReturnedMessage } from '../../utils/approvalReturn';
+import HelpHint from '../Shared/HelpHint';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import {
@@ -165,6 +166,18 @@ const Expenses = () => {
       toast.success('Expense approved successfully');
     } catch (error) {
       toast.error('Failed to approve expense: ' + (error.response?.data?.error || error.message));
+    }
+  };
+
+  const handleReject = async (id) => {
+    const reason = window.prompt('Why are you returning this expense to the person who submitted it?');
+    if (!reason || !reason.trim()) return;
+    try {
+      await expensesAPI.reject(id, { rejection_reason: reason.trim() });
+      loadExpenses();
+      toast.success(rejectionReturnedMessage('expense'));
+    } catch (error) {
+      toast.error('Could not return this expense: ' + (error.response?.data?.error || error.message));
     }
   };
 
@@ -360,14 +373,25 @@ const Expenses = () => {
                             undefined,
                             'expenses',
                           ) && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleApprove(expense.id)}
-                            title="Approve"
-                          >
-                            <Check className="h-4 w-4 text-success" />
-                          </Button>
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleApprove(expense.id)}
+                              title="Approve"
+                            >
+                              <Check className="h-4 w-4 text-success" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleReject(expense.id)}
+                              title="Return to requester"
+                            >
+                              <X className="h-4 w-4 text-destructive" />
+                            </Button>
+                            <HelpHint actionKey="reject_change" />
+                          </>
                         )}
                         <Button
                           variant="ghost"

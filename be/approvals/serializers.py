@@ -46,3 +46,7 @@ class ApproveChangeSerializer(serializers.Serializer):
 
 class RejectChangeSerializer(serializers.Serializer):
     rejection_reason = serializers.CharField()
+
+
+class ResubmitChangeSerializer(serializers.Serializer):
+    reason = serializers.CharField(required=False, allow_blank=True, default='')

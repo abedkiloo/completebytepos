@@ -32,6 +32,39 @@ class IncomeServiceTestCase(TestCase):
         approved = self.service.approve_income(income, self.user)
         self.assertEqual(approved.status, 'approved')
 
+    def test_reject_income_notifies_requester(self):
+        from daily_notes.models import DailyNote, DailyTask
+
+        income = Income.objects.create(
+            category=self.cat,
+            description='Consulting',
+            amount=Decimal('500.00'),
+            income_date=timezone.now().date(),
+            status='pending',
+            created_by=self.user,
+        )
+        checker = User.objects.create_user(username='inc_rejector', password='x')
+        rejected = self.service.reject_income(income, checker, 'Missing invoice')
+        self.assertEqual(rejected.status, 'rejected')
+        self.assertIn('Missing invoice', rejected.notes)
+        self.assertTrue(DailyNote.objects.filter(author=self.user).exists())
+        self.assertTrue(DailyTask.objects.filter(assigned_to=self.user, is_done=False).exists())
+        queued = self.service.resubmit_income(income, self.user)
+        self.assertEqual(queued.status, 'pending')
+
+    def test_reject_income_requires_pending(self):
+        income = Income.objects.create(
+            category=self.cat,
+            description='Fee',
+            amount=Decimal('10.00'),
+            income_date=timezone.now().date(),
+            status='approved',
+            created_by=self.user,
+        )
+        checker = User.objects.create_user(username='inc_rejector2', password='x')
+        with self.assertRaises(ValidationError):
+            self.service.reject_income(income, checker, 'No')
+
     def test_maker_checker_blocks_self_approve(self):
         store = StoreSettings.load()
         store.maker_checker_enabled = True

@@ -15,6 +15,7 @@ import RefundSaleDialog from './RefundSaleDialog';
 import SaleRollbackDialog from './SaleRollbackDialog';
 import SaleDetailDialog from './SaleDetailDialog';
 import SaleChannelIcon from './SaleChannelIcon';
+import HelpHint from '../Shared/HelpHint';
 import ReportExportButtons from '../Reports/ReportExportButtons';
 import { salesHistoryExportParams } from '../../utils/reportExport';
 import { Button } from '../ui/button';
@@ -468,26 +469,32 @@ const Sales = () => {
                     <DataTableCell align="right">
                       <div className="flex justify-end gap-1">
                         {canRollback && saleIsRollbackable(sale) && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive"
-                            onClick={() => openRollbackDialog(sale)}
-                          >
-                            <RotateCcw className="mr-1 h-3.5 w-3.5" />
-                            Roll back
-                          </Button>
+                          <span className="inline-flex items-center">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive"
+                              onClick={() => openRollbackDialog(sale)}
+                            >
+                              <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                              Roll back
+                            </Button>
+                            <HelpHint actionKey="sale_rollback" />
+                          </span>
                         )}
                         {canRefund && saleIsRefundable(sale) && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive"
-                            onClick={() => openRefundDialog(sale)}
-                          >
-                            <RotateCcw className="mr-1 h-3.5 w-3.5" />
-                            Void / Refund
-                          </Button>
+                          <span className="inline-flex items-center">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive"
+                              onClick={() => openRefundDialog(sale)}
+                            >
+                              <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                              Void / refund
+                            </Button>
+                            <HelpHint actionKey="sale_refund" />
+                          </span>
                         )}
                         <Button
                           variant="ghost"
