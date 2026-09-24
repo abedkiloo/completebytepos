@@ -10,6 +10,7 @@ import {
   assignDriverError,
   canAssignDriver,
   canMarkReady,
+  deliveryAssigneeLabel,
   fieldOrderLineSummary,
   fieldOrderTotal,
   packCommitRows,
@@ -217,7 +218,7 @@ const FieldSalesPage = () => {
       await dispatchAPI.assign(order.id, {
         delivery_agent_id: Number(selectedDriverId),
       });
-      toast.success(`Order #${order.id} assigned to driver`);
+      toast.success(`Order #${order.id} assigned for delivery`);
       await loadOrders();
       await refreshSelected(order.id);
     } catch (error) {
@@ -295,7 +296,7 @@ const FieldSalesPage = () => {
     <PageShell>
       <PageHeader
         title="Field sales"
-        description="Visit orders from the field — pack, assign a delivery driver, or leave ready for drivers to claim."
+        description="Visit orders from the field — pack, assign a sales person or driver, or leave ready for them to claim."
       >
         <Button variant="outline" onClick={loadOrders} disabled={loading}>
           <RefreshCw className="h-4 w-4" />
@@ -325,7 +326,7 @@ const FieldSalesPage = () => {
         <div className="rounded-lg border bg-background p-4 space-y-3" data-testid="field-sales-map-panel">
           <div className="flex flex-wrap items-end gap-3">
             <div>
-              <label className="text-sm font-medium" htmlFor="field-sales-map-driver">Driver</label>
+              <label className="text-sm font-medium" htmlFor="field-sales-map-driver">Assigned to</label>
               <select
                 id="field-sales-map-driver"
                 className="mt-1 flex h-10 min-w-[12rem] rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -334,11 +335,11 @@ const FieldSalesPage = () => {
                 data-testid="field-sales-map-driver"
               >
                 {drivers.length === 0 ? (
-                  <option value="">No drivers</option>
+                  <option value="">No one with delivery access</option>
                 ) : null}
                 {drivers.map((driver) => (
                   <option key={driver.id} value={driver.id}>
-                    {driver.display_name || driver.username || `Driver #${driver.id}`}
+                    {deliveryAssigneeLabel(driver)}
                   </option>
                 ))}
               </select>
@@ -589,7 +590,7 @@ const FieldSalesPage = () => {
               ) : null}
               {selected.assigned_delivery_agent_name ? (
                 <div className="text-sm">
-                  <div className="font-medium">Delivery driver</div>
+                  <div className="font-medium">Assigned to</div>
                   <p className="text-muted-foreground">
                     {selected.assigned_delivery_agent_name}
                   </p>
@@ -597,23 +598,23 @@ const FieldSalesPage = () => {
               ) : null}
               {canPack && canAssignDriver(selected) ? (
                 <div className="text-sm space-y-2">
-                  <div className="font-medium">Assign delivery driver</div>
+                  <div className="font-medium">Assign for delivery</div>
                   <select
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                     value={selectedDriverId}
                     onChange={(e) => setSelectedDriverId(e.target.value)}
                     data-testid="field-sales-driver-select"
                   >
-                    <option value="">Select driver…</option>
+                    <option value="">Select a person…</option>
                     {drivers.map((d) => (
                       <option key={d.id} value={d.id}>
-                        {d.display_name || d.username}
+                        {deliveryAssigneeLabel(d)}
                       </option>
                     ))}
                   </select>
                   {drivers.length === 0 ? (
                     <p className="text-xs text-muted-foreground">
-                      No drivers yet. Add one so you can assign this order.
+                      No one with delivery access yet. Add a driver, or grant Delivery on a role (Sales have it by default).
                     </p>
                   ) : null}
                   <Button
@@ -646,7 +647,7 @@ const FieldSalesPage = () => {
                   disabled={assigningId === selected.id}
                   data-testid="field-sales-assign"
                 >
-                  {assigningId === selected.id ? 'Assigning…' : 'Assign driver'}
+                  {assigningId === selected.id ? 'Assigning…' : 'Assign person'}
                 </Button>
               ) : null}
               <Button variant="outline" onClick={() => setSelected(null)}>

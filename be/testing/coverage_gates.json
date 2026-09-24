@@ -61,6 +61,11 @@
       "minimum_percent": 98
     },
     {
+      "name": "debt_collection_approval",
+      "include": ["sales/debt_collection_approval.py"],
+      "minimum_percent": 98
+    },
+    {
       "name": "daily_notes",
       "include": [
         "daily_notes/access.py",
@@ -93,6 +98,11 @@
       "include": [
         "dispatch/views.py"
       ],
+      "minimum_percent": 98
+    },
+    {
+      "name": "delivery_assignees",
+      "include": ["delivery/assignees.py"],
       "minimum_percent": 98
     },
     {

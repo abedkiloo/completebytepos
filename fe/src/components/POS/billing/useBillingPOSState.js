@@ -526,7 +526,7 @@ export function useBillingPOSState() {
         }
       }
     } else if (paymentReferenceRequired(paymentMethod) && !paymentRef) {
-      toast.warning('Enter the payment reference (e.g. M-Pesa code or card details).');
+      toast.warning('Enter the M-Pesa confirmation code.');
       return;
     }
     if (!paidCheck.ok) {
@@ -555,7 +555,7 @@ export function useBillingPOSState() {
       }
     }
 
-    const amountPaidValue = paymentMethod === 'other' ? total : paid;
+    const amountPaidValue = paid;
     const customerName =
       selectedCustomer && !isWalkInCustomer(selectedCustomer)
         ? selectedCustomer.name

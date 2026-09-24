@@ -209,7 +209,7 @@ class Sale(models.Model):
     payment_reference = models.CharField(
         max_length=100,
         blank=True,
-        help_text='M-Pesa confirmation code, card auth/last-4, or other non-cash reference',
+        help_text='M-Pesa confirmation code for non-cash collection',
     )
     amount_paid = models.DecimalField(
         max_digits=10, 

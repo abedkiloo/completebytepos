@@ -147,6 +147,20 @@ class CustomerServiceTestCase(TestCase):
         self.assertEqual(customer.wallet_balance, Decimal('-125.00'))
         self.assertEqual(txn.source_type, 'debt_settlement')
         self.assertEqual(txn.transaction_type, 'credit')
+
+    def test_record_wallet_payment_rejects_card(self):
+        customer = Customer.objects.create(
+            name='Debtor',
+            wallet_balance=Decimal('-200.00'),
+            is_active=True,
+        )
+        with self.assertRaises(ValidationError) as ctx:
+            self.service.record_wallet_payment(
+                customer,
+                Decimal('75.00'),
+                payment_method='card',
+            )
+        self.assertIn('cash or M-PESA', str(ctx.exception))
     
     def test_get_customer_statistics(self):
         """Test getting customer statistics"""
@@ -740,6 +754,35 @@ class SaleServiceTestCase(TestCase):
                 Decimal('100.00'),
                 self.customer,
                 allow_partial=False,
+            )
+
+    def test_validate_checkout_payment_skips_non_collection_methods(self):
+        self.service._validate_checkout_payment(
+            'wallet',
+            Decimal('0'),
+            Decimal('100.00'),
+            None,
+            allow_partial=False,
+        )
+
+    def test_validate_checkout_payment_rejects_short_tender(self):
+        with self.assertRaises(ValidationError):
+            self.service._validate_checkout_payment(
+                'mpesa',
+                Decimal('50.00'),
+                Decimal('100.00'),
+                self.customer,
+                allow_partial=False,
+            )
+
+    def test_validate_checkout_payment_rejects_partial_without_customer(self):
+        with self.assertRaises(ValidationError):
+            self.service._validate_checkout_payment(
+                'cash',
+                Decimal('50.00'),
+                Decimal('100.00'),
+                None,
+                allow_partial=True,
             )
 
     def test_pos_partial_payment_records_single_wallet_debt(self):

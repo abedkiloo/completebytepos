@@ -16,6 +16,7 @@ from settings.models import StoreSettings
 from settings.serializers import StoreSettingsSerializer
 from settings.store_settings_helpers import (
     DEFAULT_PAYMENT_METHODS,
+    entity_status_visible,
     normalize_payment_methods,
     user_may_edit_pricing,
 )
@@ -34,10 +35,10 @@ class StoreSettingsHelperTests(TestCase):
 
     def test_normalize_payment_methods_deduplicates_and_lowercases(self):
         result = normalize_payment_methods(['CASH', 'mpesa', 'cash', 'card'])
-        self.assertEqual(result, ['cash', 'mpesa', 'card'])
+        self.assertEqual(result, ['cash', 'mpesa'])
 
     def test_normalize_payment_methods_ignores_invalid(self):
-        result = normalize_payment_methods(['cash', 'bitcoin'])
+        result = normalize_payment_methods(['cash', 'bitcoin', 'card'])
         self.assertEqual(result, ['cash'])
 
     def test_user_may_edit_pricing_superuser(self):
@@ -46,6 +47,16 @@ class StoreSettingsHelperTests(TestCase):
 
     def test_user_may_edit_pricing_anonymous(self):
         self.assertFalse(user_may_edit_pricing(None))
+
+    def test_entity_status_visible_respects_module_flag(self):
+        self.assertTrue(entity_status_visible(True))
+        self.assertFalse(entity_status_visible(False))
+
+    def test_entity_status_visible_hidden_by_store_setting(self):
+        store = StoreSettings.load()
+        store.hide_entity_status_toggles = True
+        store.save(update_fields=['hide_entity_status_toggles'])
+        self.assertFalse(entity_status_visible(True))
 
 
 class StoreSettingsModelTests(TestCase):
@@ -87,7 +98,7 @@ class StoreSettingsSerializerTests(TestCase):
 
     def test_parses_json_string_from_multipart_style_querydict(self):
         qd = QueryDict(mutable=True)
-        qd['enabled_payment_methods'] = json.dumps(['cash', 'wallet', 'card'])
+        qd['enabled_payment_methods'] = json.dumps(['cash', 'wallet', 'mpesa'])
         qd['allow_sales_add_products'] = 'true'
         qd['receipt_footer_text'] = 'Karibu tena'
 
@@ -95,7 +106,7 @@ class StoreSettingsSerializerTests(TestCase):
         self.assertTrue(ser.is_valid(), ser.errors)
         self.assertEqual(
             ser.validated_data['enabled_payment_methods'],
-            ['cash', 'wallet', 'card'],
+            ['cash', 'wallet', 'mpesa'],
         )
 
     def test_rejects_unknown_payment_method(self):
@@ -159,7 +170,7 @@ class StoreSettingsAPITests(SuperAdminAPITestCase):
                 'allow_sales_add_products': 'true',
                 'sales_catalog_skip_pricing': 'true',
                 'hide_entity_status_toggles': 'false',
-                'enabled_payment_methods': json.dumps(['cash', 'card']),
+                'enabled_payment_methods': json.dumps(['cash', 'mpesa']),
                 'receipt_footer_text': 'Thank you',
                 'receipt_show_logo': 'true',
                 'receipt_auto_print': 'false',
@@ -167,7 +178,7 @@ class StoreSettingsAPITests(SuperAdminAPITestCase):
             format='multipart',
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-        self.assertEqual(response.data['enabled_payment_methods'], ['cash', 'card'])
+        self.assertEqual(response.data['enabled_payment_methods'], ['cash', 'mpesa'])
 
     def test_clear_receipt_logo_flag(self):
         response = self.client.patch(

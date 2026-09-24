@@ -26,6 +26,7 @@ from approvals.registry import (
     ACTION_SALE_REFUND,
     ACTION_SALE_ROLLBACK,
     ACTION_SALE_BACKFILL,
+    ACTION_DEBT_COLLECTION,
     ACTION_STOCK_ADJUST,
     ACTION_STOCK_PURCHASE,
     ACTION_STOCK_TRANSFER,
@@ -216,6 +217,19 @@ def validate_before_approval(change: PendingChange, *, extreme_price_confirmed: 
             raise ValidationError(
                 'Sale can no longer be rolled back; reject this request.'
             )
+
+    if change.action_type == ACTION_DEBT_COLLECTION:
+        from sales.models import Customer
+
+        if not Customer.objects.filter(pk=change.entity_id).exists():
+            raise ValidationError('Customer no longer exists; reject this collection.')
+        payload = change.apply_payload or {}
+        try:
+            amount = Decimal(str(payload.get('amount')))
+        except (ArithmeticError, TypeError, ValueError) as exc:
+            raise ValidationError('Invalid collection amount.') from exc
+        if amount <= 0:
+            raise ValidationError('Collection amount must be greater than zero.')
 
     if change.action_type == ACTION_SALE_BACKFILL:
         from sales.backfill_policy import validate_backfill_occurred_at

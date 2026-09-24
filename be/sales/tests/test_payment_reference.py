@@ -26,6 +26,9 @@ class PaymentReferenceUnitTests(ManagerAPITestCase):
             'QHX123',
         )
 
+    def test_card_reference_not_required(self):
+        self.assertEqual(validate_sale_payment_reference('card', ''), '')
+
     def test_mpesa_receipt_error_explains_format(self):
         from sales.payment_reference import mpesa_receipt_error, normalize_mpesa_receipt
 
@@ -95,3 +98,22 @@ class PaymentReferenceAPITests(ManagerAPITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
         self.assertEqual(response.data['payment_reference'], 'QHX1ABC2DE')
+
+    def test_pos_card_payment_rejected(self):
+        response = self.client.post(
+            '/api/sales/',
+            {
+                'items': [
+                    {
+                        'product_id': self.product.id,
+                        'quantity': 1,
+                        'unit_price': '100.00',
+                    }
+                ],
+                'payment_method': 'card',
+                'amount_paid': '100.00',
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('payment_method', response.data)

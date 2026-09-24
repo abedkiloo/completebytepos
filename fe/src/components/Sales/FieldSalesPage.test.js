@@ -167,7 +167,7 @@ describe('FieldSalesPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /^#46$/ }));
     expect(await screen.findByTestId('field-sales-assign')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('field-sales-assign'));
-    expect(toast.error).toHaveBeenCalledWith('Select a delivery driver first.');
+    expect(toast.error).toHaveBeenCalledWith('Select who will deliver first.');
     expect(dispatchAPI.assign).not.toHaveBeenCalled();
   });
 

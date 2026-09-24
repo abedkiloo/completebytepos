@@ -3,6 +3,7 @@ import {
   assignDriverError,
   canAssignDriver,
   canMarkReady,
+  deliveryAssigneeLabel,
   fieldOrderLineSummary,
   fieldOrderQty,
   fieldOrderTotal,
@@ -62,10 +63,10 @@ describe('fieldSalesCommit', () => {
   });
 
   test('assignDriverError covers permission, status, and missing driver', () => {
-    expect(assignDriverError(submitted, 3, false)).toBe('You cannot assign a driver.');
+    expect(assignDriverError(submitted, 3, false)).toBe('You cannot assign this delivery.');
     expect(assignDriverError(null, 3)).toBe('Select an order first.');
     expect(assignDriverError(submitted, 3)).toBe('This order is not ready to assign.');
-    expect(assignDriverError({ status: 'ready' }, '')).toBe('Select a delivery driver first.');
+    expect(assignDriverError({ status: 'ready' }, '')).toBe('Select who will deliver first.');
     expect(assignDriverError({ status: 'ready' }, 8)).toBe('');
   });
 
@@ -79,10 +80,21 @@ describe('fieldSalesCommit', () => {
     expect(noFormatter.find((row) => row.label === 'Total').value).toBe('0');
 
     expect(assignCommitRows(submitted, { display_name: 'Jane' }, (n) => String(n))
-      .find((row) => row.label === 'Driver').value).toBe('Jane');
+      .find((row) => row.label === 'Delivered by').value).toBe('Jane');
     expect(assignCommitRows(submitted, { username: 'bob' })
-      .find((row) => row.label === 'Driver').value).toBe('bob');
+      .find((row) => row.label === 'Delivered by').value).toBe('bob');
     expect(assignCommitRows(submitted, null)
-      .find((row) => row.label === 'Driver').value).toBe('Selected driver');
+      .find((row) => row.label === 'Delivered by').value).toBe('Selected person');
+    expect(assignCommitRows(submitted, { display_name: 'Ada', role_name: 'Sales Personnel' })
+      .find((row) => row.label === 'Delivered by').value).toBe('Ada · Sales Personnel');
+  });
+
+  test('deliveryAssigneeLabel covers name, role, and id fallbacks', () => {
+    expect(deliveryAssigneeLabel({ display_name: 'Jane', role_name: 'Delivery Driver' }))
+      .toBe('Jane · Delivery Driver');
+    expect(deliveryAssigneeLabel({ username: 'bob' })).toBe('bob');
+    expect(deliveryAssigneeLabel({ role_name: 'Sales Personnel' })).toBe('Sales Personnel');
+    expect(deliveryAssigneeLabel({ id: 7 })).toBe('Person #7');
+    expect(deliveryAssigneeLabel(null)).toBe('Selected person');
   });
 });

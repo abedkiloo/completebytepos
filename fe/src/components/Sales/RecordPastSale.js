@@ -792,8 +792,6 @@ function SinglePastSaleForm({
             options={[
               { value: 'cash', label: 'Cash' },
               { value: 'mpesa', label: 'M-Pesa' },
-              { value: 'card', label: 'Card' },
-              { value: 'other', label: 'Other' },
             ]}
           />
         </div>

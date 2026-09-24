@@ -1067,14 +1067,47 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         customer = self.get_object()
         serializer = ReceiveWalletPaymentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        from approvals.permissions import user_can_check
+        from approvals.registry import ACTION_DEBT_COLLECTION
+        from approvals.serializers import PendingChangeSerializer
+        from sales.debt_collection_approval import queue_debt_collection
+
+        if not user_can_check(request.user, ACTION_DEBT_COLLECTION):
+            try:
+                pending = queue_debt_collection(
+                    request,
+                    customer,
+                    amount=data['amount'],
+                    payment_method=data['payment_method'],
+                    reference=data.get('reference', ''),
+                    notes=data.get('notes', ''),
+                )
+            except ValidationError as exc:
+                payload = getattr(exc, 'message_dict', None) or {
+                    'error': validation_error_message(exc)
+                }
+                return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {
+                    'message': (
+                        'Debt collection submitted for manager approval — '
+                        'the customer wallet stays unchanged until it is approved.'
+                    ),
+                    'pending_change': PendingChangeSerializer(pending).data,
+                    'wallet_balance': str(customer.wallet_balance),
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+
         service = CustomerService()
         try:
             txn = service.record_wallet_payment(
                 customer=customer,
-                amount=serializer.validated_data['amount'],
-                payment_method=serializer.validated_data['payment_method'],
-                reference=serializer.validated_data.get('reference', ''),
-                notes=serializer.validated_data.get('notes', ''),
+                amount=data['amount'],
+                payment_method=data['payment_method'],
+                reference=data.get('reference', ''),
+                notes=data.get('notes', ''),
                 user=request.user if request.user.is_authenticated else None,
             )
         except ValidationError as exc:

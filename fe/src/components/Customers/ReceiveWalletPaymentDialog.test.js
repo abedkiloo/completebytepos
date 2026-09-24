@@ -218,4 +218,57 @@ describe('ReceiveWalletPaymentDialog', () => {
     });
     expect(onSuccess).toHaveBeenCalled();
   });
+
+  it('toasts pending approval when collection is queued', async () => {
+    const onSuccess = jest.fn();
+    const onOpenChange = jest.fn();
+    customersAPI.receiveWalletPayment.mockResolvedValue({
+      status: 202,
+      data: {
+        wallet_balance: '-150.00',
+        pending_change: { id: 9, action_type: 'debt_collection' },
+      },
+    });
+
+    render(
+      <ReceiveWalletPaymentDialog
+        open
+        customer={debtor}
+        onOpenChange={onOpenChange}
+        onSuccess={onSuccess}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Record payment/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Yes, record payment/i }));
+
+    await waitFor(() => {
+      expect(toast.warning).toHaveBeenCalled();
+    });
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(onSuccess).toHaveBeenCalledWith(debtor);
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('toasts an error when recording fails', async () => {
+    customersAPI.receiveWalletPayment.mockRejectedValue({
+      response: { data: { error: 'Wallet locked' } },
+    });
+
+    render(
+      <ReceiveWalletPaymentDialog
+        open
+        customer={debtor}
+        onOpenChange={jest.fn()}
+        onSuccess={jest.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Record payment/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Yes, record payment/i }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('Wallet locked');
+    });
+  });
 });

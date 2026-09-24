@@ -20,7 +20,7 @@ def normalize_payment_reference(value: str | None) -> str:
 
 
 def payment_reference_required(payment_method: str) -> bool:
-    return payment_method not in ('cash', 'wallet')
+    return payment_method == 'mpesa'
 
 
 def normalize_mpesa_receipt(value: str | None) -> str:
@@ -50,6 +50,6 @@ def validate_sale_payment_reference(payment_method: str, reference: str | None) 
     ref = normalize_payment_reference(reference)
     if payment_reference_required(payment_method) and not ref:
         raise ValidationError(
-            'Enter the payment reference (e.g. M-Pesa confirmation code or card details).'
+            'Enter the M-Pesa confirmation code from the SMS.'
         )
     return ref

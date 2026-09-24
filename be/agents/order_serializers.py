@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 from django.db import transaction
 from rest_framework import serializers
 
-from accounts.role_definitions import ROLE_DELIVERY_AGENT
+from delivery.assignees import user_can_do_delivery
 from products.models import Product, ProductVariant
 from products.status_rules import get_operational_variant
 from sales.models import Customer
@@ -22,13 +22,8 @@ from .services import finalize_site
 
 
 def user_is_delivery_driver(user: User) -> bool:
-    """True when the user holds the Delivery Driver custom role."""
-    if user is None or not getattr(user, 'is_active', False):
-        return False
-    profile = getattr(user, 'profile', None)
-    role = getattr(profile, 'custom_role', None) if profile else None
-    name = (getattr(role, 'name', None) or '').strip()
-    return name == ROLE_DELIVERY_AGENT
+    """True when the user may run deliveries (any role with delivery.update)."""
+    return user_can_do_delivery(user)
 
 
 def _variant_label(variant: ProductVariant | None) -> str:
@@ -291,10 +286,10 @@ class AssignOrderSerializer(serializers.Serializer):
         try:
             user = User.objects.select_related('profile__custom_role').get(pk=value)
         except User.DoesNotExist as exc:
-            raise serializers.ValidationError('Delivery driver not found.') from exc
+            raise serializers.ValidationError('Delivery person not found.') from exc
         if not user_is_delivery_driver(user):
             raise serializers.ValidationError(
-                'User is not a delivery driver.',
+                'This person cannot be assigned delivery. Grant Delivery on their role.',
             )
         return user
 

@@ -1052,10 +1052,6 @@ const Invoices = () => {
                       options={[
                         { id: 'cash', name: 'Cash' },
                         { id: 'mpesa', name: 'M-PESA' },
-                        { id: 'bank_transfer', name: 'Bank Transfer' },
-                        { id: 'cheque', name: 'Cheque' },
-                        { id: 'card', name: 'Card' },
-                        { id: 'other', name: 'Other' }
                       ]}
                       placeholder="Select Payment Method"
                     />

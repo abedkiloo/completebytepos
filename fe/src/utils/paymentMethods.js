@@ -2,10 +2,9 @@ import {
   Banknote,
   Smartphone,
   Wallet,
-  CreditCard,
 } from 'lucide-react';
 
-/** All supported checkout payment methods. */
+/** Checkout + collection methods. Card / other / bank are no longer offered. */
 export const PAYMENT_METHODS = [
   { id: 'cash', label: 'Cash', icon: Banknote, requiresAmount: true, requiresReference: false },
   {
@@ -24,16 +23,12 @@ export const PAYMENT_METHODS = [
     requiresAmount: false,
     requiresReference: false,
   },
-  {
-    id: 'card',
-    label: 'Card',
-    icon: CreditCard,
-    requiresAmount: false,
-    requiresReference: true,
-    referenceLabel: 'Card reference',
-    referencePlaceholder: 'Last 4 digits or approval code',
-  },
 ];
+
+/** Cash and M-Pesa only — debt collection, invoice payments, sales. */
+export const COLLECTION_PAYMENT_METHODS = PAYMENT_METHODS.filter(
+  (m) => m.id === 'cash' || m.id === 'mpesa'
+);
 
 export function filterEnabledPaymentMethods(enabledIds) {
   const set = new Set(
@@ -66,5 +61,8 @@ export function paymentReferencePlaceholder(methodId) {
 export function paymentMethodLabel(methodId) {
   if (methodId === 'installments') return 'Installments';
   if (methodId === 'other') return 'Other';
+  if (methodId === 'card') return 'Card';
+  if (methodId === 'bank_transfer') return 'Bank Transfer';
+  if (methodId === 'cheque') return 'Cheque';
   return getPaymentMethodMeta(methodId).label;
 }

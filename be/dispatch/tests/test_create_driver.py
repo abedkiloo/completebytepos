@@ -149,6 +149,7 @@ class CreateDriverAPITestCase(ClaimAndDriversAPITestCase):
         data = driver_payload(user)
         self.assertEqual(data['display_name'], 'orphan_drv')
         self.assertEqual(data['phone_number'], '')
+        self.assertEqual(data['role_name'], '')
 
 
 class StickyDailyNoteAPITests(ClaimAndDriversAPITestCase):

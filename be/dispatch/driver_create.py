@@ -62,11 +62,13 @@ def delivery_driver_role() -> Role:
 def driver_payload(user: User, *, temporary_password: str | None = None) -> dict:
     full = f'{user.first_name} {user.last_name}'.strip()
     profile = getattr(user, 'profile', None)
+    role = getattr(profile, 'custom_role', None) if profile else None
     data = {
         'id': user.id,
         'username': user.username,
         'display_name': full or user.username,
         'phone_number': getattr(profile, 'phone_number', '') or '',
+        'role_name': getattr(role, 'name', '') or '',
     }
     if temporary_password:
         data['temporary_password'] = temporary_password

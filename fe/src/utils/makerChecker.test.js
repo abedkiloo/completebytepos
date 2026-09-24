@@ -259,7 +259,7 @@ describe('makerChecker', () => {
     expect(
       storeSettingsEditNeedsReason(
         { enabled_payment_methods: ['cash'], receipt_footer_text: 'x' },
-        { enabled_payment_methods: ['cash', 'card'], receipt_footer_text: 'x' }
+        { enabled_payment_methods: ['cash', 'mpesa'], receipt_footer_text: 'x' }
       )
     ).toBe(true);
     expect(
@@ -453,6 +453,11 @@ describe('makerChecker', () => {
     expect(
       userMayReviewPendingApprovals([
         { name: 'products.approve', module: 'products', action: 'approve' },
+      ])
+    ).toBe(true);
+    expect(
+      userMayReviewPendingApprovals([
+        { name: 'debt_management.approve', module: 'debt_management', action: 'approve' },
       ])
     ).toBe(true);
   });

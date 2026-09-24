@@ -2,6 +2,16 @@
  * Pre-commit summary + validation for field sales (pack / assign).
  */
 
+export function deliveryAssigneeLabel(person) {
+  const name = person?.display_name || person?.username || '';
+  const role = (person?.role_name || '').trim();
+  if (name && role) return `${name} · ${role}`;
+  if (name) return name;
+  if (role) return role;
+  if (person?.id != null) return `Person #${person.id}`;
+  return 'Selected person';
+}
+
 export function fieldOrderQty(order) {
   const lines = Array.isArray(order?.lines) ? order.lines : [];
   return lines.reduce((sum, line) => sum + Number(line.quantity || 0), 0);
@@ -48,10 +58,10 @@ export function packReadyError(order, canPack = true) {
 }
 
 export function assignDriverError(order, driverId, canPack = true) {
-  if (!canPack) return 'You cannot assign a driver.';
+  if (!canPack) return 'You cannot assign this delivery.';
   if (!order) return 'Select an order first.';
   if (!canAssignDriver(order)) return 'This order is not ready to assign.';
-  if (!driverId) return 'Select a delivery driver first.';
+  if (!driverId) return 'Select who will deliver first.';
   return '';
 }
 
@@ -68,12 +78,12 @@ export function packCommitRows(order, formatMoney) {
 
 export function assignCommitRows(order, driver, formatMoney) {
   const money = typeof formatMoney === 'function' ? formatMoney : String;
-  const driverName = driver?.display_name || driver?.username || 'Selected driver';
+  const driverName = deliveryAssigneeLabel(driver);
   return [
     { label: 'Order', value: order?.id != null ? `#${order.id}` : '', emphasis: true },
     { label: 'Customer', value: order?.customer_name || '—' },
     { label: 'Products', value: fieldOrderLineSummary(order) },
     { label: 'Total', value: money(fieldOrderTotal(order)) },
-    { label: 'Driver', value: driverName, emphasis: true, tone: 'success' },
+    { label: 'Delivered by', value: driverName, emphasis: true, tone: 'success' },
   ];
 }

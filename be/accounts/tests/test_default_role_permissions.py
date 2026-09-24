@@ -5,6 +5,7 @@ from django.test import TestCase
 
 from accounts.models import Permission, Role, UserProfile
 from accounts.role_definitions import (
+    ROLE_FIELD_AGENT,
     ROLE_MANAGER,
     ROLE_SALES,
     ROLE_SUPER_ADMIN,
@@ -20,6 +21,7 @@ class DefaultRolePermissionTests(TestCase):
         sync_default_roles()
         cls.manager_role = Role.objects.get(name=ROLE_MANAGER)
         cls.sales_role = Role.objects.get(name=ROLE_SALES)
+        cls.field_role = Role.objects.get(name=ROLE_FIELD_AGENT)
         cls.super_role = Role.objects.get(name=ROLE_SUPER_ADMIN)
 
     def _has(self, role, module, action):
@@ -43,8 +45,10 @@ class DefaultRolePermissionTests(TestCase):
     def test_debt_management_is_independently_grantable(self):
         self.assertTrue(self._has(self.manager_role, 'debt_management', 'view'))
         self.assertTrue(self._has(self.manager_role, 'debt_management', 'update'))
+        self.assertTrue(self._has(self.manager_role, 'debt_management', 'approve'))
         self.assertTrue(self._has(self.sales_role, 'debt_management', 'view'))
         self.assertTrue(self._has(self.sales_role, 'debt_management', 'update'))
+        self.assertFalse(self._has(self.sales_role, 'debt_management', 'approve'))
 
     def test_super_admin_has_all_permissions(self):
         total = Permission.objects.count()
@@ -62,7 +66,7 @@ class DefaultRolePermissionTests(TestCase):
         self.assertTrue(user.profile.has_permission('products', 'approve'))
 
     def test_sales_role_lacks_approve_permissions(self):
-        for module in ('products', 'inventory', 'settings'):
+        for module in ('products', 'inventory', 'settings', 'debt_management'):
             self.assertFalse(
                 self._has(self.sales_role, module, 'approve'),
                 f'Sales should not have {module}.approve',
@@ -77,6 +81,12 @@ class DefaultRolePermissionTests(TestCase):
         self.assertTrue(self._has(self.manager_role, 'delivery', 'history'))
         self.assertTrue(self._has(self.super_role, 'delivery', 'history'))
         self.assertFalse(self._has(self.sales_role, 'delivery', 'history'))
+
+    def test_sales_role_can_do_delivery(self):
+        self.assertTrue(self._has(self.sales_role, 'delivery', 'view'))
+        self.assertTrue(self._has(self.sales_role, 'delivery', 'update'))
+        self.assertTrue(self._has(self.field_role, 'delivery', 'view'))
+        self.assertTrue(self._has(self.field_role, 'delivery', 'update'))
 
     def test_manager_lacks_users_roles_settings_modules(self):
         for module in ('users', 'roles', 'settings', 'modules'):

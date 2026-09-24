@@ -276,6 +276,19 @@ class FieldOrderAPITestCase(APITestCase):
         self.assertEqual(packed.status_code, status.HTTP_200_OK, packed.data)
         self.assertEqual(packed.data['status'], 'ready')
 
+        from django.utils import timezone
+        today = timezone.localdate().isoformat()
+        filtered = self.client.get(
+            '/api/dispatch/field-orders/',
+            {
+                'status': 'dispatched',
+                'date_from': today,
+                'date_to': today,
+                'search': str(order_id),
+            },
+        )
+        self.assertEqual(filtered.status_code, status.HTTP_200_OK)
+
     def test_create_missing_product_and_empty_lines(self):
         bad = self.client.post(
             '/api/visits/field-orders/',

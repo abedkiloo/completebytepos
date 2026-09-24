@@ -64,7 +64,7 @@ PERMISSIONS_DATA = [
     ('agents', 'update', 'Update sites, upload media, finalize visits'),
     ('dispatch', 'view', 'View field-order dispatch queue'),
     ('dispatch', 'update', 'Pack and assign field orders'),
-    ('delivery', 'view', 'View delivery routes and stops'),
+    ('delivery', 'view', 'View delivery routes and stops (sales and drivers)'),
     ('delivery', 'update', 'Arrive, deliver, collect, POD, complete stops'),
     ('delivery', 'history', 'View past delivery routes and completed stops'),
     ('payments', 'view', 'View payment intents'),
@@ -84,7 +84,8 @@ PERMISSIONS_DATA = [
     ('customers', 'delete', 'Delete customers'),
     ('customers', 'export', 'Export customers'),
     ('debt_management', 'view', 'View debt management and aging reports'),
-    ('debt_management', 'update', 'Collect and record customer debt payments'),
+    ('debt_management', 'update', 'Collect customer debt payments (queued for manager approval unless you can approve)'),
+    ('debt_management', 'approve', 'Approve customer debt collections'),
     ('debt_management', 'export', 'Export debt management reports'),
     ('invoicing', 'view', 'View invoices and payments'),
     ('invoicing', 'create', 'Create invoices and record payments'),
@@ -202,16 +203,18 @@ ROLE_SCREEN_MATRIX = {
         'Terminal POS (/pos/billing)',
         'Customers (add walk-in / credit)',
         'Products & categories (add / import — manager sets prices)',
+        'Delivery (today’s route — admin can assign you like a driver)',
     ],
     ROLE_FIELD_AGENT: [
         'Visit orders (customer → products → pin → place)',
         'POS / sales (same as Sales)',
         'Customers (lookup / create)',
+        'Delivery (admin can assign you to a route)',
     ],
     ROLE_DISPATCHER: [
         'Dispatch queue (submitted / packing / ready)',
         'Pack field orders (allocate-on-pack)',
-        'Assign delivery driver',
+        'Assign a sales person, driver, or anyone with Delivery',
     ],
     ROLE_DELIVERY_AGENT: [
         'Today’s route (ordered stops)',
@@ -282,6 +285,9 @@ def _sales_queryset():
         action__in=['view', 'create', 'update', 'import'],
     ) | Permission.objects.filter(
         module='messaging', action__in=['view', 'create'],
+    ) | Permission.objects.filter(
+        module='delivery',
+        action__in=['view', 'update'],
     )
 
 
@@ -356,7 +362,7 @@ def sync_default_roles(created_by=None):
     sales, sales_created = Role.objects.update_or_create(
         name=ROLE_SALES,
         defaults={
-            'description': 'Front-line sales — POS, customers, catalog add (pricing set by manager)',
+            'description': 'Front-line sales — POS, customers, catalog add, and delivery when assigned',
             'is_system_role': True,
             'is_active': True,
             'created_by': created_by,
@@ -380,7 +386,7 @@ def sync_default_roles(created_by=None):
     dispatcher, dispatcher_created = Role.objects.update_or_create(
         name=ROLE_DISPATCHER,
         defaults={
-            'description': 'Store dispatch — pack visit orders and assign delivery drivers',
+            'description': 'Store dispatch — pack visit orders and assign a sales person or driver',
             'is_system_role': True,
             'is_active': True,
             'created_by': created_by,

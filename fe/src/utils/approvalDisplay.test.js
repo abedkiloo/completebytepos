@@ -12,12 +12,14 @@ describe('approvalDisplay', () => {
     expect(formatActionTypeLabel('product_price')).toBe('Selling price change');
     expect(formatActionTypeLabel('stock_adjust')).toBe('Stock adjustment');
     expect(formatActionTypeLabel('sale_rollback')).toBe('Sale rollback');
+    expect(formatActionTypeLabel('debt_collection')).toBe('Debt collection');
     expect(formatActionTypeLabel('unknown_action')).toBe('unknown action');
   });
 
   test('formatEntityTypeLabel prefers entity_repr', () => {
     expect(formatEntityTypeLabel('products.Product', 'Blue Shirt')).toBe('Blue Shirt');
     expect(formatEntityTypeLabel('products.Product', '')).toBe('Product');
+    expect(formatEntityTypeLabel('sales.Customer', '')).toBe('Customer');
   });
 
   test('formatFieldLabel humanizes keys', () => {
@@ -31,6 +33,7 @@ describe('approvalDisplay', () => {
     expect(formatApprovalValue('enabled_payment_methods', ['cash', 'mpesa'])).toBe(
       'Cash, M-Pesa'
     );
+    expect(formatApprovalValue('payment_method', 'mpesa')).toBe('M-Pesa');
     expect(formatApprovalValue('tax_rate', '16')).toBe('16%');
   });
 

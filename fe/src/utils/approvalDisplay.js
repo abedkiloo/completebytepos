@@ -24,6 +24,7 @@ export const ACTION_TYPE_LABELS = {
   sale_refund: 'Sale void / refund',
   sale_rollback: 'Sale rollback',
   sale_backfill: 'Record past sale',
+  debt_collection: 'Debt collection',
 };
 
 export const ENTITY_TYPE_LABELS = {
@@ -34,6 +35,7 @@ export const ENTITY_TYPE_LABELS = {
   'settings.ModuleSetting': 'Module setting',
   'accounts.Role': 'User role',
   'sales.Sale': 'Sale',
+  'sales.Customer': 'Customer',
   'inventory.StockMovement': 'Stock movement',
 };
 
@@ -67,6 +69,8 @@ export const FIELD_LABELS = {
   refund_mode: 'Refund type',
   rollback_mode: 'Rollback type',
   effect: 'Effect',
+  payment_method: 'Payment method',
+  reference: 'Reference',
   lines: 'Lines to return',
   amount: 'Refund amount',
   sale_total: 'Sale total',
@@ -131,6 +135,9 @@ export function formatApprovalValue(fieldKey, value) {
     return value
       .map((id) => PAYMENT_METHOD_LABELS[String(id).toLowerCase()] || id)
       .join(', ');
+  }
+  if (fieldKey === 'payment_method') {
+    return PAYMENT_METHOD_LABELS[String(value).toLowerCase()] || String(value);
   }
   if (Array.isArray(value)) {
     return value.join(', ');

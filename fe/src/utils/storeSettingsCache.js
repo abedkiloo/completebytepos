@@ -6,7 +6,7 @@ export const DEFAULT_STORE_SETTINGS = {
   allow_sales_add_products: true,
   sales_catalog_skip_pricing: true,
   hide_entity_status_toggles: false,
-  enabled_payment_methods: ['cash', 'mpesa', 'wallet', 'card'],
+  enabled_payment_methods: ['cash', 'mpesa', 'wallet'],
   receipt_logo_url: null,
   receipt_header_text: '',
   receipt_footer_text: 'Thank you for your business!',

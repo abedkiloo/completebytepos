@@ -61,4 +61,32 @@ describe('posCheckoutValidation', () => {
       }).ok
     ).toBe(false);
   });
+
+  test('evaluatePosAmountReceived empty is credit when payment on account', () => {
+    expect(
+      evaluatePosAmountReceived('', {
+        allowPartialPayment: true,
+        hasRegisteredCustomer: true,
+        paymentOnAccount: true,
+      })
+    ).toEqual({ ok: true, received: 0, creditSale: true, fullPayLater: true });
+  });
+
+  test('evaluatePosAmountReceived accepts a tendered amount', () => {
+    expect(evaluatePosAmountReceived('250.00', {})).toEqual({
+      ok: true,
+      received: 250,
+    });
+  });
+
+  test('evaluateBillingAmountPaid rejects invalid and zero without account', () => {
+    expect(evaluateBillingAmountPaid('abc', {}).ok).toBe(false);
+    expect(evaluateBillingAmountPaid('0', { partialPayment: false }).ok).toBe(false);
+    expect(
+      evaluateBillingAmountPaid('0', {
+        partialPayment: true,
+        hasRegisteredCustomer: true,
+      })
+    ).toEqual({ ok: true, paid: 0, creditSale: true, fullPayLater: true });
+  });
 });

@@ -746,7 +746,7 @@ class Command(BaseCommand):
                     tax_amount=tax_amount,
                     discount_amount=discount_amount,
                     total=total,
-                    payment_method=random.choice(['cash', 'mpesa', 'other']),
+                    payment_method=random.choice(['cash', 'mpesa']),
                     amount_paid=Decimal('0'),  # Will be set based on payment status
                     change=Decimal('0'),
                     notes=f"Sofa-making sale {i+1} - {payment_status}"
@@ -828,7 +828,7 @@ class Command(BaseCommand):
                         Payment.objects.create(
                             invoice=invoice,
                             amount=total,
-                            payment_method=random.choice(['cash', 'mpesa', 'bank_transfer']),
+                            payment_method=random.choice(['cash', 'mpesa']),
                             payment_date=timezone.now().date() - timedelta(days=random.randint(0, 5)),
                             recorded_by=superuser,
                             notes='Full payment'
@@ -841,7 +841,7 @@ class Command(BaseCommand):
                     Payment.objects.create(
                         invoice=invoice,
                         amount=partial_amount,
-                        payment_method=random.choice(['cash', 'mpesa', 'bank_transfer']),
+                        payment_method=random.choice(['cash', 'mpesa']),
                         payment_date=timezone.now().date() - timedelta(days=random.randint(0, 10)),
                         recorded_by=superuser,
                         notes='Partial payment'
@@ -935,7 +935,7 @@ class Command(BaseCommand):
                     amount=amount,
                     description=description,
                     expense_date=expense_date,
-                    payment_method=random.choice(['cash', 'mpesa', 'bank', 'card', 'other']),
+                    payment_method=random.choice(['cash', 'mpesa']),
                     vendor=random.choice(['Fabric Suppliers Ltd', 'Foam & Cushioning Co', 'Hardware Supplies Inc', 'Local Vendor']),
                     receipt_number=f'RCP-{str(i+1).zfill(6)}' if random.choice([True, False]) else '',
                     notes=f'Sofa-making business expense - {description}',

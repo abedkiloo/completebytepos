@@ -616,11 +616,10 @@ export default function BillingPOSPage() {
                   </div>
                 ) : null}
 
-                {state.paymentMethod !== 'other' && (
-                  <div
-                    className={BILLING_AMOUNT_RECEIVED_CLASS}
-                    data-testid="billing-amount-received"
-                  >
+                <div
+                  className={BILLING_AMOUNT_RECEIVED_CLASS}
+                  data-testid="billing-amount-received"
+                >
                     <Label
                       htmlFor="billing-amount-received"
                       className="block text-xs font-medium text-muted-foreground"
@@ -639,7 +638,6 @@ export default function BillingPOSPage() {
                       className="h-11 text-right text-lg font-semibold tabular-nums"
                     />
                   </div>
-                )}
               </section>
 
               <dl className={BILLING_TOTALS_SECTION_CLASS}>

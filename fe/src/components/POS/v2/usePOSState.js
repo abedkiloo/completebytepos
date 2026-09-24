@@ -769,7 +769,7 @@ export function usePOSState() {
         }
       }
     } else if (paymentReferenceRequired(paymentMethod) && !paymentRef) {
-      toast.warning('Enter the payment reference (e.g. M-Pesa code or card details).');
+      toast.warning('Enter the M-Pesa confirmation code.');
       return;
     }
 
@@ -852,7 +852,7 @@ export function usePOSState() {
     setPendingSaleData(
       buildSaleCommitSummary({
         total,
-        received: paymentMethod === 'wallet' || paymentMethod === 'card' ? total : parseFloat(receivedAmount) || 0,
+        received: paymentMethod === 'wallet' ? total : parseFloat(receivedAmount) || 0,
         paymentMethod,
         itemCount: cart.reduce((n, i) => n + (Number(i.quantity) || 0), 0),
         customerName,

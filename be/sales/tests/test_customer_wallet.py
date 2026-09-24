@@ -134,6 +134,15 @@ class CustomerWalletAPITests(ManagerAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('letters and numbers only', str(response.data['reference']))
 
+    def test_receive_wallet_payment_rejects_card(self):
+        response = self.client.post(
+            f'/api/sales/customers/{self.customer.id}/receive-wallet-payment/',
+            {'amount': '50.00', 'payment_method': 'card'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('payment_method', response.data)
+
     def test_receive_wallet_payment_rejects_zero_amount(self):
         response = self.client.post(
             f'/api/sales/customers/{self.customer.id}/receive-wallet-payment/',
@@ -165,6 +174,22 @@ class CustomerWalletAPITests(ManagerAPITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertIn('debt_management.update', str(response.data))
+
+    def test_receive_wallet_payment_queues_without_approve(self):
+        self.manager_role.permissions.remove(
+            Permission.objects.get(module='debt_management', action='approve')
+        )
+
+        response = self.client.post(
+            f'/api/sales/customers/{self.customer.id}/receive-wallet-payment/',
+            {'amount': '50.00', 'payment_method': 'cash'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED, response.data)
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.wallet_balance, Decimal('-250.00'))
+        self.assertIn('pending_change', response.data)
 
     def test_wallet_transactions_forbidden_when_wallet_hidden(self):
         SettingsService.set('customers', 'show_wallet_balance', False)

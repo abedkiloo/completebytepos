@@ -1,8 +1,14 @@
 """Helpers for tenant-wide store / POS configuration."""
 
-DEFAULT_PAYMENT_METHODS = ['cash', 'mpesa', 'wallet', 'card']
+DEFAULT_PAYMENT_METHODS = ['cash', 'mpesa', 'wallet']
 
 VALID_PAYMENT_METHODS = frozenset(DEFAULT_PAYMENT_METHODS)
+
+COLLECTION_PAYMENT_METHODS = ('cash', 'mpesa')
+COLLECTION_PAYMENT_CHOICES = (
+    ('cash', 'Cash'),
+    ('mpesa', 'M-PESA'),
+)
 
 
 def user_may_edit_pricing(user):

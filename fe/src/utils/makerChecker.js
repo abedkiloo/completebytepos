@@ -38,7 +38,7 @@ const REASON_CONTEXT_COPY = {
   },
   settings: {
     label: 'Reason for this settings change',
-    placeholder: 'e.g. Enable card payments for month-end promotion',
+    placeholder: 'e.g. Enable M-Pesa at checkout for month-end promotion',
     summary:
       'This settings change will be submitted for approval and will not apply to the store until it is approved.',
   },
@@ -85,6 +85,7 @@ export function userMayReviewPendingApprovals(permissions = getPermissionsFromSt
     'roles',
     'settings',
     'sales',
+    'debt_management',
   ];
   return approveModules.some((module) => hasPermission(permissions, module, 'approve'));
 }

@@ -5,6 +5,11 @@ import { customersAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
 import { getWalletDebtAmount } from '../../utils/walletDisplay';
 import { toast } from '../../utils/toast';
+import { getStoredAuth, hasPermission } from '../../utils/roleAccess';
+import {
+  isPendingApprovalResponse,
+  pendingApprovalToastMessage,
+} from '../../utils/makerChecker';
 import { CustomerWalletBalance } from './CustomerWalletBalance';
 import {
   Dialog,
@@ -36,8 +41,6 @@ import {
 const PAYMENT_METHODS = [
   { value: 'cash', label: 'Cash' },
   { value: 'mpesa', label: 'M-PESA' },
-  { value: 'card', label: 'Card' },
-  { value: 'other', label: 'Other' },
 ];
 
 const EMPTY_FORM = {
@@ -69,6 +72,8 @@ export default function ReceiveWalletPaymentDialog({
   const [stkOpen, setStkOpen] = useState(false);
 
   const debtAmount = getWalletDebtAmount(customer?.wallet_balance);
+  const { permissions } = getStoredAuth();
+  const canApproveCollection = hasPermission(permissions, 'debt_management', 'approve');
 
   useEffect(() => {
     if (!open || !customer?.id) {
@@ -155,6 +160,15 @@ export default function ReceiveWalletPaymentDialog({
             : String(referenceValue || '').trim(),
         notes: form.notes.trim(),
       });
+      if (isPendingApprovalResponse(res.status)) {
+        toast.warning(pendingApprovalToastMessage());
+        setShowCommitConfirm(false);
+        setPendingAmount(null);
+        setStkOpen(false);
+        onSuccess?.(customer);
+        onOpenChange(false);
+        return;
+      }
       toast.success('Payment recorded');
       setShowCommitConfirm(false);
       setPendingAmount(null);
@@ -224,7 +238,9 @@ export default function ReceiveWalletPaymentDialog({
           <DialogTitle>Receive wallet payment</DialogTitle>
           <DialogDescription>
             Apply a payment to <strong className="text-foreground">{customer.name}</strong>'s
-            account. This reduces POS debt or adds wallet credit.
+            account. {canApproveCollection
+              ? 'This reduces POS debt or adds wallet credit.'
+              : 'A manager will approve this before the wallet is updated.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -326,7 +342,7 @@ export default function ReceiveWalletPaymentDialog({
                   aria-invalid={Boolean(fieldErrors.reference)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Optional for cash; required for card.
+                  Optional for cash.
                 </p>
                 {fieldErrors.reference ? (
                   <p className="text-xs text-destructive">{fieldErrors.reference}</p>
@@ -395,7 +411,11 @@ export default function ReceiveWalletPaymentDialog({
         }
       }}
       title="Proceed with this payment?"
-      description="Do you really want to continue with this transaction? This records the payment on the customer account."
+      description={
+        canApproveCollection
+          ? 'Do you really want to continue with this transaction? This records the payment on the customer account.'
+          : 'Do you really want to continue with this transaction? A manager must approve it before the wallet is updated.'
+      }
       rows={commitRows}
       submitting={submitting}
       confirmText="Yes, record payment"

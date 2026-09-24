@@ -782,7 +782,7 @@ class SaleService(BaseService):
         customer: Optional[Customer],
         allow_partial: bool,
     ) -> None:
-        if payment_method not in ('cash', 'mpesa', 'card'):
+        if payment_method not in ('cash', 'mpesa'):
             return
         if amount_paid <= 0:
             if allow_partial and customer:
@@ -1545,9 +1545,9 @@ class CustomerService(BaseService):
         method_labels = {
             'cash': 'Cash',
             'mpesa': 'M-PESA',
-            'card': 'Card',
-            'other': 'Other',
         }
+        if payment_method not in method_labels:
+            raise ValidationError('Payment method must be cash or M-PESA.')
         method_label = method_labels.get(payment_method, payment_method)
         default_notes = f'Debt payment received via {method_label}'
         if reference:

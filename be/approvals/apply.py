@@ -21,6 +21,7 @@ from approvals.registry import (
     ACTION_SALE_REFUND,
     ACTION_SALE_ROLLBACK,
     ACTION_SALE_BACKFILL,
+    ACTION_DEBT_COLLECTION,
     ACTION_STOCK_ADJUST,
     ACTION_STOCK_PURCHASE,
     ACTION_STOCK_TRANSFER,
@@ -66,6 +67,9 @@ def apply_pending_change(change: PendingChange) -> None:
         return
     if change.entity_type == 'sales.SaleBackfill' and change.action_type == ACTION_SALE_BACKFILL:
         _apply_sale_backfill(change)
+        return
+    if change.entity_type == 'sales.Customer' and change.action_type == ACTION_DEBT_COLLECTION:
+        _apply_debt_collection(change)
         return
     raise ValidationError(f'Unsupported pending change: {change.action_type}')
 
@@ -277,6 +281,38 @@ def _apply_sale_rollback(change: PendingChange) -> None:
         log_sale_rolled_back(None, sale, refund)
     except Exception:
         pass
+
+
+def _apply_debt_collection(change: PendingChange) -> None:
+    from sales.models import Customer
+    from sales.services import CustomerService
+
+    try:
+        customer = Customer.objects.get(pk=change.entity_id)
+    except Customer.DoesNotExist as exc:
+        raise ValidationError('Customer no longer exists; reject this collection.') from exc
+
+    payload = dict(change.apply_payload or {})
+    try:
+        amount = Decimal(str(payload.get('amount')))
+    except (ArithmeticError, TypeError, ValueError) as exc:
+        raise ValidationError('Invalid collection amount.') from exc
+
+    txn = CustomerService().record_wallet_payment(
+        customer=customer,
+        amount=amount,
+        payment_method=payload.get('payment_method') or 'cash',
+        reference=payload.get('reference') or '',
+        notes=payload.get('notes') or '',
+        user=change.made_by,
+    )
+    customer.refresh_from_db()
+    change.apply_payload = {
+        **payload,
+        'transaction_id': txn.id,
+        'wallet_balance': str(customer.wallet_balance),
+    }
+    change.save(update_fields=['apply_payload'])
 
 
 def _apply_sale_backfill(change: PendingChange) -> None:

@@ -286,12 +286,10 @@ class DeliveryAPITestCase(APITestCase):
         with self.assertRaises(DeliveryTransitionError):
             transition_stop(stop, DeliveryStop.STATUS_COMPLETED)
 
-    def test_sales_denied_delivery(self):
+    def test_sales_can_open_today_route(self):
         self._auth(self.sales)
-        self.assertEqual(
-            self.client.get('/api/delivery/routes/today/').status_code,
-            status.HTTP_403_FORBIDDEN,
-        )
+        res = self.client.get('/api/delivery/routes/today/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK, res.data)
 
     def test_config_and_propose_pin(self):
         order = self._ready_order()

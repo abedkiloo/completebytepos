@@ -392,7 +392,7 @@ class StoreSettings(models.Model):
     enabled_payment_methods = models.JSONField(
         default=list,
         blank=True,
-        help_text='Payment methods shown at checkout (cash, mpesa, wallet, card)',
+        help_text='Payment methods shown at checkout (cash, mpesa, wallet)',
     )
     receipt_logo = models.ImageField(upload_to='receipt/', blank=True, null=True)
     receipt_header_text = models.TextField(

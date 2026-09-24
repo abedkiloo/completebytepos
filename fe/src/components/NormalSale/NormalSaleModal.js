@@ -398,7 +398,7 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
       shipping_address: shippingAddress || null,
       shipping_location: shippingLocation || null,
       amount_paid: amountPaidValue,
-      payment_method: paymentType === 'pay_now' ? paymentMethod : 'other',
+      payment_method: paymentType === 'pay_now' ? paymentMethod : 'cash',
       notes: notes,
       due_date: dueDate || null,
       create_payment_plan: paymentType === 'installments',
@@ -1127,7 +1127,6 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                     options={[
                       { id: 'cash', name: 'Cash' },
                       { id: 'mpesa', name: 'M-PESA' },
-                      { id: 'other', name: 'Other' }
                     ]}
                     placeholder="Select Payment Method"
                   />

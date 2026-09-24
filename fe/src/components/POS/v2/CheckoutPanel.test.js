@@ -57,7 +57,7 @@ function MpesaHarness({ onPay, receivedAmount = '100', customerPhone = '' }) {
       paymentReference={paymentReference}
       setPaymentReference={setPaymentReference}
       onPay={onPay}
-      enabledPaymentMethods={['cash', 'mpesa', 'card']}
+      enabledPaymentMethods={['cash', 'mpesa']}
       customerPhone={customerPhone}
     />
   );

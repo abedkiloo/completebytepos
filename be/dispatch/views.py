@@ -4,7 +4,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from accounts.permissions import RequirePermPerAction
-from accounts.role_definitions import ROLE_DELIVERY_AGENT
 from agents.models import FieldOrder
 from agents.order_serializers import (
     AssignOrderSerializer,
@@ -12,7 +11,7 @@ from agents.order_serializers import (
     PackOrderSerializer,
 )
 from agents.order_services import FieldOrderTransitionError
-from django.contrib.auth.models import User
+from delivery.assignees import eligible_delivery_assignees
 
 from .driver_create import CreateDriverSerializer, driver_payload
 
@@ -88,7 +87,7 @@ class DispatchQueueViewSet(viewsets.ReadOnlyModelViewSet):
     - list: all field orders with date/status/customer filters
     - queue: submitted/packing/ready only (mobile pack board)
     - pack: mark ready for pickup
-    - assign: hand to delivery driver
+    - assign: hand to anyone with delivery.update (sales, driver, …)
     """
 
     serializer_class = FieldOrderSerializer
@@ -107,19 +106,11 @@ class DispatchQueueViewSet(viewsets.ReadOnlyModelViewSet):
         ).prefetch_related('lines', 'lines__variant', 'site__media').get(pk=pk)
 
     def _driver_queryset(self):
-        return (
-            User.objects.filter(
-                is_active=True,
-                profile__custom_role__name=ROLE_DELIVERY_AGENT,
-                profile__is_active=True,
-            )
-            .select_related('profile')
-            .order_by('first_name', 'last_name', 'username')
-        )
+        return eligible_delivery_assignees()
 
     @action(detail=False, methods=['get'], url_path='drivers')
     def drivers(self, request):
-        """Active users with the Delivery Driver role for assign pickers."""
+        """Active users who can do delivery (sales, drivers, or granted roles)."""
         return Response([driver_payload(u) for u in self._driver_queryset()])
 
     @action(detail=False, methods=['post'], url_path='create-driver')

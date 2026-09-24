@@ -123,9 +123,14 @@ class ClaimAndDriversAPITestCase(APITestCase):
         ids = {row['id'] for row in res.data}
         self.assertIn(self.driver.id, ids)
         self.assertIn(self.driver2.id, ids)
-        self.assertNotIn(self.sales.id, ids)
+        self.assertIn(self.sales.id, ids)
+        self.assertIn(self.agent.id, ids)
+        self.assertNotIn(self.dispatch.id, ids)
         ann = next(r for r in res.data if r['id'] == self.driver.id)
         self.assertEqual(ann['display_name'], 'Ann Driver')
+        self.assertEqual(ann['role_name'], ROLE_DELIVERY_AGENT)
+        sales_row = next(r for r in res.data if r['id'] == self.sales.id)
+        self.assertEqual(sales_row['role_name'], ROLE_SALES)
 
         # Router nested path also works
         nested = self.client.get('/api/dispatch/field-orders/drivers/')
@@ -135,7 +140,18 @@ class ClaimAndDriversAPITestCase(APITestCase):
         forbidden = self.client.get('/api/dispatch/drivers/')
         self.assertEqual(forbidden.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_assign_rejects_non_driver(self):
+    def test_assign_rejects_person_without_delivery(self):
+        order = self._ready_unassigned()
+        self._auth(self.dispatch)
+        res = self.client.post(
+            f'/api/dispatch/field-orders/{order.id}/assign/',
+            {'delivery_agent_id': self.dispatch.id},
+            format='json',
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('delivery_agent_id', res.data)
+
+    def test_assign_accepts_sales_person(self):
         order = self._ready_unassigned()
         self._auth(self.dispatch)
         res = self.client.post(
@@ -143,8 +159,15 @@ class ClaimAndDriversAPITestCase(APITestCase):
             {'delivery_agent_id': self.sales.id},
             format='json',
         )
-        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('delivery_agent_id', res.data)
+        self.assertEqual(res.status_code, status.HTTP_200_OK, res.data)
+        self.assertEqual(res.data['assigned_delivery_agent_id'], self.sales.id)
+
+    def test_sales_can_claim_ready_order(self):
+        order = self._ready_unassigned()
+        self._auth(self.sales)
+        claim = self.client.post(f'/api/delivery/field-orders/{order.id}/claim/')
+        self.assertEqual(claim.status_code, status.HTTP_200_OK, claim.data)
+        self.assertEqual(claim.data['assigned_delivery_agent_id'], self.sales.id)
 
     def test_available_and_claim_flow(self):
         order = self._ready_unassigned()
@@ -194,7 +217,7 @@ class ClaimAndDriversAPITestCase(APITestCase):
         route2 = self.client.get('/api/delivery/routes/today/')
         self.assertEqual(len(route2.data['stops']), 0)
 
-    def test_claim_rejects_non_ready_and_sales(self):
+    def test_claim_rejects_non_ready_and_dispatcher(self):
         order = FieldOrder.objects.create(
             site=self.site,
             customer=self.customer,
@@ -210,7 +233,7 @@ class ClaimAndDriversAPITestCase(APITestCase):
         self.assertEqual(bad.status_code, status.HTTP_400_BAD_REQUEST)
 
         ready = self._ready_unassigned()
-        self._auth(self.sales)
+        self._auth(self.dispatch)
         forbidden = self.client.post(
             f'/api/delivery/field-orders/{ready.id}/claim/',
         )

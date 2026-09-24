@@ -17,6 +17,7 @@ from .models import (
 )
 from products.serializers import ProductSerializer
 from sales.payment_reference import mpesa_receipt_error, normalize_mpesa_receipt
+from settings.store_settings_helpers import COLLECTION_PAYMENT_CHOICES
 from utils.field_types import (
     NAME_EXAMPLE,
     email_error,
@@ -166,7 +167,7 @@ class ReceiveWalletPaymentSerializer(serializers.Serializer):
         error_messages=money_error_messages(allow_zero=False),
     )
     payment_method = serializers.ChoiceField(
-        choices=[('cash', 'Cash'), ('mpesa', 'M-PESA'), ('card', 'Card'), ('other', 'Other')],
+        choices=COLLECTION_PAYMENT_CHOICES,
         default='cash',
     )
     reference = serializers.CharField(required=False, allow_blank=True, max_length=100)
@@ -379,7 +380,7 @@ class HoldingSaleSerializer(serializers.Serializer):
 
 class CheckoutHoldingSerializer(serializers.Serializer):
     """Complete a holding sale and print receipt."""
-    payment_method = serializers.ChoiceField(choices=Sale.PAYMENT_METHODS, default='cash')
+    payment_method = serializers.ChoiceField(choices=COLLECTION_PAYMENT_CHOICES, default='cash')
     payment_reference = serializers.CharField(required=False, allow_blank=True, default='')
     amount_paid = serializers.DecimalField(max_digits=10, decimal_places=2, default=0)
     allow_partial_payment = serializers.BooleanField(default=False)
@@ -416,7 +417,7 @@ class SaleCreateSerializer(serializers.Serializer):
         write_only=True
     )
     sale_type = serializers.ChoiceField(choices=Sale.SALE_TYPES, default='pos')
-    payment_method = serializers.ChoiceField(choices=Sale.PAYMENT_METHODS, default='cash')
+    payment_method = serializers.ChoiceField(choices=COLLECTION_PAYMENT_CHOICES, default='cash')
     payment_reference = serializers.CharField(required=False, allow_blank=True, default='')
     amount_paid = serializers.DecimalField(
         max_digits=10, 
@@ -716,7 +717,7 @@ class PaymentCreateSerializer(serializers.Serializer):
     """Serializer for creating a payment against an invoice"""
     invoice_id = serializers.IntegerField()
     amount = serializers.DecimalField(max_digits=10, decimal_places=2)
-    payment_method = serializers.ChoiceField(choices=Payment.PAYMENT_METHODS, default='cash')
+    payment_method = serializers.ChoiceField(choices=COLLECTION_PAYMENT_CHOICES, default='cash')
     payment_date = serializers.DateField()
     reference = serializers.CharField(required=False, allow_blank=True)
     notes = serializers.CharField(required=False, allow_blank=True)

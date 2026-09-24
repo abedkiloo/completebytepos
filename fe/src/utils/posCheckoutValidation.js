@@ -49,15 +49,9 @@ export function evaluatePosAmountReceived(receivedAmount, options = {}) {
 /** Billing POS: allow 0 or empty when payment-on-account mode is on. */
 export function evaluateBillingAmountPaid(rawPaid, options = {}) {
   const {
-    paymentMethod = 'cash',
     partialPayment = false,
     hasRegisteredCustomer = false,
-    total = 0,
   } = options;
-
-  if (paymentMethod === 'other') {
-    return { ok: true, paid: total };
-  }
 
   const accountMode = partialPayment && hasRegisteredCustomer;
 

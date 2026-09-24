@@ -549,8 +549,6 @@ export default function DailySalesPage() {
                 { id: '', name: 'All payment methods' },
                 { id: 'cash', name: 'Cash' },
                 { id: 'mpesa', name: 'M-PESA' },
-                { id: 'card', name: 'Card' },
-                { id: 'other', name: 'Other' },
               ]}
               placeholder="All methods"
             />
