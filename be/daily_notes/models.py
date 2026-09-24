@@ -11,7 +11,11 @@ class DailyNote(models.Model):
     content = models.TextField()
     is_sticky = models.BooleanField(
         default=False,
-        help_text='Sticky notes block the assignee until they are ticked.',
+        help_text='When true, the assignee must tick this note before using the rest of the system.',
+    )
+    in_progress = models.BooleanField(
+        default=False,
+        help_text='True while the note is in the Doing column of the board.',
     )
     is_done = models.BooleanField(default=False)
     completed_at = models.DateTimeField(null=True, blank=True)
@@ -26,7 +30,7 @@ class DailyNote(models.Model):
         null=True,
         blank=True,
         related_name='assigned_daily_notes',
-        help_text='Staff member who must resolve a sticky note.',
+        help_text='Staff member who must resolve this note.',
     )
     assigned_role = models.ForeignKey(
         'accounts.Role',
@@ -46,7 +50,7 @@ class DailyNote(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['-is_sticky', 'is_done', '-note_date', '-created_at']
+        ordering = ['-is_sticky', 'is_done', 'in_progress', '-note_date', '-created_at']
         indexes = [
             models.Index(fields=['note_date', 'author']),
             models.Index(fields=['assigned_to', 'is_sticky', 'is_done']),
@@ -54,12 +58,33 @@ class DailyNote(models.Model):
 
     def __str__(self):
         label = self.title or self.content[:40]
-        kind = 'sticky' if self.is_sticky else 'general'
+        kind = 'must-tick' if self.is_sticky else 'note'
         return f'{self.note_date} — {label} ({kind})'
 
     def mark_done(self, *, done: bool, at=None):
         self.is_done = done
         self.completed_at = (at or timezone.now()) if done else None
+        if done:
+            self.in_progress = False
+
+    def move_to_board(self, column: str):
+        column = (column or '').strip().lower()
+        if column == 'past':
+            self.mark_done(done=True)
+        elif column == 'doing':
+            self.mark_done(done=False)
+            self.in_progress = True
+        else:
+            self.mark_done(done=False)
+            self.in_progress = False
+
+    @property
+    def board_column(self) -> str:
+        if self.is_done:
+            return 'past'
+        if self.in_progress:
+            return 'doing'
+        return 'todo'
 
 
 class DailyTask(models.Model):

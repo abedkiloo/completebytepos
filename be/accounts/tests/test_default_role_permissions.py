@@ -73,6 +73,11 @@ class DefaultRolePermissionTests(TestCase):
         self.assertTrue(self._has(self.sales_role, 'products', 'import'))
         self.assertFalse(self._has(self.sales_role, 'products', 'delete'))
 
+    def test_manager_has_delivery_history(self):
+        self.assertTrue(self._has(self.manager_role, 'delivery', 'history'))
+        self.assertTrue(self._has(self.super_role, 'delivery', 'history'))
+        self.assertFalse(self._has(self.sales_role, 'delivery', 'history'))
+
     def test_manager_lacks_users_roles_settings_modules(self):
         for module in ('users', 'roles', 'settings', 'modules'):
             self.assertFalse(

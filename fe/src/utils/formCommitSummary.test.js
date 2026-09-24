@@ -67,6 +67,8 @@ describe('formCommitSummary', () => {
       .toBe('Ann K');
     expect(customerCommitRows()[0].value).toBe('—');
     expect(customerCommitRows({ name: 'Ada', phone: '07', email: 'a@b.c' }, { isEdit: true }).find((r) => r.label === 'Phone').value).toBe('07');
+    expect(customerCommitRows({ name: 'Ada' }).find((r) => r.label === 'Duka').value).toBe('Ada');
+    expect(customerCommitRows({ name: 'Ada' }).find((r) => r.label === 'Action').value).toBe('Register duka');
     expect(supplierCommitRows()[0].value).toBe('—');
     expect(supplierCommitRows({ name: 'Acme', phone: '07' }, { isEdit: true }).find((r) => r.label === 'Action').value)
       .toBe('Update supplier');

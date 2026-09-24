@@ -9,7 +9,11 @@ from rest_framework import serializers, status
 from accounts.models import Role, UserProfile
 from accounts.role_definitions import ROLE_DELIVERY_AGENT, ROLE_SALES, sync_default_roles
 from daily_notes.models import DailyNote
-from daily_notes.services import create_notes_for_assignees, users_with_role
+from daily_notes.services import (
+    active_staff_users,
+    create_notes_for_assignees,
+    users_with_role,
+)
 from daily_notes.tests.test_views import _seed_daily_notes_module
 from utils.tests.api_test_base import ManagerAPITestCase, SalesAPITestCase
 
@@ -61,6 +65,14 @@ class AssignNoteToRoleAPITests(ManagerAPITestCase):
             is_sticky=True,
         )
         self.assertEqual(sticky_self[0].assigned_to_id, self.manager_user.id)
+        everyone = create_notes_for_assignees(
+            author=self.manager_user,
+            note_date=date.today(),
+            content='All staff briefing',
+            assign_to_all=True,
+        )
+        self.assertEqual(len(everyone), len(active_staff_users()))
+        self.assertTrue(all(n.assigned_to_id for n in everyone))
 
     def test_manager_assigns_sticky_to_role(self):
         response = self.client.post(
@@ -190,6 +202,96 @@ class AssignNoteToRoleAPITests(ManagerAPITestCase):
                 ser.save(author=self.manager_user)
 
 
+    def test_manager_assigns_note_to_everyone(self):
+        before = User.objects.filter(is_active=True).count()
+        response = self.client.post(
+            '/api/daily-notes/notes/',
+            {
+                'note_date': str(date.today()),
+                'title': 'Shop-wide',
+                'content': 'Power cut at 3pm — close tills',
+                'is_sticky': True,
+                'assign_to_all': True,
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data['created_count'], before)
+        copies = DailyNote.objects.filter(content='Power cut at 3pm — close tills')
+        self.assertEqual(copies.count(), before)
+        self.assertTrue(all(n.assigned_to_id for n in copies))
+
+        self.client.force_authenticate(self.ann)
+        inbox = self.client.get('/api/daily-notes/notes/blocking/')
+        self.assertEqual(len(inbox.data), 1)
+        self.assertTrue(inbox.data[0]['is_sticky'])
+
+    def test_cannot_send_everyone_and_a_person(self):
+        response = self.client.post(
+            '/api/daily-notes/notes/',
+            {
+                'note_date': str(date.today()),
+                'content': 'Pick one audience',
+                'assign_to_all': True,
+                'assigned_to': self.ann.id,
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_everyone_rejected_when_no_active_staff(self):
+        with patch('daily_notes.serializers.active_staff_users', return_value=[]):
+            response = self.client.post(
+                '/api/daily-notes/notes/',
+                {
+                    'note_date': str(date.today()),
+                    'content': 'All hands',
+                    'assign_to_all': True,
+                },
+                format='json',
+            )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_create_errors_when_everyone_fanout_is_empty(self):
+        from daily_notes.serializers import DailyNoteSerializer
+        from rest_framework.test import APIRequestFactory
+
+        factory = APIRequestFactory()
+        request = factory.post('/api/daily-notes/notes/')
+        request.user = self.manager_user
+        ser = DailyNoteSerializer(
+            data={
+                'note_date': str(date.today()),
+                'content': 'All hands',
+                'assign_to_all': True,
+            },
+            context={'request': request},
+        )
+        self.assertTrue(ser.is_valid(), ser.errors)
+        with patch('daily_notes.serializers.create_notes_for_assignees', return_value=[]):
+            with self.assertRaises(serializers.ValidationError):
+                ser.save(author=self.manager_user)
+
+    def test_update_drops_assign_to_all(self):
+        note = DailyNote.objects.create(
+            note_date=date.today(),
+            content='Keep this copy',
+            author=self.manager_user,
+            assigned_to=self.ann,
+        )
+        patched = self.client.patch(
+            f'/api/daily-notes/notes/{note.id}/',
+            {
+                'content': 'Keep this copy — edited',
+                'assign_to_all': True,
+                'assigned_to': self.ken.id,
+            },
+            format='json',
+        )
+        self.assertEqual(patched.status_code, status.HTTP_200_OK, patched.data)
+        self.assertEqual(DailyNote.objects.filter(content='Keep this copy — edited').count(), 1)
+
+
 class AssignNoteToRoleSalesTests(SalesAPITestCase):
     def setUp(self):
         super().setUp()
@@ -209,6 +311,18 @@ class AssignNoteToRoleSalesTests(SalesAPITestCase):
                 'content': 'Block all sales',
                 'is_sticky': True,
                 'assigned_role': role.id,
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_sales_cannot_assign_everyone(self):
+        response = self.client.post(
+            '/api/daily-notes/notes/',
+            {
+                'note_date': str(date.today()),
+                'content': 'All staff',
+                'assign_to_all': True,
             },
             format='json',
         )

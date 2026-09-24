@@ -48,6 +48,24 @@ class StickyNoteAPITests(ManagerAPITestCase):
         ids = {row['id'] for row in listed.data.get('results', listed.data)}
         self.assertIn(response.data['id'], ids)
 
+    def test_assigned_general_note_appears_on_login_inbox(self):
+        created = self.client.post(
+            '/api/daily-notes/notes/',
+            {
+                'note_date': str(date.today()),
+                'content': 'Please restock sugar before opening',
+                'is_sticky': False,
+                'assigned_to': self.sales_user.id,
+            },
+            format='json',
+        )
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED, created.data)
+        self.client.force_authenticate(self.sales_user)
+        inbox = self.client.get('/api/daily-notes/notes/blocking/')
+        self.assertEqual(len(inbox.data), 1)
+        self.assertFalse(inbox.data[0]['is_sticky'])
+        self.assertEqual(inbox.data[0]['assigned_to'], self.sales_user.id)
+
     def test_general_note_is_not_blocking(self):
         created = self.client.post(
             '/api/daily-notes/notes/',
@@ -139,7 +157,7 @@ class StickyNoteAPITests(ManagerAPITestCase):
             author=self.manager_user,
             assigned_to=self.sales_user,
         )
-        self.assertIn('sticky', str(note))
+        self.assertIn('must-tick', str(note))
         other = User.objects.create_user('bystander', password='x')
         UserProfile.objects.create(
             user=other,
@@ -151,6 +169,9 @@ class StickyNoteAPITests(ManagerAPITestCase):
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
         missing = self.client.post('/api/daily-notes/notes/999999/toggle-done/')
         self.assertEqual(missing.status_code, status.HTTP_404_NOT_FOUND)
+        self.client.force_authenticate(self.sales_user)
+        allowed = self.client.post(f'/api/daily-notes/notes/{note.id}/toggle-done/')
+        self.assertEqual(allowed.status_code, status.HTTP_200_OK)
 
     def test_update_sticky_and_tick_via_put(self):
         create = self.client.post(
@@ -179,6 +200,21 @@ class StickyNoteAPITests(ManagerAPITestCase):
         )
         self.assertEqual(reopen.status_code, status.HTTP_200_OK, reopen.data)
         self.assertFalse(reopen.data['is_sticky'])
+        doing = self.client.patch(
+            f'/api/daily-notes/notes/{note_id}/',
+            {'board_column': 'doing', 'content': 'Need a count'},
+            format='json',
+        )
+        self.assertEqual(doing.status_code, status.HTTP_200_OK, doing.data)
+        self.assertEqual(doing.data['board_column'], 'doing')
+        self.assertTrue(doing.data['in_progress'])
+        past = self.client.patch(
+            f'/api/daily-notes/notes/{note_id}/',
+            {'board_column': 'past', 'content': 'Need a count'},
+            format='json',
+        )
+        self.assertEqual(past.status_code, status.HTTP_200_OK, past.data)
+        self.assertEqual(past.data['board_column'], 'past')
         filtered = self.client.get('/api/daily-notes/notes/', {'is_sticky': 'true'})
         self.assertEqual(filtered.status_code, status.HTTP_200_OK)
         open_notes = self.client.get('/api/daily-notes/notes/', {'status': 'open'})

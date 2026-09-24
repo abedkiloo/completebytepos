@@ -19,6 +19,14 @@ def users_with_role(role):
     )
 
 
+def active_staff_users():
+    return list(
+        User.objects.filter(is_active=True)
+        .select_related('profile', 'profile__custom_role')
+        .order_by('id')
+    )
+
+
 def create_notes_for_assignees(
     *,
     author,
@@ -27,11 +35,16 @@ def create_notes_for_assignees(
     title='',
     is_sticky=False,
     is_done=False,
+    in_progress=False,
     assigned_to=None,
     assigned_role=None,
+    assign_to_all=False,
 ):
-    """One note for a person, or one copy per active user on a role."""
-    if assigned_to is not None:
+    """One note for a person, every user on a role, or everyone in the system."""
+    if assign_to_all:
+        targets = active_staff_users()
+        role = None
+    elif assigned_to is not None:
         targets = [assigned_to]
         role = None
     elif assigned_role is not None:
@@ -53,6 +66,7 @@ def create_notes_for_assignees(
             title=title,
             content=content,
             is_sticky=is_sticky,
+            in_progress=False if is_done else bool(in_progress),
             author=author,
             assigned_to=user,
             assigned_role=role,
@@ -145,9 +159,9 @@ class DailyNoteService:
         return qs.order_by('-is_sticky', 'is_done', '-note_date', '-created_at')
 
     def blocking_for_user(self, *, user, limit: int = 50):
+        """Open notes assigned to this user (sticky first) — shown on login."""
         qs = (
             DailyNote.objects.filter(
-                is_sticky=True,
                 is_done=False,
                 assigned_to=user,
             )
@@ -158,7 +172,7 @@ class DailyNoteService:
                 'assigned_to__profile',
                 'assigned_role',
             )
-            .order_by('note_date', '-created_at')
+            .order_by('-is_sticky', 'note_date', '-created_at')
         )
         if limit is not None:
             return qs[:limit]

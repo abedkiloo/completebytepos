@@ -6,7 +6,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 
 from daily_notes.models import DailyNote, DailyTask
-from daily_notes.services import DailyNoteService, DailyTaskService, recent_activity_dates
+from daily_notes.services import DailyNoteService, DailyTaskService, recent_activity_dates, _scoped_queryset
 
 
 class DailyNoteServiceTests(TestCase):
@@ -96,12 +96,35 @@ class DailyNoteServiceTests(TestCase):
         self.assertEqual(len(blocking), 1)
         empty = self.service.blocking_for_user(user=self.bob)
         self.assertEqual(len(empty), 0)
+        task_scope = _scoped_queryset(DailyTask, user=self.alice, view_all=False)
+        self.assertTrue(all(t.author_id == self.alice.id for t in task_scope))
+        DailyNote.objects.create(
+            note_date=self.today,
+            content='Please check the fridge',
+            author=self.bob,
+            assigned_to=self.alice,
+        )
+        inbox = self.service.blocking_for_user(user=self.alice, limit=None)
+        self.assertEqual(len(inbox), 2)
+        self.assertTrue(inbox[0].is_sticky)
         sticky = self.service.build_queryset(
             user=self.alice,
             view_all=True,
             filters={'kind': 'sticky'},
         )
         self.assertEqual(sticky.count(), 1)
+        assigned = self.service.build_queryset(
+            user=self.alice,
+            view_all=True,
+            filters={'assigned_to': self.alice.id, 'search': 'till', 'is_sticky': 'false'},
+        )
+        self.assertEqual(assigned.count(), 0)
+        done = self.service.build_queryset(
+            user=self.alice,
+            view_all=True,
+            filters={'status': 'done'},
+        )
+        self.assertEqual(done.count(), 0)
 
 
 class DailyTaskServiceTests(TestCase):
@@ -161,3 +184,13 @@ class DailyTaskServiceTests(TestCase):
         dates = recent_activity_dates(user=self.alice, view_all=True)
         self.assertIn(self.today, dates)
         self.assertIn(yesterday, dates)
+
+    def test_task_search_done_and_recent_dates(self):
+        qs = self.service.build_queryset(
+            user=self.alice,
+            view_all=True,
+            filters={'search': 'Sugar', 'status': 'done'},
+        )
+        self.assertEqual(qs.count(), 0)
+        dates = self.service.recent_dates(user=self.alice, view_all=True)
+        self.assertIn(self.today, dates)

@@ -151,6 +151,24 @@ export function userSeesAllSalesFromStorage() {
   return hasPermission(permissions, 'sales', 'view_all');
 }
 
+const DELIVERY_HISTORY_ROLES = ['Super Admin', 'Manager', 'Admin', 'Administrator'];
+
+/** Past driver routes and completed stops — managers/admins, or delivery.history. */
+export function userMayViewDeliveryHistory(auth) {
+  const { permissions, user, profile } = auth || getStoredAuth();
+  if (user?.is_superuser) return true;
+  if (profile?.is_super_admin) return true;
+  const legacy = (profile?.role || '').toString();
+  if (legacy === 'super_admin' || legacy === 'admin') return true;
+  const roleName = (
+    profile?.custom_role?.name
+    || profile?.role_display
+    || ''
+  ).toString().trim();
+  if (DELIVERY_HISTORY_ROLES.includes(roleName)) return true;
+  return hasPermission(permissions, 'delivery', 'history');
+}
+
 export function hasPermission(permissions, module, action) {
   if (!Array.isArray(permissions)) return false;
   const key = `${module}.${action}`;

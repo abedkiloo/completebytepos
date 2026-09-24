@@ -31,6 +31,21 @@ class Customer(models.Model):
     country = models.CharField(max_length=100, default='Kenya')
     tax_id = models.CharField(max_length=50, blank=True, help_text='Tax ID or VAT number')
     notes = models.TextField(blank=True)
+    owner_name = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text='Owner of the duka.',
+    )
+    contact_person = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text='Person to ask for at the duka, if different from the owner.',
+    )
+    typical_goods = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='Goods this duka usually buys.',
+    )
     is_active = models.BooleanField(default=True)
     wallet_balance = models.DecimalField(
         max_digits=10,

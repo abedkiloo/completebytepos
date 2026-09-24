@@ -1,13 +1,19 @@
 import {
+  canEditDailyNote,
   canToggleDailyNote,
   hasBlockingStickyNotes,
+  hasInboxNotes,
   isGeneralNote,
   isNoteAssignee,
   isNoteAuthor,
   isNoteDone,
   isStickyNote,
+  NOTE_BOARD_COLUMNS,
+  noteBoardColumn,
   noteKindLabel,
+  notesForBoardColumn,
   sortDailyNotes,
+  unresolvedInboxNotes,
   unresolvedStickyNotes,
 } from './dailyNotesSticky';
 
@@ -33,12 +39,18 @@ describe('dailyNotesSticky', () => {
     expect(isGeneralNote(stickyOpen)).toBe(false);
     expect(isGeneralNote(generalDone)).toBe(true);
     expect(isNoteDone(generalDone)).toBe(true);
-    expect(noteKindLabel(stickyOpen)).toBe('Sticky');
-    expect(noteKindLabel(generalDone)).toBe('General');
+    expect(noteKindLabel(stickyOpen)).toBe('Must tick');
+    expect(noteKindLabel(generalDone)).toBe('Note');
     expect(unresolvedStickyNotes([stickyOpen, generalDone])).toEqual([stickyOpen]);
     expect(hasBlockingStickyNotes([stickyOpen])).toBe(true);
     expect(hasBlockingStickyNotes([generalDone])).toBe(false);
     expect(unresolvedStickyNotes(null)).toEqual([]);
+    const generalOpen = { ...generalDone, is_done: false, assigned_to: 20 };
+    expect(hasInboxNotes([stickyOpen, generalOpen])).toBe(true);
+    expect(hasInboxNotes([generalDone])).toBe(false);
+    expect(unresolvedInboxNotes(null)).toEqual([]);
+    expect(canEditDailyNote(stickyOpen, 10)).toBe(true);
+    expect(canEditDailyNote(stickyOpen, 20)).toBe(false);
   });
 
   test('tick permission', () => {
@@ -59,5 +71,22 @@ describe('dailyNotesSticky', () => {
     expect(sortDailyNotes([older, newer])[0].id).toBe(4);
     expect(sortDailyNotes([generalDone, { ...generalDone, id: 9, is_done: false }])[0].is_done).toBe(false);
     expect(sortDailyNotes()).toEqual([]);
+  });
+
+  test('maps notes onto To do, Doing, and Past columns', () => {
+    expect(noteBoardColumn({ is_done: true })).toBe('past');
+    expect(noteBoardColumn({ in_progress: true })).toBe('doing');
+    expect(noteBoardColumn({ board_column: 'DOING' })).toBe('doing');
+    expect(noteBoardColumn({})).toBe('todo');
+    const rows = [
+      { id: 1, is_done: false },
+      { id: 2, in_progress: true },
+      { id: 3, is_done: true },
+    ];
+    expect(notesForBoardColumn(rows, 'todo').map((n) => n.id)).toEqual([1]);
+    expect(notesForBoardColumn(rows, 'doing').map((n) => n.id)).toEqual([2]);
+    expect(notesForBoardColumn(rows, 'past').map((n) => n.id)).toEqual([3]);
+    expect(notesForBoardColumn(null, 'todo')).toEqual([]);
+    expect(NOTE_BOARD_COLUMNS.map((c) => c.id)).toEqual(['todo', 'doing', 'past']);
   });
 });

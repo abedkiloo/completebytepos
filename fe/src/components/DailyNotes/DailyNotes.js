@@ -21,7 +21,6 @@ import {
 } from '../../utils/dailyNotesTasks';
 import {
   canToggleDailyNote,
-  noteKindLabel,
   sortDailyNotes,
 } from '../../utils/dailyNotesSticky';
 import {
@@ -33,6 +32,7 @@ import {
 } from '../../utils/approvalReturn';
 import DailyNoteForm from './DailyNoteForm';
 import DailyTaskForm from './DailyTaskForm';
+import DailyNotesBoard from './DailyNotesBoard';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -41,12 +41,6 @@ import {
   PageHeader,
   PageLoading,
   EmptyState,
-  DataTable,
-  DataTableHeader,
-  DataTableHead,
-  DataTableBody,
-  DataTableRow,
-  DataTableCell,
 } from '../page';
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -74,6 +68,7 @@ const DailyNotes = () => {
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [editingNote, setEditingNote] = useState(null);
+  const [noteAssignMode, setNoteAssignMode] = useState('person');
   const [editingTask, setEditingTask] = useState(null);
   const [confirmDeleteNote, setConfirmDeleteNote] = useState(null);
   const [confirmDeleteTask, setConfirmDeleteTask] = useState(null);
@@ -169,6 +164,15 @@ const DailyNotes = () => {
     }
   };
 
+  const handleMoveNote = async (note, column) => {
+    try {
+      const res = await dailyNotesAPI.patch(note.id, { board_column: column });
+      setNotes((prev) => prev.map((n) => (n.id === note.id ? res.data : n)));
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Could not move this note');
+    }
+  };
+
   const handleResubmitRejection = async (entry, kind) => {
     const parsed = parseApprovalRejectionNotice(entry.description || entry.content);
     if (!canResubmitRejection(parsed)) {
@@ -247,9 +251,24 @@ const DailyNotes = () => {
             <Plus className="h-4 w-4" />
             Add task
           </Button>
+          {viewAll ? (
+            <Button
+              variant="outline"
+              data-testid="daily-note-everyone"
+              onClick={() => {
+                setEditingNote(null);
+                setNoteAssignMode('everyone');
+                setShowNoteForm(true);
+              }}
+            >
+              <NotebookPen className="h-4 w-4" />
+              Note for everyone
+            </Button>
+          ) : null}
           <Button
             onClick={() => {
               setEditingNote(null);
+              setNoteAssignMode('person');
               setShowNoteForm(true);
             }}
           >
@@ -309,10 +328,11 @@ const DailyNotes = () => {
                 Add task
               </Button>
               <Button
-                onClick={() => {
-                  setEditingNote(null);
-                  setShowNoteForm(true);
-                }}
+              onClick={() => {
+                setEditingNote(null);
+                setNoteAssignMode('person');
+                setShowNoteForm(true);
+              }}
               >
                 <Plus className="h-4 w-4" />
                 Add note
@@ -434,109 +454,23 @@ const DailyNotes = () => {
                 <NotebookPen className="h-4 w-4" />
                 Notes
               </h2>
-              <DataTable>
-                <DataTableHeader>
-                  <tr>
-                    <DataTableHead className="w-10">Done</DataTableHead>
-                    {viewAll && <DataTableHead>Author</DataTableHead>}
-                    <DataTableHead>Title</DataTableHead>
-                    <DataTableHead>Note</DataTableHead>
-                    <DataTableHead>Kind</DataTableHead>
-                    <DataTableHead>Updated</DataTableHead>
-                    <DataTableHead className="w-24 text-right">Actions</DataTableHead>
-                  </tr>
-                </DataTableHeader>
-                <DataTableBody>
-                  {sortedNotes.map((note) => (
-                    <DataTableRow key={note.id}>
-                      <DataTableCell>
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4"
-                          checked={Boolean(note.is_done)}
-                          disabled={!canToggleNote(note) || togglingNoteId === note.id}
-                          onChange={() => handleToggleNote(note)}
-                          aria-label={`Tick note ${note.title || note.id}`}
-                        />
-                      </DataTableCell>
-                      {viewAll && (
-                        <DataTableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                          {note.author_name || note.author_username}
-                          {note.assigned_to_name || note.assigned_role_name ? (
-                            <div>
-                              For {note.assigned_to_name || note.assigned_role_name}
-                              {note.assigned_to_name && note.assigned_role_name
-                                ? ` · ${note.assigned_role_name}`
-                                : ''}
-                            </div>
-                          ) : null}
-                        </DataTableCell>
-                      )}
-                      <DataTableCell className={`font-medium ${note.is_done ? 'text-muted-foreground line-through' : ''}`}>
-                        {note.title || '—'}
-                      </DataTableCell>
-                      <DataTableCell>
-                        <p className={`whitespace-pre-wrap text-sm ${note.is_done ? 'text-muted-foreground line-through' : ''}`}>{note.content}</p>
-                        {isApprovalRejectionNote(note) &&
-                        canResubmitRejection(parseApprovalRejectionNotice(note.content)) ? (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="mt-2"
-                            disabled={resubmittingKey === `note-${note.id}`}
-                            onClick={() => handleResubmitRejection(note, 'note')}
-                          >
-                            <Redo2 className="h-3.5 w-3.5" />
-                            {resubmittingKey === `note-${note.id}`
-                              ? 'Sending…'
-                              : 'Send back for approval'}
-                          </Button>
-                        ) : null}
-                      </DataTableCell>
-                      <DataTableCell>
-                        <Badge variant={note.is_sticky ? 'destructive' : 'secondary'}>
-                          {noteKindLabel(note)}
-                        </Badge>
-                      </DataTableCell>
-                      <DataTableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                        {note.updated_at
-                          ? new Date(note.updated_at).toLocaleString()
-                          : '—'}
-                      </DataTableCell>
-                      <DataTableCell className="text-right">
-                        {canModifyEntry(note) ? (
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              title="Edit"
-                              onClick={() => {
-                                setEditingNote(note);
-                                setShowNoteForm(true);
-                              }}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              title="Delete"
-                              onClick={() => setConfirmDeleteNote(note.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </DataTableCell>
-                    </DataTableRow>
-                  ))}
-                </DataTableBody>
-              </DataTable>
+              <DailyNotesBoard
+                notes={sortedNotes}
+                viewAll={viewAll}
+                currentUserId={currentUserId}
+                togglingNoteId={togglingNoteId}
+                resubmittingKey={resubmittingKey}
+                onToggle={handleToggleNote}
+                onMove={handleMoveNote}
+                onEdit={(note) => {
+                  setEditingNote(note);
+                  setNoteAssignMode('person');
+                  setShowNoteForm(true);
+                }}
+                onDelete={(noteId) => setConfirmDeleteNote(noteId)}
+                onResubmit={(note, kind) => handleResubmitRejection(note, kind)}
+                canModifyEntry={canModifyEntry}
+              />
             </section>
           )}
         </div>
@@ -547,13 +481,16 @@ const DailyNotes = () => {
           note={editingNote}
           defaultDate={selectedDate}
           canAssignToOthers={viewAll}
+          defaultAssignMode={noteAssignMode}
           onClose={() => {
             setShowNoteForm(false);
             setEditingNote(null);
+            setNoteAssignMode('person');
           }}
           onSave={() => {
             setShowNoteForm(false);
             setEditingNote(null);
+            setNoteAssignMode('person');
             refreshAll();
           }}
         />

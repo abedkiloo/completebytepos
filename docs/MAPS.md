@@ -134,7 +134,11 @@ Until those fields are set, maps use a Nairobi CBD default and show a short noti
 |---|---|---|
 | Driver (app) | `GET /api/delivery/routes/today/geometry/` | Own today’s map |
 | Admin / dispatcher (web Field sales → Driver map) | `GET /api/delivery/routes/geometry/?agent_id=&date=` | That driver’s planned path even before they leave |
-| Anyone with `delivery.view` | `GET /api/delivery/config/` | `maps.routes_api_configured`, `live_tracking_enabled: false` |
+| Manager / Admin / `delivery.history` | `GET /api/delivery/routes/lookup/?agent_id=&date=` | Stops and collections for that day (no new empty today route) |
+| Manager / Admin / `delivery.history` | `GET /api/delivery/routes/?agent_id=&date_from=&date_to=` | Past route list |
+| Anyone with `delivery.view` | `GET /api/delivery/config/` | `maps.routes_api_configured`, `maps.can_view_history`, `live_tracking_enabled: false` |
+
+Past dates (`date` before today) require **`delivery.history`** (granted to Manager and Super Admin by default). Dispatchers keep **today only**. Drivers keep **today only**.
 
 Stop complete / collect / POD stay on the existing delivery API. POD lat/lng is **not** tracking.
 
@@ -164,7 +168,7 @@ Do **not** insert a GPS row per ping. Phase 4 (live marker) should not ship on L
 
 1. Assign a visit order with a customer pin to a driver.
 2. App → Today’s route: numbered list + map card (fallback pins if Android key is still a placeholder).
-3. Web → Field sales → **Driver map**: pick the driver, see shop + stop #1.
+3. Web → Field sales → **Driver map**: pick the driver, see shop + stop #1. Managers/admins can change the date to a previous route.
 4. Save a branch depot pin; refresh the map — shop label/position updates after the polyline fingerprint changes.
 
 When keys are live: Android/iOS show Google tiles; web shows Maps JS; Django `polyline_source` becomes `google` on the next stop-list change.

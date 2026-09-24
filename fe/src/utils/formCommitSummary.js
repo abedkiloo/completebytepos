@@ -93,10 +93,12 @@ export function employeeCommitRows(form = {}, { isEdit = false } = {}) {
 
 export function customerCommitRows(form = {}, { isEdit = false } = {}) {
   return compactCommitRows([
-    { label: 'Customer', value: form.name || '—', emphasis: true },
+    { label: 'Duka', value: form.name || '—', emphasis: true },
+    form.owner_name ? { label: "Owner's name", value: form.owner_name } : null,
     form.phone ? { label: 'Phone', value: form.phone } : null,
     form.email ? { label: 'Email', value: form.email } : null,
-    { label: 'Action', value: isEdit ? 'Update customer' : 'Create customer' },
+    form.city ? { label: 'City', value: form.city } : null,
+    { label: 'Action', value: isEdit ? 'Update duka' : 'Register duka' },
   ]);
 }
 

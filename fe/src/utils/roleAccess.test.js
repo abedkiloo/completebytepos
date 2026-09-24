@@ -5,6 +5,7 @@ import {
   canAccessRoute,
   isManagerOrAdminFromStorage,
   userSeesAllSalesFromStorage,
+  userMayViewDeliveryHistory,
 } from './roleAccess';
 import { cacheModuleSettings } from './moduleSettingsCache';
 import { cacheStoreSettings } from './storeSettingsCache';
@@ -179,6 +180,45 @@ describe('roleAccess', () => {
       JSON.stringify([{ module: 'sales', action: 'view_all', name: 'sales.view_all' }])
     );
     expect(userSeesAllSalesFromStorage()).toBe(true);
+  });
+
+  test('userMayViewDeliveryHistory is manager/admin or delivery.history', () => {
+    localStorage.setItem('user', JSON.stringify({ id: 1, username: 'disp' }));
+    localStorage.setItem(
+      'profile',
+      JSON.stringify({ role: 'manager', custom_role: { name: 'Dispatcher' } })
+    );
+    localStorage.setItem('permissions', JSON.stringify([]));
+    expect(userMayViewDeliveryHistory()).toBe(false);
+
+    localStorage.setItem(
+      'profile',
+      JSON.stringify({ role: 'manager', custom_role: { name: 'Manager' } })
+    );
+    expect(userMayViewDeliveryHistory()).toBe(true);
+
+    localStorage.setItem(
+      'profile',
+      JSON.stringify({ role: 'cashier', custom_role: { name: 'Ops' } })
+    );
+    expect(userMayViewDeliveryHistory()).toBe(false);
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([{ module: 'delivery', action: 'history', name: 'delivery.history' }])
+    );
+    expect(userMayViewDeliveryHistory()).toBe(true);
+
+    localStorage.setItem('user', JSON.stringify({ is_superuser: true }));
+    localStorage.setItem('permissions', JSON.stringify([]));
+    expect(userMayViewDeliveryHistory()).toBe(true);
+
+    expect(
+      userMayViewDeliveryHistory({
+        user: { is_superuser: false },
+        profile: { role: 'admin', custom_role: { name: 'Clerk' } },
+        permissions: [],
+      })
+    ).toBe(true);
   });
 
   test('system-settings is super-admin only', () => {

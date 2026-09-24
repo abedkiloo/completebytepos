@@ -283,6 +283,7 @@ export const dailyNotesAPI = {
   get: (id) => api.get(`/daily-notes/notes/${id}/`),
   create: (data) => api.post('/daily-notes/notes/', data),
   update: (id, data) => api.put(`/daily-notes/notes/${id}/`, data),
+  patch: (id, data) => api.patch(`/daily-notes/notes/${id}/`, data),
   delete: (id) => api.delete(`/daily-notes/notes/${id}/`),
   recentDates: () => api.get('/daily-notes/notes/recent-dates/'),
   blocking: () => api.get('/daily-notes/notes/blocking/'),
@@ -736,6 +737,8 @@ export const dispatchAPI = {
 export const deliveryAPI = {
   todayGeometry: () => api.get('/delivery/routes/today/geometry/'),
   staffGeometry: (params) => api.get('/delivery/routes/geometry/', { params }),
+  staffRoute: (params) => api.get('/delivery/routes/lookup/', { params }),
+  listRoutes: (params) => api.get('/delivery/routes/', { params }),
 };
 
 export default api;

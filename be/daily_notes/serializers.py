@@ -5,7 +5,7 @@ from rest_framework import serializers
 from accounts.models import Role
 from .access import user_may_view_all_daily_notes
 from .models import DailyNote, DailyTask
-from .services import create_notes_for_assignees, users_with_role
+from .services import active_staff_users, create_notes_for_assignees, users_with_role
 from utils.field_types import date_error_messages, raise_field_error, required_text_error
 
 
@@ -35,6 +35,12 @@ class DailyNoteSerializer(serializers.ModelSerializer):
     )
     assigned_role_name = serializers.SerializerMethodField()
     created_count = serializers.SerializerMethodField()
+    assign_to_all = serializers.BooleanField(write_only=True, required=False, default=False)
+    board_column = serializers.ChoiceField(
+        choices=['todo', 'doing', 'past'],
+        required=False,
+        write_only=True,
+    )
 
     class Meta:
         model = DailyNote
@@ -44,6 +50,8 @@ class DailyNoteSerializer(serializers.ModelSerializer):
             'title',
             'content',
             'is_sticky',
+            'in_progress',
+            'board_column',
             'is_done',
             'completed_at',
             'author',
@@ -54,6 +62,7 @@ class DailyNoteSerializer(serializers.ModelSerializer):
             'assigned_to_username',
             'assigned_role',
             'assigned_role_name',
+            'assign_to_all',
             'assignment_group',
             'created_count',
             'created_at',
@@ -113,6 +122,11 @@ class DailyNoteSerializer(serializers.ModelSerializer):
         if assigned_role is serializers.empty:
             assigned_role = self.instance.assigned_role if self.instance else None
 
+        assign_to_all = bool(attrs.get('assign_to_all'))
+        if assign_to_all and self.instance:
+            attrs.pop('assign_to_all', None)
+            assign_to_all = False
+
         if assigned_to and assigned_role and not self.instance:
             raise serializers.ValidationError(
                 {'assigned_role': 'Choose a person or a role, not both.'}
@@ -121,6 +135,24 @@ class DailyNoteSerializer(serializers.ModelSerializer):
         may_assign_others = bool(
             request and user_may_view_all_daily_notes(getattr(request, 'user', None))
         )
+
+        if assign_to_all:
+            if assigned_to or assigned_role:
+                raise serializers.ValidationError(
+                    {
+                        'assign_to_all': (
+                            'Choose everyone, a person, or a role — not more than one.'
+                        )
+                    }
+                )
+            if not may_assign_others:
+                raise serializers.ValidationError(
+                    {'assign_to_all': 'You can only assign notes to yourself.'}
+                )
+            if not active_staff_users():
+                raise serializers.ValidationError(
+                    {'assign_to_all': 'No active staff to send this note to.'}
+                )
 
         if assigned_role and not may_assign_others:
             raise serializers.ValidationError(
@@ -137,6 +169,7 @@ class DailyNoteSerializer(serializers.ModelSerializer):
             is_sticky
             and assigned_to is None
             and assigned_role is None
+            and not assign_to_all
             and request
             and getattr(request, 'user', None)
             and not may_assign_others
@@ -144,13 +177,13 @@ class DailyNoteSerializer(serializers.ModelSerializer):
             assigned_to = request.user
             attrs['assigned_to'] = assigned_to
 
-        if is_sticky and assigned_to is None and assigned_role is None:
+        if is_sticky and assigned_to is None and assigned_role is None and not assign_to_all:
             raise serializers.ValidationError(
                 {
                     'assigned_to': (
-                        'Assign this sticky note to a person or a role.'
+                        'Assign this note to a person, a role, or everyone.'
                         if may_assign_others
-                        else 'Assign this sticky note to the person who must resolve it.'
+                        else 'Assign this note to the person who must resolve it.'
                     )
                 }
             )
@@ -158,7 +191,7 @@ class DailyNoteSerializer(serializers.ModelSerializer):
         if request and assigned_to and assigned_to.id != request.user.id:
             if not may_assign_others:
                 raise serializers.ValidationError(
-                    {'assigned_to': 'You can only assign sticky notes to yourself.'}
+                    {'assigned_to': 'You can only assign notes to yourself.'}
                 )
 
         is_done = attrs.get('is_done')
@@ -178,8 +211,11 @@ class DailyNoteSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         is_done = validated_data.pop('is_done', False)
+        board_column = validated_data.pop('board_column', None)
+        in_progress = validated_data.pop('in_progress', False)
         assigned_to = validated_data.pop('assigned_to', None)
         assigned_role = validated_data.pop('assigned_role', None)
+        assign_to_all = validated_data.pop('assign_to_all', False)
         notes = create_notes_for_assignees(
             author=validated_data['author'],
             note_date=validated_data['note_date'],
@@ -187,23 +223,39 @@ class DailyNoteSerializer(serializers.ModelSerializer):
             title=validated_data.get('title', ''),
             is_sticky=validated_data.get('is_sticky', False),
             is_done=is_done,
+            in_progress=in_progress,
             assigned_to=assigned_to,
             assigned_role=assigned_role,
+            assign_to_all=assign_to_all,
         )
         if not notes:
             raise serializers.ValidationError(
-                {'assigned_role': 'No active staff have that role.'}
+                {
+                    'assign_to_all' if assign_to_all else 'assigned_role': (
+                        'No active staff to send this note to.'
+                        if assign_to_all
+                        else 'No active staff have that role.'
+                    )
+                }
             )
         self._created_count = len(notes)
-        return notes[0]
+        note = notes[0]
+        if board_column:
+            note.move_to_board(board_column)
+            note.save()
+        return note
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
         if not getattr(self, '_created_count', None):
             data.pop('created_count', None)
+        data['board_column'] = instance.board_column
+        data['in_progress'] = bool(instance.in_progress)
         return data
 
     def update(self, instance, validated_data):
+        validated_data.pop('assign_to_all', None)
+        board_column = validated_data.pop('board_column', None)
         is_done = validated_data.pop('is_done', None)
         assigned_to = validated_data.pop('assigned_to', serializers.empty)
         for key, value in validated_data.items():
@@ -215,7 +267,9 @@ class DailyNoteSerializer(serializers.ModelSerializer):
             instance.assigned_role = assigned_role
         if instance.is_sticky and instance.assigned_to_id is None and instance.assigned_role_id is None:
             instance.assigned_to = instance.author
-        if is_done is not None:
+        if board_column:
+            instance.move_to_board(board_column)
+        elif is_done is not None:
             self._apply_completion(instance, is_done)
         instance.save()
         return instance

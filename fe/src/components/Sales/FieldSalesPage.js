@@ -4,7 +4,7 @@ import { dispatchAPI, deliveryAPI } from '../../services/api';
 import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { toast } from '../../utils/toast';
-import { getStoredAuth, hasPermission } from '../../utils/roleAccess';
+import { getStoredAuth, hasPermission, userMayViewDeliveryHistory } from '../../utils/roleAccess';
 import {
   assignCommitRows,
   assignDriverError,
@@ -59,11 +59,18 @@ const STATUS_LABELS = {
   out_for_delivery: 'Out for delivery',
   done: 'Done',
   cancelled: 'Cancelled',
+  pending: 'Pending',
+  arrived: 'Arrived',
+  delivering: 'Delivering',
+  collected: 'Collected',
+  completed: 'Completed',
+  failed: 'Failed',
 };
 
 const FieldSalesPage = () => {
   const { permissions } = getStoredAuth();
   const canPack = hasPermission(permissions, 'dispatch', 'update');
+  const canViewHistory = userMayViewDeliveryHistory();
   const [orders, setOrders] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -75,7 +82,9 @@ const FieldSalesPage = () => {
   const [showAddDriver, setShowAddDriver] = useState(false);
   const [showDriverMap, setShowDriverMap] = useState(false);
   const [mapDriverId, setMapDriverId] = useState('');
+  const [mapDate, setMapDate] = useState(() => localISODate());
   const [mapGeometry, setMapGeometry] = useState(null);
+  const [mapStops, setMapStops] = useState([]);
   const [mapLoading, setMapLoading] = useState(false);
   const [filters, setFilters] = useState({
     date_from: '',
@@ -145,22 +154,32 @@ const FieldSalesPage = () => {
     const agentId = mapDriverId || (drivers[0] ? String(drivers[0].id) : '');
     if (!agentId) return undefined;
     if (!mapDriverId) setMapDriverId(agentId);
+    const date = canViewHistory ? (mapDate || localISODate()) : localISODate();
     let cancelled = false;
     setMapLoading(true);
-    deliveryAPI.staffGeometry({
-      agent_id: agentId,
-      date: filters.date_from || localISODate(),
-    }).then((response) => {
-      if (!cancelled) setMapGeometry(response.data);
-    }).catch(() => {
-      if (!cancelled) setMapGeometry(null);
+    Promise.all([
+      deliveryAPI.staffGeometry({ agent_id: agentId, date }),
+      deliveryAPI.staffRoute({ agent_id: agentId, date }),
+    ]).then(([geometryRes, routeRes]) => {
+      if (cancelled) return;
+      setMapGeometry(geometryRes.data);
+      const stops = Array.isArray(routeRes.data?.stops) ? routeRes.data.stops : [];
+      setMapStops(stops);
+    }).catch((error) => {
+      if (cancelled) return;
+      setMapGeometry(null);
+      setMapStops([]);
+      const detail = error.response?.data?.detail || error.message;
+      if (error.response?.status === 403) {
+        toast.error(typeof detail === 'string' ? detail : 'Not allowed to view this route');
+      }
     }).finally(() => {
       if (!cancelled) setMapLoading(false);
     });
     return () => {
       cancelled = true;
     };
-  }, [showDriverMap, mapDriverId, drivers, filters.date_from]);
+  }, [showDriverMap, mapDriverId, drivers, mapDate, canViewHistory]);
 
   const handleFilterChange = (key, value) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -324,14 +343,53 @@ const FieldSalesPage = () => {
                 ))}
               </select>
             </div>
+            {canViewHistory ? (
+              <div>
+                <label className="text-sm font-medium" htmlFor="field-sales-map-date">Date</label>
+                <Input
+                  id="field-sales-map-date"
+                  type="date"
+                  value={mapDate}
+                  max={localISODate()}
+                  onChange={(e) => setMapDate(e.target.value)}
+                  data-testid="field-sales-map-date"
+                />
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground" data-testid="field-sales-map-today-only">
+                Today’s planned path (shop → numbered stops).
+              </p>
+            )}
             <p className="text-sm text-muted-foreground">
-              Planned path for this driver (shop → numbered stops). Live tracking comes later.
+              {canViewHistory
+                ? 'Today and previous routes. Live tracking comes later.'
+                : 'Live tracking comes later.'}
             </p>
           </div>
           {mapLoading ? (
             <p className="text-sm text-muted-foreground">Loading route…</p>
           ) : (
             <DeliveryRouteMap geometry={mapGeometry} />
+          )}
+          {mapStops.length > 0 ? (
+            <ul className="space-y-1 text-sm" data-testid="field-sales-map-stops">
+              {mapStops.map((stop) => (
+                <li key={stop.id}>
+                  #{stop.sequence}
+                  {' '}
+                  {stop.customer_name || stop.site?.label || 'Stop'}
+                  {' — '}
+                  {STATUS_LABELS[stop.status] || stop.status}
+                  {stop.collection_amount != null && stop.collection_amount !== ''
+                    ? ` · ${formatCurrency(stop.collection_amount)}`
+                    : ''}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground" data-testid="field-sales-map-stops-empty">
+              No deliveries on this date.
+            </p>
           )}
         </div>
       ) : null}

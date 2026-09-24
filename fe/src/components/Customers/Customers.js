@@ -23,6 +23,7 @@ import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import CommitConfirm from '../Shared/CommitConfirm';
 import { customerCommitRows } from '../../utils/formCommitSummary';
 import { customerDetailPath } from '../../utils/customerDetail';
+import TypicalGoodsFields, { typicalGoodsPayload } from './TypicalGoodsFields';
 import {
   emailMessage,
   personNameMessage,
@@ -65,7 +66,8 @@ import ReceiveWalletPaymentDialog from './ReceiveWalletPaymentDialog';
 
 const EMPTY_FORM = {
   name: '',
-  customer_type: 'individual',
+  owner_name: '',
+  customer_type: 'business',
   email: '',
   phone: '',
   address: '',
@@ -73,6 +75,8 @@ const EMPTY_FORM = {
   country: 'Kenya',
   tax_id: '',
   notes: '',
+  contact_person: '',
+  typical_goods: [''],
   is_active: true,
 };
 
@@ -191,7 +195,8 @@ const Customers = () => {
     setEditingCustomer(customer);
     setFormData({
       name: customer.name || '',
-      customer_type: customer.customer_type || 'individual',
+      owner_name: customer.owner_name || '',
+      customer_type: customer.customer_type || 'business',
       email: customer.email || '',
       phone: customer.phone || '',
       address: customer.address || '',
@@ -199,6 +204,11 @@ const Customers = () => {
       country: customer.country || 'Kenya',
       tax_id: customer.tax_id || '',
       notes: customer.notes || '',
+      contact_person: customer.contact_person || '',
+      typical_goods:
+        Array.isArray(customer.typical_goods) && customer.typical_goods.length
+          ? customer.typical_goods
+          : [''],
       is_active: customer.is_active !== undefined ? customer.is_active : true,
     });
     setFormErrors({});
@@ -222,8 +232,8 @@ const Customers = () => {
   const validate = () => {
     const errors = {};
     const nameErr = personNameMessage(formData.name, {
-      label: 'customer name',
-      example: 'Jane Wambua',
+      label: 'duka name',
+      example: 'Wambua Hardware',
     });
     if (nameErr) errors.name = nameErr;
 
@@ -254,11 +264,14 @@ const Customers = () => {
       customer_type: formData.customer_type,
       email: formData.email.trim(),
       phone: formData.phone.trim(),
+      owner_name: formData.owner_name.trim(),
       address: formData.address.trim(),
       city: formData.city.trim(),
       country: formData.country.trim() || 'Kenya',
       tax_id: formData.tax_id.trim(),
       notes: formData.notes.trim(),
+      contact_person: formData.contact_person.trim(),
+      typical_goods: typicalGoodsPayload(formData.typical_goods),
       is_active: formData.is_active,
     };
 
@@ -266,10 +279,10 @@ const Customers = () => {
     try {
       if (editingCustomer) {
         await customersAPI.update(editingCustomer.id, payload);
-        toast.success('Customer updated');
+        toast.success('Duka updated');
       } else {
         await customersAPI.create(payload);
-        toast.success('Customer created');
+        toast.success('Duka registered');
       }
       setShowCommitConfirm(false);
       setShowModal(false);
@@ -323,7 +336,7 @@ const Customers = () => {
           {canCreate && (
             <Button onClick={openCreate}>
               <Plus className="h-4 w-4" />
-              Add customer
+              Register duka
             </Button>
           )}
         </PageHeader>
@@ -530,7 +543,7 @@ const Customers = () => {
         onOpenChange={(open) => {
           if (!open && !saving) setShowCommitConfirm(false);
         }}
-        title={editingCustomer ? 'Update this customer?' : 'Create this customer?'}
+        title={editingCustomer ? 'Update this duka?' : 'Register this duka?'}
         description="Review the customer details, then confirm to save."
         rows={customerCommitRows(formData, { isEdit: !!editingCustomer })}
         submitting={saving}
@@ -720,7 +733,7 @@ function EmptyState({ onCreate, searchQuery }) {
       {onCreate && (
         <Button onClick={onCreate} variant="default" size="sm">
           <Plus className="h-4 w-4" />
-          Add your first customer
+          Register your first duka
         </Button>
       )}
     </div>
@@ -750,28 +763,51 @@ function CustomerFormDialog({
         )}
         description={
           editing
-            ? 'Update this customer\u2019s contact details, credit limit, and notes.'
-            : 'Create a new customer profile to track sales, wallet balance, and credit.'
+            ? 'Update this duka’s owner, landmark, and the goods they buy most.'
+            : 'Register a duka to track sales, wallet balance, and credit.'
         }
       >
         <DialogHeader className="shrink-0 space-y-1 border-b px-6 py-4 pr-12">
-          <DialogTitle>{editing ? 'Edit customer' : 'Add customer'}</DialogTitle>
+          <DialogTitle>{editing ? 'Edit duka' : 'Register duka'}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="flex flex-col">
           <div
             className="dialog-form-scroll max-h-[calc(92dvh-10.5rem)] overflow-y-auto overscroll-contain px-6 py-4"
             role="region"
-            aria-label="Customer details"
+            aria-label="Duka details"
           >
             <div className="flex flex-col gap-4 pb-2">
-              <Field label="Name" htmlFor="cust-name" required error={formErrors.name}>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Basics
+              </p>
+              <Field label="Duka name" htmlFor="cust-name" required error={formErrors.name}>
                 <Input
                   id="cust-name"
                   value={formData.name}
                   onChange={(e) => onChange('name', e.target.value)}
-                  placeholder="Jane Wambua"
+                  placeholder="e.g. Wambua Hardware"
                   autoFocus
+                />
+              </Field>
+
+              <Field label="Owner's name" htmlFor="cust-owner">
+                <Input
+                  id="cust-owner"
+                  value={formData.owner_name}
+                  onChange={(e) => onChange('owner_name', e.target.value)}
+                  placeholder="e.g. Jane Wambua"
+                />
+              </Field>
+
+              <Field label="Phone" htmlFor="cust-phone" error={formErrors.phone}>
+                <Input
+                  id="cust-phone"
+                  type="tel"
+                  inputMode="tel"
+                  value={formData.phone}
+                  onChange={(e) => onChange('phone', e.target.value)}
+                  placeholder="0712 345 678"
                 />
               </Field>
 
@@ -788,6 +824,9 @@ function CustomerFormDialog({
               </Field>
               )}
 
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Other details <span className="font-normal normal-case">(optional)</span>
+              </p>
               <Field label="Email" htmlFor="cust-email" error={formErrors.email}>
                   <Input
                     id="cust-email"
@@ -796,28 +835,6 @@ function CustomerFormDialog({
                     onChange={(e) => onChange('email', e.target.value)}
                     placeholder="name@example.com"
                   />
-              </Field>
-
-              <Field label="Phone" htmlFor="cust-phone" error={formErrors.phone}>
-                <Input
-                  id="cust-phone"
-                  type="tel"
-                  inputMode="tel"
-                  value={formData.phone}
-                  onChange={(e) => onChange('phone', e.target.value)}
-                  placeholder="0712 345 678"
-                />
-              </Field>
-
-              <Field label="Address" htmlFor="cust-address">
-                <textarea
-                  id="cust-address"
-                  value={formData.address}
-                  onChange={(e) => onChange('address', e.target.value)}
-                  rows={2}
-                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                  placeholder="Street, building, area…"
-                />
               </Field>
 
               <Field label="City" htmlFor="cust-city">
@@ -850,18 +867,49 @@ function CustomerFormDialog({
               </Field>
               )}
 
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Notes
+              </p>
+              <Field label="Landmark" htmlFor="cust-address">
+                <textarea
+                  id="cust-address"
+                  value={formData.address}
+                  onChange={(e) => onChange('address', e.target.value)}
+                  rows={2}
+                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  placeholder="Next to the market, opposite the bus stage…"
+                />
+              </Field>
+
+              <Field label="Contact person" htmlFor="cust-contact">
+                <Input
+                  id="cust-contact"
+                  value={formData.contact_person}
+                  onChange={(e) => onChange('contact_person', e.target.value)}
+                  placeholder="Who to ask for, if not the owner"
+                />
+              </Field>
+
               {showNotes && (
-              <Field label="Notes" htmlFor="cust-notes">
+              <Field label="Internal notes" htmlFor="cust-notes">
                 <textarea
                   id="cust-notes"
                   value={formData.notes}
                   onChange={(e) => onChange('notes', e.target.value)}
                   rows={3}
                   className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                  placeholder="Internal notes (preferences, delivery instructions…)"
+                  placeholder="Credit terms, delivery instructions…"
                 />
               </Field>
               )}
+
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Goods they buy most <span className="font-normal normal-case">(optional)</span>
+              </p>
+              <TypicalGoodsFields
+                value={formData.typical_goods}
+                onChange={(goods) => onChange('typical_goods', goods)}
+              />
 
               {showStatus && (
               <label className="flex items-center gap-2 text-sm">
@@ -871,7 +919,7 @@ function CustomerFormDialog({
                   onChange={(e) => onChange('is_active', e.target.checked)}
                   className="h-4 w-4 rounded border-input text-primary focus:ring-1 focus:ring-ring"
                 />
-                <span>Active — appears in customer pickers</span>
+                <span>Active — appears in duka pickers</span>
               </label>
               )}
             </div>
@@ -895,7 +943,7 @@ function CustomerFormDialog({
               ) : editing ? (
                 'Save changes'
               ) : (
-                'Create customer'
+                'Register duka'
               )}
             </Button>
           </DialogFooter>

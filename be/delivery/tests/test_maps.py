@@ -9,7 +9,11 @@ from django.test import SimpleTestCase, override_settings
 from django.utils import timezone
 from rest_framework import serializers, status
 
-from delivery.maps.access import user_may_view_agent_route
+from delivery.maps.access import (
+    user_may_view_agent_route,
+    user_may_view_delivery_history,
+    user_may_view_route_on_date,
+)
 from delivery.maps.config import configured_secret, maps_public_config, maps_server_key
 from delivery.maps.geometry import (
     SOURCE_GOOGLE,
@@ -112,6 +116,87 @@ class AccessTests(SimpleTestCase):
         admin.profile.is_super_admin = True
         admin.profile.is_manager = False
         self.assertTrue(user_may_view_agent_route(admin, 99))
+
+    def test_history_and_past_date_rules(self):
+        from datetime import timedelta
+
+        class Role:
+            def __init__(self, name):
+                self.name = name
+
+        self.assertFalse(user_may_view_delivery_history(None))
+        anon = MagicMock(is_authenticated=False)
+        self.assertFalse(user_may_view_delivery_history(anon))
+
+        su = MagicMock(is_authenticated=True, is_superuser=True, profile=None)
+        self.assertTrue(user_may_view_delivery_history(su))
+
+        none = MagicMock(is_authenticated=True, is_superuser=False, profile=None)
+        self.assertFalse(user_may_view_delivery_history(none))
+
+        admin = MagicMock(is_authenticated=True, is_superuser=False)
+        admin.profile.is_super_admin = True
+        admin.profile.has_permission.return_value = False
+        admin.profile.custom_role = None
+        admin.profile.role = 'cashier'
+        self.assertTrue(user_may_view_delivery_history(admin))
+
+        mgr = MagicMock(is_authenticated=True, is_superuser=False, id=1)
+        mgr.profile.is_super_admin = False
+        mgr.profile.is_manager = True
+        mgr.profile.has_permission.return_value = False
+        mgr.profile.custom_role = Role('Manager')
+        mgr.profile.role = 'manager'
+        self.assertTrue(user_may_view_delivery_history(mgr))
+
+        disp = MagicMock(is_authenticated=True, is_superuser=False, id=1)
+        disp.profile.is_super_admin = False
+        disp.profile.is_manager = True
+        disp.profile.has_permission.return_value = False
+        disp.profile.custom_role = Role('Dispatcher')
+        disp.profile.role = 'manager'
+        self.assertFalse(user_may_view_delivery_history(disp))
+
+        granted = MagicMock(is_authenticated=True, is_superuser=False, id=1)
+        granted.profile.is_super_admin = False
+        granted.profile.is_manager = False
+        granted.profile.custom_role = Role('Ops Lead')
+        granted.profile.role = 'cashier'
+
+        def _hist(module, action):
+            return module == 'delivery' and action == 'history'
+
+        granted.profile.has_permission.side_effect = _hist
+        self.assertTrue(user_may_view_delivery_history(granted))
+
+        legacy = MagicMock(is_authenticated=True, is_superuser=False)
+        legacy.profile.is_super_admin = False
+        legacy.profile.has_permission.return_value = False
+        legacy.profile.custom_role = None
+        legacy.profile.role = 'admin'
+        self.assertTrue(user_may_view_delivery_history(legacy))
+
+        nameless = MagicMock(is_authenticated=True, is_superuser=False)
+        nameless.profile.is_super_admin = False
+        nameless.profile.has_permission.return_value = False
+        nameless.profile.custom_role = object()
+        nameless.profile.role = 'cashier'
+        self.assertFalse(user_may_view_delivery_history(nameless))
+
+        today = timezone.localdate()
+        yesterday = today - timedelta(days=1)
+        self.assertTrue(user_may_view_route_on_date(disp, 99, today))
+        self.assertTrue(user_may_view_route_on_date(disp, 99, None))
+        self.assertFalse(user_may_view_route_on_date(disp, 99, yesterday))
+        self.assertTrue(user_may_view_route_on_date(mgr, 99, yesterday))
+        sales = MagicMock(is_authenticated=True, is_superuser=False, id=4)
+        sales.profile.is_super_admin = False
+        sales.profile.is_manager = False
+        sales.profile.has_permission.return_value = False
+        self.assertFalse(user_may_view_route_on_date(sales, 99, today))
+        own = MagicMock(is_authenticated=True, is_superuser=False, id=9, profile=None)
+        self.assertFalse(user_may_view_route_on_date(own, 9, yesterday))
+        self.assertTrue(user_may_view_route_on_date(own, 9, today))
 
 
 class GoogleRoutesTests(SimpleTestCase):
@@ -246,6 +331,7 @@ class MapsGeometryAPITests(DeliveryAPITestCase):
         self.assertGreaterEqual(len(res.data['path']), 2)
         cfg = self.client.get('/api/delivery/config/')
         self.assertFalse(cfg.data['maps']['routes_api_configured'])
+        self.assertFalse(cfg.data['maps']['can_view_history'])
 
         # Cached: second read does not need Google.
         again = self.client.get('/api/delivery/routes/today/geometry/')

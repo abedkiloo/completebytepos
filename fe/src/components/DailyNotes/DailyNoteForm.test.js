@@ -102,6 +102,62 @@ describe('DailyNoteForm', () => {
     expect(toast.success).toHaveBeenCalledWith('Note sent to 2 people');
   });
 
+  test('sticky note can be assigned to everyone', async () => {
+    dailyNotesAPI.create.mockResolvedValue({ data: { id: 9, created_count: 4 } });
+    render(
+      <DailyNoteForm
+        defaultDate="2026-09-24"
+        canAssignToOthers
+        onClose={jest.fn()}
+        onSave={jest.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByPlaceholderText(/What happened today/i), {
+      target: { value: 'Count every till' },
+    });
+    fireEvent.click(screen.getByTestId('note-is-sticky'));
+    fireEvent.click(screen.getByTestId('note-assign-everyone'));
+    fireEvent.click(screen.getByTestId('note-assign-person'));
+    fireEvent.click(screen.getByTestId('note-assign-everyone'));
+    fireEvent.click(screen.getByRole('button', { name: /^Save$/i }));
+    await waitFor(() =>
+      expect(dailyNotesAPI.create).toHaveBeenCalledWith(
+        expect.objectContaining({ is_sticky: true, assign_to_all: true }),
+      ),
+    );
+  });
+
+  test('assigns a note to everyone in the system', async () => {
+    dailyNotesAPI.create.mockResolvedValue({ data: { id: 9, created_count: 5 } });
+    render(
+      <DailyNoteForm
+        defaultDate="2026-09-24"
+        canAssignToOthers
+        defaultAssignMode="everyone"
+        onClose={jest.fn()}
+        onSave={jest.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByPlaceholderText(/What happened today/i), {
+      target: { value: 'Power cut at 3pm' },
+    });
+    expect(screen.getByTestId('note-assign-everyone')).toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: /^Save$/i }));
+    await waitFor(() =>
+      expect(dailyNotesAPI.create).toHaveBeenCalledWith(
+        expect.objectContaining({ assign_to_all: true, content: 'Power cut at 3pm' }),
+      ),
+    );
+    expect(toast.success).toHaveBeenCalledWith('Note sent to 5 people');
+  });
+
+  test('keeps save footer reachable via a flex form', () => {
+    const { getByTestId } = render(
+      <DailyNoteForm defaultDate="2026-09-24" onClose={jest.fn()} onSave={jest.fn()} />,
+    );
+    expect(getByTestId('daily-note-form').className).toMatch(/flex-1/);
+  });
+
   test('updates an existing note', async () => {
     render(
       <DailyNoteForm
@@ -123,6 +179,24 @@ describe('DailyNoteForm', () => {
     await waitFor(() => expect(dailyNotesAPI.update).toHaveBeenCalledWith(4, expect.any(Object)));
   });
 
+  test('loads a role-assigned note into role mode', async () => {
+    render(
+      <DailyNoteForm
+        canAssignToOthers
+        note={{
+          id: 8,
+          note_date: '2026-09-24',
+          content: 'For sales',
+          assigned_role: 3,
+        }}
+        onClose={jest.fn()}
+        onSave={jest.fn()}
+      />,
+    );
+    expect(await screen.findByTestId('note-assign-role')).toBeChecked();
+    expect(screen.queryByTestId('note-assign-everyone')).not.toBeInTheDocument();
+  });
+
   test('warns when content is empty', () => {
     render(<DailyNoteForm defaultDate="2026-09-24" onClose={jest.fn()} onSave={jest.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: /^Save$/i }));
@@ -131,6 +205,7 @@ describe('DailyNoteForm', () => {
 
   test('warns on invalid date, save errors, and staff load failure', async () => {
     dailyNotesAPI.staff.mockRejectedValue(new Error('nope'));
+    dailyNotesAPI.roles.mockRejectedValue(new Error('nope'));
     dailyNotesAPI.create.mockRejectedValue({ response: { data: { error: 'Nope' } } });
     render(
       <DailyNoteForm

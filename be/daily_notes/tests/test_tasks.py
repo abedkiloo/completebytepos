@@ -105,6 +105,22 @@ class DailyTaskAPITests(ManagerAPITestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]['id'], self.open_task.id)
 
+    def test_manager_updates_and_deletes_tasks(self):
+        patched = self.client.patch(
+            f'/api/daily-notes/tasks/{self.open_task.id}/',
+            {'title': 'Count drawer again'},
+            format='json',
+        )
+        self.assertEqual(patched.status_code, status.HTTP_200_OK, patched.data)
+        sales_task = self.client.patch(
+            f'/api/daily-notes/tasks/{self.done_task.id}/',
+            {'title': 'Restock later'},
+            format='json',
+        )
+        self.assertEqual(sales_task.status_code, status.HTTP_200_OK)
+        deleted = self.client.delete(f'/api/daily-notes/tasks/{self.open_task.id}/')
+        self.assertEqual(deleted.status_code, status.HTTP_204_NO_CONTENT)
+
 
 class DailyTaskAssignmentTests(ManagerAPITestCase):
     def setUp(self):
@@ -234,3 +250,35 @@ class DailyTaskSalesTests(SalesAPITestCase):
         rows = response.data.get('results', response.data)
         titles = {row['title'] for row in rows}
         self.assertIn('Assigned by boss', titles)
+
+    def test_sales_edits_and_deletes_own_task_not_others(self):
+        patched = self.client.patch(
+            f'/api/daily-notes/tasks/{self.own.id}/',
+            {'title': 'My task updated'},
+            format='json',
+        )
+        self.assertEqual(patched.status_code, status.HTTP_200_OK, patched.data)
+        forbidden = self.client.patch(
+            f'/api/daily-notes/tasks/{self.other_task.id}/',
+            {'title': 'Hacked'},
+            format='json',
+        )
+        self.assertIn(forbidden.status_code, (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND))
+        deleted = self.client.delete(f'/api/daily-notes/tasks/{self.own.id}/')
+        self.assertEqual(deleted.status_code, status.HTTP_204_NO_CONTENT)
+        other_delete = self.client.delete(f'/api/daily-notes/tasks/{self.other_task.id}/')
+        self.assertIn(other_delete.status_code, (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND))
+
+    def test_pending_denied_when_sales_access_off(self):
+        from django.core.cache import cache
+        from settings.models import ModuleSetting
+
+        ModuleSetting.objects.filter(
+            module='daily_notes',
+            key='allow_sales_access',
+        ).update(value=False)
+        cache.clear()
+        response = self.client.get('/api/daily-notes/tasks/pending/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        toggle = self.client.post(f'/api/daily-notes/tasks/{self.own.id}/toggle-done/')
+        self.assertEqual(toggle.status_code, status.HTTP_403_FORBIDDEN)

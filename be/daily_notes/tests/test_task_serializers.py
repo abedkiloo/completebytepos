@@ -53,3 +53,41 @@ class DailyTaskSerializerTests(TestCase):
         updated = ser.save()
         self.assertFalse(updated.is_done)
         self.assertIsNone(updated.completed_at)
+
+    def test_done_requires_title_and_assign_self_only(self):
+        ser = DailyTaskSerializer(
+            data={'task_date': str(date.today()), 'title': '', 'is_done': True}
+        )
+        self.assertFalse(ser.is_valid())
+        other = User.objects.create_user('other_t', password='x')
+        from rest_framework.test import APIRequestFactory
+
+        factory = APIRequestFactory()
+        request = factory.post('/api/daily-notes/tasks/')
+        request.user = self.user
+        blocked = DailyTaskSerializer(
+            data={
+                'task_date': str(date.today()),
+                'title': 'For someone else',
+                'assigned_to': other.id,
+            },
+            context={'request': request},
+        )
+        self.assertFalse(blocked.is_valid())
+        task = DailyTask.objects.create(
+            task_date=date.today(),
+            title='Stay',
+            author=self.user,
+            assigned_to=self.user,
+        )
+        moved = DailyTaskSerializer(
+            task,
+            data={'assigned_to': self.user.id, 'title': 'Stay', 'is_done': True},
+            partial=True,
+        )
+        self.assertTrue(moved.is_valid(), moved.errors)
+        saved = moved.save()
+        self.assertTrue(saved.is_done)
+        ser2 = DailyTaskSerializer()
+        ser2._apply_completion(saved, True)
+        self.assertTrue(saved.is_done)

@@ -66,6 +66,7 @@ PERMISSIONS_DATA = [
     ('dispatch', 'update', 'Pack and assign field orders'),
     ('delivery', 'view', 'View delivery routes and stops'),
     ('delivery', 'update', 'Arrive, deliver, collect, POD, complete stops'),
+    ('delivery', 'history', 'View past delivery routes and completed stops'),
     ('payments', 'view', 'View payment intents'),
     ('payments', 'create', 'Create payment intents and send STK'),
     ('messaging', 'view', 'View message outbox'),

@@ -114,19 +114,55 @@ class DeliveryStopSerializer(serializers.ModelSerializer):
         return nxt.pk if nxt else None
 
 
-class DeliveryRouteSerializer(serializers.ModelSerializer):
-    stops = DeliveryStopSerializer(many=True, read_only=True)
-    next_stop_id = serializers.SerializerMethodField()
+def _agent_display_name(agent) -> str:
+    if agent is None:
+        return ''
+    full = agent.get_full_name()
+    return full or agent.username or ''
+
+
+class DeliveryRouteListSerializer(serializers.ModelSerializer):
+    delivery_agent_name = serializers.SerializerMethodField()
+    stop_count = serializers.IntegerField(read_only=True)
+    completed_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = DeliveryRoute
         fields = (
-            'id', 'route_date', 'delivery_agent_id', 'stops', 'next_stop_id',
+            'id',
+            'route_date',
+            'delivery_agent_id',
+            'delivery_agent_name',
+            'stop_count',
+            'completed_count',
+        )
+
+    def get_delivery_agent_name(self, obj):
+        return _agent_display_name(obj.delivery_agent)
+
+
+class DeliveryRouteSerializer(serializers.ModelSerializer):
+    stops = DeliveryStopSerializer(many=True, read_only=True)
+    next_stop_id = serializers.SerializerMethodField()
+    delivery_agent_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DeliveryRoute
+        fields = (
+            'id',
+            'route_date',
+            'delivery_agent_id',
+            'delivery_agent_name',
+            'stops',
+            'next_stop_id',
         )
 
     def get_next_stop_id(self, obj):
         nxt = services.next_open_stop(obj)
         return nxt.pk if nxt else None
+
+    def get_delivery_agent_name(self, obj):
+        return _agent_display_name(obj.delivery_agent)
 
 
 class LineUpdateItemSerializer(serializers.Serializer):

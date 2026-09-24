@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import FieldSalesPage from './FieldSalesPage';
 import { dispatchAPI, deliveryAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
-import { getStoredAuth, hasPermission } from '../../utils/roleAccess';
+import { getStoredAuth, hasPermission, userMayViewDeliveryHistory } from '../../utils/roleAccess';
 
 jest.mock('../../services/api', () => ({
   dispatchAPI: {
@@ -17,6 +17,8 @@ jest.mock('../../services/api', () => ({
   deliveryAPI: {
     todayGeometry: jest.fn(),
     staffGeometry: jest.fn(),
+    staffRoute: jest.fn(),
+    listRoutes: jest.fn(),
   },
 }));
 
@@ -27,6 +29,7 @@ jest.mock('../../utils/toast', () => ({
 jest.mock('../../utils/roleAccess', () => ({
   getStoredAuth: jest.fn(),
   hasPermission: jest.fn(),
+  userMayViewDeliveryHistory: jest.fn(),
 }));
 
 const submittedOrder = {
@@ -82,9 +85,10 @@ const readyOrder = {
   ],
 };
 
-function mockAuth(canPack = true) {
+function mockAuth(canPack = true, canViewHistory = false) {
   getStoredAuth.mockReturnValue({ permissions: [{ module: 'dispatch', action: 'update' }] });
   hasPermission.mockReturnValue(canPack);
+  userMayViewDeliveryHistory.mockReturnValue(canViewHistory);
 }
 
 function mockList(orders, count = orders.length) {
@@ -111,6 +115,21 @@ describe('FieldSalesPage', () => {
         ],
         stops: [
           { id: 4, sequence: 1, label: 'Blue gate', latitude: -1.30, longitude: 36.80 },
+        ],
+      },
+    });
+    deliveryAPI.staffRoute.mockResolvedValue({
+      data: {
+        id: 8,
+        route_date: '2026-09-24',
+        stops: [
+          {
+            id: 4,
+            sequence: 1,
+            status: 'completed',
+            customer_name: 'Ada',
+            collection_amount: '150.00',
+          },
         ],
       },
     });
@@ -337,10 +356,27 @@ describe('FieldSalesPage', () => {
     expect(await screen.findByTestId('field-sales-map-panel')).toBeInTheDocument();
     await waitFor(() => expect(deliveryAPI.staffGeometry).toHaveBeenCalled());
     expect(await screen.findByTestId('delivery-route-map-fallback')).toBeInTheDocument();
+    expect(screen.getByTestId('field-sales-map-today-only')).toBeInTheDocument();
+    expect(screen.queryByTestId('field-sales-map-date')).not.toBeInTheDocument();
+    expect(await screen.findByTestId('field-sales-map-stops')).toHaveTextContent('Ada');
     fireEvent.change(screen.getByTestId('field-sales-map-driver'), { target: { value: '3' } });
     await waitFor(() =>
       expect(deliveryAPI.staffGeometry).toHaveBeenCalledWith(
         expect.objectContaining({ agent_id: '3' }),
+      ),
+    );
+  });
+
+  test('managers can pick a previous route date', async () => {
+    mockAuth(true, true);
+    mockList([readyOrder]);
+    render(<FieldSalesPage />);
+    fireEvent.click(await screen.findByTestId('field-sales-driver-map'));
+    const dateInput = await screen.findByTestId('field-sales-map-date');
+    fireEvent.change(dateInput, { target: { value: '2026-09-20' } });
+    await waitFor(() =>
+      expect(deliveryAPI.staffRoute).toHaveBeenCalledWith(
+        expect.objectContaining({ agent_id: '3', date: '2026-09-20' }),
       ),
     );
   });
@@ -353,5 +389,18 @@ describe('FieldSalesPage', () => {
     expect(await screen.findByTestId('field-sales-map-panel')).toBeInTheDocument();
     await waitFor(() => expect(deliveryAPI.staffGeometry).toHaveBeenCalled());
     expect(await screen.findByTestId('delivery-route-map-empty')).toBeInTheDocument();
+    expect(screen.getByTestId('field-sales-map-stops-empty')).toBeInTheDocument();
+  });
+
+  test('driver map 403 explains the permission block', async () => {
+    mockList([readyOrder]);
+    const err = new Error('forbidden');
+    err.response = { status: 403, data: { detail: 'You cannot view this driver’s route.' } };
+    deliveryAPI.staffGeometry.mockRejectedValue(err);
+    render(<FieldSalesPage />);
+    fireEvent.click(await screen.findByTestId('field-sales-driver-map'));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('You cannot view this driver’s route.'),
+    );
   });
 });

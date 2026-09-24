@@ -73,8 +73,51 @@ describe('StickyNotesGate', () => {
     dailyNotesAPI.toggleDone.mockRejectedValue({});
     render(<StickyNotesGate />);
     fireEvent.click(await screen.findByTestId('sticky-note-tick-9'));
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Could not tick this sticky note'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Could not tick this note'));
     fireEvent.click(screen.getByRole('button', { name: /Refresh/i }));
     await waitFor(() => expect(dailyNotesAPI.blocking).toHaveBeenCalledTimes(2));
+  });
+
+  test('shows assigned general notes on login and allows continue', async () => {
+    dailyNotesAPI.blocking.mockResolvedValue({
+      data: [
+        {
+          id: 11,
+          title: 'Restock sugar',
+          content: 'Please fill the shelf before opening.\nThanks.',
+          is_sticky: false,
+          is_done: false,
+          note_date: '2026-09-24',
+          author_name: 'Bea',
+          assigned_to: 20,
+        },
+      ],
+    });
+    render(<StickyNotesGate />);
+    expect(await screen.findByTestId('sticky-notes-gate')).toBeInTheDocument();
+    expect(screen.getByText('Restock sugar')).toBeInTheDocument();
+    expect(screen.getByText(/fill the shelf/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('sticky-notes-continue'));
+    expect(screen.queryByTestId('sticky-notes-gate')).not.toBeInTheDocument();
+  });
+
+  test('ticks an assigned general note from the login inbox', async () => {
+    dailyNotesAPI.blocking.mockResolvedValue({
+      data: [
+        {
+          id: 12,
+          content: 'Please restock',
+          is_sticky: false,
+          is_done: false,
+          assigned_to: 20,
+        },
+      ],
+    });
+    dailyNotesAPI.toggleDone.mockResolvedValue({
+      data: { id: 12, is_sticky: false, is_done: true },
+    });
+    render(<StickyNotesGate />);
+    fireEvent.click(await screen.findByTestId('sticky-note-tick-12'));
+    await waitFor(() => expect(dailyNotesAPI.toggleDone).toHaveBeenCalledWith(12));
   });
 });

@@ -3,7 +3,14 @@ import { dailyNotesAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import { dateMessage, required } from '../../utils/formValidation';
 
-const DailyNoteForm = ({ note, defaultDate, canAssignToOthers = false, onClose, onSave }) => {
+const DailyNoteForm = ({
+  note,
+  defaultDate,
+  canAssignToOthers = false,
+  defaultAssignMode = 'person',
+  onClose,
+  onSave,
+}) => {
   const [formData, setFormData] = useState({
     note_date: defaultDate || new Date().toISOString().slice(0, 10),
     title: '',
@@ -14,7 +21,7 @@ const DailyNoteForm = ({ note, defaultDate, canAssignToOthers = false, onClose, 
   });
   const [staff, setStaff] = useState([]);
   const [roles, setRoles] = useState([]);
-  const [assignMode, setAssignMode] = useState('person');
+  const [assignMode, setAssignMode] = useState(defaultAssignMode || 'person');
   const [loadingStaff, setLoadingStaff] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -30,11 +37,20 @@ const DailyNoteForm = ({ note, defaultDate, canAssignToOthers = false, onClose, 
       });
       if (note.assigned_role && !note.assigned_to) {
         setAssignMode('role');
+      } else {
+        setAssignMode('person');
       }
     } else if (defaultDate) {
       setFormData((prev) => ({ ...prev, note_date: defaultDate }));
     }
   }, [note, defaultDate]);
+
+  useEffect(() => {
+    if (note) return;
+    if (defaultAssignMode === 'everyone' || defaultAssignMode === 'role' || defaultAssignMode === 'person') {
+      setAssignMode(defaultAssignMode);
+    }
+  }, [defaultAssignMode, note]);
 
   useEffect(() => {
     if (!canAssignToOthers) return;
@@ -94,8 +110,9 @@ const DailyNoteForm = ({ note, defaultDate, canAssignToOthers = false, onClose, 
     if (formData.is_sticky && canAssignToOthers) {
       const hasPerson = assignMode === 'person' && formData.assigned_to;
       const hasRole = assignMode === 'role' && formData.assigned_role;
-      if (!hasPerson && !hasRole) {
-        toast.warning('Assign this sticky note to a person or a role.');
+      const hasEveryone = assignMode === 'everyone' && !note;
+      if (!hasPerson && !hasRole && !hasEveryone) {
+        toast.warning('Assign this note to a person, a role, or everyone.');
         return;
       }
     }
@@ -113,6 +130,9 @@ const DailyNoteForm = ({ note, defaultDate, canAssignToOthers = false, onClose, 
       if (canAssignToOthers && assignMode === 'role' && formData.assigned_role) {
         payload.assigned_role = parseInt(formData.assigned_role, 10);
       }
+      if (canAssignToOthers && assignMode === 'everyone' && !note) {
+        payload.assign_to_all = true;
+      }
       if (note?.id) {
         await dailyNotesAPI.update(note.id, payload);
         toast.success('Note updated');
@@ -123,7 +143,7 @@ const DailyNoteForm = ({ note, defaultDate, canAssignToOthers = false, onClose, 
           createdCount > 1
             ? `Note sent to ${createdCount} people`
             : payload.is_sticky
-              ? 'Sticky note saved'
+              ? 'Must-tick note saved'
               : 'Note saved'
         );
       }
@@ -140,6 +160,7 @@ const DailyNoteForm = ({ note, defaultDate, canAssignToOthers = false, onClose, 
   };
 
   const userLabel = (u) => u.display_name || u.username;
+  const showEveryone = canAssignToOthers && !note;
 
   return (
     <div className="slide-in-overlay" onClick={onClose}>
@@ -150,7 +171,11 @@ const DailyNoteForm = ({ note, defaultDate, canAssignToOthers = false, onClose, 
             ×
           </button>
         </div>
-        <form onSubmit={handleSubmit}>
+        <form
+          onSubmit={handleSubmit}
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          data-testid="daily-note-form"
+        >
           <div className="slide-in-panel-body">
             <div className="form-group">
               <label>Date *</label>
@@ -194,7 +219,7 @@ const DailyNoteForm = ({ note, defaultDate, canAssignToOthers = false, onClose, 
                   onChange={handleChange}
                   data-testid="note-is-sticky"
                 />
-                Sticky note — the person assigned cannot use the system until they tick this
+                Must tick — the person assigned cannot use the system until they tick this
               </label>
             </div>
             {canAssignToOthers ? (
@@ -223,6 +248,19 @@ const DailyNoteForm = ({ note, defaultDate, canAssignToOthers = false, onClose, 
                     />
                     Everyone in a role
                   </label>
+                  {showEveryone ? (
+                    <label className="flex items-center gap-1 text-sm">
+                      <input
+                        type="radio"
+                        name="assign_mode"
+                        value="everyone"
+                        checked={assignMode === 'everyone'}
+                        onChange={() => setAssignMode('everyone')}
+                        data-testid="note-assign-everyone"
+                      />
+                      Everyone
+                    </label>
+                  ) : null}
                 </div>
                 {assignMode === 'person' ? (
                   <select
@@ -239,7 +277,7 @@ const DailyNoteForm = ({ note, defaultDate, canAssignToOthers = false, onClose, 
                       </option>
                     ))}
                   </select>
-                ) : (
+                ) : assignMode === 'role' ? (
                   <select
                     name="assigned_role"
                     value={formData.assigned_role}
@@ -254,17 +292,21 @@ const DailyNoteForm = ({ note, defaultDate, canAssignToOthers = false, onClose, 
                       </option>
                     ))}
                   </select>
+                ) : (
+                  <p className="text-sm text-muted-foreground" data-testid="note-assign-everyone-hint">
+                    Sends a copy to every active staff member in the system.
+                  </p>
                 )}
                 {formData.is_sticky ? (
                   <p className="text-sm text-muted-foreground mt-1">
-                    Sticky notes need a person or a role so someone can tick them.
+                    Must-tick notes need a person, a role, or everyone so someone can tick them.
                   </p>
                 ) : null}
               </div>
             ) : null}
             {formData.is_sticky && !canAssignToOthers ? (
               <p className="text-sm text-muted-foreground">
-                This sticky note will block you until you tick it.
+                This note will block you until you tick it.
               </p>
             ) : null}
           </div>

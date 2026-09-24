@@ -30,9 +30,6 @@ export function userMayViewAllDailyNotes(persona, moduleSettings = {}) {
   if (!hasPermission(permissions, 'daily_notes', 'view_all')) {
     return false;
   }
-  if (persona === PERSONA.SUPER_ADMIN) {
-    return true;
-  }
   if (persona === PERSONA.MANAGER) {
     return managerViewAllDailyNotes(moduleSettings);
   }

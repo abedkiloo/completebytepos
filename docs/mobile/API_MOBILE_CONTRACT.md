@@ -124,8 +124,11 @@ Statuses: `draft → submitted → packing → ready → out_for_delivery → do
 |--------|------|------|-------|
 | GET | `/delivery/routes/today/` | `delivery.view` | Ordered stops; syncs assigned OFD orders |
 | GET | `/delivery/routes/today/geometry/` | `delivery.view` | Cached depot + numbered pins + polyline (own route) |
-| GET | `/delivery/routes/geometry/` | Authenticated; own route or `dispatch.view` / manager | `?agent_id=&date=` planned path for staff |
-| GET | `/delivery/config/` | `delivery.view` | `require_pod_to_complete`, `allow_offline_pod_queue`, `maps` |
+| GET | `/delivery/routes/geometry/` | Authenticated; own route or `dispatch.view` / manager | `?agent_id=&date=` staff map. Past dates need `delivery.history` |
+| GET | `/delivery/routes/lookup/` | Same as geometry | Stops for that agent+date; does not create today |
+| GET | `/delivery/routes/` | Authenticated | List routes. Past range needs `delivery.history` |
+| GET | `/delivery/routes/{id}/` | Same as lookup | Full route + stops |
+| GET | `/delivery/config/` | `delivery.view` | `require_pod_to_complete`, `allow_offline_pod_queue`, `maps` (`can_view_history`) |
 | GET | `/delivery/stops/{id}/` | `delivery.view` | Map + media + lines first in payload |
 | POST | `/delivery/stops/{id}/arrive/` | `delivery.update` | Status transition |
 | POST | `/delivery/stops/{id}/start/` | `delivery.update` | pending→arrived→delivering |

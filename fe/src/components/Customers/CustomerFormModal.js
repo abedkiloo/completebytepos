@@ -1,42 +1,36 @@
 import React, { useState } from 'react';
 import { customersAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
-import SearchableSelect from '../Shared/SearchableSelect';
 import CommitConfirm from '../Shared/CommitConfirm';
 import { customerCommitRows } from '../../utils/formCommitSummary';
 import { emailMessage, personNameMessage, phoneMessage } from '../../utils/formValidation';
+import TypicalGoodsFields, { typicalGoodsPayload } from './TypicalGoodsFields';
+
+const EMPTY_DUKA_FORM = {
+  name: '',
+  owner_name: '',
+  customer_type: 'business',
+  email: '',
+  phone: '',
+  address: '',
+  city: '',
+  country: 'Kenya',
+  tax_id: '',
+  notes: '',
+  contact_person: '',
+  typical_goods: [''],
+  is_active: true,
+};
 
 const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
-  const [formData, setFormData] = useState({
-    name: '',
-    customer_type: 'individual',
-    email: '',
-    phone: '',
-    address: '',
-    city: '',
-    country: 'Kenya',
-    tax_id: '',
-    notes: '',
-    is_active: true,
-  });
+  const [formData, setFormData] = useState(EMPTY_DUKA_FORM);
   const [formErrors, setFormErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [showCommitConfirm, setShowCommitConfirm] = useState(false);
 
   const handleClose = () => {
     // Reset form when closing
-    setFormData({
-      name: '',
-      customer_type: 'individual',
-      email: '',
-      phone: '',
-      address: '',
-      city: '',
-      country: 'Kenya',
-      tax_id: '',
-      notes: '',
-      is_active: true,
-    });
+    setFormData({ ...EMPTY_DUKA_FORM });
     setFormErrors({});
     setShowCommitConfirm(false);
     onClose();
@@ -51,8 +45,8 @@ const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
     // Client-side validation
     const errors = {};
     const nameErr = personNameMessage(formData.name, {
-      label: 'customer name',
-      example: 'Jane Wambua',
+      label: 'duka name',
+      example: 'Wambua Hardware',
     });
     if (nameErr) errors.name = nameErr;
 
@@ -82,18 +76,21 @@ const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
       customer_type: formData.customer_type,
       email: formData.email.trim() || '',
       phone: formData.phone.trim() || '',
+      owner_name: formData.owner_name.trim() || '',
       address: formData.address.trim() || '',
       city: formData.city.trim() || '',
       country: formData.country.trim() || 'Kenya',
       tax_id: formData.tax_id.trim() || '',
       notes: formData.notes.trim() || '',
+      contact_person: formData.contact_person.trim() || '',
+      typical_goods: typicalGoodsPayload(formData.typical_goods),
       is_active: formData.is_active,
     };
     
     try {
       const response = await customersAPI.create(cleanData);
       const newCustomer = response.data;
-      toast.success('Customer created successfully');
+      toast.success('Duka registered');
       handleClose();
       
       // Call callback with the new customer
@@ -148,117 +145,111 @@ const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
     <div className="slide-in-overlay" onClick={handleClose}>
       <div className="slide-in-panel flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="slide-in-panel-header">
-          <h2>Add New Customer</h2>
+          <h2>Register duka</h2>
           <button onClick={handleClose} className="slide-in-panel-close">×</button>
         </div>
         
         <div className="slide-in-panel-body">
           <form onSubmit={handleSubmit}>
-            <div className="form-row">
-              <div className="form-group">
-                <label>Name *</label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => {
-                    setFormData({ ...formData, name: e.target.value });
-                    if (formErrors.name) setFormErrors({ ...formErrors, name: '' });
-                  }}
-                  className={formErrors.name ? 'error' : ''}
-                  required
-                  autoFocus
-                />
-                {formErrors.name && <span className="error-text">{formErrors.name}</span>}
-              </div>
-              <div className="form-group">
-                <label>Type *</label>
-                <SearchableSelect
-                  value={formData.customer_type}
-                  onChange={(e) => setFormData({ ...formData, customer_type: e.target.value })}
-                  options={[
-                    { id: 'individual', name: 'Individual' },
-                    { id: 'business', name: 'Business' }
-                  ]}
-                  placeholder="Select Type"
-                />
-              </div>
-            </div>
-            
-            <div className="form-row">
-              <div className="form-group">
-                <label>Email</label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => {
-                    setFormData({ ...formData, email: e.target.value });
-                    if (formErrors.email) setFormErrors({ ...formErrors, email: '' });
-                  }}
-                  className={formErrors.email ? 'error' : ''}
-                />
-                {formErrors.email && <span className="error-text">{formErrors.email}</span>}
-              </div>
-              <div className="form-group">
-                <label>Phone</label>
-                <input
-                  type="text"
-                  value={formData.phone}
-                  onChange={(e) => {
-                    setFormData({ ...formData, phone: e.target.value });
-                    if (formErrors.phone) setFormErrors({ ...formErrors, phone: '' });
-                  }}
-                  className={formErrors.phone ? 'error' : ''}
-                  placeholder="0712 345 678"
-                />
-                {formErrors.phone && <span className="error-text">{formErrors.phone}</span>}
-              </div>
-            </div>
-            
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Basics
+            </p>
             <div className="form-group">
-              <label>Address</label>
+              <label>Duka name *</label>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => {
+                  setFormData({ ...formData, name: e.target.value });
+                  if (formErrors.name) setFormErrors({ ...formErrors, name: '' });
+                }}
+                className={formErrors.name ? 'error' : ''}
+                placeholder="e.g. Wambua Hardware"
+                required
+                autoFocus
+              />
+              {formErrors.name && <span className="error-text">{formErrors.name}</span>}
+            </div>
+            <div className="form-group">
+              <label>Owner&apos;s name</label>
+              <input
+                type="text"
+                value={formData.owner_name}
+                onChange={(e) => setFormData({ ...formData, owner_name: e.target.value })}
+                placeholder="e.g. Jane Wambua"
+              />
+            </div>
+            <div className="form-group">
+              <label>Phone</label>
+              <input
+                type="text"
+                value={formData.phone}
+                onChange={(e) => {
+                  setFormData({ ...formData, phone: e.target.value });
+                  if (formErrors.phone) setFormErrors({ ...formErrors, phone: '' });
+                }}
+                className={formErrors.phone ? 'error' : ''}
+                placeholder="0712 345 678"
+              />
+              {formErrors.phone && <span className="error-text">{formErrors.phone}</span>}
+            </div>
+
+            <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Other details
+              <span className="ml-1 font-normal normal-case">(optional)</span>
+            </p>
+            <div className="form-group">
+              <label>Email</label>
+              <input
+                type="email"
+                value={formData.email}
+                onChange={(e) => {
+                  setFormData({ ...formData, email: e.target.value });
+                  if (formErrors.email) setFormErrors({ ...formErrors, email: '' });
+                }}
+                className={formErrors.email ? 'error' : ''}
+              />
+              {formErrors.email && <span className="error-text">{formErrors.email}</span>}
+            </div>
+            <div className="form-group">
+              <label>City</label>
+              <input
+                type="text"
+                value={formData.city}
+                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+              />
+            </div>
+
+            <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Notes
+            </p>
+            <div className="form-group">
+              <label>Landmark</label>
               <input
                 type="text"
                 value={formData.address}
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                placeholder="Next to the market, opposite the bus stage…"
               />
             </div>
-            
-            <div className="form-row">
-              <div className="form-group">
-                <label>City</label>
-                <input
-                  type="text"
-                  value={formData.city}
-                  onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                />
-              </div>
-              <div className="form-group">
-                <label>Country</label>
-                <input
-                  type="text"
-                  value={formData.country}
-                  onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                />
-              </div>
-            </div>
-            
             <div className="form-group">
-              <label>Tax ID</label>
+              <label>Contact person</label>
               <input
                 type="text"
-                value={formData.tax_id}
-                onChange={(e) => setFormData({ ...formData, tax_id: e.target.value })}
+                value={formData.contact_person}
+                onChange={(e) => setFormData({ ...formData, contact_person: e.target.value })}
+                placeholder="Who to ask for, if not the owner"
               />
             </div>
-            
-            <div className="form-group">
-              <label>Notes</label>
-              <textarea
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                rows="3"
-              />
-            </div>
+
+            <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Goods they buy most
+              <span className="ml-1 font-normal normal-case">(optional)</span>
+            </p>
+            <TypicalGoodsFields
+              value={formData.typical_goods}
+              onChange={(typical_goods) => setFormData({ ...formData, typical_goods })}
+            />
           </form>
         </div>
         
@@ -277,7 +268,7 @@ const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
             className="btn btn-primary"
             disabled={loading}
           >
-            {loading ? 'Creating...' : 'Create Customer'}
+            {loading ? 'Saving…' : 'Register duka'}
           </button>
         </div>
       </div>
@@ -286,11 +277,11 @@ const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
         onOpenChange={(open) => {
           if (!open && !loading) setShowCommitConfirm(false);
         }}
-        title="Create this customer?"
-        description="Review the customer details, then confirm to save."
+        title="Register this duka?"
+        description="Review the duka details, then confirm to save."
         rows={customerCommitRows(formData)}
         submitting={loading}
-        confirmText="Confirm & create"
+        confirmText="Confirm & register"
         onConfirm={confirmCommit}
       />
     </div>

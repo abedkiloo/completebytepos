@@ -62,3 +62,36 @@ class CustomerPhonePrefixAPITests(ManagerAPITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
         self.assertEqual(response.data.get('phone') or '', '')
+
+    def test_create_stores_duka_contact_and_typical_goods(self):
+        response = self.client.post(
+            '/api/sales/customers/',
+            {
+                'name': 'Wambua Hardware',
+                'phone': '0712345678',
+                'owner_name': 'John Wambua',
+                'contact_person': 'Ann',
+                'city': 'Nairobi',
+                'address': 'Next to the market',
+                'typical_goods': ['Cement 50kg', 'Nails', 'Cement 50kg', ''],
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data['owner_name'], 'John Wambua')
+        self.assertEqual(response.data['contact_person'], 'Ann')
+        self.assertEqual(response.data['typical_goods'], ['Cement 50kg', 'Nails'])
+        self.assertEqual(response.data['city'], 'Nairobi')
+        self.assertEqual(response.data['address'], 'Next to the market')
+
+    def test_typical_goods_rejects_overlong_item(self):
+        response = self.client.post(
+            '/api/sales/customers/',
+            {
+                'name': 'Long Goods Duka',
+                'typical_goods': ['x' * 81],
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('typical_goods', response.data)

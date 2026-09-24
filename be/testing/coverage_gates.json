@@ -71,7 +71,7 @@
         "daily_notes/view_mixins.py",
         "daily_notes/models.py"
       ],
-      "minimum_percent": 96
+      "minimum_percent": 98
     },
     {
       "name": "agents",

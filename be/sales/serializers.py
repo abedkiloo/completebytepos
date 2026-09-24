@@ -38,7 +38,7 @@ class CustomerSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'customer_code', 'name', 'customer_type',
             'email', 'phone', 'address', 'city', 'country',
-            'tax_id', 'notes', 'is_active',
+            'tax_id', 'notes', 'owner_name', 'contact_person', 'typical_goods', 'is_active',
             'total_invoices', 'total_outstanding', 'wallet_balance',
             'created_by', 'created_by_name',
             'created_at', 'updated_at'
@@ -65,7 +65,39 @@ class CustomerSerializer(serializers.ModelSerializer):
         from utils.phone import validate_optional_phone
 
         return validate_optional_phone(value)
-    
+
+    def validate_owner_name(self, value):
+        if value is None:
+            return ''
+        return str(value).strip()
+
+    def validate_contact_person(self, value):
+        if value is None:
+            return ''
+        return str(value).strip()
+
+    def validate_typical_goods(self, value):
+        if value in (None, ''):
+            return []
+        if isinstance(value, str):
+            value = [part.strip() for part in value.split(',') if part.strip()]
+        if not isinstance(value, list):
+            raise serializers.ValidationError('List the goods this duka usually buys.')
+        cleaned = []
+        for item in value:
+            text = str(item).strip()
+            if not text:
+                continue
+            if len(text) > 80:
+                raise serializers.ValidationError(
+                    'Each good must be 80 characters or fewer, e.g. Cement 50kg.'
+                )
+            if text not in cleaned:
+                cleaned.append(text)
+            if len(cleaned) > 20:
+                raise serializers.ValidationError('You can list up to 20 goods.')
+        return cleaned
+
     def validate(self, attrs):
         """Additional validation"""
         from sales.customer_module_settings import validate_customer_write
