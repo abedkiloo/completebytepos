@@ -209,14 +209,7 @@ run_migrations() {
         return
     fi
     
-    # Run makemigrations (create new migrations if needed)
-    if docker exec "$BACKEND_CONTAINER" python manage.py makemigrations --noinput 2>/dev/null; then
-        print_success "Migration files checked/created"
-    else
-        print_warning "makemigrations had issues (this is usually OK if no new migrations needed)"
-    fi
-    
-    # Run migrate (apply migrations)
+    # Apply committed migrations only. Runtime makemigrations forks the graph.
     if docker exec "$BACKEND_CONTAINER" python manage.py migrate --noinput; then
         print_success "Database migrations applied"
     else

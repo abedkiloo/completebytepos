@@ -52,8 +52,14 @@ class DailyNote(models.Model):
     class Meta:
         ordering = ['-is_sticky', 'is_done', 'in_progress', '-note_date', '-created_at']
         indexes = [
-            models.Index(fields=['note_date', 'author']),
-            models.Index(fields=['assigned_to', 'is_sticky', 'is_done']),
+            models.Index(
+                fields=['note_date', 'author'],
+                name='daily_notes_note_da_78a6b0_idx',
+            ),
+            models.Index(
+                fields=['assigned_to', 'is_sticky', 'is_done'],
+                name='daily_notes_assigne_f2f248_idx',
+            ),
         ]
 
     def __str__(self):
@@ -112,9 +118,18 @@ class DailyTask(models.Model):
     class Meta:
         ordering = ['is_done', '-task_date', '-created_at']
         indexes = [
-            models.Index(fields=['task_date', 'author']),
-            models.Index(fields=['task_date', 'is_done']),
-            models.Index(fields=['assigned_to', 'is_done']),
+            models.Index(
+                fields=['task_date', 'author'],
+                name='daily_notes_task_da_99b33a_idx',
+            ),
+            models.Index(
+                fields=['task_date', 'is_done'],
+                name='daily_notes_task_da_5f2376_idx',
+            ),
+            models.Index(
+                fields=['assigned_to', 'is_done'],
+                name='daily_notes_assigne_e51852_idx',
+            ),
         ]
 
     def __str__(self):
