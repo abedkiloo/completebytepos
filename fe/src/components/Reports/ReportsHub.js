@@ -671,7 +671,37 @@ export default function ReportsHub() {
         ) : null}
         {showProducts ? <TopProductsTile period={period} onOpen={goLegacy('products')} /> : null}
         {showCash ? <CashAndPaymentsTile period={period} onOpen={goLegacy('income')} /> : null}
-        {showInventory ? <InventoryHealthTile period={period} onOpen={goLegacy('inventory')} /> : null}
+        {showInventory ? (
+          <>
+            <InventoryHealthTile period={period} onOpen={goLegacy('inventory')} />
+            <Card className="flex flex-col border-dashed">
+              <CardHeader className="pb-3">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-md bg-primary/10 p-2 text-primary">
+                    <Package className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base">Stock valuation</CardTitle>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      What is in stock right now, with cost and retail value. PDF includes the store logo and name.
+                    </p>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="mt-auto pt-0">
+                <ReportExportButtons slug="stock-valuation" />
+                <button
+                  type="button"
+                  onClick={() => navigate('/reports?report=stock-valuation')}
+                  className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                >
+                  Open stock list
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+              </CardContent>
+            </Card>
+          </>
+        ) : null}
         {showInvoice ? <CustomerOutstandingTile period={period} onOpen={goLegacy('invoice')} /> : null}
       </div>
       )}

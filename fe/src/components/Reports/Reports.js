@@ -12,6 +12,7 @@ import { formatCurrency, formatNumber, formatDateTime, formatCompactCurrency } f
 import ReportsList from './ReportsList';
 import ReportsHub from './ReportsHub';
 import SalesPersonReportView from './SalesPersonReportView';
+import StockValuationReportView from './StockValuationReportView';
 import PeriodPills from './PeriodPills';
 import {
   DEFAULT_REPORT_PERIOD,
@@ -108,7 +109,11 @@ const Reports = () => {
   useEffect(() => {
     if (reportParam === 'daily-sales') {
       navigate('/sales/daily', { replace: true });
-    } else if (reportParam && reportParam !== 'sales-by-person') {
+    } else if (
+      reportParam &&
+      reportParam !== 'sales-by-person' &&
+      reportParam !== 'stock-valuation'
+    ) {
       loadReport();
     }
   }, [loadReport, reportParam, navigate]);
@@ -171,6 +176,9 @@ const Reports = () => {
   const renderReport = () => {
     if (reportParam === 'sales-by-person') {
       return <SalesPersonReportView />;
+    }
+    if (reportParam === 'stock-valuation') {
+      return <StockValuationReportView />;
     }
 
     if (loading) {
@@ -901,6 +909,7 @@ const Reports = () => {
       'profit-loss': 'Profit & Loss',
       'annual': 'Annual Report',
       'sales-by-person': 'Sales by staff',
+      'stock-valuation': 'Stock valuation',
     };
     return titles[reportParam] || 'Report';
   };
@@ -926,10 +935,12 @@ const Reports = () => {
           description={
             reportParam === 'sales-by-person'
               ? 'Month-end totals per sales person — filter, print, or download PDF, Excel, or CSV for commission records.'
-              : `Analytics for ${getReportTitle().toLowerCase()}. Download PDF or Excel anytime.`
+              : reportParam === 'stock-valuation'
+                ? 'What is in stock right now, with cost and retail value. PDF, Excel, and CSV include the store logo and name.'
+                : `Analytics for ${getReportTitle().toLowerCase()}. Download PDF or Excel anytime.`
           }
         >
-          {reportParam !== 'sales-by-person' ? (
+          {reportParam !== 'sales-by-person' && reportParam !== 'stock-valuation' ? (
             <ReportExportButtons slug={reportParam} params={exportParams} disabled={loading} />
           ) : null}
           <Button variant="outline" onClick={() => navigate('/reports')}>

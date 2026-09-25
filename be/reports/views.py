@@ -16,6 +16,7 @@ from income.models import Income
 from accounts.permissions import RequirePermPerAction
 
 from .sales_person_report import SalesPersonReportService
+from .stock_valuation import StockValuationReportService
 from .services import ReportDashboardService, resolve_period
 from .module_settings import (
     reports_action_enabled,
@@ -81,6 +82,7 @@ REPORTS_PERMS = RequirePermPerAction('reports', {
     'inventory_health': 'view',
     'customer_outstanding': 'view',
     'sales_by_person': 'view',
+    'stock_valuation': 'view',
 })
 
 
@@ -988,3 +990,17 @@ class ReportViewSet(viewsets.ViewSet):
         """
         payload = SalesPersonReportService.build(request)
         return Response(payload)
+
+    @action(detail=False, methods=['get'])
+    @gated_report_action('stock_valuation')
+    def stock_valuation(self, request):
+        """
+        Current on-hand stock list with cost and retail value.
+
+        Query params:
+          include_zero=1 — also list SKUs with quantity 0
+          format=pdf|xlsx|csv — branded download (logo + store name)
+        """
+        payload = StockValuationReportService.build(request)
+        return Response(payload)
+

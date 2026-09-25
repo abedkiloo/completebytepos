@@ -36,6 +36,13 @@ const ALL_REPORTS = [
     description: 'Monitor stock levels and inventory movements',
   },
   {
+    id: 'stock-valuation',
+    name: 'Stock valuation',
+    icon: '📦',
+    hasDetail: true,
+    description: 'What is in stock right now, with cost and retail value',
+  },
+  {
     id: 'invoice',
     name: 'Invoice Report',
     icon: '💰',

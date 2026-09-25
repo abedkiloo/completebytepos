@@ -74,6 +74,7 @@ export function reportsLegacyReportEnabled(settings, reportId) {
       return reportsEnableProductReports(settings);
     case 'inventory':
     case 'purchase':
+    case 'stock-valuation':
       return reportsEnableInventoryReports(settings);
     case 'invoice':
       return reportsEnableInvoiceReports(settings);

@@ -14,6 +14,7 @@ REPORT_ACTION_GATES: dict[str, tuple[str, str]] = {
     'top_products': ('enable_product_reports', 'Product reports'),
     'inventory': ('enable_inventory_reports', 'Inventory reports'),
     'inventory_health': ('enable_inventory_reports', 'Inventory reports'),
+    'stock_valuation': ('enable_inventory_reports', 'Stock valuation'),
     'purchase': ('enable_inventory_reports', 'Inventory reports'),
     'expense': ('enable_financial_reports', 'Financial reports'),
     'income': ('enable_financial_reports', 'Financial reports'),
@@ -113,6 +114,8 @@ def _strip_summary(summary: dict) -> dict:
             'total_purchases',
             'inventory_value',
             'total_inventory_value',
+            'cost_value',
+            'unit_cost',
         ):
             summary.pop(key, None)
     return summary
@@ -170,5 +173,14 @@ def apply_report_response_flags(data: dict) -> dict:
                 row.pop('total_cost', None)
                 stripped.append(row)
             data['purchases'] = stripped
+        if isinstance(data.get('lines'), list):
+            stripped = []
+            for row in data['lines']:
+                row = dict(row)
+                row.pop('unit_cost', None)
+                row.pop('cost_value', None)
+                row.pop('cost', None)
+                stripped.append(row)
+            data['lines'] = stripped
 
     return data

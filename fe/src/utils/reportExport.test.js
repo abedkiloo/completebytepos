@@ -29,6 +29,7 @@ describe('reportExport', () => {
     expect(reportExportPath('sales')).toBe('/reports/sales/');
     expect(reportExportPath('profit-loss')).toBe('/reports/profit_loss/');
     expect(reportExportPath('sales-by-person')).toBe('/reports/sales_by_person/');
+    expect(reportExportPath('stock-valuation')).toBe('/reports/stock_valuation/');
     expect(reportExportPath('sales-history')).toBe('/sales/export/');
     expect(reportExportPath('unknown')).toBeNull();
     expect(Object.keys(REPORT_EXPORT_PATHS).length).toBeGreaterThan(10);

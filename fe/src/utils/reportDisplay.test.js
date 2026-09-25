@@ -12,10 +12,10 @@ describe('reportDisplay', () => {
     expect(reportsEnableSalesReports({})).toBe(true);
   });
 
-  test('sales-by-person follows sales reports toggle', () => {
-    expect(reportsLegacyReportEnabled({}, 'sales-by-person')).toBe(true);
+  test('stock-valuation follows inventory reports toggle', () => {
+    expect(reportsLegacyReportEnabled({}, 'stock-valuation')).toBe(true);
     expect(
-      reportsLegacyReportEnabled({ enable_sales_reports: false }, 'sales-by-person')
+      reportsLegacyReportEnabled({ enable_inventory_reports: false }, 'stock-valuation')
     ).toBe(false);
   });
 

@@ -464,6 +464,7 @@ export const reportsAPI = {
   topProducts: (params) => api.get('/reports/top_products/', { params }),
   cashAndPayments: (params) => api.get('/reports/cash_and_payments/', { params }),
   inventoryHealth: (params) => api.get('/reports/inventory_health/', { params }),
+  stockValuation: (params) => api.get('/reports/stock_valuation/', { params }),
   customerOutstanding: (params) => api.get('/reports/customer_outstanding/', { params }),
   salesByPerson: (params) => api.get('/reports/sales_by_person/', { params }),
   salesByPersonCsv: (params) =>

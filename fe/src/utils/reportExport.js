@@ -24,6 +24,7 @@ export const REPORT_EXPORT_PATHS = {
   'top-products': '/reports/top_products/',
   'cash-and-payments': '/reports/cash_and_payments/',
   'inventory-health': '/reports/inventory_health/',
+  'stock-valuation': '/reports/stock_valuation/',
   'customer-outstanding': '/reports/customer_outstanding/',
   'sales-history': '/sales/export/',
 };

@@ -184,6 +184,7 @@ export const NAV_SECTIONS = [
       { to: '/sales/daily', label: 'Daily Sales', icon: Calendar, permission: ['sales', 'daily_sales'] },
       { to: '/reports?report=products', label: 'Product Performance', icon: Boxes, match: 'report=products', permission: ['reports', 'view'] },
       { to: '/reports?report=inventory', label: 'Inventory Overview', icon: PieChart, match: 'report=inventory', permission: ['reports', 'view'] },
+      { to: '/reports?report=stock-valuation', label: 'Stock valuation', icon: Package, match: 'report=stock-valuation', permission: ['reports', 'view'] },
       { to: '/audit-log', label: 'Audit log', icon: ScrollText, managerOnly: true, permission: ['reports', 'view'] },
       { to: '/pending-approvals', label: 'Pending approvals', icon: ClipboardCheck, managerOnly: true, permission: ['reports', 'view'] },
     ],

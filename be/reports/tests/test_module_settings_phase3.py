@@ -65,3 +65,8 @@ class ReportModuleSettingsAPITests(ManagerAPITestCase):
         response = self.client.get(f'{self.base_url}inventory_health/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertNotIn('inventory_value', response.data.get('summary', {}))
+
+    def test_stock_valuation_forbidden_when_inventory_reports_disabled(self):
+        SettingsService.set('reports', 'enable_inventory_reports', False)
+        response = self.client.get(f'{self.base_url}stock_valuation/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
