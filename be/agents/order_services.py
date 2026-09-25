@@ -1,8 +1,12 @@
 """Field-order state machine. Stock: allocate on pack (see DECISIONS.md)."""
 
+from decimal import Decimal
+
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
+
+from sales.models import Customer, CustomerWalletTransaction
 
 from .config import MIN_SITE_MEDIA
 from .models import FieldOrder
@@ -45,6 +49,62 @@ def assert_site_ready_for_order(site, *, min_media: int = MIN_SITE_MEDIA) -> Non
         raise FieldOrderTransitionError(errors)
 
 
+def field_order_total(order: FieldOrder) -> Decimal:
+    total = Decimal('0.00')
+    for line in order.lines.all():
+        qty = line.quantity or Decimal('0')
+        price = line.unit_price or Decimal('0')
+        total += qty * price
+    return total.quantize(Decimal('0.01'))
+
+
+def require_field_order_customer(order: FieldOrder) -> Customer:
+    """Every field sale must be for a named customer."""
+    if order.customer_id is None and order.site_id and order.site.customer_id:
+        order.customer_id = order.site.customer_id
+        order.save(update_fields=['customer', 'updated_at'])
+        order.customer = order.site.customer
+    if order.customer_id is None:
+        raise FieldOrderTransitionError({
+            'customer': 'Field sales require a customer.',
+        })
+    return order.customer
+
+
+def post_field_order_debt(order: FieldOrder, user=None) -> None:
+    """
+    When goods are packed/ready, the customer owes the order total.
+    Collection then goes through normal debt collection (cash / M-Pesa).
+    """
+    customer = require_field_order_customer(order)
+    amount = field_order_total(order)
+    if amount <= 0:
+        return
+    reference = f'FO-{order.pk}'
+    if CustomerWalletTransaction.objects.filter(
+        customer=customer,
+        source_type='debt',
+        reference=reference,
+    ).exists():
+        return
+    locked = Customer.objects.select_for_update().get(pk=customer.pk)
+    locked.wallet_balance -= amount
+    locked.save(update_fields=['wallet_balance', 'updated_at'])
+    CustomerWalletTransaction.objects.create(
+        customer=locked,
+        transaction_type='debit',
+        source_type='debt',
+        amount=amount,
+        balance_after=locked.wallet_balance,
+        reference=reference,
+        notes=(
+            f'Field order #{order.pk} packed — unpaid balance added as customer debt'
+        ),
+        created_by=user or order.created_by,
+    )
+    order.customer = locked
+
+
 def transition(order: FieldOrder, to_status: str) -> FieldOrder:
     allowed = ALLOWED_TRANSITIONS.get(order.status, set())
     if to_status not in allowed:
@@ -60,9 +120,7 @@ def submit_order(order: FieldOrder) -> FieldOrder:
     if not order.lines.exists():
         raise FieldOrderTransitionError({'lines': 'Add at least one line before submit.'})
     assert_site_ready_for_order(order.site)
-    if order.customer_id is None and order.site.customer_id:
-        order.customer_id = order.site.customer_id
-        order.save(update_fields=['customer', 'updated_at'])
+    require_field_order_customer(order)
     return transition(order, FieldOrder.STATUS_SUBMITTED)
 
 
@@ -70,10 +128,11 @@ def start_packing(order: FieldOrder) -> FieldOrder:
     return transition(order, FieldOrder.STATUS_PACKING)
 
 
-def pack_order(order: FieldOrder) -> FieldOrder:
+def pack_order(order: FieldOrder, user=None) -> FieldOrder:
     """
     Allocate-on-pack: mark stock_allocated without inventing a second inventory ledger.
     Real stock movements can hook here later; S08 records the policy decision.
+    Packed field sales post customer debt so cash is collected through debt management.
     """
     if order.status == FieldOrder.STATUS_SUBMITTED:
         transition(order, FieldOrder.STATUS_PACKING)
@@ -82,6 +141,7 @@ def pack_order(order: FieldOrder) -> FieldOrder:
         raise FieldOrderTransitionError({
             'status': f'Pack requires packing status (have {order.status}).',
         })
+    require_field_order_customer(order)
     with transaction.atomic():
         order.stock_allocated = True
         order.packed_at = timezone.now()
@@ -89,6 +149,7 @@ def pack_order(order: FieldOrder) -> FieldOrder:
         order.save(update_fields=[
             'stock_allocated', 'packed_at', 'status', 'updated_at',
         ])
+        post_field_order_debt(order, user=user)
     return order
 
 

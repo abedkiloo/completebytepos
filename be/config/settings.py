@@ -447,7 +447,7 @@ DARAJA_PASSKEY = env_str('DARAJA_PASSKEY', '')
 DARAJA_CALLBACK_URL = env_str('DARAJA_CALLBACK_URL', '')
 SMS_BRAND_BLURB = env_str(
     'SMS_BRAND_BLURB',
-    'Thank you for shopping with CompleteBytePOS.',
+    'Thank you for shopping with {store_name}.',
 )
 PUBLIC_INVOICE_BASE_URL = env_str('PUBLIC_INVOICE_BASE_URL', 'https://example.com/i')
 AFRICASTALKING_API_KEY = env_str('AFRICASTALKING_API_KEY', '')

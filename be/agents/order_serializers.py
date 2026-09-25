@@ -170,6 +170,13 @@ class FieldOrderCreateSerializer(serializers.Serializer):
             )
         except CustomerSite.DoesNotExist as exc:
             raise serializers.ValidationError({'site_id': 'Site not found.'}) from exc
+        if site.customer_id is None:
+            raise serializers.ValidationError({
+                'customer': (
+                    'Field sales require a customer. '
+                    'Assign a customer to this site first.'
+                ),
+            })
 
         order = FieldOrder.objects.create(
             site=site,
@@ -269,7 +276,9 @@ class FieldOrderSubmitSerializer(serializers.Serializer):
 class PackOrderSerializer(serializers.Serializer):
     def save(self, **kwargs):
         order = self.context['order']
-        order = pack_order(order)
+        request = self.context.get('request')
+        user = getattr(request, 'user', None) if request is not None else None
+        order = pack_order(order, user=user)
         get_push_notifier().notify(
             user_id=order.created_by_id,
             title='Order packed',

@@ -373,6 +373,11 @@ class StoreSettings(models.Model):
     Always use ``StoreSettings.load()`` — only one row (pk=1) exists.
     """
 
+    store_name = models.CharField(
+        max_length=120,
+        default='Omuwenga Suppliers',
+        help_text='Display name shown in the header, login, receipts, and invoices. Super admins can edit this in System Settings.',
+    )
     allow_sales_add_products = models.BooleanField(
         default=True,
         help_text='Allow sales staff to add products and categories from the catalog UI',
@@ -464,14 +469,29 @@ class StoreSettings(models.Model):
 
     @classmethod
     def load(cls):
-        from .store_settings_helpers import DEFAULT_PAYMENT_METHODS, normalize_payment_methods
+        from .store_settings_helpers import (
+            DEFAULT_PAYMENT_METHODS,
+            DEFAULT_STORE_NAME,
+            normalize_payment_methods,
+            normalize_store_name,
+        )
 
         obj, _created = cls.objects.get_or_create(
             pk=1,
-            defaults={'enabled_payment_methods': list(DEFAULT_PAYMENT_METHODS)},
+            defaults={
+                'enabled_payment_methods': list(DEFAULT_PAYMENT_METHODS),
+                'store_name': DEFAULT_STORE_NAME,
+            },
         )
+        update_fields = []
         normalized = normalize_payment_methods(obj.enabled_payment_methods)
         if obj.enabled_payment_methods != normalized:
             obj.enabled_payment_methods = normalized
-            obj.save(update_fields=['enabled_payment_methods'])
+            update_fields.append('enabled_payment_methods')
+        name = normalize_store_name(obj.store_name)
+        if obj.store_name != name:
+            obj.store_name = name
+            update_fields.append('store_name')
+        if update_fields:
+            obj.save(update_fields=update_fields)
         return obj

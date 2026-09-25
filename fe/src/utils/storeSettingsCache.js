@@ -3,6 +3,7 @@
 const STORAGE_KEY = 'store_settings';
 
 export const DEFAULT_STORE_SETTINGS = {
+  store_name: 'Omuwenga Suppliers',
   allow_sales_add_products: true,
   sales_catalog_skip_pricing: true,
   hide_entity_status_toggles: false,

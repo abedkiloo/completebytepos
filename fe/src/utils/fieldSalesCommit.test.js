@@ -7,6 +7,7 @@ import {
   fieldOrderLineSummary,
   fieldOrderQty,
   fieldOrderTotal,
+  fieldOrderHasCustomer,
   packCommitRows,
   packReadyError,
 } from './fieldSalesCommit';
@@ -57,9 +58,18 @@ describe('fieldSalesCommit', () => {
       'This order is not waiting to be packed.',
     );
     expect(packReadyError({ status: 'submitted', lines: [] })).toBe(
-      'This order has no products to pack.',
+      'This field sale needs a customer before it can be packed.',
     );
+    expect(
+      packReadyError({
+        status: 'submitted',
+        customer_name: 'Ada',
+        lines: [],
+      }),
+    ).toBe('This order has no products to pack.');
     expect(packReadyError(submitted)).toBe('');
+    expect(fieldOrderHasCustomer({ customer: 9 })).toBe(true);
+    expect(fieldOrderHasCustomer({ customer_name: '  ' })).toBe(false);
   });
 
   test('assignDriverError covers permission, status, and missing driver', () => {
@@ -74,6 +84,9 @@ describe('fieldSalesCommit', () => {
     const packed = packCommitRows(submitted, (n) => `KES ${n}`);
     expect(packed.find((row) => row.label === 'Order').value).toBe('#44');
     expect(packed.find((row) => row.label === 'Total').value).toBe('KES 390');
+    expect(packed.find((row) => row.label === 'After confirm').value).toContain(
+      'Customer debt',
+    );
 
     const noFormatter = packCommitRows({ id: 1, customer_name: '', lines: [] });
     expect(noFormatter.find((row) => row.label === 'Customer').value).toBe('—');

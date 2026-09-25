@@ -288,6 +288,18 @@ describe('makerChecker', () => {
     ).toEqual({ backfill_max_days: 90 });
     expect(storeSettingsEditNeedsReason(null, {})).toBe(false);
     expect(
+      buildStoreSettingsUpdatePayload(
+        { store_name: 'Omuwenga Furniture' },
+        { store_name: 'Omuwenga Suppliers' }
+      )
+    ).toEqual({ store_name: 'Omuwenga Furniture' });
+    expect(
+      storeSettingsEditNeedsReason(
+        { store_name: 'Omuwenga Furniture' },
+        { store_name: 'Omuwenga Suppliers' }
+      )
+    ).toBe(true);
+    expect(
       moduleSettingsPatchNeedsReason({ show_status: false }, { show_status: true })
     ).toBe(true);
     expect(moduleSettingsPatchNeedsReason({}, {})).toBe(false);

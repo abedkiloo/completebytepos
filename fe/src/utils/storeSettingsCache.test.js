@@ -12,6 +12,7 @@ describe('storeSettingsCache', () => {
 
   test('readCachedStoreSettings returns defaults when empty', () => {
     expect(readCachedStoreSettings()).toEqual(DEFAULT_STORE_SETTINGS);
+    expect(readCachedStoreSettings().store_name).toBe('Omuwenga Suppliers');
     expect(readCachedStoreSettings().maker_checker_enabled).toBe(true);
     expect(readCachedStoreSettings().maker_checker_sales_controls).toBe(false);
     expect(readCachedStoreSettings().emergency_stock_mode).toBe(false);

@@ -60,6 +60,8 @@ import { clearAuthState, logoutLocally, clearSessionTeardownFlag } from '../../u
 import { isManagerOrAdminFromStorage } from '../../utils/roleAccess';
 import { stopIdleSessionWatch } from '../../utils/sessionIdle';
 import { cacheStoreSettings } from '../../utils/storeSettingsCache';
+import { resolveStoreName } from '../../utils/storeBranding';
+import { useStoreSettings } from '../../hooks/useStoreSettings';
 import { useNavBadgeCounts } from '../../hooks/useNavBadgeCounts';
 import { navBadgeCountForItem } from '../../utils/navBadges';
 import NavCountBadge from './NavCountBadge';
@@ -228,6 +230,12 @@ const Layout = ({ children }) => {
   // visual noise. Cashiers can pop sections open as they need them.
   const [expanded, setExpanded] = useState({ sales: true, inventory: true });
   const [navTick, setNavTick] = useState(0);
+  const { settings: brandingSettings } = useStoreSettings();
+  const storeName = resolveStoreName(brandingSettings);
+
+  useEffect(() => {
+    document.title = storeName;
+  }, [storeName]);
 
   // Read user once per mount, not on every render (the original re-parsed the
   // localStorage JSON on every commit which broke dependency arrays). Stable
@@ -425,9 +433,9 @@ const Layout = ({ children }) => {
         </Button>
 
         <Link to="/" className="flex min-w-0 shrink items-center gap-2">
-          <img src="/logo.svg" alt="CompleteByte POS" className="h-7 w-auto shrink-0" />
+          <img src="/logo.svg" alt={storeName} className="h-7 w-auto shrink-0" />
           <span className="hidden truncate text-sm font-semibold text-foreground sm:inline">
-            CompleteByte POS
+            {storeName}
           </span>
         </Link>
 

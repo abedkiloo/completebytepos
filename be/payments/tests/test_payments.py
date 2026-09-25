@@ -4,6 +4,7 @@ import uuid
 from decimal import Decimal
 
 from django.contrib.auth.models import User
+from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -210,3 +211,40 @@ class PaymentsAPITestCase(APITestCase):
         intent = create_intent(amount='1', phone='0733333333', created_by=self.user)
         self.assertIn('PaymentIntent', str(intent))
         self.assertFalse(intent.is_terminal)
+
+
+class BrandBlurbTests(TestCase):
+    def test_default_blurb_uses_store_name(self):
+        from payments.config import get_brand_blurb
+
+        self.assertEqual(
+            get_brand_blurb(),
+            'Thank you for shopping with Omuwenga Suppliers.',
+        )
+
+    @override_settings(SMS_BRAND_BLURB='Thank you for shopping with CompleteBytePOS.')
+    def test_legacy_completebyte_blurb_is_replaced(self):
+        from payments.config import get_brand_blurb
+
+        self.assertEqual(
+            get_brand_blurb(),
+            'Thank you for shopping with Omuwenga Suppliers.',
+        )
+
+    @override_settings(SMS_BRAND_BLURB='Karibu {store_name}!')
+    def test_template_placeholder(self):
+        from payments.config import get_brand_blurb
+
+        self.assertEqual(get_brand_blurb(), 'Karibu Omuwenga Suppliers!')
+
+    @override_settings(SMS_BRAND_BLURB='Thanks from HQ')
+    def test_custom_blurb_without_placeholder(self):
+        from payments.config import get_brand_blurb
+
+        self.assertEqual(get_brand_blurb(), 'Thanks from HQ')
+
+    @override_settings(SMS_BRAND_BLURB='Hi {store_name} {oops}')
+    def test_unknown_placeholder_falls_back(self):
+        from payments.config import get_brand_blurb
+
+        self.assertEqual(get_brand_blurb(), 'Hi Omuwenga Suppliers {oops}')

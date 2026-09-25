@@ -31,6 +31,7 @@ describe('Login landing', () => {
       screen.getAllByText(/run the counter, the stock, and the close/i).length
     ).toBeGreaterThan(0);
     expect(await screen.findByLabelText(/username/i)).toBeInTheDocument();
+    expect(screen.getAllByText('Omuwenga Suppliers').length).toBeGreaterThan(0);
     expect(screen.getByLabelText(/^password$/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^sign in$/i })).toBeDisabled();
   });

@@ -78,6 +78,7 @@
       "src/utils/productPricing.js",
       "src/utils/setupStatus.js",
       "src/utils/storeSettingsCache.js",
+      "src/utils/storeBranding.js",
       "src/utils/pdfDownload.js",
       "src/utils/reportExport.js",
       "src/utils/recordPastSaleBackfill.js",

@@ -1,5 +1,8 @@
 """Helpers for tenant-wide store / POS configuration."""
 
+DEFAULT_STORE_NAME = 'Omuwenga Suppliers'
+STORE_NAME_MAX_LENGTH = 120
+
 DEFAULT_PAYMENT_METHODS = ['cash', 'mpesa', 'wallet']
 
 VALID_PAYMENT_METHODS = frozenset(DEFAULT_PAYMENT_METHODS)
@@ -9,6 +12,19 @@ COLLECTION_PAYMENT_CHOICES = (
     ('cash', 'Cash'),
     ('mpesa', 'M-PESA'),
 )
+
+
+def normalize_store_name(value):
+    text = str(value or '').strip()
+    if not text:
+        return DEFAULT_STORE_NAME
+    return text[:STORE_NAME_MAX_LENGTH]
+
+
+def resolved_store_name():
+    from settings.models import StoreSettings
+
+    return normalize_store_name(StoreSettings.load().store_name)
 
 
 def user_may_edit_pricing(user):

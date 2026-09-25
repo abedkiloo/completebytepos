@@ -24,6 +24,7 @@ from agents.order_services import (
     assert_site_ready_for_order,
     assign_delivery_agent,
     cancel_order,
+    claim_ready_order,
     pack_order,
     start_packing,
     submit_order,
@@ -204,3 +205,111 @@ class FieldOrderExtraTests(APITestCase):
             format='json',
         )
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_create_requires_site_customer(self):
+        orphan = CustomerSite.objects.create(
+            latitude='-1', longitude='36', created_by=self.agent,
+        )
+        res = self.client.post(
+            '/api/visits/field-orders/',
+            {
+                'site_id': orphan.id,
+                'lines': [{'product_id': self.product.id, 'quantity': '1'}],
+            },
+            format='json',
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('customer', res.data)
+
+    def test_pack_requires_customer_and_posts_debt_once(self):
+        from decimal import Decimal
+
+        from agents.order_services import pack_order, post_field_order_debt
+        from sales.models import CustomerWalletTransaction
+
+        orphan_site = CustomerSite.objects.create(
+            latitude='-1.1', longitude='36.7', created_by=self.agent,
+        )
+        orphan = FieldOrder.objects.create(
+            site=orphan_site, status=FieldOrder.STATUS_SUBMITTED, created_by=self.agent,
+        )
+        FieldOrderLine.objects.create(
+            order=orphan, product=self.product, quantity=1, unit_price=50, product_name='Sand',
+        )
+        with self.assertRaises(FieldOrderTransitionError):
+            pack_order(orphan)
+
+        order = FieldOrder.objects.create(
+            site=self.site, customer=self.customer,
+            status=FieldOrder.STATUS_SUBMITTED, created_by=self.agent,
+        )
+        FieldOrderLine.objects.create(
+            order=order, product=self.product, quantity=2, unit_price=100, product_name='Sand',
+        )
+        pack_order(order, user=self.dispatch)
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.wallet_balance, Decimal('-200.00'))
+        self.assertEqual(
+            CustomerWalletTransaction.objects.filter(reference=f'FO-{order.id}').count(),
+            1,
+        )
+        post_field_order_debt(order, user=self.dispatch)
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.wallet_balance, Decimal('-200.00'))
+        self.assertEqual(
+            CustomerWalletTransaction.objects.filter(reference=f'FO-{order.id}').count(),
+            1,
+        )
+
+    def test_pack_skips_debt_when_total_is_zero(self):
+        from decimal import Decimal
+
+        from sales.models import CustomerWalletTransaction
+
+        order = FieldOrder.objects.create(
+            site=self.site, customer=self.customer,
+            status=FieldOrder.STATUS_PACKING, created_by=self.agent,
+        )
+        FieldOrderLine.objects.create(
+            order=order, product=self.product, quantity=1, unit_price=0, product_name='Sand',
+        )
+        pack_order(order)
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.wallet_balance, Decimal('0.00'))
+        self.assertFalse(
+            CustomerWalletTransaction.objects.filter(reference=f'FO-{order.id}').exists()
+        )
+
+    def test_pack_copies_customer_from_site(self):
+        from decimal import Decimal
+
+        order = FieldOrder.objects.create(
+            site=self.site, status=FieldOrder.STATUS_SUBMITTED, created_by=self.agent,
+        )
+        FieldOrderLine.objects.create(
+            order=order, product=self.product, quantity=1, unit_price=40, product_name='Sand',
+        )
+        pack_order(order)
+        order.refresh_from_db()
+        self.assertEqual(order.customer_id, self.customer.id)
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.wallet_balance, Decimal('-40.00'))
+
+    def test_site_media_and_claim_guards(self):
+        site = CustomerSite.objects.create(
+            customer=self.customer, latitude='-1.1', longitude='36.7',
+            created_by=self.agent,
+        )
+        with self.assertRaises(FieldOrderTransitionError):
+            assert_site_ready_for_order(site, min_media=1)
+
+        order = FieldOrder.objects.create(
+            site=self.site, customer=self.customer,
+            status=FieldOrder.STATUS_READY, created_by=self.agent,
+        )
+        with self.assertRaises(FieldOrderTransitionError):
+            claim_ready_order(order, None)
+        order.assigned_delivery_agent = self.driver
+        order.save(update_fields=['assigned_delivery_agent'])
+        with self.assertRaises(FieldOrderTransitionError):
+            claim_ready_order(order, self.agent)

@@ -16,6 +16,7 @@ import { sessionIdleExpiredMessage } from '../../config/sessionConfig';
 import { markSessionActivity } from '../../utils/sessionIdle';
 import { clearSessionTeardownFlag } from '../../utils/authSession';
 import { fetchSetupStatus } from '../../utils/setupStatus';
+import { DEFAULT_STORE_NAME } from '../../utils/storeBranding';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -82,7 +83,7 @@ function LandingPanel({ className }) {
         <div className="flex items-center gap-3">
           <img src="/logo.svg" alt="" className="h-9 w-auto brightness-110" />
           <span className="text-sm font-medium tracking-wide text-background/70">
-            CompleteByte POS
+            {DEFAULT_STORE_NAME}
           </span>
         </div>
 
@@ -94,7 +95,7 @@ function LandingPanel({ className }) {
             Run the counter, the stock, and the close — from one place.
           </h1>
           <p className="mt-4 text-sm leading-relaxed text-background/70 lg:text-base">
-            Sign in on the right to start a session. CompleteByte POS is the till,
+            Sign in on the right to start a session. {DEFAULT_STORE_NAME} is the till,
             inventory, and daily numbers for stores that need to move fast.
           </p>
 
@@ -252,7 +253,7 @@ const Login = () => {
       <div className="bg-foreground px-5 py-6 text-background lg:hidden">
         <div className="flex items-center gap-3">
           <img src="/logo.svg" alt="" className="h-8 w-auto brightness-110" />
-          <span className="text-sm font-medium text-background/70">CompleteByte POS</span>
+          <span className="text-sm font-medium text-background/70">{DEFAULT_STORE_NAME}</span>
         </div>
         <h1 className="mt-4 text-xl font-semibold leading-snug tracking-tight">
           Run the counter, the stock, and the close — from one place.

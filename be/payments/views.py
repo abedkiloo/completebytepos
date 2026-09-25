@@ -95,6 +95,6 @@ def daraja_callback(request):
 def public_invoice(request, token):
     intent = get_object_or_404(PaymentIntent, public_token=token)
     data = PublicInvoiceSerializer(intent).data
-    from payments.config import BRAND_BLURB
-    data['brand_blurb'] = BRAND_BLURB
+    from payments.config import get_brand_blurb
+    data['brand_blurb'] = get_brand_blurb()
     return Response(data)

@@ -214,7 +214,7 @@ class Command(BaseCommand):
         tenant, created = Tenant.objects.get_or_create(
             code='TENANT001',
             defaults={
-                'name': 'CompleteByte Business',
+                'name': 'Omuwenga Suppliers',
                 'registration_number': 'REG-001-2024',
                 'tax_id': 'TAX-001-2024',
                 'address': '123 Business Street',

@@ -16,8 +16,11 @@ from settings.models import StoreSettings
 from settings.serializers import StoreSettingsSerializer
 from settings.store_settings_helpers import (
     DEFAULT_PAYMENT_METHODS,
+    DEFAULT_STORE_NAME,
     entity_status_visible,
     normalize_payment_methods,
+    normalize_store_name,
+    resolved_store_name,
     user_may_edit_pricing,
 )
 from settings.test_utils import disable_maker_checker
@@ -29,6 +32,10 @@ from utils.tests.api_test_base import (
 
 
 class StoreSettingsHelperTests(TestCase):
+    def test_normalize_store_name_falls_back_to_default(self):
+        self.assertEqual(normalize_store_name(''), DEFAULT_STORE_NAME)
+        self.assertEqual(normalize_store_name('  Duka  '), 'Duka')
+
     def test_normalize_payment_methods_defaults_when_empty(self):
         self.assertEqual(normalize_payment_methods([]), list(DEFAULT_PAYMENT_METHODS))
         self.assertEqual(normalize_payment_methods(None), list(DEFAULT_PAYMENT_METHODS))
@@ -76,6 +83,18 @@ class StoreSettingsModelTests(TestCase):
         store = StoreSettings.load()
         self.assertFalse(store.maker_checker_sales_controls)
 
+    def test_store_name_defaults_to_omuwenga_suppliers(self):
+        store = StoreSettings.load()
+        self.assertEqual(store.store_name, DEFAULT_STORE_NAME)
+        self.assertEqual(resolved_store_name(), DEFAULT_STORE_NAME)
+
+    def test_load_fills_blank_store_name(self):
+        store = StoreSettings.load()
+        store.store_name = '   '
+        store.save(update_fields=['store_name'])
+        reloaded = StoreSettings.load()
+        self.assertEqual(reloaded.store_name, DEFAULT_STORE_NAME)
+
 
 class StoreSettingsSerializerTests(TestCase):
     def setUp(self):
@@ -119,6 +138,21 @@ class StoreSettingsSerializerTests(TestCase):
         self.assertFalse(ser.is_valid())
         self.assertIn('enabled_payment_methods', ser.errors)
 
+    def test_rejects_blank_store_name(self):
+        ser = self._serializer({'store_name': '  '})
+        self.assertFalse(ser.is_valid())
+        self.assertIn('store_name', ser.errors)
+
+    def test_trims_store_name(self):
+        ser = self._serializer({'store_name': '  Omuwenga Furniture  '})
+        self.assertTrue(ser.is_valid(), ser.errors)
+        self.assertEqual(ser.validated_data['store_name'], 'Omuwenga Furniture')
+
+    def test_rejects_overlong_store_name(self):
+        ser = self._serializer({'store_name': 'X' * 121})
+        self.assertFalse(ser.is_valid())
+        self.assertIn('store_name', ser.errors)
+
 
 class StoreSettingsAPITests(SuperAdminAPITestCase):
     url = '/api/settings/store-settings/'
@@ -140,6 +174,18 @@ class StoreSettingsAPITests(SuperAdminAPITestCase):
             response.data['enabled_payment_methods'],
             list(DEFAULT_PAYMENT_METHODS),
         )
+        self.assertEqual(response.data['store_name'], DEFAULT_STORE_NAME)
+
+    def test_super_admin_can_rename_store(self):
+        response = self.client.patch(
+            self.url,
+            {'store_name': 'Omuwenga Furniture Ltd'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['store_name'], 'Omuwenga Furniture Ltd')
+        self.assertEqual(StoreSettings.load().store_name, 'Omuwenga Furniture Ltd')
+        self.assertEqual(resolved_store_name(), 'Omuwenga Furniture Ltd')
 
     def test_super_admin_patch_json(self):
         payload = {

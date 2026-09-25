@@ -1,6 +1,6 @@
 """SMS template rendering (Misspat-style variables)."""
 
-from payments.config import BRAND_BLURB, PUBLIC_INVOICE_BASE_URL
+from payments.config import PUBLIC_INVOICE_BASE_URL, get_brand_blurb
 
 
 INVOICE_TEMPLATE = (
@@ -25,7 +25,7 @@ def render_invoice_sms(
     link = f'{PUBLIC_INVOICE_BASE_URL.rstrip("/")}/{public_token}'
     return INVOICE_TEMPLATE.format(
         customer_name=customer_name or 'Customer',
-        brand_blurb=brand_blurb or BRAND_BLURB,
+        brand_blurb=brand_blurb or get_brand_blurb(),
         invoice_no=invoice_no,
         amount=f'{amount}',
         link=link,
@@ -42,7 +42,7 @@ def render_debt_reminder_sms(
     link = f'{PUBLIC_INVOICE_BASE_URL.rstrip("/")}/{public_token}'
     return DEBT_REMINDER_TEMPLATE.format(
         customer_name=customer_name or 'Customer',
-        brand_blurb=brand_blurb or BRAND_BLURB,
+        brand_blurb=brand_blurb or get_brand_blurb(),
         amount=f'{amount}',
         link=link,
     )

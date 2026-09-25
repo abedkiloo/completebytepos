@@ -2,6 +2,10 @@ import React from 'react';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import SaleDetailDialog from './SaleDetailDialog';
 
+jest.mock('../../hooks/useStoreSettings', () => ({
+  useStoreSettings: () => ({ settings: { store_name: 'Omuwenga Suppliers' } }),
+}));
+
 const sale = {
   id: 1,
   sale_number: 'S-100',
@@ -55,6 +59,7 @@ describe('SaleDetailDialog', () => {
     const receipt = document.querySelector('.receipt-content');
 
     expect(screen.getByText(/Sale — S-100/)).toBeInTheDocument();
+    expect(screen.getByText('Omuwenga Suppliers')).toBeInTheDocument();
     expect(screen.getByText('Martha')).toBeInTheDocument();
     expect(within(receipt).getAllByText('Large / White').length).toBe(2);
     expect(within(receipt).queryByText(/returned/i)).not.toBeInTheDocument();

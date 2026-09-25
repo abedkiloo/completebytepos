@@ -50,8 +50,10 @@ def create_invoice_pdf(invoice):
     normal_style = styles['Normal']
     normal_style.fontSize = 9
     
-    # Company Header
-    elements.append(Paragraph("CompleteByte POS", title_style))
+    # Company Header — admin-editable store display name
+    from settings.store_settings_helpers import resolved_store_name
+
+    elements.append(Paragraph(resolved_store_name(), title_style))
     elements.append(Paragraph("Invoice", heading_style))
     elements.append(Spacer(1, 0.2*inch))
     

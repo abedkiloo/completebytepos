@@ -3,6 +3,8 @@
 import io
 import uuid
 
+from decimal import Decimal
+
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from PIL import Image
@@ -166,6 +168,13 @@ class FieldOrderAPITestCase(APITestCase):
         self.assertEqual(packed.status_code, status.HTTP_200_OK, packed.data)
         self.assertEqual(packed.data['status'], 'ready')
         self.assertTrue(packed.data['stock_allocated'])
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.wallet_balance, Decimal('-1000.00'))
+        from sales.models import CustomerWalletTransaction
+        txn = CustomerWalletTransaction.objects.get(
+            reference=f'FO-{order_id}', source_type='debt',
+        )
+        self.assertEqual(txn.amount, Decimal('1000.00'))
 
         assigned = self.client.post(
             f'/api/dispatch/field-orders/{order_id}/assign/',

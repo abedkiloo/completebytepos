@@ -65,6 +65,36 @@ describe('SystemSettings backdate limit save', () => {
     );
   });
 
+  it('saves the store display name with a reason when maker-checker is on', async () => {
+    renderSettings();
+
+    fireEvent.change(screen.getByLabelText(/Display name/i), {
+      target: { value: 'Omuwenga Furniture' },
+    });
+
+    const reason = await screen.findByLabelText(/Reason for/i);
+    fireEvent.change(reason, { target: { value: 'Rebrand the till header' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save store settings/i }));
+    fireEvent.click(await screen.findByTestId('commit-confirm-ok'));
+
+    await waitFor(() => {
+      expect(storeSettingsAPI.update).toHaveBeenCalledWith({
+        store_name: 'Omuwenga Furniture',
+        reason: 'Rebrand the till header',
+      });
+    });
+  });
+
+  it('blocks save when the store name is blank', () => {
+    renderSettings();
+    fireEvent.change(screen.getByLabelText(/Display name/i), {
+      target: { value: '   ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Save store settings/i }));
+    expect(storeSettingsAPI.update).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledWith('Enter a store name.');
+  });
+
   it('shows a reason field on the save bar when a sensitive store rule changes', async () => {
     renderSettings();
 

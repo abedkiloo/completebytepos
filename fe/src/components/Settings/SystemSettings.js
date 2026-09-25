@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Image, Receipt, CreditCard, Package, ClipboardCheck, SlidersHorizontal } from 'lucide-react';
+import { Image, Receipt, CreditCard, Package, ClipboardCheck, SlidersHorizontal, Store } from 'lucide-react';
 
 import { PageShell, PageHeader } from '../page';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -70,6 +70,10 @@ export default function SystemSettings() {
     if (!form) return;
     if (!(form.enabled_payment_methods || []).length) {
       toast.warning('Select at least one payment method.');
+      return;
+    }
+    if (!(form.store_name || '').trim()) {
+      toast.warning('Enter a store name.');
       return;
     }
     if (!Object.keys(dirtyPayload).length && !logoFile) {
@@ -182,6 +186,30 @@ export default function SystemSettings() {
         </TabsList>
 
         <TabsContent value="store" className="space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Store className="h-4 w-4 text-primary" />
+                Store name
+              </CardTitle>
+              <CardDescription>
+                Shown in the header, login, receipts, and printed invoices. Super admins can change this any time.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-1.5">
+                <Label htmlFor="store_name">Display name</Label>
+                <Input
+                  id="store_name"
+                  value={form.store_name || ''}
+                  onChange={(e) => setForm({ ...form, store_name: e.target.value })}
+                  placeholder="Omuwenga Suppliers"
+                  maxLength={120}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">

@@ -62,6 +62,7 @@ def sensitive_store_keys_that_changed(
 PAYMENT_METHOD_FIELDS = frozenset({'enabled_payment_methods'})
 RECEIPT_LEGAL_FIELDS = frozenset({'receipt_header_text', 'receipt_footer_text'})
 STORE_RULE_FIELDS = frozenset({
+    'store_name',
     'allow_sales_add_products',
     'sales_catalog_skip_pricing',
     'hide_entity_status_toggles',

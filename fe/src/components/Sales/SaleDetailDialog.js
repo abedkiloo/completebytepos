@@ -23,6 +23,8 @@ import {
   normalizeSaleForReceipt,
 } from '../../utils/saleItemDisplay';
 import { hasDuplicateSaleLines } from '../../utils/detectDuplicateSaleLines';
+import { useStoreSettings } from '../../hooks/useStoreSettings';
+import { resolveStoreName } from '../../utils/storeBranding';
 
 export default function SaleDetailDialog({
   sale,
@@ -36,6 +38,8 @@ export default function SaleDetailDialog({
   showCustomerName = true,
   showAdminDetails = true,
 }) {
+  const { settings } = useStoreSettings();
+  const storeName = resolveStoreName(settings);
   if (!sale) return null;
 
   const receiptSale = normalizeSaleForReceipt(sale);
@@ -65,7 +69,7 @@ export default function SaleDetailDialog({
 
         <div className="receipt-content space-y-4 text-sm">
           <div className="receipt-header text-center">
-            <h3 className="text-lg font-semibold">CompleteByte POS</h3>
+            <h3 className="text-lg font-semibold">{storeName}</h3>
             <p className="text-muted-foreground">Sale receipt</p>
           </div>
 

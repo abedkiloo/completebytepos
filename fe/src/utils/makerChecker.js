@@ -287,6 +287,7 @@ const STORE_SETTINGS_IMMEDIATE_KEYS = [
 
 const STORE_SETTINGS_PATCH_KEYS = [
   ...STORE_SETTINGS_IMMEDIATE_KEYS,
+  'store_name',
   'enabled_payment_methods',
   'receipt_footer_text',
   'receipt_header_text',
@@ -318,6 +319,9 @@ export function normalizeStoreSettingValue(key, value) {
   }
   if (key === 'enabled_payment_methods') {
     return Array.isArray(value) ? value : [];
+  }
+  if (key === 'store_name') {
+    return String(value ?? '').trim();
   }
   return value;
 }

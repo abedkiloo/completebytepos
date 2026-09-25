@@ -12,6 +12,7 @@ import { clearSetupStatusCache, markSetupInstalled } from '../../utils/setupStat
 import { persistMeResponse } from '../../utils/roleAccess';
 import CommitConfirm from '../Shared/CommitConfirm';
 import { installCommitRows } from '../../utils/formCommitSummary';
+import { DEFAULT_STORE_NAME } from '../../utils/storeBranding';
 
 const Installation = () => {
   const navigate = useNavigate();
@@ -125,7 +126,7 @@ const Installation = () => {
           <img src="/logo.svg" alt="" className="mb-2 h-12" />
           <CardTitle className="flex items-center justify-center gap-2 text-2xl">
             <Rocket className="h-7 w-7 text-primary" />
-            Set up CompleteByte POS
+            Set up {DEFAULT_STORE_NAME}
           </CardTitle>
           <CardDescription>
             Fresh database, roles, and a module preset tuned for your business.

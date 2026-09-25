@@ -93,7 +93,7 @@ class Command(BaseCommand):
                 tenant, created = Tenant.objects.get_or_create(
                     code='DEFAULT',
                     defaults={
-                        'name': 'CompleteByte Business',
+                        'name': 'Omuwenga Suppliers',
                         'country': 'Kenya',
                         'city': 'Nairobi',
                         'owner': superuser,

@@ -14,11 +14,22 @@ def daraja_config():
     }
 
 
-BRAND_BLURB = getattr(
-    settings,
-    'SMS_BRAND_BLURB',
-    'Thank you for shopping with CompleteBytePOS.',
-)
+def get_brand_blurb():
+    """SMS / public invoice thank-you line; uses the admin-editable store name."""
+    from settings.store_settings_helpers import resolved_store_name
+
+    template = getattr(settings, 'SMS_BRAND_BLURB', '') or (
+        'Thank you for shopping with {store_name}.'
+    )
+    if template == 'Thank you for shopping with CompleteBytePOS.':
+        template = 'Thank you for shopping with {store_name}.'
+    try:
+        return template.format(store_name=resolved_store_name())
+    except (KeyError, IndexError, ValueError):
+        return template.replace('{store_name}', resolved_store_name())
+
+
+BRAND_BLURB = 'Thank you for shopping with Omuwenga Suppliers.'
 PUBLIC_INVOICE_BASE_URL = getattr(
     settings,
     'PUBLIC_INVOICE_BASE_URL',

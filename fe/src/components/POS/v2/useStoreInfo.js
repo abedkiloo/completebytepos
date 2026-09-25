@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 
 import { readCachedStoreSettings } from '../../../utils/storeSettingsCache';
+import { resolveStoreName } from '../../../utils/storeBranding';
 
 /**
  * Resolve "store / branch / tenant" metadata for the receipt header.
@@ -24,7 +25,7 @@ export function useStoreInfo(sale) {
 
     const storePrefs = readCachedStoreSettings();
 
-    const storeName = tenant.name || branch.name || 'CompleteByte POS';
+    const storeName = resolveStoreName(storePrefs, [tenant.name, branch.name]);
     const branchName = branch.name && branch.name !== storeName ? branch.name : null;
 
     return {

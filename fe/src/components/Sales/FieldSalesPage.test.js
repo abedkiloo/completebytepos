@@ -66,7 +66,7 @@ const submittedOrder = {
 const emptyCartOrder = {
   id: 45,
   status: 'submitted',
-  customer_name: '',
+  customer_name: 'Ada',
   created_at: '2026-09-18T11:00:00Z',
   site_detail: { latitude: -1.3, longitude: 36.9 },
   lines: [],
@@ -143,6 +143,7 @@ describe('FieldSalesPage', () => {
     fireEvent.click(screen.getByTestId('field-sales-pack-44'));
     expect(await screen.findByText('Pack this order?')).toBeInTheDocument();
     expect(screen.getAllByText('Ada').length).toBeGreaterThan(0);
+    expect(screen.getByText(/Customer debt/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId('commit-confirm-cancel'));
     await waitFor(() => {

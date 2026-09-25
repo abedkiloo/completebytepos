@@ -48,10 +48,17 @@ export function canAssignDriver(order) {
     && !order?.assigned_delivery_agent_id;
 }
 
+export function fieldOrderHasCustomer(order) {
+  return Boolean(order?.customer || String(order?.customer_name || '').trim());
+}
+
 export function packReadyError(order, canPack = true) {
   if (!canPack) return 'You cannot pack this order.';
   if (!order) return 'Select an order first.';
   if (!canMarkReady(order)) return 'This order is not waiting to be packed.';
+  if (!fieldOrderHasCustomer(order)) {
+    return 'This field sale needs a customer before it can be packed.';
+  }
   const qty = fieldOrderQty(order);
   if (qty <= 0) return 'This order has no products to pack.';
   return '';
@@ -72,7 +79,10 @@ export function packCommitRows(order, formatMoney) {
     { label: 'Customer', value: order?.customer_name || '—' },
     { label: 'Products', value: fieldOrderLineSummary(order) },
     { label: 'Total', value: money(fieldOrderTotal(order)), emphasis: true },
-    { label: 'After confirm', value: 'Ready for pickup' },
+    {
+      label: 'After confirm',
+      value: 'Customer debt — collect later as Cash or M-Pesa',
+    },
   ];
 }
 

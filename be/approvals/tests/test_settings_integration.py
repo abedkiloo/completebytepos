@@ -40,6 +40,16 @@ class SettingsIntegrationUnitTests(TestCase):
         self.assertEqual(grouped[ACTION_RECEIPT_LEGAL]['receipt_footer_text'], 'Thanks')
         self.assertTrue(grouped[ACTION_STORE_SETTINGS]['allow_sales_add_products'])
 
+    def test_classifies_store_name_as_store_rule(self):
+        grouped = classify_store_settings_changes(
+            {'store_name': 'Omuwenga Furniture'},
+            submitted_keys={'store_name'},
+        )
+        self.assertEqual(
+            grouped[ACTION_STORE_SETTINGS]['store_name'],
+            'Omuwenga Furniture',
+        )
+
     def test_maker_checker_fields_are_immediate(self):
         self.assertIn('maker_checker_enabled', STORE_SETTINGS_IMMEDIATE_FIELDS)
 

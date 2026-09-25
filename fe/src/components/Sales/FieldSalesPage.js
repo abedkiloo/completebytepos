@@ -680,7 +680,7 @@ const FieldSalesPage = () => {
         description={
           pending?.type === 'assign'
             ? 'The driver will see it on their route after you confirm.'
-            : 'Stock will be allocated and the order marked ready for pickup.'
+            : 'Stock is allocated, the customer is billed, and cash is collected later through debt collection.'
         }
         rows={pendingRows}
         onConfirm={confirmPending}

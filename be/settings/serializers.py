@@ -1,7 +1,11 @@
 from rest_framework import serializers
 from .models import ModuleSettings, ModuleFeature, ModuleSetting, Branch, Tenant, StoreSettings
 from .module_settings_registry import MODULE_SETTING_DEFINITIONS
-from .store_settings_helpers import normalize_payment_methods, VALID_PAYMENT_METHODS
+from .store_settings_helpers import (
+    STORE_NAME_MAX_LENGTH,
+    VALID_PAYMENT_METHODS,
+    normalize_payment_methods,
+)
 
 
 class ModuleFeatureSerializer(serializers.ModelSerializer):
@@ -161,6 +165,7 @@ class StoreSettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = StoreSettings
         fields = [
+            'store_name',
             'allow_sales_add_products',
             'sales_catalog_skip_pricing',
             'hide_entity_status_toggles',
@@ -211,6 +216,16 @@ class StoreSettingsSerializer(serializers.ModelSerializer):
         if request:
             return request.build_absolute_uri(url)
         return url
+
+    def validate_store_name(self, value):
+        text = str(value or '').strip()
+        if not text:
+            raise serializers.ValidationError('Store name is required.')
+        if len(text) > STORE_NAME_MAX_LENGTH:
+            raise serializers.ValidationError(
+                f'Store name must be {STORE_NAME_MAX_LENGTH} characters or fewer.'
+            )
+        return text
 
     def validate_enabled_payment_methods(self, value):
         if value is not None and len(value) == 0:
