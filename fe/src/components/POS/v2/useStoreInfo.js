@@ -1,7 +1,11 @@
 import { useMemo } from 'react';
 
 import { readCachedStoreSettings } from '../../../utils/storeSettingsCache';
-import { resolveStoreName } from '../../../utils/storeBranding';
+import {
+  resolveStoreName,
+  DEFAULT_BRAND_LOGO,
+  DEFAULT_STORE_TAGLINE,
+} from '../../../utils/storeBranding';
 
 /**
  * Resolve "store / branch / tenant" metadata for the receipt header.
@@ -42,7 +46,11 @@ export function useStoreInfo(sale) {
         tenant.receipt_footer ||
         'Thank you for your business!',
       receiptHeader: storePrefs.receipt_header_text || '',
-      receiptLogoUrl: storePrefs.receipt_show_logo ? storePrefs.receipt_logo_url : null,
+      receiptLogoUrl:
+        storePrefs.receipt_show_logo === false
+          ? null
+          : storePrefs.receipt_logo_url || DEFAULT_BRAND_LOGO,
+      tagline: DEFAULT_STORE_TAGLINE,
       showSku: Boolean(storePrefs.receipt_show_sku),
     };
   }, [sale]);

@@ -3,7 +3,7 @@
 from datetime import date, datetime, timezone as dt_timezone
 from decimal import Decimal
 from io import BytesIO
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from django.test import SimpleTestCase
 from django.utils import timezone
@@ -12,6 +12,7 @@ from rest_framework import status
 
 from reports.export import (
     UnsupportedExportFormat,
+    _embed_xlsx_logo,
     export_filename,
     flatten_payload,
     humanize_key,
@@ -160,14 +161,19 @@ class RenderTests(SimpleTestCase):
         body = render_csv(SAMPLE_SALES).decode('utf-8-sig')
         self.assertIn('By Payment Method', body)
         self.assertIn('cash', body)
-        self.assertIn('mpesa', body)
+        self.assertTrue(body.startswith('Omuwenga Suppliers'))
+        self.assertIn('Think Furniture', body)
+        self.assertIn('0718515142', body)
 
     def test_xlsx_has_named_sheets(self):
         content = render_xlsx(SAMPLE_SALES, title='Sales Report')
         workbook = load_workbook(BytesIO(content))
         self.assertIn('Summary', workbook.sheetnames)
         self.assertTrue(any('Payment' in name for name in workbook.sheetnames))
-        self.assertEqual(workbook.active['A1'].value, 'Sales Report')
+        self.assertEqual(workbook.active['A1'].value, 'Omuwenga Suppliers')
+        self.assertEqual(workbook.active['A2'].value, 'Sales Report')
+        self.assertIn('0718515142', workbook.active['A3'].value)
+        self.assertTrue(workbook.active._images)
 
     def test_xlsx_unique_sheet_names(self):
         payload = {
@@ -210,6 +216,16 @@ class RenderTests(SimpleTestCase):
         self.assertIn(b'cash', render_report_bytes(SAMPLE_SALES, 'csv'))
         with self.assertRaises(UnsupportedExportFormat):
             render_report_bytes(SAMPLE_SALES, 'gif')
+
+    def test_xlsx_logo_embed_skips_when_missing_or_broken(self):
+        worksheet = Mock()
+        with patch('reports.export.resolved_logo_path', return_value=None):
+            _embed_xlsx_logo(worksheet)
+        worksheet.add_image.assert_not_called()
+        with patch('reports.export.resolved_logo_path', return_value='/nope.jpg'), patch(
+            'openpyxl.drawing.image.Image', side_effect=OSError('bad')
+        ):
+            _embed_xlsx_logo(worksheet)
 
 
 class ResponseTests(SimpleTestCase):

@@ -24,7 +24,7 @@ import {
 } from '../../utils/saleItemDisplay';
 import { hasDuplicateSaleLines } from '../../utils/detectDuplicateSaleLines';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
-import { resolveStoreName } from '../../utils/storeBranding';
+import { resolveStoreName, resolveReceiptLogoUrl, DEFAULT_STORE_TAGLINE } from '../../utils/storeBranding';
 
 export default function SaleDetailDialog({
   sale,
@@ -40,6 +40,7 @@ export default function SaleDetailDialog({
 }) {
   const { settings } = useStoreSettings();
   const storeName = resolveStoreName(settings);
+  const logoUrl = resolveReceiptLogoUrl(settings);
   if (!sale) return null;
 
   const receiptSale = normalizeSaleForReceipt(sale);
@@ -69,7 +70,11 @@ export default function SaleDetailDialog({
 
         <div className="receipt-content space-y-4 text-sm">
           <div className="receipt-header text-center">
+            {logoUrl ? (
+              <img src={logoUrl} alt="" className="mx-auto mb-2 h-16 w-16 object-contain" />
+            ) : null}
             <h3 className="text-lg font-semibold">{storeName}</h3>
+            <p className="text-xs text-muted-foreground">{DEFAULT_STORE_TAGLINE}</p>
             <p className="text-muted-foreground">Sale receipt</p>
           </div>
 

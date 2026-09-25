@@ -15,6 +15,7 @@ from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from sales.models import Sale, SaleRefund
+from utils.document_branding import brand_contact_line, brand_name_line
 
 from .services import resolve_period
 
@@ -239,6 +240,8 @@ class SalesPersonReportService:
     def to_csv(payload: dict[str, Any]) -> str:
         output = io.StringIO()
         writer = csv.writer(output)
+        writer.writerow([brand_name_line()])
+        writer.writerow([brand_contact_line()])
         writer.writerow(['Sales staff performance report'])
         writer.writerow(['Period', payload.get('period_display') or payload.get('period', '')])
         writer.writerow(['From', payload.get('date_from') or ''])

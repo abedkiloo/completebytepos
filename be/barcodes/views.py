@@ -14,6 +14,7 @@ from io import BytesIO
 import base64
 from PIL import Image
 import logging
+from utils.document_branding import brand_name_line
 
 # Get logger for this module
 logger = logging.getLogger(__name__)
@@ -255,6 +256,9 @@ def print_barcode_labels(request):
                 # Position
                 label_x = x + (col * label_width * inch)
                 label_y = y
+
+                c.setFont("Helvetica", 6)
+                c.drawString(label_x + 0.1 * inch, label_y - 0.08 * inch, brand_name_line()[:40])
                 
                 # Draw barcode
                 img_buffer = BytesIO()

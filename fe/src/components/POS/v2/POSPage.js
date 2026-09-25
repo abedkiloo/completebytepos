@@ -39,6 +39,8 @@ import CustomerFormModal from '../../Customers/CustomerFormModal';
 import BranchSelector from '../../BranchSelector/BranchSelector';
 import { cn } from '../../../lib/cn';
 import { useStoreSettings } from '../../../hooks/useStoreSettings';
+import BrandMark from '../../Shared/BrandMark';
+import { resolveStoreName } from '../../../utils/storeBranding';
 import {
   salesShowDiscount,
   salesShowTax,
@@ -75,6 +77,7 @@ export default function POSPage() {
   const navigate = useNavigate();
   const state = usePOSState();
   const { settings } = useStoreSettings();
+  const storeName = resolveStoreName(settings);
   const { settings: customerModuleSettings } = useModuleSettings('customers');
   const { permissions } = getStoredAuth();
   const canAddCustomer = canQuickAddCustomerAtPos(
@@ -184,9 +187,9 @@ export default function POSPage() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
 
-        <div className="flex items-center gap-2">
-          <img src="/logo.svg" alt="" className="h-6 w-auto" />
-          <span className="hidden text-sm font-semibold sm:inline">POS</span>
+        <div className="flex min-w-0 items-center gap-2">
+          <BrandMark className="h-8 w-8" name={storeName} />
+          <span className="hidden truncate text-sm font-semibold sm:inline">{storeName}</span>
           <span className="hidden text-xs text-muted-foreground sm:inline">
             · {state.orderNumber}
           </span>

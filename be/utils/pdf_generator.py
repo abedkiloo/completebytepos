@@ -11,6 +11,7 @@ from io import BytesIO
 from decimal import Decimal
 from datetime import datetime
 from sales.models import Payment
+from utils.document_branding import brand_header_elements
 
 
 def format_currency(amount):
@@ -30,15 +31,6 @@ def create_invoice_pdf(invoice):
     
     # Define styles
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontSize=18,
-        textColor=colors.HexColor('#1a1a1a'),
-        spaceAfter=30,
-        alignment=TA_CENTER
-    )
-    
     heading_style = ParagraphStyle(
         'CustomHeading',
         parent=styles['Heading2'],
@@ -50,12 +42,8 @@ def create_invoice_pdf(invoice):
     normal_style = styles['Normal']
     normal_style.fontSize = 9
     
-    # Company Header — admin-editable store display name
-    from settings.store_settings_helpers import resolved_store_name
-
-    elements.append(Paragraph(resolved_store_name(), title_style))
-    elements.append(Paragraph("Invoice", heading_style))
-    elements.append(Spacer(1, 0.2*inch))
+    elements.extend(brand_header_elements('Invoice'))
+    elements.append(Spacer(1, 0.15 * inch))
     
     # Invoice Details
     invoice_data = [
@@ -233,17 +221,7 @@ def create_balance_sheet_pdf(data):
     elements = []
     
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'Title',
-        parent=styles['Heading1'],
-        fontSize=16,
-        textColor=colors.HexColor('#1a1a1a'),
-        alignment=TA_CENTER,
-        spaceAfter=30
-    )
-    
-    # Title
-    elements.append(Paragraph("BALANCE SHEET", title_style))
+    elements.extend(brand_header_elements('BALANCE SHEET'))
     elements.append(Paragraph(f"As of {datetime.strptime(data['date'], '%Y-%m-%d').strftime('%B %d, %Y')}", styles['Normal']))
     elements.append(Spacer(1, 0.3*inch))
     
@@ -320,19 +298,9 @@ def create_income_statement_pdf(data):
     elements = []
     
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'Title',
-        parent=styles['Heading1'],
-        fontSize=16,
-        textColor=colors.HexColor('#1a1a1a'),
-        alignment=TA_CENTER,
-        spaceAfter=30
-    )
-    
-    # Title
     date_from = datetime.strptime(data['period_start'], '%Y-%m-%d').strftime('%B %d, %Y')
     date_to = datetime.strptime(data['period_end'], '%Y-%m-%d').strftime('%B %d, %Y')
-    elements.append(Paragraph("INCOME STATEMENT", title_style))
+    elements.extend(brand_header_elements('INCOME STATEMENT'))
     elements.append(Paragraph(f"Period: {date_from} to {date_to}", styles['Normal']))
     elements.append(Spacer(1, 0.3*inch))
     
@@ -412,17 +380,7 @@ def create_trial_balance_pdf(data):
     elements = []
     
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'Title',
-        parent=styles['Heading1'],
-        fontSize=16,
-        textColor=colors.HexColor('#1a1a1a'),
-        alignment=TA_CENTER,
-        spaceAfter=30
-    )
-    
-    # Title
-    elements.append(Paragraph("TRIAL BALANCE", title_style))
+    elements.extend(brand_header_elements('TRIAL BALANCE'))
     elements.append(Paragraph(f"As of {datetime.strptime(data['date'], '%Y-%m-%d').strftime('%B %d, %Y')}", styles['Normal']))
     elements.append(Spacer(1, 0.3*inch))
     

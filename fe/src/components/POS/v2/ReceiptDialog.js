@@ -49,12 +49,16 @@ function isWalkInSale(sale) {
   return !sale?.customer_id || name.includes('walk-in');
 }
 
-function buildWhatsAppMessage(sale) {
+function buildWhatsAppMessage(sale, store) {
+  const storeName = store?.storeName || 'Omuwenga Suppliers';
+  const phone = store?.phone || '0718515142';
   const lines = [
+    storeName,
     `Receipt ${sale.sale_number || ''}`.trim(),
     `Total: ${formatCurrency(sale.total)}`,
     '',
     'Thank you for your purchase!',
+    `Tel: ${phone}`,
   ];
   return lines.filter(Boolean).join('\n');
 }
@@ -195,7 +199,7 @@ export default function ReceiptDialog({
               )}
             </Button>
             <div className="grid w-full grid-cols-2 gap-2">
-              <SendWhatsAppButton sale={sale} className="w-full" />
+              <SendWhatsAppButton sale={sale} store={store} className="w-full" />
               <Button
                 type="button"
                 variant="outline"
@@ -223,7 +227,7 @@ export default function ReceiptDialog({
   );
 }
 
-function SendWhatsAppButton({ sale, className = '' }) {
+function SendWhatsAppButton({ sale, store, className = '' }) {
   const phone = (sale.customer_phone || sale.customer?.phone || '').replace(/\D/g, '');
 
   const onClick = () => {
@@ -231,7 +235,7 @@ function SendWhatsAppButton({ sale, className = '' }) {
       toast.warning('Add a customer phone number to send via WhatsApp.');
       return;
     }
-    const message = buildWhatsAppMessage(sale);
+    const message = buildWhatsAppMessage(sale, store);
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank', 'noopener,noreferrer');
   };

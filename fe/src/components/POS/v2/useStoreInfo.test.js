@@ -85,6 +85,18 @@ describe('useStoreInfo', () => {
     expect(result.current.receiptFooter).toBe('Thank you');
   });
 
+  it('defaults the receipt logo to the packaged plate mark', () => {
+    const { result } = renderHook(() => useStoreInfo({}));
+    expect(result.current.receiptLogoUrl).toBe('/logo.jpg');
+    expect(result.current.tagline).toBe('Think Furniture, Think Omuwenga');
+  });
+
+  it('hides the receipt logo when the admin turns it off', () => {
+    cacheStoreSettings({ receipt_show_logo: false, receipt_logo_url: '/media/logo.png' });
+    const { result } = renderHook(() => useStoreInfo({}));
+    expect(result.current.receiptLogoUrl).toBeNull();
+  });
+
   it('ignores corrupt localStorage JSON', () => {
     localStorage.setItem('user', '{not-json');
     localStorage.setItem('current_branch', '{also-bad');

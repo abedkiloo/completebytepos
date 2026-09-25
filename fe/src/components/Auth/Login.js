@@ -16,7 +16,8 @@ import { sessionIdleExpiredMessage } from '../../config/sessionConfig';
 import { markSessionActivity } from '../../utils/sessionIdle';
 import { clearSessionTeardownFlag } from '../../utils/authSession';
 import { fetchSetupStatus } from '../../utils/setupStatus';
-import { DEFAULT_STORE_NAME } from '../../utils/storeBranding';
+import { DEFAULT_STORE_NAME, DEFAULT_STORE_TAGLINE } from '../../utils/storeBranding';
+import BrandMark from '../Shared/BrandMark';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -81,10 +82,13 @@ function LandingPanel({ className }) {
 
       <div className="relative z-10 flex h-full flex-col px-8 py-8 lg:px-12 lg:py-10">
         <div className="flex items-center gap-3">
-          <img src="/logo.svg" alt="" className="h-9 w-auto brightness-110" />
-          <span className="text-sm font-medium tracking-wide text-background/70">
-            {DEFAULT_STORE_NAME}
-          </span>
+          <BrandMark className="h-14 w-14" />
+          <div>
+            <span className="block text-sm font-medium tracking-wide text-background/70">
+              {DEFAULT_STORE_NAME}
+            </span>
+            <span className="block text-xs text-background/50">{DEFAULT_STORE_TAGLINE}</span>
+          </div>
         </div>
 
         <div className="mt-10 flex max-w-lg flex-1 flex-col justify-center lg:mt-0">
@@ -252,8 +256,11 @@ const Login = () => {
     <div className="flex min-h-screen flex-col bg-background lg:flex-row">
       <div className="bg-foreground px-5 py-6 text-background lg:hidden">
         <div className="flex items-center gap-3">
-          <img src="/logo.svg" alt="" className="h-8 w-auto brightness-110" />
-          <span className="text-sm font-medium text-background/70">{DEFAULT_STORE_NAME}</span>
+          <BrandMark className="h-12 w-12" />
+          <div>
+            <span className="block text-sm font-medium text-background/70">{DEFAULT_STORE_NAME}</span>
+            <span className="block text-xs text-background/50">{DEFAULT_STORE_TAGLINE}</span>
+          </div>
         </div>
         <h1 className="mt-4 text-xl font-semibold leading-snug tracking-tight">
           Run the counter, the stock, and the close — from one place.

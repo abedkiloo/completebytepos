@@ -62,6 +62,7 @@ import { stopIdleSessionWatch } from '../../utils/sessionIdle';
 import { cacheStoreSettings } from '../../utils/storeSettingsCache';
 import { resolveStoreName } from '../../utils/storeBranding';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
+import BrandMark from '../Shared/BrandMark';
 import { useNavBadgeCounts } from '../../hooks/useNavBadgeCounts';
 import { navBadgeCountForItem } from '../../utils/navBadges';
 import NavCountBadge from './NavCountBadge';
@@ -433,7 +434,7 @@ const Layout = ({ children }) => {
         </Button>
 
         <Link to="/" className="flex min-w-0 shrink items-center gap-2">
-          <img src="/logo.svg" alt={storeName} className="h-7 w-auto shrink-0" />
+          <BrandMark className="h-9 w-9" name={storeName} />
           <span className="hidden truncate text-sm font-semibold text-foreground sm:inline">
             {storeName}
           </span>

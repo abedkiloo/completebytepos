@@ -73,6 +73,7 @@ class SalesPersonReportTests(ManagerAPITestCase):
         self.assertIn('text/csv', response['Content-Type'])
         body = response.content.decode('utf-8-sig')
         self.assertIn('Sales staff performance report', body)
+        self.assertIn('Omuwenga Suppliers', body)
         self.assertIn('staff_b', body)
 
     def test_sales_by_person_pdf_and_excel(self):

@@ -60,6 +60,8 @@ import { useModuleSettings } from '../../../hooks/useModuleSettings';
 import { canQuickAddCustomerAtPos, customersShowWalletBalance } from '../../../utils/customerDisplay';
 import { CustomerWalletBalance } from '../../Customers/CustomerWalletBalance';
 import { AccountPaymentBlock } from '../AccountPaymentBlock';
+import BrandMark from '../../Shared/BrandMark';
+import { resolveStoreName } from '../../../utils/storeBranding';
 import {
   BILLING_AMOUNT_RECEIVED_CLASS,
   BILLING_INVOICE_CARD_CLASS,
@@ -73,6 +75,7 @@ import {
 export default function BillingPOSPage() {
   const state = useBillingPOSState();
   const { settings } = useStoreSettings();
+  const storeName = resolveStoreName(settings);
   const paymentModes = filterEnabledPaymentMethods(settings.enabled_payment_methods).map((m) => ({
     id: m.id,
     label: m.id === 'mpesa' ? 'UPI / M-PESA' : m.label,
@@ -156,8 +159,10 @@ export default function BillingPOSPage() {
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-slate-50">
         {/* Top bar */}
         <div className="flex flex-col gap-2 border-b bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
-          <div className="min-w-0">
-            <h1 className="truncate text-lg font-semibold text-slate-900">Terminal POS</h1>
+          <div className="flex min-w-0 items-center gap-2">
+            <BrandMark className="h-8 w-8" name={storeName} />
+            <div className="min-w-0">
+            <h1 className="truncate text-lg font-semibold text-slate-900">{storeName}</h1>
             <p className="truncate text-xs text-muted-foreground">
               Draft invoice saved automatically
               {state.holdingNumber && (
@@ -167,6 +172,7 @@ export default function BillingPOSPage() {
                 <span className="ml-2 text-amber-600">· saving…</span>
               )}
             </p>
+            </div>
           </div>
           <Button variant="outline" size="sm" className="w-full shrink-0 sm:w-auto" onClick={state.clearCart}>
             New sale

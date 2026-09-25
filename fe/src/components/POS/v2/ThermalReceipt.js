@@ -76,6 +76,9 @@ export const ThermalReceipt = forwardRef(function ThermalReceipt(
           />
         )}
         <div className="receipt-thermal__store">{store.storeName}</div>
+        {store.tagline && (
+          <div className="receipt-thermal__line-thin">{store.tagline}</div>
+        )}
         {store.receiptHeader && (
           <div className="receipt-thermal__line-thin">{store.receiptHeader}</div>
         )}

@@ -12,11 +12,18 @@ from typing import Any, Iterable, Optional
 from django.http import HttpResponse
 from django.utils import timezone
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+from utils.document_branding import (
+    brand_contact_line,
+    brand_header_elements,
+    brand_name_line,
+    resolved_logo_path,
+)
 
 CONTENT_TYPES = {
     'pdf': 'application/pdf',
@@ -184,9 +191,26 @@ def flatten_payload(payload: Any) -> list[tuple[str, list[str], list[list[Any]]]
     return sheets
 
 
+def _embed_xlsx_logo(worksheet, cell: str = 'E1', size: int = 72):
+    path = resolved_logo_path()
+    if not path:
+        return
+    try:
+        from openpyxl.drawing.image import Image as XLImage
+
+        image = XLImage(path)
+        image.width = size
+        image.height = size
+        worksheet.add_image(image, cell)
+    except Exception:
+        return
+
+
 def render_csv(payload: Any) -> bytes:
     output = io.StringIO()
     writer = csv.writer(output)
+    writer.writerow([brand_name_line()])
+    writer.writerow([brand_contact_line()])
     for index, (name, headers, rows) in enumerate(flatten_payload(payload)):
         if index:
             writer.writerow([])
@@ -219,16 +243,20 @@ def render_xlsx(payload: Any, title: str = 'Report') -> bytes:
         used_names.add(unique.lower())
         worksheet = default if index == 0 else workbook.create_sheet()
         worksheet.title = unique
-        worksheet['A1'] = title
+        worksheet['A1'] = brand_name_line()
         worksheet['A1'].font = Font(bold=True, size=14)
+        worksheet['A2'] = title
+        worksheet['A2'].font = Font(bold=True, size=12)
+        worksheet['A3'] = brand_contact_line()
+        _embed_xlsx_logo(worksheet)
         header_fill = PatternFill('solid', fgColor='1F4E79')
         header_font = Font(bold=True, color='FFFFFF')
         for col, header in enumerate(headers, start=1):
-            cell = worksheet.cell(row=3, column=col, value=header)
+            cell = worksheet.cell(row=4, column=col, value=header)
             cell.fill = header_fill
             cell.font = header_font
             cell.alignment = Alignment(horizontal='center')
-        for row_index, row in enumerate(rows, start=4):
+        for row_index, row in enumerate(rows, start=5):
             for col, value in enumerate(row, start=1):
                 worksheet.cell(row=row_index, column=col, value=value)
         for col in range(1, len(headers) + 1):
@@ -241,13 +269,6 @@ def render_xlsx(payload: Any, title: str = 'Report') -> bytes:
 def render_pdf(payload: Any, title: str = 'Report') -> bytes:
     buffer = io.BytesIO()
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'ReportTitle',
-        parent=styles['Heading1'],
-        fontSize=16,
-        alignment=TA_CENTER,
-        spaceAfter=12,
-    )
     heading_style = ParagraphStyle(
         'ReportHeading',
         parent=styles['Heading2'],
@@ -264,14 +285,16 @@ def render_pdf(payload: Any, title: str = 'Report') -> bytes:
         topMargin=0.5 * inch,
         bottomMargin=0.5 * inch,
     )
-    elements = [
-        Paragraph(str(title or 'Report'), title_style),
-        Paragraph(
-            f'Generated {timezone.localtime().strftime("%Y-%m-%d %H:%M")}',
-            styles['Normal'],
-        ),
-        Spacer(1, 0.15 * inch),
-    ]
+    elements = brand_header_elements(str(title or 'Report'))
+    elements.extend(
+        [
+            Paragraph(
+                f'Generated {timezone.localtime().strftime("%Y-%m-%d %H:%M")}',
+                styles['Normal'],
+            ),
+            Spacer(1, 0.15 * inch),
+        ]
+    )
     for name, headers, rows in flatten_payload(payload):
         display_headers = headers[:8]
         display_rows = [row[:8] for row in rows]

@@ -56,3 +56,11 @@ class BarcodeAPITests(APITestCase):
         res = self.client.get(url, {'product_id': self.product.id, 'barcode_format': 'code128'})
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertIn('image', res.data)
+
+    def test_print_labels_pdf_is_branded(self):
+        url = reverse('barcode-print-labels')
+        res = self.client.post(url, {'product_ids': [self.product.id]}, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res['Content-Type'], 'application/pdf')
+        self.assertTrue(res.content.startswith(b'%PDF'))
+

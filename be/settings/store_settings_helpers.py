@@ -22,9 +22,12 @@ def normalize_store_name(value):
 
 
 def resolved_store_name():
-    from settings.models import StoreSettings
+    try:
+        from settings.models import StoreSettings
 
-    return normalize_store_name(StoreSettings.load().store_name)
+        return normalize_store_name(StoreSettings.load().store_name)
+    except Exception:
+        return DEFAULT_STORE_NAME
 
 
 def user_may_edit_pricing(user):
