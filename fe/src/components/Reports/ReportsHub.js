@@ -683,7 +683,7 @@ export default function ReportsHub() {
                   <div>
                     <CardTitle className="text-base">Stock valuation</CardTitle>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      What is in stock right now, with cost and retail value. PDF includes the store logo and name.
+                      On-hand stock with inventory and selling value. PDF includes the store logo and name.
                     </p>
                   </div>
                 </div>

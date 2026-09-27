@@ -7,13 +7,16 @@ import { toast } from '../../utils/toast';
 import { getStoredAuth, hasPermission, userMayViewDeliveryHistory } from '../../utils/roleAccess';
 import {
   assignCommitRows,
+  assignConfirmDescription,
   assignDriverError,
   canAssignDriver,
   canMarkReady,
   deliveryAssigneeLabel,
   fieldOrderLineSummary,
   fieldOrderTotal,
+  mergeDriverIntoList,
   packCommitRows,
+  packConfirmDescription,
   packReadyError,
 } from '../../utils/fieldSalesCommit';
 import { Button } from '../ui/button';
@@ -197,7 +200,8 @@ const FieldSalesPage = () => {
     setPackingId(order.id);
     try {
       await dispatchAPI.pack(order.id);
-      toast.success(`Order #${order.id} marked ready for pickup`);
+      const name = String(order.customer_name || 'The customer').trim() || 'The customer';
+      toast.success(`${name} was added as a debtor. Order #${order.id} is ready for pickup.`);
       await loadOrders();
       await refreshSelected(order.id);
     } catch (error) {
@@ -661,13 +665,19 @@ const FieldSalesPage = () => {
       <AddDriverDialog
         open={showAddDriver}
         onClose={() => setShowAddDriver(false)}
-        onCreated={(driver) => {
-          if (!driver?.id) return;
-          setDrivers((prev) => {
-            if (prev.some((d) => d.id === driver.id)) return prev;
-            return [...prev, driver];
-          });
-          setSelectedDriverId(String(driver.id));
+        onCreated={async (driver) => {
+          const id = Number(driver?.id);
+          if (!Number.isFinite(id) || id <= 0) return;
+          setDrivers((prev) => mergeDriverIntoList(prev, driver));
+          setSelectedDriverId(String(id));
+          try {
+            const response = await dispatchAPI.drivers();
+            const rows = Array.isArray(response.data) ? response.data : [];
+            setDrivers(mergeDriverIntoList(rows, driver));
+            setSelectedDriverId(String(id));
+          } catch {
+            /* keep the locally merged list so assign still works */
+          }
         }}
       />
 
@@ -676,16 +686,17 @@ const FieldSalesPage = () => {
         onOpenChange={(open) => {
           if (!open && packingId == null && assigningId == null) setPending(null);
         }}
-        title={pending?.type === 'assign' ? 'Assign this order?' : 'Pack this order?'}
+        title={pending?.type === 'assign' ? 'Assign this order?' : 'Mark ready for pickup?'}
         description={
           pending?.type === 'assign'
-            ? 'The driver will see it on their route after you confirm.'
-            : 'Stock is allocated, the customer is billed, and cash is collected later through debt collection.'
+            ? assignConfirmDescription(pending.order)
+            : packConfirmDescription(pending?.order)
         }
         rows={pendingRows}
         onConfirm={confirmPending}
         submitting={packingId != null || assigningId != null}
-        confirmText={pending?.type === 'assign' ? 'Confirm & assign' : 'Confirm & pack'}
+        confirmText={pending?.type === 'assign' ? 'Confirm & assign' : 'Confirm & mark ready'}
+        variant={pending?.type === 'pack' ? 'warning' : 'info'}
       />
     </PageShell>
   );

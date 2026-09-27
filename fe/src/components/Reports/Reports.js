@@ -936,7 +936,7 @@ const Reports = () => {
             reportParam === 'sales-by-person'
               ? 'Month-end totals per sales person — filter, print, or download PDF, Excel, or CSV for commission records.'
               : reportParam === 'stock-valuation'
-                ? 'What is in stock right now, with cost and retail value. PDF, Excel, and CSV include the store logo and name.'
+                ? 'On-hand stock with inventory and selling value. PDF, Excel, and CSV include the store logo and name.'
                 : `Analytics for ${getReportTitle().toLowerCase()}. Download PDF or Excel anytime.`
           }
         >

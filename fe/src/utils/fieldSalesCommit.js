@@ -72,6 +72,33 @@ export function assignDriverError(order, driverId, canPack = true) {
   return '';
 }
 
+export const DEBTOR_CONFIRM_COPY =
+  'This customer will be added as a debtor in the system. Collect later as Cash or M-Pesa.';
+
+export function assignCreatesCustomerDebt(order) {
+  return order?.status === 'packing' && !order?.stock_allocated;
+}
+
+export function packConfirmDescription(order) {
+  const name = String(order?.customer_name || 'this customer').trim() || 'this customer';
+  return `After you confirm, ${name} is added as a debtor. Collect the amount later under Debt collection (Cash or M-Pesa).`;
+}
+
+export function assignConfirmDescription(order) {
+  if (assignCreatesCustomerDebt(order)) {
+    return `This also marks the order ready. ${DEBTOR_CONFIRM_COPY}`;
+  }
+  return 'The person you pick will see it on their route after you confirm.';
+}
+
+export function debtorConfirmRow() {
+  return {
+    label: 'Customer account',
+    value: DEBTOR_CONFIRM_COPY,
+    tone: 'warning',
+  };
+}
+
 export function packCommitRows(order, formatMoney) {
   const money = typeof formatMoney === 'function' ? formatMoney : String;
   return [
@@ -79,21 +106,29 @@ export function packCommitRows(order, formatMoney) {
     { label: 'Customer', value: order?.customer_name || '—' },
     { label: 'Products', value: fieldOrderLineSummary(order) },
     { label: 'Total', value: money(fieldOrderTotal(order)), emphasis: true },
-    {
-      label: 'After confirm',
-      value: 'Customer debt — collect later as Cash or M-Pesa',
-    },
+    debtorConfirmRow(),
   ];
 }
 
 export function assignCommitRows(order, driver, formatMoney) {
   const money = typeof formatMoney === 'function' ? formatMoney : String;
   const driverName = deliveryAssigneeLabel(driver);
-  return [
+  const rows = [
     { label: 'Order', value: order?.id != null ? `#${order.id}` : '', emphasis: true },
     { label: 'Customer', value: order?.customer_name || '—' },
     { label: 'Products', value: fieldOrderLineSummary(order) },
     { label: 'Total', value: money(fieldOrderTotal(order)) },
     { label: 'Delivered by', value: driverName, emphasis: true, tone: 'success' },
   ];
+  if (assignCreatesCustomerDebt(order)) {
+    rows.push(debtorConfirmRow());
+  }
+  return rows;
+}
+
+export function mergeDriverIntoList(drivers, driver) {
+  const id = Number(driver?.id);
+  const list = Array.isArray(drivers) ? drivers : [];
+  if (!Number.isFinite(id) || id <= 0) return list;
+  return [...list.filter((row) => Number(row.id) !== id), { ...driver, id }];
 }

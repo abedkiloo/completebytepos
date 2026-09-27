@@ -33,7 +33,12 @@ class CreateDriverAPITestCase(ClaimAndDriversAPITestCase):
         created_id = res.data['id']
         user = User.objects.get(pk=created_id)
         self.assertEqual(user.profile.custom_role.name, ROLE_DELIVERY_AGENT)
+        self.assertIn(user.profile.role, dict(UserProfile.ROLE_CHOICES))
         self.assertTrue(user.profile.must_change_password)
+        from delivery.assignees import user_can_do_delivery
+
+        self.assertTrue(user_can_do_delivery(user))
+        self.assertTrue(user.profile.custom_role.has_permission('delivery', 'update'))
 
         listed = self.client.get('/api/dispatch/drivers/')
         ids = {row['id'] for row in listed.data}
@@ -151,6 +156,110 @@ class CreateDriverAPITestCase(ClaimAndDriversAPITestCase):
         self.assertEqual(data['phone_number'], '')
         self.assertEqual(data['role_name'], '')
 
+    def test_duplicate_phone_is_rejected(self):
+        self._auth(self.dispatch)
+        first = self.client.post(
+            '/api/dispatch/drivers/',
+            {'display_name': 'Ken Mutua', 'phone': '0712345678'},
+            format='json',
+        )
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED, first.data)
+        dup = self.client.post(
+            '/api/dispatch/drivers/',
+            {'display_name': 'Ken Two', 'phone': '0712345678'},
+            format='json',
+        )
+        self.assertEqual(dup.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('phone', dup.data)
+
+    def test_backfills_delivery_permission_so_driver_lists(self):
+        role = Role.objects.get(name=ROLE_DELIVERY_AGENT)
+        role.permissions.clear()
+        self.assertFalse(role.has_permission('delivery', 'update'))
+        self._auth(self.dispatch)
+        res = self.client.post(
+            '/api/dispatch/drivers/',
+            {'display_name': 'Pat Driver', 'phone': '0712000999'},
+            format='json',
+        )
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.data)
+        listed = self.client.get('/api/dispatch/drivers/')
+        self.assertIn(res.data['id'], {row['id'] for row in listed.data})
+        from delivery.assignees import user_can_do_delivery
+
+        created = User.objects.get(pk=res.data['id'])
+        self.assertTrue(user_can_do_delivery(created))
+
+    def test_create_raises_when_username_keeps_colliding(self):
+        from django.db import IntegrityError
+        from unittest.mock import patch
+
+        from rest_framework.serializers import ValidationError
+
+        from dispatch.driver_create import CreateDriverSerializer
+
+        ser = CreateDriverSerializer()
+        with patch(
+            'dispatch.driver_create.User.objects.create_user',
+            side_effect=IntegrityError('username'),
+        ):
+            with self.assertRaises(ValidationError) as caught:
+                ser.create({
+                    'display_name': 'Ken Mutua',
+                    'phone': '254712555666',
+                    'username': '',
+                    'password': 'secret99',
+                })
+        self.assertIn('Could not create that driver', str(caught.exception.detail))
+
+    def test_create_retries_after_username_collision(self):
+        from django.db import IntegrityError
+        from unittest.mock import patch
+
+        from dispatch.driver_create import CreateDriverSerializer
+
+        calls = {'n': 0}
+        real_create = User.objects.create_user
+
+        def flaky_create(**kwargs):
+            calls['n'] += 1
+            if calls['n'] == 1:
+                raise IntegrityError('username')
+            return real_create(**kwargs)
+
+        ser = CreateDriverSerializer()
+        with patch(
+            'dispatch.driver_create.User.objects.create_user',
+            side_effect=flaky_create,
+        ):
+            user = ser.create({
+                'display_name': 'Ken Mutua',
+                'phone': '254712555667',
+                'username': '',
+                'password': 'secret99',
+            })
+        self.assertEqual(calls['n'], 2)
+        self.assertTrue(user.pk)
+        self.assertEqual(user.profile.custom_role.name, ROLE_DELIVERY_AGENT)
+
+    def test_profile_integrity_error_is_not_swallowed(self):
+        from django.db import IntegrityError
+        from unittest.mock import patch
+
+        from dispatch.driver_create import CreateDriverSerializer
+
+        ser = CreateDriverSerializer()
+        with patch(
+            'dispatch.driver_create.UserProfile.objects.create',
+            side_effect=IntegrityError('profile'),
+        ):
+            with self.assertRaises(IntegrityError):
+                ser.create({
+                    'display_name': 'Ken Mutua',
+                    'phone': '254712555668',
+                    'username': '',
+                    'password': 'secret99',
+                })
 
 class StickyDailyNoteAPITests(ClaimAndDriversAPITestCase):
     """Reuse delivery fixture users; manager-like dispatcher is not daily-notes.

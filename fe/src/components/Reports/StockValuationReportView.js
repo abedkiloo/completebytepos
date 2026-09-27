@@ -6,12 +6,15 @@ import { useStoreSettings } from '../../hooks/useStoreSettings';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { reportsShowCostAndProfit } from '../../utils/reportDisplay';
 import { resolveStoreName, DEFAULT_STORE_TAGLINE } from '../../utils/storeBranding';
-import { formatCurrency, formatNumber } from '../../utils/formatters';
+import { formatCurrency, formatDateTime, formatNumber } from '../../utils/formatters';
 import { toast } from '../../utils/toast';
 import { EmptyState, PageLoading } from '../page';
 import { R } from './reportUI';
 import ReportExportButtons from './ReportExportButtons';
 import BrandMark from '../Shared/BrandMark';
+
+const NUM = '!text-right tabular-nums whitespace-nowrap';
+const HEAD_NUM = `${NUM} font-medium`;
 
 export default function StockValuationReportView() {
   const { settings } = useStoreSettings();
@@ -42,8 +45,12 @@ export default function StockValuationReportView() {
   }, [loadReport]);
 
   const summary = data?.summary || {};
-  const lines = data?.lines || [];
+  const items = data?.items || data?.lines || [];
   const exportParams = includeZero ? { include_zero: '1' } : {};
+  const asOf = data?.as_of || data?.generated_at;
+  const itemCount = summary.item_count ?? summary.line_count ?? items.length;
+  const inventoryValue = summary.inventory_value ?? summary.cost_value ?? 0;
+  const sellingValue = summary.selling_value ?? summary.retail_value ?? 0;
 
   return (
     <div className="space-y-6 print:space-y-4">
@@ -52,9 +59,15 @@ export default function StockValuationReportView() {
           <BrandMark className="h-14 w-14" name={storeName} />
           <div>
             <p className="text-lg font-semibold leading-tight">{storeName}</p>
+            <p className="text-sm font-medium">Stock valuation</p>
             <p className="text-xs text-muted-foreground">{DEFAULT_STORE_TAGLINE}</p>
             {data?.contact ? (
               <p className="text-xs text-muted-foreground">{data.contact}</p>
+            ) : null}
+            {asOf ? (
+              <p className="text-xs text-muted-foreground">
+                As of {formatDateTime(asOf)}
+              </p>
             ) : null}
           </div>
         </div>
@@ -65,7 +78,7 @@ export default function StockValuationReportView() {
               checked={includeZero}
               onChange={(e) => setIncludeZero(e.target.checked)}
             />
-            Include zero stock
+            Show zero quantity
           </label>
           <ReportExportButtons slug="stock-valuation" params={exportParams} disabled={loading} />
         </div>
@@ -83,32 +96,34 @@ export default function StockValuationReportView() {
         <>
           <div className={R.summaryGrid}>
             <div className={R.summaryCard}>
-              <h3>Lines on hand</h3>
-              <p className={R.summaryValue}>{formatNumber(summary.line_count || 0)}</p>
+              <h3>SKUs in stock</h3>
+              <p className={`${R.summaryValue} text-right`}>{formatNumber(itemCount)}</p>
             </div>
             <div className={R.summaryCard}>
-              <h3>Units on hand</h3>
-              <p className={R.summaryValue}>{formatNumber(summary.units_on_hand || 0)}</p>
+              <h3>Qty on hand</h3>
+              <p className={`${R.summaryValue} text-right`}>
+                {formatNumber(summary.units_on_hand || 0)}
+              </p>
             </div>
             {showCost ? (
               <div className={R.summaryCard}>
-                <h3>Cost value</h3>
-                <p className={R.summaryValue}>{formatCurrency(summary.cost_value || 0)}</p>
+                <h3>Inventory value</h3>
+                <p className={`${R.summaryValue} text-right`}>
+                  {formatCurrency(inventoryValue)}
+                </p>
               </div>
             ) : null}
             <div className={R.summaryCard}>
-              <h3>Retail value</h3>
-              <p className={R.summaryValue}>{formatCurrency(summary.retail_value || 0)}</p>
+              <h3>Selling value</h3>
+              <p className={`${R.summaryValue} text-right`}>{formatCurrency(sellingValue)}</p>
             </div>
           </div>
 
-          {data.note ? <p className="text-xs text-muted-foreground">{data.note}</p> : null}
-
-          {lines.length === 0 ? (
+          {items.length === 0 ? (
             <EmptyState
               icon={Package}
               title="Nothing in stock"
-              description="Turn on Include zero stock to see empty SKUs, or record a purchase first."
+              description="Turn on Show zero quantity to see empty SKUs, or record a purchase first."
             />
           ) : (
             <div className={R.section}>
@@ -118,37 +133,59 @@ export default function StockValuationReportView() {
                   <thead>
                     <tr>
                       <th>SKU</th>
-                      <th>Product</th>
-                      <th>Variant</th>
-                      <th>Qty</th>
+                      <th>Item</th>
+                      <th>Category</th>
+                      <th>Size / colour</th>
+                      <th className={HEAD_NUM}>Qty</th>
                       {showCost ? (
                         <>
-                          <th>Unit cost</th>
-                          <th>Cost value</th>
+                          <th className={HEAD_NUM}>Unit cost</th>
+                          <th className={HEAD_NUM}>Inventory value</th>
                         </>
                       ) : null}
-                      <th>Unit price</th>
-                      <th>Retail value</th>
+                      <th className={HEAD_NUM}>Selling price</th>
+                      <th className={HEAD_NUM}>Selling value</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {lines.map((row) => (
+                    {items.map((row) => (
                       <tr key={`${row.sku}-${row.variant || 'base'}`}>
-                        <td>{row.sku}</td>
-                        <td>{row.product}</td>
+                        <td className="whitespace-nowrap">{row.sku}</td>
+                        <td>{row.item || row.product}</td>
+                        <td className="text-muted-foreground">{row.category || '—'}</td>
                         <td>{row.variant || '—'}</td>
-                        <td>{formatNumber(row.quantity)}</td>
+                        <td className={NUM}>{formatNumber(row.quantity)}</td>
                         {showCost ? (
                           <>
-                            <td>{formatCurrency(row.unit_cost)}</td>
-                            <td>{formatCurrency(row.cost_value)}</td>
+                            <td className={NUM}>{formatCurrency(row.unit_cost)}</td>
+                            <td className={NUM}>
+                              {formatCurrency(row.inventory_value ?? row.cost_value)}
+                            </td>
                           </>
                         ) : null}
-                        <td>{formatCurrency(row.unit_price)}</td>
-                        <td>{formatCurrency(row.retail_value)}</td>
+                        <td className={NUM}>
+                          {formatCurrency(row.selling_price ?? row.unit_price)}
+                        </td>
+                        <td className={NUM}>
+                          {formatCurrency(row.selling_value ?? row.retail_value)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot>
+                    <tr className="bg-muted/40 font-semibold">
+                      <td colSpan={4}>Total</td>
+                      <td className={NUM}>{formatNumber(summary.units_on_hand || 0)}</td>
+                      {showCost ? (
+                        <>
+                          <td className={NUM} />
+                          <td className={NUM}>{formatCurrency(inventoryValue)}</td>
+                        </>
+                      ) : null}
+                      <td className={NUM} />
+                      <td className={NUM}>{formatCurrency(sellingValue)}</td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             </div>

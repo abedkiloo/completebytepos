@@ -40,7 +40,7 @@ const ALL_REPORTS = [
     name: 'Stock valuation',
     icon: '📦',
     hasDetail: true,
-    description: 'What is in stock right now, with cost and retail value',
+    description: 'On-hand stock with inventory and selling value',
   },
   {
     id: 'invoice',

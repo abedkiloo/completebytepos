@@ -141,20 +141,22 @@ describe('FieldSalesPage', () => {
 
     expect(await screen.findByTestId('field-sales-pack-44')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('field-sales-pack-44'));
-    expect(await screen.findByText('Pack this order?')).toBeInTheDocument();
+    expect(await screen.findByText('Mark ready for pickup?')).toBeInTheDocument();
     expect(screen.getAllByText('Ada').length).toBeGreaterThan(0);
-    expect(screen.getByText(/Customer debt/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/added as a debtor/i).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByTestId('commit-confirm-cancel'));
     await waitFor(() => {
-      expect(screen.queryByText('Pack this order?')).not.toBeInTheDocument();
+      expect(screen.queryByText('Mark ready for pickup?')).not.toBeInTheDocument();
     });
     expect(dispatchAPI.pack).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByTestId('field-sales-pack-44'));
     fireEvent.click(await screen.findByTestId('commit-confirm-ok'));
     await waitFor(() => expect(dispatchAPI.pack).toHaveBeenCalledWith(44));
-    expect(toast.success).toHaveBeenCalled();
+    expect(toast.success).toHaveBeenCalledWith(
+      'Ada was added as a debtor. Order #44 is ready for pickup.',
+    );
   });
 
   test('validates empty carts and missing driver before opening confirm', async () => {
@@ -313,41 +315,90 @@ describe('FieldSalesPage', () => {
     await waitFor(() => expect(dispatchAPI.get).toHaveBeenCalledWith(44));
   });
 
-  test('opens add-driver dialog from the field sales header', async () => {
+  test('adds a created driver to the assign list and selects them', async () => {
     mockList([readyOrder]);
     dispatchAPI.createDriver.mockResolvedValue({
-      data: { id: 9, display_name: 'New Driver', temporary_password: 'tmp9' },
+      data: {
+        id: 9,
+        display_name: 'New Driver',
+        username: 'drv9',
+        temporary_password: 'tmp9',
+      },
     });
+    dispatchAPI.drivers
+      .mockResolvedValueOnce({ data: [{ id: 3, display_name: 'Jane Driver' }] })
+      .mockResolvedValue({
+        data: [
+          { id: 3, display_name: 'Jane Driver' },
+          { id: 9, display_name: 'New Driver' },
+        ],
+      });
     render(<FieldSalesPage />);
-    fireEvent.click(await screen.findByTestId('field-sales-add-driver'));
-    expect(screen.getByTestId('add-driver-dialog')).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: /View/i }));
+    const select = await screen.findByTestId('field-sales-driver-select');
+    expect(select).toHaveTextContent('Jane Driver');
+    expect(select).not.toHaveTextContent('New Driver');
+
     fireEvent.click(screen.getByTestId('field-sales-add-driver-detail'));
-    expect(screen.getAllByTestId('add-driver-dialog').length).toBeGreaterThan(0);
     fireEvent.change(screen.getByTestId('add-driver-name'), { target: { value: 'New Driver' } });
     fireEvent.change(screen.getByTestId('add-driver-phone'), { target: { value: '0712345678' } });
     fireEvent.click(screen.getByTestId('add-driver-save'));
     expect(await screen.findByTestId('add-driver-temp-password')).toHaveTextContent('tmp9');
     fireEvent.click(screen.getByTestId('add-driver-done'));
+
+    await waitFor(() => {
+      expect(dispatchAPI.drivers.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+    expect(select).toHaveTextContent('New Driver');
+    expect(select).toHaveValue('9');
   });
 
-  test('ignores invalid or duplicate drivers from add-driver', async () => {
+  test('does not add a driver without an id, and does not duplicate an existing id', async () => {
     mockList([readyOrder]);
     dispatchAPI.createDriver
       .mockResolvedValueOnce({ data: { display_name: 'No Id' } })
       .mockResolvedValueOnce({ data: { id: 3, display_name: 'Jane Driver' } });
     render(<FieldSalesPage />);
-    fireEvent.click(await screen.findByTestId('field-sales-add-driver'));
+    fireEvent.click(await screen.findByRole('button', { name: /View/i }));
+    const select = await screen.findByTestId('field-sales-driver-select');
+    expect(select.querySelectorAll('option')).toHaveLength(2);
+
+    fireEvent.click(screen.getByTestId('field-sales-add-driver'));
     fireEvent.change(screen.getByTestId('add-driver-name'), { target: { value: 'No Id' } });
     fireEvent.change(screen.getByTestId('add-driver-phone'), { target: { value: '0712345678' } });
     fireEvent.click(screen.getByTestId('add-driver-save'));
     expect(await screen.findByTestId('add-driver-done')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('add-driver-done'));
+    expect(select).not.toHaveTextContent('No Id');
+    expect(select.querySelectorAll('option')).toHaveLength(2);
+
     fireEvent.click(screen.getByTestId('field-sales-add-driver'));
     fireEvent.change(screen.getByTestId('add-driver-name'), { target: { value: 'Jane Driver' } });
     fireEvent.change(screen.getByTestId('add-driver-phone'), { target: { value: '0712345678' } });
     fireEvent.click(screen.getByTestId('add-driver-save'));
     expect(await screen.findByTestId('add-driver-done')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('add-driver-done'));
+    expect(select.querySelectorAll('option[value="3"]')).toHaveLength(1);
+  });
+
+  test('keeps a newly created driver when the drivers refresh fails', async () => {
+    mockList([readyOrder]);
+    dispatchAPI.createDriver.mockResolvedValue({
+      data: { id: 9, display_name: 'New Driver', temporary_password: 'tmp9' },
+    });
+    dispatchAPI.drivers
+      .mockResolvedValueOnce({ data: [{ id: 3, display_name: 'Jane Driver' }] })
+      .mockRejectedValueOnce(new Error('down'));
+    render(<FieldSalesPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /View/i }));
+    const select = await screen.findByTestId('field-sales-driver-select');
+    fireEvent.click(screen.getByTestId('field-sales-add-driver-detail'));
+    fireEvent.change(screen.getByTestId('add-driver-name'), { target: { value: 'New Driver' } });
+    fireEvent.change(screen.getByTestId('add-driver-phone'), { target: { value: '0712345678' } });
+    fireEvent.click(screen.getByTestId('add-driver-save'));
+    fireEvent.click(await screen.findByTestId('add-driver-done'));
+    await waitFor(() => expect(select).toHaveTextContent('New Driver'));
+    expect(select).toHaveValue('9');
   });
 
   test('loads a planned driver map for staff', async () => {

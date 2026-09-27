@@ -6,12 +6,16 @@ import re
 import secrets
 
 from django.contrib.auth.models import User
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from rest_framework import serializers
 
 from accounts.models import Role, UserProfile
 from accounts.password_policy import MIN_PASSWORD_LENGTH, validate_new_password
-from accounts.role_definitions import ROLE_DELIVERY_AGENT, sync_default_roles
+from accounts.role_definitions import (
+    ROLE_DELIVERY_AGENT,
+    _delivery_agent_queryset,
+    sync_default_roles,
+)
 from utils.phone import PhoneNumberError, normalize_phone_number
 
 
@@ -56,6 +60,8 @@ def delivery_driver_role() -> Role:
         raise serializers.ValidationError(
             {'detail': 'Delivery Driver role is not configured.'}
         )
+    if not role.has_permission('delivery', 'update'):
+        role.permissions.add(*list(_delivery_agent_queryset()))
     return role
 
 
@@ -91,9 +97,14 @@ class CreateDriverSerializer(serializers.Serializer):
 
     def validate_phone(self, value):
         try:
-            return normalize_phone_number(value, required=True)
+            phone = normalize_phone_number(value, required=True)
         except PhoneNumberError as exc:
             raise serializers.ValidationError(str(exc)) from exc
+        if UserProfile.objects.filter(phone_number=phone).exists():
+            raise serializers.ValidationError(
+                'That phone already belongs to another user.'
+            )
+        return phone
 
     def validate_username(self, value):
         raw = (value or '').strip()
@@ -118,30 +129,47 @@ class CreateDriverSerializer(serializers.Serializer):
     def create(self, validated_data):
         display_name = validated_data['display_name']
         phone = validated_data['phone']
-        username = validated_data.get('username') or unique_username(f'drv{phone[-9:]}')
         password = validated_data.get('password') or generate_temp_password()
         first_name, last_name = split_display_name(display_name)
         request = self.context.get('request')
         created_by = getattr(request, 'user', None) if request else None
         role = delivery_driver_role()
+        owner = created_by if getattr(created_by, 'is_authenticated', False) else None
+        username = validated_data.get('username') or unique_username(f'drv{phone[-9:]}')
 
-        with transaction.atomic():
-            user = User.objects.create_user(
-                username=username,
-                password=password,
-                first_name=first_name,
-                last_name=last_name,
-                is_active=True,
-            )
-            UserProfile.objects.create(
-                user=user,
-                role='cashier',
-                custom_role=role,
-                phone_number=phone,
-                is_active=True,
-                must_change_password=True,
-                created_by=created_by if getattr(created_by, 'is_authenticated', False) else None,
-            )
+        user = None
+        last_error = None
+        for _ in range(5):
+            try:
+                with transaction.atomic():
+                    user = User.objects.create_user(
+                        username=username,
+                        password=password,
+                        first_name=first_name,
+                        last_name=last_name,
+                        is_active=True,
+                    )
+                    UserProfile.objects.create(
+                        user=user,
+                        # Legacy role field only allows cashier/manager/admin.
+                        # Delivery access comes from custom_role permissions.
+                        role='cashier',
+                        custom_role=role,
+                        phone_number=phone,
+                        is_active=True,
+                        must_change_password=True,
+                        created_by=owner,
+                    )
+                break
+            except IntegrityError as exc:
+                last_error = exc
+                if user is not None:
+                    raise
+                username = unique_username(f'drv{phone[-9:]}')
+        if user is None:
+            raise serializers.ValidationError({
+                'detail': 'Could not create that driver. Try a different name or phone.',
+            }) from last_error
         user._temporary_password = password
         return user
 

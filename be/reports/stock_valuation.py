@@ -33,20 +33,20 @@ def _variant_label(variant: ProductVariant) -> str:
     return ' / '.join(parts)
 
 
-def _line(*, sku, product_name, variant, category, quantity, unit_cost, unit_price) -> dict[str, Any]:
+def _item(*, sku, product_name, variant, category, quantity, unit_cost, unit_price) -> dict[str, Any]:
     qty = _qty(quantity)
     cost = Decimal(str(unit_cost or 0))
     price = Decimal(str(unit_price or 0))
     return {
         'sku': sku or '',
-        'product': product_name,
+        'item': product_name,
         'variant': variant or '',
         'category': category or '',
         'quantity': qty,
         'unit_cost': float(cost),
-        'cost_value': float((cost * qty).quantize(Decimal('0.01'))),
-        'unit_price': float(price),
-        'retail_value': float((price * qty).quantize(Decimal('0.01'))),
+        'inventory_value': float((cost * qty).quantize(Decimal('0.01'))),
+        'selling_price': float(price),
+        'selling_value': float((price * qty).quantize(Decimal('0.01'))),
     }
 
 
@@ -70,7 +70,7 @@ class StockValuationReportService:
             .order_by('name', 'sku')
         )
 
-        lines: list[dict[str, Any]] = []
+        items: list[dict[str, Any]] = []
         zero_stock_skus = 0
         for product in products:
             category = product.category.name if product.category_id else ''
@@ -78,7 +78,7 @@ class StockValuationReportService:
                 variants = list(product.variants.all())
                 if variants:
                     for variant in variants:
-                        row = _line(
+                        row = _item(
                             sku=variant.sku or product.sku,
                             product_name=product.name,
                             variant=_variant_label(variant),
@@ -91,9 +91,9 @@ class StockValuationReportService:
                             zero_stock_skus += 1
                             if not include_zero:
                                 continue
-                        lines.append(row)
+                        items.append(row)
                     continue
-            row = _line(
+            row = _item(
                 sku=product.sku,
                 product_name=product.name,
                 variant='',
@@ -106,29 +106,27 @@ class StockValuationReportService:
                 zero_stock_skus += 1
                 if not include_zero:
                     continue
-            lines.append(row)
+            items.append(row)
 
-        lines.sort(key=lambda row: (-row['cost_value'], row['product'].lower(), row['sku']))
-        cost_value = round(sum(row['cost_value'] for row in lines), 2)
-        retail_value = round(sum(row['retail_value'] for row in lines), 2)
+        items.sort(key=lambda row: (row['item'].lower(), row['sku'], row['variant']))
+        inventory_value = round(sum(row['inventory_value'] for row in items), 2)
+        selling_value = round(sum(row['selling_value'] for row in items), 2)
         owner = brand_name_line()
+        as_of = timezone.now().isoformat()
         return {
-            'generated_at': timezone.now().isoformat(),
+            'generated_at': as_of,
+            'as_of': as_of,
             'owner': owner,
             'tagline': DEFAULT_TAGLINE,
             'contact': f'Tel: {DEFAULT_CONTACT_PHONE}',
             'include_zero': include_zero,
-            'note': (
-                'On-hand stock as of this moment. Cost value = quantity × cost. '
-                'Retail value = quantity × selling price.'
-            ),
             'summary': {
                 'owner': owner,
-                'line_count': len(lines),
-                'units_on_hand': sum(row['quantity'] for row in lines),
-                'cost_value': cost_value,
-                'retail_value': retail_value,
+                'item_count': len(items),
+                'units_on_hand': sum(row['quantity'] for row in items),
+                'inventory_value': inventory_value,
+                'selling_value': selling_value,
                 'zero_stock_skus': zero_stock_skus,
             },
-            'lines': lines,
+            'items': items,
         }

@@ -995,7 +995,7 @@ class ReportViewSet(viewsets.ViewSet):
     @gated_report_action('stock_valuation')
     def stock_valuation(self, request):
         """
-        Current on-hand stock list with cost and retail value.
+        Current on-hand stock list with inventory and selling value.
 
         Query params:
           include_zero=1 — also list SKUs with quantity 0

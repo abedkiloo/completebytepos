@@ -32,24 +32,26 @@ const payload = {
   owner: 'Omuwenga Suppliers',
   tagline: 'Think Furniture, Think Omuwenga',
   contact: 'Tel: 0718515142',
-  note: 'On-hand stock as of this moment.',
+  generated_at: '2026-09-27T10:00:00Z',
+  as_of: '2026-09-27T10:00:00Z',
   summary: {
-    line_count: 1,
+    item_count: 1,
     units_on_hand: 3,
-    cost_value: 12000,
-    retail_value: 24000,
+    inventory_value: 12000,
+    selling_value: 24000,
     zero_stock_skus: 0,
   },
-  lines: [
+  items: [
     {
       sku: 'TBL-1',
-      product: 'Coffee table',
+      item: 'Coffee table',
+      category: 'Sofas',
       variant: '',
       quantity: 3,
       unit_cost: 4000,
-      cost_value: 12000,
-      unit_price: 8000,
-      retail_value: 24000,
+      inventory_value: 12000,
+      selling_price: 8000,
+      selling_value: 24000,
     },
   ],
 };
@@ -67,7 +69,11 @@ describe('StockValuationReportView', () => {
     expect(await screen.findByText('Coffee table')).toBeInTheDocument();
     expect(screen.getAllByText('Omuwenga Suppliers').length).toBeGreaterThan(0);
     expect(screen.getByText('TBL-1')).toBeInTheDocument();
-    expect(screen.getAllByText(/Cost value/i).length).toBeGreaterThan(0);
+    expect(screen.getByText('SKUs in stock')).toBeInTheDocument();
+    expect(screen.getAllByText(/Inventory value/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Lines on hand/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/quantity ×/i)).not.toBeInTheDocument();
+    expect(screen.getByText('Total')).toBeInTheDocument();
     expect(reportsAPI.stockValuation).toHaveBeenCalledWith({ include_zero: undefined });
   });
 
@@ -75,14 +81,14 @@ describe('StockValuationReportView', () => {
     useModuleSettings.mockReturnValue({ settings: { show_cost_and_profit: false } });
     render(<StockValuationReportView />);
     expect(await screen.findByText('Coffee table')).toBeInTheDocument();
-    expect(screen.queryAllByText(/Cost value/i).length).toBe(0);
-    expect(screen.getAllByText(/Retail value/i).length).toBeGreaterThan(0);
+    expect(screen.queryAllByText(/Inventory value/i).length).toBe(0);
+    expect(screen.getAllByText(/Selling value/i).length).toBeGreaterThan(0);
   });
 
   it('reloads with zero-stock SKUs when the checkbox is on', async () => {
     render(<StockValuationReportView />);
     await screen.findByText('Coffee table');
-    fireEvent.click(screen.getByLabelText(/Include zero stock/i));
+    fireEvent.click(screen.getByLabelText(/Show zero quantity/i));
     await waitFor(() => {
       expect(reportsAPI.stockValuation).toHaveBeenCalledWith({ include_zero: '1' });
     });
@@ -103,17 +109,46 @@ describe('StockValuationReportView', () => {
     expect(await screen.findByText('Could not load stock')).toBeInTheDocument();
   });
 
-  it('shows an empty stock message when there are no lines', async () => {
+  it('shows an empty stock message when there are no items', async () => {
     reportsAPI.stockValuation.mockResolvedValue({
       data: {
         ...payload,
         contact: '',
-        note: '',
-        summary: { ...payload.summary, line_count: 0, units_on_hand: 0 },
-        lines: [],
+        summary: { ...payload.summary, item_count: 0, units_on_hand: 0 },
+        items: [],
       },
     });
     render(<StockValuationReportView />);
     expect(await screen.findByText('Nothing in stock')).toBeInTheDocument();
+  });
+
+  it('still renders a legacy lines payload', async () => {
+    reportsAPI.stockValuation.mockResolvedValue({
+      data: {
+        owner: 'Omuwenga Suppliers',
+        generated_at: '2026-09-27T10:00:00Z',
+        summary: {
+          line_count: 1,
+          units_on_hand: 2,
+          cost_value: 10,
+          retail_value: 20,
+        },
+        lines: [
+          {
+            sku: 'OLD-1',
+            product: 'Old chair',
+            quantity: 2,
+            unit_cost: 5,
+            cost_value: 10,
+            unit_price: 10,
+            retail_value: 20,
+          },
+        ],
+      },
+    });
+    render(<StockValuationReportView />);
+    expect(await screen.findByText('Old chair')).toBeInTheDocument();
+    expect(screen.getByText('OLD-1')).toBeInTheDocument();
+    expect(screen.getByText('Total')).toBeInTheDocument();
   });
 });

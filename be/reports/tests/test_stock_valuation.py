@@ -8,7 +8,7 @@ from rest_framework import status
 from products.models import Category, Color, Product, ProductVariant, Size
 from reports.stock_valuation import (
     StockValuationReportService,
-    _line,
+    _item,
     _qty,
     _truthy,
     _variant_label,
@@ -28,8 +28,8 @@ class StockValuationHelperTests(SimpleTestCase):
         self.assertTrue(_truthy('ON'))
         self.assertFalse(_truthy(''))
 
-    def test_line_and_variant_label(self):
-        row = _line(
+    def test_item_and_variant_label(self):
+        row = _item(
             sku='A',
             product_name='Table',
             variant='',
@@ -38,8 +38,11 @@ class StockValuationHelperTests(SimpleTestCase):
             unit_cost=Decimal('10.00'),
             unit_price=Decimal('25.00'),
         )
-        self.assertEqual(row['cost_value'], 20.0)
-        self.assertEqual(row['retail_value'], 50.0)
+        self.assertEqual(row['item'], 'Table')
+        self.assertEqual(row['inventory_value'], 20.0)
+        self.assertEqual(row['selling_value'], 50.0)
+        self.assertNotIn('cost_value', row)
+        self.assertNotIn('product', row)
         variant = type('V', (), {'size_id': None, 'color_id': None, 'size': None, 'color': None})()
         self.assertEqual(_variant_label(variant), '')
         sized = type(
@@ -144,11 +147,15 @@ class StockValuationReportTests(ManagerAPITestCase):
         response = self.client.get('/api/reports/stock_valuation/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['owner'], 'Omuwenga Suppliers')
-        skus = {row['sku']: row for row in response.data['lines']}
+        self.assertNotIn('lines', response.data)
+        self.assertNotIn('note', response.data)
+        self.assertNotIn('line_count', response.data['summary'])
+        skus = {row['sku']: row for row in response.data['items']}
         self.assertIn('TBL-1', skus)
+        self.assertEqual(skus['TBL-1']['item'], 'Coffee table')
         self.assertEqual(skus['TBL-1']['quantity'], 3)
-        self.assertEqual(skus['TBL-1']['cost_value'], 12000.0)
-        self.assertEqual(skus['TBL-1']['retail_value'], 24000.0)
+        self.assertEqual(skus['TBL-1']['inventory_value'], 12000.0)
+        self.assertEqual(skus['TBL-1']['selling_value'], 24000.0)
         self.assertNotIn('STL-0', skus)
         self.assertIn('SOFA-1-LG', skus)
         self.assertEqual(skus['SOFA-1-LG']['variant'], 'Large / Grey')
@@ -156,12 +163,13 @@ class StockValuationReportTests(ManagerAPITestCase):
         self.assertNotIn('SOFA-1', skus)
         self.assertIn('SHELL-1', skus)
         self.assertEqual(skus['SHELL-1']['quantity'], 6)
+        self.assertEqual(response.data['summary']['item_count'], 4)
         self.assertEqual(response.data['summary']['zero_stock_skus'], 2)
 
     def test_include_zero_adds_empty_skus(self):
         response = self.client.get('/api/reports/stock_valuation/', {'include_zero': '1'})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        skus = {row['sku'] for row in response.data['lines']}
+        skus = {row['sku'] for row in response.data['items']}
         self.assertIn('STL-0', skus)
         self.assertIn('SOFA-1-GREY', skus)
 
@@ -190,6 +198,9 @@ class StockValuationReportTests(ManagerAPITestCase):
         text = csv_body.content.decode('utf-8-sig')
         self.assertTrue(text.startswith('Omuwenga Suppliers'))
         self.assertIn('Coffee table', text)
+        self.assertIn('Items', text)
+        self.assertNotIn('quantity ×', text)
+        self.assertNotIn('Lines', text)
 
     def test_cost_hidden_strips_cost_columns(self):
         from django.core.cache import cache
@@ -209,9 +220,11 @@ class StockValuationReportTests(ManagerAPITestCase):
         response = self.client.get('/api/reports/stock_valuation/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertNotIn('cost_value', response.data.get('summary', {}))
-        self.assertTrue(response.data['lines'])
-        self.assertNotIn('unit_cost', response.data['lines'][0])
-        self.assertIn('retail_value', response.data['lines'][0])
+        self.assertNotIn('inventory_value', response.data.get('summary', {}))
+        self.assertTrue(response.data['items'])
+        self.assertNotIn('unit_cost', response.data['items'][0])
+        self.assertNotIn('inventory_value', response.data['items'][0])
+        self.assertIn('selling_value', response.data['items'][0])
 
 
 class StockValuationAccessTests(SalesAPITestCase):

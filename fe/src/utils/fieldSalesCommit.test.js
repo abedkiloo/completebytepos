@@ -1,14 +1,19 @@
 import {
   assignCommitRows,
+  assignConfirmDescription,
+  assignCreatesCustomerDebt,
   assignDriverError,
   canAssignDriver,
   canMarkReady,
+  DEBTOR_CONFIRM_COPY,
   deliveryAssigneeLabel,
   fieldOrderLineSummary,
   fieldOrderQty,
   fieldOrderTotal,
   fieldOrderHasCustomer,
+  mergeDriverIntoList,
   packCommitRows,
+  packConfirmDescription,
   packReadyError,
 } from './fieldSalesCommit';
 
@@ -84,9 +89,11 @@ describe('fieldSalesCommit', () => {
     const packed = packCommitRows(submitted, (n) => `KES ${n}`);
     expect(packed.find((row) => row.label === 'Order').value).toBe('#44');
     expect(packed.find((row) => row.label === 'Total').value).toBe('KES 390');
-    expect(packed.find((row) => row.label === 'After confirm').value).toContain(
-      'Customer debt',
+    expect(packed.find((row) => row.label === 'Customer account').value).toBe(
+      DEBTOR_CONFIRM_COPY,
     );
+    expect(packConfirmDescription(submitted)).toContain('Ada is added as a debtor');
+    expect(packConfirmDescription()).toContain('this customer is added as a debtor');
 
     const noFormatter = packCommitRows({ id: 1, customer_name: '', lines: [] });
     expect(noFormatter.find((row) => row.label === 'Customer').value).toBe('—');
@@ -100,6 +107,26 @@ describe('fieldSalesCommit', () => {
       .find((row) => row.label === 'Delivered by').value).toBe('Selected person');
     expect(assignCommitRows(submitted, { display_name: 'Ada', role_name: 'Sales Personnel' })
       .find((row) => row.label === 'Delivered by').value).toBe('Ada · Sales Personnel');
+    expect(assignCommitRows({ status: 'ready' }, { display_name: 'Jane' })
+      .find((row) => row.label === 'Customer account')).toBeUndefined();
+    expect(assignCreatesCustomerDebt({ status: 'packing' })).toBe(true);
+    expect(assignCreatesCustomerDebt({ status: 'packing', stock_allocated: true })).toBe(false);
+    expect(
+      assignCommitRows({ status: 'packing' }, { display_name: 'Jane' })
+        .find((row) => row.label === 'Customer account').value,
+    ).toBe(DEBTOR_CONFIRM_COPY);
+    expect(assignConfirmDescription({ status: 'ready' })).toContain('route');
+    expect(assignConfirmDescription({ status: 'packing' })).toContain('debtor');
+  });
+
+  test('mergeDriverIntoList ignores invalid ids and replaces duplicates', () => {
+    expect(mergeDriverIntoList(null, { id: 9 })).toEqual([{ id: 9 }]);
+    expect(mergeDriverIntoList([{ id: 3, display_name: 'Jane' }], { display_name: 'No Id' }))
+      .toEqual([{ id: 3, display_name: 'Jane' }]);
+    expect(mergeDriverIntoList([{ id: 3, display_name: 'Jane' }], { id: '3', display_name: 'Jane Driver' }))
+      .toEqual([{ id: 3, display_name: 'Jane Driver' }]);
+    expect(mergeDriverIntoList([{ id: 3 }], { id: 9, display_name: 'Ken' }).map((d) => d.id))
+      .toEqual([3, 9]);
   });
 
   test('deliveryAssigneeLabel covers name, role, and id fallbacks', () => {

@@ -173,14 +173,17 @@ def apply_report_response_flags(data: dict) -> dict:
                 row.pop('total_cost', None)
                 stripped.append(row)
             data['purchases'] = stripped
-        if isinstance(data.get('lines'), list):
+        for list_key in ('lines', 'items'):
+            if not isinstance(data.get(list_key), list):
+                continue
             stripped = []
-            for row in data['lines']:
+            for row in data[list_key]:
                 row = dict(row)
                 row.pop('unit_cost', None)
                 row.pop('cost_value', None)
+                row.pop('inventory_value', None)
                 row.pop('cost', None)
                 stripped.append(row)
-            data['lines'] = stripped
+            data[list_key] = stripped
 
     return data
