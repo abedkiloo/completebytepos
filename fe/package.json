@@ -87,6 +87,7 @@
       "src/utils/makerChecker.js",
       "src/utils/approvalDisplay.js",
       "src/utils/saleRefund.js",
+      "src/utils/saleApprovalsQueue.js",
       "src/utils/commitConfirm.js",
       "src/utils/fieldSalesCommit.js",
       "src/utils/formCommitSummary.js",
@@ -216,6 +217,12 @@
         "statements": 98
       },
       "./src/utils/localDate.js": {
+        "branches": 98,
+        "functions": 98,
+        "lines": 98,
+        "statements": 98
+      },
+      "./src/utils/saleApprovalsQueue.js": {
         "branches": 98,
         "functions": 98,
         "lines": 98,

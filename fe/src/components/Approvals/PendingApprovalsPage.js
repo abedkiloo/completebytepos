@@ -17,6 +17,7 @@ import {
   needsExtremePriceConfirm,
 } from '../../utils/makerChecker';
 import { describeApprovalSummary, formatApprovalValue } from '../../utils/approvalDisplay';
+import { otherPendingApprovalRows } from '../../utils/saleApprovalsQueue';
 import { backfillRejectionSuccessMessage } from '../../utils/recordPastSaleBackfill';
 import { getActionHelp } from '../../utils/actionHelp';
 import HelpHint from '../Shared/HelpHint';
@@ -360,7 +361,8 @@ export default function PendingApprovalsPage() {
     ]);
 
     if (changesResult.status === 'fulfilled') {
-      setRows(Array.isArray(changesResult.value.data) ? changesResult.value.data : []);
+      const data = changesResult.value.data;
+      setRows(otherPendingApprovalRows(Array.isArray(data) ? data : data?.results || []));
     } else {
       setRows([]);
     }
@@ -394,7 +396,7 @@ export default function PendingApprovalsPage() {
     <PageShell>
       <PageHeader
         title="Approvals waiting for you"
-        description="Review financial, price, stock, and catalog changes from your team before they go live. Returning a request writes a Daily notes task for the person who submitted it."
+        description="Review financial, price, stock, and catalog changes from your team before they go live. Cashier sales and salesperson debt collections are under Approve sales. Returning a request writes a Daily notes task for the person who submitted it."
         icon={ClipboardCheck}
       />
       <div className="mb-4 flex justify-end">

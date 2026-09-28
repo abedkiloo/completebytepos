@@ -111,7 +111,16 @@ export const NAV_SECTIONS = [
       { to: '/normal-sale', label: 'Normal Sale', icon: Briefcase, feature: ['sales', 'normal_sale'], permission: ['sales', 'create'] },
       { to: '/sales/daily', label: 'Daily Sales', icon: Calendar, feature: ['sales', 'sales_history'], permission: ['sales', 'daily_sales'] },
       { to: '/sales', label: 'Sales History', icon: DollarSign, feature: ['sales', 'sales_history'], permission: ['sales', 'view'] },
-      { to: '/sales/approvals', label: 'Approve sales', icon: CheckCircle2, permission: ['sales', 'approve'] },
+      {
+        to: '/sales/approvals',
+        label: 'Approve sales',
+        icon: CheckCircle2,
+        permission: ['sales', 'approve'],
+        anyPermission: [
+          ['sales', 'approve'],
+          ['debt_management', 'approve'],
+        ],
+      },
       { to: '/sales/field', label: 'Field sales', icon: MapPin, permission: ['dispatch', 'view'] },
     ],
   },

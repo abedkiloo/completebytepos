@@ -102,6 +102,7 @@ class ApprovalNoticeTests(TestCase):
 
     def test_sale_complete_label_and_approved_notice(self):
         self.assertEqual(action_label('sale_complete'), 'sale completion')
+        self.assertEqual(action_label('debt_collection'), 'debt collection')
         title, content = build_sale_approved_notice(
             sale_number='S-99', checker=self.checker
         )

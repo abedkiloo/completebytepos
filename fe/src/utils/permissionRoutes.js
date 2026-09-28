@@ -81,7 +81,15 @@ export const NAV_SECTION_MODULES = {
 export const ROUTE_PERMISSION_GATES = [
   { prefix: '/customers/debt', module: 'debt_management', action: 'view' },
   { prefix: '/normal-sale', module: 'sales', action: 'create' },
-  { prefix: '/sales/approvals', module: 'sales', action: 'approve' },
+  {
+    prefix: '/sales/approvals',
+    module: 'sales',
+    action: 'approve',
+    anyOf: [
+      { module: 'sales', action: 'approve' },
+      { module: 'debt_management', action: 'approve' },
+    ],
+  },
   { prefix: '/sales/daily', module: 'sales', action: 'daily_sales' },
   { prefix: '/sales/field', module: 'dispatch', action: 'view' },
 ];

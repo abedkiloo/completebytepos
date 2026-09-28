@@ -36,6 +36,7 @@ ACTION_LABELS = {
     'sale_rollback': 'sale rollback',
     'sale_complete': 'sale completion',
     'sale_backfill': 'past sale entry',
+    'debt_collection': 'debt collection',
     'expense': 'expense',
     'income': 'income',
     'transfer': 'money transfer',

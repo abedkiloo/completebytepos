@@ -100,7 +100,14 @@ describe('permissionRoutes registry', () => {
       expect.objectContaining({ module: 'dispatch', action: 'view' })
     );
     expect(routePermissionGateForPath('/sales/approvals')).toEqual(
-      expect.objectContaining({ module: 'sales', action: 'approve' })
+      expect.objectContaining({
+        module: 'sales',
+        action: 'approve',
+        anyOf: [
+          { module: 'sales', action: 'approve' },
+          { module: 'debt_management', action: 'approve' },
+        ],
+      })
     );
     expect(routePermissionGateForPath('/sales')).toBeNull();
   });

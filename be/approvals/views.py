@@ -24,8 +24,16 @@ class PendingChangeViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def _require_checker(self, request):
-        if not user_may_edit_financial_fields(request.user):
-            raise PermissionDenied('Checker access required.')
+        from approvals.permissions import user_can_check
+        from approvals.registry import ACTION_DEBT_COLLECTION, ACTION_SALE_COMPLETE
+
+        if user_may_edit_financial_fields(request.user):
+            return
+        if user_can_check(request.user, ACTION_DEBT_COLLECTION) or user_can_check(
+            request.user, ACTION_SALE_COMPLETE
+        ):
+            return
+        raise PermissionDenied('Checker access required.')
 
     def get_queryset(self):
         qs = super().get_queryset()

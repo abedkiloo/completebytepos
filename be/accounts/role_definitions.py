@@ -86,7 +86,7 @@ PERMISSIONS_DATA = [
     ('customers', 'export', 'Export customers'),
     ('debt_management', 'view', 'View debt management and aging reports'),
     ('debt_management', 'update', 'Collect customer debt payments (queued for manager approval unless you can approve)'),
-    ('debt_management', 'approve', 'Approve customer debt collections'),
+    ('debt_management', 'approve', 'Approve salesperson debt collections (same Approve sales screen as cashier sales)'),
     ('debt_management', 'export', 'Export debt management reports'),
     ('invoicing', 'view', 'View invoices and payments'),
     ('invoicing', 'create', 'Create invoices and record payments'),

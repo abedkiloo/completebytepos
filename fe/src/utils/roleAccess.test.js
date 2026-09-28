@@ -99,6 +99,16 @@ describe('roleAccess', () => {
     expect(canAccessRoute(PERSONA.MANAGER, '/sales/approvals')).toBe(true);
   });
 
+  test('approve sales route also opens with debt_management.approve', () => {
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([
+        { module: 'debt_management', action: 'approve', name: 'debt_management.approve' },
+      ])
+    );
+    expect(canAccessRoute(PERSONA.MANAGER, '/sales/approvals')).toBe(true);
+  });
+
   test('super admin can access all app modules', () => {
     const paths = [
       '/categories',

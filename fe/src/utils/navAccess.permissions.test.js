@@ -81,6 +81,25 @@ describe('navAccess — permission-granted sections for sales', () => {
     ).toBe(true);
   });
 
+  test('manager sees approve sales when either sales.approve or debt_management.approve is granted', () => {
+    const item = {
+      to: '/sales/approvals',
+      label: 'Approve sales',
+      permission: ['sales', 'approve'],
+      anyPermission: [
+        ['sales', 'approve'],
+        ['debt_management', 'approve'],
+      ],
+    };
+    expect(canSeeNavItem(item, 'sales', ctx(PERSONA.MANAGER, [perm('sales', 'view')]))).toBe(false);
+    expect(
+      canSeeNavItem(item, 'sales', ctx(PERSONA.MANAGER, [perm('sales', 'approve')]))
+    ).toBe(true);
+    expect(
+      canSeeNavItem(item, 'sales', ctx(PERSONA.MANAGER, [perm('debt_management', 'approve')]))
+    ).toBe(true);
+  });
+
   test('every nav section module mapping is covered by a visibility test module', () => {
     expect(Object.keys(NAV_SECTION_MODULES).length).toBeGreaterThanOrEqual(6);
   });

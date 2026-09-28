@@ -230,7 +230,13 @@ export function canAccessRoute(persona, pathname, options = {}) {
   const { permissions } = getStoredAuth();
   const gate = routePermissionGateForPath(pathname);
   if (gate) {
-    if (!hasPermission(permissions, gate.module, gate.action)) {
+    const options = gate.anyOf?.length
+      ? gate.anyOf
+      : [{ module: gate.module, action: gate.action }];
+    const allowedByGate = options.some((opt) =>
+      hasPermission(permissions, opt.module, opt.action)
+    );
+    if (!allowedByGate) {
       return false;
     }
   }

@@ -7,7 +7,9 @@ import {
   pendingChangesAPI,
   customersAPI,
   expensesAPI,
+  salesAPI,
 } from '../services/api';
+import { pendingDebtCollectionParams, saleApprovalsBadgeCount, otherPendingApprovalRows } from './saleApprovalsQueue';
 
 export const NAV_BADGES_REFRESH_EVENT = 'navBadgesRefresh';
 
@@ -29,6 +31,7 @@ export function navBadgeCountForItem(item, counts = {}) {
   if (path === '/daily-notes') return counts.pendingTasks || 0;
   if (path === '/pending-approvals') return counts.pendingApprovals || 0;
   if (path === '/customers/debt') return counts.debtors || 0;
+  if (path === '/sales/approvals') return counts.saleApprovals || 0;
   return 0;
 }
 
@@ -40,8 +43,9 @@ export async function fetchNavBadgeCounts({
   mayFetchTasks = false,
   mayFetchApprovals = false,
   mayFetchDebtors = false,
+  mayFetchSaleApprovals = false,
 } = {}) {
-  const counts = { pendingTasks: 0, pendingApprovals: 0, debtors: 0 };
+  const counts = { pendingTasks: 0, pendingApprovals: 0, debtors: 0, saleApprovals: 0 };
 
   const tasksPromise = mayFetchTasks
     ? dailyTasksAPI.pending().then((res) => (Array.isArray(res.data) ? res.data.length : 0)).catch(() => 0)
@@ -51,7 +55,7 @@ export async function fetchNavBadgeCounts({
     ? Promise.all([
         pendingChangesAPI
           .pending()
-          .then((res) => (Array.isArray(res.data) ? res.data.length : 0))
+          .then((res) => otherPendingApprovalRows(Array.isArray(res.data) ? res.data : []).length)
           .catch(() => 0),
         expensesAPI
           .list({ status: 'pending', show_all: 'true', page_size: 1 })
@@ -72,13 +76,35 @@ export async function fetchNavBadgeCounts({
         .catch(() => 0)
     : Promise.resolve(0);
 
-  const [pendingTasks, pendingApprovals, debtors] = await Promise.all([
+  const saleApprovalsPromise = mayFetchSaleApprovals
+    ? Promise.all([
+        salesAPI
+          .list({ status: 'pending_approval', page_size: 1 })
+          .then((res) => {
+            if (Number.isFinite(Number(res.data?.count))) {
+              return Number(res.data.count);
+            }
+            return Array.isArray(res.data) ? res.data.length : 0;
+          })
+          .catch(() => 0),
+        pendingChangesAPI
+          .pending(pendingDebtCollectionParams())
+          .then((res) => (Array.isArray(res.data) ? res.data.length : 0))
+          .catch(() => 0),
+      ]).then(([salesCount, collectionsCount]) =>
+        saleApprovalsBadgeCount({ salesCount, collectionsCount })
+      )
+    : Promise.resolve(0);
+
+  const [pendingTasks, pendingApprovals, debtors, saleApprovals] = await Promise.all([
     tasksPromise,
     approvalsPromise,
     debtorsPromise,
+    saleApprovalsPromise,
   ]);
   counts.pendingTasks = pendingTasks;
   counts.pendingApprovals = pendingApprovals;
   counts.debtors = debtors;
+  counts.saleApprovals = saleApprovals;
   return counts;
 }

@@ -12,8 +12,9 @@ import { useModuleSettings } from './useModuleSettings';
 import { salesDailyNotesAccessEnabled } from '../utils/dailyNotesAccess';
 import { customersShowWalletBalance } from '../utils/customerDisplay';
 import { getPersonaFromStorage } from '../utils/navAccess';
+import { userCanOpenSaleApprovals } from '../utils/saleApprovalsQueue';
 
-const EMPTY_COUNTS = { pendingTasks: 0, pendingApprovals: 0, debtors: 0 };
+const EMPTY_COUNTS = { pendingTasks: 0, pendingApprovals: 0, debtors: 0, saleApprovals: 0 };
 
 /**
  * Pending daily-task, approval, and debtor counts for nav badges and login summary.
@@ -38,8 +39,10 @@ export function useNavBadgeCounts() {
     hasPermission(permissions, 'debt_management', 'view') &&
     customersShowWalletBalance(customerSettings);
 
+  const mayFetchSaleApprovals = userCanOpenSaleApprovals(permissions);
+
   const refresh = useCallback(async () => {
-    if (!mayFetchTasks && !mayFetchApprovals && !mayFetchDebtors) {
+    if (!mayFetchTasks && !mayFetchApprovals && !mayFetchDebtors && !mayFetchSaleApprovals) {
       setCounts(EMPTY_COUNTS);
       return;
     }
@@ -47,9 +50,10 @@ export function useNavBadgeCounts() {
       mayFetchTasks,
       mayFetchApprovals,
       mayFetchDebtors,
+      mayFetchSaleApprovals,
     });
     setCounts(next);
-  }, [mayFetchTasks, mayFetchApprovals, mayFetchDebtors]);
+  }, [mayFetchTasks, mayFetchApprovals, mayFetchDebtors, mayFetchSaleApprovals]);
 
   useEffect(() => {
     refresh();

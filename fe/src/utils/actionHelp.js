@@ -44,6 +44,15 @@ export const ACTION_HELP = {
     confirmBody:
       'This completes the sale now: stock moves, books update, and the cashier is told they can issue the receipt.',
   },
+  debt_collection: {
+    shortLabel: 'Approve collection',
+    title: 'Approve a debt collection',
+    hover:
+      'Credits the customer wallet for a payment a salesperson already recorded. The balance stays unchanged until you approve.',
+    confirmTitle: 'Approve this collection?',
+    confirmBody:
+      'This credits the customer wallet now. Cash or M-PESA collected in the field is then on the books.',
+  },
   product_price: {
     shortLabel: 'Price change',
     title: 'Change a selling price',
