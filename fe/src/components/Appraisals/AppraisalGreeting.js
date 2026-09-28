@@ -73,7 +73,7 @@ export default function AppraisalGreeting() {
             }}
           >
             <Star className="mr-1.5 h-4 w-4" />
-            Open appraisals
+            Open my progress
           </Button>
         </div>
       </div>

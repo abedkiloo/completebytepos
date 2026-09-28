@@ -82,7 +82,7 @@ export default function AppraisalProgressCard({
 
         {compact ? (
           <Link to="/appraisals" className="text-sm font-medium underline underline-offset-2">
-            Open full appraisal
+            Open my progress
           </Link>
         ) : null}
       </CardContent>
