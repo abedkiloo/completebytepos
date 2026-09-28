@@ -40,6 +40,12 @@ class ServeMediaUrlTests(SimpleTestCase):
         patterns = media_urlpatterns()
         self.assertEqual(len(patterns), 1)
 
+    @override_settings(DEBUG=False)
+    def test_django_static_helper_does_not_register_routes_when_debug_off(self):
+        from django.conf.urls.static import static as django_static
+
+        self.assertEqual(django_static('/media/', document_root='/tmp'), [])
+
     @override_settings(DEBUG=False, SERVE_MEDIA=False)
     def test_media_route_can_be_disabled(self):
         self.assertEqual(media_urlpatterns(), [])

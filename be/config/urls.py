@@ -21,7 +21,7 @@ def media_urlpatterns():
     ``django.conf.urls.static.static()`` is a no-op when DEBUG=False, so UAT
     and production must register ``serve`` explicitly when SERVE_MEDIA is on.
     """
-    if not (settings.DEBUG or getattr(settings, 'SERVE_MEDIA', False)):
+    if not (settings.DEBUG or getattr(settings, 'SERVE_MEDIA', True)):
         return []
     prefix = (settings.MEDIA_URL or '/media/').strip('/')
     return [

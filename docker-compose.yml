@@ -67,6 +67,7 @@ services:
     working_dir: /app
     environment:
       - DEBUG=${DEBUG:-False}
+      - SERVE_MEDIA=${SERVE_MEDIA:-true}
       - DJANGO_SETTINGS_MODULE=config.settings
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1,0.0.0.0,backend,completebytepos_backend}
       - PUBLIC_HOST=${PUBLIC_HOST:-}
