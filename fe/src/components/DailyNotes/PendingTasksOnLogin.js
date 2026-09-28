@@ -12,9 +12,9 @@ import {
 } from '../ui/dialog';
 import { Badge } from '../ui/badge';
 import { toast } from '../../utils/toast';
-import { getStoredAuth, hasPermission, userMayEditFinancialFieldsFromStorage, PERSONA } from '../../utils/roleAccess';
+import { getStoredAuth, userMayEditFinancialFieldsFromStorage } from '../../utils/roleAccess';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
-import { salesDailyNotesAccessEnabled } from '../../utils/dailyNotesAccess';
+import { userMayOpenDailyNotes } from '../../utils/dailyNotesAccess';
 import {
   canToggleDailyTask,
   isPendingTasksPromptDismissed,
@@ -39,9 +39,7 @@ export default function PendingTasksOnLogin() {
   const [loading, setLoading] = useState(true);
   const [togglingId, setTogglingId] = useState(null);
 
-  const mayUseDailyNotes =
-    hasPermission(permissions, 'daily_notes', 'view') &&
-    (persona !== PERSONA.SALES || salesDailyNotesAccessEnabled(moduleSettings));
+  const mayUseDailyNotes = userMayOpenDailyNotes(persona, permissions, moduleSettings);
 
   const mayReviewApprovals = userMayEditFinancialFieldsFromStorage();
 

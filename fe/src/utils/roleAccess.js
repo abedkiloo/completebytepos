@@ -9,7 +9,7 @@ import {
   salesCatalogAccessEnabled,
   userMayEditAnyProductFinancialFieldFromStorage,
 } from './productAccess';
-import { salesDailyNotesAccessEnabled } from './dailyNotesAccess';
+import { salesDailyNotesAccessEnabled, userMayOpenDailyNotes } from './dailyNotesAccess';
 import {
   ROUTE_MODULE_MAP,
   PERMISSION_MODULE_ROUTES,
@@ -246,7 +246,17 @@ export function canAccessRoute(persona, pathname, options = {}) {
     .sort((a, b) => b.length - a.length)[0];
   if (pathKey && !gate) {
     const permissionModule = ROUTE_MODULE_MAP[pathKey];
-    if (!hasAnyPermissionForModule(permissions, permissionModule)) {
+    if (permissionModule === 'daily_notes') {
+      if (
+        !userMayOpenDailyNotes(
+          persona,
+          permissions,
+          readCachedModuleSettings('daily_notes')
+        )
+      ) {
+        return false;
+      }
+    } else if (!hasAnyPermissionForModule(permissions, permissionModule)) {
       return false;
     }
   }

@@ -95,6 +95,11 @@ export const NAV_SECTIONS = [
         icon: NotebookPen,
         module: 'daily_notes',
         permission: ['daily_notes', 'view'],
+        anyPermission: [
+          ['daily_notes', 'view'],
+          ['sales', 'view'],
+          ['pos', 'view'],
+        ],
       },
     ],
   },

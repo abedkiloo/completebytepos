@@ -193,6 +193,46 @@ describe('navAccess', () => {
     ).toBe(false);
   });
 
+  test('sales sees daily notes with sales.view even without daily_notes.view', () => {
+    const salesCtx = ctx(PERSONA.SALES, {
+      permissions: [{ module: 'sales', action: 'view', name: 'sales.view' }],
+    });
+    expect(
+      canSeeNavItem(
+        {
+          to: '/daily-notes',
+          label: 'Daily notes',
+          module: 'daily_notes',
+          permission: ['daily_notes', 'view'],
+        },
+        'main',
+        salesCtx
+      )
+    ).toBe(true);
+  });
+
+  test('sales hides daily notes when sales access flag is off', () => {
+    cacheModuleSettings('daily_notes', { allow_sales_access: false });
+    const salesCtx = ctx(PERSONA.SALES, {
+      permissions: [
+        { module: 'sales', action: 'view', name: 'sales.view' },
+        { module: 'daily_notes', action: 'view', name: 'daily_notes.view' },
+      ],
+    });
+    expect(
+      canSeeNavItem(
+        {
+          to: '/daily-notes',
+          label: 'Daily notes',
+          module: 'daily_notes',
+          permission: ['daily_notes', 'view'],
+        },
+        'main',
+        salesCtx
+      )
+    ).toBe(false);
+  });
+
   test('sales sees invoices nav when role grants invoicing.view', () => {
     const invoicingPerms = [
       { name: 'invoicing.view', module: 'invoicing', action: 'view' },

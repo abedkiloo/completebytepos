@@ -62,3 +62,11 @@ class ModuleRegistryTests(TestCase):
     def test_preset_ids_are_documented(self):
         self.assertIn('retail_starter', PRESETS)
         self.assertIn('retail_full', PRESETS)
+
+    def test_daily_notes_lives_with_sales_in_commerce(self):
+        from settings.module_registry import get_permission_domain_info
+
+        info = get_permission_domain_info('daily_notes')
+        self.assertEqual(info['domain'], 'commerce')
+        self.assertEqual(info['catalog_module'], 'daily_notes')
+        self.assertEqual(MODULE_BY_NAME['daily_notes']['domain'], 'commerce')

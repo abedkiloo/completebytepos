@@ -82,6 +82,14 @@ class DailyNotesAccessUnitTests(TestCase):
         _seed_flags(allow_sales_access=False)
         self.assertFalse(user_may_access_daily_notes(self.sales))
 
+    def test_sales_desk_without_notes_permission_is_allowed(self):
+        role = Role.objects.get(name=ROLE_SALES)
+        role.permissions.remove(
+            *role.permissions.filter(module='daily_notes')
+        )
+        self.assertFalse(self.sales.profile.has_permission('daily_notes', 'view'))
+        self.assertTrue(user_may_access_daily_notes(self.sales))
+
     def test_manager_view_all_when_setting_on(self):
         self.assertTrue(user_may_view_all_daily_notes(self.manager))
 

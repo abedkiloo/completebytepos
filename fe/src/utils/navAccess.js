@@ -18,6 +18,7 @@ import {
 import { readCachedModuleSettings } from './moduleSettingsCache';
 import { readCachedStoreSettings } from './storeSettingsCache';
 import { salesCatalogAccessEnabled } from './productAccess';
+import { userMayOpenDailyNotes } from './dailyNotesAccess';
 import { NAV_SECTION_MODULES, navSectionGrantedByPermissions } from './permissionRoutes';
 
 /** Section ids visible per persona (`null` = all sections). */
@@ -103,6 +104,20 @@ export function canSeeNavItem(item, sectionId, ctx) {
 
   if (item.requireSuperAdmin && !isSuperAdmin) return false;
   if (item.managerOnly && persona === PERSONA.SALES) return false;
+
+  if (item.to === '/daily-notes') {
+    if (
+      !userMayOpenDailyNotes(
+        persona,
+        permissions,
+        readCachedModuleSettings('daily_notes')
+      )
+    ) {
+      return false;
+    }
+    if (item.module && !isModuleEnabled(item.module)) return false;
+    return true;
+  }
 
   if (persona === PERSONA.SALES) {
     const path = item.to.split('?')[0];

@@ -21,12 +21,18 @@ def _user_has_perm(user, module: str, action: str) -> bool:
     return profile.has_permission(module, action)
 
 
+def _user_has_sales_desk(user) -> bool:
+    """POS / sales history — returned-sale sticky notes live on this desk."""
+    return _user_has_perm(user, 'sales', 'view') or _user_has_perm(user, 'pos', 'view')
+
+
 def user_may_access_daily_notes(user) -> bool:
     if not user or not getattr(user, 'is_authenticated', False):
         return False
     if user.is_superuser:
         return True
-    if not _user_has_perm(user, 'daily_notes', 'view'):
+    has_notes = _user_has_perm(user, 'daily_notes', 'view')
+    if not has_notes and not _user_has_sales_desk(user):
         return False
     role = resolve_user_role(user)
     if role == 'sales' and not daily_notes_allow_sales_access():

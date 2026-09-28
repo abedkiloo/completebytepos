@@ -202,6 +202,7 @@ ROLE_SCREEN_MATRIX = {
         'Dashboard (your sales today/week/month + quick POS)',
         'POS (/pos)',
         'Terminal POS (/pos/billing)',
+        'Daily notes (returned sales and day tasks)',
         'Customers (add walk-in / credit)',
         'Products & categories (add / import — manager sets prices)',
         'Delivery (today’s route — admin can assign you like a driver)',
@@ -323,6 +324,42 @@ def _delivery_agent_queryset():
     )
 
 
+SALES_DAILY_NOTES_ACTIONS = ('view', 'create', 'update')
+
+
+def grant_daily_notes_to_sales_roles():
+    """
+    Sales desk users need Daily notes (returned-sale sticky tasks).
+    Additive — does not strip permissions an admin already granted.
+    """
+    perms = list(
+        Permission.objects.filter(
+            module='daily_notes',
+            action__in=SALES_DAILY_NOTES_ACTIONS,
+        )
+    )
+    if not perms:
+        return 0
+    role_ids = (
+        Role.objects.filter(
+            permissions__module__in=['sales', 'pos'],
+            permissions__action='view',
+        )
+        .values_list('id', flat=True)
+        .distinct()
+    )
+    granted = 0
+    for role in Role.objects.filter(id__in=role_ids):
+        before = role.permissions.filter(
+            module='daily_notes',
+            action__in=SALES_DAILY_NOTES_ACTIONS,
+        ).count()
+        role.permissions.add(*perms)
+        if before < len(perms):
+            granted += 1
+    return granted
+
+
 def _rename_role(old: str, new: str) -> None:
     Role.objects.filter(name=old).exclude(name=new).update(name=new)
 
@@ -410,6 +447,7 @@ def sync_default_roles(created_by=None):
 
     # Deactivate legacy duplicate roles so the UI shows a clean trio.
     Role.objects.filter(name__in=LEGACY_ROLE_NAMES).update(is_active=False)
+    grant_daily_notes_to_sales_roles()
 
     return {
         ROLE_SUPER_ADMIN: super_admin,

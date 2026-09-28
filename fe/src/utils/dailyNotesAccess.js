@@ -16,6 +16,33 @@ export function salesViewAllDailyNotes(settings = {}) {
   return isModuleFlagEnabled(settings, 'allow_sales_view_all', false);
 }
 
+/** Sales desk (POS / sales history) also unlocks Daily notes — returned-sale tasks. */
+export function hasSalesDeskAccess(permissions) {
+  return (
+    hasPermission(permissions, 'daily_notes', 'view') ||
+    hasPermission(permissions, 'sales', 'view') ||
+    hasPermission(permissions, 'pos', 'view')
+  );
+}
+
+export function userMayOpenDailyNotes(persona, permissions = [], moduleSettings = {}) {
+  const { user, profile } = getStoredAuth();
+  if (
+    persona === PERSONA.SUPER_ADMIN ||
+    user?.is_superuser ||
+    profile?.is_super_admin
+  ) {
+    return true;
+  }
+  if (!hasSalesDeskAccess(permissions)) {
+    return false;
+  }
+  if (persona === PERSONA.SALES && !salesDailyNotesAccessEnabled(moduleSettings)) {
+    return false;
+  }
+  return true;
+}
+
 export function userMayViewAllDailyNotes(persona, moduleSettings = {}) {
   const { permissions, profile, user } = getStoredAuth();
   if (

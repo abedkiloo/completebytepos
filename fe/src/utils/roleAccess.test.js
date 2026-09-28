@@ -146,6 +146,27 @@ describe('roleAccess', () => {
     expect(canAccessRoute(PERSONA.SALES, '/daily-notes')).toBe(true);
   });
 
+  test('sales can access daily notes with sales.view only', () => {
+    cacheModuleSettings('daily_notes', { allow_sales_access: true });
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([{ module: 'sales', action: 'view', name: 'sales.view' }])
+    );
+    expect(canAccessRoute(PERSONA.SALES, '/daily-notes')).toBe(true);
+  });
+
+  test('sales cannot access daily notes when sales access is off', () => {
+    cacheModuleSettings('daily_notes', { allow_sales_access: false });
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([
+        { module: 'sales', action: 'view', name: 'sales.view' },
+        { module: 'daily_notes', action: 'view', name: 'daily_notes.view' },
+      ])
+    );
+    expect(canAccessRoute(PERSONA.SALES, '/daily-notes')).toBe(false);
+  });
+
   test('sales can access products when store setting allows catalog add', () => {
     cacheStoreSettings({ allow_sales_add_products: true });
     expect(canAccessRoute(PERSONA.SALES, '/products')).toBe(true);

@@ -93,6 +93,13 @@ class DefaultRolePermissionTests(TestCase):
         self.assertTrue(self._has(self.field_role, 'delivery', 'view'))
         self.assertTrue(self._has(self.field_role, 'delivery', 'update'))
 
+    def test_sales_role_has_daily_notes(self):
+        self.assertTrue(self._has(self.sales_role, 'daily_notes', 'view'))
+        self.assertTrue(self._has(self.sales_role, 'daily_notes', 'create'))
+        self.assertTrue(self._has(self.sales_role, 'daily_notes', 'update'))
+        self.assertFalse(self._has(self.sales_role, 'daily_notes', 'view_all'))
+        self.assertTrue(self._has(self.field_role, 'daily_notes', 'view'))
+
     def test_manager_lacks_users_roles_settings_modules(self):
         for module in ('users', 'roles', 'settings', 'modules'):
             self.assertFalse(

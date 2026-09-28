@@ -3,6 +3,8 @@ import {
   managerViewAllDailyNotes,
   salesDailyNotesAccessEnabled,
   salesViewAllDailyNotes,
+  hasSalesDeskAccess,
+  userMayOpenDailyNotes,
   userMayViewAllDailyNotes,
 } from './dailyNotesAccess';
 import { installLocalStorageMock } from '../test-utils';
@@ -21,6 +23,18 @@ describe('dailyNotesAccess', () => {
     expect(salesDailyNotesAccessEnabled()).toBe(true);
     expect(salesDailyNotesAccessEnabled({})).toBe(true);
     expect(salesDailyNotesAccessEnabled({ allow_sales_access: false })).toBe(false);
+  });
+
+  test('sales desk unlocks daily notes for the sales persona', () => {
+    const salesPerms = [{ module: 'sales', action: 'view', name: 'sales.view' }];
+    expect(hasSalesDeskAccess(salesPerms)).toBe(true);
+    expect(hasSalesDeskAccess([])).toBe(false);
+    expect(userMayOpenDailyNotes(PERSONA.SALES, salesPerms, {})).toBe(true);
+    expect(
+      userMayOpenDailyNotes(PERSONA.SALES, salesPerms, { allow_sales_access: false })
+    ).toBe(false);
+    expect(userMayOpenDailyNotes(PERSONA.SALES, [], {})).toBe(false);
+    expect(userMayOpenDailyNotes(PERSONA.SUPER_ADMIN, [], {})).toBe(true);
   });
 
   test('manager and sales view-all settings', () => {

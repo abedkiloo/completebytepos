@@ -6,10 +6,9 @@ import {
   hasPermission,
   getStoredAuth,
   userMayEditFinancialFieldsFromStorage,
-  PERSONA,
 } from '../utils/roleAccess';
 import { useModuleSettings } from './useModuleSettings';
-import { salesDailyNotesAccessEnabled } from '../utils/dailyNotesAccess';
+import { userMayOpenDailyNotes } from '../utils/dailyNotesAccess';
 import { customersShowWalletBalance } from '../utils/customerDisplay';
 import { getPersonaFromStorage } from '../utils/navAccess';
 import { userCanOpenSaleApprovals } from '../utils/saleApprovalsQueue';
@@ -29,8 +28,7 @@ export function useNavBadgeCounts() {
 
   const mayFetchTasks =
     !dailyNotesLoading &&
-    hasPermission(permissions, 'daily_notes', 'view') &&
-    (persona !== PERSONA.SALES || salesDailyNotesAccessEnabled(dailyNotesSettings));
+    userMayOpenDailyNotes(persona, permissions, dailyNotesSettings);
 
   const mayFetchApprovals = userMayEditFinancialFieldsFromStorage();
 

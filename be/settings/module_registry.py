@@ -105,6 +105,17 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
         ],
     },
     {
+        'module_name': 'daily_notes',
+        'domain': 'commerce',
+        'display_name': 'Daily notes',
+        'description': 'Staff day journals — sales and managers log notes; returned-sale tasks.',
+        'default_enabled': True,
+        'sort_order': 15,
+        'features': [
+            _f('note_management', 'Daily journal', 'Create and browse dated staff notes.', 1),
+        ],
+    },
+    {
         'module_name': 'customers',
         'domain': 'commerce',
         'display_name': 'Customers',
@@ -318,17 +329,6 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
     },
     # --- People ---
     {
-        'module_name': 'daily_notes',
-        'domain': 'people',
-        'display_name': 'Daily notes',
-        'description': 'Staff day journals — sales and managers log notes; admins review.',
-        'default_enabled': True,
-        'sort_order': 5,
-        'features': [
-            _f('note_management', 'Daily journal', 'Create and browse dated staff notes.', 1),
-        ],
-    },
-    {
         'module_name': 'employees',
         'domain': 'people',
         'display_name': 'Employees',
@@ -526,7 +526,7 @@ PERMISSION_MODULE_DOMAIN: dict[str, str] = {
     'account_statement': 'finance',
     'reports': 'insights',
     'employees': 'people',
-    'daily_notes': 'people',
+    'daily_notes': 'commerce',
     'users': 'platform',
     'roles': 'platform',
     'settings': 'platform',
