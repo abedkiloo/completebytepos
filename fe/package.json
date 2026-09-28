@@ -20,6 +20,7 @@
     "axios": "^1.13.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "html-to-image": "^1.11.13",
     "lucide-react": "^1.16.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
@@ -72,6 +73,7 @@
       "src/utils/moduleDomains.js",
       "src/utils/apiErrors.js",
       "src/utils/formatters.js",
+      "src/utils/localDate.js",
       "src/utils/mediaUrl.js",
       "src/utils/productStock.js",
       "src/utils/catalogStock.js",
@@ -97,6 +99,7 @@
       "src/utils/actionHelp.js",
       "src/utils/approvalReturn.js",
       "src/utils/productAccess.js",
+      "src/utils/receiptSnapshotShare.js",
       "src/hooks/useStoreSettings.js",
       "src/hooks/useProductVariantsEnabled.js"
     ],
@@ -188,6 +191,12 @@
         "lines": 98,
         "statements": 98
       },
+      "./src/utils/receiptSnapshotShare.js": {
+        "branches": 90,
+        "functions": 98,
+        "lines": 98,
+        "statements": 98
+      },
       "./src/utils/fieldSalesCommit.js": {
         "branches": 90,
         "functions": 98,
@@ -201,6 +210,12 @@
         "statements": 98
       },
       "./src/utils/mpesaCapture.js": {
+        "branches": 98,
+        "functions": 98,
+        "lines": 98,
+        "statements": 98
+      },
+      "./src/utils/localDate.js": {
         "branches": 98,
         "functions": 98,
         "lines": 98,

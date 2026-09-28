@@ -38,11 +38,12 @@ class DarajaClient(Protocol):
 @dataclass
 class FakeDarajaClient:
     """
-    Sandbox stand-in: initiate always accepts; query/callback driven by
-    ``force_result`` map keyed by checkout_request_id.
+    Sandbox stand-in: initiate always accepts. Query stays “processing”
+    unless a callback (or ``force_result`` / ``auto_succeed``) says paid.
+    Check-status must not record a payment on its own.
     """
 
-    auto_succeed: bool = True
+    auto_succeed: bool = False
     force_result: dict[str, StkQueryResult] = field(default_factory=dict)
     initiated: list[dict] = field(default_factory=list)
 

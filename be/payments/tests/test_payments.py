@@ -18,7 +18,7 @@ from accounts.role_definitions import (
 from messaging.models import MessageOutbox
 from messaging.providers import FakeSmsProvider, set_sms_provider
 from messaging.templates_sms import INVOICE_TEMPLATE, render_invoice_sms
-from payments.daraja import FakeDarajaClient, set_daraja_client
+from payments.daraja import FakeDarajaClient, StkQueryResult, set_daraja_client
 from payments.models import PaymentIntent
 from payments.services import (
     PaymentTransitionError,
@@ -48,7 +48,7 @@ class PaymentsAPITestCase(APITestCase):
         )
 
     def setUp(self):
-        self.daraja = FakeDarajaClient(auto_succeed=True)
+        self.daraja = FakeDarajaClient()
         set_daraja_client(self.daraja)
         self.sms = FakeSmsProvider()
         set_sms_provider(self.sms)
@@ -133,14 +133,35 @@ class PaymentsAPITestCase(APITestCase):
         self.assertEqual(pub.data['status'], 'paid')
         self.assertIn('brand_blurb', pub.data)
 
-    def test_query_reconcile(self):
+    def test_query_does_not_record_payment_while_processing(self):
         intent = create_intent(
             amount='10', phone='0711111111', created_by=self.user,
         )
         initiate_stk(intent)
         intent.refresh_from_db()
+        waiting = reconcile_query(intent)
+        self.assertEqual(waiting.status, PaymentIntent.STATUS_PROMPTED)
+        self.assertFalse(waiting.mpesa_receipt)
+
+        q = self.client.post(f'/api/payments/intents/{intent.id}/query/')
+        self.assertEqual(q.status_code, status.HTTP_200_OK)
+        self.assertEqual(q.data['status'], 'prompted')
+        self.assertFalse(q.data.get('mpesa_receipt'))
+
+    def test_query_records_payment_only_when_daraja_confirms(self):
+        intent = create_intent(
+            amount='10', phone='0711111111', created_by=self.user,
+        )
+        initiate_stk(intent)
+        intent.refresh_from_db()
+        self.daraja.force_result[intent.checkout_request_id] = StkQueryResult(
+            result_code='0',
+            result_desc='The service request is processed successfully.',
+            mpesa_receipt='QHX7K2L9M1',
+        )
         reconciled = reconcile_query(intent)
         self.assertEqual(reconciled.status, PaymentIntent.STATUS_PAID)
+        self.assertEqual(reconciled.mpesa_receipt, 'QHX7K2L9M1')
 
         q = self.client.post(f'/api/payments/intents/{intent.id}/query/')
         self.assertEqual(q.status_code, status.HTTP_200_OK)
@@ -202,6 +223,11 @@ class PaymentsAPITestCase(APITestCase):
         intent = create_intent(amount='5', phone='0700000000', created_by=self.user)
         initiate_stk(intent)
         intent.refresh_from_db()
+        self.daraja.force_result[intent.checkout_request_id] = StkQueryResult(
+            result_code='0',
+            result_desc='ok',
+            mpesa_receipt='PAID01',
+        )
         reconcile_query(intent)
         intent.refresh_from_db()
         with self.assertRaises(PaymentTransitionError):

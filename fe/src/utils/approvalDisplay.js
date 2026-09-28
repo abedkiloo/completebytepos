@@ -24,6 +24,7 @@ export const ACTION_TYPE_LABELS = {
   sale_refund: 'Sale void / refund',
   sale_rollback: 'Sale rollback',
   sale_backfill: 'Record past sale',
+  sale_complete: 'Sale completion',
   debt_collection: 'Debt collection',
 };
 

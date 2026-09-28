@@ -8,6 +8,7 @@ import SearchableSelect from '../Shared/SearchableSelect';
 import ExpenseForm from './ExpenseForm';
 import { toast } from '../../utils/toast';
 import { formatCurrency, formatDate } from '../../utils/formatters';
+import { formatOccurredDate } from '../../utils/localDate';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import {
   canApproveFinancialRecord,
@@ -218,7 +219,7 @@ const Expenses = () => {
           description={
             makerCheckerOn
               ? 'Track spending. New expenses need checker approval before they affect reports.'
-              : 'Track spending, approvals, and payments.'
+              : 'Track spending, approvals, and payments. Each expense stores the date it occurred.'
           }
         >
           <Button variant="outline" onClick={() => loadCategories()}>
@@ -276,7 +277,7 @@ const Expenses = () => {
               placeholder="All status"
             />
           </FilterField>
-          <FilterField label="From">
+          <FilterField label="Occurred from">
             <Input
               type="date"
               name="date_from"
@@ -284,7 +285,7 @@ const Expenses = () => {
               onChange={handleFilterChange}
             />
           </FilterField>
-          <FilterField label="To">
+          <FilterField label="Occurred to">
             <Input
               type="date"
               name="date_to"
@@ -323,7 +324,7 @@ const Expenses = () => {
           <EmptyState
             icon={TrendingDown}
             title="No expenses found"
-            description="Adjust filters or record your first expense."
+            description="Adjust filters or record your first expense, including the date it occurred."
             actionLabel="Add expense"
             onAction={handleAdd}
           />
@@ -339,7 +340,7 @@ const Expenses = () => {
             <DataTable>
               <DataTableHeader>
                 <DataTableHead>#</DataTableHead>
-                <DataTableHead>Date</DataTableHead>
+                <DataTableHead>Date occurred</DataTableHead>
                 <DataTableHead>Category</DataTableHead>
                 <DataTableHead>Description</DataTableHead>
                 <DataTableHead align="right">Amount</DataTableHead>
@@ -353,7 +354,7 @@ const Expenses = () => {
                       {expense.expense_number}
                     </DataTableCell>
                     <DataTableCell className="text-muted-foreground whitespace-nowrap">
-                      {formatDate(expense.expense_date)}
+                      {formatOccurredDate(expense.expense_date) || formatDate(expense.expense_date)}
                     </DataTableCell>
                     <DataTableCell>{expense.category_name || '—'}</DataTableCell>
                     <DataTableCell className="max-w-[200px] truncate">

@@ -5,6 +5,8 @@ import SearchableSelect from '../Shared/SearchableSelect';
 import ChangeReasonField from '../Approvals/ChangeReasonField';
 import CommitConfirm from '../Shared/CommitConfirm';
 import { formatCurrency } from '../../utils/formatters';
+import { formatOccurredDate, toDateInputValue, toLocalISODate } from '../../utils/localDate';
+import { Input } from '../ui/input';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import {
   financialSubmitSuccessMessage,
@@ -28,7 +30,7 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
     payment_method: 'cash',
     vendor: '',
     receipt_number: '',
-    expense_date: new Date().toISOString().split('T')[0],
+    expense_date: toLocalISODate(),
     notes: '',
     status: 'pending',
   });
@@ -51,7 +53,7 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
         payment_method: expense.payment_method || 'cash',
         vendor: expense.vendor || '',
         receipt_number: expense.receipt_number || '',
-        expense_date: expense.expense_date || new Date().toISOString().split('T')[0],
+        expense_date: toDateInputValue(expense.expense_date),
         notes: expense.notes || '',
         status: expense.status || 'pending',
       });
@@ -220,7 +222,9 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
     },
     formData.description ? { label: 'Description', value: formData.description } : null,
     formData.vendor ? { label: 'Vendor', value: formData.vendor } : null,
-    formData.expense_date ? { label: 'Date', value: formData.expense_date } : null,
+    formData.expense_date
+      ? { label: 'Date occurred', value: formatOccurredDate(formData.expense_date) }
+      : null,
     { label: 'Method', value: formData.payment_method },
   ].filter(Boolean);
 
@@ -237,6 +241,23 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
         <div className="slide-in-panel-body">
           <form onSubmit={handleSubmit}>
           <div className="form-grid">
+            <div className="form-group full-width">
+              <label htmlFor="expense_date">When did this expense happen? *</label>
+              <Input
+                id="expense_date"
+                type="date"
+                name="expense_date"
+                value={formData.expense_date}
+                onChange={handleChange}
+                className={errors.expense_date ? 'error min-h-11' : 'min-h-11'}
+                required
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Pick the day the money was spent. You can backdate it if you are recording it later.
+              </p>
+              {errors.expense_date && <span className="error-text">{errors.expense_date}</span>}
+            </div>
+
             <div className="form-group">
               <label>Category *</label>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
@@ -316,19 +337,6 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
                 required
               />
               {errors.amount && <span className="error-text">{errors.amount}</span>}
-            </div>
-
-            <div className="form-group">
-              <label>Expense Date *</label>
-              <input
-                type="date"
-                name="expense_date"
-                value={formData.expense_date}
-                onChange={handleChange}
-                className={errors.expense_date ? 'error' : ''}
-                required
-              />
-              {errors.expense_date && <span className="error-text">{errors.expense_date}</span>}
             </div>
 
             <div className="form-group">

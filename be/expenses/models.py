@@ -64,7 +64,9 @@ class Expense(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     vendor = models.CharField(max_length=200, blank=True, help_text='Vendor/Supplier name')
     receipt_number = models.CharField(max_length=100, blank=True)
-    expense_date = models.DateField()
+    expense_date = models.DateField(
+        help_text='The day this expense occurred, not the day it was recorded.',
+    )
     created_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,

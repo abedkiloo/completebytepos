@@ -189,7 +189,7 @@ describe('ReceiveWalletPaymentDialog', () => {
     });
   });
 
-  it('records an M-Pesa wallet payment after a prompt confirms', async () => {
+  it('records an M-Pesa wallet payment with a typed code', async () => {
     const onSuccess = jest.fn();
     render(
       <ReceiveWalletPaymentDialog
@@ -203,10 +203,14 @@ describe('ReceiveWalletPaymentDialog', () => {
     fireEvent.change(screen.getByLabelText(/Payment method/i), {
       target: { value: 'mpesa' },
     });
-    expect(screen.getByLabelText(/Safaricom number/i)).toHaveValue('0712345678');
+    expect(screen.getByLabelText(/M-Pesa code/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('mpesa-capture-prompt'));
+    expect(toast.info).toHaveBeenCalledWith('Coming soon');
+    fireEvent.change(screen.getByLabelText(/M-Pesa code/i), {
+      target: { value: 'QHX7K2L9M1' },
+    });
     fireEvent.click(screen.getByRole('button', { name: /Record payment/i }));
     fireEvent.click(await screen.findByRole('button', { name: /Yes, record payment/i }));
-    fireEvent.click(await screen.findByText('mock-stk-paid'));
 
     await waitFor(() => {
       expect(customersAPI.receiveWalletPayment).toHaveBeenCalledWith(3, {

@@ -83,7 +83,7 @@ export default function BillingPOSPage() {
   const searchRef = useRef(null);
   const customerSearchRef = useRef(null);
   const [showNewCustomer, setShowNewCustomer] = useState(false);
-  const [mpesaMode, setMpesaMode] = useState(MPESA_CAPTURE_PROMPT);
+  const [mpesaMode, setMpesaMode] = useState(MPESA_CAPTURE_CODE);
   const [mpesaPhone, setMpesaPhone] = useState('');
   const [stkOpen, setStkOpen] = useState(false);
   const [showMpesaErrors, setShowMpesaErrors] = useState(false);
@@ -113,7 +113,7 @@ export default function BillingPOSPage() {
 
   useEffect(() => {
     if (state.paymentMethod !== 'mpesa') {
-      setMpesaMode(MPESA_CAPTURE_PROMPT);
+      setMpesaMode(MPESA_CAPTURE_CODE);
       setShowMpesaErrors(false);
       setStkOpen(false);
     }

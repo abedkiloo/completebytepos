@@ -82,6 +82,23 @@ describe('roleAccess', () => {
     expect(canAccessRoute(PERSONA.MANAGER, '/sales/daily/customers/1')).toBe(true);
   });
 
+  test('approve sales route requires sales.approve for managers', () => {
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([{ module: 'sales', action: 'view', name: 'sales.view' }])
+    );
+    expect(canAccessRoute(PERSONA.MANAGER, '/sales/approvals')).toBe(false);
+
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([
+        { module: 'sales', action: 'view', name: 'sales.view' },
+        { module: 'sales', action: 'approve', name: 'sales.approve' },
+      ])
+    );
+    expect(canAccessRoute(PERSONA.MANAGER, '/sales/approvals')).toBe(true);
+  });
+
   test('super admin can access all app modules', () => {
     const paths = [
       '/categories',

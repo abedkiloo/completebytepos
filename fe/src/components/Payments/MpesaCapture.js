@@ -13,13 +13,15 @@ import {
 import {
   MPESA_CAPTURE_CODE,
   MPESA_CAPTURE_PROMPT,
+  MPESA_PROMPT_COMING_SOON,
+  announceMpesaPromptComingSoon,
 } from '../../utils/mpesaCapture';
 
 /**
  * Interchangeable M-Pesa capture: send a PIN prompt, or type the SMS code.
  */
 export default function MpesaCapture({
-  mode = MPESA_CAPTURE_PROMPT,
+  mode = MPESA_CAPTURE_CODE,
   onModeChange,
   phone = '',
   onPhoneChange,
@@ -42,16 +44,30 @@ export default function MpesaCapture({
           type="button"
           data-testid="mpesa-capture-prompt"
           disabled={disabled}
-          onClick={() => onModeChange?.(MPESA_CAPTURE_PROMPT)}
+          title={MPESA_PROMPT_COMING_SOON ? 'Coming soon' : undefined}
+          aria-disabled={MPESA_PROMPT_COMING_SOON || disabled}
+          onClick={() => {
+            if (disabled) return;
+            if (MPESA_PROMPT_COMING_SOON) {
+              announceMpesaPromptComingSoon();
+              return;
+            }
+            onModeChange?.(MPESA_CAPTURE_PROMPT);
+          }}
           className={cn(
             'flex items-center justify-center gap-1.5 rounded-md border px-2 py-2 text-xs font-medium transition-colors',
-            promptSelected
+            MPESA_PROMPT_COMING_SOON
+              ? 'cursor-not-allowed border-border bg-muted/50 text-muted-foreground'
+              : promptSelected
               ? 'border-primary bg-primary/10 text-primary'
               : 'border-border bg-background text-foreground hover:bg-accent'
           )}
         >
           <Smartphone className="h-4 w-4 shrink-0" />
           Prompt payment
+          {MPESA_PROMPT_COMING_SOON ? (
+            <span className="rounded bg-muted px-1 text-[10px] uppercase tracking-wide">Soon</span>
+          ) : null}
         </button>
         <button
           type="button"

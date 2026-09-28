@@ -9,7 +9,9 @@ from daily_notes.approval_notice import (
     SOURCE_PENDING_CHANGE,
     action_label,
     build_rejection_notice,
+    build_sale_approved_notice,
     notify_approval_rejected,
+    notify_sale_approved,
 )
 from daily_notes.models import DailyNote, DailyTask
 
@@ -97,3 +99,54 @@ class ApprovalNoticeTests(TestCase):
         self.assertIn('bare_checker returned your expense for your request', content)
         self.assertIn('Reason: No reason given', content)
         self.assertTrue(title.startswith('Approval rejected'))
+
+    def test_sale_complete_label_and_approved_notice(self):
+        self.assertEqual(action_label('sale_complete'), 'sale completion')
+        title, content = build_sale_approved_notice(
+            sale_number='S-99', checker=self.checker
+        )
+        self.assertIn('S-99', title)
+        self.assertIn('You can issue the receipt now', content)
+        self.assertIn('Bea Mgr', content)
+
+        class FakeSale:
+            cashier = self.maker
+            sale_number = 'S-100'
+            pk = 100
+
+        notify_sale_approved(sale=FakeSale(), checker=self.checker)
+        self.assertTrue(
+            DailyNote.objects.filter(author=self.maker, title__icontains='S-100').exists()
+        )
+        self.assertTrue(
+            DailyTask.objects.filter(assigned_to=self.maker, title__icontains='S-100').exists()
+        )
+        self.assertIsNone(notify_sale_approved(sale=type('S', (), {'cashier': None, 'sale_number': 'x'})(), checker=self.checker))
+        title, content = build_sale_approved_notice(sale_number='', checker=None)
+        self.assertIn('this sale', title)
+        self.assertIn('A reviewer', content)
+
+    def test_notice_writers_swallow_errors(self):
+        from unittest.mock import patch
+
+        class FakeSale:
+            cashier = self.maker
+            sale_number = 'S-ERR'
+            pk = 7
+
+        with patch(
+            'daily_notes.approval_notice.DailyNote.objects.create',
+            side_effect=RuntimeError('db'),
+        ):
+            self.assertIsNone(
+                notify_approval_rejected(
+                    requester=self.maker,
+                    checker=self.checker,
+                    action_type='sale_complete',
+                    entity_repr='S-ERR',
+                    rejection_reason='x',
+                    source=SOURCE_PENDING_CHANGE,
+                    record_id=7,
+                )
+            )
+            self.assertIsNone(notify_sale_approved(sale=FakeSale(), checker=self.checker))

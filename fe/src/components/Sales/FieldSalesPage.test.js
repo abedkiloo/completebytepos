@@ -174,6 +174,25 @@ describe('FieldSalesPage', () => {
     expect(dispatchAPI.assign).not.toHaveBeenCalled();
   });
 
+  test('blocks assign until the order is packed and offers pack now', async () => {
+    mockList([submittedOrder]);
+    render(<FieldSalesPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /View/i }));
+    expect(await screen.findByTestId('dispatch-step-pack')).toHaveTextContent('do this now');
+    expect(screen.getByTestId('dispatch-step-assign')).toHaveTextContent('waiting');
+    fireEvent.click(screen.getByTestId('field-sales-assign'));
+    expect(await screen.findByText('Pack this order first')).toBeInTheDocument();
+    expect(screen.getByText(/Finish packing/i)).toBeInTheDocument();
+    expect(dispatchAPI.assign).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId('commit-confirm-ok'));
+    expect(await screen.findByText('Mark ready for pickup?')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('commit-confirm-ok'));
+    await waitFor(() => expect(dispatchAPI.pack).toHaveBeenCalledWith(44));
+    expect(dispatchAPI.assign).not.toHaveBeenCalled();
+  });
+
   test('assigns from the detail pane after confirmation', async () => {
     mockList([readyOrder]);
     render(<FieldSalesPage />);

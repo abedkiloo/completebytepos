@@ -153,26 +153,26 @@ def pack_order(order: FieldOrder, user=None) -> FieldOrder:
     return order
 
 
-def assign_delivery_agent(order: FieldOrder, agent) -> FieldOrder:
+def assign_delivery_agent(order: FieldOrder, agent, user=None) -> FieldOrder:
     if agent is None:
         raise FieldOrderTransitionError({
             'delivery_agent_id': 'Delivery driver is required.',
         })
-    if order.status not in (
-        FieldOrder.STATUS_READY,
-        FieldOrder.STATUS_PACKING,
-    ):
-        # Allow assign from ready; if still packing, pack first.
-        if order.status == FieldOrder.STATUS_SUBMITTED:
+    packed = (
+        order.status == FieldOrder.STATUS_READY
+        and bool(order.stock_allocated)
+    )
+    if not packed:
+        if order.status in (
+            FieldOrder.STATUS_SUBMITTED,
+            FieldOrder.STATUS_PACKING,
+        ):
             raise FieldOrderTransitionError({
                 'status': 'Pack the order before assigning a delivery driver.',
             })
         raise FieldOrderTransitionError({
             'status': f'Cannot assign from status {order.status}.',
         })
-    if order.status == FieldOrder.STATUS_PACKING and not order.stock_allocated:
-        pack_order(order)
-        order.refresh_from_db()
     order.assigned_delivery_agent = agent
     order.assigned_at = timezone.now()
     order.save(update_fields=[
@@ -208,7 +208,7 @@ def claim_ready_order(order: FieldOrder, agent) -> FieldOrder:
                 'Order already assigned. Dispatch assignment takes priority.'
             ),
         })
-    return assign_delivery_agent(order, agent)
+    return assign_delivery_agent(order, agent, user=agent)
 
 
 def cancel_order(order: FieldOrder) -> FieldOrder:

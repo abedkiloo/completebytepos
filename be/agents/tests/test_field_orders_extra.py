@@ -113,7 +113,7 @@ class FieldOrderExtraTests(APITestCase):
         with self.assertRaises(NotImplementedError):
             PushNotifier().notify(user_id=1, title='t', body='b')
 
-    def test_assign_from_packing_auto_packs(self):
+    def test_assign_from_packing_requires_pack_first(self):
         order = FieldOrder.objects.create(
             site=self.site, customer=self.customer,
             status=FieldOrder.STATUS_PACKING, created_by=self.agent,
@@ -121,10 +121,31 @@ class FieldOrderExtraTests(APITestCase):
         FieldOrderLine.objects.create(
             order=order, product=self.product, quantity=1, unit_price=1, product_name='Sand',
         )
-        assign_delivery_agent(order, self.driver)
+        with self.assertRaises(FieldOrderTransitionError) as ctx:
+            assign_delivery_agent(order, self.driver)
+        self.assertIn('Pack the order', str(ctx.exception.detail))
         order.refresh_from_db()
-        self.assertTrue(order.stock_allocated)
-        self.assertEqual(order.assigned_delivery_agent_id, self.driver.id)
+        self.assertFalse(order.stock_allocated)
+        self.assertIsNone(order.assigned_delivery_agent_id)
+
+    def test_assign_from_submitted_via_api_requires_pack(self):
+        order = FieldOrder.objects.create(
+            site=self.site, customer=self.customer,
+            status=FieldOrder.STATUS_SUBMITTED, created_by=self.agent,
+        )
+        FieldOrderLine.objects.create(
+            order=order, product=self.product, quantity=1, unit_price=1,
+            product_name='Sand',
+        )
+        token = RefreshToken.for_user(self.dispatch)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+        res = self.client.post(
+            f'/api/dispatch/field-orders/{order.id}/assign/',
+            {'delivery_agent_id': self.driver.id},
+            format='json',
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST, res.data)
+        self.assertIn('Pack the order', str(res.data))
 
     def test_assign_none_and_done_status(self):
         order = FieldOrder.objects.create(

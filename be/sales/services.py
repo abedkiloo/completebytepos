@@ -115,20 +115,31 @@ class SaleService(BaseService):
             except (ValueError, TypeError):
                 queryset = queryset.none()
 
-        # Status filter — default hides register drafts from sales history / reports.
+        # Status filter — default hides register drafts and waiting sales from history.
         status = filters.get('status')
         if status:
             queryset = queryset.filter(status=status)
-        elif filters.get('include_holding') not in (True, 'true', '1', 1):
-            queryset = queryset.exclude(status='holding')
+        else:
+            excluded = []
+            if filters.get('include_holding') not in (True, 'true', '1', 1):
+                excluded.append('holding')
+            if filters.get('include_pending_approval') not in (True, 'true', '1', 1):
+                excluded.append('pending_approval')
+            if excluded:
+                queryset = queryset.exclude(status__in=excluded)
 
         # Own sales only unless admin / sales.view_all.
+        # Managers with sales.approve see every cashier's waiting sales.
+        from sales.sale_completion_approval import user_can_complete_sales
         from sales.visibility import own_sales_q, user_sees_all_sales
 
         if request is not None and getattr(request, 'user', None) is not None:
             user = request.user
             if getattr(user, 'is_authenticated', False):
-                if user_sees_all_sales(user):
+                sees_all_pending = (
+                    status == 'pending_approval' and user_can_complete_sales(user)
+                )
+                if user_sees_all_sales(user) or sees_all_pending:
                     cashier_id = filters.get('cashier_id')
                     if cashier_id not in (None, ''):
                         try:
@@ -138,6 +149,10 @@ class SaleService(BaseService):
                             )
                         except (TypeError, ValueError):
                             queryset = queryset.none()
+                elif user_can_complete_sales(user):
+                    queryset = queryset.filter(
+                        own_sales_q(user) | Q(status='pending_approval')
+                    )
                 else:
                     queryset = queryset.filter(own_sales_q(user))
 
@@ -440,6 +455,7 @@ class SaleService(BaseService):
         wallet_amount: Decimal = Decimal('0'),
         payment_reference: str = '',
         client_channel: Optional[str] = None,
+        request=None,
     ) -> Sale:
         """Finalise a holding sale: stock, journal entry, status=completed."""
         if holding.status != 'holding':
@@ -487,6 +503,14 @@ class SaleService(BaseService):
             wallet_amount_requested=wallet_amount,
         )
 
+        from sales.sale_completion_approval import (
+            payment_payload_from_inputs,
+            queue_sale_complete,
+            sale_completion_should_wait,
+        )
+
+        defer_complete = sale_completion_should_wait(user)
+
         holding.items.all().delete()
         for item_data in validated_items:
             SaleItem.objects.create(
@@ -498,7 +522,8 @@ class SaleService(BaseService):
                 subtotal=item_data['subtotal'],
             )
             if (
-                item_data['product'].track_stock
+                not defer_complete
+                and item_data['product'].track_stock
                 and sales_validate_stock_before_sale()
             ):
                 self._create_sale_stock_movements(
@@ -516,10 +541,30 @@ class SaleService(BaseService):
         holding.total = total
         holding.payment_method = payment_method
         holding.payment_reference = payment_reference
-        holding.status = 'completed'
+        holding.amount_paid = amount_paid
+        holding.change = payment_result['change']
+        holding.status = 'pending_approval' if defer_complete else 'completed'
         if client_channel:
             holding.client_channel = client_channel
         holding.save()
+
+        if defer_complete:
+            queue_sale_complete(
+                request,
+                holding,
+                payment_payload=payment_payload_from_inputs(
+                    payment_method=payment_method,
+                    amount_paid=amount_paid,
+                    allow_partial=allow_partial,
+                    excess_payment_choice=excess_payment_choice,
+                    use_wallet=use_wallet,
+                    wallet_amount=wallet_amount,
+                    payment_reference=payment_reference,
+                    sale_type='pos',
+                    client_channel=client_channel or '',
+                ),
+            )
+            return holding
 
         self._apply_sale_payment(customer, holding, user, payment_result)
 
@@ -534,7 +579,8 @@ class SaleService(BaseService):
     @transaction.atomic
     def create_sale(self, sale_data: Dict[str, Any], items_data: List[Dict[str, Any]],
                    user, branch: Optional[Branch] = None,
-                   *, validated_items: Optional[List[Dict[str, Any]]] = None) -> Sale:
+                   *, validated_items: Optional[List[Dict[str, Any]]] = None,
+                   complete: bool = True) -> Sale:
         """Create a sale with items and update inventory"""
         from sales.module_settings import sales_validate_stock_before_sale
 
@@ -591,7 +637,7 @@ class SaleService(BaseService):
         # Create sale
         sale = Sale.objects.create(
             sale_type=sale_type,
-            status='completed',
+            status='completed' if complete else 'pending_approval',
             branch=branch,
             cashier=user,
             served_by=served_by,
@@ -628,7 +674,8 @@ class SaleService(BaseService):
             )
 
             if (
-                item_data['product'].track_stock
+                complete
+                and item_data['product'].track_stock
                 and (sales_validate_stock_before_sale() or is_backfill)
             ):
                 self._create_sale_stock_movements(
@@ -642,15 +689,16 @@ class SaleService(BaseService):
                     unit_cost=item_data['unit_cost'],
                 )
         
-        # Create journal entry
-        try:
-            from accounting.services import create_sale_journal_entry
-            create_sale_journal_entry(sale)
-        except Exception as e:
-            # Log but don't fail sale creation
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"Error creating journal entry for sale: {e}")
+        if complete:
+            # Create journal entry
+            try:
+                from accounting.services import create_sale_journal_entry
+                create_sale_journal_entry(sale)
+            except Exception as e:
+                # Log but don't fail sale creation
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error creating journal entry for sale: {e}")
         
         return sale
     
@@ -1094,17 +1142,56 @@ class SaleService(BaseService):
             pending_photo = None
             sale_data['entry_source'] = 'normal' if sale_type == 'normal' else 'pos'
 
+        from sales.sale_completion_approval import (
+            WAITING_MESSAGE,
+            payment_payload_from_inputs,
+            queue_sale_complete,
+            sale_completion_should_wait,
+        )
+
+        defer_complete = sale_completion_should_wait(user)
         sale = self.create_sale(
             sale_data,
             items_data,
             user,
             branch,
             validated_items=validated_items,
+            complete=not defer_complete,
         )
         if pending_photo:
             from sales.backfill_photo import attach_pending_backfill_receipt_photo
 
             attach_pending_backfill_receipt_photo(sale, pending_photo)
+        if defer_complete:
+            pending_change = queue_sale_complete(
+                request,
+                sale,
+                payment_payload=payment_payload_from_inputs(
+                    payment_method=payment_method,
+                    amount_paid=amount_paid,
+                    allow_partial=validated_data.get('allow_partial_payment', False),
+                    excess_payment_choice=validated_data.get(
+                        'excess_payment_choice', 'change'
+                    ),
+                    use_wallet=validated_data.get('use_wallet', False),
+                    wallet_amount=validated_data.get('wallet_amount', 0),
+                    payment_reference=validated_data.get('payment_reference', ''),
+                    sale_type=sale_type,
+                    client_channel=sale_data.get('client_channel') or '',
+                ),
+            )
+            result = {
+                'sale': sale,
+                'invoice': None,
+                'wallet_amount_used': Decimal('0'),
+                'wallet_credit_added': Decimal('0'),
+                'pending_change': pending_change,
+                'message': WAITING_MESSAGE,
+            }
+            if customer:
+                customer.refresh_from_db()
+                result['wallet_balance'] = customer.wallet_balance
+            return result
         self._apply_sale_payment(customer, sale, user, payment_result)
 
         invoice = self._maybe_create_invoice_for_sale(

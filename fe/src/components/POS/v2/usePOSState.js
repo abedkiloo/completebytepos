@@ -8,6 +8,7 @@ import {
   authAPI,
 } from '../../../services/api';
 import { toast } from '../../../utils/toast';
+import { saleCheckoutSuccessToast } from '../../../utils/saleCompletionApproval';
 import { normalizeProductForSale } from '../../../utils/moduleFeatures';
 import { isProductOutOfStock } from '../../../utils/productStock';
 import { shouldOpenVariantPicker } from '../../../utils/variantSelector';
@@ -705,14 +706,26 @@ export function usePOSState() {
 
         if (allowPartial && pendingSaleData?.balance > 0) {
           if (pendingSaleData.received === 0) {
-            toast.success('Sale completed. Full amount added to customer account.');
+            toast.success(
+              saleCheckoutSuccessToast(sale, {
+                completedMessage: 'Sale completed. Full amount added to customer account.',
+              })
+            );
           } else {
-            toast.success('Sale completed. Balance added to customer account.');
+            toast.success(
+              saleCheckoutSuccessToast(sale, {
+                completedMessage: 'Sale completed. Balance added to customer account.',
+              })
+            );
           }
         } else if (excessChoice === 'wallet' && pendingSaleData?.excess > 0) {
-          toast.success("Sale completed. Excess credited to customer's wallet.");
+          toast.success(
+            saleCheckoutSuccessToast(sale, {
+              completedMessage: "Sale completed. Excess credited to customer's wallet.",
+            })
+          );
         } else {
-          toast.success('Sale completed');
+          toast.success(saleCheckoutSuccessToast(sale));
         }
       } catch (err) {
         toast.error(

@@ -37,6 +37,7 @@ ACTION_ROLE_PERMISSIONS = 'role_permissions'
 ACTION_SALE_COMPLETED_EDIT = 'sale_completed_edit'
 ACTION_SALE_REFUND = 'sale_refund'
 ACTION_SALE_ROLLBACK = 'sale_rollback'
+ACTION_SALE_COMPLETE = 'sale_complete'
 ACTION_SALE_BACKFILL = 'sale_backfill'
 ACTION_DEBT_COLLECTION = 'debt_collection'
 
@@ -88,6 +89,7 @@ CHECKER_MODULE_BY_ACTION: dict[str, str] = {
     ACTION_SALE_COMPLETED_EDIT: 'sales',
     ACTION_SALE_REFUND: 'sales',
     ACTION_SALE_ROLLBACK: 'settings',
+    ACTION_SALE_COMPLETE: 'sales',
     ACTION_SALE_BACKFILL: 'sales',
     ACTION_DEBT_COLLECTION: 'debt_management',
 }

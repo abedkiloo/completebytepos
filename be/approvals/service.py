@@ -25,6 +25,7 @@ from approvals.registry import (
     ACTION_PRODUCT_STOCK,
     ACTION_SALE_REFUND,
     ACTION_SALE_ROLLBACK,
+    ACTION_SALE_COMPLETE,
     ACTION_SALE_BACKFILL,
     ACTION_DEBT_COLLECTION,
     ACTION_STOCK_ADJUST,
@@ -218,6 +219,15 @@ def validate_before_approval(change: PendingChange, *, extreme_price_confirmed: 
                 'Sale can no longer be rolled back; reject this request.'
             )
 
+    if change.action_type == ACTION_SALE_COMPLETE:
+        from sales.models import Sale
+
+        sale = Sale.objects.filter(pk=change.entity_id).first()
+        if sale is None:
+            raise ValidationError('Sale no longer exists; reject this request.')
+        if sale.status != 'pending_approval':
+            raise ValidationError('Sale is no longer waiting for approval.')
+
     if change.action_type == ACTION_DEBT_COLLECTION:
         from sales.models import Customer
 
@@ -306,6 +316,22 @@ def _notify_change_rejected(change: PendingChange, checker, reason: str) -> None
     )
 
 
+def _on_sale_complete_rejected(change: PendingChange, checker, reason: str) -> None:
+    if change.action_type != ACTION_SALE_COMPLETE:
+        return
+    from sales.models import Sale
+    from sales.sale_completion_approval import (
+        cancel_queued_sale,
+        notify_cashier_sale_rejected,
+    )
+
+    sale = Sale.objects.filter(pk=change.entity_id).first()
+    if sale is None:
+        return
+    cancel_queued_sale(sale)
+    notify_cashier_sale_rejected(sale, checker, reason)
+
+
 @transaction.atomic
 def reject_change(
     change: PendingChange,
@@ -336,6 +362,7 @@ def reject_change(
             if request:
                 _audit_pending(request, item, 'pending_reject')
             _notify_change_rejected(item, checker, reason)
+            _on_sale_complete_rejected(item, checker, reason)
         return change
 
     change.status = PendingChange.STATUS_REJECTED
@@ -346,6 +373,7 @@ def reject_change(
     if request:
         _audit_pending(request, change, 'pending_reject')
     _notify_change_rejected(change, checker, reason)
+    _on_sale_complete_rejected(change, checker, reason)
     return change
 
 

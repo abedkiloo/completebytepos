@@ -1,12 +1,17 @@
 import {
+  assignBlockedByPreviousStep,
+  assignBlockedRows,
   assignCommitRows,
   assignConfirmDescription,
   assignCreatesCustomerDebt,
   assignDriverError,
   canAssignDriver,
   canMarkReady,
+  canShowAssignStep,
   DEBTOR_CONFIRM_COPY,
   deliveryAssigneeLabel,
+  dispatchWorkflowSteps,
+  fieldOrderIsPacked,
   fieldOrderLineSummary,
   fieldOrderQty,
   fieldOrderTotal,
@@ -42,7 +47,8 @@ describe('fieldSalesCommit', () => {
     expect(packCommitRows({}).find((row) => row.label === 'Order').value).toBe('');
     expect(assignCommitRows({}, { username: '' }).find((row) => row.label === 'Order').value).toBe('');
     expect(canMarkReady({ status: 'packing' })).toBe(true);
-    expect(canAssignDriver({ status: 'packing' })).toBe(true);
+    expect(canAssignDriver({ status: 'packing' })).toBe(false);
+    expect(canAssignDriver({ status: 'packing', stock_allocated: true })).toBe(false);
     expect(fieldOrderLineSummary({ lines: [] })).toBe('—');
     expect(fieldOrderTotal({ lines: [{ quantity: 'x', unit_price: 'y' }] })).toBe(0);
     expect(fieldOrderTotal({ lines: [{ quantity: 2, unit_price: 5 }] })).toBe(10);
@@ -52,8 +58,27 @@ describe('fieldSalesCommit', () => {
     expect(canMarkReady(submitted)).toBe(true);
     expect(canMarkReady({ status: 'ready' })).toBe(false);
     expect(canAssignDriver({ status: 'ready' })).toBe(true);
+    expect(canAssignDriver({ status: 'out_for_delivery' })).toBe(false);
     expect(canAssignDriver({ status: 'ready', assigned_delivery_agent_id: 9 })).toBe(false);
     expect(canAssignDriver({ status: 'submitted' })).toBe(false);
+    expect(canShowAssignStep(submitted)).toBe(true);
+    expect(canShowAssignStep({ status: 'ready', assigned_delivery_agent_id: 3 })).toBe(false);
+    expect(fieldOrderIsPacked(null)).toBe(false);
+    expect(fieldOrderIsPacked({ status: 'out_for_delivery' })).toBe(true);
+    expect(fieldOrderIsPacked({ status: 'done' })).toBe(true);
+    expect(dispatchWorkflowSteps(submitted).map((step) => step.current)).toEqual([true, false]);
+    expect(dispatchWorkflowSteps({ status: 'ready' }).map((step) => step.current)).toEqual([
+      false, true,
+    ]);
+    expect(
+      dispatchWorkflowSteps({ status: 'ready', assigned_delivery_agent_id: 3 })
+        .map((step) => step.done),
+    ).toEqual([true, true]);
+    const blocked = assignBlockedByPreviousStep(submitted);
+    expect(blocked.title).toBe('Pack this order first');
+    expect(assignBlockedByPreviousStep({ status: 'ready' })).toBeNull();
+    expect(assignBlockedRows(null)).toEqual([]);
+    expect(assignBlockedRows(blocked)[0].value).toBe('Pack & mark ready for pickup');
   });
 
   test('packReadyError covers permission, missing order, status, and empty cart', () => {
@@ -80,7 +105,8 @@ describe('fieldSalesCommit', () => {
   test('assignDriverError covers permission, status, and missing driver', () => {
     expect(assignDriverError(submitted, 3, false)).toBe('You cannot assign this delivery.');
     expect(assignDriverError(null, 3)).toBe('Select an order first.');
-    expect(assignDriverError(submitted, 3)).toBe('This order is not ready to assign.');
+    expect(assignDriverError({ status: 'done' }, 3)).toBe('This order is not ready to assign.');
+    expect(assignDriverError(submitted, 3)).toContain('Finish packing');
     expect(assignDriverError({ status: 'ready' }, '')).toBe('Select who will deliver first.');
     expect(assignDriverError({ status: 'ready' }, 8)).toBe('');
   });
@@ -109,14 +135,15 @@ describe('fieldSalesCommit', () => {
       .find((row) => row.label === 'Delivered by').value).toBe('Ada · Sales Personnel');
     expect(assignCommitRows({ status: 'ready' }, { display_name: 'Jane' })
       .find((row) => row.label === 'Customer account')).toBeUndefined();
-    expect(assignCreatesCustomerDebt({ status: 'packing' })).toBe(true);
-    expect(assignCreatesCustomerDebt({ status: 'packing', stock_allocated: true })).toBe(false);
+    expect(assignCreatesCustomerDebt({ status: 'packing' })).toBe(false);
+    expect(assignCreatesCustomerDebt({ status: 'submitted' })).toBe(false);
+    expect(assignConfirmDescription(submitted)).toContain('route');
     expect(
       assignCommitRows({ status: 'packing' }, { display_name: 'Jane' })
-        .find((row) => row.label === 'Customer account').value,
-    ).toBe(DEBTOR_CONFIRM_COPY);
+        .find((row) => row.label === 'Customer account'),
+    ).toBeUndefined();
     expect(assignConfirmDescription({ status: 'ready' })).toContain('route');
-    expect(assignConfirmDescription({ status: 'packing' })).toContain('debtor');
+    expect(assignConfirmDescription({ status: 'packing' })).toContain('route');
   });
 
   test('mergeDriverIntoList ignores invalid ids and replaces duplicates', () => {

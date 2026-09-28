@@ -481,6 +481,7 @@ describe('makerChecker', () => {
     expect(catalog.placeholder).toBeTruthy();
     expect(stock.placeholder).toBeTruthy();
     expect(makerCheckerReasonCopy('sale_rollback').summary).toMatch(/admin approval/i);
+    expect(makerCheckerReasonCopy('sale_complete').summary).toMatch(/issue the receipt/i);
   });
 
   it('pendingApprovalToastMessage without nav hint when user cannot review', () => {

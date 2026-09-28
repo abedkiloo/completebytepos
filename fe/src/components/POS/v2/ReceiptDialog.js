@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Printer, Check, Loader2, Receipt as ReceiptIcon, UserPlus } from 'lucide-react';
+import { toPng } from 'html-to-image';
 
 import {
   Dialog,
@@ -12,11 +13,23 @@ import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
 import SaleChannelIcon from '../../Sales/SaleChannelIcon';
 import { toast } from '../../../utils/toast';
-import { formatCurrency } from '../../../utils/formatters';
 import { isManagerOrAdminFromStorage, getStoredAuth } from '../../../utils/roleAccess';
 import { useModuleSettings } from '../../../hooks/useModuleSettings';
 import { canQuickAddCustomerAtPos } from '../../../utils/customerDisplay';
 import CustomerFormModal from '../../Customers/CustomerFormModal';
+import {
+  buildReceiptShareCaption,
+  captureReceiptPng,
+  customerPhoneDigits,
+  isShareAbort,
+  shareOrDownloadReceiptPng,
+  whatsAppTextUrl,
+} from '../../../utils/receiptSnapshotShare';
+import { saveBlobAsFile } from '../../../utils/pdfDownload';
+import {
+  SALE_AWAITING_APPROVAL_MESSAGE,
+  saleIsAwaitingApproval,
+} from '../../../utils/saleCompletionApproval';
 
 import { ThermalReceipt } from './ThermalReceipt';
 import { printThermalReceipt } from './printReceipt';
@@ -49,36 +62,28 @@ function isWalkInSale(sale) {
   return !sale?.customer_id || name.includes('walk-in');
 }
 
-function buildWhatsAppMessage(sale, store) {
-  const storeName = store?.storeName || 'Omuwenga Suppliers';
-  const phone = store?.phone || '0718515142';
-  const lines = [
-    storeName,
-    `Receipt ${sale.sale_number || ''}`.trim(),
-    `Total: ${formatCurrency(sale.total)}`,
-    '',
-    'Thank you for your purchase!',
-    `Tel: ${phone}`,
-  ];
-  return lines.filter(Boolean).join('\n');
-}
-
 /**
- * Receipt preview with Print and WhatsApp actions.
+ * Receipt preview with Print and WhatsApp snapshot share.
  */
 export default function ReceiptDialog({
   sale,
   open,
   onOpenChange,
   autoPrint = false,
+  capturePng = captureReceiptPng,
+  toPngImpl = toPng,
+  shareReceiptPng = shareOrDownloadReceiptPng,
+  openWindow = (...args) => window.open(...args),
 }) {
   const store = useStoreInfo(sale);
   const { settings: customerModuleSettings } = useModuleSettings('customers');
   const { permissions } = getStoredAuth();
   const [printing, setPrinting] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [printedOnce, setPrintedOnce] = useState(false);
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const autoPrintFiredFor = useRef(null);
+  const receiptRef = useRef(null);
 
   const doPrint = async () => {
     if (!sale || printing) return;
@@ -95,8 +100,37 @@ export default function ReceiptDialog({
     }
   };
 
+  const doShare = async () => {
+    if (!sale || sharing) return;
+    setSharing(true);
+    try {
+      const pngDataUrl = await capturePng(receiptRef.current, toPngImpl);
+      const result = await shareReceiptPng({
+        pngDataUrl,
+        sale,
+        store,
+        download: saveBlobAsFile,
+      });
+      if (result.method === 'download') {
+        const phone = customerPhoneDigits(sale);
+        const caption = result.caption || buildReceiptShareCaption(sale, store);
+        if (phone) {
+          openWindow(whatsAppTextUrl(phone, caption), '_blank', 'noopener,noreferrer');
+        } else {
+          toast.success('Receipt photo saved. Share it from your downloads.');
+        }
+      }
+    } catch (error) {
+      if (!isShareAbort(error)) {
+        toast.error('Could not create receipt photo.');
+      }
+    } finally {
+      setSharing(false);
+    }
+  };
+
   useEffect(() => {
-    if (!open || !autoPrint || !sale?.id) return;
+    if (!open || !autoPrint || !sale?.id || saleIsAwaitingApproval(sale)) return;
     if (autoPrintFiredFor.current === sale.id) return;
     autoPrintFiredFor.current = sale.id;
     doPrint();
@@ -105,6 +139,29 @@ export default function ReceiptDialog({
 
   if (!sale) return null;
 
+  if (saleIsAwaitingApproval(sale)) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Waiting for manager approval</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {sale.message || SALE_AWAITING_APPROVAL_MESSAGE}
+          </p>
+          {sale.sale_number ? (
+            <p className="text-sm font-medium">Sale {sale.sale_number}</p>
+          ) : null}
+          <DialogFooter>
+            <Button type="button" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   const customerName = customerDisplayName(sale);
   const walkIn = isWalkInSale(sale);
   const canAddCustomer = canQuickAddCustomerAtPos(
@@ -112,6 +169,7 @@ export default function ReceiptDialog({
     customerModuleSettings,
     permissions
   );
+  const busy = printing || sharing;
 
   return (
     <>
@@ -172,7 +230,7 @@ export default function ReceiptDialog({
             aria-label="Receipt preview"
           >
             <div className="w-full rounded-sm bg-white shadow-sm ring-1 ring-border print:shadow-none print:ring-0">
-              <ThermalReceipt sale={sale} store={store} compact />
+              <ThermalReceipt ref={receiptRef} sale={sale} store={store} compact />
             </div>
           </div>
 
@@ -180,7 +238,7 @@ export default function ReceiptDialog({
             <Button
               type="button"
               onClick={doPrint}
-              disabled={printing}
+              disabled={busy}
               variant="success"
               size="cashier"
               data-testid="receipt-print-button"
@@ -199,7 +257,27 @@ export default function ReceiptDialog({
               )}
             </Button>
             <div className="grid w-full grid-cols-2 gap-2">
-              <SendWhatsAppButton sale={sale} store={store} className="w-full" />
+              <Button
+                type="button"
+                variant="outline"
+                size="cashier"
+                onClick={doShare}
+                disabled={busy}
+                data-testid="receipt-share-button"
+                className="w-full gap-1.5 text-[#128C7E] hover:text-[#128C7E]"
+              >
+                {sharing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Sharing…
+                  </>
+                ) : (
+                  <>
+                    <WhatsAppIcon className="h-4 w-4" />
+                    WhatsApp
+                  </>
+                )}
+              </Button>
               <Button
                 type="button"
                 variant="outline"
@@ -224,31 +302,5 @@ export default function ReceiptDialog({
         />
       )}
     </>
-  );
-}
-
-function SendWhatsAppButton({ sale, store, className = '' }) {
-  const phone = (sale.customer_phone || sale.customer?.phone || '').replace(/\D/g, '');
-
-  const onClick = () => {
-    if (!phone) {
-      toast.warning('Add a customer phone number to send via WhatsApp.');
-      return;
-    }
-    const message = buildWhatsAppMessage(sale, store);
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
-  };
-
-  return (
-    <Button
-      variant="outline"
-      size="cashier"
-      onClick={onClick}
-      className={`gap-1.5 text-[#128C7E] hover:text-[#128C7E] ${className}`.trim()}
-    >
-      <WhatsAppIcon className="h-4 w-4" />
-      WhatsApp
-    </Button>
   );
 }

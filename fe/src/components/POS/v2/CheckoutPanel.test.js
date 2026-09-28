@@ -2,6 +2,10 @@ import React, { useState } from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { CheckoutPanel } from './CheckoutPanel';
 
+jest.mock('../../../utils/toast', () => ({
+  toast: { info: jest.fn(), warning: jest.fn(), error: jest.fn(), success: jest.fn() },
+}));
+
 jest.mock('../../Payments/StkWaitDialog', () => ({
   __esModule: true,
   default: ({ open, onPaid }) =>
@@ -83,21 +87,18 @@ describe('CheckoutPanel', () => {
     expect(screen.getByRole('button', { name: /Complete sale/i })).toBeDisabled();
   });
 
-  it('lets the cashier prompt M-Pesa or type a code', () => {
+  it('lets the cashier type an M-Pesa code and shows coming soon for prompt', () => {
     const onPay = jest.fn();
     render(<MpesaHarness onPay={onPay} customerPhone="0712345678" />);
 
     expect(screen.getByTestId('mpesa-capture-prompt')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Send M-Pesa prompt/i })).toBeInTheDocument();
-    expect(screen.getByLabelText(/Safaricom number/i)).toHaveValue('0712345678');
+    expect(screen.getByRole('button', { name: /Complete sale/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/M-Pesa code/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Safaricom number/i)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /Send M-Pesa prompt/i }));
-    expect(onPay).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByText('mock-stk-paid'));
-    expect(onPay).toHaveBeenCalledWith({ paymentReference: 'QHX7K2L9M1' });
+    fireEvent.click(screen.getByTestId('mpesa-capture-prompt'));
+    expect(screen.queryByText('mock-stk-paid')).not.toBeInTheDocument();
 
-    onPay.mockClear();
-    fireEvent.click(screen.getByTestId('mpesa-capture-code'));
     fireEvent.change(screen.getByLabelText(/M-Pesa code/i), {
       target: { value: ' qhx 7k2 l9m1 ' },
     });
@@ -105,13 +106,13 @@ describe('CheckoutPanel', () => {
     expect(onPay).toHaveBeenCalledWith({ paymentReference: 'QHX7K2L9M1' });
   });
 
-  it('asks for a Safaricom number before sending a prompt', () => {
+  it('requires an M-Pesa code before completing the sale', () => {
     const onPay = jest.fn();
     render(<MpesaHarness onPay={onPay} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Send M-Pesa prompt/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Complete sale/i }));
     expect(onPay).not.toHaveBeenCalled();
     expect(screen.queryByText('mock-stk-paid')).not.toBeInTheDocument();
-    expect(screen.getByText(/Enter a Kenyan mobile/i)).toBeInTheDocument();
+    expect(screen.getByText(/Enter the M-Pesa code from the SMS/i)).toBeInTheDocument();
   });
 });

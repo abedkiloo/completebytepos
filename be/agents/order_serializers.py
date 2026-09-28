@@ -304,9 +304,11 @@ class AssignOrderSerializer(serializers.Serializer):
 
     def save(self, **kwargs):
         order = self.context['order']
+        request = self.context.get('request')
+        user = getattr(request, 'user', None) if request is not None else None
         agent = self.validated_data['delivery_agent_id']
         try:
-            order = assign_delivery_agent(order, agent)
+            order = assign_delivery_agent(order, agent, user=user)
         except FieldOrderTransitionError:
             raise
         get_push_notifier().notify(

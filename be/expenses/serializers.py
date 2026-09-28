@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from decimal import Decimal
 
+from django.utils import timezone
+
 from utils.field_types import (
     date_error_messages,
     money_error_messages,
@@ -33,6 +35,8 @@ class ExpenseSerializer(serializers.ModelSerializer):
         error_messages=money_error_messages(allow_zero=False),
     )
     expense_date = serializers.DateField(
+        required=False,
+        allow_null=True,
         error_messages=date_error_messages(label='expense date'),
     )
     
@@ -54,6 +58,12 @@ class ExpenseSerializer(serializers.ModelSerializer):
             )
         )
         return value.strip()
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if self.instance is None and not attrs.get('expense_date'):
+            attrs['expense_date'] = timezone.localdate()
+        return attrs
 
 
 class ExpenseListSerializer(serializers.ModelSerializer):

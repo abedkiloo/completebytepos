@@ -20,6 +20,7 @@ from approvals.registry import (
     ACTION_SALE_COMPLETED_EDIT,
     ACTION_SALE_REFUND,
     ACTION_SALE_ROLLBACK,
+    ACTION_SALE_COMPLETE,
     ACTION_SALE_BACKFILL,
     ACTION_DEBT_COLLECTION,
     ACTION_STOCK_ADJUST,
@@ -64,6 +65,9 @@ def apply_pending_change(change: PendingChange) -> None:
         return
     if change.entity_type == 'sales.Sale' and change.action_type == ACTION_SALE_ROLLBACK:
         _apply_sale_rollback(change)
+        return
+    if change.entity_type == 'sales.Sale' and change.action_type == ACTION_SALE_COMPLETE:
+        _apply_sale_complete(change)
         return
     if change.entity_type == 'sales.SaleBackfill' and change.action_type == ACTION_SALE_BACKFILL:
         _apply_sale_backfill(change)
@@ -254,6 +258,17 @@ def _apply_sale_refund(change: PendingChange) -> None:
         log_sale_refunded(None, sale, refund)
     except Exception:
         pass
+
+
+def _apply_sale_complete(change: PendingChange) -> None:
+    from sales.models import Sale
+    from sales.sale_completion_approval import complete_queued_sale
+
+    sale = Sale.objects.get(pk=change.entity_id)
+    checker = change.checked_by
+    if not checker:
+        raise ValidationError('Sale completion requires a manager or admin checker.')
+    complete_queued_sale(sale, checker, change.apply_payload or {})
 
 
 def _apply_sale_rollback(change: PendingChange) -> None:

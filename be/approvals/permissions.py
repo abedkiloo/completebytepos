@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from approvals.registry import (
     ACTION_DEBT_COLLECTION,
+    ACTION_SALE_COMPLETE,
     ACTION_SALE_ROLLBACK,
     CHECKER_MODULE_BY_ACTION,
 )
@@ -44,6 +45,11 @@ def user_can_check(user, action_type: str) -> bool:
         return user_has_admin_checker_override(user) or (
             getattr(user, 'profile', None)
             and user.profile.has_permission('debt_management', 'approve')
+        )
+    if action_type == ACTION_SALE_COMPLETE:
+        return user_has_admin_checker_override(user) or (
+            getattr(user, 'profile', None)
+            and user.profile.has_permission('sales', 'approve')
         )
     if user.is_superuser or user.is_staff:
         return True

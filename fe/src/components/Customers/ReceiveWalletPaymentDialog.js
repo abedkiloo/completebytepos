@@ -67,7 +67,7 @@ export default function ReceiveWalletPaymentDialog({
   const [showCommitConfirm, setShowCommitConfirm] = useState(false);
   const [pendingAmount, setPendingAmount] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
-  const [mpesaMode, setMpesaMode] = useState(MPESA_CAPTURE_PROMPT);
+  const [mpesaMode, setMpesaMode] = useState(MPESA_CAPTURE_CODE);
   const [mpesaPhone, setMpesaPhone] = useState('');
   const [stkOpen, setStkOpen] = useState(false);
 
@@ -80,7 +80,7 @@ export default function ReceiveWalletPaymentDialog({
       setForm(EMPTY_FORM);
       setTransactions([]);
       setFieldErrors({});
-      setMpesaMode(MPESA_CAPTURE_PROMPT);
+      setMpesaMode(MPESA_CAPTURE_CODE);
       setMpesaPhone('');
       setStkOpen(false);
       return;
@@ -89,7 +89,7 @@ export default function ReceiveWalletPaymentDialog({
       ...EMPTY_FORM,
       amount: debtAmount > 0 ? String(debtAmount) : prev.amount,
     }));
-    setMpesaMode(MPESA_CAPTURE_PROMPT);
+    setMpesaMode(MPESA_CAPTURE_CODE);
     setMpesaPhone(customer.phone || '');
 
     let cancelled = false;

@@ -39,13 +39,69 @@ export function fieldOrderLineSummary(order) {
   return `${names}${more} · qty ${qty}`;
 }
 
+export const DISPATCH_STEP_PACK = 'Pack & mark ready for pickup';
+export const DISPATCH_STEP_ASSIGN = 'Assign for delivery';
+
+export function fieldOrderIsPacked(order) {
+  return ['ready', 'out_for_delivery', 'done'].includes(order?.status);
+}
+
 export function canMarkReady(order) {
   return ['submitted', 'packing'].includes(order?.status);
 }
 
-export function canAssignDriver(order) {
-  return ['ready', 'packing'].includes(order?.status)
+export function canShowAssignStep(order) {
+  return ['submitted', 'packing', 'ready'].includes(order?.status)
     && !order?.assigned_delivery_agent_id;
+}
+
+export function canAssignDriver(order) {
+  return order?.status === 'ready' && !order?.assigned_delivery_agent_id;
+}
+
+export function dispatchWorkflowSteps(order) {
+  const packed = fieldOrderIsPacked(order);
+  const assigned = Boolean(order?.assigned_delivery_agent_id);
+  return [
+    {
+      id: 'pack',
+      label: DISPATCH_STEP_PACK,
+      done: packed,
+      current: !packed,
+    },
+    {
+      id: 'assign',
+      label: DISPATCH_STEP_ASSIGN,
+      done: assigned,
+      current: packed && !assigned,
+    },
+  ];
+}
+
+export function assignBlockedByPreviousStep(order) {
+  if (!order) return null;
+  if (fieldOrderIsPacked(order)) return null;
+  return {
+    title: 'Pack this order first',
+    message:
+      'Assign for delivery is the next step. Finish packing and mark the order ready for pickup before you choose who delivers.',
+    currentStep: DISPATCH_STEP_PACK,
+    nextStep: DISPATCH_STEP_ASSIGN,
+    opensPack: true,
+  };
+}
+
+export function assignBlockedRows(blocked) {
+  if (!blocked) return [];
+  return [
+    {
+      label: 'Do this first',
+      value: blocked.currentStep,
+      emphasis: true,
+      tone: 'warning',
+    },
+    { label: 'Then', value: blocked.nextStep },
+  ];
 }
 
 export function fieldOrderHasCustomer(order) {
@@ -67,6 +123,8 @@ export function packReadyError(order, canPack = true) {
 export function assignDriverError(order, driverId, canPack = true) {
   if (!canPack) return 'You cannot assign this delivery.';
   if (!order) return 'Select an order first.';
+  const blocked = assignBlockedByPreviousStep(order);
+  if (blocked) return blocked.message;
   if (!canAssignDriver(order)) return 'This order is not ready to assign.';
   if (!driverId) return 'Select who will deliver first.';
   return '';
@@ -75,8 +133,8 @@ export function assignDriverError(order, driverId, canPack = true) {
 export const DEBTOR_CONFIRM_COPY =
   'This customer will be added as a debtor in the system. Collect later as Cash or M-Pesa.';
 
-export function assignCreatesCustomerDebt(order) {
-  return order?.status === 'packing' && !order?.stock_allocated;
+export function assignCreatesCustomerDebt() {
+  return false;
 }
 
 export function packConfirmDescription(order) {
@@ -84,10 +142,7 @@ export function packConfirmDescription(order) {
   return `After you confirm, ${name} is added as a debtor. Collect the amount later under Debt collection (Cash or M-Pesa).`;
 }
 
-export function assignConfirmDescription(order) {
-  if (assignCreatesCustomerDebt(order)) {
-    return `This also marks the order ready. ${DEBTOR_CONFIRM_COPY}`;
-  }
+export function assignConfirmDescription() {
   return 'The person you pick will see it on their route after you confirm.';
 }
 
@@ -120,9 +175,6 @@ export function assignCommitRows(order, driver, formatMoney) {
     { label: 'Total', value: money(fieldOrderTotal(order)) },
     { label: 'Delivered by', value: driverName, emphasis: true, tone: 'success' },
   ];
-  if (assignCreatesCustomerDebt(order)) {
-    rows.push(debtorConfirmRow());
-  }
   return rows;
 }
 

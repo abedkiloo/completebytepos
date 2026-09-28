@@ -46,7 +46,25 @@ class PaymentsExtraTests(APITestCase):
         token = RefreshToken.for_user(self.user)
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
 
-    def test_config_getters_and_processing_query(self):
+    def test_auto_succeed_only_affects_query_when_enabled(self):
+        from payments.daraja import FakeDarajaClient
+
+        quiet = FakeDarajaClient()
+        started = quiet.initiate_stk(
+            phone='254712345678', amount='10',
+            account_reference='INV', transaction_desc='Pay',
+        )
+        waiting = quiet.query_stk(started.checkout_request_id)
+        self.assertEqual(waiting.result_code, '4999')
+
+        eager = FakeDarajaClient(auto_succeed=True)
+        paid_start = eager.initiate_stk(
+            phone='254712345678', amount='10',
+            account_reference='INV', transaction_desc='Pay',
+        )
+        paid = eager.query_stk(paid_start.checkout_request_id)
+        self.assertEqual(paid.result_code, '0')
+        self.assertTrue(paid.mpesa_receipt)
         self.assertIn('shortcode', daraja_config())
         set_daraja_client(None)
         self.assertIsInstance(get_daraja_client(), FakeDarajaClient)

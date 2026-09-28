@@ -39,6 +39,7 @@ export default function StkWaitDialog({
   const [intent, setIntent] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [waitingHint, setWaitingHint] = useState('');
   const startedForOpen = useRef(false);
 
   useEffect(() => {
@@ -47,6 +48,7 @@ export default function StkWaitDialog({
       setIntent(null);
       setError('');
       setBusy(false);
+      setWaitingHint('');
       return undefined;
     }
     if (startedForOpen.current) return undefined;
@@ -108,6 +110,13 @@ export default function StkWaitDialog({
     try {
       const res = await paymentIntentsAPI.query(intent.id);
       setIntent(res.data);
+      const status = res.data?.status;
+      if (status && !['paid', 'failed', 'cancelled', 'expired'].includes(status)) {
+        setWaitingHint('Not paid yet. M-Pesa has not confirmed — payment is not recorded.');
+        setError('');
+      } else {
+        setWaitingHint('');
+      }
     } catch (err) {
       setError(intentError(err, 'Could not check payment status.'));
     } finally {
@@ -150,6 +159,9 @@ export default function StkWaitDialog({
             Waiting for the PIN prompt…
           </div>
         )}
+        {waitingHint && !paid && !failed ? (
+          <p className="text-sm text-muted-foreground">{waitingHint}</p>
+        ) : null}
         {error && intent ? (
           <p className="text-sm text-destructive">{error}</p>
         ) : null}

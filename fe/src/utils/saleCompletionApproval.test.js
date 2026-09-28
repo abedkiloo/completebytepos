@@ -1,0 +1,59 @@
+import {
+  SALE_APPROVED_RECEIPT_MESSAGE,
+  SALE_AWAITING_APPROVAL_MESSAGE,
+  awaitingApprovalListParams,
+  saleCheckoutSuccessToast,
+  saleIsAwaitingApproval,
+  saleReceiptBlockedReason,
+  userCanApproveSales,
+} from './saleCompletionApproval';
+
+describe('saleCompletionApproval', () => {
+  test('detects pending_approval sales', () => {
+    expect(saleIsAwaitingApproval({ status: 'pending_approval' })).toBe(true);
+    expect(saleIsAwaitingApproval({ status: 'completed' })).toBe(false);
+    expect(saleIsAwaitingApproval(null)).toBe(false);
+  });
+
+  test('blocks receipt until completed', () => {
+    expect(saleReceiptBlockedReason({ status: 'pending_approval' })).toBe(
+      SALE_AWAITING_APPROVAL_MESSAGE
+    );
+    expect(saleReceiptBlockedReason({ status: 'holding' })).toMatch(/after the sale is completed/i);
+    expect(saleReceiptBlockedReason({ status: 'completed' })).toBeNull();
+    expect(saleReceiptBlockedReason(null)).toBeNull();
+  });
+
+  test('checkout toast prefers waiting copy', () => {
+    expect(
+      saleCheckoutSuccessToast({ status: 'pending_approval', message: 'Wait please' })
+    ).toBe('Wait please');
+    expect(saleCheckoutSuccessToast({ pending_change: { id: 1 } })).toBe(
+      SALE_AWAITING_APPROVAL_MESSAGE
+    );
+    expect(saleCheckoutSuccessToast({ status: 'completed' })).toBe('Sale completed');
+    expect(
+      saleCheckoutSuccessToast({ status: 'completed' }, { completedMessage: 'Done' })
+    ).toBe('Done');
+    expect(saleCheckoutSuccessToast({ status: 'completed' })).toBe('Sale completed');
+  });
+
+  test('approve permission is sales.approve', () => {
+    expect(userCanApproveSales([{ module: 'sales', action: 'approve' }])).toBe(true);
+    expect(userCanApproveSales([{ module: 'sales', action: 'create' }])).toBe(false);
+    expect(userCanApproveSales([])).toBe(false);
+    expect(userCanApproveSales()).toBe(false);
+  });
+
+  test('awaiting list params set status', () => {
+    expect(awaitingApprovalListParams({ search: 'S-1' })).toEqual({
+      search: 'S-1',
+      status: 'pending_approval',
+    });
+    expect(awaitingApprovalListParams()).toEqual({ status: 'pending_approval' });
+  });
+
+  test('approved copy is stable', () => {
+    expect(SALE_APPROVED_RECEIPT_MESSAGE).toMatch(/issue the receipt/i);
+  });
+});

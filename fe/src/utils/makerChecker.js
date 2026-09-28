@@ -66,6 +66,12 @@ const REASON_CONTEXT_COPY = {
     summary:
       'This past sale will be submitted for manager approval. Stock and accounts stay unchanged until it is approved.',
   },
+  sale_complete: {
+    label: 'Reason for completing this sale',
+    placeholder: 'Approve so the cashier can issue the receipt',
+    summary:
+      'This sale was rung up at the till. Stock and books stay unchanged until you approve. After approval the cashier can issue the receipt.',
+  },
 };
 
 /** True when the signed-in user can open the pending-approvals queue. */

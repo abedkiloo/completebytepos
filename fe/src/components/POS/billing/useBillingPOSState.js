@@ -5,6 +5,7 @@ import {
   salesAPI,
 } from '../../../services/api';
 import { toast } from '../../../utils/toast';
+import { saleCheckoutSuccessToast } from '../../../utils/saleCompletionApproval';
 import { cartItemKey, getLineStockCap } from '../v2/usePOSState';
 import { isProductVariantsEnabled, normalizeProductForSale } from '../../../utils/moduleFeatures';
 import { isProductOutOfStock } from '../../../utils/productStock';
@@ -631,11 +632,14 @@ export function useBillingPOSState() {
       setPendingCheckout(null);
       setShowSaleCommitConfirm(false);
       toast.success(
-        paid === 0 && parseFloat(res.data.total) > 0
-          ? 'Sale completed. Full amount added to customer account.'
-          : paid < parseFloat(res.data.total)
-            ? 'Sale completed. Balance added to customer account.'
-            : 'Sale completed'
+        saleCheckoutSuccessToast(sale, {
+          completedMessage:
+            paid === 0 && parseFloat(res.data.total) > 0
+              ? 'Sale completed. Full amount added to customer account.'
+              : paid < parseFloat(res.data.total)
+                ? 'Sale completed. Balance added to customer account.'
+                : 'Sale completed',
+        })
       );
     } catch (err) {
       const msg = formatApiError(err, 'Checkout failed');

@@ -1,18 +1,32 @@
 import {
   MPESA_CAPTURE_CODE,
   MPESA_CAPTURE_PROMPT,
+  MPESA_PROMPT_COMING_SOON,
+  announceMpesaPromptComingSoon,
   isMpesaCode,
   isMpesaPrompt,
   mpesaCollectingNow,
 } from './mpesaCapture';
+import { toast } from './toast';
+
+jest.mock('./toast', () => ({
+  toast: { info: jest.fn(), warning: jest.fn(), error: jest.fn(), success: jest.fn() },
+}));
 
 describe('mpesaCapture', () => {
-  it('treats prompt as the default capture mode', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('treats prompt and code as distinct capture modes', () => {
     expect(isMpesaPrompt(MPESA_CAPTURE_PROMPT)).toBe(true);
     expect(isMpesaPrompt(MPESA_CAPTURE_CODE)).toBe(false);
     expect(isMpesaCode(MPESA_CAPTURE_CODE)).toBe(true);
     expect(isMpesaCode(MPESA_CAPTURE_PROMPT)).toBe(false);
     expect(isMpesaCode('anything-else')).toBe(true);
+    expect(MPESA_PROMPT_COMING_SOON).toBe(true);
+    expect(announceMpesaPromptComingSoon()).toBe('Coming soon');
+    expect(toast.info).toHaveBeenCalledWith('Coming soon');
   });
 
   it('collects now only for M-Pesa with a positive received amount', () => {

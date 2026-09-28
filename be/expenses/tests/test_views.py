@@ -1,5 +1,6 @@
 """Expense API tests."""
 
+from datetime import timedelta
 from decimal import Decimal
 
 from django.utils import timezone
@@ -32,6 +33,70 @@ class ExpenseViewsTestCase(ManagerAPITestCase):
         expense_id = create.data['id']
         approve = self.client.post(f'/api/expenses/{expense_id}/approve/')
         self.assertEqual(approve.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_create_persists_past_occurred_date(self):
+        occurred = timezone.localdate() - timedelta(days=9)
+        create = self.client.post(
+            '/api/expenses/',
+            {
+                'category': self.cat.id,
+                'description': 'Shop rent last week',
+                'amount': '8000.00',
+                'expense_date': occurred.isoformat(),
+                'payment_method': 'bank',
+                'status': 'pending',
+            },
+            format='json',
+        )
+        self.assertEqual(create.status_code, status.HTTP_201_CREATED, create.data)
+        self.assertEqual(create.data['expense_date'], occurred.isoformat())
+        saved = Expense.objects.get(id=create.data['id'])
+        self.assertEqual(saved.expense_date, occurred)
+
+    def test_create_defaults_occurred_date_to_today(self):
+        create = self.client.post(
+            '/api/expenses/',
+            {
+                'category': self.cat.id,
+                'description': 'Airtime',
+                'amount': '100.00',
+                'payment_method': 'mpesa',
+                'status': 'pending',
+            },
+            format='json',
+        )
+        self.assertEqual(create.status_code, status.HTTP_201_CREATED, create.data)
+        self.assertEqual(create.data['expense_date'], timezone.localdate().isoformat())
+
+    def test_update_can_change_occurred_date_without_resetting_on_partial(self):
+        occurred = timezone.localdate() - timedelta(days=6)
+        expense = Expense.objects.create(
+            category=self.cat,
+            description='Diesel',
+            amount=Decimal('500.00'),
+            expense_date=occurred,
+            payment_method='cash',
+            status='pending',
+            created_by=self.manager_user,
+        )
+        keep = self.client.patch(
+            f'/api/expenses/{expense.id}/',
+            {'description': 'Diesel for generator'},
+            format='json',
+        )
+        self.assertEqual(keep.status_code, status.HTTP_200_OK, keep.data)
+        expense.refresh_from_db()
+        self.assertEqual(expense.expense_date, occurred)
+        self.assertEqual(expense.description, 'Diesel for generator')
+
+        moved = timezone.localdate() - timedelta(days=2)
+        change = self.client.patch(
+            f'/api/expenses/{expense.id}/',
+            {'expense_date': moved.isoformat()},
+            format='json',
+        )
+        self.assertEqual(change.status_code, status.HTTP_200_OK, change.data)
+        self.assertEqual(change.data['expense_date'], moved.isoformat())
 
 
 class ExpenseApproveSuperAdminTests(SuperAdminAPITestCase):

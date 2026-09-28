@@ -26,5 +26,6 @@ describe('actionHelp', () => {
     expect(getActionHelp('reject_change').confirmBody).toMatch(/Daily notes/i);
     expect(getActionHelp('approve_change').hover).toMatch(/live/i);
     expect(getActionHelp('sale_backfill').title).toMatch(/after the fact/i);
+    expect(getActionHelp('sale_complete').title).toMatch(/cashier sale/i);
   });
 });

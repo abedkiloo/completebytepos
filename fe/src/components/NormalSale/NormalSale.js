@@ -3,6 +3,7 @@ import { Plus } from 'lucide-react';
 
 import { salesAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
+import { saleCheckoutSuccessToast, saleIsAwaitingApproval } from '../../utils/saleCompletionApproval';
 import NormalSaleModal from './NormalSaleModal';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -15,7 +16,9 @@ const NormalSale = () => {
     try {
       const response = await salesAPI.create(saleData);
 
-      if (!response.data.wallet_credit_added && !response.data.wallet_amount_used) {
+      if (saleIsAwaitingApproval(response.data) || response.data.pending_change) {
+        toast.success(saleCheckoutSuccessToast(response.data));
+      } else if (!response.data.wallet_credit_added && !response.data.wallet_amount_used) {
         if (response.data.invoice) {
           toast.success('Sale completed and invoice created successfully');
         } else {

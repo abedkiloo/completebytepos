@@ -93,6 +93,32 @@ describe('StkWaitDialog', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  it('does not record a payment when check status is still waiting', async () => {
+    paymentIntentsAPI.create.mockResolvedValue({
+      data: { id: 9, status: 'created' },
+    });
+    paymentIntentsAPI.stk.mockResolvedValue({ data: promptedIntent });
+    paymentIntentsAPI.query.mockResolvedValue({ data: promptedIntent });
+    const onPaid = jest.fn();
+
+    render(
+      <StkWaitDialog
+        open
+        onOpenChange={jest.fn()}
+        amount={250}
+        phone="0712345678"
+        onPaid={onPaid}
+      />
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /Check status/i }));
+    expect(await screen.findByText(/Not paid yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/Waiting for M-Pesa/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Payment confirmed/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Use this payment/i })).not.toBeInTheDocument();
+    expect(onPaid).not.toHaveBeenCalled();
+  });
+
   it('keeps waiting when a status poll fails', async () => {
     const realSetInterval = global.setInterval;
     jest.spyOn(global, 'setInterval').mockImplementation((fn) => realSetInterval(fn, 0));

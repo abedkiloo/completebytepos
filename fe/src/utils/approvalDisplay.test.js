@@ -13,6 +13,7 @@ describe('approvalDisplay', () => {
     expect(formatActionTypeLabel('stock_adjust')).toBe('Stock adjustment');
     expect(formatActionTypeLabel('sale_rollback')).toBe('Sale rollback');
     expect(formatActionTypeLabel('debt_collection')).toBe('Debt collection');
+    expect(formatActionTypeLabel('sale_complete')).toBe('Sale completion');
     expect(formatActionTypeLabel('unknown_action')).toBe('unknown action');
   });
 

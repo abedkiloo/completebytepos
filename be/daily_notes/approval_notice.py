@@ -34,6 +34,7 @@ ACTION_LABELS = {
     'sale_completed_edit': 'completed sale edit',
     'sale_refund': 'sale void / refund',
     'sale_rollback': 'sale rollback',
+    'sale_complete': 'sale completion',
     'sale_backfill': 'past sale entry',
     'expense': 'expense',
     'income': 'income',
@@ -120,4 +121,45 @@ def notify_approval_rejected(
         return note, task
     except Exception:
         logger.exception('Could not write Daily notes rejection notice')
+        return None
+
+
+def build_sale_approved_notice(*, sale_number: str, checker) -> tuple[str, str]:
+    checker_name = _person_name(checker)
+    number = (sale_number or '').strip() or 'this sale'
+    title = f'Sale #{number} was approved'[:200]
+    content = (
+        f'Sale #{number} was approved. You can issue the receipt now.\n'
+        f'Approved by {checker_name}.'
+    )
+    return title, content
+
+
+def notify_sale_approved(*, sale, checker):
+    """Tell the cashier in Daily notes that they can print the receipt."""
+    requester = getattr(sale, 'cashier', None)
+    if requester is None:
+        return None
+    today = timezone.localdate()
+    title, content = build_sale_approved_notice(
+        sale_number=getattr(sale, 'sale_number', '') or str(getattr(sale, 'pk', '')),
+        checker=checker,
+    )
+    try:
+        note = DailyNote.objects.create(
+            note_date=today,
+            title=title,
+            content=content,
+            author=requester,
+        )
+        DailyTask.objects.create(
+            task_date=today,
+            title=title,
+            description=content,
+            author=checker or requester,
+            assigned_to=requester,
+        )
+        return note
+    except Exception:
+        logger.exception('Could not write Daily notes sale-approved notice')
         return None

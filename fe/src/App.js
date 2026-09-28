@@ -37,6 +37,7 @@ const Barcodes = lazy(() => import('./components/Barcodes/Barcodes'));
 const Reports = lazy(() => import('./components/Reports/Reports'));
 const AuditLogPage = lazy(() => import('./components/AuditLog/AuditLogPage'));
 const PendingApprovalsPage = lazy(() => import('./components/Approvals/PendingApprovalsPage'));
+const SaleApprovalsPage = lazy(() => import('./components/Sales/SaleApprovalsPage'));
 const Expenses = lazy(() => import('./components/Expenses/Expenses'));
 const ExpenseCategories = lazy(() => import('./components/Expenses/ExpenseCategories'));
 const Income = lazy(() => import('./components/Income/Income'));
@@ -182,6 +183,7 @@ function App() {
                 <Route path="/categories" element={<Categories />} />
                 <Route path="/product-attributes" element={<ProductAttributes />} />
                 <Route path="/sales" element={<Sales />} />
+                <Route path="/sales/approvals" element={<SaleApprovalsPage />} />
                 <Route path="/sales/field" element={<FieldSales />} />
                 <Route path="/sales/daily" element={<DailySales />} />
                 <Route path="/sales/daily/customers/:customerId" element={<CustomerDailyDetail />} />

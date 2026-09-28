@@ -36,7 +36,7 @@ def request_date_bounds(request):
 
 
 def sale_report_queryset(date_from=None, date_to=None):
-    qs = Sale.objects.exclude(status='holding')
+    qs = Sale.objects.exclude(status__in=['holding', 'pending_approval'])
     if date_from:
         qs = qs.filter(occurred_at__gte=date_from)
     if date_to:
@@ -187,7 +187,7 @@ class ReportViewSet(viewsets.ViewSet):
         """Product sales report"""
         date_from, date_to = request_date_bounds(request)
 
-        queryset = SaleItem.objects.exclude(sale__status='holding')
+        queryset = SaleItem.objects.exclude(sale__status__in=['holding', 'pending_approval'])
 
         if date_from:
             queryset = queryset.filter(sale__occurred_at__gte=date_from)
@@ -742,7 +742,7 @@ class ReportViewSet(viewsets.ViewSet):
         """
         start, end, label = resolve_period(request)
         qs = SaleItem.objects.select_related('product', 'product__category').exclude(
-            sale__status='holding'
+            sale__status__in=['holding', 'pending_approval']
         )
         if start:
             qs = qs.filter(sale__occurred_at__gte=start)

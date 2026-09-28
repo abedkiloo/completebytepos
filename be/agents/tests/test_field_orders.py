@@ -228,8 +228,9 @@ class FieldOrderAPITestCase(APITestCase):
             status=FieldOrder.STATUS_SUBMITTED,
             created_by=self.agent_user,
         )
-        with self.assertRaises(FieldOrderTransitionError):
+        with self.assertRaises(FieldOrderTransitionError) as ctx:
             assign_delivery_agent(order, self.driver)
+        self.assertIn('Pack the order', str(ctx.exception.detail))
 
     def test_str_and_line_total(self):
         order = FieldOrder.objects.create(site=self.site, created_by=self.agent_user)

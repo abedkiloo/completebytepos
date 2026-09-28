@@ -6,12 +6,15 @@ import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { toast } from '../../utils/toast';
 import { getStoredAuth, hasPermission, userMayViewDeliveryHistory } from '../../utils/roleAccess';
 import {
+  assignBlockedByPreviousStep,
+  assignBlockedRows,
   assignCommitRows,
   assignConfirmDescription,
   assignDriverError,
-  canAssignDriver,
   canMarkReady,
+  canShowAssignStep,
   deliveryAssigneeLabel,
+  dispatchWorkflowSteps,
   fieldOrderLineSummary,
   fieldOrderTotal,
   mergeDriverIntoList,
@@ -254,6 +257,11 @@ const FieldSalesPage = () => {
   };
 
   const requestAssign = (order) => {
+    const blocked = assignBlockedByPreviousStep(order);
+    if (blocked) {
+      setPending({ type: 'blocked', order, blocked });
+      return;
+    }
     const error = assignDriverError(order, selectedDriverId, canPack);
     if (error) {
       toast.error(error);
@@ -265,6 +273,11 @@ const FieldSalesPage = () => {
   const confirmPending = async () => {
     const action = pending;
     if (!action) return;
+    if (action.type === 'blocked') {
+      setPending(null);
+      requestPack(action.order);
+      return;
+    }
     try {
       if (action.type === 'pack') {
         await executePack(action.order);
@@ -279,11 +292,13 @@ const FieldSalesPage = () => {
   const pendingDriver = drivers.find(
     (driver) => String(driver.id) === String(selectedDriverId),
   );
-  const pendingRows = pending?.type === 'assign'
-    ? assignCommitRows(pending.order, pendingDriver, formatCurrency)
-    : pending
-      ? packCommitRows(pending.order, formatCurrency)
-      : [];
+  const pendingRows = pending?.type === 'blocked'
+    ? assignBlockedRows(pending.blocked)
+    : pending?.type === 'assign'
+      ? assignCommitRows(pending.order, pendingDriver, formatCurrency)
+      : pending
+        ? packCommitRows(pending.order, formatCurrency)
+        : [];
 
   const emptyMessage = useMemo(() => {
     if (filters.status === 'awaiting_pack') {
@@ -501,6 +516,14 @@ const FieldSalesPage = () => {
                     {order.stock_allocated ? (
                       <div className="text-xs text-muted-foreground mt-1">Packed</div>
                     ) : null}
+                    {(() => {
+                      const current = dispatchWorkflowSteps(order).find((step) => step.current);
+                      return current ? (
+                        <div className="text-xs text-muted-foreground mt-1">
+                          Now: {current.label}
+                        </div>
+                      ) : null;
+                    })()}
                   </DataTableCell>
                   <DataTableCell className="text-sm text-muted-foreground">
                     {formatDateTime(order.created_at)}
@@ -548,6 +571,18 @@ const FieldSalesPage = () => {
               </Button>
             </div>
             <div className="max-h-[60vh] overflow-auto p-4 space-y-3">
+              <ol className="space-y-1 text-sm" data-testid="dispatch-steps">
+                {dispatchWorkflowSteps(selected).map((step, index) => (
+                  <li
+                    key={step.id}
+                    data-testid={`dispatch-step-${step.id}`}
+                    className={step.current ? 'font-semibold' : 'text-muted-foreground'}
+                  >
+                    {index + 1}. {step.label}
+                    {step.done ? ' — done' : step.current ? ' — do this now' : ' — waiting'}
+                  </li>
+                ))}
+              </ol>
               <div className="text-sm">
                 <div className="font-medium mb-1">Location</div>
                 <div className="text-muted-foreground">
@@ -600,7 +635,7 @@ const FieldSalesPage = () => {
                   </p>
                 </div>
               ) : null}
-              {canPack && canAssignDriver(selected) ? (
+              {canPack && canShowAssignStep(selected) ? (
                 <div className="text-sm space-y-2">
                   <div className="font-medium">Assign for delivery</div>
                   <select
@@ -645,7 +680,7 @@ const FieldSalesPage = () => {
                   Mark ready for pickup
                 </Button>
               ) : null}
-              {canPack && canAssignDriver(selected) ? (
+              {canPack && canShowAssignStep(selected) ? (
                 <Button
                   onClick={() => requestAssign(selected)}
                   disabled={assigningId === selected.id}
@@ -686,17 +721,31 @@ const FieldSalesPage = () => {
         onOpenChange={(open) => {
           if (!open && packingId == null && assigningId == null) setPending(null);
         }}
-        title={pending?.type === 'assign' ? 'Assign this order?' : 'Mark ready for pickup?'}
+        title={
+          pending?.type === 'blocked'
+            ? pending.blocked.title
+            : pending?.type === 'assign'
+              ? 'Assign this order?'
+              : 'Mark ready for pickup?'
+        }
         description={
-          pending?.type === 'assign'
-            ? assignConfirmDescription(pending.order)
-            : packConfirmDescription(pending?.order)
+          pending?.type === 'blocked'
+            ? pending.blocked.message
+            : pending?.type === 'assign'
+              ? assignConfirmDescription(pending.order)
+              : packConfirmDescription(pending?.order)
         }
         rows={pendingRows}
         onConfirm={confirmPending}
         submitting={packingId != null || assigningId != null}
-        confirmText={pending?.type === 'assign' ? 'Confirm & assign' : 'Confirm & mark ready'}
-        variant={pending?.type === 'pack' ? 'warning' : 'info'}
+        confirmText={
+          pending?.type === 'blocked'
+            ? 'Pack now'
+            : pending?.type === 'assign'
+              ? 'Confirm & assign'
+              : 'Confirm & mark ready'
+        }
+        variant={pending?.type === 'assign' ? 'info' : 'warning'}
       />
     </PageShell>
   );

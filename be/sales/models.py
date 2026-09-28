@@ -117,6 +117,7 @@ class Sale(models.Model):
 
     STATUS_CHOICES = [
         ('holding', 'Holding'),
+        ('pending_approval', 'Pending approval'),
         ('completed', 'Completed'),
         ('cancelled', 'Cancelled'),
     ]
@@ -153,7 +154,7 @@ class Sale(models.Model):
         choices=STATUS_CHOICES,
         default='completed',
         db_index=True,
-        help_text='Holding = draft invoice at the register; completed = stock moved and sale finalised.',
+        help_text='Holding = draft at the register; pending_approval = waiting for a manager; completed = stock moved and sale finalised.',
     )
     sale_type = models.CharField(
         max_length=20, 

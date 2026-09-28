@@ -56,6 +56,7 @@ PERMISSIONS_DATA = [
     ('sales', 'delete', 'Delete sales'),
     ('sales', 'refund', 'Refund completed sales'),
     ('sales', 'rollback', 'Request sale rollbacks (takes effect after admin approval)'),
+    ('sales', 'approve', 'Approve and complete sales submitted by cashiers'),
     ('sales', 'export', 'Export sales'),
     ('sales', 'daily_sales', 'View daily sales tracker (paid vs debt by day)'),
     ('sales', 'view_all', 'View all staff sales (store-wide today / week / month)'),

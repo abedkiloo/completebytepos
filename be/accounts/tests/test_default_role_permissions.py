@@ -66,11 +66,16 @@ class DefaultRolePermissionTests(TestCase):
         self.assertTrue(user.profile.has_permission('products', 'approve'))
 
     def test_sales_role_lacks_approve_permissions(self):
-        for module in ('products', 'inventory', 'settings', 'debt_management'):
+        for module in ('products', 'inventory', 'settings', 'debt_management', 'sales'):
             self.assertFalse(
                 self._has(self.sales_role, module, 'approve'),
                 f'Sales should not have {module}.approve',
             )
+        self.assertFalse(self._has(self.field_role, 'sales', 'approve'))
+
+    def test_manager_has_sales_approve(self):
+        self.assertTrue(self._has(self.manager_role, 'sales', 'approve'))
+        self.assertTrue(self._has(self.super_role, 'sales', 'approve'))
 
     def test_sales_role_has_catalog_create_import_only(self):
         self.assertTrue(self._has(self.sales_role, 'products', 'create'))

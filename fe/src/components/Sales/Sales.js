@@ -10,6 +10,11 @@ import { getStoredAuth, isManagerOrAdminFromStorage } from '../../utils/roleAcce
 import { canViewDailySalesFromStorage } from '../../utils/dailySalesAccess';
 import { userCanRefundSales, saleIsRefundable, handleSaleRefundResponse, userCanRollbackSales, saleIsRollbackable } from '../../utils/saleRefund';
 import { pendingApprovalToastMessage } from '../../utils/makerChecker';
+import {
+  SALE_AWAITING_APPROVAL_MESSAGE,
+  saleIsAwaitingApproval,
+  saleReceiptBlockedReason,
+} from '../../utils/saleCompletionApproval';
 import { saleDisplayItemCount, saleDisplayTotal } from '../../utils/saleItemDisplay';
 import RefundSaleDialog from './RefundSaleDialog';
 import SaleRollbackDialog from './SaleRollbackDialog';
@@ -64,6 +69,7 @@ const Sales = () => {
     page_size: DEFAULT_PAGE_SIZE,
     count: 0,
   });
+  const [historyTab, setHistoryTab] = useState('completed');
 
   const loadSales = useCallback(async () => {
     setLoading(true);
@@ -77,6 +83,7 @@ const Sales = () => {
       if (filters.date_to) params.date_to = filters.date_to;
       if (filters.payment_method) params.payment_method = filters.payment_method;
       if (filters.search) params.search = filters.search;
+      if (historyTab === 'pending') params.status = 'pending_approval';
       
       const response = await salesAPI.list(params);
       const data = response.data;
@@ -95,13 +102,18 @@ const Sales = () => {
     } finally {
       setLoading(false);
     }
-  }, [filters, pagination.page, pagination.page_size]);
+  }, [filters, pagination.page, pagination.page_size, historyTab]);
 
   useEffect(() => {
     loadSales();
   }, [loadSales]);
 
   const handleViewReceipt = async (sale) => {
+    const blocked = saleReceiptBlockedReason(sale);
+    if (blocked) {
+      toast.info(blocked);
+      return;
+    }
     try {
       const response = await salesAPI.get(sale.id);
       setSelectedSale(response.data);
@@ -356,6 +368,31 @@ const Sales = () => {
           </Button>
         </PageHeader>
 
+        <div className="mb-3 flex gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={historyTab === 'completed' ? 'default' : 'outline'}
+            onClick={() => {
+              setHistoryTab('completed');
+              setPagination((prev) => ({ ...prev, page: 1 }));
+            }}
+          >
+            Completed
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={historyTab === 'pending' ? 'default' : 'outline'}
+            onClick={() => {
+              setHistoryTab('pending');
+              setPagination((prev) => ({ ...prev, page: 1 }));
+            }}
+          >
+            Awaiting approval
+          </Button>
+        </div>
+
         <FilterBar>
           <FilterField label="From">
             <Input
@@ -498,6 +535,12 @@ const Sales = () => {
                           variant="ghost"
                           size="sm"
                           onClick={() => handleViewReceipt(sale)}
+                          disabled={saleIsAwaitingApproval(sale)}
+                          title={
+                            saleIsAwaitingApproval(sale)
+                              ? SALE_AWAITING_APPROVAL_MESSAGE
+                              : undefined
+                          }
                         >
                           Receipt
                         </Button>

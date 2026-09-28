@@ -83,7 +83,7 @@ export function CheckoutPanel({
   showDelivery = true,
 }) {
   const [showExtras, setShowExtras] = useState(false);
-  const [mpesaMode, setMpesaMode] = useState(MPESA_CAPTURE_PROMPT);
+  const [mpesaMode, setMpesaMode] = useState(MPESA_CAPTURE_CODE);
   const [mpesaPhone, setMpesaPhone] = useState(customerPhone || '');
   const [stkOpen, setStkOpen] = useState(false);
   const [showMpesaErrors, setShowMpesaErrors] = useState(false);
@@ -110,7 +110,7 @@ export function CheckoutPanel({
 
   useEffect(() => {
     if (paymentMethod !== 'mpesa') {
-      setMpesaMode(MPESA_CAPTURE_PROMPT);
+      setMpesaMode(MPESA_CAPTURE_CODE);
       setShowMpesaErrors(false);
       setStkOpen(false);
     }
