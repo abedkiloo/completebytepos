@@ -14,6 +14,7 @@ import {
   saleNetItemCount,
   saleNetTotal,
   salePaymentStatusLabel,
+  saleStatusBadgeTone,
   normalizeSaleForReceipt,
   saleNetBalanceDue,
 } from './saleItemDisplay';
@@ -78,6 +79,16 @@ describe('saleItemDisplay', () => {
     expect(saleFinalStatusLabel({ ...sale, refund_status: 'refunded', amount_refunded: '1000' })).toBe(
       'Fully refunded'
     );
+    expect(saleFinalStatusLabel({ status: 'cancelled', total: '100', amount_paid: '100' })).toBe(
+      'Cancelled'
+    );
+    expect(saleFinalStatusLabel({ status: 'pending_approval', total: '100', amount_paid: '100' })).toBe(
+      'Awaiting approval'
+    );
+    expect(saleFinalStatusLabel({ status: 'holding', total: '100', amount_paid: '0' })).toBe('On hold');
+    expect(saleFinalStatusLabel({ status: 'completed', refund_status: 'none', total: '100', amount_paid: '100' })).toBe(
+      'Paid in full'
+    );
   });
 
   it('normalizes receipt data: drops zero-qty lines and hides refund history', () => {
@@ -101,5 +112,16 @@ describe('saleItemDisplay', () => {
     expect(receipt.total).toBe(500);
     expect(receipt.subtotal).toBe(500);
     expect(saleNetBalanceDue(sale)).toBe(0);
+  });
+
+  it('maps badge tone from sale and refund status', () => {
+    expect(saleStatusBadgeTone({ status: 'cancelled', total: 100, amount_paid: 100 })).toBe('cancelled');
+    expect(saleStatusBadgeTone({ status: 'completed', refund_status: 'refunded', total: 100, amount_paid: 100 })).toBe(
+      'cancelled'
+    );
+    expect(saleStatusBadgeTone({ status: 'pending_approval', total: 100, amount_paid: 100 })).toBe('holding');
+    expect(saleStatusBadgeTone({ status: 'completed', total: 100, amount_paid: 0 })).toBe('rejected');
+    expect(saleStatusBadgeTone({ status: 'completed', total: 100, amount_paid: 40 })).toBe('pending');
+    expect(saleStatusBadgeTone({ status: 'completed', total: 100, amount_paid: 100 })).toBe('completed');
   });
 });

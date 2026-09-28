@@ -381,9 +381,9 @@ describe('DailySalesPage', () => {
       expect(screen.getByText('Charlie Credit')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('Paid')).toBeInTheDocument();
-    expect(screen.getByText('Partial Debt')).toBeInTheDocument();
-    expect(screen.getByText('Debt (Unpaid)')).toBeInTheDocument();
+    expect(screen.getByText('Paid in full')).toBeInTheDocument();
+    expect(screen.getByText('Partial payment')).toBeInTheDocument();
+    expect(screen.getByText('Unpaid')).toBeInTheDocument();
   });
 
   it('navigates to previous day when Previous Day is clicked', async () => {

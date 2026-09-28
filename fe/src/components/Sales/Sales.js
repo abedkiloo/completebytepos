@@ -15,7 +15,7 @@ import {
   saleIsAwaitingApproval,
   saleReceiptBlockedReason,
 } from '../../utils/saleCompletionApproval';
-import { saleDisplayItemCount, saleDisplayTotal } from '../../utils/saleItemDisplay';
+import { saleDisplayItemCount, saleDisplayTotal, saleFinalStatusLabel, saleStatusBadgeTone } from '../../utils/saleItemDisplay';
 import RefundSaleDialog from './RefundSaleDialog';
 import SaleRollbackDialog from './SaleRollbackDialog';
 import SaleDetailDialog from './SaleDetailDialog';
@@ -499,7 +499,10 @@ const Sales = () => {
                       </Badge>
                     </DataTableCell>
                     <DataTableCell>
-                      <StatusBadge status={sale.status || 'completed'} />
+                      <StatusBadge
+                        status={saleStatusBadgeTone(sale)}
+                        label={saleFinalStatusLabel(sale)}
+                      />
                     </DataTableCell>
                     <DataTableCell align="right">
                       <div className="flex justify-end gap-1">

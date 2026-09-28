@@ -24,6 +24,7 @@ import {
 import { getTodayDateString, formatDateLabel, shiftDate } from './DailySalesPage';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 import { userCanRefundSales, userCanRollbackSales, handleSaleRefundResponse } from '../../utils/saleRefund';
+import { saleFinalStatusLabel, saleStatusBadgeTone } from '../../utils/saleItemDisplay';
 import { pendingApprovalToastMessage } from '../../utils/makerChecker';
 
 import { Button } from '../ui/button';
@@ -414,27 +415,17 @@ export default function CustomerDailyDetailPage() {
                     )}
                   </DataTableCell>
                   <DataTableCell>
-                    {order.payment_status === 'paid' && (
-                      <Badge variant="outline" className="border-success/30 bg-success/10 text-success">
-                        Paid
-                      </Badge>
-                    )}
-                    {order.payment_status === 'debt' && (
-                      <Badge
-                        variant="outline"
-                        className="border-destructive/30 bg-destructive/10 text-destructive"
-                      >
-                        Debt
-                      </Badge>
-                    )}
-                    {order.payment_status === 'partial' && (
-                      <Badge
-                        variant="outline"
-                        className="border-amber-500/30 bg-amber-500/10 text-amber-600"
-                      >
-                        Partial
-                      </Badge>
-                    )}
+                    <Badge
+                      variant={
+                        ['cancelled', 'rejected'].includes(saleStatusBadgeTone(order))
+                          ? 'destructive'
+                          : ['holding', 'pending'].includes(saleStatusBadgeTone(order))
+                            ? 'warning'
+                            : 'success'
+                      }
+                    >
+                      {saleFinalStatusLabel(order)}
+                    </Badge>
                   </DataTableCell>
                   <DataTableCell align="right">
                     <Button variant="ghost" size="sm" onClick={() => openReceipt(order)}>

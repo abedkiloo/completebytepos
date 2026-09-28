@@ -31,6 +31,7 @@ import { pendingApprovalToastMessage } from '../../utils/makerChecker';
 import SaleChannelIcon from './SaleChannelIcon';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import { saleFinalStatusLabel, saleStatusBadgeTone } from '../../utils/saleItemDisplay';
 
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -666,8 +667,6 @@ export default function DailySalesPage() {
             </DataTableHeader>
             <DataTableBody>
               {orders.map((order) => {
-                const isDebt = order.payment_status === 'debt';
-                const isPartial = order.payment_status === 'partial';
                 const isPaid = order.payment_status === 'paid';
 
                 return (
@@ -734,21 +733,17 @@ export default function DailySalesPage() {
                     </DataTableCell>
 
                     <DataTableCell>
-                      {isPaid && (
-                        <Badge variant="outline" className="border-success/30 bg-success/10 text-success">
-                          Paid
-                        </Badge>
-                      )}
-                      {isDebt && (
-                        <Badge variant="outline" className="border-destructive/30 bg-destructive/10 text-destructive">
-                          Debt (Unpaid)
-                        </Badge>
-                      )}
-                      {isPartial && (
-                        <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-600">
-                          Partial Debt
-                        </Badge>
-                      )}
+                      <Badge
+                        variant={
+                          ['cancelled', 'rejected'].includes(saleStatusBadgeTone(order))
+                            ? 'destructive'
+                            : ['holding', 'pending'].includes(saleStatusBadgeTone(order))
+                              ? 'warning'
+                              : 'success'
+                        }
+                      >
+                        {saleFinalStatusLabel(order)}
+                      </Badge>
                     </DataTableCell>
 
                     <DataTableCell>

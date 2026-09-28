@@ -63,6 +63,11 @@ export function saleHasRefundActivity(sale) {
 
 /** Human-readable final sale state for lists and receipts. */
 export function saleFinalStatusLabel(sale) {
+  const status = String(sale?.status || '').toLowerCase();
+  if (status === 'pending_approval') return 'Awaiting approval';
+  if (status === 'holding') return 'On hold';
+  if (status === 'cancelled') return 'Cancelled';
+  if (status === 'voided') return 'Voided';
   if (sale?.refund_status === 'refunded' || saleNetTotal(sale) <= 0.009) {
     return 'Fully refunded';
   }
@@ -70,6 +75,20 @@ export function saleFinalStatusLabel(sale) {
     return 'Partial refund';
   }
   return salePaymentStatusLabel(sale);
+}
+
+export function saleStatusBadgeTone(sale) {
+  const status = String(sale?.status || '').toLowerCase();
+  const refund = String(sale?.refund_status || '').toLowerCase();
+  if (status === 'cancelled' || status === 'voided' || refund === 'refunded') {
+    return 'cancelled';
+  }
+  if (status === 'pending_approval' || status === 'holding') return 'holding';
+  if (refund === 'partial') return 'pending';
+  const pay = salePaymentStatusLabel(sale);
+  if (pay === 'Unpaid') return 'rejected';
+  if (pay === 'Partial payment') return 'pending';
+  return status || 'completed';
 }
 
 /** Primary amount to show in sale lists — net after refunds. */
