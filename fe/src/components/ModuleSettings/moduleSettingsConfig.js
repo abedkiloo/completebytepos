@@ -38,6 +38,7 @@ export const MODULE_ICONS = {
   reports: BarChart3,
   settings: Settings,
   employees: Users,
+  appraisals: BarChart3,
 };
 
 export function getFeatureTip(moduleName, featureKey) {

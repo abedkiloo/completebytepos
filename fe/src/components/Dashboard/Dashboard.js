@@ -11,7 +11,7 @@ import {
   TrendingUp,
   ArrowRight,
 } from 'lucide-react';
-import { reportsAPI, productsAPI, salesAPI, authAPI } from '../../services/api';
+import { reportsAPI, productsAPI, salesAPI, authAPI, appraisalsAPI } from '../../services/api';
 import { formatCurrency, formatNumber } from '../../utils/formatters';
 import { saleDisplayTotal } from '../../utils/saleItemDisplay';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -20,6 +20,7 @@ import { Badge } from '../ui/badge';
 import { Skeleton } from '../ui/skeleton';
 import { cn } from '../../lib/cn';
 import { PageShell } from '../page';
+import AppraisalProgressCard from '../Appraisals/AppraisalProgressCard';
 import SaleChannelIcon from '../Sales/SaleChannelIcon';
 import {
   getDefaultPosRoute,
@@ -68,6 +69,7 @@ const Dashboard = () => {
   const [lowStockProducts, setLowStockProducts] = useState([]);
   const [recentSales, setRecentSales] = useState([]);
   const [me, setMe] = useState(null);
+  const [appraisal, setAppraisal] = useState(null);
   const { settings: reportSettings } = useModuleSettings('reports');
   const dashboardReportsEnabled = reportsEnableDashboardSummary(reportSettings);
   const { permissions } = getStoredAuth();
@@ -85,14 +87,20 @@ const Dashboard = () => {
             ? reportsAPI.dashboard()
             : salesAPI.dashboardSummary();
 
-        const [meRes, dashRes, stockRes, salesRes] = await Promise.all([
+        const [meRes, dashRes, stockRes, salesRes, appraisalRes] = await Promise.all([
           authAPI.me().catch(() => null),
           dashboardPromise.catch(() => null),
           productsAPI.list({ low_stock: 'true', is_active: 'true' }).catch(() => null),
           salesAPI.list({ limit: 6 }).catch(() => null),
+          hasPermission(permissions, 'appraisals', 'view')
+            ? appraisalsAPI.me().catch(() => null)
+            : Promise.resolve(null),
         ]);
         if (meRes?.data) setMe(meRes.data);
         if (dashRes?.data) setDashboardData(dashRes.data);
+        if (appraisalRes?.data?.show_on_home !== false) {
+          setAppraisal(appraisalRes?.data || null);
+        }
         const products = stockRes?.data?.results || stockRes?.data || [];
         setLowStockProducts(Array.isArray(products) ? products.slice(0, 5) : []);
         const sales = salesRes?.data?.results || salesRes?.data || [];
@@ -239,6 +247,8 @@ const Dashboard = () => {
             </div>
           )}
         </header>
+
+        {appraisal ? <AppraisalProgressCard snapshot={appraisal} compact /> : null}
 
         <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {kpis.map((kpi) => (

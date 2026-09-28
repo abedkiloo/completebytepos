@@ -70,3 +70,11 @@ class ModuleRegistryTests(TestCase):
         self.assertEqual(info['domain'], 'commerce')
         self.assertEqual(info['catalog_module'], 'daily_notes')
         self.assertEqual(MODULE_BY_NAME['daily_notes']['domain'], 'commerce')
+
+    def test_appraisals_lives_with_people(self):
+        from settings.module_registry import get_permission_domain_info
+
+        info = get_permission_domain_info('appraisals')
+        self.assertEqual(info['domain'], 'people')
+        self.assertEqual(info['catalog_module'], 'appraisals')
+        self.assertTrue(MODULE_BY_NAME['appraisals']['default_enabled'])

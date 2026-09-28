@@ -292,6 +292,14 @@ export const dailyNotesAPI = {
   roles: () => api.get('/daily-notes/notes/roles/'),
 };
 
+export const cmsAPI = {
+  listPosts: (params) => api.get('/cms/blog-posts/', { params }),
+  getPost: (id) => api.get(`/cms/blog-posts/${id}/`),
+  createPost: (data) => api.post('/cms/blog-posts/', data),
+  updatePost: (id, data) => api.patch(`/cms/blog-posts/${id}/`, data),
+  deletePost: (id) => api.delete(`/cms/blog-posts/${id}/`),
+};
+
 export const dailyTasksAPI = {
   list: (params) => api.get('/daily-notes/tasks/', { params }),
   get: (id) => api.get(`/daily-notes/tasks/${id}/`),
@@ -309,6 +317,13 @@ export const employeesAPI = {
   update: (id, data) => api.put(`/employees/employees/${id}/`, data),
   delete: (id) => api.delete(`/employees/employees/${id}/`),
   statistics: () => api.get('/employees/employees/statistics/'),
+};
+
+export const appraisalsAPI = {
+  policy: () => api.get('/appraisals/policy/'),
+  savePolicy: (data) => api.put('/appraisals/policy/', data),
+  me: (params) => api.get('/appraisals/me/', { params }),
+  team: (params) => api.get('/appraisals/team/', { params }),
 };
 
 export const variantsAPI = {

@@ -1,0 +1,161 @@
+import React, { useCallback, useEffect, useState } from 'react';
+
+import { appraisalsAPI } from '../../services/api';
+import { toast } from '../../utils/toast';
+import { getStoredAuth, hasPermission } from '../../utils/roleAccess';
+import { appraisalTone, kes, MONTH_NAMES, starGlyphs } from '../../utils/appraisalStars';
+import { cn } from '../../lib/cn';
+import { PageShell, PageHeader, PageLoading, EmptyState } from '../page';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { Card, CardContent } from '../ui/card';
+import AppraisalProgressCard from './AppraisalProgressCard';
+import AppraisalTemplateForm from './AppraisalTemplateForm';
+import AppraisalProgressBar from './AppraisalProgressBar';
+
+export default function AppraisalsPage() {
+  const { permissions } = getStoredAuth();
+  const canManage = hasPermission(permissions, 'appraisals', 'manage');
+  const canTeam = hasPermission(permissions, 'appraisals', 'view_all') || canManage;
+  const [me, setMe] = useState(null);
+  const [team, setTeam] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const meRes = await appraisalsAPI.me();
+      setMe(meRes.data);
+      if (canTeam) {
+        const teamRes = await appraisalsAPI.team();
+        setTeam(teamRes.data?.results || []);
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Could not load appraisals');
+    } finally {
+      setLoading(false);
+    }
+  }, [canTeam]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const handleSave = async (payload) => {
+    setSaving(true);
+    try {
+      await appraisalsAPI.savePolicy(payload);
+      toast.success('Appraisal template saved');
+      await load();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Could not save template');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <PageShell>
+        <PageLoading rows={4} />
+      </PageShell>
+    );
+  }
+
+  if (!me) {
+    return (
+      <PageShell>
+        <EmptyState title="Appraisals unavailable" description="Your account cannot load appraisal progress yet." />
+      </PageShell>
+    );
+  }
+
+  const months = me.year?.months || [];
+  const defaultTab = 'progress';
+
+  return (
+    <PageShell>
+      <PageHeader
+        eyebrow="People"
+        title="Appraisals"
+        description="Daily stars from closed sales, monthly bonus for over-performance, and the year-end 4-star increment."
+      />
+      <Tabs defaultValue={defaultTab} className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="progress">My progress</TabsTrigger>
+          {canTeam ? <TabsTrigger value="team">Team</TabsTrigger> : null}
+          {canManage ? <TabsTrigger value="template">Template</TabsTrigger> : null}
+        </TabsList>
+
+        <TabsContent value="progress" className="space-y-4">
+          <AppraisalProgressCard snapshot={me} />
+          <Card>
+            <CardContent className="space-y-3 p-4">
+              <h3 className="text-sm font-semibold">This year</h3>
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-12">
+                {months.map((row) => {
+                  const theme = appraisalTone(row.tone);
+                  return (
+                    <div
+                      key={row.month}
+                      className={cn('rounded-md border p-2 text-center', theme.border, theme.bg)}
+                    >
+                      <p className="text-[11px] uppercase text-muted-foreground">
+                        {MONTH_NAMES[row.month - 1]}
+                      </p>
+                      <p className={cn('text-sm font-semibold', theme.text)}>
+                        {Number(row.official_average || 0).toFixed(1)}
+                      </p>
+                      <p className="text-[11px]">{row.four_star_month ? '4★ month' : '—'}</p>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-sm text-muted-foreground">{me.policy?.contract_line}</p>
+              <p className="text-sm text-muted-foreground">{me.policy?.bonus_policy_line}</p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {canTeam ? (
+          <TabsContent value="team">
+            {team.length === 0 ? (
+              <EmptyState title="No posted sales yet" description="Team appraisals appear once staff close sales this year." />
+            ) : (
+              <div className="space-y-3">
+                {team.map((row) => {
+                  const theme = appraisalTone(row.today?.tone);
+                  return (
+                    <Card key={row.staff.id} className={cn('border', theme.border)}>
+                      <CardContent className="space-y-3 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="font-semibold">{row.staff.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Today {starGlyphs(row.today?.stars)} · Month bonus {kes(row.month?.bonus)}
+                            </p>
+                          </div>
+                          <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', theme.pill)}>
+                            {row.year?.four_star_months}/{row.year?.four_star_months_required} four-star months
+                          </span>
+                        </div>
+                        <AppraisalProgressBar progress={row.month?.progress_to_four_star} tone={row.month?.tone} label="4-star month" />
+                        <AppraisalProgressBar progress={row.year?.progress_to_increment} tone={row.year?.tone} label="Year-end increment" />
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </TabsContent>
+        ) : null}
+
+        {canManage && me.policy ? (
+          <TabsContent value="template">
+            <AppraisalTemplateForm policy={me.policy} saving={saving} onSave={handleSave} />
+          </TabsContent>
+        ) : null}
+      </Tabs>
+    </PageShell>
+  );
+}

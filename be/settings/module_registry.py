@@ -52,7 +52,7 @@ DOMAINS: list[dict[str, Any]] = [
     {
         'id': 'people',
         'label': 'People',
-        'description': 'Staff and HR-style records.',
+        'description': 'Staff records and sales appraisals.',
         'sort_order': 60,
     },
     {
@@ -340,6 +340,18 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
             _f('employee_reports', 'Reports', '', 2, enabled=False),
         ],
     },
+    {
+        'module_name': 'appraisals',
+        'domain': 'people',
+        'display_name': 'Appraisals',
+        'description': '5-star daily, monthly bonus, and year-end increment for sales staff.',
+        'default_enabled': True,
+        'sort_order': 20,
+        'features': [
+            _f('progress', 'Progress bars', 'Daily, monthly, and annual goal tracking.', 1),
+            _f('greeting', 'Login greeting', 'Show progress when there are no sticky notes.', 2),
+        ],
+    },
     # --- Platform ---
     {
         'module_name': 'settings',
@@ -385,6 +397,7 @@ PRESETS: dict[str, dict[str, Any]] = {
             'inventory': True,
             'stock': True,
             'settings': True,
+            'appraisals': True,
         },
         'features': {
             # No retail POS, normal sale, or barcode module in the starter pack.
@@ -526,6 +539,7 @@ PERMISSION_MODULE_DOMAIN: dict[str, str] = {
     'account_statement': 'finance',
     'reports': 'insights',
     'employees': 'people',
+    'appraisals': 'people',
     'daily_notes': 'commerce',
     'users': 'platform',
     'roles': 'platform',

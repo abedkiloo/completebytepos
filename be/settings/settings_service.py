@@ -116,6 +116,7 @@ class SettingsService:
         if user is not None:
             row.updated_by = user
         row.save()
+        cache.delete(cls._key_cache_key(module, key))
         cls.invalidate(module)
         return row
 

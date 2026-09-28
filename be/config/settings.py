@@ -85,6 +85,7 @@ INSTALLED_APPS = [
     'transfers',
     'suppliers',
     'employees',
+    'appraisals',
     'daily_notes',
     'agents',
     'dispatch',
@@ -94,6 +95,7 @@ INSTALLED_APPS = [
     'settings',
     'approvals',
     'idempotency',
+    'cms',
 ]
 
 MIDDLEWARE = [
@@ -301,9 +303,17 @@ _default_cors_origins = [
     'http://frontend:80',
     'http://frontend',
 ]
+# Marketing website (static site) that reads /api/public/website/.
+WEBSITE_PUBLIC_ORIGINS = env_csv_or_lines(
+    'WEBSITE_PUBLIC_ORIGINS',
+    ['http://localhost:8080', 'http://127.0.0.1:8080'],
+)
+WEBSITE_SHOW_PRICES = env_bool('WEBSITE_SHOW_PRICES', False)
+
 CORS_ALLOWED_ORIGINS = merge_unique_list(
     env_csv_or_lines('CORS_ALLOWED_ORIGINS', _default_cors_origins),
     _PUBLIC_ORIGINS,
+    WEBSITE_PUBLIC_ORIGINS,
 )
 
 _extra_cors_headers = env_csv_or_lines(

@@ -35,6 +35,7 @@ export const VISIBLE_SECTIONS = {
     'invoicing',
     'reports',
     'accounting',
+    'website',
   ],
   [PERSONA.SALES]: ['main', 'sales', 'customers'],
 };

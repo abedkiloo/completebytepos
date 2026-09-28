@@ -38,8 +38,10 @@ import {
   UserCog,
   Palette,
   NotebookPen,
+  Star,
   Wallet,
   MapPin,
+  Newspaper,
 } from 'lucide-react';
 
 import { modulesAPI, storeSettingsAPI } from '../../services/api';
@@ -100,6 +102,13 @@ export const NAV_SECTIONS = [
           ['sales', 'view'],
           ['pos', 'view'],
         ],
+      },
+      {
+        to: '/appraisals',
+        label: 'Appraisals',
+        icon: Star,
+        module: 'appraisals',
+        permission: ['appraisals', 'view'],
       },
     ],
   },
@@ -214,6 +223,13 @@ export const NAV_SECTIONS = [
       { to: '/expenses', label: 'Expenses', icon: TrendingDown, module: 'expenses', permission: ['expenses', 'view'] },
       { to: '/expenses/categories', label: 'Expense Categories', icon: FolderTree, module: 'expenses', permission: ['expenses', 'view'] },
       { to: '/income', label: 'Income', icon: TrendingUp, module: 'income', permission: ['income', 'view'] },
+    ],
+  },
+  {
+    id: 'website',
+    label: 'Website',
+    items: [
+      { to: '/website/blog', label: 'Blog posts', icon: Newspaper, permission: ['website', 'manage'] },
     ],
   },
   {

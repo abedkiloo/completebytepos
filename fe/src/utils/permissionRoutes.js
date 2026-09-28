@@ -17,6 +17,7 @@ export const ROUTE_MODULE_MAP = {
   '/inventory': 'inventory',
   '/suppliers': 'suppliers',
   '/employees': 'employees',
+  '/appraisals': 'appraisals',
   '/daily-notes': 'daily_notes',
   '/pos/billing': 'pos',
   '/pos': 'pos',
@@ -40,6 +41,7 @@ export const ROUTE_MODULE_MAP = {
   '/module-settings': 'modules',
   '/branches': 'settings',
   '/system-settings': 'settings',
+  '/website': 'website',
 };
 
 /**
@@ -61,9 +63,11 @@ export const PERMISSION_MODULE_ROUTES = {
   daily_notes: '/daily-notes',
   suppliers: '/suppliers',
   employees: '/employees',
+  appraisals: '/appraisals',
   customers: '/customers',
   debt_management: '/customers/debt',
   dispatch: '/sales/field',
+  website: '/website',
 };
 
 /** Nav sections sales may see when their role grants module permissions. */
@@ -75,6 +79,7 @@ export const NAV_SECTION_MODULES = {
   suppliers: 'suppliers',
   employees: 'employees',
   inventory: ['products', 'categories', 'barcodes'],
+  website: 'website',
 };
 
 /** Path prefixes that need a specific permission action (beyond module enablement). */

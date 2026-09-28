@@ -4,6 +4,7 @@ import {
   Briefcase,
   Factory,
   NotebookPen,
+  Star,
   Package,
   ShoppingCart,
   Users,
@@ -50,6 +51,14 @@ export const MODULE_SETTINGS_CARDS = [
       'Staff day journal — who can write notes and who can read everyone’s entries. Install the module under Module Settings.',
     icon: NotebookPen,
     toastLabel: 'Daily notes',
+  },
+  {
+    module: 'appraisals',
+    title: 'Appraisals',
+    description:
+      '5-star sales progress. Pay bands and year-end increment are edited on the Appraisals page. These toggles control the login greeting and home card.',
+    icon: Star,
+    toastLabel: 'Appraisals',
   },
   {
     module: 'employees',

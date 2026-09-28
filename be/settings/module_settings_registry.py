@@ -454,6 +454,22 @@ MODULE_SETTING_DEFINITIONS: dict[str, list[dict[str, Any]]] = {
             7,
         ),
     ],
+    'appraisals': [
+        _setting(
+            'greet_when_no_sticky_notes',
+            'Greet with progress when there are no sticky notes',
+            'Shows a color-coded progress card on login when the sticky-note inbox is empty.',
+            True,
+            1,
+        ),
+        _setting(
+            'show_on_home',
+            'Show appraisal progress on home',
+            'Adds the daily / monthly / year-end progress card to the dashboard and app home.',
+            True,
+            2,
+        ),
+    ],
     'suppliers': [
         _setting(
             'show_supplier_code',

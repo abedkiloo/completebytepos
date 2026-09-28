@@ -12,6 +12,7 @@ import SetupGate from './components/Installation/SetupGate';
 import AppLayout from './components/Layout/AppLayout';
 import PendingTasksOnLogin from './components/DailyNotes/PendingTasksOnLogin';
 import StickyNotesGate from './components/DailyNotes/StickyNotesGate';
+import AppraisalGreeting from './components/Appraisals/AppraisalGreeting';
 import { fetchSetupStatus } from './utils/setupStatus';
 import './styles/responsive.css';
 import './styles/transitions.css';
@@ -50,10 +51,12 @@ const DebtManagement = lazy(() => import('./components/Customers/DebtManagementP
 const Suppliers = lazy(() => import('./components/Suppliers/Suppliers'));
 const Employees = lazy(() => import('./components/Employees/Employees'));
 const DailyNotes = lazy(() => import('./components/DailyNotes/DailyNotes'));
+const AppraisalsPage = lazy(() => import('./components/Appraisals/AppraisalsPage'));
 const NormalSale = lazy(() => import('./components/NormalSale/NormalSale'));
 const ModuleSettings = lazy(() => import('./components/ModuleSettings/ModuleSettings'));
 const Invoices = lazy(() => import('./components/Invoices/Invoices'));
 const Branches = lazy(() => import('./components/Branches/Branches'));
+const BlogPosts = lazy(() => import('./components/Website/BlogPosts'));
 const SystemSettings = lazy(() => import('./components/Settings/SystemSettings'));
 const Installation = lazy(() => import('./components/Installation/Installation'));
 
@@ -120,6 +123,7 @@ const ProtectedRoute = () => {
   return (
     <>
       <StickyNotesGate />
+      <AppraisalGreeting />
       <PendingTasksOnLogin />
       <Outlet />
     </>
@@ -204,12 +208,14 @@ function App() {
                 <Route path="/customers/:customerId" element={<CustomerDetail />} />
                 <Route path="/suppliers" element={<Suppliers />} />
                 <Route path="/employees" element={<Employees />} />
+                <Route path="/appraisals" element={<AppraisalsPage />} />
                 <Route path="/daily-notes" element={<DailyNotes />} />
                 <Route path="/normal-sale" element={<NormalSale />} />
                 <Route path="/module-settings" element={<ModuleSettings />} />
                 <Route path="/system-settings" element={<SystemSettings />} />
                 <Route path="/invoices" element={<Invoices />} />
                 <Route path="/branches" element={<Branches />} />
+                <Route path="/website/blog" element={<BlogPosts />} />
               </Route>
             </Route>
           </Routes>

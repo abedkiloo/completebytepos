@@ -31,7 +31,7 @@ describe('permissionRoutes registry', () => {
     const backendUiModules = [
       'invoicing', 'sales', 'pos', 'reports', 'products', 'categories',
       'inventory', 'barcodes', 'expenses', 'income', 'accounting',
-      'daily_notes', 'suppliers', 'employees', 'customers', 'debt_management',
+      'daily_notes', 'suppliers', 'employees', 'appraisals', 'customers', 'debt_management',
       'dispatch',
     ];
     for (const mod of backendUiModules) {

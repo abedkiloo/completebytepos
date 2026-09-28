@@ -167,6 +167,14 @@ describe('roleAccess', () => {
     expect(canAccessRoute(PERSONA.SALES, '/daily-notes')).toBe(false);
   });
 
+  test('sales with appraisals.view can open appraisals', () => {
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([{ module: 'appraisals', action: 'view', name: 'appraisals.view' }])
+    );
+    expect(canAccessRoute(PERSONA.SALES, '/appraisals')).toBe(true);
+  });
+
   test('sales can access products when store setting allows catalog add', () => {
     cacheStoreSettings({ allow_sales_add_products: true });
     expect(canAccessRoute(PERSONA.SALES, '/products')).toBe(true);

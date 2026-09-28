@@ -1,0 +1,139 @@
+from decimal import Decimal
+
+from django.contrib.auth.models import User
+from django.core.cache import cache
+from django.utils import timezone
+from rest_framework import status
+
+from appraisals.policy import default_template, save_template
+from sales.models import Sale
+from settings.models import ModuleSettings
+from utils.tests.api_test_base import ManagerAPITestCase, SalesAPITestCase, SuperAdminAPITestCase
+
+
+def _enable_appraisals():
+    cache.clear()
+    ModuleSettings.objects.update_or_create(
+        module_name='appraisals',
+        defaults={'is_enabled': True, 'description': 'Staff appraisals'},
+    )
+
+
+def _sale(user, total, occurred_at, status='completed'):
+    return Sale.objects.create(
+        status=status,
+        payment_method='cash',
+        subtotal=Decimal(str(total)),
+        tax_amount=Decimal('0'),
+        discount_amount=Decimal('0'),
+        total=Decimal(str(total)),
+        amount_paid=Decimal(str(total)),
+        cashier=user,
+        served_by=user,
+        occurred_at=occurred_at,
+    )
+
+
+class AppraisalMeAPITests(SalesAPITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        _enable_appraisals()
+
+    def setUp(self):
+        super().setUp()
+        _enable_appraisals()
+        save_template(default_template())
+
+    def test_sales_sees_own_daily_star_and_progress(self):
+        _sale(self.sales_user, 18500, timezone.now())
+        response = self.client.get('/api/appraisals/me/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        today = response.data['today']
+        self.assertEqual(today['stars'], 3)
+        self.assertEqual(today['amount_to_target'], 1500)
+        self.assertEqual(today['tone'], 'amber')
+        self.assertIn('headline', response.data['greeting'])
+        self.assertEqual(response.data['year']['basic_pay'], 15000)
+        self.assertFalse(response.data['year']['qualifies'])
+
+    def test_holding_sales_do_not_count(self):
+        _sale(self.sales_user, 50000, timezone.now(), status='holding')
+        response = self.client.get('/api/appraisals/me/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['today']['stars'], 1)
+        self.assertEqual(response.data['today']['sales'], 0)
+
+    def test_sales_cannot_read_team_or_write_policy(self):
+        self.assertEqual(self.client.get('/api/appraisals/team/').status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            self.client.put('/api/appraisals/policy/', {'basic_pay': 20000}, format='json').status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+
+    def test_admin_can_change_bands(self):
+        admin = User.objects.create_superuser('appraisal_admin', 'a@test.com', 'admin123')
+        from rest_framework_simplejwt.tokens import RefreshToken
+        token = RefreshToken.for_user(admin)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+        payload = default_template()
+        payload['daily_star_bands'] = [
+            {'min': 0, 'stars': 1, 'label': ''},
+            {'min': 1000, 'stars': 5, 'label': 'FAST TRACK'},
+        ]
+        payload['basic_pay'] = 16000
+        response = self.client.put('/api/appraisals/policy/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['basic_pay'], 16000)
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {RefreshToken.for_user(self.sales_user).access_token}'
+        )
+        _sale(self.sales_user, 1000, timezone.now())
+        me = self.client.get('/api/appraisals/me/')
+        self.assertEqual(me.data['today']['stars'], 5)
+        self.assertEqual(me.data['policy']['basic_pay'], 16000)
+
+
+class AppraisalTeamAPITests(ManagerAPITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        _enable_appraisals()
+
+    def setUp(self):
+        super().setUp()
+        _enable_appraisals()
+        save_template(default_template())
+
+    def test_manager_sees_own_progress_and_team(self):
+        _sale(self.manager_user, 24000, timezone.now())
+        me = self.client.get('/api/appraisals/me/')
+        self.assertEqual(me.status_code, status.HTTP_200_OK)
+        self.assertEqual(me.data['today']['stars'], 5)
+        team = self.client.get('/api/appraisals/team/')
+        self.assertEqual(team.status_code, status.HTTP_200_OK)
+        names = {row['staff']['id'] for row in team.data['results']}
+        self.assertIn(self.manager_user.id, names)
+
+
+class AppraisalPolicyAPITests(SuperAdminAPITestCase):
+    def setUp(self):
+        super().setUp()
+        _enable_appraisals()
+
+    def test_get_default_policy(self):
+        response = self.client.get('/api/appraisals/policy/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['daily_target'], 20000)
+        self.assertEqual(response.data['year_end_increment'], 3000)
+        self.assertEqual(response.data['working_days'], 26)
+        self.assertTrue(response.data['greet_when_no_sticky_notes'])
+
+    def test_rejects_duplicate_daily_bands(self):
+        payload = default_template()
+        payload['daily_star_bands'] = [
+            {'min': 0, 'stars': 1},
+            {'min': 0, 'stars': 2},
+        ]
+        response = self.client.put('/api/appraisals/policy/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)

@@ -74,3 +74,12 @@ class RoleDefinitionsTestCase(TestCase):
         from accounts.role_definitions import grant_daily_notes_to_sales_roles
         grant_daily_notes_to_sales_roles()
         self.assertTrue(role.permissions.filter(module='daily_notes', action='view').exists())
+
+    def test_grant_appraisals_to_custom_sales_role(self):
+        ensure_permissions()
+        role = Role.objects.create(name='Counter Sales', is_system_role=False, is_active=True)
+        role.permissions.add(Permission.objects.get(module='sales', action='view'))
+        from accounts.role_definitions import grant_appraisals_to_sales_roles
+        grant_appraisals_to_sales_roles()
+        self.assertTrue(role.permissions.filter(module='appraisals', action='view').exists())
+        self.assertFalse(role.permissions.filter(module='appraisals', action='manage').exists())

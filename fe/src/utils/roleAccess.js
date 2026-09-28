@@ -49,12 +49,14 @@ export const APP_ROUTE_PREFIXES = [
   '/customers',
   '/suppliers',
   '/employees',
+  '/appraisals',
   '/daily-notes',
   '/normal-sale',
   '/module-settings',
   '/system-settings',
   '/invoices',
   '/branches',
+  '/website',
 ];
 
 const SUPER_ADMIN_ONLY_PREFIXES = new Set([

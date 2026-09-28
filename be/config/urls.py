@@ -32,6 +32,7 @@ urlpatterns = [
     path('api/transfers/', include('transfers.urls')),
     path('api/suppliers/', include('suppliers.urls')),
     path('api/employees/', include('employees.urls')),
+    path('api/appraisals/', include('appraisals.urls')),
     path('api/daily-notes/', include('daily_notes.urls')),
     path('api/visits/', include('agents.urls')),
     path('api/agents/', include('agents.urls')),  # alias — same viewsets
@@ -39,7 +40,9 @@ urlpatterns = [
     path('api/delivery/', include('delivery.urls')),
     path('api/payments/', include('payments.urls')),
     path('api/messaging/', include('messaging.urls')),
+    path('api/public/website/', include('cms.urls_public')),
     path('api/public/', include('payments.urls_public')),
+    path('api/cms/', include('cms.urls')),
     path('api/approvals/', include('approvals.urls')),
 ]
 

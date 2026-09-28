@@ -26,6 +26,7 @@ MODULES_WITH_APP_ROUTES = frozenset({
     'daily_notes',
     'suppliers',
     'employees',
+    'appraisals',
     'customers',
     'debt_management',
     'dispatch',

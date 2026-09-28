@@ -44,6 +44,9 @@ PERMISSIONS_DATA = [
     ('employees', 'delete', 'Delete employees'),
     ('employees', 'export', 'Export employees'),
     ('employees', 'manage', 'Manage employees'),
+    ('appraisals', 'view', 'View own sales appraisal progress'),
+    ('appraisals', 'view_all', 'View team appraisal board'),
+    ('appraisals', 'manage', 'Configure appraisal template and pay bands'),
     ('inventory', 'view', 'View inventory'),
     ('inventory', 'create', 'Create inventory movements'),
     ('inventory', 'update', 'Update inventory'),
@@ -140,6 +143,7 @@ PERMISSIONS_DATA = [
     ('daily_notes', 'update', 'Update daily notes'),
     ('daily_notes', 'delete', 'Delete daily notes'),
     ('daily_notes', 'view_all', 'View all staff daily notes'),
+    ('website', 'manage', 'Write and publish website blog posts'),
 ]
 
 # profile_role maps to UserProfile.role (legacy enum).
@@ -197,12 +201,14 @@ ROLE_SCREEN_MATRIX = {
         'Customers',
         'Reports (sales, stock, P&L)',
         'Expenses / Income (no user admin)',
+        'Appraisals (own progress + team board)',
     ],
     ROLE_SALES: [
         'Dashboard (your sales today/week/month + quick POS)',
         'POS (/pos)',
         'Terminal POS (/pos/billing)',
         'Daily notes (returned sales and day tasks)',
+        'Appraisals (daily / monthly / year-end 5-star progress)',
         'Customers (add walk-in / credit)',
         'Products & categories (add / import — manager sets prices)',
         'Delivery (today’s route — admin can assign you like a driver)',
@@ -275,6 +281,9 @@ def _manager_queryset():
         # Sale rollback and journal correction stay admin unless explicitly checked.
         .exclude(module='sales', action='rollback')
         .exclude(module='accounting', action='correct')
+    ) | Permission.objects.filter(
+        module='appraisals',
+        action__in=['view', 'view_all'],
     )
 
 
@@ -290,6 +299,9 @@ def _sales_queryset():
     ) | Permission.objects.filter(
         module='delivery',
         action__in=['view', 'update'],
+    ) | Permission.objects.filter(
+        module='appraisals',
+        action='view',
     )
 
 
@@ -357,6 +369,37 @@ def grant_daily_notes_to_sales_roles():
         role.permissions.add(*perms)
         if before < len(perms):
             granted += 1
+    return granted
+
+
+def grant_appraisals_to_sales_roles():
+    """
+    Sales desk and managers who sell need appraisal progress.
+    Additive — does not strip permissions an admin already granted.
+    """
+    view = list(Permission.objects.filter(module='appraisals', action='view'))
+    view_all = list(Permission.objects.filter(module='appraisals', action='view_all'))
+    if not view:
+        return 0
+    role_ids = (
+        Role.objects.filter(
+            permissions__module__in=['sales', 'pos'],
+            permissions__action='view',
+        )
+        .values_list('id', flat=True)
+        .distinct()
+    )
+    granted = 0
+    for role in Role.objects.filter(id__in=role_ids):
+        before = role.permissions.filter(module='appraisals', action='view').count()
+        role.permissions.add(*view)
+        if role.name == ROLE_MANAGER and view_all:
+            role.permissions.add(*view_all)
+        if before == 0:
+            granted += 1
+    manager = Role.objects.filter(name=ROLE_MANAGER).first()
+    if manager and view_all:
+        manager.permissions.add(*view, *view_all)
     return granted
 
 
@@ -448,6 +491,7 @@ def sync_default_roles(created_by=None):
     # Deactivate legacy duplicate roles so the UI shows a clean trio.
     Role.objects.filter(name__in=LEGACY_ROLE_NAMES).update(is_active=False)
     grant_daily_notes_to_sales_roles()
+    grant_appraisals_to_sales_roles()
 
     return {
         ROLE_SUPER_ADMIN: super_admin,

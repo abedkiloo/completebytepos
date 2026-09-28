@@ -37,6 +37,7 @@ class Permission(models.Model):
         ('roles', 'Role Management'),
         ('settings', 'System Settings'),
         ('modules', 'Module Settings'),
+        ('website', 'Website'),
     ]
     
     ACTION_CHOICES = [
