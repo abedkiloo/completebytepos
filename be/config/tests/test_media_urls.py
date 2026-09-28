@@ -1,6 +1,10 @@
-from django.test import SimpleTestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
+from pathlib import Path
+
+from django.conf import settings
 
 from config.media_urls import absolute_media_url
+from config.urls import media_urlpatterns
 
 
 class MediaUrlsTests(SimpleTestCase):
@@ -28,3 +32,23 @@ class MediaUrlsTests(SimpleTestCase):
         )
         url = absolute_media_url(request, '/media/products/x.jpg')
         self.assertEqual(url, '/media/products/x.jpg')
+
+
+class ServeMediaUrlTests(SimpleTestCase):
+    @override_settings(DEBUG=False, SERVE_MEDIA=True, MEDIA_URL='/media/')
+    def test_debug_off_still_registers_media_route(self):
+        patterns = media_urlpatterns()
+        self.assertEqual(len(patterns), 1)
+
+    @override_settings(DEBUG=False, SERVE_MEDIA=False)
+    def test_media_route_can_be_disabled(self):
+        self.assertEqual(media_urlpatterns(), [])
+
+
+class ServeUploadedMediaTests(TestCase):
+    def test_jpeg_is_returned_from_media_root(self):
+        dest = Path(settings.MEDIA_ROOT) / 'products'
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / 'probe.jpeg').write_bytes(b'\xff\xd8\xff\xdb')
+        response = self.client.get('/media/products/probe.jpeg')
+        self.assertEqual(response.status_code, 200)

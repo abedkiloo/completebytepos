@@ -2,15 +2,36 @@
 URL configuration for CompleteBytePOS project.
 """
 from django.contrib import admin
-from django.urls import path, include
-from config.health import healthz
+from django.urls import include, path, re_path
 from django.conf import settings
-from django.conf.urls.static import static
+from django.views.static import serve
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
     TokenVerifyView,
 )
+
+from config.health import healthz
+
+
+def media_urlpatterns():
+    """
+    Serve uploaded files from MEDIA_ROOT.
+
+    ``django.conf.urls.static.static()`` is a no-op when DEBUG=False, so UAT
+    and production must register ``serve`` explicitly when SERVE_MEDIA is on.
+    """
+    if not (settings.DEBUG or getattr(settings, 'SERVE_MEDIA', False)):
+        return []
+    prefix = (settings.MEDIA_URL or '/media/').strip('/')
+    return [
+        re_path(
+            rf'^{prefix}/(?P<path>.*)$',
+            serve,
+            {'document_root': str(settings.MEDIA_ROOT)},
+        ),
+    ]
+
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -44,8 +65,4 @@ urlpatterns = [
     path('api/public/', include('payments.urls_public')),
     path('api/cms/', include('cms.urls')),
     path('api/approvals/', include('approvals.urls')),
-]
-
-# Uploaded files (product images). In production use nginx /media/ → backend or SERVE_MEDIA.
-if settings.DEBUG or getattr(settings, 'SERVE_MEDIA', False):
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+] + media_urlpatterns()

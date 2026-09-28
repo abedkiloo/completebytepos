@@ -12,3 +12,7 @@ shop.omuwenga.com {
 uat.omuwenga.com {
 	reverse_proxy 127.0.0.1:3100
 }
+
+api.uat.omuwenga.com {
+	reverse_proxy 127.0.0.1:8001
+}

@@ -112,6 +112,9 @@ services:
     hostname: frontend
     ports:
       - "${FRONTEND_PORT:-3000}:80"
+    volumes:
+      # Same files Django writes on upload (backend_media → /app/media).
+      - backend_media:/srv/media:ro
     depends_on:
       backend:
         condition: service_healthy
