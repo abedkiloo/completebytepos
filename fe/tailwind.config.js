@@ -15,6 +15,8 @@
  */
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  // The app only ships a light theme; `dark:` variants must not follow the OS setting.
+  darkMode: 'class',
   content: [
     './public/index.html',
     './src/**/*.{js,jsx,ts,tsx}',

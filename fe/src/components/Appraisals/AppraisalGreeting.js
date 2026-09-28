@@ -61,7 +61,7 @@ export default function AppraisalGreeting() {
       aria-labelledby="appraisal-greeting-title"
     >
       <div className="my-auto w-full max-w-lg">
-        <AppraisalProgressCard snapshot={snapshot} />
+        <AppraisalProgressCard snapshot={snapshot} className="shadow-2xl" />
         <div className="mt-3 flex flex-wrap justify-end gap-2">
           <Button variant="outline" onClick={dismiss}>
             Continue
