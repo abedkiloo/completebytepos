@@ -7,9 +7,10 @@ Tests are written first — implementations must satisfy these expectations.
 from decimal import Decimal
 
 from django.contrib.auth.models import User
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.models import AuditLog, Role, UserProfile
-from accounts.role_definitions import ROLE_MANAGER, sync_default_roles
+from accounts.role_definitions import ROLE_MANAGER, ROLE_SUPER_ADMIN, sync_default_roles
 from products.models import Category, Product
 from sales.models import Customer, Sale
 from settings.models import Branch, ModuleSettings, Tenant
@@ -133,7 +134,18 @@ class AuditTrailContractTests(ManagerAPITestCase):
         self.assertGreaterEqual(_audit_count(module='expenses', action='create'), 1)
 
         expense_id = create_resp.data['id']
-        approve_resp = self.client.post(f'/api/expenses/{expense_id}/approve/')
+        sync_default_roles()
+        checker = User.objects.create_user('audit_exp_chk', password='x', is_staff=True)
+        UserProfile.objects.create(
+            user=checker,
+            role='super_admin',
+            custom_role=Role.objects.get(name=ROLE_SUPER_ADMIN),
+            is_active=True,
+        )
+        checker_client = self.client.__class__()
+        token = RefreshToken.for_user(checker)
+        checker_client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+        approve_resp = checker_client.post(f'/api/expenses/{expense_id}/approve/')
         self.assertEqual(approve_resp.status_code, 200, approve_resp.data)
         self.assertTrue(
             AuditLog.objects.filter(module='expenses', action='approve').exists()

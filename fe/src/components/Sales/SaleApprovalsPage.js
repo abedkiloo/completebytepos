@@ -67,21 +67,21 @@ function SaleApprovalRow({ sale, onResolved }) {
   return (
     <Card>
       <CardContent className="space-y-3 py-4">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <p className="font-semibold">{sale.sale_number}</p>
-            <p className="text-sm text-muted-foreground">
+        <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="truncate font-semibold">{sale.sale_number}</p>
+            <p className="truncate text-sm text-muted-foreground">
               {sale.cashier_name || 'Cashier'} · {formatDateTime(sale.occurred_at || sale.created_at)}
             </p>
           </div>
-          <div className="text-right">
-            <p className="font-semibold">{formatCurrency(sale.total)}</p>
+          <div className="min-w-0 shrink-0 text-right">
+            <p className="truncate font-semibold">{formatCurrency(sale.total)}</p>
             <Badge variant="outline" className="capitalize">
               {sale.payment_method || 'cash'}
             </Badge>
           </div>
         </div>
-        <p className="text-sm text-muted-foreground">
+        <p className="truncate text-sm text-muted-foreground">
           {itemCount} line{itemCount === 1 ? '' : 's'}
           {sale.customer_name ? ` · ${sale.customer_name}` : ''}
         </p>
@@ -166,21 +166,21 @@ function DebtCollectionApprovalRow({ change, onResolved }) {
   return (
     <Card>
       <CardContent className="space-y-3 py-4">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <p className="font-semibold">{change.entity_repr || 'Customer'}</p>
-            <p className="text-sm text-muted-foreground">
+        <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="truncate font-semibold">{change.entity_repr || 'Customer'}</p>
+            <p className="truncate text-sm text-muted-foreground">
               {change.made_by_username || 'Salesperson'} · {formatDateTime(change.made_at)}
             </p>
           </div>
-          <div className="text-right">
-            <p className="font-semibold">{formatCurrency(amount)}</p>
+          <div className="min-w-0 shrink-0 text-right">
+            <p className="truncate font-semibold">{formatCurrency(amount)}</p>
             <Badge variant="outline" className="capitalize">
               {method}
             </Badge>
           </div>
         </div>
-        <p className="text-sm text-muted-foreground">
+        <p className="truncate text-sm text-muted-foreground">
           Debt collection
           {change.reason ? ` · ${change.reason}` : ''}
         </p>

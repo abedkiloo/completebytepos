@@ -7,6 +7,11 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
 
+from django.contrib.auth.models import User
+from rest_framework_simplejwt.tokens import RefreshToken
+
+from accounts.models import Role, UserProfile
+from accounts.role_definitions import ROLE_SUPER_ADMIN, sync_default_roles
 from expenses.models import Expense, ExpenseCategory
 from expenses.services import ExpenseCategoryService, ExpenseService
 from utils.tests.api_test_base import ManagerAPITestCase, SalesAPITestCase
@@ -151,8 +156,19 @@ class ExpenseAPIExtendedTests(ManagerAPITestCase):
             format='json',
         )
         expense_id = create.data['id']
-        self.client.post(f'/api/expenses/{expense_id}/approve/')
-        again = self.client.post(f'/api/expenses/{expense_id}/approve/')
+        sync_default_roles()
+        checker = User.objects.create_user('exp_double_chk', password='x', is_staff=True)
+        UserProfile.objects.create(
+            user=checker,
+            role='super_admin',
+            custom_role=Role.objects.get(name=ROLE_SUPER_ADMIN),
+            is_active=True,
+        )
+        client = self.client.__class__()
+        token = RefreshToken.for_user(checker)
+        client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+        client.post(f'/api/expenses/{expense_id}/approve/')
+        again = client.post(f'/api/expenses/{expense_id}/approve/')
         self.assertEqual(again.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_category_list_and_create(self):
