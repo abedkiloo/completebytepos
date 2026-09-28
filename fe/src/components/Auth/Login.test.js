@@ -34,6 +34,7 @@ describe('Login landing', () => {
     expect(screen.getAllByText('Omuwenga Suppliers').length).toBeGreaterThan(0);
     expect(screen.getByLabelText(/^password$/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^sign in$/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /show password/i })).toBeInTheDocument();
   });
 
   it('enables submit once username and password are filled', async () => {
@@ -48,5 +49,16 @@ describe('Login landing', () => {
       expect(screen.getByRole('button', { name: /^sign in$/i })).toBeEnabled();
     });
     expect(authAPI.login).not.toHaveBeenCalled();
+  });
+
+  it('shows the password when the eye button is pressed', async () => {
+    render(<Login />);
+    const password = await screen.findByLabelText(/^password$/i);
+    fireEvent.change(password, { target: { value: 'secret' } });
+    expect(password).toHaveAttribute('type', 'password');
+    fireEvent.click(screen.getByRole('button', { name: /show password/i }));
+    expect(password).toHaveAttribute('type', 'text');
+    fireEvent.click(screen.getByRole('button', { name: /hide password/i }));
+    expect(password).toHaveAttribute('type', 'password');
   });
 });

@@ -7,6 +7,10 @@ export const MPESA_CAPTURE_CODE = 'code';
 export const MPESA_PROMPT_COMING_SOON = true;
 export const MPESA_PROMPT_COMING_SOON_MESSAGE = 'Coming soon';
 
+export function mpesaPromptIsLive() {
+  return !MPESA_PROMPT_COMING_SOON;
+}
+
 export function announceMpesaPromptComingSoon() {
   toast.info(MPESA_PROMPT_COMING_SOON_MESSAGE);
   return MPESA_PROMPT_COMING_SOON_MESSAGE;
@@ -14,6 +18,10 @@ export function announceMpesaPromptComingSoon() {
 
 export function isMpesaPrompt(mode) {
   return mode === MPESA_CAPTURE_PROMPT;
+}
+
+export function isLiveMpesaPrompt(mode) {
+  return mpesaPromptIsLive() && isMpesaPrompt(mode);
 }
 
 export function isMpesaCode(mode) {

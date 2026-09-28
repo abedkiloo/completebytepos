@@ -73,4 +73,18 @@ describe('ChangePassword', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/do not match/i);
     expect(usersAPI.changePassword).not.toHaveBeenCalled();
   });
+
+  it('toggles new and confirm passwords independently', () => {
+    render(<ChangePassword />);
+    const next = screen.getByLabelText(/new password/i);
+    const confirm = screen.getByLabelText(/confirm password/i);
+    const [showNew, showConfirm] = screen.getAllByRole('button', { name: /show password/i });
+
+    fireEvent.click(showNew);
+    expect(next).toHaveAttribute('type', 'text');
+    expect(confirm).toHaveAttribute('type', 'password');
+
+    fireEvent.click(showConfirm);
+    expect(confirm).toHaveAttribute('type', 'text');
+  });
 });

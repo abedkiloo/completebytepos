@@ -12,10 +12,12 @@ from django.utils import timezone
 from expenses.models import Expense, ExpenseCategory
 from expenses.services import ExpenseCategoryService, ExpenseService
 from settings.models import StoreSettings
+from settings.test_utils import disable_maker_checker
 
 
 class ExpenseServiceTestCase(TestCase):
     def setUp(self):
+        disable_maker_checker()
         self.user = User.objects.create_user(username='exp_user', password='x')
         self.cat = ExpenseCategory.objects.create(name='Rent', is_active=True)
         self.service = ExpenseService()

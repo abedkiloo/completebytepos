@@ -8,7 +8,8 @@ from django.utils import timezone
 from datetime import datetime, timedelta
 from functools import wraps
 from decimal import Decimal
-from sales.models import Sale, SaleItem, Invoice, Customer, Payment
+from reports.sale_scope import posted_sales, posted_sale_items
+from sales.models import Invoice, Customer, Payment
 from products.models import Product
 from inventory.models import StockMovement
 from expenses.models import Expense
@@ -36,7 +37,7 @@ def request_date_bounds(request):
 
 
 def sale_report_queryset(date_from=None, date_to=None):
-    qs = Sale.objects.exclude(status__in=['holding', 'pending_approval'])
+    qs = posted_sales()
     if date_from:
         qs = qs.filter(occurred_at__gte=date_from)
     if date_to:
@@ -187,7 +188,7 @@ class ReportViewSet(viewsets.ViewSet):
         """Product sales report"""
         date_from, date_to = request_date_bounds(request)
 
-        queryset = SaleItem.objects.exclude(sale__status__in=['holding', 'pending_approval'])
+        queryset = posted_sale_items()
 
         if date_from:
             queryset = queryset.filter(sale__occurred_at__gte=date_from)
@@ -741,9 +742,7 @@ class ReportViewSet(viewsets.ViewSet):
         horizontal bar chart.
         """
         start, end, label = resolve_period(request)
-        qs = SaleItem.objects.select_related('product', 'product__category').exclude(
-            sale__status__in=['holding', 'pending_approval']
-        )
+        qs = posted_sale_items().select_related('product', 'product__category')
         if start:
             qs = qs.filter(sale__occurred_at__gte=start)
         if end:

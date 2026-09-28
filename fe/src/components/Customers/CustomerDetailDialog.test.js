@@ -182,7 +182,7 @@ describe('CustomerDetailDialog', () => {
     fireEvent.click(await screen.findByText('S-900'));
     await waitFor(() => expect(salesAPI.get).toHaveBeenCalledWith(99));
 
-    fireEvent.click(await screen.findByRole('button', { name: /Void \/ Refund/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Void \/ refund$/i }));
     await waitFor(() => expect(salesAPI.get).toHaveBeenCalledTimes(2));
 
     const reasonInput = await screen.findByLabelText(/Reason for void/i);

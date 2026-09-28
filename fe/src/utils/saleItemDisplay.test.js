@@ -1,6 +1,8 @@
 import {
   saleAmountRefunded,
+  saleAppliedPaid,
   saleBalanceDue,
+  saleChangeDue,
   saleDisplayTotal,
   saleDisplayItemCount,
   saleFinalStatusLabel,
@@ -40,6 +42,10 @@ describe('saleItemDisplay', () => {
     expect(salePaymentStatusLabel({ total: '100', amount_paid: '100' })).toBe('Paid in full');
     expect(salePaymentStatusLabel({ total: '100', amount_paid: '0' })).toBe('Unpaid');
     expect(saleBalanceDue({ total: '100', amount_paid: '100' })).toBe(0);
+    expect(saleAppliedPaid({ total: 5850, amount_paid: 6000 })).toBe(5850);
+    expect(saleChangeDue({ total: 5850, amount_paid: 6000, change: 0 })).toBe(150);
+    expect(saleChangeDue({ total: 5850, amount_paid: 6000, change: 150 })).toBe(150);
+    expect(saleBalanceDue({ total: 5850, amount_paid: 6000 })).toBe(0);
   });
 
   it('returns zero refundable when line fully refunded', () => {

@@ -90,6 +90,31 @@ class ReportsViewsTestCase(ManagerAPITestCase):
         self.assertIn('by_payment_method', response.data)
         self.assertIn('daily_breakdown', response.data)
 
+    def test_unposted_sales_do_not_change_sales_or_product_reports(self):
+        before_sales = self.client.get('/api/reports/sales/')
+        before_products = self.client.get('/api/reports/products/')
+        self.assertEqual(before_sales.status_code, status.HTTP_200_OK)
+        Sale.objects.create(
+            status='pending_approval',
+            payment_method='cash',
+            subtotal=Decimal('999.00'),
+            total=Decimal('999.00'),
+            amount_paid=Decimal('999.00'),
+            cashier=self.manager_user,
+        )
+        Sale.objects.create(
+            status='cancelled',
+            payment_method='cash',
+            subtotal=Decimal('400.00'),
+            total=Decimal('400.00'),
+            amount_paid=Decimal('400.00'),
+            cashier=self.manager_user,
+        )
+        after_sales = self.client.get('/api/reports/sales/')
+        after_products = self.client.get('/api/reports/products/')
+        self.assertEqual(before_sales.data['summary'], after_sales.data['summary'])
+        self.assertEqual(before_products.data['products'], after_products.data['products'])
+
     def test_sales_report_pdf_download(self):
         response = self.client.get('/api/reports/sales/', {'format': 'pdf'})
         self.assertEqual(response.status_code, status.HTTP_200_OK)

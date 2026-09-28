@@ -22,7 +22,7 @@ from accounts.role_definitions import (
     sync_default_roles,
 )
 from products.models import Category, Product
-from settings.test_utils import disable_multi_branch_support
+from settings.test_utils import disable_maker_checker, disable_multi_branch_support
 from utils.tests.api_test_base import _enable_modules
 
 
@@ -45,6 +45,7 @@ class ThreeUserPersonasTestCase(APITestCase):
             'income', 'users', 'roles', 'settings', 'modules', 'customers',
         )
         disable_multi_branch_support()
+        disable_maker_checker()
         cls.users = {}
         for spec in BOOTSTRAP_USERS:
             user, _ = User.objects.get_or_create(

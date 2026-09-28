@@ -76,8 +76,9 @@ class StoreSettingsModelTests(TestCase):
         self.assertEqual(first.enabled_payment_methods, list(DEFAULT_PAYMENT_METHODS))
 
     def test_maker_checker_disabled_by_default(self):
-        store = StoreSettings.load()
-        self.assertFalse(store.maker_checker_enabled)
+        self.assertFalse(
+            StoreSettings._meta.get_field('maker_checker_enabled').default
+        )
 
     def test_maker_checker_sales_controls_default_off(self):
         store = StoreSettings.load()

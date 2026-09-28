@@ -3,6 +3,7 @@ import { usersAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import SearchableSelect from '../Shared/SearchableSelect';
 import FormField from '../form/FormField';
+import { PasswordInput } from '../ui/password-input';
 import {
   normalizeApiErrors,
   hasValidationErrors,
@@ -248,8 +249,7 @@ const UserForm = ({
               errors={errors}
               hint="They will choose a new password the next time they sign in on the web or the app."
             >
-              <input
-                type="password"
+              <PasswordInput
                 id="password"
                 name="password"
                 value={formData.password}

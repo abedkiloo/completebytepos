@@ -18,7 +18,8 @@ APPROVED_MESSAGE_TEMPLATE = (
     'Sale #{sale_number} was approved. You can issue the receipt now.'
 )
 REJECTED_MESSAGE_TEMPLATE = (
-    'Sale #{sale_number} was not approved and has been cancelled.'
+    'Sale #{sale_number} was returned. Check Daily notes for the comment, '
+    'fix it on POS, and send it again.'
 )
 QUEUE_REASON = 'Sale awaiting manager approval so the cashier can issue a receipt.'
 
@@ -86,7 +87,7 @@ def queue_sale_complete(request, sale: Sale, *, payment_payload: dict | None = N
     if existing:
         return existing
     payload = payment_payload or {}
-    return submit_change(
+    change = submit_change(
         request=request,
         action_type=ACTION_SALE_COMPLETE,
         entity_type='sales.Sale',
@@ -103,6 +104,18 @@ def queue_sale_complete(request, sale: Sale, *, payment_payload: dict | None = N
         apply_payload=payload,
         require_maker_checker=False,
     )
+    from daily_notes.approval_notice import (
+        complete_sale_return_notes,
+        notify_managers_for_change,
+    )
+
+    notify_managers_for_change(
+        author=getattr(request, 'user', None),
+        change=change,
+        sale=sale,
+    )
+    complete_sale_return_notes(record_id=sale.pk)
+    return change
 
 
 def cancel_queued_sale(sale: Sale) -> Sale:
@@ -110,6 +123,42 @@ def cancel_queued_sale(sale: Sale) -> Sale:
         return sale
     sale.status = 'cancelled'
     sale.save(update_fields=['status', 'updated_at'])
+    return sale
+
+
+def return_queued_sale_for_correction(sale: Sale) -> Sale:
+    """Put a rejected sale back on the cashier's POS cart so they can fix it."""
+    if sale.status != 'pending_approval':
+        return sale
+    sale.status = 'holding'
+    sale.save(update_fields=['status', 'updated_at'])
+    return sale
+
+
+def restore_queued_sale_for_approval(sale: Sale, change: PendingChange | None = None) -> Sale:
+    """Re-queue a holding sale after the salesperson sends it back."""
+    if sale.status != 'holding':
+        return sale
+    sale.status = 'pending_approval'
+    sale.save(update_fields=['status', 'updated_at'])
+    if change is None:
+        return sale
+    existing = change.apply_payload or {}
+    change.apply_payload = {
+        **existing,
+        **payment_payload_from_inputs(
+            payment_method=sale.payment_method or existing.get('payment_method') or 'cash',
+            amount_paid=sale.amount_paid if sale.amount_paid is not None else existing.get('amount_paid') or '0',
+            allow_partial=bool(existing.get('allow_partial')),
+            excess_payment_choice=existing.get('excess_payment_choice') or 'change',
+            use_wallet=bool(existing.get('use_wallet')),
+            wallet_amount=existing.get('wallet_amount') or '0',
+            payment_reference=sale.payment_reference or existing.get('payment_reference') or '',
+            sale_type=existing.get('sale_type') or sale.sale_type or 'pos',
+            client_channel=existing.get('client_channel') or getattr(sale, 'client_channel', '') or '',
+        ),
+    }
+    change.save(update_fields=['apply_payload'])
     return sale
 
 
@@ -195,6 +244,9 @@ def complete_queued_sale(sale: Sale, user, payload: dict | None = None) -> Sale:
         )
 
     notify_cashier_sale_approved(sale, user)
+    from daily_notes.approval_notice import SOURCE_SALE_COMPLETE, complete_manager_queue_notes
+
+    complete_manager_queue_notes(source=SOURCE_SALE_COMPLETE, record_id=sale.pk)
     return sale
 
 

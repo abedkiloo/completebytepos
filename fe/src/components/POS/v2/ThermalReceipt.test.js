@@ -53,4 +53,19 @@ describe('ThermalReceipt', () => {
     expect(screen.getByText('Served by')).toBeInTheDocument();
     expect(screen.getByText('Kai')).toBeInTheDocument();
   });
+
+  it('prints goods total and change, not the cash handed over', () => {
+    const overpaid = {
+      ...sale,
+      total: 5850,
+      amount_paid: 6000,
+      change: 0,
+      subtotal: 5850,
+    };
+    render(<ThermalReceipt sale={overpaid} store={store} />);
+    expect(screen.getByText('TOTAL')).toBeInTheDocument();
+    expect(screen.getAllByText(/5,850/).length).toBeGreaterThan(0);
+    expect(screen.getByText('Change')).toBeInTheDocument();
+    expect(screen.queryByText(/6,000/)).not.toBeInTheDocument();
+  });
 });

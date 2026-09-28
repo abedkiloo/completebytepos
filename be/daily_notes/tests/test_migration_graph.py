@@ -17,5 +17,5 @@ class MigrationGraphTests(TestCase):
         )
         self.assertEqual(
             sales,
-            [('sales', '0014_merge_duka_fields_and_refund_type')],
+            [('sales', '0016_merge_payment_reference_and_pending_approval')],
         )

@@ -61,6 +61,32 @@ class ReportServicesTestCase(TestCase):
         self.assertIn('growth', data)
         self.assertGreaterEqual(data['low_stock_count'], 1)
 
+    def test_dashboard_ignores_unposted_sales(self):
+        user = User.objects.create_user(username='dash_pending', password='x')
+        before = ReportDashboardService.get_dashboard_summary()
+        Sale.objects.create(
+            status='pending_approval',
+            payment_method='cash',
+            subtotal=Decimal('10'),
+            discount_amount=Decimal('50'),
+            total=Decimal('-40'),
+            amount_paid=Decimal('0'),
+            cashier=user,
+        )
+        Sale.objects.create(
+            status='cancelled',
+            payment_method='cash',
+            subtotal=Decimal('200'),
+            total=Decimal('200'),
+            amount_paid=Decimal('200'),
+            cashier=user,
+        )
+        after = ReportDashboardService.get_dashboard_summary()
+        self.assertEqual(before['today']['sales_count'], after['today']['sales_count'])
+        self.assertEqual(before['today']['total'], after['today']['total'])
+        self.assertEqual(before['month']['total'], after['month']['total'])
+        self.assertEqual(before['growth']['returns'], after['growth']['returns'])
+
     def test_week_sales_summary_groups_last_seven_days(self):
         from datetime import timedelta
 

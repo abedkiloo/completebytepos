@@ -7,7 +7,10 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
+from rest_framework_simplejwt.tokens import RefreshToken
 
+from accounts.models import Role, UserProfile
+from accounts.role_definitions import ROLE_SUPER_ADMIN, sync_default_roles
 from income.models import Income, IncomeCategory
 from income.services import IncomeCategoryService, IncomeService
 from utils.tests.api_test_base import ManagerAPITestCase
@@ -84,8 +87,19 @@ class IncomeAPIExtendedTests(ManagerAPITestCase):
             format='json',
         )
         income_id = create.data['id']
-        self.client.post(f'/api/income/{income_id}/approve/')
-        again = self.client.post(f'/api/income/{income_id}/approve/')
+        sync_default_roles()
+        checker = User.objects.create_user('inc_double_chk', password='x', is_staff=True)
+        UserProfile.objects.create(
+            user=checker,
+            role='super_admin',
+            custom_role=Role.objects.get(name=ROLE_SUPER_ADMIN),
+            is_active=True,
+        )
+        client = self.client.__class__()
+        token = RefreshToken.for_user(checker)
+        client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+        client.post(f'/api/income/{income_id}/approve/')
+        again = client.post(f'/api/income/{income_id}/approve/')
         self.assertEqual(again.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_statistics_reflects_approved_only(self):

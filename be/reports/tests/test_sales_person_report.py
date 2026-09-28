@@ -100,6 +100,22 @@ class SalesPersonReportTests(ManagerAPITestCase):
             amount_paid=Decimal('0'),
             cashier=self.manager_user,
         )
+        Sale.objects.create(
+            status='pending_approval',
+            payment_method='cash',
+            subtotal=Decimal('500.00'),
+            total=Decimal('500.00'),
+            amount_paid=Decimal('500.00'),
+            cashier=self.manager_user,
+        )
+        Sale.objects.create(
+            status='cancelled',
+            payment_method='cash',
+            subtotal=Decimal('80.00'),
+            total=Decimal('80.00'),
+            amount_paid=Decimal('80.00'),
+            cashier=self.manager_user,
+        )
         month = timezone.now().strftime('%Y-%m')
         response = self.client.get('/api/reports/sales_by_person/', {'month': month})
         mgr = next(r for r in response.data['staff'] if r['user_id'] == self.manager_user.id)

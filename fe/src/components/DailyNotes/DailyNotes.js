@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Calendar, CheckSquare, NotebookPen, Pencil, Plus, Redo2, Trash2 } from 'lucide-react';
 import { dailyNotesAPI, dailyTasksAPI, expensesAPI, incomeAPI, pendingChangesAPI, transfersAPI } from '../../services/api';
 import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
@@ -28,6 +28,7 @@ import {
   isApprovalRejectionNote,
   isApprovalRejectionTask,
   parseApprovalRejectionNotice,
+  rejectedSaleFixPath,
   resubmitSuccessMessage,
 } from '../../utils/approvalReturn';
 import DailyNoteForm from './DailyNoteForm';
@@ -47,6 +48,7 @@ const todayIso = () => new Date().toISOString().slice(0, 10);
 
 const DailyNotes = () => {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const persona = getPersonaFromStorage();
   const { user } = getStoredAuth();
   const currentUserId = user?.id;
@@ -202,6 +204,16 @@ const DailyNotes = () => {
     } finally {
       setResubmittingKey(null);
     }
+  };
+
+  const handleFixRejectedSale = (entry) => {
+    const parsed = parseApprovalRejectionNotice(entry.description || entry.content);
+    const path = rejectedSaleFixPath(parsed, entry.title);
+    if (!path) {
+      toast.warning('Open POS to fix this sale.');
+      return;
+    }
+    navigate(path);
   };
 
   const handleDeleteNote = async () => {
@@ -414,6 +426,21 @@ const DailyNotes = () => {
                                   : 'Send back for approval'}
                               </Button>
                             ) : null}
+                            {isApprovalRejectionTask(task) &&
+                            rejectedSaleFixPath(
+                              parseApprovalRejectionNotice(task.description),
+                              task.title
+                            ) ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="mt-1"
+                                onClick={() => handleFixRejectedSale(task)}
+                              >
+                                Fix sale
+                              </Button>
+                            ) : null}
                           </div>
                         </div>
                       </div>
@@ -469,6 +496,7 @@ const DailyNotes = () => {
                 }}
                 onDelete={(noteId) => setConfirmDeleteNote(noteId)}
                 onResubmit={(note, kind) => handleResubmitRejection(note, kind)}
+                onFixSale={handleFixRejectedSale}
                 canModifyEntry={canModifyEntry}
               />
             </section>

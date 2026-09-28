@@ -3,9 +3,11 @@ import {
   MPESA_CAPTURE_PROMPT,
   MPESA_PROMPT_COMING_SOON,
   announceMpesaPromptComingSoon,
+  isLiveMpesaPrompt,
   isMpesaCode,
   isMpesaPrompt,
   mpesaCollectingNow,
+  mpesaPromptIsLive,
 } from './mpesaCapture';
 import { toast } from './toast';
 
@@ -25,6 +27,8 @@ describe('mpesaCapture', () => {
     expect(isMpesaCode(MPESA_CAPTURE_PROMPT)).toBe(false);
     expect(isMpesaCode('anything-else')).toBe(true);
     expect(MPESA_PROMPT_COMING_SOON).toBe(true);
+    expect(mpesaPromptIsLive()).toBe(false);
+    expect(isLiveMpesaPrompt(MPESA_CAPTURE_PROMPT)).toBe(false);
     expect(announceMpesaPromptComingSoon()).toBe('Coming soon');
     expect(toast.info).toHaveBeenCalledWith('Coming soon');
   });

@@ -27,7 +27,7 @@ import MpesaCapture from '../Payments/MpesaCapture';
 import StkWaitDialog from '../Payments/StkWaitDialog';
 import {
   MPESA_CAPTURE_CODE,
-  MPESA_CAPTURE_PROMPT,
+  isLiveMpesaPrompt,
 } from '../../utils/mpesaCapture';
 import {
   AMOUNT_EXAMPLE,
@@ -130,12 +130,12 @@ export default function ReceiveWalletPaymentDialog({
     const amountError = paymentAmountMessage(form.amount);
     if (amountError) errors.amount = amountError;
     if (form.payment_method === 'mpesa') {
-      if (mpesaMode === MPESA_CAPTURE_CODE) {
-        const codeError = mpesaReceiptMessage(form.reference);
-        if (codeError) errors.reference = codeError;
-      } else {
+      if (isLiveMpesaPrompt(mpesaMode)) {
         const phoneErr = phoneMessage(mpesaPhone, { required: true });
         if (phoneErr) errors.phone = phoneErr;
+      } else {
+        const codeError = mpesaReceiptMessage(form.reference);
+        if (codeError) errors.reference = codeError;
       }
     }
     if (Object.keys(errors).length) {
@@ -193,7 +193,7 @@ export default function ReceiveWalletPaymentDialog({
   };
 
   const confirmCommit = async () => {
-    if (form.payment_method === 'mpesa' && mpesaMode === MPESA_CAPTURE_PROMPT) {
+    if (form.payment_method === 'mpesa' && isLiveMpesaPrompt(mpesaMode)) {
       setShowCommitConfirm(false);
       setStkOpen(true);
       return;
@@ -215,7 +215,7 @@ export default function ReceiveWalletPaymentDialog({
             emphasis: true,
           },
           { label: 'Method', value: methodLabel },
-          form.payment_method === 'mpesa' && mpesaMode === MPESA_CAPTURE_PROMPT
+          form.payment_method === 'mpesa' && isLiveMpesaPrompt(mpesaMode)
             ? { label: 'Phone', value: mpesaPhone }
             : form.reference.trim()
             ? {

@@ -355,6 +355,51 @@ class BackfillIntegrationUnitTests(TestCase):
         self.assertIn('variant #9', summary['lines'])
         self.assertEqual(summary['served_by'], 'summary_user')
 
+    def test_queue_sale_backfill_puts_manager_todo_card(self):
+        from approvals.backfill_integration import queue_sale_backfill
+        from daily_notes.models import DailyNote
+        from django.test import RequestFactory
+
+        ensure_permissions()
+        sync_default_roles()
+        store = StoreSettings.load()
+        store.maker_checker_enabled = True
+        store.backfill_maker_checker_enabled = True
+        store.save(update_fields=['maker_checker_enabled', 'backfill_maker_checker_enabled'])
+        sales = User.objects.create_user(
+            'bf_queue_sales', password='x', first_name='Ann', last_name='Cash'
+        )
+        manager = User.objects.create_user('bf_queue_mgr', password='x')
+        UserProfile.objects.create(
+            user=sales,
+            role='cashier',
+            custom_role=Role.objects.get(name=ROLE_SALES),
+            is_active=True,
+        )
+        UserProfile.objects.create(
+            user=manager,
+            role='manager',
+            custom_role=Role.objects.get(name=ROLE_MANAGER),
+            is_active=True,
+        )
+        request = RequestFactory().post('/api/sales/backfill/')
+        request.user = sales
+        change = queue_sale_backfill(
+            request,
+            {
+                'occurred_at': timezone.now() - timedelta(days=2),
+                'backfill_reason': 'Sold offline during power outage',
+                'sale_type': 'pos',
+                'payment_method': 'cash',
+                'amount_paid': Decimal('100.00'),
+                'items': [{'product_id': 1, 'quantity': 1, 'unit_price': '100.00'}],
+            },
+        )
+        note = DailyNote.objects.get(content__contains=f'ref: sale_backfill/{change.id}')
+        self.assertEqual(note.assigned_to_id, manager.id)
+        self.assertEqual(note.board_column, 'todo')
+        self.assertIn('Clear and move', note.title)
+
     def test_queue_sale_backfill_requires_items(self):
         from approvals.backfill_integration import queue_sale_backfill
         from django.test import RequestFactory

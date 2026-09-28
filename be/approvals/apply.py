@@ -350,6 +350,10 @@ def _apply_sale_backfill(change: PendingChange) -> None:
     change.entity_type = 'sales.Sale'
     change.save(update_fields=['apply_payload', 'entity_id', 'entity_type'])
 
+    from daily_notes.approval_notice import complete_manager_notes_for_change
+
+    complete_manager_notes_for_change(change)
+
     try:
         from utils.audit_events import log_sale_completed
 

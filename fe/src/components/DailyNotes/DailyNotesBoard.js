@@ -13,6 +13,7 @@ import {
   canResubmitRejection,
   isApprovalRejectionNote,
   parseApprovalRejectionNotice,
+  rejectedSaleFixPath,
 } from '../../utils/approvalReturn';
 
 export default function DailyNotesBoard({
@@ -26,6 +27,7 @@ export default function DailyNotesBoard({
   onEdit,
   onDelete,
   onResubmit,
+  onFixSale,
   canModifyEntry,
 }) {
   return (
@@ -112,6 +114,21 @@ export default function DailyNotesBoard({
                         {resubmittingKey === `note-${note.id}`
                           ? 'Sending…'
                           : 'Send back for approval'}
+                      </Button>
+                    ) : null}
+                    {isApprovalRejectionNote(note) &&
+                    rejectedSaleFixPath(
+                      parseApprovalRejectionNotice(note.content),
+                      note.title
+                    ) ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mb-2 ml-1"
+                        onClick={() => onFixSale?.(note)}
+                      >
+                        Fix sale
                       </Button>
                     ) : null}
                     <div className="flex flex-wrap gap-1">

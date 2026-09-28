@@ -1,6 +1,11 @@
 import React, { forwardRef } from 'react';
 import { formatCurrency } from '../../../utils/formatters';
-import { normalizeSaleForReceipt } from '../../../utils/saleItemDisplay';
+import {
+  normalizeSaleForReceipt,
+  saleAppliedPaid,
+  saleBalanceDue,
+  saleChangeDue,
+} from '../../../utils/saleItemDisplay';
 
 export const RECEIPT_REACH_US_PHONE = '0718515142';
 export const RECEIPT_REACH_US_LABEL = `You can reach us via ${RECEIPT_REACH_US_PHONE}`;
@@ -52,8 +57,9 @@ export const ThermalReceipt = forwardRef(function ThermalReceipt(
   const dateLabel = formatReceiptDate(sale.created_at);
   const servedByLabel =
     sale.served_by_name || sale.cashier_name || sale.cashier || '';
-  const balance = (parseFloat(receipt.total) || 0) - (parseFloat(receipt.amount_paid) || 0);
-  const change = parseFloat(receipt.change) || 0;
+  const paid = saleAppliedPaid(receipt);
+  const balance = saleBalanceDue(receipt);
+  const change = saleChangeDue(receipt);
   const isPaymentMpesa = sale.payment_method === 'mpesa';
   const isPaymentCash = sale.payment_method === 'cash';
   const isPaymentWallet = sale.payment_method === 'wallet';
@@ -170,7 +176,7 @@ export const ThermalReceipt = forwardRef(function ThermalReceipt(
       <section className="receipt-thermal__payment">
         <ReceiptRow
           left={paymentLabel}
-          right={formatCurrency(receipt.amount_paid)}
+          right={formatCurrency(paid)}
           price
         />
         {sale.payment_reference ? (

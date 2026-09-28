@@ -16,7 +16,9 @@ jest.mock('../../../services/api', () => ({
       data: { results: [{ id: 'walk-in', name: 'Walk-in customer' }] },
     }),
   },
-  salesAPI: {},
+  salesAPI: {
+    activeHolding: jest.fn().mockResolvedValue({ data: { holding: null } }),
+  },
   authAPI: {
     me: jest.fn().mockResolvedValue({
       data: { user: { id: 9, username: 'cashier', profile: { branch_id: 2 } } },

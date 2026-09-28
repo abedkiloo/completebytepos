@@ -745,9 +745,9 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         """Manager/admin: reject a cashier sale waiting for approval."""
         from approvals.service import reject_change
         from sales.sale_completion_approval import (
-            cancel_queued_sale,
             notify_cashier_sale_rejected,
             pending_sale_complete_change,
+            return_queued_sale_for_correction,
         )
 
         sale = self.get_object()
@@ -771,7 +771,20 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                     raise ValidationError(
                         {'rejection_reason': 'Rejection reason is required.'}
                     )
-                cancel_queued_sale(sale)
+                return_queued_sale_for_correction(sale)
+                from daily_notes.approval_notice import notify_approval_rejected
+
+                notify_approval_rejected(
+                    requester=sale.cashier,
+                    checker=request.user,
+                    action_type='sale_complete',
+                    entity_repr=sale.sale_number or str(sale.pk),
+                    rejection_reason=str(reason).strip(),
+                    source='sale_complete',
+                    record_id=sale.pk,
+                    is_sticky=True,
+                    sale=sale,
+                )
                 notify_cashier_sale_rejected(sale, request.user, str(reason).strip())
                 sale.refresh_from_db()
         except ValidationError as e:

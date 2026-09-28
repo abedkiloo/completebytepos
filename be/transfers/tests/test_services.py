@@ -12,10 +12,12 @@ from bankaccounts.models import BankAccount
 from transfers.models import MoneyTransfer
 from transfers.services import MoneyTransferService
 from settings.models import StoreSettings
+from settings.test_utils import disable_maker_checker
 
 
 class MoneyTransferServiceTestCase(TestCase):
     def setUp(self):
+        disable_maker_checker()
         self.user = User.objects.create_user(username='xfer', password='x')
         self.from_acct = BankAccount.objects.create(
             account_name='Main',
@@ -70,6 +72,40 @@ class MoneyTransferServiceTestCase(TestCase):
         self.assertTrue(DailyTask.objects.filter(assigned_to=self.user).exists())
         queued = self.service.resubmit_transfer(transfer, self.user)
         self.assertEqual(queued.status, 'pending')
+
+    def test_reject_and_resubmit_guardrails(self):
+        transfer = MoneyTransfer.objects.create(
+            transfer_type='bank_to_bank',
+            from_account=self.from_acct,
+            to_account=self.to_acct,
+            amount=Decimal('20.00'),
+            transfer_date=timezone.now().date(),
+            status='pending',
+            description='Guard',
+            created_by=self.user,
+        )
+        checker = User.objects.create_user(username='xfer_guard', password='x')
+        with self.assertRaises(ValidationError):
+            self.service.reject_transfer(transfer, checker, '')
+        self.service.reject_transfer(transfer, checker, 'Wrong till')
+        other = User.objects.create_user(username='xfer_other', password='x')
+        with self.assertRaises(ValidationError):
+            self.service.resubmit_transfer(transfer, other)
+        queued = self.service.resubmit_transfer(transfer, self.user)
+        with self.assertRaises(ValidationError):
+            self.service.resubmit_transfer(queued, self.user)
+        completed = MoneyTransfer.objects.create(
+            transfer_type='bank_to_bank',
+            from_account=self.from_acct,
+            to_account=self.to_acct,
+            amount=Decimal('5.00'),
+            transfer_date=timezone.now().date(),
+            status='completed',
+            description='Done xfer',
+            created_by=self.user,
+        )
+        with self.assertRaises(ValidationError):
+            self.service.reject_transfer(completed, checker, 'No')
 
     def test_maker_checker_blocks_self_approve(self):
         store = StoreSettings.load()

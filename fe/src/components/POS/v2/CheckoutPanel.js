@@ -25,7 +25,7 @@ import MpesaCapture from '../../Payments/MpesaCapture';
 import StkWaitDialog from '../../Payments/StkWaitDialog';
 import {
   MPESA_CAPTURE_CODE,
-  MPESA_CAPTURE_PROMPT,
+  isLiveMpesaPrompt,
   mpesaCollectingNow,
 } from '../../../utils/mpesaCapture';
 import {
@@ -137,13 +137,13 @@ export function CheckoutPanel({
     (!isCashLike || receivedCheck.ok);
 
   const handlePay = () => {
-    if (isMpesa && collectNow && mpesaMode === MPESA_CAPTURE_PROMPT) {
+    if (isMpesa && collectNow && isLiveMpesaPrompt(mpesaMode)) {
       setShowMpesaErrors(true);
       if (phoneMessage(mpesaPhone, { required: true })) return;
       setStkOpen(true);
       return;
     }
-    if (isMpesa && collectNow && mpesaMode === MPESA_CAPTURE_CODE) {
+    if (isMpesa && collectNow) {
       setShowMpesaErrors(true);
       if (mpesaReceiptMessage(paymentReference)) return;
       onPay({
@@ -394,7 +394,7 @@ export function CheckoutPanel({
           ) : (
             <>
               <ReceiptIcon className="h-5 w-5" />
-              {isMpesa && collectNow && mpesaMode === MPESA_CAPTURE_PROMPT
+              {isMpesa && collectNow && isLiveMpesaPrompt(mpesaMode)
                 ? `Send M-Pesa prompt · ${formatCurrency(receivedCheck.received || total)}`
                 : `Complete sale · ${formatCurrency(total)}`}
             </>

@@ -2,9 +2,13 @@
 
 from decimal import Decimal
 
+from django.contrib.auth.models import User
 from django.utils import timezone
 from rest_framework import status
+from rest_framework_simplejwt.tokens import RefreshToken
 
+from accounts.models import Role, UserProfile
+from accounts.role_definitions import ROLE_SUPER_ADMIN, sync_default_roles
 from bankaccounts.models import BankAccount
 from transfers.models import MoneyTransfer
 from utils.tests.api_test_base import ManagerAPITestCase
@@ -42,7 +46,18 @@ class TransferViewsTestCase(ManagerAPITestCase):
             format='json',
         )
         self.assertEqual(create.status_code, status.HTTP_201_CREATED, create.data)
-        approve = self.client.post(f'/api/transfers/{create.data["id"]}/approve/')
+        sync_default_roles()
+        checker = User.objects.create_user('xfer_view_chk', password='x', is_staff=True)
+        UserProfile.objects.create(
+            user=checker,
+            role='super_admin',
+            custom_role=Role.objects.get(name=ROLE_SUPER_ADMIN),
+            is_active=True,
+        )
+        client = self.client.__class__()
+        token = RefreshToken.for_user(checker)
+        client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+        approve = client.post(f'/api/transfers/{create.data["id"]}/approve/')
         self.assertEqual(approve.status_code, status.HTTP_200_OK)
         self.assertEqual(approve.data['status'], 'completed')
 

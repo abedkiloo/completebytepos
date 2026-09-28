@@ -1,6 +1,7 @@
 """
 Accounting service layer - handles all accounting business logic
 """
+import logging
 from typing import Optional, List, Dict, Any
 from decimal import Decimal
 from django.db import transaction
@@ -10,6 +11,8 @@ from django.utils import timezone
 from datetime import datetime, date
 from .models import AccountType, Account, JournalEntry, Transaction
 from services.base import BaseService
+
+logger = logging.getLogger(__name__)
 
 
 class AccountTypeService(BaseService):
@@ -318,6 +321,13 @@ def create_sale_journal_entry(sale):
     For POS sales: Debit Cash, Credit Sales Revenue
     For Normal sales: Debit Accounts Receivable (or Cash if paid), Credit Sales Revenue
     """
+    if getattr(sale, 'status', None) != 'completed':
+        logger.info(
+            'Skipping journal for unposted sale %s (status=%s)',
+            getattr(sale, 'sale_number', ''),
+            getattr(sale, 'status', ''),
+        )
+        return None
     # Get or create accounts
     sales_revenue_account, _ = Account.objects.get_or_create(
         account_code='4000',
@@ -466,11 +476,11 @@ def create_sale_journal_entry(sale):
         
         wallet_amount_used = wallet_debits or Decimal('0')
     except Exception as e:
-        # If wallet transactions can't be accessed, assume 0
-        # Log the error for debugging
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.warning(f"Error retrieving wallet transactions for sale {sale.sale_number}: {e}")
+        logger.warning(
+            'Error retrieving wallet transactions for sale %s: %s',
+            sale.sale_number,
+            e,
+        )
         wallet_amount_used = Decimal('0')
     
     # Calculate total payment (cash + wallet)

@@ -14,6 +14,7 @@ import { getStoredAuth } from '../../utils/roleAccess';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 import { saleDisplayItemCount } from '../../utils/saleItemDisplay';
 import { userCanApproveSales } from '../../utils/saleCompletionApproval';
+import { rejectionReturnedMessage } from '../../utils/approvalReturn';
 import {
   collectionAmount,
   collectionMethod,
@@ -53,7 +54,7 @@ function SaleApprovalRow({ sale, onResolved }) {
     setBusy(true);
     try {
       await salesAPI.rejectComplete(sale.id, { rejection_reason: rejectReason.trim() });
-      toast.success(`Sale ${sale.sale_number} was cancelled.`);
+      toast.success(rejectionReturnedMessage('sale_complete'));
       onResolved();
       dispatchNavBadgesRefresh();
     } catch (err) {

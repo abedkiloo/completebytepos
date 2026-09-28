@@ -16,13 +16,32 @@ export function parseApprovalRejectionNotice(text) {
   const raw = String(text || '');
   const sourceMatch = raw.match(/^source:\s*(\S+)/m);
   const idMatch = raw.match(/^id:\s*(\d+)/m);
+  const saleIdMatch = raw.match(/^sale_id:\s*(\d+)/m);
   const source = sourceMatch ? sourceMatch[1] : '';
   const id = idMatch ? parseInt(idMatch[1], 10) : NaN;
+  const saleId = saleIdMatch ? parseInt(saleIdMatch[1], 10) : NaN;
   if (!source || !Number.isFinite(id)) return null;
-  return { source, id };
+  const parsed = { source, id };
+  if (Number.isFinite(saleId)) parsed.saleId = saleId;
+  return parsed;
+}
+
+export function rejectedSaleFixPath(parsed, title = '') {
+  if (Number.isFinite(parsed?.saleId)) return '/pos';
+  if (
+    parsed?.source === 'pending_change' &&
+    Number.isFinite(parsed?.id) &&
+    /past sale/i.test(String(title || ''))
+  ) {
+    return `/sales/record-past?resubmit=${parsed.id}`;
+  }
+  return null;
 }
 
 export function rejectionReturnedMessage(actionType) {
+  if (actionType === 'sale_complete') {
+    return 'Returned to the salesperson. They will see a must-tick Daily note with your comment so they can fix the sale and send it again.';
+  }
   if (actionType === 'sale_backfill') {
     return 'Returned to the requester. They can fix it on Record past sale, and will see a Daily notes task.';
   }

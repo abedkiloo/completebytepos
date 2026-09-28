@@ -6,11 +6,12 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from products.models import Category, Color, Product, ProductVariant, Size
-from settings.test_utils import enable_product_variants
+from settings.test_utils import disable_maker_checker, enable_product_variants
 
 
 class NestedVariantsAPITests(TestCase):
     def setUp(self):
+        disable_maker_checker()
         enable_product_variants()
         self.user = User.objects.create_superuser(
             username='api-admin', email='api@test.com', password='admin123'

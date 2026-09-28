@@ -41,7 +41,7 @@ import {
 import { evaluateBillingAmountPaid } from '../../../utils/posCheckoutValidation';
 import {
   MPESA_CAPTURE_CODE,
-  MPESA_CAPTURE_PROMPT,
+  isLiveMpesaPrompt,
   mpesaCollectingNow,
 } from '../../../utils/mpesaCapture';
 import {
@@ -120,7 +120,7 @@ export default function BillingPOSPage() {
   }, [state.paymentMethod]);
 
   const handleCheckout = () => {
-    if (isMpesa && collectNow && mpesaMode === MPESA_CAPTURE_PROMPT) {
+    if (isMpesa && collectNow && isLiveMpesaPrompt(mpesaMode)) {
       setShowMpesaErrors(true);
       const phoneErr = phoneMessage(mpesaPhone, { required: true });
       if (phoneErr) {
@@ -130,7 +130,7 @@ export default function BillingPOSPage() {
       setStkOpen(true);
       return;
     }
-    if (isMpesa && collectNow && mpesaMode === MPESA_CAPTURE_CODE) {
+    if (isMpesa && collectNow) {
       setShowMpesaErrors(true);
       const codeError = mpesaReceiptMessage(state.paymentReference);
       if (codeError) {
@@ -681,7 +681,7 @@ export default function BillingPOSPage() {
                 ) : (
                   <Check className="h-5 w-5" />
                 )}
-                {isMpesa && collectNow && mpesaMode === MPESA_CAPTURE_PROMPT
+                {isMpesa && collectNow && isLiveMpesaPrompt(mpesaMode)
                   ? `Send M-Pesa prompt · ${formatCurrency(paidCheck.paid || state.total)}`
                   : 'Checkout · view receipt'}
               </Button>

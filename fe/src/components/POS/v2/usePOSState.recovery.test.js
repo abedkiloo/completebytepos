@@ -1,5 +1,6 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { usePOSState } from './usePOSState';
+import { salesAPI } from '../../../services/api';
 import {
   posCartDraftKey,
   serializeRetailCartDraft,
@@ -20,7 +21,12 @@ jest.mock('../../../services/api', () => ({
       data: { results: [{ id: 'walk-in', name: 'Walk-in customer' }] },
     }),
   },
-  salesAPI: {},
+  salesAPI: {
+    activeHolding: jest.fn().mockResolvedValue({ data: { holding: null } }),
+    saveHolding: jest.fn(),
+    checkout: jest.fn(),
+    create: jest.fn(),
+  },
   authAPI: {
     me: jest.fn().mockResolvedValue({
       data: { user: { id: 9, username: 'cashier', profile: { branch_id: 2 } } },
@@ -93,6 +99,50 @@ describe('usePOSState local cart recovery', () => {
     });
 
     expect(result.current.cart[0].name).toBe('Snacks');
+    expect(result.current.cart[0].quantity).toBe(2);
+    expect(result.current.cartRecovery).toBeNull();
+  });
+
+  it('prompts then restores a returned sale from the server holding', async () => {
+    salesAPI.activeHolding.mockResolvedValueOnce({
+      data: {
+        holding: {
+          id: 88,
+          sale_number: 'S-RET',
+          subtotal: '200.00',
+          tax_amount: '0',
+          discount_amount: '0',
+          payment_method: 'cash',
+          customer: null,
+          items: [
+            {
+              product_id: 5,
+              product: { id: 5, name: 'Milk', price: 100, stock_quantity: 20, track_stock: true },
+              product_name: 'Milk',
+              quantity: 2,
+              unit_price: '100.00',
+            },
+          ],
+        },
+      },
+    });
+
+    const { result } = renderHook(() => usePOSState());
+
+    await waitFor(() => {
+      expect(result.current.cartRecovery).toBeTruthy();
+    });
+    expect(result.current.cartRecovery.source).toBe('holding');
+    expect(result.current.cartRecovery.label).toBe('S-RET');
+
+    act(() => {
+      result.current.continueCartRecovery();
+    });
+
+    await waitFor(() => {
+      expect(result.current.cart).toHaveLength(1);
+    });
+    expect(result.current.cart[0].name).toBe('Milk');
     expect(result.current.cart[0].quantity).toBe(2);
     expect(result.current.cartRecovery).toBeNull();
   });

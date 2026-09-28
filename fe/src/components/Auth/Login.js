@@ -3,8 +3,6 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   AlertCircle,
   BarChart3,
-  Eye,
-  EyeOff,
   Loader2,
   Package,
   ShoppingCart,
@@ -20,6 +18,7 @@ import { DEFAULT_STORE_NAME, DEFAULT_STORE_TAGLINE } from '../../utils/storeBran
 import BrandMark from '../Shared/BrandMark';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+import { PasswordInput } from '../ui/password-input';
 import { Label } from '../ui/label';
 import {
   Card,
@@ -154,7 +153,6 @@ const Login = () => {
   const location = useLocation();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [checkingSetup, setCheckingSetup] = useState(true);
@@ -322,29 +320,16 @@ const Login = () => {
 
                   <div className="flex flex-col gap-1">
                     <Label htmlFor="password">Password</Label>
-                    <div className="relative">
-                      <Input
-                        id="password"
-                        name="password"
-                        type={showPassword ? 'text' : 'password'}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Enter your password"
-                        autoComplete="current-password"
-                        required
-                        disabled={loading}
-                        className="pr-10"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword((v) => !v)}
-                        className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-muted-foreground hover:text-foreground focus:outline-none focus-visible:text-foreground"
-                        aria-label={showPassword ? 'Hide password' : 'Show password'}
-                        tabIndex={-1}
-                      >
-                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
-                    </div>
+                    <PasswordInput
+                      id="password"
+                      name="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter your password"
+                      autoComplete="current-password"
+                      required
+                      disabled={loading}
+                    />
                   </div>
 
                   <Button

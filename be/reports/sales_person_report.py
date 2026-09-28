@@ -14,7 +14,8 @@ from django.db.models import Count, Q, Sum
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
-from sales.models import Sale, SaleRefund
+from reports.sale_scope import posted_sales
+from sales.models import SaleRefund
 from utils.document_branding import brand_contact_line, brand_name_line
 
 from .services import resolve_period
@@ -73,7 +74,7 @@ class SalesPersonReportService:
         except (TypeError, ValueError):
             cashier_id_int = None
 
-        sales_qs = Sale.objects.filter(status='completed').select_related('cashier', 'served_by')
+        sales_qs = posted_sales().select_related('cashier', 'served_by')
         if start:
             sales_qs = sales_qs.filter(occurred_at__gte=start)
         if end:
@@ -98,9 +99,9 @@ class SalesPersonReportService:
         user_ids = [row['staff_id'] for row in staff_rows if row['staff_id']]
         users_by_id = {u.id: u for u in User.objects.filter(id__in=user_ids)}
 
-        refund_qs = SaleRefund.objects.filter(sale__status='completed').select_related(
-            'sale', 'sale__cashier'
-        )
+        refund_qs = SaleRefund.objects.filter(
+            sale__status='completed'
+        ).select_related('sale', 'sale__cashier')
         if start:
             refund_qs = refund_qs.filter(created_at__gte=start)
         if end:

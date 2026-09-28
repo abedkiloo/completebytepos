@@ -305,6 +305,11 @@ def _apply_single_change(change: PendingChange, checker, request) -> PendingChan
 def _notify_change_rejected(change: PendingChange, checker, reason: str) -> None:
     from daily_notes.approval_notice import SOURCE_PENDING_CHANGE, notify_approval_rejected
 
+    sale = None
+    if change.action_type == ACTION_SALE_COMPLETE:
+        from sales.models import Sale
+
+        sale = Sale.objects.filter(pk=change.entity_id).first()
     notify_approval_rejected(
         requester=change.made_by,
         checker=checker,
@@ -313,6 +318,8 @@ def _notify_change_rejected(change: PendingChange, checker, reason: str) -> None
         rejection_reason=reason,
         source=SOURCE_PENDING_CHANGE,
         record_id=change.id,
+        is_sticky=change.action_type in (ACTION_SALE_COMPLETE, ACTION_SALE_BACKFILL),
+        sale=sale,
     )
 
 
@@ -321,15 +328,18 @@ def _on_sale_complete_rejected(change: PendingChange, checker, reason: str) -> N
         return
     from sales.models import Sale
     from sales.sale_completion_approval import (
-        cancel_queued_sale,
         notify_cashier_sale_rejected,
+        return_queued_sale_for_correction,
     )
 
     sale = Sale.objects.filter(pk=change.entity_id).first()
     if sale is None:
         return
-    cancel_queued_sale(sale)
+    return_queued_sale_for_correction(sale)
     notify_cashier_sale_rejected(sale, checker, reason)
+    from daily_notes.approval_notice import complete_manager_notes_for_change
+
+    complete_manager_notes_for_change(change)
 
 
 @transaction.atomic
@@ -363,6 +373,10 @@ def reject_change(
                 _audit_pending(request, item, 'pending_reject')
             _notify_change_rejected(item, checker, reason)
             _on_sale_complete_rejected(item, checker, reason)
+            if item.action_type == ACTION_SALE_BACKFILL:
+                from daily_notes.approval_notice import complete_manager_notes_for_change
+
+                complete_manager_notes_for_change(item)
         return change
 
     change.status = PendingChange.STATUS_REJECTED
@@ -374,6 +388,10 @@ def reject_change(
         _audit_pending(request, change, 'pending_reject')
     _notify_change_rejected(change, checker, reason)
     _on_sale_complete_rejected(change, checker, reason)
+    if change.action_type == ACTION_SALE_BACKFILL:
+        from daily_notes.approval_notice import complete_manager_notes_for_change
+
+        complete_manager_notes_for_change(change)
     return change
 
 
@@ -392,7 +410,7 @@ def resubmit_change(
             raise ValidationError('You can only resubmit your own requests.')
 
     extra = str(reason or '').strip()
-    now = timezone.now()
+    _guard_sale_complete_resubmit(change)
 
     def _requeue(item: PendingChange) -> None:
         if extra:
@@ -417,11 +435,57 @@ def resubmit_change(
         )
         for item in batch:
             _requeue(item)
+            _on_sale_complete_resubmitted(item)
+            _notify_managers_sale_resubmitted(item, maker)
         change.refresh_from_db()
         return change
 
     _requeue(change)
+    _on_sale_complete_resubmitted(change)
+    _notify_managers_sale_resubmitted(change, maker)
     return change
+
+
+def _guard_sale_complete_resubmit(change: PendingChange) -> None:
+    if change.action_type != ACTION_SALE_COMPLETE:
+        return
+    from sales.models import Sale
+    from sales.sale_completion_approval import pending_sale_complete_change
+
+    sale = Sale.objects.filter(pk=change.entity_id).first()
+    if sale is None:
+        return
+    if sale.status == 'completed':
+        raise ValidationError('This sale is already completed.')
+    existing = pending_sale_complete_change(sale)
+    if existing and existing.pk != change.pk:
+        raise ValidationError('This sale is already waiting for approval.')
+
+
+def _on_sale_complete_resubmitted(change: PendingChange) -> None:
+    if change.action_type != ACTION_SALE_COMPLETE:
+        return
+    from sales.models import Sale
+    from sales.sale_completion_approval import restore_queued_sale_for_approval
+    from daily_notes.approval_notice import complete_sale_return_notes
+
+    sale = Sale.objects.filter(pk=change.entity_id).first()
+    if sale is None:
+        return
+    restore_queued_sale_for_approval(sale, change)
+    complete_sale_return_notes(record_id=sale.pk)
+
+
+def _notify_managers_sale_resubmitted(change: PendingChange, author) -> None:
+    if change.action_type not in (ACTION_SALE_COMPLETE, ACTION_SALE_BACKFILL):
+        return
+    from daily_notes.approval_notice import notify_managers_for_change
+    from sales.models import Sale
+
+    sale = None
+    if change.action_type == ACTION_SALE_COMPLETE:
+        sale = Sale.objects.filter(pk=change.entity_id).first()
+    notify_managers_for_change(author=author, change=change, sale=sale)
 
 
 def route_product_sensitive_update(

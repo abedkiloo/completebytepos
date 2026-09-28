@@ -236,7 +236,7 @@ describe('ProductVariantsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /submit for approval/i }));
 
     expect(toast.warning).toHaveBeenCalledWith(
-      'Enter a valid number for price on variant Large / Blue.'
+      'Enter a KES amount for price on variant Large / Blue, e.g. 250.00.'
     );
     expect(variantsAPI.update).not.toHaveBeenCalled();
   });

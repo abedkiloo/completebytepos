@@ -12,10 +12,12 @@ from django.utils import timezone
 from income.models import Income, IncomeCategory
 from income.services import IncomeCategoryService, IncomeService
 from settings.models import StoreSettings
+from settings.test_utils import disable_maker_checker
 
 
 class IncomeServiceTestCase(TestCase):
     def setUp(self):
+        disable_maker_checker()
         self.user = User.objects.create_user(username='inc_user', password='x')
         self.cat = IncomeCategory.objects.create(name='Services', is_active=True)
         self.service = IncomeService()
@@ -64,6 +66,52 @@ class IncomeServiceTestCase(TestCase):
         checker = User.objects.create_user(username='inc_rejector2', password='x')
         with self.assertRaises(ValidationError):
             self.service.reject_income(income, checker, 'No')
+
+    def test_reject_and_resubmit_guardrails(self):
+        income = Income.objects.create(
+            category=self.cat,
+            description='Fee',
+            amount=Decimal('10.00'),
+            income_date=timezone.now().date(),
+            status='pending',
+            created_by=self.user,
+        )
+        checker = User.objects.create_user(username='inc_guard', password='x')
+        with self.assertRaises(ValidationError):
+            self.service.reject_income(income, checker, '  ')
+        self.service.reject_income(income, checker, 'Fix it')
+        other = User.objects.create_user(username='inc_other', password='x')
+        with self.assertRaises(ValidationError):
+            self.service.resubmit_income(income, other)
+        queued = self.service.resubmit_income(income, self.user)
+        with self.assertRaises(ValidationError):
+            self.service.resubmit_income(queued, self.user)
+
+    def test_void_income_guardrails(self):
+        income = Income.objects.create(
+            category=self.cat,
+            description='Fee',
+            amount=Decimal('10.00'),
+            income_date=timezone.now().date(),
+            status='pending',
+            created_by=self.user,
+        )
+        with self.assertRaises(ValidationError):
+            self.service.void_income(income, reason='', user=self.user)
+        voided = self.service.void_income(income, reason='dup', user=self.user)
+        self.assertEqual(voided.status, 'voided')
+        with self.assertRaises(ValidationError):
+            self.service.void_income(voided, reason='again', user=self.user)
+        cancelled = Income.objects.create(
+            category=self.cat,
+            description='Gone',
+            amount=Decimal('1.00'),
+            income_date=timezone.now().date(),
+            status='cancelled',
+            created_by=self.user,
+        )
+        with self.assertRaises(ValidationError):
+            self.service.void_income(cancelled, reason='nope', user=self.user)
 
     def test_maker_checker_blocks_self_approve(self):
         store = StoreSettings.load()

@@ -31,6 +31,7 @@ describe('MpesaCapture', () => {
     expect(toast.info).toHaveBeenCalledWith('Coming soon');
     expect(onModeChange).not.toHaveBeenCalled();
     expect(screen.getByTestId('mpesa-capture-prompt')).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByText(/Coming soon/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId('mpesa-capture-code'));
     expect(onModeChange).toHaveBeenCalledWith(MPESA_CAPTURE_CODE);
@@ -40,22 +41,26 @@ describe('MpesaCapture', () => {
     expect(onCodeChange).toHaveBeenCalledWith('QHX7');
   });
 
-  it('still shows phone fields if a parent forces prompt mode', () => {
+  it('coming soon ignores forced prompt mode and keeps the M-Pesa code field', () => {
     const onPhoneChange = jest.fn();
+    const onCodeChange = jest.fn();
     render(
       <MpesaCapture
         mode={MPESA_CAPTURE_PROMPT}
         phone=""
         onPhoneChange={onPhoneChange}
+        code=""
+        onCodeChange={onCodeChange}
         showErrors
       />
     );
-    expect(screen.getByLabelText(/Safaricom number/i)).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText(/Safaricom number/i), {
-      target: { value: '0712345678' },
+    expect(screen.queryByLabelText(/Safaricom number/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/M-Pesa code/i)).toBeInTheDocument();
+    expect(screen.getByText(/Coming soon/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/M-Pesa code/i), {
+      target: { value: 'QHX7' },
     });
-    expect(onPhoneChange).toHaveBeenCalledWith('0712345678');
-    expect(screen.getByText(/Enter a Kenyan mobile/i)).toBeInTheDocument();
+    expect(onCodeChange).toHaveBeenCalledWith('QHX7');
   });
 
   it('does not call mode handlers when disabled', () => {

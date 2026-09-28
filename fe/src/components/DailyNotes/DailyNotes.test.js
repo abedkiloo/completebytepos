@@ -5,9 +5,11 @@ import { dailyNotesAPI, dailyTasksAPI, expensesAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 
 const mockSearchParams = new URLSearchParams();
+const mockNavigate = jest.fn();
 
 jest.mock('react-router-dom', () => ({
   useSearchParams: () => [mockSearchParams, jest.fn()],
+  useNavigate: () => mockNavigate,
 }));
 
 jest.mock('../../services/api', () => ({
@@ -112,6 +114,18 @@ describe('DailyNotes', () => {
             author: 20,
             updated_at: '2026-09-24T09:30:00Z',
           },
+          {
+            id: 8,
+            note_date: '2026-09-24',
+            title: 'Approval rejected: sale completion',
+            content:
+              'Bea returned sale S-1 for Jane.\nTheir comment:\nWrong prices\n---\nsource: pending_change\nid: 51\nsale_id: 99',
+            is_sticky: true,
+            is_done: false,
+            author: 9,
+            assigned_to: 20,
+            updated_at: '2026-09-24T09:40:00Z',
+          },
         ],
       },
     });
@@ -194,8 +208,15 @@ describe('DailyNotes', () => {
   test('resubmits an approval rejection from a note card', async () => {
     expensesAPI.resubmit.mockResolvedValue({});
     render(<DailyNotes />);
-    fireEvent.click(await screen.findByRole('button', { name: /Send back for approval/i }));
+    const buttons = await screen.findAllByRole('button', { name: /Send back for approval/i });
+    fireEvent.click(buttons[buttons.length - 1]);
     await waitFor(() => expect(expensesAPI.resubmit).toHaveBeenCalledWith(44));
+  });
+
+  test('opens POS to fix a returned sale from a sticky note', async () => {
+    render(<DailyNotes />);
+    fireEvent.click(await screen.findByRole('button', { name: /Fix sale/i }));
+    expect(mockNavigate).toHaveBeenCalledWith('/pos');
   });
 
   test('shows empty day actions when nothing is logged', async () => {

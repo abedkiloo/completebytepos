@@ -15,6 +15,8 @@ import { saleIsRefundable, saleIsRollbackable } from '../../utils/saleRefund';
 import HelpHint from '../Shared/HelpHint';
 import {
   saleAmountRefunded,
+  saleAppliedPaid,
+  saleChangeDue,
   saleFinalStatusLabel,
   saleHasRefundActivity,
   saleItemVariantLabel,
@@ -158,9 +160,9 @@ export default function SaleDetailDialog({
             ) : null}
             <SummaryRow label="Total" value={formatCurrency(receiptSale.total)} strong />
             <SummaryRow label="Payment method" value={sale.payment_method || '—'} />
-            <SummaryRow label="Amount paid" value={formatCurrency(receiptSale.amount_paid)} />
-            {parseFloat(receiptSale.change) > 0 ? (
-              <SummaryRow label="Change" value={formatCurrency(receiptSale.change)} />
+            <SummaryRow label="Amount paid" value={formatCurrency(saleAppliedPaid(receiptSale))} />
+            {saleChangeDue(receiptSale) > 0 ? (
+              <SummaryRow label="Change" value={formatCurrency(saleChangeDue(receiptSale))} />
             ) : null}
           </div>
 

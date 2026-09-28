@@ -80,7 +80,7 @@ def queue_sale_backfill(request, validated_data: Dict[str, Any]):
     summary = _build_backfill_summary(validated_data)
     payload = _apply_payload_from_validated(validated_data)
 
-    return submit_change(
+    change = submit_change(
         request=request,
         action_type=ACTION_SALE_BACKFILL,
         entity_type='sales.SaleBackfill',
@@ -91,6 +91,13 @@ def queue_sale_backfill(request, validated_data: Dict[str, Any]):
         reason=reason,
         apply_payload=payload,
     )
+    from daily_notes.approval_notice import notify_managers_for_change
+
+    notify_managers_for_change(
+        author=getattr(request, 'user', None),
+        change=change,
+    )
+    return change
 
 
 def resubmit_sale_backfill(request, change: PendingChange, validated_data: Dict[str, Any]) -> PendingChange:
@@ -139,4 +146,11 @@ def resubmit_sale_backfill(request, change: PendingChange, validated_data: Dict[
     from approvals.service import _audit_pending
 
     _audit_pending(request, change, 'pending_resubmit')
+    from daily_notes.approval_notice import complete_sale_return_notes, notify_managers_for_change
+
+    notify_managers_for_change(
+        author=getattr(request, 'user', None),
+        change=change,
+    )
+    complete_sale_return_notes(record_id=change.id)
     return change

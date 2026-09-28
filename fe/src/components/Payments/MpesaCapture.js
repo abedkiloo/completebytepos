@@ -15,6 +15,7 @@ import {
   MPESA_CAPTURE_PROMPT,
   MPESA_PROMPT_COMING_SOON,
   announceMpesaPromptComingSoon,
+  isLiveMpesaPrompt,
 } from '../../utils/mpesaCapture';
 
 /**
@@ -30,7 +31,7 @@ export default function MpesaCapture({
   disabled = false,
   showErrors = false,
 }) {
-  const promptSelected = mode === MPESA_CAPTURE_PROMPT;
+  const promptSelected = isLiveMpesaPrompt(mode);
   const phoneErr = phoneMessage(phone, { required: true });
   const codeErr = mpesaReceiptMessage(code);
 
@@ -66,7 +67,9 @@ export default function MpesaCapture({
           <Smartphone className="h-4 w-4 shrink-0" />
           Prompt payment
           {MPESA_PROMPT_COMING_SOON ? (
-            <span className="rounded bg-muted px-1 text-[10px] uppercase tracking-wide">Soon</span>
+            <span className="rounded bg-muted px-1 text-[10px] uppercase tracking-wide">
+              Coming soon
+            </span>
           ) : null}
         </button>
         <button

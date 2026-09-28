@@ -8,6 +8,11 @@ from accounts.user_write import prepare_user_write_data, apply_profile_updates
 
 
 class PrepareUserWriteDataTests(TestCase):
+    def test_accepts_mapping_without_copy(self):
+        payload, profile = prepare_user_write_data((('first_name', 'Ann'),))
+        self.assertEqual(payload['first_name'], 'Ann')
+        self.assertEqual(profile, {})
+
     def test_strips_blank_password(self):
         payload, profile = prepare_user_write_data({
             'first_name': 'A',
@@ -76,6 +81,13 @@ class ApplyProfileUpdatesTests(TestCase):
         apply_profile_updates(self.user, {'custom_role_id': 'not-an-id'})
         self.user.profile.refresh_from_db()
         self.assertIsNone(self.user.profile.custom_role_id)
+
+    def test_invalid_phone_raises(self):
+        from rest_framework.exceptions import ValidationError as DrfValidationError
+
+        UserProfile.objects.create(user=self.user, role='cashier')
+        with self.assertRaises(DrfValidationError):
+            apply_profile_updates(self.user, {'phone_number': 'not-a-phone'})
 
     def test_no_op_when_profile_data_empty(self):
         UserProfile.objects.create(user=self.user, role='cashier')

@@ -52,7 +52,7 @@
     },
     {
       "name": "reports",
-      "include": ["reports/export.py", "reports/week_summary.py", "reports/services.py"],
+      "include": ["reports/export.py", "reports/week_summary.py", "reports/services.py", "reports/sale_scope.py"],
       "minimum_percent": 98
     },
     {
@@ -61,8 +61,13 @@
       "minimum_percent": 98
     },
     {
-      "name": "debt_collection_approval",
-      "include": ["sales/debt_collection_approval.py"],
+      "name": "sale_completion_approval",
+      "include": ["sales/sale_completion_approval.py"],
+      "minimum_percent": 98
+    },
+    {
+      "name": "approval_notice",
+      "include": ["daily_notes/approval_notice.py"],
       "minimum_percent": 98
     },
     {

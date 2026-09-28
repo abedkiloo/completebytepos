@@ -96,11 +96,24 @@ export function saleItemRefundableQuantity(item) {
   return Math.max(0, sold - refunded);
 }
 
+/** Amount applied to the sale — never the extra cash the customer handed over. */
+export function saleAppliedPaid(sale) {
+  const total = Math.max(0, parseFloat(sale?.total ?? 0) || 0);
+  const paid = Math.max(0, parseFloat(sale?.amount_paid ?? 0) || 0);
+  return Math.min(paid, total);
+}
+
+/** Change due. Uses stored change, or derives it when tendered cash exceeded the total. */
+export function saleChangeDue(sale) {
+  const stored = parseFloat(sale?.change ?? 0) || 0;
+  if (stored > 0.005) return stored;
+  const extra = (parseFloat(sale?.amount_paid ?? 0) || 0) - (parseFloat(sale?.total ?? 0) || 0);
+  return extra > 0.005 ? extra : 0;
+}
+
 /** Outstanding balance when customer paid less than sale total. */
 export function saleBalanceDue(sale) {
-  const total = parseFloat(sale?.total ?? 0);
-  const paid = parseFloat(sale?.amount_paid ?? 0);
-  const due = total - paid;
+  const due = (parseFloat(sale?.total ?? 0) || 0) - saleAppliedPaid(sale);
   return due > 0.009 ? due : 0;
 }
 

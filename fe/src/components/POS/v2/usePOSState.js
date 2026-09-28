@@ -20,8 +20,13 @@ import {
   clearRetailCartDraft,
   localDraftNeedsRecoveryPrompt,
   countLocalDraftItems,
+  countHoldingItems,
   resolveBranchIdFromUser,
+  shouldPromptForHoldingRecovery,
 } from '../../../utils/posCartRecovery';
+import { holdingSaleItemToCartLine } from '../../../utils/billingCartLine';
+import { mergeCartLines, buildHoldingItemsFromCart } from '../../../utils/mergeCartLines';
+import { customerIdForSale } from '../../../utils/walkInCustomer';
 import { useModuleSettings } from '../../../hooks/useModuleSettings';
 import { paymentReferenceRequired } from '../../../utils/paymentMethods';
 import { mpesaReceiptMessage } from '../../../utils/formValidation';
@@ -168,6 +173,8 @@ export function usePOSState() {
 
   const [cartRecovery, setCartRecovery] = useState(null);
   const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const [holdingId, setHoldingId] = useState(null);
+  const [serverHoldingChecked, setServerHoldingChecked] = useState(false);
   const draftCheckedRef = useRef(false);
 
   // --- Bookkeeping ---
@@ -281,8 +288,37 @@ export function usePOSState() {
   }, [user]);
 
   useEffect(() => {
-    if (!cartDraftKey || draftCheckedRef.current) return;
+    if (!user?.id) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await salesAPI.activeHolding();
+        const holding = res.data?.holding;
+        if (cancelled) return;
+        if (shouldPromptForHoldingRecovery(holding)) {
+          setCartRecovery({
+            source: 'holding',
+            holding,
+            itemCount: countHoldingItems(holding),
+            label: holding.sale_number,
+          });
+          setHoldingId(holding.id);
+        }
+      } catch {
+        /* no draft on the server yet */
+      } finally {
+        if (!cancelled) setServerHoldingChecked(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!cartDraftKey || draftCheckedRef.current || !serverHoldingChecked) return;
     draftCheckedRef.current = true;
+    if (cartRecovery) return;
     const draft = loadRetailCartDraft(cartDraftKey);
     if (localDraftNeedsRecoveryPrompt(draft)) {
       setCartRecovery({
@@ -291,7 +327,7 @@ export function usePOSState() {
         itemCount: countLocalDraftItems(draft),
       });
     }
-  }, [cartDraftKey]);
+  }, [cartDraftKey, serverHoldingChecked, cartRecovery]);
 
   useEffect(() => {
     if (!cartDraftKey || cartRecovery) return;
@@ -328,6 +364,40 @@ export function usePOSState() {
   ]);
 
   const continueCartRecovery = useCallback(() => {
+    const holding = cartRecovery?.holding;
+    if (holding) {
+      setRecoveryBusy(true);
+      try {
+        const lines = mergeCartLines(
+          (holding.items || [])
+            .map((item) => holdingSaleItemToCartLine(item, { validateStock }))
+            .filter((line) => line.quantity > 0)
+        );
+        setCart(lines);
+        const subtotal = parseFloat(holding.subtotal) || 0;
+        setTaxPct(
+          subtotal > 0
+            ? ((parseFloat(holding.tax_amount) || 0) / subtotal) * 100
+            : 0
+        );
+        setDiscount(parseFloat(holding.discount_amount) || 0);
+        setDiscountType('flat');
+        if (holding.payment_method) setPaymentMethod(holding.payment_method);
+        if (holding.customer) {
+          setSelectedCustomer(
+            customers.find((c) => c.id === holding.customer) || {
+              id: holding.customer,
+              name: holding.customer_name || 'Customer',
+            }
+          );
+        }
+        setHoldingId(holding.id);
+        setCartRecovery(null);
+      } finally {
+        setRecoveryBusy(false);
+      }
+      return;
+    }
     const draft = cartRecovery?.draft;
     if (!draft) return;
     setRecoveryBusy(true);
@@ -362,7 +432,7 @@ export function usePOSState() {
     } finally {
       setRecoveryBusy(false);
     }
-  }, [cartRecovery, customers]);
+  }, [cartRecovery, customers, validateStock]);
 
   const startNewSaleFromRecovery = useCallback(() => {
     setRecoveryBusy(true);
@@ -599,6 +669,7 @@ export function usePOSState() {
   const resetAfterSale = useCallback(() => {
     if (cartDraftKey) clearRetailCartDraft(cartDraftKey);
     setCart([]);
+    setHoldingId(null);
     setReceivedAmount('');
     setPaymentOnAccount(false);
     setPaymentOnAccountCustomerPrompt(false);
@@ -686,7 +757,27 @@ export function usePOSState() {
           excessChoice,
           paymentReference: pendingSaleData?.paymentReference,
         });
-        const res = await salesAPI.create(payload);
+        let res;
+        if (holdingId) {
+          await salesAPI.saveHolding({
+            holding_id: holdingId,
+            items: buildHoldingItemsFromCart(cart),
+            customer_id: customerIdForSale(selectedCustomer),
+            tax_amount: parseFloat(taxAmount.toFixed(2)),
+            discount_amount: parseFloat(discountAmount.toFixed(2)),
+            client_channel: 'web',
+          });
+          res = await salesAPI.checkout(holdingId, {
+            payment_method: payload.payment_method,
+            payment_reference: payload.payment_reference,
+            amount_paid: payload.amount_paid,
+            allow_partial_payment: payload.allow_partial_payment,
+            excess_payment_choice: payload.excess_payment_choice,
+            client_channel: 'web',
+          });
+        } else {
+          res = await salesAPI.create(payload);
+        }
         const backendTotal = parseFloat(res.data.total) || 0;
         const received =
           pendingSaleData?.received !== undefined
@@ -735,7 +826,7 @@ export function usePOSState() {
         setSubmitting(false);
       }
     },
-    [submitting, buildSalePayload, pendingSaleData, receivedAmount, resetAfterSale]
+    [submitting, buildSalePayload, pendingSaleData, receivedAmount, resetAfterSale, holdingId, cart, selectedCustomer, taxAmount, discountAmount]
   );
 
   /**

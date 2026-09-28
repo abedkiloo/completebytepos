@@ -9,7 +9,7 @@ from django.utils import timezone
 from expenses.models import Expense
 from inventory.models import StockMovement
 from products.models import Product
-from sales.models import Sale, SaleItem
+from reports.sale_scope import posted_sale_items, posted_sales
 
 from .week_summary import week_sales_summary
 
@@ -68,7 +68,7 @@ class ReportDashboardService:
             datetime(today.year, today.month - 1 if today.month > 1 else 12, 1)
         )
 
-        completed = Sale.objects.filter(status='completed')
+        completed = posted_sales()
         today_sales = completed.filter(occurred_at__gte=start_of_day)
         today_total = today_sales.aggregate(total=Sum('total'))['total'] or 0
         today_count = today_sales.count()
@@ -77,10 +77,9 @@ class ReportDashboardService:
         month_sales = completed.filter(occurred_at__gte=start_of_month)
         month_total = month_sales.aggregate(total=Sum('total'))['total'] or 0
 
-        last_month_sales = Sale.objects.filter(
+        last_month_sales = completed.filter(
             created_at__gte=start_of_last_month,
             created_at__lt=start_of_month,
-            status='completed',
         )
         last_month_total = last_month_sales.aggregate(total=Sum('total'))['total'] or 0
 
@@ -88,9 +87,9 @@ class ReportDashboardService:
         if last_month_total > 0:
             sales_growth = ((month_total - last_month_total) / last_month_total) * 100
 
-        total_sales_all = Sale.objects.filter(status='completed').aggregate(total=Sum('total'))['total'] or 0
+        total_sales_all = completed.aggregate(total=Sum('total'))['total'] or 0
 
-        sales_returns = Sale.objects.filter(
+        sales_returns = completed.filter(
             Q(total__lt=0) | Q(discount_amount__gt=F('subtotal'))
         )
         sales_returns_total = sales_returns.aggregate(total=Sum('total'))['total'] or 0
@@ -148,10 +147,9 @@ class ReportDashboardService:
         if last_month_profit != 0:
             profit_growth = ((profit - last_month_profit) / abs(last_month_profit)) * 100
 
-        invoice_due = Sale.objects.filter(
+        invoice_due = completed.filter(
             payment_method__in=['mpesa', 'card', 'other'],
             created_at__gte=start_of_month,
-            status='completed',
         ).aggregate(total=Sum('total'))['total'] or 0
 
         payment_returns = abs(sales_returns_total)
@@ -169,7 +167,8 @@ class ReportDashboardService:
         ).count()
 
         top_products = list(
-            SaleItem.objects.filter(sale__created_at__gte=start_of_month, sale__status='completed')
+            posted_sale_items()
+            .filter(sale__created_at__gte=start_of_month)
             .values('product__id', 'product__name', 'product__sku')
             .annotate(total_quantity=Sum('quantity'), total_revenue=Sum('subtotal'))
             .order_by('-total_revenue')[:5]
