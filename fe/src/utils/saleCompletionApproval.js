@@ -16,6 +16,27 @@ export function saleIsAwaitingApproval(sale) {
   return String(sale?.status || '') === SALE_AWAITING_APPROVAL_STATUS;
 }
 
+export function saleNeedsSalespersonAction(sale) {
+  return Boolean(sale?.needs_salesperson_action);
+}
+
+export function saleRejectionReason(sale) {
+  return String(sale?.rejection_reason || '').trim();
+}
+
+export function partitionSaleApprovalQueue(sales = []) {
+  const waiting = [];
+  const returned = [];
+  for (const sale of Array.isArray(sales) ? sales : []) {
+    if (saleNeedsSalespersonAction(sale)) {
+      returned.push(sale);
+    } else {
+      waiting.push(sale);
+    }
+  }
+  return { waiting, returned };
+}
+
 export function saleReceiptBlockedReason(sale) {
   if (saleIsAwaitingApproval(sale)) {
     return SALE_AWAITING_APPROVAL_MESSAGE;

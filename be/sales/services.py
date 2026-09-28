@@ -116,8 +116,16 @@ class SaleService(BaseService):
                 queryset = queryset.none()
 
         # Status filter — default hides register drafts and waiting sales from history.
+        from sales.sale_completion_approval import (
+            annotate_sale_approval_state,
+            awaiting_approval_queue_q,
+        )
+
+        queryset = annotate_sale_approval_state(queryset)
         status = filters.get('status')
-        if status:
+        if status == 'pending_approval':
+            queryset = queryset.filter(awaiting_approval_queue_q())
+        elif status:
             queryset = queryset.filter(status=status)
         else:
             excluded = []

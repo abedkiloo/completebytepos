@@ -7,6 +7,7 @@ from django.test import TestCase
 from accounts.models import Permission, Role, UserProfile
 from accounts.role_definitions import ROLE_MANAGER, ROLE_SALES, ensure_permissions, sync_default_roles
 from daily_notes.access import (
+    AllowDailyNotesDeskAccess,
     _user_has_perm,
     user_may_access_daily_notes,
     user_may_view_all_daily_notes,
@@ -89,6 +90,9 @@ class DailyNotesAccessUnitTests(TestCase):
         )
         self.assertFalse(self.sales.profile.has_permission('daily_notes', 'view'))
         self.assertTrue(user_may_access_daily_notes(self.sales))
+        perm = AllowDailyNotesDeskAccess()
+        request = type('R', (), {'user': self.sales})()
+        self.assertTrue(perm.has_permission(request, None))
 
     def test_manager_view_all_when_setting_on(self):
         self.assertTrue(user_may_view_all_daily_notes(self.manager))

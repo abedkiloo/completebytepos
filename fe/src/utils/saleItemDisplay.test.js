@@ -86,6 +86,14 @@ describe('saleItemDisplay', () => {
       'Awaiting approval'
     );
     expect(saleFinalStatusLabel({ status: 'holding', total: '100', amount_paid: '0' })).toBe('On hold');
+    expect(
+      saleFinalStatusLabel({
+        status: 'holding',
+        needs_salesperson_action: true,
+        total: '100',
+        amount_paid: '0',
+      })
+    ).toBe('Needs salesperson action');
     expect(saleFinalStatusLabel({ status: 'completed', refund_status: 'none', total: '100', amount_paid: '100' })).toBe(
       'Paid in full'
     );
@@ -120,6 +128,14 @@ describe('saleItemDisplay', () => {
       'cancelled'
     );
     expect(saleStatusBadgeTone({ status: 'pending_approval', total: 100, amount_paid: 100 })).toBe('holding');
+    expect(
+      saleStatusBadgeTone({
+        status: 'holding',
+        needs_salesperson_action: true,
+        total: 100,
+        amount_paid: 0,
+      })
+    ).toBe('rejected');
     expect(saleStatusBadgeTone({ status: 'completed', total: 100, amount_paid: 0 })).toBe('rejected');
     expect(saleStatusBadgeTone({ status: 'completed', total: 100, amount_paid: 40 })).toBe('pending');
     expect(saleStatusBadgeTone({ status: 'completed', total: 100, amount_paid: 100 })).toBe('completed');

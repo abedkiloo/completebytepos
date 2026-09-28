@@ -13,7 +13,12 @@ import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { getStoredAuth } from '../../utils/roleAccess';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 import { saleDisplayItemCount } from '../../utils/saleItemDisplay';
-import { userCanApproveSales } from '../../utils/saleCompletionApproval';
+import {
+  partitionSaleApprovalQueue,
+  saleNeedsSalespersonAction,
+  saleRejectionReason,
+  userCanApproveSales,
+} from '../../utils/saleCompletionApproval';
 import { rejectionReturnedMessage } from '../../utils/approvalReturn';
 import {
   collectionAmount,
@@ -30,6 +35,8 @@ function SaleApprovalRow({ sale, onResolved }) {
   const [showReject, setShowReject] = useState(false);
   const [busy, setBusy] = useState(false);
   const itemCount = saleDisplayItemCount(sale);
+  const returned = saleNeedsSalespersonAction(sale);
+  const managerComment = saleRejectionReason(sale);
 
   const approve = async () => {
     setBusy(true);
@@ -80,12 +87,29 @@ function SaleApprovalRow({ sale, onResolved }) {
             <Badge variant="outline" className="capitalize">
               {sale.payment_method || 'cash'}
             </Badge>
+            {returned ? (
+              <Badge variant="destructive" className="mt-1">
+                Needs salesperson action
+              </Badge>
+            ) : null}
           </div>
         </div>
         <p className="truncate text-sm text-muted-foreground">
           {itemCount} line{itemCount === 1 ? '' : 's'}
           {sale.customer_name ? ` · ${sale.customer_name}` : ''}
         </p>
+        {returned ? (
+          <div className="space-y-1 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm">
+            <p className="font-medium text-amber-950">
+              Waiting on the salesperson to fix this sale and send it again.
+            </p>
+            {managerComment ? (
+              <p className="text-amber-900">Manager comment: {managerComment}</p>
+            ) : null}
+            <p className="text-xs text-amber-800">A sticky Daily note was also sent to them.</p>
+          </div>
+        ) : (
+          <>
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" onClick={approve} disabled={busy}>
             {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}
@@ -116,6 +140,8 @@ function SaleApprovalRow({ sale, onResolved }) {
             </Button>
           </div>
         ) : null}
+          </>
+        )}
       </CardContent>
     </Card>
   );
@@ -277,6 +303,7 @@ export default function SaleApprovalsPage() {
   }
 
   const empty = saleApprovalsEmpty({ sales, collections });
+  const { waiting: waitingSales, returned: returnedSales } = partitionSaleApprovalQueue(sales);
 
   return (
     <PageShell>
@@ -299,12 +326,26 @@ export default function SaleApprovalsPage() {
       ) : (
         <div className="space-y-6">
           {canSales && sales.length > 0 ? (
-            <section className="space-y-3">
-              <h2 className="text-sm font-semibold text-muted-foreground">Cashier sales</h2>
-              {sales.map((sale) => (
-                <SaleApprovalRow key={`sale-${sale.id}`} sale={sale} onResolved={load} />
-              ))}
-            </section>
+            <>
+              {waitingSales.length > 0 ? (
+                <section className="space-y-3">
+                  <h2 className="text-sm font-semibold text-muted-foreground">Cashier sales</h2>
+                  {waitingSales.map((sale) => (
+                    <SaleApprovalRow key={`sale-${sale.id}`} sale={sale} onResolved={load} />
+                  ))}
+                </section>
+              ) : null}
+              {returnedSales.length > 0 ? (
+                <section className="space-y-3">
+                  <h2 className="text-sm font-semibold text-muted-foreground">
+                    Needs salesperson action
+                  </h2>
+                  {returnedSales.map((sale) => (
+                    <SaleApprovalRow key={`sale-${sale.id}`} sale={sale} onResolved={load} />
+                  ))}
+                </section>
+              ) : null}
+            </>
           ) : null}
           {canCollections && collections.length > 0 ? (
             <section className="space-y-3">

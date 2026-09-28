@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from rest_framework.permissions import BasePermission
+
 from daily_notes.module_settings import (
     daily_notes_allow_manager_view_all,
     daily_notes_allow_sales_access,
@@ -60,3 +62,12 @@ def user_may_view_all_daily_notes(user) -> bool:
         if role == 'sales' and daily_notes_allow_sales_view_all():
             return True
     return False
+
+
+class AllowDailyNotesDeskAccess(BasePermission):
+    """Sales/POS staff may open Daily notes without a separate daily_notes.view grant."""
+
+    message = 'Daily notes are not available for your role.'
+
+    def has_permission(self, request, view):
+        return user_may_access_daily_notes(getattr(request, 'user', None))

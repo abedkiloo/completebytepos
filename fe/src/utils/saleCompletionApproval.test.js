@@ -2,9 +2,12 @@ import {
   SALE_APPROVED_RECEIPT_MESSAGE,
   SALE_AWAITING_APPROVAL_MESSAGE,
   awaitingApprovalListParams,
+  partitionSaleApprovalQueue,
   saleCheckoutSuccessToast,
   saleIsAwaitingApproval,
+  saleNeedsSalespersonAction,
   saleReceiptBlockedReason,
+  saleRejectionReason,
   userCanApproveSales,
 } from './saleCompletionApproval';
 
@@ -13,6 +16,21 @@ describe('saleCompletionApproval', () => {
     expect(saleIsAwaitingApproval({ status: 'pending_approval' })).toBe(true);
     expect(saleIsAwaitingApproval({ status: 'completed' })).toBe(false);
     expect(saleIsAwaitingApproval(null)).toBe(false);
+  });
+
+  test('rejected holdings need salesperson action', () => {
+    expect(saleNeedsSalespersonAction({ needs_salesperson_action: true })).toBe(true);
+    expect(saleNeedsSalespersonAction({ status: 'holding' })).toBe(false);
+    expect(saleRejectionReason({ rejection_reason: ' Wrong prices ' })).toBe('Wrong prices');
+    expect(
+      partitionSaleApprovalQueue([
+        { id: 1, status: 'pending_approval' },
+        { id: 2, status: 'holding', needs_salesperson_action: true },
+      ])
+    ).toEqual({
+      waiting: [{ id: 1, status: 'pending_approval' }],
+      returned: [{ id: 2, status: 'holding', needs_salesperson_action: true }],
+    });
   });
 
   test('blocks receipt until completed', () => {

@@ -64,6 +64,7 @@ export function saleHasRefundActivity(sale) {
 /** Human-readable final sale state for lists and receipts. */
 export function saleFinalStatusLabel(sale) {
   const status = String(sale?.status || '').toLowerCase();
+  if (sale?.needs_salesperson_action) return 'Needs salesperson action';
   if (status === 'pending_approval') return 'Awaiting approval';
   if (status === 'holding') return 'On hold';
   if (status === 'cancelled') return 'Cancelled';
@@ -83,6 +84,7 @@ export function saleStatusBadgeTone(sale) {
   if (status === 'cancelled' || status === 'voided' || refund === 'refunded') {
     return 'cancelled';
   }
+  if (sale?.needs_salesperson_action) return 'rejected';
   if (status === 'pending_approval' || status === 'holding') return 'holding';
   if (refund === 'partial') return 'pending';
   const pay = salePaymentStatusLabel(sale);

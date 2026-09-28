@@ -13,6 +13,7 @@ import { pendingApprovalToastMessage } from '../../utils/makerChecker';
 import {
   SALE_AWAITING_APPROVAL_MESSAGE,
   saleIsAwaitingApproval,
+  saleNeedsSalespersonAction,
   saleReceiptBlockedReason,
 } from '../../utils/saleCompletionApproval';
 import { saleDisplayItemCount, saleDisplayTotal, saleFinalStatusLabel, saleStatusBadgeTone } from '../../utils/saleItemDisplay';
@@ -108,19 +109,23 @@ const Sales = () => {
     loadSales();
   }, [loadSales]);
 
+  const handleViewSale = async (sale) => {
+    try {
+      const response = await salesAPI.get(sale.id);
+      setSelectedSale(response.data);
+      setShowReceiptModal(true);
+    } catch (error) {
+      toast.error('Failed to load sale: ' + (error.response?.data?.error || error.message));
+    }
+  };
+
   const handleViewReceipt = async (sale) => {
     const blocked = saleReceiptBlockedReason(sale);
     if (blocked) {
       toast.info(blocked);
       return;
     }
-    try {
-      const response = await salesAPI.get(sale.id);
-      setSelectedSale(response.data);
-      setShowReceiptModal(true);
-    } catch (error) {
-      toast.error('Failed to load receipt: ' + (error.response?.data?.error || error.message));
-    }
+    await handleViewSale(sale);
   };
 
   const openRefundDialog = async (sale) => {
@@ -474,7 +479,7 @@ const Sales = () => {
                       <button
                         type="button"
                         className="font-medium text-primary hover:underline inline-flex items-center gap-1.5"
-                        onClick={() => handleViewReceipt(sale)}
+                        onClick={() => handleViewSale(sale)}
                       >
                         <SaleChannelIcon channel={sale.client_channel} />
                         {sale.sale_number}
@@ -503,6 +508,11 @@ const Sales = () => {
                         status={saleStatusBadgeTone(sale)}
                         label={saleFinalStatusLabel(sale)}
                       />
+                      {saleNeedsSalespersonAction(sale) && sale.rejection_reason ? (
+                        <p className="mt-1 max-w-[14rem] text-xs text-muted-foreground">
+                          {sale.rejection_reason}
+                        </p>
+                      ) : null}
                     </DataTableCell>
                     <DataTableCell align="right">
                       <div className="flex justify-end gap-1">
@@ -538,9 +548,13 @@ const Sales = () => {
                           variant="ghost"
                           size="sm"
                           onClick={() => handleViewReceipt(sale)}
-                          disabled={saleIsAwaitingApproval(sale)}
+                          disabled={
+                            saleIsAwaitingApproval(sale) || saleNeedsSalespersonAction(sale)
+                          }
                           title={
-                            saleIsAwaitingApproval(sale)
+                            saleNeedsSalespersonAction(sale)
+                              ? 'Fix this sale on POS and send it again before issuing a receipt.'
+                              : saleIsAwaitingApproval(sale)
                               ? SALE_AWAITING_APPROVAL_MESSAGE
                               : undefined
                           }

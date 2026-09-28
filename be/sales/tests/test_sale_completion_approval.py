@@ -35,6 +35,8 @@ from sales.sale_completion_approval import (
     restore_queued_sale_for_approval,
     return_queued_sale_for_correction,
     sale_completion_should_wait,
+    sale_needs_salesperson_action,
+    sale_rejection_reason,
     user_can_complete_sales,
 )
 from utils.tests.api_test_base import ManagerAPITestCase, SalesAPITestCase
@@ -199,6 +201,38 @@ class SaleCompletionHelperTests(TestCase):
         )
         with self.assertRaises(ValidationError):
             complete_queued_sale(sale, User.objects.create_user('x', password='x'))
+
+    def test_rejected_holding_needs_salesperson_action(self):
+        holding = Sale.objects.create(
+            sale_number='S-HOLD-CART',
+            status='holding',
+            subtotal=Decimal('10'),
+            total=Decimal('10'),
+            payment_method='cash',
+            amount_paid=Decimal('0'),
+        )
+        self.assertFalse(sale_needs_salesperson_action(holding))
+        self.assertEqual(sale_rejection_reason(holding), '')
+
+        returned = Sale.objects.create(
+            sale_number='S-HOLD-RETURN',
+            status='holding',
+            subtotal=Decimal('10'),
+            total=Decimal('10'),
+            payment_method='cash',
+            amount_paid=Decimal('0'),
+        )
+        PendingChange.objects.create(
+            action_type=ACTION_SALE_COMPLETE,
+            entity_type='sales.Sale',
+            entity_id=str(returned.pk),
+            entity_repr=returned.sale_number,
+            reason=QUEUE_REASON,
+            status=PendingChange.STATUS_REJECTED,
+            rejection_reason='Wrong prices',
+        )
+        self.assertTrue(sale_needs_salesperson_action(returned))
+        self.assertEqual(sale_rejection_reason(returned), 'Wrong prices')
 
 
 class SaleCompletionApprovalAPITests(SalesAPITestCase):
@@ -412,6 +446,30 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
         self.assertIn(sale.sale_number, sticky.content)
         self.assertIn(f'sale_id: {sale_id}', sticky.content)
         self.assertIn(f'id: {change.id}', sticky.content)
+
+        ordinary_hold = Sale.objects.create(
+            sale_number='S-CART-HOLD',
+            status='holding',
+            cashier=self.sales_user,
+            subtotal=Decimal('10'),
+            total=Decimal('10'),
+            payment_method='cash',
+            amount_paid=Decimal('0'),
+        )
+        awaiting = self.client.get('/api/sales/?status=pending_approval')
+        awaiting_rows = awaiting.data.get('results', awaiting.data)
+        awaiting_by_id = {row['id']: row for row in awaiting_rows}
+        self.assertIn(sale_id, awaiting_by_id)
+        self.assertNotIn(ordinary_hold.id, awaiting_by_id)
+        returned = awaiting_by_id[sale_id]
+        self.assertTrue(returned['needs_salesperson_action'])
+        self.assertEqual(returned['rejection_reason'], 'Wrong prices')
+        self.assertEqual(returned['status'], 'holding')
+
+        manager_awaiting = self._manager_client().get('/api/sales/?status=pending_approval')
+        manager_ids = [row['id'] for row in manager_awaiting.data.get('results', manager_awaiting.data)]
+        self.assertIn(sale_id, manager_ids)
+        self.assertNotIn(ordinary_hold.id, manager_ids)
 
         resubmit = self.client.post(
             f'/api/approvals/pending-changes/{change.id}/resubmit/',

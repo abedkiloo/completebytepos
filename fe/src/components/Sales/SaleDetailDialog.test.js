@@ -157,4 +157,24 @@ describe('SaleDetailDialog', () => {
     expect(screen.queryByText('Admin')).not.toBeInTheDocument();
     expect(screen.queryByText(/Amount refunded/)).not.toBeInTheDocument();
   });
+
+  it('shows salesperson action copy when a sale was returned', () => {
+    render(
+      <SaleDetailDialog
+        sale={{
+          ...sale,
+          status: 'holding',
+          needs_salesperson_action: true,
+          rejection_reason: 'Wrong prices',
+        }}
+        open
+        onOpenChange={() => {}}
+        onPrint={jest.fn()}
+      />
+    );
+
+    expect(screen.getAllByText('Needs salesperson action').length).toBeGreaterThan(0);
+    expect(screen.getByText(/Manager comment: Wrong prices/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Print receipt/i })).not.toBeInTheDocument();
+  });
 });

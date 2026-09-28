@@ -57,6 +57,77 @@ def pending_sale_complete_change(sale: Sale) -> PendingChange | None:
     )
 
 
+def latest_rejected_sale_complete_change(sale: Sale) -> PendingChange | None:
+    return (
+        PendingChange.objects.filter(
+            action_type=ACTION_SALE_COMPLETE,
+            entity_type='sales.Sale',
+            entity_id=str(sale.pk),
+            status=PendingChange.STATUS_REJECTED,
+        )
+        .order_by('-id')
+        .first()
+    )
+
+
+def annotate_sale_approval_state(queryset):
+    """Annotate sales with rejected/pending sale-complete flags for the queue."""
+    from django.db.models import CharField, Exists, OuterRef, Subquery
+    from django.db.models.functions import Cast
+
+    rejected = PendingChange.objects.filter(
+        action_type=ACTION_SALE_COMPLETE,
+        entity_type='sales.Sale',
+        status=PendingChange.STATUS_REJECTED,
+        entity_id=Cast(OuterRef('pk'), output_field=CharField()),
+    )
+    pending = PendingChange.objects.filter(
+        action_type=ACTION_SALE_COMPLETE,
+        entity_type='sales.Sale',
+        status=PendingChange.STATUS_PENDING,
+        entity_id=Cast(OuterRef('pk'), output_field=CharField()),
+    )
+    return queryset.annotate(
+        _has_rejected_sale_complete=Exists(rejected),
+        _has_pending_sale_complete=Exists(pending),
+        _sale_rejection_reason=Subquery(
+            rejected.order_by('-id').values('rejection_reason')[:1]
+        ),
+    )
+
+
+def awaiting_approval_queue_q():
+    """Pending manager approval, plus rejected holdings waiting on the salesperson."""
+    from django.db.models import Q
+
+    return Q(status='pending_approval') | Q(
+        status='holding',
+        _has_rejected_sale_complete=True,
+        _has_pending_sale_complete=False,
+    )
+
+
+def sale_needs_salesperson_action(sale: Sale) -> bool:
+    if getattr(sale, 'status', None) != 'holding':
+        return False
+    annotated = getattr(sale, '_has_rejected_sale_complete', None)
+    if annotated is not None:
+        return bool(annotated) and not bool(getattr(sale, '_has_pending_sale_complete', False))
+    if pending_sale_complete_change(sale):
+        return False
+    return latest_rejected_sale_complete_change(sale) is not None
+
+
+def sale_rejection_reason(sale: Sale) -> str:
+    if not sale_needs_salesperson_action(sale):
+        return ''
+    annotated = getattr(sale, '_sale_rejection_reason', None)
+    if annotated:
+        return str(annotated).strip()
+    change = latest_rejected_sale_complete_change(sale)
+    return (change.rejection_reason or '').strip() if change else ''
+
+
 def payment_payload_from_inputs(
     *,
     payment_method: str,

@@ -24,6 +24,13 @@ import {
   saleNetPaymentStatusLabel,
   normalizeSaleForReceipt,
 } from '../../utils/saleItemDisplay';
+import {
+  SALE_AWAITING_APPROVAL_MESSAGE,
+  saleIsAwaitingApproval,
+  saleNeedsSalespersonAction,
+  saleReceiptBlockedReason,
+  saleRejectionReason,
+} from '../../utils/saleCompletionApproval';
 import { hasDuplicateSaleLines } from '../../utils/detectDuplicateSaleLines';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import { resolveStoreName, resolveReceiptLogoUrl, DEFAULT_STORE_TAGLINE } from '../../utils/storeBranding';
@@ -52,6 +59,9 @@ export default function SaleDetailDialog({
   const hasRefund = saleHasRefundActivity(sale);
   const balanceDue = saleNetBalanceDue(sale);
   const paymentStatus = saleNetPaymentStatusLabel(sale);
+  const returnedToSalesperson = saleNeedsSalespersonAction(sale);
+  const managerComment = saleRejectionReason(sale);
+  const receiptBlocked = saleReceiptBlockedReason(sale);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -69,6 +79,23 @@ export default function SaleDetailDialog({
             ) : null}
           </DialogTitle>
         </DialogHeader>
+
+        {returnedToSalesperson ? (
+          <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm">
+            <p className="font-semibold text-amber-950">Needs salesperson action</p>
+            <p className="text-amber-900">
+              This sale was returned. Fix it on POS and send it again. A sticky Daily note was also
+              sent.
+            </p>
+            {managerComment ? (
+              <p className="mt-1 text-amber-900">Manager comment: {managerComment}</p>
+            ) : null}
+          </div>
+        ) : saleIsAwaitingApproval(sale) ? (
+          <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
+            {SALE_AWAITING_APPROVAL_MESSAGE}
+          </div>
+        ) : null}
 
         <div className="receipt-content space-y-4 text-sm">
           <div className="receipt-header text-center">
@@ -287,7 +314,7 @@ export default function SaleDetailDialog({
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Close
             </Button>
-            {onPrint ? <Button onClick={onPrint}>Print receipt</Button> : null}
+            {onPrint && !receiptBlocked ? <Button onClick={onPrint}>Print receipt</Button> : null}
           </div>
         </DialogFooter>
       </DialogContent>

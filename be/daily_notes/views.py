@@ -3,30 +3,37 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from accounts.permissions import RequireModuleEnabled, RequirePermPerAction
+from accounts.permissions import RequireAny, RequireModuleEnabled, RequirePermPerAction
 
-from .access import user_may_access_daily_notes, user_may_view_all_daily_notes
+from .access import (
+    AllowDailyNotesDeskAccess,
+    user_may_access_daily_notes,
+    user_may_view_all_daily_notes,
+)
 from .models import DailyNote, DailyTask
 from .serializers import DailyNoteSerializer, DailyTaskSerializer
 from .services import DailyNoteService, DailyTaskService, recent_activity_dates
 from .view_mixins import DailyAuthorScopedViewSetMixin
 
-DAILY_NOTES_PERMS = RequirePermPerAction(
-    'daily_notes',
-    {
-        'list': 'view',
-        'retrieve': 'view',
-        'create': 'create',
-        'update': 'update',
-        'partial_update': 'update',
-        'destroy': 'update',
-        'recent_dates': 'view',
-        'toggle_done': 'update',
-        'pending': 'view',
-        'blocking': 'view',
-        'staff': 'view',
-        'roles': 'view',
-    },
+DAILY_NOTES_PERMS = RequireAny(
+    RequirePermPerAction(
+        'daily_notes',
+        {
+            'list': 'view',
+            'retrieve': 'view',
+            'create': 'create',
+            'update': 'update',
+            'partial_update': 'update',
+            'destroy': 'update',
+            'recent_dates': 'view',
+            'toggle_done': 'update',
+            'pending': 'view',
+            'blocking': 'view',
+            'staff': 'view',
+            'roles': 'view',
+        },
+    ),
+    AllowDailyNotesDeskAccess,
 )
 
 

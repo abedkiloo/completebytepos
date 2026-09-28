@@ -5,9 +5,10 @@ from datetime import date
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from rest_framework import status
+from rest_framework_simplejwt.tokens import RefreshToken
 
-from accounts.models import Role, UserProfile
-from accounts.role_definitions import ROLE_MANAGER, ROLE_SALES, sync_default_roles
+from accounts.models import Permission, Role, UserProfile
+from accounts.role_definitions import ROLE_MANAGER, ROLE_SALES, ensure_permissions, sync_default_roles
 from daily_notes.models import DailyNote
 from settings.models import ModuleSetting, ModuleSettings
 from utils.tests.api_test_base import ManagerAPITestCase, SalesAPITestCase
@@ -215,3 +216,63 @@ class DailyNotesModuleDisabledTests(ManagerAPITestCase):
         )
         response = self.client.get('/api/daily-notes/notes/')
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class DailyNotesSalesDeskWithoutNotesPermTests(SalesAPITestCase):
+    """UAT sales roles often have sales.view but not daily_notes.view."""
+
+    def setUp(self):
+        super().setUp()
+        ensure_permissions()
+        _seed_daily_notes_module()
+        role = Role.objects.create(name='UAT Sales Person', is_active=True)
+        role.permissions.add(
+            Permission.objects.get(module='sales', action='view'),
+            Permission.objects.get(module='pos', action='view'),
+        )
+        self.desk_user = User.objects.create_user('uat_sales_desk', password='x')
+        UserProfile.objects.create(
+            user=self.desk_user,
+            role='cashier',
+            custom_role=role,
+            is_active=True,
+        )
+        self.assertFalse(self.desk_user.profile.has_permission('daily_notes', 'view'))
+        token = RefreshToken.for_user(self.desk_user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+
+    def test_sales_desk_lists_notes_without_daily_notes_view(self):
+        own = DailyNote.objects.create(
+            note_date=date.today(),
+            content='Till opened',
+            author=self.desk_user,
+        )
+        assigned = DailyNote.objects.create(
+            note_date=date.today(),
+            title='Approval rejected: sale completion',
+            content='Wrong prices\nsale_id: 9',
+            author=self.sales_user,
+            assigned_to=self.desk_user,
+            is_sticky=True,
+        )
+        response = self.client.get('/api/daily-notes/notes/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = {row['id'] for row in response.data.get('results', response.data)}
+        self.assertIn(own.id, ids)
+        self.assertIn(assigned.id, ids)
+
+    def test_sales_desk_creates_note_without_daily_notes_create(self):
+        response = self.client.post(
+            '/api/daily-notes/notes/',
+            {
+                'note_date': str(date.today()),
+                'title': 'Shift',
+                'content': 'Counted drawer',
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+    def test_sales_desk_lists_tasks(self):
+        response = self.client.get('/api/daily-notes/tasks/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
