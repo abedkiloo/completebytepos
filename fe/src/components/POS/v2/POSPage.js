@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Maximize2,
   Printer,
@@ -76,9 +76,11 @@ import { isRegisteredPosCustomer } from '../../../utils/posCheckoutValidation';
  */
 export default function POSPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { permissions } = getStoredAuth();
   const sendForApproval = !userCanApproveSales(permissions);
-  const state = usePOSState({ sendForApproval });
+  const resumeSaleId = searchParams.get('sale');
+  const state = usePOSState({ sendForApproval, resumeSaleId });
   const { settings } = useStoreSettings();
   const storeName = resolveStoreName(settings);
   const { settings: customerModuleSettings } = useModuleSettings('customers');
@@ -330,6 +332,24 @@ export default function POSPage() {
           )}
         >
           <div className="border-b px-3 py-2">
+            {state.returnedSaleNotice ? (
+              <div
+                className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-2 text-sm text-amber-950"
+                data-testid="returned-sale-banner"
+              >
+                <p className="font-medium">
+                  Manager returned sale {state.returnedSaleNotice.saleNumber}
+                </p>
+                {state.returnedSaleNotice.comment ? (
+                  <p className="mt-1 whitespace-pre-wrap">
+                    {state.returnedSaleNotice.comment}
+                  </p>
+                ) : null}
+                <p className="mt-1 text-xs text-amber-900/80">
+                  Update this sale, then send it back for approval.
+                </p>
+              </div>
+            ) : null}
             <CustomerPicker
               customers={state.customers}
               selectedCustomer={state.selectedCustomer}
@@ -434,7 +454,7 @@ export default function POSPage() {
       />
 
       <PosCartRecoveryDialog
-        open={Boolean(state.cartRecovery)}
+        open={Boolean(state.cartRecovery) && !state.cartRecovery?.autoContinue}
         source={state.cartRecovery?.source || 'local'}
         itemCount={state.cartRecovery?.itemCount || 0}
         label={state.cartRecovery?.label}

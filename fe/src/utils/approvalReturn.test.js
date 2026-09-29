@@ -35,7 +35,9 @@ describe('approvalReturn', () => {
   });
 
   it('routes a returned sale to POS or Record past sale', () => {
-    expect(rejectedSaleFixPath({ source: 'pending_change', id: 42, saleId: 99 })).toBe('/pos');
+    expect(rejectedSaleFixPath({ source: 'pending_change', id: 42, saleId: 99 })).toBe(
+      '/pos?sale=99'
+    );
     expect(
       rejectedSaleFixPath(
         { source: 'pending_change', id: 7 },
@@ -46,18 +48,28 @@ describe('approvalReturn', () => {
   });
 
   it('describes returning a request to the maker', () => {
-    expect(rejectionReturnedMessage('sale_complete')).toMatch(/must-tick Daily note/i);
+    expect(rejectionReturnedMessage('sale_complete')).toMatch(/open that sale/i);
+    expect(rejectionReturnedMessage('sale_complete')).toMatch(/Ticking/i);
     expect(rejectionReturnedMessage('sale_backfill')).toMatch(/Record past sale/i);
     expect(rejectionReturnedMessage('product_price')).toMatch(/Daily notes/i);
     expect(resubmitSuccessMessage()).toMatch(/Sent back/i);
     expect(resubmitSuccessMessage('expense')).toMatch(/Sent back/i);
   });
 
-  it('canResubmitRejection allows known sources', () => {
-    const { canResubmitRejection } = require('./approvalReturn');
+  it('canResubmitRejection allows known sources but not returned sales', () => {
+    const { canResubmitRejection, noticeRequiresSaleFix } = require('./approvalReturn');
     expect(canResubmitRejection({ source: 'pending_change', id: 1 })).toBe(true);
     expect(canResubmitRejection({ source: 'expense', id: 2 })).toBe(true);
     expect(canResubmitRejection({ source: 'unknown', id: 1 })).toBe(false);
     expect(canResubmitRejection(null)).toBe(false);
+    expect(
+      canResubmitRejection({ source: 'pending_change', id: 51, saleId: 99 })
+    ).toBe(false);
+    expect(
+      noticeRequiresSaleFix({
+        title: 'Approval rejected: sale completion',
+        content: 'source: pending_change\nid: 51\nsale_id: 99',
+      })
+    ).toBe(true);
   });
 });

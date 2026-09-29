@@ -89,7 +89,7 @@ export const getLineStockCap = (item) => {
  *  - one-off device tricks (fullscreen, system calculator) — those are
  *    component-local
  */
-export function usePOSState({ sendForApproval = false } = {}) {
+export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {}) {
   const { settings: salesModuleSettings } = useModuleSettings('sales');
   const validateStock = salesValidateStock(salesModuleSettings);
   const requireCustomer = salesRequireCustomer(salesModuleSettings);
@@ -175,7 +175,11 @@ export function usePOSState({ sendForApproval = false } = {}) {
   const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [holdingId, setHoldingId] = useState(null);
   const [serverHoldingChecked, setServerHoldingChecked] = useState(false);
+  const [returnedSaleNotice, setReturnedSaleNotice] = useState(null);
   const draftCheckedRef = useRef(false);
+  const resumeSaleIdNum = Number.parseInt(resumeSaleId, 10);
+  const resumeSalePk =
+    Number.isFinite(resumeSaleIdNum) && resumeSaleIdNum > 0 ? resumeSaleIdNum : null;
 
   // --- Bookkeeping ---
   const [orderNumber, setOrderNumber] = useState(
@@ -292,20 +296,43 @@ export function usePOSState({ sendForApproval = false } = {}) {
     let cancelled = false;
     (async () => {
       try {
-        const res = await salesAPI.activeHolding();
-        const holding = res.data?.holding;
-        if (cancelled) return;
-        if (shouldPromptForHoldingRecovery(holding)) {
-          setCartRecovery({
-            source: 'holding',
-            holding,
-            itemCount: countHoldingItems(holding),
-            label: holding.sale_number,
-          });
-          setHoldingId(holding.id);
+        if (resumeSalePk) {
+          const res = await salesAPI.get(resumeSalePk);
+          const holding = res.data;
+          if (cancelled) return;
+          const canFix =
+            holding &&
+            (holding.status === 'holding' || holding.needs_salesperson_action);
+          if (canFix) {
+            setCartRecovery({
+              source: 'holding',
+              holding,
+              itemCount: countHoldingItems(holding),
+              label: holding.sale_number,
+              autoContinue: true,
+            });
+            setHoldingId(holding.id);
+          } else {
+            toast.error('This sale is not waiting for a fix on POS.');
+          }
+        } else {
+          const res = await salesAPI.activeHolding();
+          const holding = res.data?.holding;
+          if (cancelled) return;
+          if (shouldPromptForHoldingRecovery(holding)) {
+            setCartRecovery({
+              source: 'holding',
+              holding,
+              itemCount: countHoldingItems(holding),
+              label: holding.sale_number,
+            });
+            setHoldingId(holding.id);
+          }
         }
       } catch {
-        /* no draft on the server yet */
+        if (resumeSalePk && !cancelled) {
+          toast.error('Could not open this sale on POS.');
+        }
       } finally {
         if (!cancelled) setServerHoldingChecked(true);
       }
@@ -313,12 +340,12 @@ export function usePOSState({ sendForApproval = false } = {}) {
     return () => {
       cancelled = true;
     };
-  }, [user?.id]);
+  }, [user?.id, resumeSalePk]);
 
   useEffect(() => {
     if (!cartDraftKey || draftCheckedRef.current || !serverHoldingChecked) return;
     draftCheckedRef.current = true;
-    if (cartRecovery) return;
+    if (cartRecovery || resumeSalePk) return;
     const draft = loadRetailCartDraft(cartDraftKey);
     if (localDraftNeedsRecoveryPrompt(draft)) {
       setCartRecovery({
@@ -327,7 +354,7 @@ export function usePOSState({ sendForApproval = false } = {}) {
         itemCount: countLocalDraftItems(draft),
       });
     }
-  }, [cartDraftKey, serverHoldingChecked, cartRecovery]);
+  }, [cartDraftKey, serverHoldingChecked, cartRecovery, resumeSalePk]);
 
   useEffect(() => {
     if (!cartDraftKey || cartRecovery) return;
@@ -392,6 +419,15 @@ export function usePOSState({ sendForApproval = false } = {}) {
           );
         }
         setHoldingId(holding.id);
+        const comment = String(holding.rejection_reason || '').trim();
+        if (holding.needs_salesperson_action || comment) {
+          setReturnedSaleNotice({
+            saleNumber: holding.sale_number || `#${holding.id}`,
+            comment,
+          });
+        } else {
+          setReturnedSaleNotice(null);
+        }
         setCartRecovery(null);
       } finally {
         setRecoveryBusy(false);
@@ -434,12 +470,19 @@ export function usePOSState({ sendForApproval = false } = {}) {
     }
   }, [cartRecovery, customers, validateStock]);
 
+  useEffect(() => {
+    if (!cartRecovery?.autoContinue || !cartRecovery.holding) return;
+    continueCartRecovery();
+  }, [cartRecovery, continueCartRecovery]);
+
   const startNewSaleFromRecovery = useCallback(() => {
     setRecoveryBusy(true);
     try {
       if (cartDraftKey) clearRetailCartDraft(cartDraftKey);
       setCart([]);
       setCartRecovery(null);
+      setHoldingId(null);
+      setReturnedSaleNotice(null);
       setReceivedAmount('');
       setDiscount(0);
       setTaxPct(0);
@@ -670,6 +713,7 @@ export function usePOSState({ sendForApproval = false } = {}) {
     if (cartDraftKey) clearRetailCartDraft(cartDraftKey);
     setCart([]);
     setHoldingId(null);
+    setReturnedSaleNotice(null);
     setReceivedAmount('');
     setPaymentOnAccount(false);
     setPaymentOnAccountCustomerPrompt(false);
@@ -1084,6 +1128,7 @@ export function usePOSState({ sendForApproval = false } = {}) {
     recoveryBusy,
     continueCartRecovery,
     startNewSaleFromRecovery,
+    returnedSaleNotice,
 
     // reloads
     reloadProducts: loadProducts,

@@ -19,6 +19,16 @@ describe('dailyNotesTaskAccess', () => {
     expect(canToggleDailyTask(task, 20)).toBe(true);
     expect(canToggleDailyTask(task, 10)).toBe(true);
     expect(canToggleDailyTask(task, 99)).toBe(false);
+    expect(
+      canToggleDailyTask(
+        {
+          ...task,
+          title: 'Approval rejected: sale completion',
+          description: 'source: pending_change\nid: 51\nsale_id: 99',
+        },
+        20
+      )
+    ).toBe(false);
   });
 
   test('canEditDailyTask allows author or viewAll', () => {

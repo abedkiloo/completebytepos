@@ -5,6 +5,8 @@ import { dailyNotesAPI } from '../../services/api';
 import { getStoredAuth } from '../../utils/roleAccess';
 import { toast } from '../../utils/toast';
 
+const mockNavigate = jest.fn();
+
 jest.mock('../../services/api', () => ({
   dailyNotesAPI: {
     blocking: jest.fn(),
@@ -16,8 +18,12 @@ jest.mock('../../utils/roleAccess', () => ({
   getStoredAuth: jest.fn(),
 }));
 
+jest.mock('react-router-dom', () => ({
+  useNavigate: () => mockNavigate,
+}));
+
 jest.mock('../../utils/toast', () => ({
-  toast: { error: jest.fn() },
+  toast: { error: jest.fn(), warning: jest.fn() },
 }));
 
 describe('StickyNotesGate', () => {
@@ -99,6 +105,33 @@ describe('StickyNotesGate', () => {
     expect(screen.getByText(/fill the shelf/i)).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('sticky-notes-continue'));
     expect(screen.queryByTestId('sticky-notes-gate')).not.toBeInTheDocument();
+  });
+
+  test('opens a returned sale instead of ticking the note', async () => {
+    dailyNotesAPI.blocking.mockResolvedValue({
+      data: [
+        {
+          id: 8,
+          title: 'Approval rejected: sale completion',
+          content:
+            'Bea returned sale S-1.\nTheir comment:\nWrong prices\n---\nsource: pending_change\nid: 51\nsale_id: 99\nref: reject/sale/99/',
+          is_sticky: true,
+          is_done: false,
+          note_date: '2026-09-24',
+          author_name: 'Bea',
+          assigned_to: 20,
+        },
+      ],
+    });
+    render(<StickyNotesGate />);
+    expect(await screen.findByText(/Returned sale — open and send back/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('sticky-note-tick-8')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('sticky-note-open-sale-8'));
+    expect(mockNavigate).toHaveBeenCalledWith('/pos?sale=99');
+    expect(dailyNotesAPI.toggleDone).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(screen.queryByTestId('sticky-notes-gate')).not.toBeInTheDocument()
+    );
   });
 
   test('ticks an assigned general note from the login inbox', async () => {

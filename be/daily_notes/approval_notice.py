@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from django.utils import timezone
 
@@ -64,6 +65,22 @@ def sale_return_notice_fingerprint(record_id) -> str:
     return f'ref: reject/sale/{record_id}/'
 
 
+_SALE_ID_LINE = re.compile(r'(?m)^sale_id:\s*\d+')
+
+SALE_RETURN_TICK_ERROR = (
+    'Open this sale, resolve the manager comment, then send it back for approval. '
+    'Ticking this note is not enough.'
+)
+
+
+def is_sale_return_notice_text(text: str | None) -> bool:
+    """True when the Daily note/task is a returned sale that must be fixed on POS."""
+    raw = text or ''
+    if 'ref: reject/sale/' in raw:
+        return True
+    return bool(_SALE_ID_LINE.search(raw))
+
+
 def _sale_customer_label(sale) -> str:
     if sale is None:
         return 'the customer'
@@ -102,8 +119,9 @@ def build_rejection_notice(
         content = (
             f'{checker_name} returned sale {number} for {customer}.\n'
             f'Their comment:\n{reason}\n\n'
-            'The sale is back on your POS cart. Fix it, then send it back '
-            'for approval from Daily notes or POS.\n'
+            'The sale is back on your POS cart. Open that sale, resolve the '
+            'comment, then send it back for approval from POS. Ticking this '
+            'note is not enough.\n'
             '---\n'
             f'{footer}'
         )

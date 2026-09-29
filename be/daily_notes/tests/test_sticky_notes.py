@@ -220,6 +220,25 @@ class StickyNoteAPITests(ManagerAPITestCase):
         open_notes = self.client.get('/api/daily-notes/notes/', {'status': 'open'})
         self.assertEqual(open_notes.status_code, status.HTTP_200_OK)
 
+    def test_returned_sale_note_cannot_be_ticked(self):
+        note = DailyNote.objects.create(
+            note_date=date.today(),
+            title='Approval rejected: sale completion',
+            content=(
+                'Bea returned sale S-1.\nTheir comment:\nWrong prices\n'
+                '---\nsource: pending_change\nid: 51\nsale_id: 99\nref: reject/sale/99/'
+            ),
+            is_sticky=True,
+            author=self.manager_user,
+            assigned_to=self.sales_user,
+        )
+        self.client.force_authenticate(self.sales_user)
+        tick = self.client.post(f'/api/daily-notes/notes/{note.id}/toggle-done/')
+        self.assertEqual(tick.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('Open this sale', tick.data['error'])
+        note.refresh_from_db()
+        self.assertFalse(note.is_done)
+
 
 class StickyNoteSalesStaffTests(SalesAPITestCase):
     def setUp(self):

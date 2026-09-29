@@ -181,6 +181,21 @@ class DailyTaskAssignmentTests(ManagerAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data['is_done'])
 
+    def test_returned_sale_task_cannot_be_ticked(self):
+        task = DailyTask.objects.create(
+            task_date=date.today(),
+            title='Approval rejected: sale completion',
+            description='Wrong prices\nsale_id: 99\nref: reject/sale/99/',
+            author=self.manager_user,
+            assigned_to=self.sales_user,
+        )
+        self.client.force_authenticate(user=self.sales_user)
+        response = self.client.post(f'/api/daily-notes/tasks/{task.id}/toggle-done/')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('Open this sale', response.data['error'])
+        task.refresh_from_db()
+        self.assertFalse(task.is_done)
+
 
 class DailyTaskSalesTests(SalesAPITestCase):
     def setUp(self):

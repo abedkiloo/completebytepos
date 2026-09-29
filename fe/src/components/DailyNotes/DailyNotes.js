@@ -25,8 +25,8 @@ import {
 } from '../../utils/dailyNotesSticky';
 import {
   canResubmitRejection,
-  isApprovalRejectionNote,
   isApprovalRejectionTask,
+  noticeRequiresSaleFix,
   parseApprovalRejectionNotice,
   rejectedSaleFixPath,
   resubmitSuccessMessage,
@@ -177,8 +177,8 @@ const DailyNotes = () => {
 
   const handleResubmitRejection = async (entry, kind) => {
     const parsed = parseApprovalRejectionNotice(entry.description || entry.content);
-    if (!canResubmitRejection(parsed)) {
-      toast.warning('This notice cannot be sent back from here.');
+    if (!canResubmitRejection(parsed, entry.description || entry.content, entry.title)) {
+      toast.warning('Open this sale, update it, then send it back from POS.');
       return;
     }
     const key = `${kind}-${entry.id}`;
@@ -374,14 +374,16 @@ const DailyNotes = () => {
                       className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-start sm:justify-between"
                     >
                       <div className="flex min-w-0 flex-1 items-start gap-3">
-                        <input
-                          type="checkbox"
-                          className="mt-1 h-4 w-4 shrink-0"
-                          checked={Boolean(task.is_done)}
-                          disabled={!canToggleTask(task) || togglingTaskId === task.id}
-                          onChange={() => handleToggleTask(task)}
-                          aria-label={`Mark "${task.title}" done`}
-                        />
+                          {noticeRequiresSaleFix(task) ? null : (
+                            <input
+                              type="checkbox"
+                              className="mt-1 h-4 w-4 shrink-0"
+                              checked={Boolean(task.is_done)}
+                              disabled={!canToggleTask(task) || togglingTaskId === task.id}
+                              onChange={() => handleToggleTask(task)}
+                              aria-label={`Mark "${task.title}" done`}
+                            />
+                          )}
                         <div className="min-w-0">
                           <p
                             className={`font-medium ${task.is_done ? 'text-muted-foreground line-through' : ''}`}
@@ -410,7 +412,9 @@ const DailyNotes = () => {
                             )}
                             {isApprovalRejectionTask(task) &&
                             canResubmitRejection(
-                              parseApprovalRejectionNotice(task.description)
+                              parseApprovalRejectionNotice(task.description),
+                              task.description,
+                              task.title
                             ) ? (
                               <Button
                                 type="button"
@@ -433,12 +437,11 @@ const DailyNotes = () => {
                             ) ? (
                               <Button
                                 type="button"
-                                variant="outline"
                                 size="sm"
                                 className="mt-1"
                                 onClick={() => handleFixRejectedSale(task)}
                               >
-                                Fix sale
+                                Open sale
                               </Button>
                             ) : null}
                           </div>

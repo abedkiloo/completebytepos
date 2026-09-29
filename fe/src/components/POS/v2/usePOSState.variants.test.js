@@ -18,6 +18,7 @@ jest.mock('../../../services/api', () => ({
   },
   salesAPI: {
     activeHolding: jest.fn().mockResolvedValue({ data: { holding: null } }),
+    get: jest.fn(),
   },
   authAPI: {
     me: jest.fn().mockResolvedValue({

@@ -12,6 +12,7 @@ import {
 import {
   canResubmitRejection,
   isApprovalRejectionNote,
+  noticeRequiresSaleFix,
   parseApprovalRejectionNotice,
   rejectedSaleFixPath,
 } from '../../utils/approvalReturn';
@@ -63,17 +64,19 @@ export default function DailyNotesBoard({
                     className="rounded-lg border bg-background p-3 shadow-sm"
                   >
                     <div className="mb-2 flex items-start gap-2">
-                      <input
-                        type="checkbox"
-                        className="mt-0.5 h-4 w-4 shrink-0"
-                        checked={Boolean(note.is_done)}
-                        disabled={
-                          !canToggleDailyNote(note, currentUserId, viewAll) ||
-                          togglingNoteId === note.id
-                        }
-                        onChange={() => onToggle(note)}
-                        aria-label={`Tick note ${note.title || note.id}`}
-                      />
+                      {noticeRequiresSaleFix(note) ? null : (
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 h-4 w-4 shrink-0"
+                          checked={Boolean(note.is_done)}
+                          disabled={
+                            !canToggleDailyNote(note, currentUserId, viewAll) ||
+                            togglingNoteId === note.id
+                          }
+                          onChange={() => onToggle(note)}
+                          aria-label={`Tick note ${note.title || note.id}`}
+                        />
+                      )}
                       <div className="min-w-0 flex-1">
                         <p
                           className={`text-sm font-semibold ${note.is_done ? 'text-muted-foreground line-through' : ''}`}
@@ -101,7 +104,11 @@ export default function DailyNotesBoard({
                       ) : null}
                     </div>
                     {isApprovalRejectionNote(note) &&
-                    canResubmitRejection(parseApprovalRejectionNotice(note.content)) ? (
+                    canResubmitRejection(
+                      parseApprovalRejectionNotice(note.content),
+                      note.content,
+                      note.title
+                    ) ? (
                       <Button
                         type="button"
                         variant="outline"
@@ -123,12 +130,12 @@ export default function DailyNotesBoard({
                     ) ? (
                       <Button
                         type="button"
-                        variant="outline"
                         size="sm"
-                        className="mb-2 ml-1"
+                        className="mb-2"
+                        data-testid={`daily-note-open-sale-${note.id}`}
                         onClick={() => onFixSale?.(note)}
                       >
-                        Fix sale
+                        Open sale
                       </Button>
                     ) : null}
                     <div className="flex flex-wrap gap-1">

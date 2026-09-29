@@ -26,8 +26,27 @@ export function parseApprovalRejectionNotice(text) {
   return parsed;
 }
 
+export function isReturnedSaleNotice(parsed, text = '', title = '') {
+  if (Number.isFinite(parsed?.saleId)) return true;
+  const raw = String(text || '');
+  if (/ref:\s*reject\/sale\//i.test(raw)) return true;
+  return (
+    /(?:^|\n)sale_id:\s*\d+/i.test(raw) &&
+    /approval rejected/i.test(String(title || ''))
+  );
+}
+
+export function noticeRequiresSaleFix(entry) {
+  const text = entry?.content || entry?.description || '';
+  return isReturnedSaleNotice(
+    parseApprovalRejectionNotice(text),
+    text,
+    entry?.title
+  );
+}
+
 export function rejectedSaleFixPath(parsed, title = '') {
-  if (Number.isFinite(parsed?.saleId)) return '/pos';
+  if (Number.isFinite(parsed?.saleId)) return `/pos?sale=${parsed.saleId}`;
   if (
     parsed?.source === 'pending_change' &&
     Number.isFinite(parsed?.id) &&
@@ -40,7 +59,7 @@ export function rejectedSaleFixPath(parsed, title = '') {
 
 export function rejectionReturnedMessage(actionType) {
   if (actionType === 'sale_complete') {
-    return 'Returned to the salesperson. They will see a must-tick Daily note with your comment so they can fix the sale and send it again.';
+    return 'Returned to the salesperson. They must open that sale, resolve your comment, then send it back for approval. Ticking the Daily note is not enough.';
   }
   if (actionType === 'sale_backfill') {
     return 'Returned to the requester. They can fix it on Record past sale, and will see a Daily notes task.';
@@ -59,6 +78,7 @@ const RESUBMIT_SOURCES = new Set([
   'transfer',
 ]);
 
-export function canResubmitRejection(parsed) {
+export function canResubmitRejection(parsed, text = '', title = '') {
+  if (isReturnedSaleNotice(parsed, text, title)) return false;
   return Boolean(parsed && RESUBMIT_SOURCES.has(parsed.source) && parsed.id);
 }

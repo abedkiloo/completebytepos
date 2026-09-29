@@ -1,6 +1,9 @@
 /**
  * Notes that must be ticked block the assignee. Other notes never block.
+ * Returned-sale notices cannot be ticked — the sale itself must be fixed.
  */
+
+import { noticeRequiresSaleFix } from './approvalReturn';
 
 export function isStickyNote(note) {
   return Boolean(note?.is_sticky);
@@ -37,6 +40,7 @@ export function canEditDailyNote(note, userId) {
 }
 
 export function noteKindLabel(note) {
+  if (noticeRequiresSaleFix(note)) return 'Fix sale';
   return isStickyNote(note) ? 'Must tick' : 'Note';
 }
 
@@ -70,8 +74,9 @@ export function isNoteAssignee(note, userId) {
   return note.assigned_to === userId || note.assigned_to_id === userId;
 }
 
-/** Assignee, author, or admin (view-all) may tick / untick. */
+/** Assignee, author, or admin (view-all) may tick / untick. Returned sales cannot be ticked. */
 export function canToggleDailyNote(note, userId, viewAll = false) {
+  if (noticeRequiresSaleFix(note)) return false;
   if (viewAll) return true;
   return isNoteAuthor(note, userId) || isNoteAssignee(note, userId);
 }

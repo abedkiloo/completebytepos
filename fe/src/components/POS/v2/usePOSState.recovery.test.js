@@ -26,6 +26,7 @@ jest.mock('../../../services/api', () => ({
     saveHolding: jest.fn(),
     checkout: jest.fn(),
     create: jest.fn(),
+    get: jest.fn(),
   },
   authAPI: {
     me: jest.fn().mockResolvedValue({
@@ -145,5 +146,44 @@ describe('usePOSState local cart recovery', () => {
     expect(result.current.cart[0].name).toBe('Milk');
     expect(result.current.cart[0].quantity).toBe(2);
     expect(result.current.cartRecovery).toBeNull();
+  });
+
+  it('loads a specific returned sale from resumeSaleId', async () => {
+    salesAPI.get.mockResolvedValueOnce({
+      data: {
+        id: 99,
+        status: 'holding',
+        needs_salesperson_action: true,
+        rejection_reason: 'Wrong prices',
+        sale_number: 'S-RET',
+        subtotal: '200.00',
+        tax_amount: '0',
+        discount_amount: '0',
+        payment_method: 'cash',
+        customer: null,
+        items: [
+          {
+            product_id: 5,
+            product: { id: 5, name: 'Milk', price: 100, stock_quantity: 20, track_stock: true },
+            product_name: 'Milk',
+            quantity: 2,
+            unit_price: '100.00',
+          },
+        ],
+      },
+    });
+
+    const { result } = renderHook(() => usePOSState({ resumeSaleId: '99' }));
+
+    await waitFor(() => {
+      expect(result.current.cart).toHaveLength(1);
+    });
+    expect(salesAPI.get).toHaveBeenCalledWith(99);
+    expect(salesAPI.activeHolding).not.toHaveBeenCalled();
+    expect(result.current.cart[0].name).toBe('Milk');
+    expect(result.current.returnedSaleNotice).toEqual({
+      saleNumber: 'S-RET',
+      comment: 'Wrong prices',
+    });
   });
 });

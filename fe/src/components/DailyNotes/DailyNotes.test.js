@@ -215,8 +215,9 @@ describe('DailyNotes', () => {
 
   test('opens POS to fix a returned sale from a sticky note', async () => {
     render(<DailyNotes />);
-    fireEvent.click(await screen.findByRole('button', { name: /Fix sale/i }));
-    expect(mockNavigate).toHaveBeenCalledWith('/pos');
+    fireEvent.click(await screen.findByRole('button', { name: /Open sale/i }));
+    expect(mockNavigate).toHaveBeenCalledWith('/pos?sale=99');
+    expect(screen.queryByLabelText(/Tick note Approval rejected: sale completion/i)).not.toBeInTheDocument();
   });
 
   test('shows empty day actions when nothing is logged', async () => {

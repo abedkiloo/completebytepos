@@ -2,6 +2,8 @@
  * Daily task permission helpers (mirrors backend assignee rules).
  */
 
+import { noticeRequiresSaleFix } from './approvalReturn';
+
 export function isTaskAuthor(task, userId) {
   if (!task || userId == null) return false;
   return task.author === userId || task.author_id === userId;
@@ -12,8 +14,9 @@ export function isTaskAssignee(task, userId) {
   return task.assigned_to === userId || task.assigned_to_id === userId;
 }
 
-/** Assignee (or author) may mark done / reopen. */
+/** Assignee (or author) may mark done / reopen. Returned sales cannot be ticked. */
 export function canToggleDailyTask(task, userId) {
+  if (noticeRequiresSaleFix(task)) return false;
   return isTaskAssignee(task, userId) || isTaskAuthor(task, userId);
 }
 

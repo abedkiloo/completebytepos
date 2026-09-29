@@ -58,6 +58,23 @@ describe('dailyNotesSticky', () => {
     expect(canToggleDailyNote(stickyOpen, 10)).toBe(true);
     expect(canToggleDailyNote(stickyOpen, 99)).toBe(false);
     expect(canToggleDailyNote(stickyOpen, 99, true)).toBe(true);
+    expect(
+      canToggleDailyNote(
+        {
+          ...stickyOpen,
+          title: 'Approval rejected: sale completion',
+          content: 'source: pending_change\nid: 51\nsale_id: 99',
+        },
+        20
+      )
+    ).toBe(false);
+    expect(
+      noteKindLabel({
+        is_sticky: true,
+        title: 'Approval rejected: sale completion',
+        content: 'source: pending_change\nid: 51\nsale_id: 99',
+      })
+    ).toBe('Fix sale');
     expect(isNoteAuthor(stickyOpen, 10)).toBe(true);
     expect(isNoteAssignee(stickyOpen, 20)).toBe(true);
     expect(canToggleDailyNote(null, 10)).toBe(false);

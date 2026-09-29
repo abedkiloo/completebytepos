@@ -16,6 +16,7 @@ from daily_notes.approval_notice import (
     complete_manager_notes_for_change,
     complete_manager_queue_notes,
     complete_sale_return_notes,
+    is_sale_return_notice_text,
     manager_notice_recipients,
     notify_approval_rejected,
     notify_managers_for_change,
@@ -77,6 +78,9 @@ class ApprovalNoticeTests(TestCase):
         self.assertIn('sale_id: 99', content)
         self.assertIn('ref: reject/sale/99', content)
         self.assertIn('POS cart', content)
+        self.assertIn('Ticking this note is not enough', content)
+        self.assertTrue(is_sale_return_notice_text(content))
+        self.assertFalse(is_sale_return_notice_text('Count the till'))
 
         result = notify_approval_rejected(
             requester=self.maker,

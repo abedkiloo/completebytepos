@@ -10,6 +10,7 @@ from .access import (
     user_may_access_daily_notes,
     user_may_view_all_daily_notes,
 )
+from .approval_notice import SALE_RETURN_TICK_ERROR, is_sale_return_notice_text
 from .models import DailyNote, DailyTask
 from .serializers import DailyNoteSerializer, DailyTaskSerializer
 from .services import DailyNoteService, DailyTaskService, recent_activity_dates
@@ -93,6 +94,11 @@ class DailyNoteViewSet(DailyAuthorScopedViewSetMixin, viewsets.ModelViewSet):
             return Response(
                 {'error': 'You can only tick notes assigned to you, notes you wrote, or as an admin.'},
                 status=status.HTTP_403_FORBIDDEN,
+            )
+        if is_sale_return_notice_text(note.content):
+            return Response(
+                {'error': SALE_RETURN_TICK_ERROR},
+                status=status.HTTP_400_BAD_REQUEST,
             )
         note.is_done = not note.is_done
         note.mark_done(done=note.is_done)
@@ -195,6 +201,11 @@ class DailyTaskViewSet(DailyAuthorScopedViewSetMixin, viewsets.ModelViewSet):
             return Response(
                 {'error': 'You can only update tasks assigned to you.'},
                 status=status.HTTP_403_FORBIDDEN,
+            )
+        if is_sale_return_notice_text(task.description):
+            return Response(
+                {'error': SALE_RETURN_TICK_ERROR},
+                status=status.HTTP_400_BAD_REQUEST,
             )
         task.is_done = not task.is_done
         task.mark_done(done=task.is_done)
