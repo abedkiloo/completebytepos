@@ -170,15 +170,15 @@ run_docker() {
 
     if [[ "$*" == *"--clear-cache"* ]] || [[ "$*" == *"-c"* ]]; then
         clear_docker_cache
+        print_info "Building Docker images from scratch..."
+        compose build --no-cache
+    elif [[ "$*" == *"--rebuild"* ]]; then
+        print_info "Building Docker images from scratch..."
+        compose build --no-cache
     else
-        print_info "Clearing Docker Buildx cache..."
-        docker buildx prune -f 2>/dev/null || true
-    fi
-
-    print_info "Building Docker images..."
-    if ! DOCKER_BUILDKIT=1 compose build --no-cache --progress=plain; then
-        print_warning "Build with BuildKit failed, trying without BuildKit..."
-        DOCKER_BUILDKIT=0 compose build --no-cache
+        # Match ./run_docker.sh --prod: reuse layers (especially npm ci) unless package-lock changed.
+        print_info "Building Docker images (reusing cache when lockfile is unchanged)..."
+        compose build
     fi
 
     print_info "Starting containers..."
@@ -218,11 +218,13 @@ main() {
         echo "  API: https://api.uat.omuwenga.com"
         echo ""
         echo "Options:"
-        echo "  --clear-cache, -c    Clear all Docker caches before building"
+        echo "  --rebuild            Rebuild images (no cache). npm ci still runs if lockfile layers miss."
+        echo "  --clear-cache, -c    Clear all Docker caches, then rebuild from scratch"
         echo "  --help, -h           Show this help message"
         echo ""
         echo "Example:"
-        echo "  ./run_uat.sh --clear-cache"
+        echo "  ./run_uat.sh"
+        echo "  ./run_uat.sh --rebuild"
         exit 0
     elif [[ "$*" == *"--no-docker"* ]]; then
         print_warning "Non-Docker UAT mode is not supported"
