@@ -31,7 +31,7 @@ export default function AppraisalsPage() {
         setTeam(teamRes.data?.results || []);
       }
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Could not load appraisals');
+      toast.error(error.response?.data?.error || 'Could not load target delivery');
     } finally {
       setLoading(false);
     }
@@ -45,7 +45,7 @@ export default function AppraisalsPage() {
     setSaving(true);
     try {
       await appraisalsAPI.savePolicy(payload);
-      toast.success('Appraisal template saved');
+      toast.success('Target delivery template saved');
       await load();
     } catch (error) {
       toast.error(error.response?.data?.error || 'Could not save template');
@@ -65,20 +65,21 @@ export default function AppraisalsPage() {
   if (!me) {
     return (
       <PageShell>
-        <EmptyState title="Appraisals unavailable" description="Your account cannot load appraisal progress yet." />
+        <EmptyState title="Target delivery unavailable" description="Your account cannot load target delivery yet." />
       </PageShell>
     );
   }
 
   const months = me.year?.months || [];
+  const showIncrement = Boolean(me.policy?.show_year_end_increment);
   const defaultTab = 'progress';
 
   return (
     <PageShell>
       <PageHeader
         eyebrow="People"
-        title="Appraisals"
-        description="Hit your daily closed-sales target. Stars come from collected sales. Use today’s five moves to talk to makers, match the right hardware, and teach — not only post pictures."
+        title="Target delivery"
+        description="Hit your daily closed-sales target. Stars come from collected sales. Use today’s five moves to follow up, talk well, and win more customers."
       />
       <Tabs defaultValue={defaultTab} className="space-y-4">
         <TabsList>
@@ -89,6 +90,7 @@ export default function AppraisalsPage() {
 
         <TabsContent value="progress" className="space-y-4">
           <AppraisalProgressCard snapshot={me} emphasis />
+          {showIncrement ? (
           <Card>
             <CardContent className="space-y-3 p-4">
               <h3 className="text-sm font-semibold">This year</h3>
@@ -114,12 +116,13 @@ export default function AppraisalsPage() {
               <p className="text-sm text-muted-foreground">{me.policy?.contract_line}</p>
             </CardContent>
           </Card>
+          ) : null}
         </TabsContent>
 
         {canTeam ? (
           <TabsContent value="team">
             {team.length === 0 ? (
-              <EmptyState title="No posted sales yet" description="Team appraisals appear once staff close sales this year." />
+              <EmptyState title="No posted sales yet" description="Team target delivery appears once staff close sales this year." />
             ) : (
               <div className="space-y-3">
                 {team.map((row) => {
@@ -134,12 +137,16 @@ export default function AppraisalsPage() {
                               Today {starGlyphs(row.today?.stars)} · Month {Number(row.month?.official_average || 0).toFixed(1)}/5
                             </p>
                           </div>
+                          {showIncrement ? (
                           <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', theme.pill)}>
                             {row.year?.four_star_months}/{row.year?.four_star_months_required} four-star months
                           </span>
+                          ) : null}
                         </div>
                         <AppraisalProgressBar progress={row.month?.progress_to_four_star} tone={row.month?.tone} label="4-star month" />
-                        <AppraisalProgressBar progress={row.year?.progress_to_increment} tone={row.year?.tone} label="Year-end increment" />
+                        {showIncrement ? (
+                          <AppraisalProgressBar progress={row.year?.progress_to_increment} tone={row.year?.tone} label="Year-end increment" />
+                        ) : null}
                       </CardContent>
                     </Card>
                   );

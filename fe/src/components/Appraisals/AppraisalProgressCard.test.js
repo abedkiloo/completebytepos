@@ -39,14 +39,14 @@ const snapshot = {
     tone: 'rose',
   },
   today_tips: {
-    title: 'Help them choose the right sofa stand',
-    why: 'Makers buy from the person who stops a wobbly sofa.',
+    title: 'Follow up before they forget you',
+    why: 'Most closed sales come from people you already know.',
     tips: [
-      'Measure with them.',
-      'Load first, style second.',
-      'Sell a set of four.',
-      'Match the floor.',
-      'Post a short how-to, not only a product picture.',
+      'Call five customers you already sold to.',
+      'If they said later, call today.',
+      'Call the morning after delivery.',
+      'Write three follow-up names.',
+      'Ask when to call back, then call then.',
     ],
   },
 };
@@ -58,17 +58,30 @@ describe('AppraisalProgressCard', () => {
     expect(screen.getByText(/of KES 20,000 daily target/)).toBeInTheDocument();
     expect(screen.getByText(/toward a 4-star month/)).toBeInTheDocument();
     expect(screen.getByTestId('appraisal-daily-tips')).toBeInTheDocument();
-    expect(screen.getByText('Help them choose the right sofa stand')).toBeInTheDocument();
-    expect(screen.getByText('Post a short how-to, not only a product picture.')).toBeInTheDocument();
+    expect(screen.getByText('Follow up before they forget you')).toBeInTheDocument();
+    expect(screen.getByText('Ask when to call back, then call then.')).toBeInTheDocument();
     expect(screen.queryByText(/bonus/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/increment/i)).not.toBeInTheDocument();
     expect(screen.getByText(/Still needed today/)).toBeInTheDocument();
+  });
+
+  it('shows year-end increment only when the policy flag is on', () => {
+    render(
+      <AppraisalProgressCard
+        snapshot={{
+          ...snapshot,
+          policy: { show_year_end_increment: true },
+        }}
+      />
+    );
+    expect(screen.getByText(/four-star months/)).toBeInTheDocument();
   });
 
   it('shows one today move on the compact home card', () => {
     render(<AppraisalProgressCard snapshot={snapshot} compact />);
 
     expect(screen.getByTestId('appraisal-today-move')).toHaveTextContent('Today’s move');
-    expect(screen.getByTestId('appraisal-today-move')).toHaveTextContent('Measure with them.');
+    expect(screen.getByTestId('appraisal-today-move')).toHaveTextContent('Call five customers you already sold to.');
     expect(screen.queryByTestId('appraisal-daily-tips')).not.toBeInTheDocument();
   });
 });

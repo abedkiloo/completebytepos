@@ -188,12 +188,32 @@ class AppraisalEngineTests(SimpleTestCase):
         self.assertIn('KES 1,500', greeting['headline'])
         self.assertNotIn('Bonus', greeting['detail'])
         self.assertIn('4-star month', greeting['detail'].lower())
+        self.assertNotIn('four-star months this year', greeting['detail'])
+        with_increment = greeting_copy(
+            today,
+            {'official_average': 3.0},
+            {'four_star_months': 1, 'four_star_months_required': 8},
+            show_increment=True,
+        )
+        self.assertIn('1/8 four-star months this year', with_increment['detail'])
         from datetime import date
         first = pick_daily_tips(self.template, date(2026, 9, 29))
         second = pick_daily_tips(self.template, date(2026, 9, 30))
         self.assertEqual(len(first['tips']), 5)
         self.assertTrue(first['title'])
         self.assertNotEqual(first['id'], second['id'])
+        self.assertNotIn(first['id'], {
+            'reach-workshops', 'choose-sofa-stands', 'recliners-meeting',
+            'workshop-experience', 'teach-then-sell',
+        })
+        replaced = pick_daily_tips({
+            'daily_tip_packs': [{
+                'id': 'reach-workshops',
+                'title': 'Old hardware pack',
+                'tips': ['A', 'B', 'C', 'D', 'E'],
+            }],
+        }, date(2026, 1, 1))
+        self.assertNotEqual(replaced['id'], 'reach-workshops')
         custom = normalize_template({
             'daily_tip_packs': [{
                 'title': 'Custom pack',

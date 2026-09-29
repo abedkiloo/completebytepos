@@ -54,11 +54,11 @@ export const MODULE_SETTINGS_CARDS = [
   },
   {
     module: 'appraisals',
-    title: 'Appraisals',
+    title: 'Target delivery',
     description:
-      '5-star daily target and sales tips. Pay bands are edited on the Appraisals page. These toggles control the login greeting and home card.',
+      '5-star daily target and customer follow-up tips. Pay bands are edited on the Target delivery page. These toggles control the login greeting and home card.',
     icon: Star,
-    toastLabel: 'Appraisals',
+    toastLabel: 'Target delivery',
   },
   {
     module: 'employees',

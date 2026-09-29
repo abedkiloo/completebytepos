@@ -294,7 +294,12 @@ def staff_snapshot(user: User, *, year: int | None = None, today=None, template=
         complete_month=year < today.year,
     )
     year_snap = _build_year(year=year, today=today, daily_net=daily_net, template=applied)
-    greeting = greeting_copy(today_rating, month, year_snap)
+    greeting = greeting_copy(
+        today_rating,
+        month,
+        year_snap,
+        show_increment=bool(base.get('show_year_end_increment')),
+    )
     return {
         'staff': {
             'id': user.id,

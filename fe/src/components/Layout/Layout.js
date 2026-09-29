@@ -105,7 +105,7 @@ export const NAV_SECTIONS = [
       },
       {
         to: '/appraisals',
-        label: 'Appraisals',
+        label: 'Target delivery',
         icon: Star,
         module: 'appraisals',
         permission: ['appraisals', 'view'],

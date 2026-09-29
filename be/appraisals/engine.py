@@ -146,35 +146,40 @@ def star_tone(stars) -> str:
     return 'rose'
 
 
-def greeting_copy(today: dict[str, Any], month: dict[str, Any], year: dict[str, Any]) -> dict[str, Any]:
+def greeting_copy(
+    today: dict[str, Any],
+    month: dict[str, Any],
+    year: dict[str, Any],
+    *,
+    show_increment: bool = False,
+) -> dict[str, Any]:
     stars = float(today.get('stars') or 1)
     to_target = float(today.get('amount_to_target') or 0)
     if stars >= 5:
         headline = 'Over target — 5 Stars today'
         detail = (
-            'Keep the same quality: match the right stand, mechanism, and finish '
-            'so the next workshop job comes back to you.'
+            'Keep talking with customers the same way: follow up, listen, '
+            'and make it easy for them to call you first tomorrow.'
         )
     elif stars >= 4:
         headline = 'Target met — 4 Stars today'
         detail = (
-            'Use today’s five moves to lock in tomorrow: workshops, follow-ups, '
-            'and useful posts — not only product photos.'
+            'Use today’s five moves to lock in tomorrow: follow-ups, '
+            'clear conversations, and one new customer.'
         )
     else:
         headline = f'{_star_word(stars)} day — KES {int(to_target):,} to hit the daily target'
         detail = (
-            'Close the gap with conversations, the right hardware match, and advice '
-            'customers can use. Five moves for today are below.'
+            'Close the gap by following up, talking well, and finding one more customer. '
+            'Five moves for today are below.'
         )
 
     month_avg = float(month.get('official_average') or 0)
-    four_count = int(year.get('four_star_months') or 0)
-    needed = int(year.get('four_star_months_required') or 8)
-    detail = (
-        f'{detail} Monthly average {month_avg:.2f}/5 toward a 4-star month. '
-        f'{four_count}/{needed} four-star months this year.'
-    )
+    detail = f'{detail} Monthly average {month_avg:.2f}/5 toward a 4-star month.'
+    if show_increment:
+        four_count = int(year.get('four_star_months') or 0)
+        needed = int(year.get('four_star_months_required') or 8)
+        detail = f'{detail} {four_count}/{needed} four-star months this year.'
     return {
         'headline': headline,
         'detail': detail,

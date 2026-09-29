@@ -176,6 +176,7 @@ class AppraisalPolicyAPITests(SuperAdminAPITestCase):
         self.assertEqual(response.data['role_daily_targets']['Field Sales'], 20000)
         self.assertEqual(len(response.data['daily_tip_packs']), 5)
         self.assertEqual(len(response.data['daily_tip_packs'][0]['tips']), 5)
+        self.assertFalse(response.data['show_year_end_increment'])
         self.assertEqual(response.data['year_end_increment'], 3000)
         self.assertEqual(response.data['working_days'], 26)
         self.assertTrue(response.data['greet_when_no_sticky_notes'])

@@ -1,4 +1,4 @@
-"""Rotating daily sales tips for sofa, recliner, and seating hardware."""
+"""Rotating daily sales tips: follow up, talk well, and win more customers."""
 
 from __future__ import annotations
 
@@ -8,66 +8,74 @@ from typing import Any
 
 DEFAULT_DAILY_TIP_PACKS: list[dict[str, Any]] = [
     {
-        'id': 'reach-workshops',
-        'title': 'Reach the makers who buy today',
-        'why': 'Closed sales sit in workshops. Waiting in the shop rarely fills a daily target.',
+        'id': 'follow-up',
+        'title': 'Follow up before they forget you',
+        'why': 'Most closed sales come from people you already know — if you call them back.',
         'tips': [
-            'Before 10am, call five sofa makers you already sold to. Ask what they are cutting this week.',
-            'Visit one workshop in person. Take a sofa stand, a recliner mechanism, and a meeting-chair base they can hold.',
-            'Ask which room it is for: home sofa, hotel lobby, or boardroom. The hardware changes with the job.',
-            'Leave a sample set of four stands with felt pads. Follow up the day they start upholstery.',
-            'Book tomorrow’s visit before you leave. Dates close sales; “I’ll pass by” does not.',
+            'Before 10am, call five customers you already sold to. Ask how the last job is going.',
+            'If they said “I will take, later,” call today. Later rarely comes on its own.',
+            'After a delivery, call the next morning: did everything arrive, and is anything missing?',
+            'Write three follow-up names before you leave the shop, then tick them off.',
+            'If they are busy, ask when to call back — and call at that time.',
         ],
     },
     {
-        'id': 'choose-sofa-stands',
-        'title': 'Help them choose the right sofa stand',
-        'why': 'Makers buy from the person who stops a wobbly sofa — not from a photo of chrome legs.',
+        'id': 'talk-well',
+        'title': 'Talk with customers, not at them',
+        'why': 'People buy from someone who listens and speaks clearly.',
         'tips': [
-            'Measure with them. Finished seat height should land around 43–51 cm for most adults.',
-            'Load first, style second. A 3-seater plus people needs a rated stand, not the lightest look.',
-            'Sell a set of four. For long 3- and 4-seaters, add a center support so the middle does not sag.',
-            'Match the floor: felt pads on tiles, rubber on smooth floors, taller stands if they clean underneath.',
-            'Post a short how-to, not only a product picture: height, load, set of four, finish, and fixing plate.',
+            'Greet first, then ask what they are working on. Do not open with the price list.',
+            'Repeat what they asked in their words, so they know you heard them.',
+            'Use simple language. If they look unsure, slow down and explain once more.',
+            'Do not argue about price. Ask what they need the item to do, then help them choose.',
+            'Thank them for their time even when they do not buy today. Leave the door open.',
         ],
     },
     {
-        'id': 'recliners-meeting',
-        'title': 'Talk recliners and meeting seats like a technician',
-        'why': 'High-end seating fails on the mechanism and the base — that is your opening.',
+        'id': 'more-customers',
+        'title': 'Find one new customer today',
+        'why': 'New names fill the target when regulars are quiet.',
         'tips': [
-            'Ask wall space before you quote a recliner. Wall-huggers need about 10–15 cm; standard mechanisms need 30–45 cm behind the back.',
-            'Confirm weight rating and how often it will recline. Hotels and waiting rooms need a stronger mechanism than a home TV chair.',
-            'Sell the kit: mechanism, handle or cable, bushes, and spare screws. One missing part kills the job.',
-            'For meeting chairs, check the base and swivel separately from the foam. Commercial bases carry more load than dining chairs.',
-            'After they collect, show how to tighten bolts and never stand on the footrest. That call brings the next order.',
+            'Ask a happy customer: who else in their line of work might need the same things?',
+            'Visit one new workshop or site you have not sold to this month.',
+            'Collect a name, phone, and what they usually buy. Write it down the same day.',
+            'Introduce yourself in one sentence: who you help, and how they can reach you.',
+            'Go back to yesterday’s new contact with a short follow-up, not a hard pitch.',
         ],
     },
     {
-        'id': 'workshop-experience',
-        'title': 'Make the workshop visit worth repeating',
-        'why': 'People remember how you treated the job on their floor.',
+        'id': 'keep-them',
+        'title': 'Make it easy for them to call you first',
+        'why': 'Repeat customers close the daily target faster than cold visits.',
         'tips': [
-            'Start with their job, not your catalogue. What are they covering today — corner sofa, recliner, or office seating?',
-            'Demonstrate on their frame. Let them feel the stand plate and the recliner action.',
-            'Write the order clearly: quantity (sets of four), finish, height, and delivery day. Repeat it back.',
-            'On delivery, check the set is complete — stands, screws, pads — before you leave the gate.',
-            'Follow up the next day: did the stands sit level? Fix it fast and they will call you first next week.',
+            'Save every customer’s name and what they last bought before you forget.',
+            'If you cannot supply today, say when you can — then keep that promise.',
+            'If something is wrong, own it quickly and fix it. Quiet problems lose customers.',
+            'Check in on quiet customers: “We have not spoken this month — how is work?”',
+            'After a good sale, ask when they will next need a restock, and set a reminder.',
         ],
     },
     {
-        'id': 'teach-then-sell',
-        'title': 'Teach today, sell this week',
-        'why': 'A useful post travels further than a picture of stock.',
+        'id': 'ask-then-help',
+        'title': 'Ask, then help',
+        'why': 'Good questions show respect and uncover the next order.',
         'tips': [
-            'Post five lines: how to choose sofa stands — height, load, number of legs, finish, and floor type.',
-            'Film 20 seconds of a recliner opening. Name the parts: mechanism, cable, footrest, back lock.',
-            'Answer one real question in the caption: will these stands hold a 3-seater? Show the rating.',
-            'Tag one workshop you helped this month and say what you solved, not only what you stock.',
-            'Share a meeting-chair tip: commercial bases need a higher load rating than home dining chairs.',
+            'Ask what they are building this week, not only what they want to buy.',
+            'Ask who will use it — home, hotel, or office — then advise from that.',
+            'If they hesitate, ask what would make the choice easier, then answer that.',
+            'Offer the next useful item only after you have solved what they came for.',
+            'End every visit with a next step: a quote, a sample, or a time you will call.',
         ],
     },
 ]
+
+LEGACY_TIP_PACK_IDS = frozenset({
+    'reach-workshops',
+    'choose-sofa-stands',
+    'recliners-meeting',
+    'workshop-experience',
+    'teach-then-sell',
+})
 
 
 def _normalize_tip_pack(raw: Any) -> dict[str, Any] | None:
@@ -100,7 +108,12 @@ def normalize_daily_tip_packs(raw: Any) -> list[dict[str, Any]]:
     if not isinstance(incoming, list) or not incoming:
         return copy.deepcopy(DEFAULT_DAILY_TIP_PACKS)
     packs = [pack for pack in (_normalize_tip_pack(row) for row in incoming) if pack]
-    return packs or copy.deepcopy(DEFAULT_DAILY_TIP_PACKS)
+    if not packs:
+        return copy.deepcopy(DEFAULT_DAILY_TIP_PACKS)
+    ids = {pack['id'] for pack in packs}
+    if ids <= LEGACY_TIP_PACK_IDS:
+        return copy.deepcopy(DEFAULT_DAILY_TIP_PACKS)
+    return packs
 
 
 def pick_daily_tips(template: dict[str, Any] | None, today: date | None = None) -> dict[str, Any]:

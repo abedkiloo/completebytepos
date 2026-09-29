@@ -52,7 +52,7 @@ DOMAINS: list[dict[str, Any]] = [
     {
         'id': 'people',
         'label': 'People',
-        'description': 'Staff records and sales appraisals.',
+        'description': 'Staff records and target delivery.',
         'sort_order': 60,
     },
     {
@@ -343,8 +343,8 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
     {
         'module_name': 'appraisals',
         'domain': 'people',
-        'display_name': 'Appraisals',
-        'description': '5-star daily target, sales tips, and year-end increment for sales staff.',
+        'display_name': 'Target delivery',
+        'description': '5-star daily target and customer follow-up tips for sales staff.',
         'default_enabled': True,
         'sort_order': 20,
         'features': [

@@ -35,10 +35,11 @@ export default function AppraisalProgressCard({
   className,
 }) {
   if (!snapshot) return null;
-  const { today, month, year, greeting, staff, today_tips: todayTips } = snapshot;
+  const { today, month, year, greeting, staff, today_tips: todayTips, policy } = snapshot;
   const tone = today?.tone || month?.tone || 'rose';
   const theme = appraisalTone(tone);
   const toTarget = Number(today?.amount_to_target || 0);
+  const showIncrement = Boolean(policy?.show_year_end_increment);
 
   return (
     <Card
@@ -97,31 +98,23 @@ export default function AppraisalProgressCard({
           emphasis={emphasis}
           label={`This month ${Number(month?.official_average || 0).toFixed(2)}/5 toward a 4-star month`}
         />
-        <AppraisalProgressBar
-          progress={year?.progress_to_increment}
-          tone={year?.qualifies ? 'gold' : year?.tone}
-          emphasis={emphasis}
-          label={`Year ${year?.four_star_months || 0}/${year?.four_star_months_required || 8} four-star months`}
-        />
+        {showIncrement ? (
+          <AppraisalProgressBar
+            progress={year?.progress_to_increment}
+            tone={year?.qualifies ? 'gold' : year?.tone}
+            emphasis={emphasis}
+            label={`Year ${year?.four_star_months || 0}/${year?.four_star_months_required || 8} four-star months`}
+          />
+        ) : null}
 
         <AppraisalDailyTips pack={todayTips} compact={compact} emphasis={emphasis} />
 
         {!compact && (
-          <div
-            className={cn(
-              'grid gap-2 text-xs sm:grid-cols-2',
-              emphasis ? 'text-white/70' : 'text-muted-foreground',
-            )}
-          >
-            <p>
-              {toTarget > 0
-                ? `Still needed today: ${kes(toTarget)}`
-                : 'Daily target met'}
-            </p>
-            <p>
-              Year-end increment: {kes(year?.new_basic)} {year?.qualifies ? '(on track)' : '(not yet)'}
-            </p>
-          </div>
+          <p className={cn('text-xs', emphasis ? 'text-white/70' : 'text-muted-foreground')}>
+            {toTarget > 0
+              ? `Still needed today: ${kes(toTarget)}`
+              : 'Daily target met'}
+          </p>
         )}
 
         {compact ? (

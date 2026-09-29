@@ -180,6 +180,7 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
       four_star_month_min_avg: num(form.four_star_month_min_avg, 4),
       four_star_months_required: num(form.four_star_months_required, 8),
       annual_avg_required: num(form.annual_avg_required, 4),
+      show_year_end_increment: Boolean(form.show_year_end_increment),
       daily_tip_packs: (form.daily_tip_packs || []).map((pack) => ({
         ...pack,
         title: String(pack.title || '').trim(),
@@ -201,21 +202,25 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
             <Input id="basic_pay" type="number" value={form.basic_pay} onChange={(e) => setField('basic_pay', e.target.value)} />
           </div>
           <div>
-            <Label htmlFor="year_end_increment">Year-end increment (KES)</Label>
-            <Input id="year_end_increment" type="number" value={form.year_end_increment} onChange={(e) => setField('year_end_increment', e.target.value)} />
-          </div>
-          <div>
             <Label htmlFor="working_days">Working days / month</Label>
             <Input id="working_days" type="number" value={form.working_days} onChange={(e) => setField('working_days', e.target.value)} />
           </div>
-          <div>
-            <Label htmlFor="four_star_months_required">4-star months required</Label>
-            <Input id="four_star_months_required" type="number" value={form.four_star_months_required} onChange={(e) => setField('four_star_months_required', e.target.value)} />
-          </div>
-          <div>
-            <Label htmlFor="annual_avg_required">Annual average required</Label>
-            <Input id="annual_avg_required" type="number" step="0.1" value={form.annual_avg_required} onChange={(e) => setField('annual_avg_required', e.target.value)} />
-          </div>
+          {form.show_year_end_increment ? (
+            <>
+              <div>
+                <Label htmlFor="year_end_increment">Year-end increment (KES)</Label>
+                <Input id="year_end_increment" type="number" value={form.year_end_increment} onChange={(e) => setField('year_end_increment', e.target.value)} />
+              </div>
+              <div>
+                <Label htmlFor="four_star_months_required">4-star months required</Label>
+                <Input id="four_star_months_required" type="number" value={form.four_star_months_required} onChange={(e) => setField('four_star_months_required', e.target.value)} />
+              </div>
+              <div>
+                <Label htmlFor="annual_avg_required">Annual average required</Label>
+                <Input id="annual_avg_required" type="number" step="0.1" value={form.annual_avg_required} onChange={(e) => setField('annual_avg_required', e.target.value)} />
+              </div>
+            </>
+          ) : null}
           <label className="flex items-center gap-2 text-sm sm:col-span-2">
             <Switch
               checked={Boolean(form.greet_when_no_sticky_notes)}
@@ -229,6 +234,13 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
               onCheckedChange={(checked) => setField('show_on_home', checked)}
             />
             Show on home / dashboard
+          </label>
+          <label className="flex items-center gap-2 text-sm sm:col-span-2">
+            <Switch
+              checked={Boolean(form.show_year_end_increment)}
+              onCheckedChange={(checked) => setField('show_year_end_increment', checked)}
+            />
+            Show year-end increment to staff
           </label>
         </CardContent>
       </Card>
@@ -313,7 +325,7 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            One pack of five tips shows each day in the greeting. Paste workshop, product-advice, and teaching tips here — not only product photos.
+            One pack of five tips shows each day in the greeting. Paste follow-up, conversation, and new-customer tips here.
           </p>
           {(form.daily_tip_packs || []).map((pack, packIndex) => (
             <div key={pack.id || packIndex} className="space-y-2 rounded-md border p-3">
@@ -366,6 +378,7 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
         </CardContent>
       </Card>
 
+      {form.show_year_end_increment ? (
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Staff policy line</CardTitle>
@@ -380,6 +393,7 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
           />
         </CardContent>
       </Card>
+      ) : null}
 
       <div className="flex justify-end">
         <Button type="submit" disabled={saving}>

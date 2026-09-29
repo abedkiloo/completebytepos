@@ -60,6 +60,7 @@ DEFAULT_TEMPLATE: dict[str, Any] = {
     'contract_line': CONTRACT_LINE,
     'bonus_policy_line': BONUS_POLICY_LINE,
     'daily_tip_packs': DEFAULT_DAILY_TIP_PACKS,
+    'show_year_end_increment': False,
 }
 
 
@@ -277,6 +278,8 @@ def normalize_template(raw: Any) -> dict[str, Any]:
         data['contract_line'] = str(raw.get('contract_line') or data['contract_line'])
     if 'bonus_policy_line' in raw:
         data['bonus_policy_line'] = str(raw.get('bonus_policy_line') or data['bonus_policy_line'])
+    if 'show_year_end_increment' in raw:
+        data['show_year_end_increment'] = bool(raw.get('show_year_end_increment'))
 
     data['daily_tip_packs'] = normalize_daily_tip_packs(raw)
 

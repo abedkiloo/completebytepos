@@ -464,8 +464,8 @@ MODULE_SETTING_DEFINITIONS: dict[str, list[dict[str, Any]]] = {
         ),
         _setting(
             'show_on_home',
-            'Show appraisal progress on home',
-            'Adds the daily / monthly / year-end progress card to the dashboard and app home.',
+            'Show target delivery on home',
+            'Adds the daily and monthly progress card to the dashboard and app home.',
             True,
             2,
         ),
