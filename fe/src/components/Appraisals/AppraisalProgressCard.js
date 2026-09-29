@@ -6,6 +6,7 @@ import { cn } from '../../lib/cn';
 import { Card, CardContent } from '../ui/card';
 import { appraisalTone, kes, starGlyphs } from '../../utils/appraisalStars';
 import AppraisalProgressBar from './AppraisalProgressBar';
+import AppraisalDailyTips from './AppraisalDailyTips';
 
 function StarPill({ stars, tone, label, emphasis }) {
   const theme = appraisalTone(tone);
@@ -34,9 +35,10 @@ export default function AppraisalProgressCard({
   className,
 }) {
   if (!snapshot) return null;
-  const { today, month, year, greeting, staff } = snapshot;
+  const { today, month, year, greeting, staff, today_tips: todayTips } = snapshot;
   const tone = today?.tone || month?.tone || 'rose';
   const theme = appraisalTone(tone);
+  const toTarget = Number(today?.amount_to_target || 0);
 
   return (
     <Card
@@ -87,13 +89,13 @@ export default function AppraisalProgressCard({
           progress={today?.target_progress}
           tone={today?.tone}
           emphasis={emphasis}
-          label={`Today ${kes(today?.sales)} / daily target ${kes(today?.target)}`}
+          label={`Today ${kes(today?.sales)} of ${kes(today?.target)} daily target`}
         />
         <AppraisalProgressBar
           progress={month?.progress_to_four_star}
           tone={month?.four_star_month ? 'emerald' : month?.tone}
           emphasis={emphasis}
-          label={`Month avg ${Number(month?.official_average || 0).toFixed(2)}/5 · bonus ${kes(month?.bonus)}`}
+          label={`This month ${Number(month?.official_average || 0).toFixed(2)}/5 toward a 4-star month`}
         />
         <AppraisalProgressBar
           progress={year?.progress_to_increment}
@@ -102,21 +104,22 @@ export default function AppraisalProgressCard({
           label={`Year ${year?.four_star_months || 0}/${year?.four_star_months_required || 8} four-star months`}
         />
 
+        <AppraisalDailyTips pack={todayTips} compact={compact} emphasis={emphasis} />
+
         {!compact && (
           <div
             className={cn(
-              'grid gap-2 text-xs sm:grid-cols-3',
+              'grid gap-2 text-xs sm:grid-cols-2',
               emphasis ? 'text-white/70' : 'text-muted-foreground',
             )}
           >
             <p>
-              Next daily star: {today?.next_min != null ? kes(today.amount_to_next) : 'Max'}
+              {toTarget > 0
+                ? `Still needed today: ${kes(toTarget)}`
+                : 'Daily target met'}
             </p>
             <p>
-              Next bonus band: {month?.next_bonus_min != null ? kes(month.amount_to_next_bonus) : 'Max'}
-            </p>
-            <p>
-              Year-end basic: {kes(year?.new_basic)} {year?.qualifies ? '(on track)' : '(not yet)'}
+              Year-end increment: {kes(year?.new_basic)} {year?.qualifies ? '(on track)' : '(not yet)'}
             </p>
           </div>
         )}

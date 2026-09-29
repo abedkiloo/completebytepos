@@ -344,7 +344,7 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
         'module_name': 'appraisals',
         'domain': 'people',
         'display_name': 'Appraisals',
-        'description': '5-star daily, monthly bonus, and year-end increment for sales staff.',
+        'description': '5-star daily target, sales tips, and year-end increment for sales staff.',
         'default_enabled': True,
         'sort_order': 20,
         'features': [

@@ -98,17 +98,33 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
     ],
     []
   );
-  const bonusColumns = useMemo(
-    () => [
-      { key: 'min', label: 'From (KES)', step: '1' },
-      { key: 'stars', label: 'Stars', step: '0.5' },
-      { key: 'bonus', label: 'Bonus (KES)', step: '1' },
-      { key: 'label', label: 'Label', type: 'text' },
-    ],
-    []
-  );
-
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+
+  const emptyTipPack = () => ({
+    id: `pack-${Date.now()}`,
+    title: '',
+    why: '',
+    tips: ['', '', '', '', ''],
+  });
+
+  const patchTipPack = (index, key, value) => {
+    setForm((prev) => {
+      const next = [...(prev.daily_tip_packs || [])];
+      next[index] = { ...next[index], [key]: value };
+      return { ...prev, daily_tip_packs: next };
+    });
+  };
+
+  const patchTipLine = (packIndex, tipIndex, value) => {
+    setForm((prev) => {
+      const next = [...(prev.daily_tip_packs || [])];
+      const tips = [...(next[packIndex]?.tips || ['', '', '', '', ''])];
+      while (tips.length < 5) tips.push('');
+      tips[tipIndex] = value;
+      next[packIndex] = { ...next[packIndex], tips };
+      return { ...prev, daily_tip_packs: next };
+    });
+  };
 
   const patchBand = (listKey, index, key, value) => {
     setForm((prev) => {
@@ -164,6 +180,12 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
       four_star_month_min_avg: num(form.four_star_month_min_avg, 4),
       four_star_months_required: num(form.four_star_months_required, 8),
       annual_avg_required: num(form.annual_avg_required, 4),
+      daily_tip_packs: (form.daily_tip_packs || []).map((pack) => ({
+        ...pack,
+        title: String(pack.title || '').trim(),
+        why: String(pack.why || '').trim(),
+        tips: (pack.tips || []).map((tip) => String(tip).trim()).filter(Boolean),
+      })),
     });
   };
 
@@ -275,38 +297,87 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
         onAdd={() => setField('daily_star_bands', [...(form.daily_star_bands || []), { min: 0, stars: 1, label: '' }])}
         onRemove={(i) => setField('daily_star_bands', (form.daily_star_bands || []).filter((_, idx) => idx !== i))}
       />
-      <BandTable
-        title="Monthly bonus bands"
-        rows={form.monthly_bonus_bands || []}
-        columns={bonusColumns}
-        onChange={(i, k, v) => patchBand('monthly_bonus_bands', i, k, v)}
-        onAdd={() => setField('monthly_bonus_bands', [...(form.monthly_bonus_bands || []), { min: 0, stars: 1, bonus: 0, label: '' }])}
-        onRemove={(i) => setField('monthly_bonus_bands', (form.monthly_bonus_bands || []).filter((_, idx) => idx !== i))}
-      />
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-base">Daily sales tips</CardTitle>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setField('daily_tip_packs', [...(form.daily_tip_packs || []), emptyTipPack()])}
+          >
+            <Plus className="mr-1 h-3.5 w-3.5" />
+            Add pack
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            One pack of five tips shows each day in the greeting. Paste workshop, product-advice, and teaching tips here — not only product photos.
+          </p>
+          {(form.daily_tip_packs || []).map((pack, packIndex) => (
+            <div key={pack.id || packIndex} className="space-y-2 rounded-md border p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="grid flex-1 gap-2 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor={`tip_title_${packIndex}`}>Title</Label>
+                    <Input
+                      id={`tip_title_${packIndex}`}
+                      value={pack.title || ''}
+                      onChange={(e) => patchTipPack(packIndex, 'title', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor={`tip_why_${packIndex}`}>Why it matters</Label>
+                    <Input
+                      id={`tip_why_${packIndex}`}
+                      value={pack.why || ''}
+                      onChange={(e) => patchTipPack(packIndex, 'why', e.target.value)}
+                    />
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  aria-label={`Remove tip pack ${packIndex + 1}`}
+                  onClick={() => setField(
+                    'daily_tip_packs',
+                    (form.daily_tip_packs || []).filter((_, idx) => idx !== packIndex),
+                  )}
+                  disabled={(form.daily_tip_packs || []).length <= 1}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+              {[0, 1, 2, 3, 4].map((tipIndex) => (
+                <div key={tipIndex}>
+                  <Label htmlFor={`tip_${packIndex}_${tipIndex}`}>Tip {tipIndex + 1}</Label>
+                  <textarea
+                    id={`tip_${packIndex}_${tipIndex}`}
+                    className="min-h-[3.25rem] w-full rounded-md border bg-background px-2.5 py-2 text-sm"
+                    value={(pack.tips || [])[tipIndex] || ''}
+                    onChange={(e) => patchTipLine(packIndex, tipIndex, e.target.value)}
+                  />
+                </div>
+              ))}
+            </div>
+          ))}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Staff policy lines</CardTitle>
+          <CardTitle className="text-base">Staff policy line</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div>
-            <Label htmlFor="contract_line">Year-end increment</Label>
-            <textarea
-              id="contract_line"
-              className="min-h-[4.5rem] w-full rounded-md border bg-background px-2.5 py-2 text-sm"
-              value={form.contract_line || ''}
-              onChange={(e) => setField('contract_line', e.target.value)}
-            />
-          </div>
-          <div>
-            <Label htmlFor="bonus_policy_line">Monthly bonus</Label>
-            <textarea
-              id="bonus_policy_line"
-              className="min-h-[4.5rem] w-full rounded-md border bg-background px-2.5 py-2 text-sm"
-              value={form.bonus_policy_line || ''}
-              onChange={(e) => setField('bonus_policy_line', e.target.value)}
-            />
-          </div>
+        <CardContent>
+          <Label htmlFor="contract_line">Year-end increment</Label>
+          <textarea
+            id="contract_line"
+            className="min-h-[4.5rem] w-full rounded-md border bg-background px-2.5 py-2 text-sm"
+            value={form.contract_line || ''}
+            onChange={(e) => setField('contract_line', e.target.value)}
+          />
         </CardContent>
       </Card>
 

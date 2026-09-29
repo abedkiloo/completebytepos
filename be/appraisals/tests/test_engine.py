@@ -2,6 +2,7 @@ from django.test import SimpleTestCase
 
 from appraisals.engine import (
     daily_star,
+    greeting_copy,
     is_four_star_month,
     monthly_average,
     monthly_bonus,
@@ -16,6 +17,7 @@ from appraisals.policy import (
     template_for_role,
     template_for_track,
 )
+from appraisals.tips import pick_daily_tips
 
 
 class AppraisalEngineTests(SimpleTestCase):
@@ -175,6 +177,33 @@ class AppraisalEngineTests(SimpleTestCase):
         self.assertEqual(manager['daily_target'], 35000)
         self.assertEqual(daily_star(35000, manager)['stars'], 4)
         self.assertEqual(daily_star(20000, manager)['stars'], 2)
+
+    def test_greeting_omits_bonus_and_daily_tips_rotate(self):
+        today = daily_star(18500, self.template)
+        greeting = greeting_copy(
+            today,
+            {'official_average': 3.0},
+            {'four_star_months': 1, 'four_star_months_required': 8},
+        )
+        self.assertIn('KES 1,500', greeting['headline'])
+        self.assertNotIn('Bonus', greeting['detail'])
+        self.assertIn('4-star month', greeting['detail'].lower())
+        from datetime import date
+        first = pick_daily_tips(self.template, date(2026, 9, 29))
+        second = pick_daily_tips(self.template, date(2026, 9, 30))
+        self.assertEqual(len(first['tips']), 5)
+        self.assertTrue(first['title'])
+        self.assertNotEqual(first['id'], second['id'])
+        custom = normalize_template({
+            'daily_tip_packs': [{
+                'title': 'Custom pack',
+                'why': 'Pasted by admin',
+                'tips': ['One', 'Two', 'Three', 'Four', 'Five'],
+            }],
+        })
+        picked = pick_daily_tips(custom, date(2026, 1, 1))
+        self.assertEqual(picked['title'], 'Custom pack')
+        self.assertEqual(picked['tips'][0], 'One')
 
     def test_invalid_bands_rejected(self):
         with self.assertRaises(PolicyError):

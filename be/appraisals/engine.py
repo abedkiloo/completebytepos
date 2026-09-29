@@ -151,18 +151,28 @@ def greeting_copy(today: dict[str, Any], month: dict[str, Any], year: dict[str, 
     to_target = float(today.get('amount_to_target') or 0)
     if stars >= 5:
         headline = 'Over target — 5 Stars today'
+        detail = (
+            'Keep the same quality: match the right stand, mechanism, and finish '
+            'so the next workshop job comes back to you.'
+        )
     elif stars >= 4:
         headline = 'Target met — 4 Stars today'
+        detail = (
+            'Use today’s five moves to lock in tomorrow: workshops, follow-ups, '
+            'and useful posts — not only product photos.'
+        )
     else:
         headline = f'{_star_word(stars)} day — KES {int(to_target):,} to hit the daily target'
+        detail = (
+            'Close the gap with conversations, the right hardware match, and advice '
+            'customers can use. Five moves for today are below.'
+        )
 
     month_avg = float(month.get('official_average') or 0)
-    bonus = float(month.get('bonus') or 0)
     four_count = int(year.get('four_star_months') or 0)
     needed = int(year.get('four_star_months_required') or 8)
     detail = (
-        f'Monthly average {month_avg:.2f}/5 toward a 4-Star month. '
-        f'Bonus this month: KES {int(bonus):,}. '
+        f'{detail} Monthly average {month_avg:.2f}/5 toward a 4-star month. '
         f'{four_count}/{needed} four-star months this year.'
     )
     return {

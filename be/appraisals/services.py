@@ -27,6 +27,7 @@ from .engine import (
     year_end_result,
 )
 from .policy import load_template, public_policy, show_on_home, template_for_role
+from .tips import pick_daily_tips
 
 
 def _aware(dt: datetime) -> datetime:
@@ -305,6 +306,7 @@ def staff_snapshot(user: User, *, year: int | None = None, today=None, template=
         'month': month,
         'year': year_snap,
         'greeting': greeting,
+        'today_tips': pick_daily_tips(base, today),
         'show_on_home': show_on_home(),
     }
 

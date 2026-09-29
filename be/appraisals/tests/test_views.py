@@ -57,6 +57,9 @@ class AppraisalMeAPITests(SalesAPITestCase):
         self.assertEqual(today['amount_to_target'], 1500)
         self.assertEqual(today['tone'], 'amber')
         self.assertIn('headline', response.data['greeting'])
+        self.assertNotIn('Bonus', response.data['greeting']['detail'])
+        self.assertEqual(len(response.data['today_tips']['tips']), 5)
+        self.assertTrue(response.data['today_tips']['title'])
         self.assertEqual(response.data['year']['basic_pay'], 15000)
         self.assertFalse(response.data['year']['qualifies'])
 
@@ -171,6 +174,8 @@ class AppraisalPolicyAPITests(SuperAdminAPITestCase):
         self.assertEqual(response.data['role_daily_targets']['Manager'], 35000)
         self.assertEqual(response.data['role_daily_targets']['Sales Personnel'], 20000)
         self.assertEqual(response.data['role_daily_targets']['Field Sales'], 20000)
+        self.assertEqual(len(response.data['daily_tip_packs']), 5)
+        self.assertEqual(len(response.data['daily_tip_packs'][0]['tips']), 5)
         self.assertEqual(response.data['year_end_increment'], 3000)
         self.assertEqual(response.data['working_days'], 26)
         self.assertTrue(response.data['greet_when_no_sticky_notes'])

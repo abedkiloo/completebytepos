@@ -8,6 +8,8 @@ from typing import Any
 
 from settings.settings_service import SettingsService
 
+from .tips import DEFAULT_DAILY_TIP_PACKS, normalize_daily_tip_packs
+
 MODULE = 'appraisals'
 TEMPLATE_KEY = 'template'
 
@@ -57,6 +59,7 @@ DEFAULT_TEMPLATE: dict[str, Any] = {
     'monthly_bonus_bands': DEFAULT_BONUS_BANDS,
     'contract_line': CONTRACT_LINE,
     'bonus_policy_line': BONUS_POLICY_LINE,
+    'daily_tip_packs': DEFAULT_DAILY_TIP_PACKS,
 }
 
 
@@ -274,6 +277,8 @@ def normalize_template(raw: Any) -> dict[str, Any]:
         data['contract_line'] = str(raw.get('contract_line') or data['contract_line'])
     if 'bonus_policy_line' in raw:
         data['bonus_policy_line'] = str(raw.get('bonus_policy_line') or data['bonus_policy_line'])
+
+    data['daily_tip_packs'] = normalize_daily_tip_packs(raw)
 
     daily = raw.get('daily_star_bands')
     if isinstance(daily, list) and daily:

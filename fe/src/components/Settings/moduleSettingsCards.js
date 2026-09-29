@@ -56,7 +56,7 @@ export const MODULE_SETTINGS_CARDS = [
     module: 'appraisals',
     title: 'Appraisals',
     description:
-      '5-star sales progress. Pay bands and year-end increment are edited on the Appraisals page. These toggles control the login greeting and home card.',
+      '5-star daily target and sales tips. Pay bands are edited on the Appraisals page. These toggles control the login greeting and home card.',
     icon: Star,
     toastLabel: 'Appraisals',
   },

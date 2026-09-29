@@ -60,7 +60,7 @@ export default function AppraisalGreeting() {
       aria-modal="true"
       aria-labelledby="appraisal-greeting-title"
     >
-      <div className="my-auto w-full max-w-lg">
+      <div className="my-auto w-full max-w-xl">
         <AppraisalProgressCard
           snapshot={snapshot}
           emphasis

@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { appraisalsAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import { getStoredAuth, hasPermission } from '../../utils/roleAccess';
-import { appraisalTone, kes, MONTH_NAMES, starGlyphs } from '../../utils/appraisalStars';
+import { appraisalTone, MONTH_NAMES, starGlyphs } from '../../utils/appraisalStars';
 import { cn } from '../../lib/cn';
 import { PageShell, PageHeader, PageLoading, EmptyState } from '../page';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
@@ -78,7 +78,7 @@ export default function AppraisalsPage() {
       <PageHeader
         eyebrow="People"
         title="Appraisals"
-        description="Daily stars from closed sales, monthly bonus for over-performance, and the year-end 4-star increment."
+        description="Hit your daily closed-sales target. Stars come from collected sales. Use today’s five moves to talk to makers, match the right hardware, and teach — not only post pictures."
       />
       <Tabs defaultValue={defaultTab} className="space-y-4">
         <TabsList>
@@ -112,7 +112,6 @@ export default function AppraisalsPage() {
                 })}
               </div>
               <p className="text-sm text-muted-foreground">{me.policy?.contract_line}</p>
-              <p className="text-sm text-muted-foreground">{me.policy?.bonus_policy_line}</p>
             </CardContent>
           </Card>
         </TabsContent>
@@ -132,7 +131,7 @@ export default function AppraisalsPage() {
                           <div>
                             <p className="font-semibold">{row.staff.name}</p>
                             <p className="text-xs text-muted-foreground">
-                              Today {starGlyphs(row.today?.stars)} · Month bonus {kes(row.month?.bonus)}
+                              Today {starGlyphs(row.today?.stars)} · Month {Number(row.month?.official_average || 0).toFixed(1)}/5
                             </p>
                           </div>
                           <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', theme.pill)}>
