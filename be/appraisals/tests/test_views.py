@@ -4,7 +4,10 @@ from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.utils import timezone
 from rest_framework import status
+from rest_framework_simplejwt.tokens import RefreshToken
 
+from accounts.models import Role, UserProfile
+from accounts.role_definitions import ROLE_FIELD_AGENT
 from appraisals.policy import default_template, save_template
 from sales.models import Sale
 from settings.models import ModuleSettings
@@ -64,6 +67,28 @@ class AppraisalMeAPITests(SalesAPITestCase):
         self.assertEqual(response.data['today']['stars'], 1)
         self.assertEqual(response.data['today']['sales'], 0)
 
+    def test_field_sales_uses_own_daily_target(self):
+        payload = default_template()
+        payload['role_daily_targets']['Field Sales'] = 25000
+        save_template(payload)
+        field = User.objects.create_user('appraisal_field', password='field123')
+        UserProfile.objects.create(
+            user=field,
+            role='cashier',
+            custom_role=Role.objects.get(name=ROLE_FIELD_AGENT),
+            is_active=True,
+        )
+        _sale(field, 25000, timezone.now())
+        token = RefreshToken.for_user(field)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+        me = self.client.get('/api/appraisals/me/')
+        self.assertEqual(me.status_code, status.HTTP_200_OK)
+        self.assertEqual(me.data['today']['target'], 25000)
+        self.assertEqual(me.data['today']['stars'], 4)
+        self.assertEqual(me.data['today']['label'], 'TARGET MET')
+        self.assertEqual(me.data['policy']['role_daily_targets']['Field Sales'], 25000)
+        self.assertEqual(me.data['policy']['role_daily_targets']['Sales Personnel'], 20000)
+
     def test_sales_cannot_read_team_or_write_policy(self):
         self.assertEqual(self.client.get('/api/appraisals/team/').status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(
@@ -106,14 +131,31 @@ class AppraisalTeamAPITests(ManagerAPITestCase):
         save_template(default_template())
 
     def test_manager_sees_own_progress_and_team(self):
-        _sale(self.manager_user, 24000, timezone.now())
+        _sale(self.manager_user, 35000, timezone.now())
         me = self.client.get('/api/appraisals/me/')
         self.assertEqual(me.status_code, status.HTTP_200_OK)
-        self.assertEqual(me.data['today']['stars'], 5)
+        self.assertEqual(me.data['today']['stars'], 4)
+        self.assertEqual(me.data['today']['target'], 35000)
+        self.assertEqual(me.data['today']['label'], 'TARGET MET')
+        self.assertEqual(me.data['policy']['daily_target'], 20000)
+        self.assertEqual(me.data['policy']['manager_daily_target'], 35000)
         team = self.client.get('/api/appraisals/team/')
         self.assertEqual(team.status_code, status.HTTP_200_OK)
         names = {row['staff']['id'] for row in team.data['results']}
         self.assertIn(self.manager_user.id, names)
+
+    def test_manager_daily_target_is_configurable(self):
+        payload = default_template()
+        payload['manager_daily_target'] = 40000
+        payload['role_daily_targets']['Manager'] = 40000
+        save_template(payload)
+        _sale(self.manager_user, 40000, timezone.now())
+        me = self.client.get('/api/appraisals/me/')
+        self.assertEqual(me.status_code, status.HTTP_200_OK)
+        self.assertEqual(me.data['today']['target'], 40000)
+        self.assertEqual(me.data['today']['stars'], 4)
+        self.assertEqual(me.data['today']['label'], 'TARGET MET')
+        self.assertEqual(me.data['policy']['role_daily_targets']['Manager'], 40000)
 
 
 class AppraisalPolicyAPITests(SuperAdminAPITestCase):
@@ -125,6 +167,10 @@ class AppraisalPolicyAPITests(SuperAdminAPITestCase):
         response = self.client.get('/api/appraisals/policy/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['daily_target'], 20000)
+        self.assertEqual(response.data['manager_daily_target'], 35000)
+        self.assertEqual(response.data['role_daily_targets']['Manager'], 35000)
+        self.assertEqual(response.data['role_daily_targets']['Sales Personnel'], 20000)
+        self.assertEqual(response.data['role_daily_targets']['Field Sales'], 20000)
         self.assertEqual(response.data['year_end_increment'], 3000)
         self.assertEqual(response.data['working_days'], 26)
         self.assertTrue(response.data['greet_when_no_sticky_notes'])

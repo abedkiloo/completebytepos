@@ -66,8 +66,29 @@ function num(value, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+const LOCKED_ROLES = ['Manager', 'Sales Personnel', 'Field Sales'];
+
+function roleTargetsFromPolicy(policy) {
+  const incoming = policy?.role_daily_targets && typeof policy.role_daily_targets === 'object'
+    ? policy.role_daily_targets
+    : {};
+  return {
+    Manager: num(incoming.Manager, num(policy?.manager_daily_target, 35000)),
+    'Sales Personnel': num(incoming['Sales Personnel'], num(policy?.daily_target, 20000)),
+    'Field Sales': num(incoming['Field Sales'], num(policy?.daily_target, 20000)),
+    ...Object.fromEntries(
+      Object.entries(incoming).map(([role, target]) => [role, num(target, 0)]),
+    ),
+  };
+}
+
 export default function AppraisalTemplateForm({ policy, saving, onSave }) {
-  const [form, setForm] = useState(() => ({ ...policy }));
+  const [form, setForm] = useState(() => ({
+    ...policy,
+    role_daily_targets: roleTargetsFromPolicy(policy),
+  }));
+  const [newRole, setNewRole] = useState('');
+  const [newRoleTarget, setNewRoleTarget] = useState('');
 
   const dailyColumns = useMemo(
     () => [
@@ -97,12 +118,47 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
     });
   };
 
+  const roleTargets = form.role_daily_targets || {};
+  const roleNames = Object.keys(roleTargets).sort((a, b) => a.localeCompare(b));
+
+  const setRoleTarget = (role, value) => {
+    setForm((prev) => ({
+      ...prev,
+      role_daily_targets: {
+        ...(prev.role_daily_targets || {}),
+        [role]: value,
+      },
+    }));
+  };
+
+  const addRoleTarget = () => {
+    const role = newRole.trim();
+    if (!role) return;
+    setRoleTarget(role, num(newRoleTarget, num(form.daily_target, 20000)));
+    setNewRole('');
+    setNewRoleTarget('');
+  };
+
+  const removeRoleTarget = (role) => {
+    if (LOCKED_ROLES.includes(role)) return;
+    setForm((prev) => {
+      const next = { ...(prev.role_daily_targets || {}) };
+      delete next[role];
+      return { ...prev, role_daily_targets: next };
+    });
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
+    const targets = Object.fromEntries(
+      Object.entries(form.role_daily_targets || {}).map(([role, target]) => [role, num(target)]),
+    );
     onSave({
       ...form,
       basic_pay: num(form.basic_pay),
-      daily_target: num(form.daily_target),
+      role_daily_targets: targets,
+      daily_target: num(targets['Sales Personnel'], num(form.daily_target)),
+      manager_daily_target: num(targets.Manager, num(form.manager_daily_target, 35000)),
       year_end_increment: num(form.year_end_increment),
       working_days: num(form.working_days, 26),
       four_star_month_min_avg: num(form.four_star_month_min_avg, 4),
@@ -121,10 +177,6 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
           <div>
             <Label htmlFor="basic_pay">Basic pay (KES)</Label>
             <Input id="basic_pay" type="number" value={form.basic_pay} onChange={(e) => setField('basic_pay', e.target.value)} />
-          </div>
-          <div>
-            <Label htmlFor="daily_target">Daily target (KES)</Label>
-            <Input id="daily_target" type="number" value={form.daily_target} onChange={(e) => setField('daily_target', e.target.value)} />
           </div>
           <div>
             <Label htmlFor="year_end_increment">Year-end increment (KES)</Label>
@@ -156,6 +208,62 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
             />
             Show on home / dashboard
           </label>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Daily targets by role</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Each manager and sales role has its own daily target. 4-star “target met” scales with the amount you set.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {roleNames.map((role) => (
+              <div key={role}>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <Label htmlFor={`role_target_${role}`}>{role}</Label>
+                  {!LOCKED_ROLES.includes(role) ? (
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      aria-label={`Remove ${role}`}
+                      onClick={() => removeRoleTarget(role)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  ) : null}
+                </div>
+                <Input
+                  id={`role_target_${role}`}
+                  type="number"
+                  value={roleTargets[role] ?? ''}
+                  onChange={(e) => setRoleTarget(role, e.target.value)}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="grid gap-2 sm:grid-cols-[1fr_8rem_auto]">
+            <Input
+              placeholder="Add another role…"
+              value={newRole}
+              onChange={(e) => setNewRole(e.target.value)}
+              aria-label="New role name"
+            />
+            <Input
+              type="number"
+              placeholder="KES"
+              value={newRoleTarget}
+              onChange={(e) => setNewRoleTarget(e.target.value)}
+              aria-label="New role daily target"
+            />
+            <Button type="button" variant="outline" onClick={addRoleTarget}>
+              <Plus className="mr-1 h-3.5 w-3.5" />
+              Add role
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

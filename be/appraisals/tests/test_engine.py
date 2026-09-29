@@ -8,7 +8,14 @@ from appraisals.engine import (
     star_tone,
     year_end_result,
 )
-from appraisals.policy import default_template, normalize_template, validate_template, PolicyError
+from appraisals.policy import (
+    default_template,
+    normalize_template,
+    validate_template,
+    PolicyError,
+    template_for_role,
+    template_for_track,
+)
 
 
 class AppraisalEngineTests(SimpleTestCase):
@@ -128,6 +135,46 @@ class AppraisalEngineTests(SimpleTestCase):
         result = year_end_result([5.0] * 6 + [3.0] * 6, custom)
         self.assertTrue(result['qualifies'])
         self.assertEqual(result['new_basic'], 25000)
+
+    def test_manager_daily_target_scales_star_bands(self):
+        template = default_template()
+        self.assertEqual(template['manager_daily_target'], 35000)
+        manager = template_for_track(template, manager=True)
+        self.assertEqual(manager['daily_target'], 35000)
+        met = daily_star(35000, manager)
+        self.assertEqual(met['stars'], 4)
+        self.assertEqual(met['label'], 'TARGET MET')
+        self.assertEqual(met['amount_to_target'], 0)
+        short = daily_star(28000, manager)
+        self.assertEqual(short['stars'], 3)
+        self.assertEqual(short['amount_to_target'], 7000)
+        over = daily_star(42000, manager)
+        self.assertEqual(over['stars'], 5)
+        self.assertEqual(over['label'], 'OVER TARGET')
+        sales = template_for_track(template, manager=False)
+        self.assertEqual(sales['daily_target'], 20000)
+        self.assertEqual(daily_star(20000, sales)['stars'], 4)
+
+    def test_each_role_has_its_own_daily_target(self):
+        template = normalize_template({
+            'role_daily_targets': {
+                'Manager': 35000,
+                'Sales Personnel': 20000,
+                'Field Sales': 25000,
+            },
+        })
+        self.assertEqual(template['role_daily_targets']['Field Sales'], 25000)
+        field = template_for_role(template, 'Field Sales')
+        self.assertEqual(field['daily_target'], 25000)
+        self.assertEqual(daily_star(25000, field)['stars'], 4)
+        self.assertEqual(daily_star(25000, field)['label'], 'TARGET MET')
+        sales = template_for_role(template, 'Sales Personnel')
+        self.assertEqual(sales['daily_target'], 20000)
+        self.assertEqual(daily_star(20000, sales)['stars'], 4)
+        manager = template_for_role(template, 'Manager')
+        self.assertEqual(manager['daily_target'], 35000)
+        self.assertEqual(daily_star(35000, manager)['stars'], 4)
+        self.assertEqual(daily_star(20000, manager)['stars'], 2)
 
     def test_invalid_bands_rejected(self):
         with self.assertRaises(PolicyError):

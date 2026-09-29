@@ -13,6 +13,7 @@ from django.db.models import Q, Sum
 from django.db.models.functions import Coalesce, TruncDate
 from django.utils import timezone
 
+from accounts.models import UserProfile
 from reports.sale_scope import posted_sales
 from sales.models import SaleRefund
 
@@ -25,7 +26,7 @@ from .engine import (
     star_tone,
     year_end_result,
 )
-from .policy import load_template, public_policy, show_on_home
+from .policy import load_template, public_policy, show_on_home, template_for_role
 
 
 def _aware(dt: datetime) -> datetime:
@@ -56,6 +57,39 @@ def _display_name(user: User | None) -> str:
         return 'Unassigned'
     full = user.get_full_name().strip()
     return full or user.username
+
+
+_LEGACY_ROLE_NAMES = {
+    'manager': 'Manager',
+    'cashier': 'Sales Personnel',
+    'admin': 'Super Admin',
+    'super_admin': 'Super Admin',
+}
+
+
+def staff_role_name(user: User | None) -> str:
+    if user is None:
+        return 'Sales Personnel'
+    try:
+        profile = user.profile
+    except UserProfile.DoesNotExist:
+        return 'Sales Personnel'
+    custom = getattr(profile, 'custom_role', None)
+    custom_name = str(getattr(custom, 'name', '') or '').strip()
+    if custom_name:
+        return custom_name
+    legacy = (getattr(profile, 'role', None) or '').lower()
+    return _LEGACY_ROLE_NAMES.get(legacy, 'Sales Personnel')
+
+
+def uses_manager_daily_target(user: User | None) -> bool:
+    name = staff_role_name(user)
+    return name == 'Manager' or 'manager' in name.lower()
+
+
+def template_for_user(user: User | None, template: dict[str, Any] | None = None) -> dict[str, Any]:
+    base = template or load_template()
+    return template_for_role(base, staff_role_name(user))
 
 
 def _net_sales_by_day(user_id: int, start: datetime, end: datetime) -> dict:
@@ -238,7 +272,8 @@ def _build_year(
 def staff_snapshot(user: User, *, year: int | None = None, today=None, template=None) -> dict[str, Any]:
     today = today or timezone.localdate()
     year = int(year or today.year)
-    template = template or load_template()
+    base = template or load_template()
+    applied = template_for_user(user, base)
     start, end = _year_bounds(year)
     daily_net = _net_sales_by_day(user.id, start, end)
     if year < today.year:
@@ -248,16 +283,16 @@ def staff_snapshot(user: User, *, year: int | None = None, today=None, template=
     else:
         month_today = today
     today_sales = daily_net.get(today, Decimal('0')) if today.year == year else Decimal('0')
-    today_rating = daily_star(today_sales, template)
+    today_rating = daily_star(today_sales, applied)
     month = _build_month(
         year=year,
         month=month_today.month,
         today=month_today,
         daily_net=daily_net,
-        template=template,
+        template=applied,
         complete_month=year < today.year,
     )
-    year_snap = _build_year(year=year, today=today, daily_net=daily_net, template=template)
+    year_snap = _build_year(year=year, today=today, daily_net=daily_net, template=applied)
     greeting = greeting_copy(today_rating, month, year_snap)
     return {
         'staff': {
@@ -265,7 +300,7 @@ def staff_snapshot(user: User, *, year: int | None = None, today=None, template=
             'username': user.username,
             'name': _display_name(user),
         },
-        'policy': public_policy(template),
+        'policy': public_policy(base),
         'today': {'date': today.isoformat(), **today_rating},
         'month': month,
         'year': year_snap,
@@ -287,7 +322,12 @@ def team_snapshots(*, year: int | None = None, today=None, template=None) -> dic
         .distinct()
     )
     staff_ids = [sid for sid in staff_ids if sid]
-    users = {u.id: u for u in User.objects.filter(id__in=staff_ids, is_active=True)}
+    users = {
+        u.id: u
+        for u in User.objects.filter(id__in=staff_ids, is_active=True).select_related(
+            'profile', 'profile__custom_role'
+        )
+    }
     results = []
     for user in sorted(users.values(), key=lambda u: _display_name(u).lower()):
         snap = staff_snapshot(user, year=year, today=today, template=template)

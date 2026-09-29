@@ -42,6 +42,12 @@ DEFAULT_BONUS_BANDS = [
 DEFAULT_TEMPLATE: dict[str, Any] = {
     'basic_pay': 15000,
     'daily_target': 20000,
+    'manager_daily_target': 35000,
+    'role_daily_targets': {
+        'Manager': 35000,
+        'Sales Personnel': 20000,
+        'Field Sales': 20000,
+    },
     'year_end_increment': 3000,
     'working_days': 26,
     'four_star_month_min_avg': 4.0,
@@ -103,6 +109,138 @@ class PolicyError(ValueError):
     pass
 
 
+APPRAISAL_ROLE_SKIP = frozenset({'Super Admin'})
+DEFAULT_SALES_ROLES = ('Sales Personnel', 'Field Sales')
+DEFAULT_MANAGER_ROLES = ('Manager',)
+
+
+def _is_manager_role_name(name: str) -> bool:
+    n = (name or '').strip()
+    if n in DEFAULT_MANAGER_ROLES:
+        return True
+    return 'manager' in n.lower()
+
+
+def _normalize_role_daily_targets(
+    raw: Any,
+    *,
+    daily_target: float,
+    manager_daily_target: float,
+) -> dict[str, float]:
+    targets = {
+        'Manager': manager_daily_target,
+        'Sales Personnel': daily_target,
+        'Field Sales': daily_target,
+    }
+    incoming: Any = None
+    if isinstance(raw, dict):
+        incoming = raw.get('role_daily_targets')
+    if isinstance(incoming, dict):
+        rows = incoming.items()
+        for name, value in rows:
+            key = str(name).strip()
+            if not key or key in APPRAISAL_ROLE_SKIP:
+                continue
+            fallback = manager_daily_target if _is_manager_role_name(key) else daily_target
+            targets[key] = max(0, _float(value, fallback))
+    elif isinstance(incoming, list):
+        for row in incoming:
+            if not isinstance(row, dict):
+                continue
+            key = str(row.get('role') or row.get('name') or '').strip()
+            if not key or key in APPRAISAL_ROLE_SKIP:
+                continue
+            fallback = manager_daily_target if _is_manager_role_name(key) else daily_target
+            targets[key] = max(
+                0,
+                _float(row.get('target', row.get('daily_target')), fallback),
+            )
+    return dict(sorted(targets.items(), key=lambda item: item[0].lower()))
+
+
+def catalog_role_names() -> list[str]:
+    names = ['Field Sales', 'Manager', 'Sales Personnel']
+    try:
+        from accounts.models import Role
+
+        extra = (
+            Role.objects.filter(
+                is_active=True,
+                permissions__module__in=['sales', 'pos', 'appraisals'],
+            )
+            .exclude(name__in=APPRAISAL_ROLE_SKIP)
+            .values_list('name', flat=True)
+            .distinct()
+        )
+        for name in extra:
+            label = str(name or '').strip()
+            if label and label not in names and label not in APPRAISAL_ROLE_SKIP:
+                names.append(label)
+    except Exception:
+        pass
+    return sorted(names, key=str.lower)
+
+
+def merge_role_daily_targets(template: dict[str, Any]) -> dict[str, float]:
+    daily = _float(template.get('daily_target'), 20000)
+    manager = _float(template.get('manager_daily_target'), 35000)
+    targets = dict(template.get('role_daily_targets') or {})
+    for name in catalog_role_names():
+        targets.setdefault(
+            name,
+            manager if _is_manager_role_name(name) else daily,
+        )
+    return dict(sorted(targets.items(), key=lambda item: item[0].lower()))
+
+
+def resolve_role_daily_target(template: dict[str, Any], role_name: str) -> float:
+    targets = template.get('role_daily_targets') or {}
+    name = (role_name or '').strip()
+    if name and name in targets:
+        return _float(targets[name], 0)
+    if _is_manager_role_name(name):
+        return _float(template.get('manager_daily_target'), 35000)
+    return _float(template.get('daily_target'), 20000)
+
+
+def apply_daily_target(template: dict[str, Any], target: float) -> dict[str, Any]:
+    """Copy template with daily_target set and star bands scaled so 4★ is target met."""
+    data = copy.deepcopy(template)
+    amount = max(0.0, _float(target, 0))
+    bands = list(data.get('daily_star_bands') or [])
+    four_star = next(
+        (band for band in bands if abs(_float(band.get('stars'), 0) - 4) < 0.01),
+        None,
+    )
+    baseline = _float(
+        (four_star or {}).get('min') if four_star else data.get('daily_target'),
+        0,
+    )
+    data['daily_target'] = amount
+    if amount > 0 and baseline > 0 and bands:
+        ratio = amount / baseline
+        scaled = []
+        for band in bands:
+            row = dict(band)
+            row['min'] = round(max(0.0, _float(band.get('min'), 0) * ratio), 2)
+            scaled.append(row)
+        data['daily_star_bands'] = scaled
+    return data
+
+
+def template_for_role(template: dict[str, Any] | None, role_name: str) -> dict[str, Any]:
+    data = copy.deepcopy(template or load_template())
+    return apply_daily_target(data, resolve_role_daily_target(data, role_name))
+
+
+def template_for_track(template: dict[str, Any] | None = None, *, manager: bool) -> dict[str, Any]:
+    """Back-compat wrapper: sales vs manager default roles."""
+    return template_for_role(
+        template,
+        'Manager' if manager else 'Sales Personnel',
+    )
+
+
 def default_template() -> dict[str, Any]:
     return copy.deepcopy(DEFAULT_TEMPLATE)
 
@@ -116,6 +254,10 @@ def normalize_template(raw: Any) -> dict[str, Any]:
         data['basic_pay'] = max(0, _float(raw['basic_pay'], data['basic_pay']))
     if 'daily_target' in raw:
         data['daily_target'] = max(0, _float(raw['daily_target'], data['daily_target']))
+    if 'manager_daily_target' in raw:
+        data['manager_daily_target'] = max(
+            0, _float(raw['manager_daily_target'], data['manager_daily_target'])
+        )
     if 'year_end_increment' in raw:
         data['year_end_increment'] = max(0, _float(raw['year_end_increment'], data['year_end_increment']))
     if 'working_days' in raw:
@@ -144,6 +286,20 @@ def normalize_template(raw: Any) -> dict[str, Any]:
         bands = [b for b in (_normalize_bonus_band(row) for row in bonus) if b]
         if bands:
             data['monthly_bonus_bands'] = _sorted_bands(bands)
+
+    data['role_daily_targets'] = _normalize_role_daily_targets(
+        raw,
+        daily_target=data['daily_target'],
+        manager_daily_target=data['manager_daily_target'],
+    )
+    data['daily_target'] = _float(
+        data['role_daily_targets'].get('Sales Personnel', data['daily_target']),
+        data['daily_target'],
+    )
+    data['manager_daily_target'] = _float(
+        data['role_daily_targets'].get('Manager', data['manager_daily_target']),
+        data['manager_daily_target'],
+    )
 
     return data
 
@@ -191,6 +347,15 @@ def save_template(raw: dict[str, Any], *, user=None) -> dict[str, Any]:
 
 def public_policy(template: dict[str, Any] | None = None) -> dict[str, Any]:
     data = copy.deepcopy(template or load_template())
+    data['role_daily_targets'] = merge_role_daily_targets(data)
+    data['daily_target'] = _float(
+        data['role_daily_targets'].get('Sales Personnel', data.get('daily_target')),
+        20000,
+    )
+    data['manager_daily_target'] = _float(
+        data['role_daily_targets'].get('Manager', data.get('manager_daily_target')),
+        35000,
+    )
     data['greet_when_no_sticky_notes'] = greet_when_no_sticky_notes()
     data['show_on_home'] = show_on_home()
     return data
