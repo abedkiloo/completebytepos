@@ -4,7 +4,7 @@ from datetime import date
 
 from django.contrib.auth.models import User
 
-from accounts.models import UserProfile
+from accounts.models import Role, UserProfile
 from accounts.role_definitions import sync_default_roles
 from daily_notes.models import DailyNote
 from daily_notes.views import DailyNoteViewSet
@@ -28,7 +28,7 @@ class DailyNotesViewSetQuerysetTests(ManagerAPITestCase):
             author=self.manager_user,
         )
         view = DailyNoteViewSet()
-        view.request = type('R', (), {'user': self.manager_user, 'query_params': {}})()
+        view.request = type('R', (), {'user': self.manager_user, 'query_params': {}, 'GET': {}})()
         self.assertEqual(view.get_queryset().count(), 0)
 
     def test_get_queryset_empty_when_user_lacks_access(self):
@@ -36,8 +36,9 @@ class DailyNotesViewSetQuerysetTests(ManagerAPITestCase):
             module_name='daily_notes',
             defaults={'is_enabled': True},
         )
-        orphan = User.objects.create_user('no_role', password='x')
-        UserProfile.objects.create(user=orphan, role='cashier', custom_role=None)
+        empty_role = Role.objects.create(name='No desk access', is_active=True)
+        orphan = User.objects.create_user('no_desk', password='x')
+        UserProfile.objects.create(user=orphan, role='cashier', custom_role=empty_role)
         view = DailyNoteViewSet()
-        view.request = type('R', (), {'user': orphan, 'query_params': {}})()
+        view.request = type('R', (), {'user': orphan, 'query_params': {}, 'GET': {}})()
         self.assertEqual(view.get_queryset().count(), 0)

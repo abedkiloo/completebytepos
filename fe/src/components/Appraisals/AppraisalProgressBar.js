@@ -7,18 +7,23 @@ export default function AppraisalProgressBar({
   tone = 'rose',
   label,
   className,
+  emphasis = false,
 }) {
   const theme = appraisalTone(tone);
   const width = Math.max(0, Math.min(100, Math.round((Number(progress) || 0) * 100)));
   return (
-    <div className={cn('space-y-1', className)}>
+    <div className={cn('space-y-1.5', className)}>
       {label ? (
         <div className="flex items-center justify-between gap-2 text-xs">
-          <span className={cn('font-medium', theme.text)}>{label}</span>
-          <span className="tabular-nums text-muted-foreground">{percentLabel(progress)}</span>
+          <span className={cn('font-semibold', emphasis ? 'text-white/90' : theme.text)}>
+            {label}
+          </span>
+          <span className={cn('tabular-nums', emphasis ? 'text-white/60' : 'text-muted-foreground')}>
+            {percentLabel(progress)}
+          </span>
         </div>
       ) : null}
-      <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
+      <div className={cn('w-full overflow-hidden rounded-full', emphasis ? 'h-3.5 bg-white/15' : 'h-2.5 bg-muted')}>
         <div
           className={cn('h-full rounded-full bg-gradient-to-r transition-all duration-500', theme.bar)}
           style={{ width: `${width}%` }}

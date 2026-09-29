@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { RotateCcw } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
 import SaleChannelIcon, { saleChannelLabel } from './SaleChannelIcon';
 import {
   Dialog,
@@ -26,11 +28,15 @@ import {
 } from '../../utils/saleItemDisplay';
 import {
   SALE_AWAITING_APPROVAL_MESSAGE,
+  SALE_AWAITING_PAYMENT_MESSAGE,
   saleIsAwaitingApproval,
+  saleIsAwaitingPayment,
   saleNeedsSalespersonAction,
   saleReceiptBlockedReason,
   saleRejectionReason,
 } from '../../utils/saleCompletionApproval';
+import { salesAPI } from '../../services/api';
+import { toast } from '../../utils/toast';
 import { hasDuplicateSaleLines } from '../../utils/detectDuplicateSaleLines';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import { resolveStoreName, resolveReceiptLogoUrl, DEFAULT_STORE_TAGLINE } from '../../utils/storeBranding';
@@ -44,6 +50,7 @@ export default function SaleDetailDialog({
   onRollback,
   canRollback = false,
   onPrint,
+  onCollected,
   showCustomerName = true,
   showAdminDetails = true,
 }) {
@@ -62,6 +69,25 @@ export default function SaleDetailDialog({
   const returnedToSalesperson = saleNeedsSalespersonAction(sale);
   const managerComment = saleRejectionReason(sale);
   const receiptBlocked = saleReceiptBlockedReason(sale);
+  const [collectAmount, setCollectAmount] = useState(String(sale.total || ''));
+  const [collecting, setCollecting] = useState(false);
+
+  const collectPayment = async () => {
+    setCollecting(true);
+    try {
+      await salesAPI.collect(sale.id, {
+        payment_method: 'cash',
+        amount_paid: collectAmount || sale.total,
+      });
+      toast.success('Payment collected. Sale is complete.');
+      onCollected?.(sale.id);
+    } catch (err) {
+      const data = err.response?.data;
+      toast.error(data?.error || data?.detail || 'Could not collect payment');
+    } finally {
+      setCollecting(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -94,6 +120,22 @@ export default function SaleDetailDialog({
         ) : saleIsAwaitingApproval(sale) ? (
           <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
             {SALE_AWAITING_APPROVAL_MESSAGE}
+          </div>
+        ) : saleIsAwaitingPayment(sale) ? (
+          <div className="space-y-2 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm">
+            <p className="font-semibold text-emerald-950">{SALE_AWAITING_PAYMENT_MESSAGE}</p>
+            <Label htmlFor="collect-amount">Amount received</Label>
+            <Input
+              id="collect-amount"
+              type="number"
+              min="0"
+              step="0.01"
+              value={collectAmount}
+              onChange={(event) => setCollectAmount(event.target.value)}
+            />
+            <Button size="sm" onClick={collectPayment} disabled={collecting}>
+              {collecting ? 'Collecting…' : 'Collect payment'}
+            </Button>
           </div>
         ) : null}
 

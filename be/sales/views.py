@@ -135,6 +135,7 @@ SALES_PERMS = RequirePermPerAction('sales', {
     'daily_customer': 'daily_sales',
     'complete': 'approve',
     'reject_complete': 'approve',
+    'collect': 'create',
 })
 
 CUSTOMERS_PERMS = RequirePermPerAction('customers', {
@@ -207,6 +208,7 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             'receipt',
             'complete',
             'reject_complete',
+            'collect',
         ):
             filters['include_holding'] = True
             filters['include_pending_approval'] = True
@@ -436,10 +438,15 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         """Get receipt data for a sale"""
         sale = self.get_object()
         if sale.status != 'completed':
-            from sales.sale_completion_approval import WAITING_MESSAGE
+            from sales.sale_completion_approval import (
+                COLLECT_ONLY_AFTER_APPROVAL,
+                WAITING_MESSAGE,
+            )
 
             message = WAITING_MESSAGE if sale.status == 'pending_approval' else (
-                'Receipt is available after the sale is completed.'
+                COLLECT_ONLY_AFTER_APPROVAL
+                if sale.status == 'awaiting_payment'
+                else 'Receipt is available after the sale is completed.'
             )
             return Response({'error': message}, status=status.HTTP_400_BAD_REQUEST)
         serializer = self.get_serializer(sale)
@@ -710,7 +717,7 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         """Manager/admin: complete a cashier sale waiting for approval."""
         from approvals.service import approve_change
         from sales.sale_completion_approval import (
-            complete_queued_sale,
+            approve_queued_sale,
             pending_sale_complete_change,
         )
 
@@ -726,8 +733,46 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 approve_change(change, request.user, request=request)
                 sale.refresh_from_db()
             else:
-                complete_queued_sale(sale, request.user)
+                approve_queued_sale(sale, request.user)
                 sale.refresh_from_db()
+        except ValidationError as e:
+            return Response(
+                {'error': validation_error_message(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(SaleSerializer(sale).data)
+
+    @action(detail=True, methods=['post'])
+    @transaction.atomic
+    def collect(self, request, pk=None):
+        """Salesperson: collect funds after a manager approved the sale details."""
+        from sales.sale_completion_approval import complete_queued_sale, payment_payload_from_inputs
+
+        sale = self.get_object()
+        if sale.status != 'awaiting_payment':
+            return Response(
+                {'error': 'Collect payment only after a manager approves this sale.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        serializer = CheckoutHoldingSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            payload = payment_payload_from_inputs(
+                payment_method=serializer.validated_data['payment_method'],
+                amount_paid=Decimal(str(serializer.validated_data.get('amount_paid', 0))),
+                allow_partial=serializer.validated_data.get('allow_partial_payment', False),
+                excess_payment_choice=serializer.validated_data.get(
+                    'excess_payment_choice', 'change'
+                ),
+                use_wallet=serializer.validated_data.get('use_wallet', False),
+                wallet_amount=serializer.validated_data.get('wallet_amount', 0),
+                payment_reference=serializer.validated_data.get('payment_reference', ''),
+                sale_type=sale.sale_type or 'pos',
+                client_channel=getattr(sale, 'client_channel', '') or '',
+            )
+            complete_queued_sale(sale, request.user, payload)
+            sale.refresh_from_db()
         except ValidationError as e:
             return Response(
                 {'error': validation_error_message(e)},
@@ -736,7 +781,7 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
         from utils.audit_events import log_sale_completed
 
-        log_sale_completed(request, sale, source='approve')
+        log_sale_completed(request, sale, source='collect')
         return Response(SaleSerializer(sale).data)
 
     @action(detail=True, methods=['post'], url_path='reject-complete')

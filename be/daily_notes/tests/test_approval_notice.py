@@ -157,7 +157,7 @@ class ApprovalNoticeTests(TestCase):
             sale_number='S-99', checker=self.checker
         )
         self.assertIn('S-99', title)
-        self.assertIn('You can issue the receipt now', content)
+        self.assertIn('Collect payment to complete it', content)
         self.assertIn('Bea Mgr', content)
 
         class FakeSale:

@@ -7,11 +7,19 @@ import { Card, CardContent } from '../ui/card';
 import { appraisalTone, kes, starGlyphs } from '../../utils/appraisalStars';
 import AppraisalProgressBar from './AppraisalProgressBar';
 
-function StarPill({ stars, tone, label }) {
+function StarPill({ stars, tone, label, emphasis }) {
   const theme = appraisalTone(tone);
   return (
-    <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold', theme.pill)}>
-      <span aria-hidden>{starGlyphs(stars)}</span>
+    <span
+      className={cn(
+        'inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold shadow-sm',
+        theme.pill,
+        emphasis && 'text-sm',
+      )}
+    >
+      <span aria-hidden className={emphasis ? 'text-base' : undefined}>
+        {starGlyphs(stars)}
+      </span>
       <span>{Number(stars).toFixed(Number(stars) % 1 ? 1 : 0)}★</span>
       {label ? <span className="font-medium opacity-90">{label}</span> : null}
     </span>
@@ -21,6 +29,8 @@ function StarPill({ stars, tone, label }) {
 export default function AppraisalProgressCard({
   snapshot,
   compact = false,
+  emphasis = false,
+  actions,
   className,
 }) {
   if (!snapshot) return null;
@@ -30,44 +40,75 @@ export default function AppraisalProgressCard({
 
   return (
     <Card
-      className={cn('overflow-hidden border', theme.border, theme.bg, className)}
+      className={cn(
+        'overflow-hidden border',
+        emphasis
+          ? cn(
+              'border-2 text-white shadow-[0_24px_60px_rgba(0,0,0,0.55)]',
+              theme.emphasisPanel,
+              theme.emphasisBorder,
+            )
+          : cn(theme.border, theme.bg),
+        className,
+      )}
       data-testid="appraisal-progress-card"
     >
-      <CardContent className="space-y-4 p-4">
+      <CardContent className={cn('space-y-4', emphasis ? 'p-5 sm:p-6' : 'p-4')}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <p
+              className={cn(
+                'flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.16em]',
+                emphasis ? 'text-white/70' : 'text-muted-foreground',
+              )}
+            >
               <Star className="h-3.5 w-3.5" />
-              {staff?.name ? `${staff.name} · 5-star progress` : '5-star progress'}
+              {staff?.name ? `${staff.name} · your progress` : 'Your progress'}
             </p>
-            <h2 className={cn('mt-1 text-lg font-semibold leading-tight', theme.text)}>
+            <h2
+              id={emphasis ? 'appraisal-greeting-title' : undefined}
+              className={cn(
+                'mt-1.5 font-extrabold leading-tight',
+                emphasis ? 'text-2xl text-white' : cn('text-lg', theme.text),
+              )}
+            >
               {greeting?.headline || 'Keep pushing to the next star'}
             </h2>
             {!compact && greeting?.detail ? (
-              <p className="mt-1 text-sm text-muted-foreground">{greeting.detail}</p>
+              <p className={cn('mt-1.5 text-sm', emphasis ? 'text-white/80' : 'text-muted-foreground')}>
+                {greeting.detail}
+              </p>
             ) : null}
           </div>
-          <StarPill stars={today?.stars} tone={today?.tone} label={today?.label} />
+          <StarPill stars={today?.stars} tone={today?.tone} label={today?.label} emphasis={emphasis} />
         </div>
 
         <AppraisalProgressBar
           progress={today?.target_progress}
           tone={today?.tone}
+          emphasis={emphasis}
           label={`Today ${kes(today?.sales)} / daily target ${kes(today?.target)}`}
         />
         <AppraisalProgressBar
           progress={month?.progress_to_four_star}
           tone={month?.four_star_month ? 'emerald' : month?.tone}
+          emphasis={emphasis}
           label={`Month avg ${Number(month?.official_average || 0).toFixed(2)}/5 · bonus ${kes(month?.bonus)}`}
         />
         <AppraisalProgressBar
           progress={year?.progress_to_increment}
           tone={year?.qualifies ? 'gold' : year?.tone}
+          emphasis={emphasis}
           label={`Year ${year?.four_star_months || 0}/${year?.four_star_months_required || 8} four-star months`}
         />
 
         {!compact && (
-          <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+          <div
+            className={cn(
+              'grid gap-2 text-xs sm:grid-cols-3',
+              emphasis ? 'text-white/70' : 'text-muted-foreground',
+            )}
+          >
             <p>
               Next daily star: {today?.next_min != null ? kes(today.amount_to_next) : 'Max'}
             </p>
@@ -81,10 +122,18 @@ export default function AppraisalProgressCard({
         )}
 
         {compact ? (
-          <Link to="/appraisals" className="text-sm font-medium underline underline-offset-2">
+          <Link
+            to="/appraisals"
+            className={cn(
+              'text-sm font-semibold underline underline-offset-2',
+              emphasis ? 'text-white' : undefined,
+            )}
+          >
             Open my progress
           </Link>
         ) : null}
+
+        {actions ? <div className="flex flex-wrap justify-end gap-2 pt-1">{actions}</div> : null}
       </CardContent>
     </Card>
   );

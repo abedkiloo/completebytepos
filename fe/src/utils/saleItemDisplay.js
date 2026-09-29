@@ -66,6 +66,7 @@ export function saleFinalStatusLabel(sale) {
   const status = String(sale?.status || '').toLowerCase();
   if (sale?.needs_salesperson_action) return 'Needs salesperson action';
   if (status === 'pending_approval') return 'Awaiting approval';
+  if (status === 'awaiting_payment') return 'Collect payment';
   if (status === 'holding') return 'On hold';
   if (status === 'cancelled') return 'Cancelled';
   if (status === 'voided') return 'Voided';
@@ -85,7 +86,7 @@ export function saleStatusBadgeTone(sale) {
     return 'cancelled';
   }
   if (sale?.needs_salesperson_action) return 'rejected';
-  if (status === 'pending_approval' || status === 'holding') return 'holding';
+  if (status === 'pending_approval' || status === 'holding' || status === 'awaiting_payment') return 'holding';
   if (refund === 'partial') return 'pending';
   const pay = salePaymentStatusLabel(sale);
   if (pay === 'Unpaid') return 'rejected';

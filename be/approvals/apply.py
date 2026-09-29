@@ -262,13 +262,13 @@ def _apply_sale_refund(change: PendingChange) -> None:
 
 def _apply_sale_complete(change: PendingChange) -> None:
     from sales.models import Sale
-    from sales.sale_completion_approval import complete_queued_sale
+    from sales.sale_completion_approval import approve_queued_sale
 
     sale = Sale.objects.get(pk=change.entity_id)
     checker = change.checked_by
     if not checker:
         raise ValidationError('Sale completion requires a manager or admin checker.')
-    complete_queued_sale(sale, checker, change.apply_payload or {})
+    approve_queued_sale(sale, checker)
 
 
 def _apply_sale_rollback(change: PendingChange) -> None:

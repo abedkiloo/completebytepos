@@ -78,6 +78,7 @@ export function CheckoutPanel({
   paymentOnAccount = false,
   onPaymentOnAccountChange,
   onPayFullAmountLater,
+  sendForApproval = false,
   showDiscount = true,
   showTax = true,
   showDelivery = true,
@@ -129,14 +130,19 @@ export function CheckoutPanel({
   const needsReference = paymentReferenceRequired(paymentMethod) && !isMpesa;
   const referenceOk =
     isMpesa || !needsReference || String(paymentReference || '').trim().length > 0;
-  const canPay =
-    !hasOversell &&
-    itemCount > 0 &&
-    total > 0 &&
-    referenceOk &&
-    (!isCashLike || receivedCheck.ok);
+  const canPay = sendForApproval
+    ? !hasOversell && itemCount > 0 && total > 0
+    : !hasOversell &&
+      itemCount > 0 &&
+      total > 0 &&
+      referenceOk &&
+      (!isCashLike || receivedCheck.ok);
 
   const handlePay = () => {
+    if (sendForApproval) {
+      onPay();
+      return;
+    }
     if (isMpesa && collectNow && isLiveMpesaPrompt(mpesaMode)) {
       setShowMpesaErrors(true);
       if (phoneMessage(mpesaPhone, { required: true })) return;
@@ -255,6 +261,12 @@ export function CheckoutPanel({
 
       <Separator />
 
+      {sendForApproval ? (
+        <p className="px-3 pt-2 text-xs text-muted-foreground">
+          Confirm the customer and products. A manager will approve this sale, then you collect payment.
+        </p>
+      ) : (
+        <>
       {/* Payment method tabs */}
       <div className="px-3 pt-2">
         <Label className="mb-1 block text-xs uppercase tracking-wide text-muted-foreground">
@@ -365,6 +377,8 @@ export function CheckoutPanel({
           )}
         </div>
       )}
+        </>
+      )}
 
       {/* Oversell warning — visible above the Pay button so the cashier
           immediately understands why the button is disabled. */}
@@ -394,7 +408,9 @@ export function CheckoutPanel({
           ) : (
             <>
               <ReceiptIcon className="h-5 w-5" />
-              {isMpesa && collectNow && isLiveMpesaPrompt(mpesaMode)
+              {sendForApproval
+                ? `Send for approval · ${formatCurrency(total)}`
+                : isMpesa && collectNow && isLiveMpesaPrompt(mpesaMode)
                 ? `Send M-Pesa prompt · ${formatCurrency(receivedCheck.received || total)}`
                 : `Complete sale · ${formatCurrency(total)}`}
             </>

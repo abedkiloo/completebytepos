@@ -195,14 +195,14 @@ def build_sale_approved_notice(*, sale_number: str, checker) -> tuple[str, str]:
     number = (sale_number or '').strip() or 'this sale'
     title = f'Sale #{number} was approved'[:200]
     content = (
-        f'Sale #{number} was approved. You can issue the receipt now.\n'
+        f'Sale #{number} was approved. Collect payment to complete it.\n'
         f'Approved by {checker_name}.'
     )
     return title, content
 
 
 def notify_sale_approved(*, sale, checker):
-    """Tell the cashier in Daily notes that they can print the receipt."""
+    """Tell the cashier in Daily notes that they can collect payment."""
     requester = getattr(sale, 'cashier', None)
     if requester is None:
         return None

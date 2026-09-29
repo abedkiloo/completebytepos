@@ -12,16 +12,19 @@ from approvals.service import submit_change
 from sales.models import Sale
 
 WAITING_MESSAGE = (
-    'A manager will approve this sale so you can issue the receipt.'
+    'A manager will approve this sale. You collect payment after they approve.'
 )
 APPROVED_MESSAGE_TEMPLATE = (
-    'Sale #{sale_number} was approved. You can issue the receipt now.'
+    'Sale #{sale_number} was approved. Collect payment to complete it.'
 )
 REJECTED_MESSAGE_TEMPLATE = (
     'Sale #{sale_number} was returned. Check Daily notes for the comment, '
     'fix it on POS, and send it again.'
 )
-QUEUE_REASON = 'Sale awaiting manager approval so the cashier can issue a receipt.'
+QUEUE_REASON = 'Sale details awaiting manager approval before funds collection.'
+COLLECT_ONLY_AFTER_APPROVAL = (
+    'Collect payment only after a manager approves this sale.'
+)
 
 
 def user_can_complete_sales(user) -> bool:
@@ -169,7 +172,7 @@ def queue_sale_complete(request, sale: Sale, *, payment_payload: dict | None = N
             'status': 'completed',
             'total': str(sale.total),
             'payment_method': payload.get('payment_method') or sale.payment_method,
-            'effect': 'Stock, payment, and books apply after manager approval',
+            'effect': 'Payment is collected after manager approval',
         },
         reason=QUEUE_REASON,
         apply_payload=payload,
@@ -233,10 +236,25 @@ def restore_queued_sale_for_approval(sale: Sale, change: PendingChange | None = 
     return sale
 
 
-def complete_queued_sale(sale: Sale, user, payload: dict | None = None) -> Sale:
-    """Re-check stock, move inventory, apply payment, post the journal."""
+def approve_queued_sale(sale: Sale, user=None) -> Sale:
+    """Unlock funds collection after the manager confirms customer and products."""
     if sale.status != 'pending_approval':
         raise ValidationError('This sale is not waiting for approval.')
+    sale.status = 'awaiting_payment'
+    sale.amount_paid = Decimal('0')
+    sale.change = Decimal('0')
+    sale.save(update_fields=['status', 'amount_paid', 'change', 'updated_at'])
+    notify_cashier_sale_approved(sale, user)
+    from daily_notes.approval_notice import SOURCE_SALE_COMPLETE, complete_manager_queue_notes
+
+    complete_manager_queue_notes(source=SOURCE_SALE_COMPLETE, record_id=sale.pk)
+    return sale
+
+
+def complete_queued_sale(sale: Sale, user, payload: dict | None = None) -> Sale:
+    """Re-check stock, move inventory, apply payment, post the journal."""
+    if sale.status != 'awaiting_payment':
+        raise ValidationError(COLLECT_ONLY_AFTER_APPROVAL)
 
     from sales.module_settings import sales_validate_stock_before_sale
     from sales.services import SaleService
@@ -314,10 +332,6 @@ def complete_queued_sale(sale: Sale, user, payload: dict | None = None) -> Sale:
             'Error creating journal entry for approved sale %s', sale.sale_number
         )
 
-    notify_cashier_sale_approved(sale, user)
-    from daily_notes.approval_notice import SOURCE_SALE_COMPLETE, complete_manager_queue_notes
-
-    complete_manager_queue_notes(source=SOURCE_SALE_COMPLETE, record_id=sale.pk)
     return sale
 
 

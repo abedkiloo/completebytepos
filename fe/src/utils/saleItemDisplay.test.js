@@ -85,6 +85,9 @@ describe('saleItemDisplay', () => {
     expect(saleFinalStatusLabel({ status: 'pending_approval', total: '100', amount_paid: '100' })).toBe(
       'Awaiting approval'
     );
+    expect(saleFinalStatusLabel({ status: 'awaiting_payment', total: '100', amount_paid: '0' })).toBe(
+      'Collect payment'
+    );
     expect(saleFinalStatusLabel({ status: 'holding', total: '100', amount_paid: '0' })).toBe('On hold');
     expect(
       saleFinalStatusLabel({
@@ -128,6 +131,7 @@ describe('saleItemDisplay', () => {
       'cancelled'
     );
     expect(saleStatusBadgeTone({ status: 'pending_approval', total: 100, amount_paid: 100 })).toBe('holding');
+    expect(saleStatusBadgeTone({ status: 'awaiting_payment', total: 100, amount_paid: 0 })).toBe('holding');
     expect(
       saleStatusBadgeTone({
         status: 'holding',

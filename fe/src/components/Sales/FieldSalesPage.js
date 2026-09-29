@@ -302,7 +302,7 @@ const FieldSalesPage = () => {
 
   const emptyMessage = useMemo(() => {
     if (filters.status === 'awaiting_pack') {
-      return 'No visit orders waiting to be packed.';
+      return 'No field sales waiting to be packed.';
     }
     return 'No field sales match these filters.';
   }, [filters.status]);
@@ -315,7 +315,7 @@ const FieldSalesPage = () => {
     <PageShell>
       <PageHeader
         title="Field sales"
-        description="Visit orders from the field — pack, assign a sales person or driver, or leave ready for them to claim."
+        description="Field sales from the road — pack, assign a sales person or driver, or leave ready for them to claim."
       >
         <Button variant="outline" onClick={loadOrders} disabled={loading}>
           <RefreshCw className="h-4 w-4" />

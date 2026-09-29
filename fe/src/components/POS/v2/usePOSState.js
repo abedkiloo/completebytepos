@@ -89,7 +89,7 @@ export const getLineStockCap = (item) => {
  *  - one-off device tricks (fullscreen, system calculator) — those are
  *    component-local
  */
-export function usePOSState() {
+export function usePOSState({ sendForApproval = false } = {}) {
   const { settings: salesModuleSettings } = useModuleSettings('sales');
   const validateStock = salesValidateStock(salesModuleSettings);
   const requireCustomer = salesRequireCustomer(salesModuleSettings);
@@ -719,7 +719,11 @@ export function usePOSState() {
         shipping_address: deliveryEnabled && shippingAddress ? shippingAddress : null,
         payment_method: paymentMethod,
         payment_reference: paymentReferenceRequired(paymentMethod) ? reference : '',
-        amount_paid: isTendered ? formatAmountPaid(received) : formatAmountPaid(total),
+        amount_paid: sendForApproval
+          ? 0
+          : isTendered
+            ? formatAmountPaid(received)
+            : formatAmountPaid(total),
         customer_id:
           selectedCustomer?.id && selectedCustomer.id !== 'walk-in'
             ? selectedCustomer.id
@@ -743,6 +747,7 @@ export function usePOSState() {
       receivedAmount,
       selectedCustomer,
       total,
+      sendForApproval,
     ]
   );
 
@@ -851,6 +856,25 @@ export function usePOSState() {
       toast.error(
         'One or more items exceed available stock. Adjust quantities before completing the sale.'
       );
+      return;
+    }
+
+    if (sendForApproval) {
+      const customerName =
+        selectedCustomer && selectedCustomer.id !== 'walk-in'
+          ? selectedCustomer.name
+          : null;
+      setPendingSaleData(
+        buildSaleCommitSummary({
+          total,
+          received: 0,
+          paymentMethod: 'cash',
+          itemCount: cart.reduce((n, i) => n + (Number(i.quantity) || 0), 0),
+          customerName,
+          kind: 'approval',
+        })
+      );
+      setShowSaleCommitConfirm(true);
       return;
     }
 
@@ -977,6 +1001,7 @@ export function usePOSState() {
     allowPartialPayment,
     paymentOnAccount,
     allowExcessToWallet,
+    sendForApproval,
   ]);
 
   return {

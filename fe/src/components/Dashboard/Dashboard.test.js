@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import Dashboard from './Dashboard';
-import { reportsAPI, productsAPI, salesAPI, authAPI } from '../../services/api';
+import { reportsAPI, productsAPI, salesAPI, authAPI, appraisalsAPI } from '../../services/api';
 import { getStoredAuth, hasPermission, resolvePersona, userSeesAllSalesFromStorage } from '../../utils/roleAccess';
 import {
   getDefaultPosRoute,
@@ -39,6 +39,7 @@ jest.mock('../../services/api', () => ({
   salesAPI: { dashboardSummary: jest.fn(), list: jest.fn() },
   productsAPI: { list: jest.fn() },
   authAPI: { me: jest.fn() },
+  appraisalsAPI: { me: jest.fn() },
 }));
 
 const weekDays = [
@@ -66,6 +67,7 @@ describe('Dashboard', () => {
     authAPI.me.mockResolvedValue({
       data: { user: { username: 'Ada' }, profile: { role_display: 'Manager' } },
     });
+    appraisalsAPI.me.mockResolvedValue({ data: null });
     reportsAPI.dashboard.mockResolvedValue({
       data: {
         today: { sales_count: 2, total: 150 },

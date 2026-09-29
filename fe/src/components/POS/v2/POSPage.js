@@ -47,6 +47,7 @@ import {
   salesShowDelivery,
 } from '../../../utils/salesDisplay';
 import { isManagerOrAdminFromStorage, getStoredAuth } from '../../../utils/roleAccess';
+import { userCanApproveSales } from '../../../utils/saleCompletionApproval';
 import { useModuleSettings } from '../../../hooks/useModuleSettings';
 import {
   canQuickAddCustomerAtPos,
@@ -75,11 +76,12 @@ import { isRegisteredPosCustomer } from '../../../utils/posCheckoutValidation';
  */
 export default function POSPage() {
   const navigate = useNavigate();
-  const state = usePOSState();
+  const { permissions } = getStoredAuth();
+  const sendForApproval = !userCanApproveSales(permissions);
+  const state = usePOSState({ sendForApproval });
   const { settings } = useStoreSettings();
   const storeName = resolveStoreName(settings);
   const { settings: customerModuleSettings } = useModuleSettings('customers');
-  const { permissions } = getStoredAuth();
   const canAddCustomer = canQuickAddCustomerAtPos(
     isManagerOrAdminFromStorage(),
     customerModuleSettings,
@@ -394,6 +396,7 @@ export default function POSPage() {
             paymentOnAccount={state.paymentOnAccount}
             onPaymentOnAccountChange={state.attemptSetPaymentOnAccount}
             onPayFullAmountLater={state.payFullAmountLater}
+            sendForApproval={sendForApproval}
             showDiscount={salesShowDiscount(state.salesModuleSettings)}
             showTax={salesShowTax(state.salesModuleSettings)}
             showDelivery={salesShowDelivery(state.salesModuleSettings)}

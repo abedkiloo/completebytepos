@@ -42,7 +42,7 @@ function SaleApprovalRow({ sale, onResolved }) {
     setBusy(true);
     try {
       await salesAPI.complete(sale.id);
-      toast.success(`Sale ${sale.sale_number} approved. The cashier can issue the receipt.`);
+      toast.success(`Sale ${sale.sale_number} approved. The salesperson can collect payment.`);
       onResolved();
       dispatchNavBadgesRefresh();
     } catch (err) {
@@ -84,9 +84,7 @@ function SaleApprovalRow({ sale, onResolved }) {
           </div>
           <div className="min-w-0 shrink-0 text-right">
             <p className="truncate font-semibold">{formatCurrency(sale.total)}</p>
-            <Badge variant="outline" className="capitalize">
-              {sale.payment_method || 'cash'}
-            </Badge>
+            <Badge variant="outline">Payment after approval</Badge>
             {returned ? (
               <Badge variant="destructive" className="mt-1">
                 Needs salesperson action
@@ -309,7 +307,7 @@ export default function SaleApprovalsPage() {
     <PageShell>
       <PageHeader
         title="Approve sales"
-        description="Cashiers wait here to issue a receipt. Salesperson debt collections wait here before the customer wallet changes. Both permissions are set on Roles."
+        description="Review customer and products on cashier sales before anyone collects money. Salesperson debt collections wait here before the customer wallet changes. Both permissions are set on Roles."
         icon={CheckCircle2}
       >
         <Button type="button" variant="outline" onClick={load} disabled={loading}>

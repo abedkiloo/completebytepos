@@ -1,10 +1,12 @@
 import {
   SALE_APPROVED_RECEIPT_MESSAGE,
   SALE_AWAITING_APPROVAL_MESSAGE,
+  SALE_AWAITING_PAYMENT_MESSAGE,
   awaitingApprovalListParams,
   partitionSaleApprovalQueue,
   saleCheckoutSuccessToast,
   saleIsAwaitingApproval,
+  saleIsAwaitingPayment,
   saleNeedsSalespersonAction,
   saleReceiptBlockedReason,
   saleRejectionReason,
@@ -16,6 +18,8 @@ describe('saleCompletionApproval', () => {
     expect(saleIsAwaitingApproval({ status: 'pending_approval' })).toBe(true);
     expect(saleIsAwaitingApproval({ status: 'completed' })).toBe(false);
     expect(saleIsAwaitingApproval(null)).toBe(false);
+    expect(saleIsAwaitingPayment({ status: 'awaiting_payment' })).toBe(true);
+    expect(saleIsAwaitingPayment({ status: 'pending_approval' })).toBe(false);
   });
 
   test('rejected holdings need salesperson action', () => {
@@ -38,6 +42,9 @@ describe('saleCompletionApproval', () => {
       SALE_AWAITING_APPROVAL_MESSAGE
     );
     expect(saleReceiptBlockedReason({ status: 'holding' })).toMatch(/after the sale is completed/i);
+    expect(saleReceiptBlockedReason({ status: 'awaiting_payment' })).toBe(
+      SALE_AWAITING_PAYMENT_MESSAGE
+    );
     expect(saleReceiptBlockedReason({ status: 'completed' })).toBeNull();
     expect(saleReceiptBlockedReason(null)).toBeNull();
   });
@@ -72,6 +79,6 @@ describe('saleCompletionApproval', () => {
   });
 
   test('approved copy is stable', () => {
-    expect(SALE_APPROVED_RECEIPT_MESSAGE).toMatch(/issue the receipt/i);
+    expect(SALE_APPROVED_RECEIPT_MESSAGE).toMatch(/collect payment/i);
   });
 });

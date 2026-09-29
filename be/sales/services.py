@@ -494,22 +494,7 @@ class SaleService(BaseService):
         discount_amount = holding.discount_amount or Decimal('0')
         delivery_cost = holding.delivery_cost or Decimal('0')
         total = subtotal + tax_amount - discount_amount + delivery_cost
-
         customer = holding.customer
-        self._validate_checkout_payment(
-            payment_method, amount_paid, total, customer, allow_partial
-        )
-
-        payment_result = self._prepare_sale_payment(
-            customer=customer,
-            sale_type='pos',
-            total=total,
-            amount_paid=amount_paid,
-            allow_partial=allow_partial,
-            excess_payment_choice=excess_payment_choice,
-            use_wallet=use_wallet,
-            wallet_amount_requested=wallet_amount,
-        )
 
         from sales.sale_completion_approval import (
             payment_payload_from_inputs,
@@ -518,6 +503,29 @@ class SaleService(BaseService):
         )
 
         defer_complete = sale_completion_should_wait(user)
+        if defer_complete:
+            amount_paid = Decimal('0')
+            payment_result = {
+                'wallet_amount_used': Decimal('0'),
+                'wallet_credit_added': Decimal('0'),
+                'change': Decimal('0'),
+                'pending_debt': None,
+                'amount_paid_recorded': Decimal('0'),
+            }
+        else:
+            self._validate_checkout_payment(
+                payment_method, amount_paid, total, customer, allow_partial
+            )
+            payment_result = self._prepare_sale_payment(
+                customer=customer,
+                sale_type='pos',
+                total=total,
+                amount_paid=amount_paid,
+                allow_partial=allow_partial,
+                excess_payment_choice=excess_payment_choice,
+                use_wallet=use_wallet,
+                wallet_amount_requested=wallet_amount,
+            )
 
         holding.items.all().delete()
         for item_data in validated_items:
@@ -1103,16 +1111,34 @@ class SaleService(BaseService):
         subtotal = sum(item['subtotal'] for item in validated_items)
         total = subtotal + tax_amount - discount_amount + delivery_cost
 
-        payment_result = self._prepare_sale_payment(
-            customer=customer,
-            sale_type=sale_type,
-            total=total,
-            amount_paid=amount_paid,
-            allow_partial=validated_data.get('allow_partial_payment', False),
-            excess_payment_choice=validated_data.get('excess_payment_choice', 'change'),
-            use_wallet=validated_data.get('use_wallet', False),
-            wallet_amount_requested=Decimal(str(validated_data.get('wallet_amount', 0) or 0)),
+        from sales.sale_completion_approval import (
+            WAITING_MESSAGE,
+            payment_payload_from_inputs,
+            queue_sale_complete,
+            sale_completion_should_wait,
         )
+
+        defer_complete = sale_completion_should_wait(user)
+        if defer_complete:
+            amount_paid = Decimal('0')
+            payment_result = {
+                'wallet_amount_used': Decimal('0'),
+                'wallet_credit_added': Decimal('0'),
+                'change': Decimal('0'),
+                'pending_debt': None,
+                'amount_paid_recorded': Decimal('0'),
+            }
+        else:
+            payment_result = self._prepare_sale_payment(
+                customer=customer,
+                sale_type=sale_type,
+                total=total,
+                amount_paid=amount_paid,
+                allow_partial=validated_data.get('allow_partial_payment', False),
+                excess_payment_choice=validated_data.get('excess_payment_choice', 'change'),
+                use_wallet=validated_data.get('use_wallet', False),
+                wallet_amount_requested=Decimal(str(validated_data.get('wallet_amount', 0) or 0)),
+            )
 
         sale_data = {
             'sale_type': sale_type,
@@ -1150,14 +1176,6 @@ class SaleService(BaseService):
             pending_photo = None
             sale_data['entry_source'] = 'normal' if sale_type == 'normal' else 'pos'
 
-        from sales.sale_completion_approval import (
-            WAITING_MESSAGE,
-            payment_payload_from_inputs,
-            queue_sale_complete,
-            sale_completion_should_wait,
-        )
-
-        defer_complete = sale_completion_should_wait(user)
         sale = self.create_sale(
             sale_data,
             items_data,

@@ -88,7 +88,7 @@ export default function AppraisalsPage() {
         </TabsList>
 
         <TabsContent value="progress" className="space-y-4">
-          <AppraisalProgressCard snapshot={me} />
+          <AppraisalProgressCard snapshot={me} emphasis />
           <Card>
             <CardContent className="space-y-3 p-4">
               <h3 className="text-sm font-semibold">This year</h3>

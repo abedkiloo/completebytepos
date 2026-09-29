@@ -7,10 +7,18 @@ import { hasPermission } from './roleAccess';
 export const SALE_AWAITING_APPROVAL_STATUS = 'pending_approval';
 
 export const SALE_AWAITING_APPROVAL_MESSAGE =
-  'A manager will approve this sale so you can issue the receipt.';
+  'A manager will approve this sale. You collect payment after they approve.';
 
 export const SALE_APPROVED_RECEIPT_MESSAGE =
-  'Sale was approved. You can issue the receipt now.';
+  'Sale was approved. Collect payment to complete it.';
+
+export const SALE_AWAITING_PAYMENT_STATUS = 'awaiting_payment';
+export const SALE_AWAITING_PAYMENT_MESSAGE =
+  'This sale is approved. Collect payment to complete it and issue the receipt.';
+
+export function saleIsAwaitingPayment(sale) {
+  return String(sale?.status || '') === SALE_AWAITING_PAYMENT_STATUS;
+}
 
 export function saleIsAwaitingApproval(sale) {
   return String(sale?.status || '') === SALE_AWAITING_APPROVAL_STATUS;
@@ -40,6 +48,9 @@ export function partitionSaleApprovalQueue(sales = []) {
 export function saleReceiptBlockedReason(sale) {
   if (saleIsAwaitingApproval(sale)) {
     return SALE_AWAITING_APPROVAL_MESSAGE;
+  }
+  if (saleIsAwaitingPayment(sale)) {
+    return SALE_AWAITING_PAYMENT_MESSAGE;
   }
   if (sale && sale.status && sale.status !== 'completed') {
     return 'Receipt is available after the sale is completed.';

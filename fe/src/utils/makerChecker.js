@@ -68,9 +68,9 @@ const REASON_CONTEXT_COPY = {
   },
   sale_complete: {
     label: 'Reason for completing this sale',
-    placeholder: 'Approve so the cashier can issue the receipt',
+    placeholder: 'Approve customer and products so payment can be collected',
     summary:
-      'This sale was rung up at the till. Stock and books stay unchanged until you approve. After approval the cashier can issue the receipt.',
+      'This sale is customer and products only. After you approve, the salesperson collects payment. Stock and books change when payment is collected.',
   },
 };
 

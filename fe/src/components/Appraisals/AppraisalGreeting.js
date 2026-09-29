@@ -54,28 +54,38 @@ export default function AppraisalGreeting() {
 
   return (
     <div
-      className="fixed inset-0 z-[3100] flex items-center justify-center overflow-y-auto bg-black/55 p-4"
+      className="fixed inset-0 z-[3100] flex items-center justify-center overflow-y-auto bg-[#080c14]/92 p-4 backdrop-blur-[2px]"
       data-testid="appraisal-greeting"
       role="dialog"
       aria-modal="true"
       aria-labelledby="appraisal-greeting-title"
     >
       <div className="my-auto w-full max-w-lg">
-        <AppraisalProgressCard snapshot={snapshot} className="shadow-2xl" />
-        <div className="mt-3 flex flex-wrap justify-end gap-2">
-          <Button variant="outline" onClick={dismiss}>
-            Continue
-          </Button>
-          <Button
-            onClick={() => {
-              dismiss();
-              navigate('/appraisals');
-            }}
-          >
-            <Star className="mr-1.5 h-4 w-4" />
-            Open my progress
-          </Button>
-        </div>
+        <AppraisalProgressCard
+          snapshot={snapshot}
+          emphasis
+          actions={(
+            <>
+              <Button
+                variant="outline"
+                className="border-white/40 bg-transparent text-white hover:bg-white/10 hover:text-white"
+                onClick={dismiss}
+              >
+                Continue
+              </Button>
+              <Button
+                className="bg-amber-400 text-slate-950 hover:bg-amber-300"
+                onClick={() => {
+                  dismiss();
+                  navigate('/appraisals');
+                }}
+              >
+                <Star className="mr-1.5 h-4 w-4" />
+                Open my progress
+              </Button>
+            </>
+          )}
+        />
       </div>
     </div>
   );

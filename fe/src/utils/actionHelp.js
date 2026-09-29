@@ -39,10 +39,10 @@ export const ACTION_HELP = {
     shortLabel: 'Approve sale',
     title: 'Approve a cashier sale',
     hover:
-      'Completes a sale a cashier already rang up. Stock, payment, and books apply now, and the cashier can issue the receipt.',
+      'Completes a review of customer and products. The salesperson can collect payment after you approve.',
     confirmTitle: 'Approve this sale?',
     confirmBody:
-      'This completes the sale now: stock moves, books update, and the cashier is told they can issue the receipt.',
+      'This confirms the sale details. Stock and books stay unchanged until payment is collected.',
   },
   debt_collection: {
     shortLabel: 'Approve collection',

@@ -214,7 +214,7 @@ ROLE_SCREEN_MATRIX = {
         'Delivery (today’s route — admin can assign you like a driver)',
     ],
     ROLE_FIELD_AGENT: [
-        'Visit orders (customer → products → pin → place)',
+        'Field sales (customer → products → pin → place)',
         'POS / sales (same as Sales)',
         'Customers (lookup / create)',
         'Delivery (admin can assign you to a route)',
@@ -455,7 +455,7 @@ def sync_default_roles(created_by=None):
     field_agent, agent_created = Role.objects.update_or_create(
         name=ROLE_FIELD_AGENT,
         defaults={
-            'description': 'Customer visits — map pin, site photos, visit orders and POS sales',
+            'description': 'Customer visits — map pin, site photos, field sales and POS sales',
             'is_system_role': True,
             'is_active': True,
             'created_by': created_by,
@@ -467,7 +467,7 @@ def sync_default_roles(created_by=None):
     dispatcher, dispatcher_created = Role.objects.update_or_create(
         name=ROLE_DISPATCHER,
         defaults={
-            'description': 'Store dispatch — pack visit orders and assign a sales person or driver',
+            'description': 'Store dispatch — pack field sales and assign a sales person or driver',
             'is_system_role': True,
             'is_active': True,
             'created_by': created_by,
