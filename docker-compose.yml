@@ -105,6 +105,8 @@ services:
     build:
       context: ./fe
       dockerfile: Dockerfile
+      # Use the host's network during npm ci so Docker NAT/IPv6 does not time out to the registry.
+      network: host
       args:
         # Always same-origin. Do not bake :8000 from .env — Gunicorn is localhost-only.
         REACT_APP_API_URL: /api
