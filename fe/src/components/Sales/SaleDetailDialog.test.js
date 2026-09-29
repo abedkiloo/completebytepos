@@ -56,6 +56,14 @@ const sale = {
 };
 
 describe('SaleDetailDialog', () => {
+  it('renders nothing when sale is missing without violating hooks', () => {
+    const { container } = render(
+      <SaleDetailDialog sale={null} open onOpenChange={() => {}} />
+    );
+    expect(container.querySelector('[role="dialog"]')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Sale —/)).not.toBeInTheDocument();
+  });
+
   it('shows a clean receipt with remaining items only; admin block has refund info', () => {
     render(
       <SaleDetailDialog sale={sale} open onOpenChange={() => {}} showCustomerName />

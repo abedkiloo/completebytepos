@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { RotateCcw } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -57,6 +57,13 @@ export default function SaleDetailDialog({
   const { settings } = useStoreSettings();
   const storeName = resolveStoreName(settings);
   const logoUrl = resolveReceiptLogoUrl(settings);
+  const [collectAmount, setCollectAmount] = useState(() => String(sale?.total || ''));
+  const [collecting, setCollecting] = useState(false);
+
+  useEffect(() => {
+    setCollectAmount(String(sale?.total || ''));
+  }, [sale?.id, sale?.total]);
+
   if (!sale) return null;
 
   const receiptSale = normalizeSaleForReceipt(sale);
@@ -69,8 +76,6 @@ export default function SaleDetailDialog({
   const returnedToSalesperson = saleNeedsSalespersonAction(sale);
   const managerComment = saleRejectionReason(sale);
   const receiptBlocked = saleReceiptBlockedReason(sale);
-  const [collectAmount, setCollectAmount] = useState(String(sale.total || ''));
-  const [collecting, setCollecting] = useState(false);
 
   const collectPayment = async () => {
     setCollecting(true);
