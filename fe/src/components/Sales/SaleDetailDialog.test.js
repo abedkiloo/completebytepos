@@ -8,7 +8,7 @@ jest.mock('../../hooks/useStoreSettings', () => ({
 }));
 
 jest.mock('../../services/api', () => ({
-  salesAPI: { collect: jest.fn(), rejectComplete: jest.fn() },
+  salesAPI: { collect: jest.fn(), rejectComplete: jest.fn(), correctDate: jest.fn() },
 }));
 
 const sale = {
@@ -242,5 +242,33 @@ describe('SaleDetailDialog', () => {
     });
     expect(onReturned).toHaveBeenCalled();
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('lets a manager save a new sale date', async () => {
+    salesAPI.correctDate.mockResolvedValue({
+      data: { ...sale, occurred_at: '2026-10-01T10:00:00Z', can_correct_date: true },
+    });
+    const onUpdated = jest.fn();
+    render(
+      <SaleDetailDialog
+        sale={{
+          ...sale,
+          occurred_at: '2026-09-30T10:00:00Z',
+          can_correct_date: true,
+        }}
+        open
+        onOpenChange={() => {}}
+        onUpdated={onUpdated}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/^Sale date$/i), {
+      target: { value: '2026-10-01' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Save date/i }));
+    await waitFor(() => {
+      expect(salesAPI.correctDate).toHaveBeenCalledWith(1, { occurred_on: '2026-10-01' });
+    });
+    expect(onUpdated).toHaveBeenCalled();
   });
 });

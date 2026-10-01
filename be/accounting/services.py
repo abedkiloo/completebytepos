@@ -15,6 +15,20 @@ from services.base import BaseService
 logger = logging.getLogger(__name__)
 
 
+def sale_books_date(sale) -> date:
+    """Local calendar date used for sale journals and reports."""
+    when = getattr(sale, 'occurred_at', None) or getattr(sale, 'created_at', None)
+    if when is None:
+        return timezone.localdate()
+    if isinstance(when, datetime):
+        if timezone.is_aware(when):
+            return timezone.localtime(when).date()
+        return when.date()
+    if isinstance(when, date):
+        return when
+    return timezone.localdate()
+
+
 class AccountTypeService(BaseService):
     """Service for account type operations"""
     
@@ -378,9 +392,10 @@ def create_sale_journal_entry(sale):
         }
     )
     
+    books_date = sale_books_date(sale)
     # Create transaction
     txn = Transaction.objects.create(
-        transaction_date=(sale.occurred_at or sale.created_at).date(),
+        transaction_date=books_date,
         description=f"Sale: {sale.sale_number}",
         reference=sale.sale_number,
         reference_type='sale',
@@ -502,7 +517,7 @@ def create_sale_journal_entry(sale):
     # Debit Cash for cash/mpesa payment
     if amount_paid > 0:
         cash_entry = JournalEntry.objects.create(
-            entry_date=sale.created_at.date(),
+            entry_date=books_date,
             account=cash_account,
             entry_type='debit',
             amount=amount_paid,
@@ -519,7 +534,7 @@ def create_sale_journal_entry(sale):
     # debiting it reduces the liability (customer's wallet balance decreases)
     if wallet_amount_used > 0:
         wallet_entry = JournalEntry.objects.create(
-            entry_date=sale.created_at.date(),
+            entry_date=books_date,
             account=customer_prepaid_account,
             entry_type='debit',
             amount=wallet_amount_used,
@@ -534,7 +549,7 @@ def create_sale_journal_entry(sale):
     # Debit Accounts Receivable for unpaid balance (only if there's an actual unpaid amount)
     if balance > 0:
         ar_entry = JournalEntry.objects.create(
-            entry_date=sale.created_at.date(),
+            entry_date=books_date,
             account=accounts_receivable_account,
             entry_type='debit',
             amount=balance,
@@ -548,7 +563,7 @@ def create_sale_journal_entry(sale):
     
     # Credit sales revenue (always)
     credit_entry = JournalEntry.objects.create(
-        entry_date=sale.created_at.date(),
+        entry_date=books_date,
         account=sales_revenue_account,
         entry_type='credit',
         amount=total,
@@ -564,7 +579,7 @@ def create_sale_journal_entry(sale):
         # Credit Customer Prepaid/Wallet for overpayment
         # This represents money we owe the customer (added to their wallet)
         prepaid_entry = JournalEntry.objects.create(
-            entry_date=sale.created_at.date(),
+            entry_date=books_date,
             account=customer_prepaid_account,
             entry_type='credit',
             amount=overpayment,

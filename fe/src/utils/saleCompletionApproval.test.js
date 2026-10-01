@@ -12,7 +12,9 @@ import {
   saleReceiptBlockedReason,
   saleRejectionReason,
   userCanApproveSales,
+  userCanCorrectSaleDate,
   userHasAdminSaleOverride,
+  saleDateInputValue,
 } from './saleCompletionApproval';
 
 describe('saleCompletionApproval', () => {
@@ -111,5 +113,38 @@ describe('saleCompletionApproval', () => {
       saleCanAdminReturnForCorrection({ status: 'completed', refund_status: 'partial' })
     ).toBe(false);
     expect(saleCanAdminReturnForCorrection({ status: 'pending_approval' })).toBe(false);
+  });
+
+  test('managers and admins can correct a sale date', () => {
+    expect(
+      userCanCorrectSaleDate({
+        user: {},
+        profile: { role: 'manager' },
+        permissions: [],
+      })
+    ).toBe(true);
+    expect(
+      userCanCorrectSaleDate({
+        user: {},
+        profile: { role: 'admin' },
+        permissions: [],
+      })
+    ).toBe(true);
+    expect(
+      userCanCorrectSaleDate({
+        user: {},
+        profile: { role: 'cashier' },
+        permissions: [],
+      })
+    ).toBe(false);
+    expect(
+      userCanCorrectSaleDate({
+        user: {},
+        profile: { role: 'cashier' },
+        permissions: [{ module: 'sales', action: 'approve' }],
+      })
+    ).toBe(true);
+    const localNoon = new Date(2026, 8, 30, 12, 0, 0);
+    expect(saleDateInputValue(localNoon.toISOString())).toBe('2026-09-30');
   });
 });

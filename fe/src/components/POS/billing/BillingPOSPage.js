@@ -1,5 +1,6 @@
 /* @refresh reset */
 import React, { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Search,
   ScanBarcode,
@@ -73,7 +74,9 @@ import {
 } from './billingInvoiceLayout';
 
 export default function BillingPOSPage() {
-  const state = useBillingPOSState();
+  const [searchParams] = useSearchParams();
+  const resumeSaleId = searchParams.get('sale');
+  const state = useBillingPOSState({ resumeSaleId });
   const { settings } = useStoreSettings();
   const storeName = resolveStoreName(settings);
   const paymentModes = filterEnabledPaymentMethods(settings.enabled_payment_methods).map((m) => ({
@@ -178,6 +181,22 @@ export default function BillingPOSPage() {
             New sale
           </Button>
         </div>
+        {state.returnedSaleNotice ? (
+          <div
+            className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 sm:px-4"
+            data-testid="returned-sale-banner"
+          >
+            <p className="font-medium">
+              Manager returned sale {state.returnedSaleNotice.saleNumber}
+            </p>
+            {state.returnedSaleNotice.comment ? (
+              <p className="mt-1 whitespace-pre-wrap">{state.returnedSaleNotice.comment}</p>
+            ) : null}
+            <p className="mt-1 text-xs text-amber-900/80">
+              Update this sale, then send it back for approval.
+            </p>
+          </div>
+        ) : null}
 
         <div className="grid min-h-0 min-w-0 flex-1 gap-4 overflow-hidden p-2 sm:p-4 lg:grid-cols-[1fr_minmax(300px,380px)]">
           {/* Left: search + cart */}

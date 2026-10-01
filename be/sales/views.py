@@ -136,6 +136,7 @@ SALES_PERMS = RequirePermPerAction('sales', {
     'complete': 'approve',
     'reject_complete': 'approve',
     'collect': 'create',
+    'correct_date': 'approve',
 })
 
 CUSTOMERS_PERMS = RequirePermPerAction('customers', {
@@ -209,6 +210,7 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             'complete',
             'reject_complete',
             'collect',
+            'correct_date',
         ):
             filters['include_holding'] = True
             filters['include_pending_approval'] = True
@@ -849,6 +851,30 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             if isinstance(extra, dict):
                 payload.update(extra)
             return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+        return Response(SaleSerializer(sale).data)
+
+    @action(detail=True, methods=['post'], url_path='correct-date')
+    @transaction.atomic
+    def correct_date(self, request, pk=None):
+        """Manager/admin: move this sale onto another business date."""
+        from sales.sale_date import correct_sale_occurred_at, parse_sale_date_payload
+        from utils.audit_events import log_sale_date_corrected
+
+        sale = self.get_object()
+        try:
+            occurred_at = parse_sale_date_payload(
+                request.data, current=sale.occurred_at
+            )
+            previous = sale.occurred_at
+            sale = correct_sale_occurred_at(sale, occurred_at, user=request.user)
+        except ValidationError as e:
+            payload = {'error': validation_error_message(e)}
+            extra = getattr(e, 'message_dict', None)
+            if isinstance(extra, dict):
+                payload.update(extra)
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+        log_sale_date_corrected(request, sale, previous=previous)
+        sale.refresh_from_db()
         return Response(SaleSerializer(sale).data)
 
     @action(detail=True, methods=['post'])

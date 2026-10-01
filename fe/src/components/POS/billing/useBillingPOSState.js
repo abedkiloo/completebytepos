@@ -58,7 +58,7 @@ function applyStockCapToLine(line, validateStock = true) {
   return line;
 }
 
-export function useBillingPOSState() {
+export function useBillingPOSState({ resumeSaleId = null } = {}) {
   const { settings: salesModuleSettings } = useModuleSettings('sales');
   const validateStock = salesValidateStock(salesModuleSettings);
   const requireCustomer = salesRequireCustomer(salesModuleSettings);
@@ -80,6 +80,11 @@ export function useBillingPOSState() {
   const [loadingHolding, setLoadingHolding] = useState(true);
   const [cartRecovery, setCartRecovery] = useState(null);
   const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const [returnedSaleNotice, setReturnedSaleNotice] = useState(null);
+
+  const resumeSaleIdNum = Number.parseInt(resumeSaleId, 10);
+  const resumeSalePk =
+    Number.isFinite(resumeSaleIdNum) && resumeSaleIdNum > 0 ? resumeSaleIdNum : null;
 
   const [taxPct, setTaxPct] = useState(0);
   const [discount, setDiscount] = useState(0);
@@ -203,6 +208,14 @@ export function useBillingPOSState() {
     );
     setDiscount(parseFloat(holding.discount_amount) || 0);
     setDiscountType('flat');
+    if (holding.payment_method) setPaymentMethod(holding.payment_method);
+    const paid = parseFloat(holding.amount_paid);
+    if (Number.isFinite(paid) && paid >= 0) {
+      setAmountPaid(String(paid));
+    }
+    if (holding.payment_reference) {
+      setPaymentReference(String(holding.payment_reference));
+    }
 
     const restoreWithoutStockCap = Boolean(
       holding.needs_salesperson_action || String(holding.rejection_reason || '').trim()
@@ -228,11 +241,41 @@ export function useBillingPOSState() {
     } else {
       setSelectedCustomer(WALK_IN_CUSTOMER);
     }
+    const totalDue = parseFloat(holding.total);
+    setPartialPayment(
+      Number.isFinite(paid) &&
+        Number.isFinite(totalDue) &&
+        paid + 1e-9 < totalDue &&
+        Boolean(holding.customer)
+    );
+    const comment = String(holding.rejection_reason || '').trim();
+    if (holding.needs_salesperson_action || comment) {
+      setReturnedSaleNotice({
+        saleNumber: holding.sale_number || `#${holding.id}`,
+        comment,
+      });
+    } else {
+      setReturnedSaleNotice(null);
+    }
   }, [customers, validateStock]);
 
   const loadActiveHolding = useCallback(async () => {
     setLoadingHolding(true);
     try {
+      if (resumeSalePk) {
+        const res = await salesAPI.get(resumeSalePk);
+        const holding = res.data;
+        const canFix =
+          holding &&
+          (holding.status === 'holding' || holding.needs_salesperson_action);
+        if (canFix) {
+          skipNextSyncRef.current = true;
+          hydrateFromHolding(holding);
+        } else {
+          toast.error('This sale is not waiting for a fix on POS.');
+        }
+        return;
+      }
       const res = await salesAPI.activeHolding();
       const holding = res.data?.holding;
       if (shouldPromptForHoldingRecovery(holding)) {
@@ -252,11 +295,13 @@ export function useBillingPOSState() {
         setHoldingNumber(holding.sale_number);
       }
     } catch {
-      // No holding yet — normal for a fresh session.
+      if (resumeSalePk) {
+        toast.error('Could not open this sale on POS.');
+      }
     } finally {
       setLoadingHolding(false);
     }
-  }, [hydrateFromHolding]);
+  }, [hydrateFromHolding, resumeSalePk]);
 
   const continueCartRecovery = useCallback(() => {
     if (!cartRecovery?.holding) return;
@@ -285,6 +330,7 @@ export function useBillingPOSState() {
       setHoldingId(null);
       setHoldingNumber('');
       setCartRecovery(null);
+      setReturnedSaleNotice(null);
       setSelectedCustomer(WALK_IN_CUSTOMER);
       setCustomerQuery('');
     } finally {
@@ -483,6 +529,7 @@ export function useBillingPOSState() {
     setHoldingId(null);
     setHoldingNumber('');
     setAmountPaid('');
+    setReturnedSaleNotice(null);
     setSelectedCustomer(WALK_IN_CUSTOMER);
     setCustomerQuery('');
   }, [holdingId]);
@@ -749,5 +796,6 @@ export function useBillingPOSState() {
     recoveryBusy,
     continueCartRecovery,
     startNewSaleFromRecovery,
+    returnedSaleNotice,
   };
 }

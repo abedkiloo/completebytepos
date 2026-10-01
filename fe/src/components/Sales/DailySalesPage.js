@@ -822,6 +822,10 @@ export default function DailySalesPage() {
           openRollbackDialog(sale);
         }}
         onPrint={handlePrintReceipt}
+        onUpdated={(updated) => {
+          setSelectedSale(updated);
+          loadDailySales();
+        }}
       />
 
       <RefundSaleDialog

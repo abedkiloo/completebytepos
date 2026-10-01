@@ -489,6 +489,10 @@ export default function CustomerDailyDetailPage() {
           setRollbackSale(sale);
         }}
         onPrint={() => window.print()}
+        onUpdated={(updated) => {
+          setSelectedSale(updated);
+          load();
+        }}
       />
       <RefundSaleDialog
         sale={refundSale}

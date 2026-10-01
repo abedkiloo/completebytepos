@@ -45,8 +45,12 @@ export function noticeRequiresSaleFix(entry) {
   );
 }
 
+export function rejectedSalePosPath(saleId) {
+  return `/pos/billing?sale=${saleId}`;
+}
+
 export function rejectedSaleFixPath(parsed, title = '') {
-  if (Number.isFinite(parsed?.saleId)) return `/pos?sale=${parsed.saleId}`;
+  if (Number.isFinite(parsed?.saleId)) return rejectedSalePosPath(parsed.saleId);
   if (
     parsed?.source === 'pending_change' &&
     Number.isFinite(parsed?.id) &&

@@ -2,6 +2,12 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { WALK_IN_CUSTOMER } from '../../../utils/walkInCustomer';
 
+const mockSearchParams = { current: new URLSearchParams() };
+
+jest.mock('react-router-dom', () => ({
+  useSearchParams: () => [mockSearchParams.current, jest.fn()],
+}));
+
 jest.mock('../../../services/api', () => ({
   productsAPI: {},
   customersAPI: {},
@@ -108,12 +114,14 @@ function buildMockState(overrides = {}) {
     recoveryBusy: false,
     continueCartRecovery: jest.fn(),
     startNewSaleFromRecovery: jest.fn(),
+    returnedSaleNotice: null,
     ...overrides,
   };
 }
 
 describe('BillingPOSPage invoice layout', () => {
   beforeEach(() => {
+    mockSearchParams.current = new URLSearchParams();
     useStoreSettings.mockReturnValue({
       settings: { enabled_payment_methods: ['cash', 'wallet'] },
     });
@@ -160,5 +168,24 @@ describe('BillingPOSPage invoice layout', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Pay full amount later/i }));
     expect(payFullAmountLater).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens a returned sale on Terminal POS from the sale query', () => {
+    mockSearchParams.current = new URLSearchParams('sale=99');
+    render(<BillingPOSPage />);
+    expect(useBillingPOSState).toHaveBeenCalledWith({ resumeSaleId: '99' });
+  });
+
+  it('shows the returned-sale banner on Terminal POS', () => {
+    useBillingPOSState.mockReturnValue(
+      buildMockState({
+        returnedSaleNotice: { saleNumber: 'S-RET', comment: 'Wrong prices' },
+      })
+    );
+    render(<BillingPOSPage />);
+    expect(screen.getByTestId('returned-sale-banner')).toHaveTextContent(
+      'Manager returned sale S-RET'
+    );
+    expect(screen.getByTestId('returned-sale-banner')).toHaveTextContent('Wrong prices');
   });
 });

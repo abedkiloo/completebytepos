@@ -77,6 +77,31 @@ export function userHasAdminSaleOverride(auth = getStoredAuth()) {
   return role === 'admin' || role === 'super_admin';
 }
 
+export function userCanCorrectSaleDate(auth = getStoredAuth()) {
+  const { permissions, user, profile } = auth || {};
+  if (user?.is_superuser) return true;
+  if (profile?.is_super_admin) return true;
+  const role = String(profile?.role || '');
+  if (role === 'admin' || role === 'super_admin' || role === 'manager') return true;
+  return userCanApproveSales(permissions);
+}
+
+export function saleDateInputValue(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export function saleMaxCorrectableDateInput() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return saleDateInputValue(d.toISOString());
+}
+
 export function saleCanAdminReturnForCorrection(sale) {
   const status = String(sale?.status || '');
   if (status === 'awaiting_payment') return true;

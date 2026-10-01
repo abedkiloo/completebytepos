@@ -610,6 +610,10 @@ const Sales = () => {
             setSelectedSale(refreshed.data);
             loadSales();
           }}
+          onUpdated={(updated) => {
+            setSelectedSale(updated);
+            loadSales();
+          }}
         />
 
         <RefundSaleDialog

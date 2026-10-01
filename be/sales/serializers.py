@@ -291,6 +291,7 @@ class SaleSerializer(serializers.ModelSerializer):
     refundable_remaining = serializers.SerializerMethodField()
     can_refund = serializers.SerializerMethodField()
     can_rollback = serializers.SerializerMethodField()
+    can_correct_date = serializers.SerializerMethodField()
     needs_salesperson_action = serializers.SerializerMethodField()
     rejection_reason = serializers.SerializerMethodField()
 
@@ -306,7 +307,7 @@ class SaleSerializer(serializers.ModelSerializer):
             'occurred_at', 'entry_source', 'client_channel', 'backfill_reason', 'is_late_entry',
             'backfill_receipt_photo_url',
             'items', 'item_count', 'amount_refunded', 'refundable_remaining', 'can_refund',
-            'can_rollback', 'needs_salesperson_action', 'rejection_reason',
+            'can_rollback', 'can_correct_date', 'needs_salesperson_action', 'rejection_reason',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
@@ -352,6 +353,13 @@ class SaleSerializer(serializers.ModelSerializer):
         from sales.rollback import sale_has_pending_rollback, sale_is_rollbackable
 
         return sale_is_rollbackable(obj) and not sale_has_pending_rollback(obj)
+
+    def get_can_correct_date(self, obj):
+        from sales.sale_date import sale_date_can_be_corrected
+
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        return sale_date_can_be_corrected(obj, user)
 
     def get_needs_salesperson_action(self, obj):
         from sales.sale_completion_approval import sale_needs_salesperson_action

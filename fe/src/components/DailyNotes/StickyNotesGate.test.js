@@ -131,7 +131,7 @@ describe('StickyNotesGate', () => {
     expect(await screen.findByText(/Returned sale — open and send back/i)).toBeInTheDocument();
     expect(screen.queryByTestId('sticky-note-tick-8')).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId('sticky-note-open-sale-8'));
-    expect(mockNavigate).toHaveBeenCalledWith('/pos?sale=99');
+    expect(mockNavigate).toHaveBeenCalledWith('/pos/billing?sale=99');
     expect(dailyNotesAPI.toggleDone).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(screen.queryByTestId('sticky-notes-gate')).not.toBeInTheDocument()

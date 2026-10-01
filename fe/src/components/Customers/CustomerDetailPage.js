@@ -455,6 +455,10 @@ export default function CustomerDetailPage() {
           setSaleDetailOpen(false);
           setRollbackSale(sale);
         }}
+        onUpdated={(updated) => {
+          setSelectedSale(updated);
+          load();
+        }}
       />
 
       <RefundSaleDialog

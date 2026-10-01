@@ -352,6 +352,7 @@ export const salesAPI = {
   cancelHolding: (id) => api.post(`/sales/${id}/cancel-holding/`),
   refund: (id, data) => api.post(`/sales/${id}/refund/`, data),
   rollback: (id, data) => api.post(`/sales/${id}/rollback/`, data),
+  correctDate: (id, data) => api.post(`/sales/${id}/correct-date/`, data),
   backfill: (data, photoFile) => {
     if (photoFile) {
       const body = new FormData();

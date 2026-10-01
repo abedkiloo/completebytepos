@@ -27,6 +27,7 @@ describe('actionHelp', () => {
     expect(getActionHelp('approve_change').hover).toMatch(/live/i);
     expect(getActionHelp('sale_backfill').title).toMatch(/after the fact/i);
     expect(getActionHelp('sale_complete').title).toMatch(/cashier sale/i);
+    expect(getActionHelp('sale_correct_date').title).toMatch(/another day/i);
     expect(getActionHelp('debt_collection').title).toMatch(/debt collection/i);
   });
 });

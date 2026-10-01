@@ -44,6 +44,15 @@ export const ACTION_HELP = {
     confirmBody:
       'This completes the sale. Stock, general ledger, customer debt, reports, and the receipt update now.',
   },
+  sale_correct_date: {
+    shortLabel: 'Change sale date',
+    title: 'Move a sale to another day',
+    hover:
+      'Use this when the sale was recorded on the wrong business date. Daily sales, reports, and the books follow the new date. The time of day stays the same.',
+    confirmTitle: 'Save the new sale date?',
+    confirmBody:
+      'This sale will count on the date you choose. Reports and the general ledger move with it.',
+  },
   debt_collection: {
     shortLabel: 'Approve collection',
     title: 'Approve a debt collection',

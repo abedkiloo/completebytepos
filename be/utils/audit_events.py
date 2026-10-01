@@ -98,6 +98,22 @@ def log_product_write(request, product: Model, *, before: Model | None, action: 
     log_model_change(request, action, product, module='products', before=before)
 
 
+def log_sale_date_corrected(request, sale, *, previous):
+    log_domain_event(
+        request,
+        'update',
+        sale,
+        module='sales',
+        changes={
+            'sale_number': getattr(sale, 'sale_number', ''),
+            'occurred_at_from': previous.isoformat() if previous else '',
+            'occurred_at_to': (
+                sale.occurred_at.isoformat() if getattr(sale, 'occurred_at', None) else ''
+            ),
+        },
+    )
+
+
 def log_stock_movement_event(request, movement: Model, *, event: str, payload: dict | None = None):
     changes = dict(payload or {})
     changes['movement_type'] = getattr(movement, 'movement_type', '')

@@ -35,6 +35,9 @@ import {
   saleReceiptBlockedReason,
   saleRejectionReason,
   saleCanAdminReturnForCorrection,
+  saleDateInputValue,
+  saleMaxCorrectableDateInput,
+  userCanCorrectSaleDate,
 } from '../../utils/saleCompletionApproval';
 import { salesAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
@@ -54,6 +57,7 @@ export default function SaleDetailDialog({
   onCollected,
   canReturnForCorrection = false,
   onReturned,
+  onUpdated,
   showCustomerName = true,
   showAdminDetails = true,
 }) {
@@ -65,12 +69,15 @@ export default function SaleDetailDialog({
   const [showReturn, setShowReturn] = useState(false);
   const [returnReason, setReturnReason] = useState('');
   const [returning, setReturning] = useState(false);
+  const [saleDate, setSaleDate] = useState(() => saleDateInputValue(sale?.occurred_at || sale?.created_at));
+  const [savingDate, setSavingDate] = useState(false);
 
   useEffect(() => {
     setCollectAmount(String(sale?.total || ''));
     setShowReturn(false);
     setReturnReason('');
-  }, [sale?.id, sale?.total]);
+    setSaleDate(saleDateInputValue(sale?.occurred_at || sale?.created_at));
+  }, [sale?.id, sale?.total, sale?.occurred_at, sale?.created_at]);
 
   if (!sale) return null;
 
@@ -85,6 +92,11 @@ export default function SaleDetailDialog({
   const managerComment = saleRejectionReason(sale);
   const receiptBlocked = saleReceiptBlockedReason(sale);
   const canReturn = canReturnForCorrection && saleCanAdminReturnForCorrection(sale);
+  const canCorrectDate =
+    sale.status !== 'cancelled' &&
+    (sale.can_correct_date === true || userCanCorrectSaleDate());
+  const originalSaleDate = saleDateInputValue(sale.occurred_at || sale.created_at);
+  const saleDateChanged = Boolean(saleDate) && saleDate !== originalSaleDate;
 
   const collectPayment = async () => {
     setCollecting(true);
@@ -123,6 +135,23 @@ export default function SaleDetailDialog({
       );
     } finally {
       setReturning(false);
+    }
+  };
+
+  const saveSaleDate = async () => {
+    if (!saleDateChanged) return;
+    setSavingDate(true);
+    try {
+      const res = await salesAPI.correctDate(sale.id, { occurred_on: saleDate });
+      toast.success('Sale date updated. Daily sales, reports, and books follow the new date.');
+      onUpdated?.(res.data);
+    } catch (err) {
+      const data = err.response?.data;
+      toast.error(
+        data?.error || data?.occurred_on || data?.occurred_at || data?.detail || 'Could not change the sale date'
+      );
+    } finally {
+      setSavingDate(false);
     }
   };
 
@@ -365,6 +394,41 @@ export default function SaleDetailDialog({
                 value={formatCurrency(sale.refundable_remaining)}
               />
             ) : null}
+          </div>
+        ) : null}
+
+        {canCorrectDate ? (
+          <div className="space-y-2 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+            <div className="flex items-center gap-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Sale date
+              </p>
+              <HelpHint actionKey="sale_correct_date" />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Daily sales, reports, and the books use this date. The recorded time of day stays the same.
+            </p>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="min-w-[10rem] flex-1">
+                <Label htmlFor={`sale-date-${sale.id}`} className="sr-only">
+                  Sale date
+                </Label>
+                <Input
+                  id={`sale-date-${sale.id}`}
+                  type="date"
+                  value={saleDate}
+                  max={saleMaxCorrectableDateInput()}
+                  onChange={(e) => setSaleDate(e.target.value)}
+                />
+              </div>
+              <Button
+                type="button"
+                onClick={saveSaleDate}
+                disabled={!saleDateChanged || savingDate}
+              >
+                {savingDate ? 'Saving…' : 'Save date'}
+              </Button>
+            </div>
           </div>
         ) : null}
 

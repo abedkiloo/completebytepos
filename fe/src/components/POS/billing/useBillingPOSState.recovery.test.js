@@ -13,13 +13,22 @@ jest.mock('../../../services/api', () => ({
     activeHolding: jest.fn(),
     saveHolding: jest.fn(),
     cancelHolding: jest.fn(),
+    get: jest.fn(),
+  },
+}));
+
+jest.mock('../../../utils/toast', () => ({
+  toast: {
+    warning: jest.fn(),
+    error: jest.fn(),
+    success: jest.fn(),
   },
 }));
 
 jest.mock('../../../hooks/useModuleSettings', () => ({
   useModuleSettings: () => ({
     settings: {
-      validate_stock_before_sale: false,
+      validate_stock_before_sale: true,
       require_customer: false,
       allow_partial_payment: true,
       show_discount: true,
@@ -99,6 +108,98 @@ describe('useBillingPOSState cart recovery', () => {
     expect(result.current.cart[1].quantity).toBe(1);
     expect(result.current.holdingNumber).toBe('HOLD-042');
     expect(result.current.cartRecovery).toBeNull();
+  });
+
+  it('loads a specific returned sale from resumeSaleId on Terminal POS', async () => {
+    salesAPI.get.mockResolvedValueOnce({
+      data: {
+        id: 99,
+        status: 'holding',
+        needs_salesperson_action: true,
+        rejection_reason: 'Wrong prices',
+        sale_number: 'S-RET',
+        subtotal: '200.00',
+        tax_amount: '0',
+        discount_amount: '0',
+        total: '200.00',
+        amount_paid: '40.00',
+        payment_method: 'mpesa',
+        payment_reference: 'QHX7K2L9M1',
+        customer: null,
+        items: [
+          {
+            product_id: 7,
+            product: {
+              id: 7,
+              name: 'Bottled Water',
+              price: 50,
+              stock_quantity: 100,
+              track_stock: true,
+            },
+            product_name: 'Bottled Water',
+            quantity: 3,
+            unit_price: '50.00',
+          },
+        ],
+      },
+    });
+
+    const { result } = renderHook(() => useBillingPOSState({ resumeSaleId: '99' }));
+
+    await waitFor(() => {
+      expect(result.current.cart).toHaveLength(1);
+    });
+    expect(salesAPI.get).toHaveBeenCalledWith(99);
+    expect(salesAPI.activeHolding).not.toHaveBeenCalled();
+    expect(result.current.cart[0].name).toBe('Bottled Water');
+    expect(result.current.cart[0].quantity).toBe(3);
+    expect(result.current.returnedSaleNotice).toEqual({
+      saleNumber: 'S-RET',
+      comment: 'Wrong prices',
+    });
+    expect(result.current.amountPaid).toBe('40');
+    expect(result.current.paymentMethod).toBe('mpesa');
+    expect(result.current.paymentReference).toBe('QHX7K2L9M1');
+  });
+
+  it('loads returned sale lines even when on-hand stock is zero', async () => {
+    salesAPI.get.mockResolvedValueOnce({
+      data: {
+        id: 77,
+        status: 'holding',
+        needs_salesperson_action: true,
+        rejection_reason: 'Fix quantity',
+        sale_number: 'S-ZERO',
+        subtotal: '50.00',
+        tax_amount: '0',
+        discount_amount: '0',
+        payment_method: 'cash',
+        customer: null,
+        items: [
+          {
+            product_id: 7,
+            product: {
+              id: 7,
+              name: 'Bottled Water',
+              price: 50,
+              stock_quantity: 0,
+              track_stock: true,
+            },
+            product_name: 'Bottled Water',
+            quantity: 3,
+            unit_price: '50.00',
+          },
+        ],
+      },
+    });
+
+    const { result } = renderHook(() => useBillingPOSState({ resumeSaleId: '77' }));
+
+    await waitFor(() => {
+      expect(result.current.cart).toHaveLength(1);
+    });
+    expect(result.current.cart[0].name).toBe('Bottled Water');
+    expect(result.current.cart[0].quantity).toBe(3);
   });
 
   it('start new sale cancels holding and clears recovery state', async () => {

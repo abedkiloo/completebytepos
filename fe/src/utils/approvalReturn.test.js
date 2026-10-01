@@ -34,9 +34,9 @@ describe('approvalReturn', () => {
     expect(parseApprovalRejectionNotice('')).toBeNull();
   });
 
-  it('routes a returned sale to POS or Record past sale', () => {
+  it('routes a returned sale to Terminal POS or Record past sale', () => {
     expect(rejectedSaleFixPath({ source: 'pending_change', id: 42, saleId: 99 })).toBe(
-      '/pos?sale=99'
+      '/pos/billing?sale=99'
     );
     expect(
       rejectedSaleFixPath(

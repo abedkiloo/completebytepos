@@ -253,6 +253,7 @@ export default function CustomerDetailDialog({
         onRollback={openRollbackDialog}
         showCustomerName={false}
         showAdminDetails={canRefund || canRollback}
+        onUpdated={(updated) => setSelectedSale(updated)}
       />
 
       <RefundSaleDialog
