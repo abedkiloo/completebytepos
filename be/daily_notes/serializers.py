@@ -5,7 +5,12 @@ from rest_framework import serializers
 from accounts.models import Role
 from .access import user_may_view_all_daily_notes
 from .models import DailyNote, DailyTask
-from .services import active_staff_users, create_notes_for_assignees, users_with_role
+from .services import (
+    active_staff_users,
+    carried_over_days,
+    create_notes_for_assignees,
+    users_with_role,
+)
 from utils.field_types import date_error_messages, raise_field_error, required_text_error
 
 
@@ -35,6 +40,7 @@ class DailyNoteSerializer(serializers.ModelSerializer):
     )
     assigned_role_name = serializers.SerializerMethodField()
     created_count = serializers.SerializerMethodField()
+    days_carried_over = serializers.SerializerMethodField()
     assign_to_all = serializers.BooleanField(write_only=True, required=False, default=False)
     board_column = serializers.ChoiceField(
         choices=['todo', 'doing', 'past'],
@@ -65,6 +71,7 @@ class DailyNoteSerializer(serializers.ModelSerializer):
             'assign_to_all',
             'assignment_group',
             'created_count',
+            'days_carried_over',
             'created_at',
             'updated_at',
         ]
@@ -72,6 +79,7 @@ class DailyNoteSerializer(serializers.ModelSerializer):
             'author',
             'completed_at',
             'assignment_group',
+            'days_carried_over',
             'created_at',
             'updated_at',
         ]
@@ -106,6 +114,13 @@ class DailyNoteSerializer(serializers.ModelSerializer):
 
     def get_created_count(self, obj):
         return getattr(self, '_created_count', 1)
+
+    def get_days_carried_over(self, obj):
+        return carried_over_days(
+            origin=getattr(obj, 'note_date', None),
+            as_of=self.context.get('as_of_date'),
+            is_done=bool(getattr(obj, 'is_done', False)),
+        )
 
     def validate(self, attrs):
         request = self.context.get('request')
@@ -285,6 +300,7 @@ class DailyTaskSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
+    days_carried_over = serializers.SerializerMethodField()
 
     class Meta:
         model = DailyTask
@@ -301,10 +317,17 @@ class DailyTaskSerializer(serializers.ModelSerializer):
             'assigned_to',
             'assigned_to_name',
             'assigned_to_username',
+            'days_carried_over',
             'created_at',
             'updated_at',
         ]
-        read_only_fields = ['author', 'completed_at', 'created_at', 'updated_at']
+        read_only_fields = [
+            'author',
+            'completed_at',
+            'days_carried_over',
+            'created_at',
+            'updated_at',
+        ]
         extra_kwargs = {
             'task_date': {'error_messages': date_error_messages(label='task date')},
         }
@@ -324,6 +347,13 @@ class DailyTaskSerializer(serializers.ModelSerializer):
         if not obj.assigned_to_id:
             return ''
         return _author_display(obj.assigned_to)
+
+    def get_days_carried_over(self, obj):
+        return carried_over_days(
+            origin=getattr(obj, 'task_date', None),
+            as_of=self.context.get('as_of_date'),
+            is_done=bool(getattr(obj, 'is_done', False)),
+        )
 
     def validate(self, attrs):
         is_done = attrs.get('is_done')

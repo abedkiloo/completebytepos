@@ -1,6 +1,7 @@
 """Queryset and recent-dates edge cases."""
 
-from datetime import date
+from datetime import date, timedelta
+from django.utils import timezone
 
 from django.contrib.auth.models import User
 from django.core.cache import cache
@@ -30,6 +31,8 @@ class DailyNotesQuerysetTests(ManagerAPITestCase):
         DailyNote.objects.create(
             note_date=other,
             content='Old',
+            is_done=True,
+            completed_at=timezone.now(),
             author=self.manager_user,
         )
         response = self.client.get(
@@ -40,6 +43,50 @@ class DailyNotesQuerysetTests(ManagerAPITestCase):
         rows = response.data.get('results', response.data)
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]['content'], 'Today')
+        self.assertEqual(rows[0]['days_carried_over'], 0)
+
+    def test_open_notes_carry_over_with_wait_days(self):
+        origin = date.today() - timedelta(days=3)
+        DailyNote.objects.create(
+            note_date=origin,
+            title='Still waiting',
+            content='Count till',
+            author=self.manager_user,
+        )
+        DailyNote.objects.create(
+            note_date=origin,
+            title='Closed then',
+            content='Finished',
+            is_done=True,
+            completed_at=timezone.now(),
+            author=self.manager_user,
+        )
+        DailyNote.objects.create(
+            note_date=date.today(),
+            title='Today note',
+            content='Today',
+            author=self.manager_user,
+        )
+        response = self.client.get(
+            '/api/daily-notes/notes/',
+            {'note_date': str(date.today())},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        rows = response.data.get('results', response.data)
+        by_title = {row['title']: row for row in rows}
+        self.assertIn('Still waiting', by_title)
+        self.assertIn('Today note', by_title)
+        self.assertNotIn('Closed then', by_title)
+        self.assertEqual(by_title['Still waiting']['days_carried_over'], 3)
+        self.assertEqual(by_title['Today note']['days_carried_over'], 0)
+        origin_day = self.client.get(
+            '/api/daily-notes/notes/',
+            {'note_date': str(origin), 'status': 'done'},
+        )
+        done_rows = origin_day.data.get('results', origin_day.data)
+        self.assertEqual(len(done_rows), 1)
+        self.assertEqual(done_rows[0]['title'], 'Closed then')
+        self.assertEqual(done_rows[0]['days_carried_over'], 0)
 
 
 class DailyNotesRecentDatesDeniedTests(SalesAPITestCase):

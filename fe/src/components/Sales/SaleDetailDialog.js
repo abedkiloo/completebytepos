@@ -34,6 +34,7 @@ import {
   saleNeedsSalespersonAction,
   saleReceiptBlockedReason,
   saleRejectionReason,
+  saleCanAdminReturnForCorrection,
 } from '../../utils/saleCompletionApproval';
 import { salesAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
@@ -51,6 +52,8 @@ export default function SaleDetailDialog({
   canRollback = false,
   onPrint,
   onCollected,
+  canReturnForCorrection = false,
+  onReturned,
   showCustomerName = true,
   showAdminDetails = true,
 }) {
@@ -59,9 +62,14 @@ export default function SaleDetailDialog({
   const logoUrl = resolveReceiptLogoUrl(settings);
   const [collectAmount, setCollectAmount] = useState(() => String(sale?.total || ''));
   const [collecting, setCollecting] = useState(false);
+  const [showReturn, setShowReturn] = useState(false);
+  const [returnReason, setReturnReason] = useState('');
+  const [returning, setReturning] = useState(false);
 
   useEffect(() => {
     setCollectAmount(String(sale?.total || ''));
+    setShowReturn(false);
+    setReturnReason('');
   }, [sale?.id, sale?.total]);
 
   if (!sale) return null;
@@ -76,6 +84,7 @@ export default function SaleDetailDialog({
   const returnedToSalesperson = saleNeedsSalespersonAction(sale);
   const managerComment = saleRejectionReason(sale);
   const receiptBlocked = saleReceiptBlockedReason(sale);
+  const canReturn = canReturnForCorrection && saleCanAdminReturnForCorrection(sale);
 
   const collectPayment = async () => {
     setCollecting(true);
@@ -91,6 +100,29 @@ export default function SaleDetailDialog({
       toast.error(data?.error || data?.detail || 'Could not collect payment');
     } finally {
       setCollecting(false);
+    }
+  };
+
+  const returnForCorrection = async () => {
+    if (!returnReason.trim()) {
+      toast.warning('Please say why you are returning this sale');
+      return;
+    }
+    setReturning(true);
+    try {
+      const res = await salesAPI.rejectComplete(sale.id, {
+        rejection_reason: returnReason.trim(),
+      });
+      toast.success('Sale returned to the salesperson for correction.');
+      onReturned?.(res.data);
+      onOpenChange(false);
+    } catch (err) {
+      const data = err.response?.data;
+      toast.error(
+        data?.error || data?.rejection_reason || data?.detail || 'Could not return this sale'
+      );
+    } finally {
+      setReturning(false);
     }
   };
 
@@ -336,6 +368,32 @@ export default function SaleDetailDialog({
           </div>
         ) : null}
 
+        {canReturn && showReturn ? (
+          <div className="space-y-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm">
+            <p className="font-semibold">Return this sale to the salesperson</p>
+            <p className="text-muted-foreground">
+              {sale.status === 'completed'
+                ? 'Stock, journal, and accounting for this sale will be reversed. After they edit it, the sale goes through approval again before it can affect stock and books.'
+                : 'The salesperson must change the sale, then send it for approval again.'}
+            </p>
+            <Label htmlFor={`return-sale-${sale.id}`}>Reason</Label>
+            <Input
+              id={`return-sale-${sale.id}`}
+              value={returnReason}
+              onChange={(event) => setReturnReason(event.target.value)}
+              placeholder="Why should this sale be corrected?"
+            />
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={returnForCorrection}
+              disabled={returning}
+            >
+              {returning ? 'Returning…' : 'Confirm return'}
+            </Button>
+          </div>
+        ) : null}
+
         <DialogFooter className="flex-wrap gap-2 sm:justify-between">
           <div className="flex flex-wrap items-center gap-1">
             {canRollback && saleIsRollbackable(sale) && onRollback ? (
@@ -354,6 +412,18 @@ export default function SaleDetailDialog({
                   Void / refund
                 </Button>
                 <HelpHint actionKey="sale_refund" />
+              </span>
+            ) : null}
+            {canReturn ? (
+              <span className="inline-flex items-center">
+                <Button
+                  variant="destructive"
+                  onClick={() => setShowReturn((open) => !open)}
+                  disabled={returning}
+                >
+                  <RotateCcw className="mr-1 h-4 w-4" />
+                  Return for correction
+                </Button>
               </span>
             ) : null}
           </div>

@@ -113,6 +113,8 @@ describe('usePOSState local cart recovery', () => {
           subtotal: '200.00',
           tax_amount: '0',
           discount_amount: '0',
+          total: '200.00',
+          amount_paid: '80.00',
           payment_method: 'cash',
           customer: null,
           items: [
@@ -145,6 +147,8 @@ describe('usePOSState local cart recovery', () => {
     });
     expect(result.current.cart[0].name).toBe('Milk');
     expect(result.current.cart[0].quantity).toBe(2);
+    expect(result.current.receivedAmount).toBe('80');
+    expect(result.current.paymentMethod).toBe('cash');
     expect(result.current.cartRecovery).toBeNull();
   });
 
@@ -159,7 +163,10 @@ describe('usePOSState local cart recovery', () => {
         subtotal: '200.00',
         tax_amount: '0',
         discount_amount: '0',
-        payment_method: 'cash',
+        total: '200.00',
+        amount_paid: '40.00',
+        payment_method: 'mpesa',
+        payment_reference: 'QHX7K2L9M1',
         customer: null,
         items: [
           {
@@ -185,5 +192,42 @@ describe('usePOSState local cart recovery', () => {
       saleNumber: 'S-RET',
       comment: 'Wrong prices',
     });
+    expect(result.current.receivedAmount).toBe('40');
+    expect(result.current.paymentMethod).toBe('mpesa');
+    expect(result.current.paymentReference).toBe('QHX7K2L9M1');
+  });
+
+  it('loads returned sale lines even when on-hand stock is zero', async () => {
+    salesAPI.get.mockResolvedValueOnce({
+      data: {
+        id: 77,
+        status: 'holding',
+        needs_salesperson_action: true,
+        rejection_reason: 'Fix quantity',
+        sale_number: 'S-ZERO',
+        subtotal: '100.00',
+        tax_amount: '0',
+        discount_amount: '0',
+        payment_method: 'cash',
+        customer: null,
+        items: [
+          {
+            product_id: 5,
+            product: { id: 5, name: 'Sugar', price: 50, stock_quantity: 0, track_stock: true },
+            product_name: 'Sugar',
+            quantity: 3,
+            unit_price: '50.00',
+          },
+        ],
+      },
+    });
+
+    const { result } = renderHook(() => usePOSState({ resumeSaleId: '77' }));
+
+    await waitFor(() => {
+      expect(result.current.cart).toHaveLength(1);
+    });
+    expect(result.current.cart[0].name).toBe('Sugar');
+    expect(result.current.cart[0].quantity).toBe(3);
   });
 });

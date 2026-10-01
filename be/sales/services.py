@@ -340,7 +340,15 @@ class SaleService(BaseService):
         ).prefetch_related('items__product', 'items__variant')
         if branch:
             qs = qs.filter(branch=branch)
-        return qs.order_by('-updated_at').first()
+        holdings = list(qs.order_by('-updated_at')[:20])
+        if not holdings:
+            return None
+        from sales.sale_completion_approval import sale_needs_salesperson_action
+
+        for holding in holdings:
+            if sale_needs_salesperson_action(holding):
+                return holding
+        return holdings[0]
 
     def purge_stale_holdings(
         self,
@@ -358,8 +366,12 @@ class SaleService(BaseService):
         )
         if branch:
             qs = qs.filter(branch=branch)
+        from sales.sale_completion_approval import sale_needs_salesperson_action
+
         cancelled = 0
         for holding in qs:
+            if sale_needs_salesperson_action(holding):
+                continue
             self.cancel_holding_sale(holding)
             cancelled += 1
         return cancelled
@@ -482,6 +494,15 @@ class SaleService(BaseService):
             raise ValidationError('Cannot checkout an empty cart.')
 
         from sales.module_settings import sales_validate_stock_before_sale
+        from sales.sale_completion_approval import (
+            assert_returned_sale_was_edited,
+            payment_payload_from_inputs,
+            queue_sale_complete,
+            sale_completion_should_wait,
+            sale_needs_salesperson_action,
+        )
+
+        assert_returned_sale_was_edited(holding)
 
         validated_items = self.validate_sale_items(
             items_data,
@@ -496,36 +517,23 @@ class SaleService(BaseService):
         total = subtotal + tax_amount - discount_amount + delivery_cost
         customer = holding.customer
 
-        from sales.sale_completion_approval import (
-            payment_payload_from_inputs,
-            queue_sale_complete,
-            sale_completion_should_wait,
+        defer_complete = (
+            sale_completion_should_wait(user)
+            or sale_needs_salesperson_action(holding)
         )
-
-        defer_complete = sale_completion_should_wait(user)
-        if defer_complete:
-            amount_paid = Decimal('0')
-            payment_result = {
-                'wallet_amount_used': Decimal('0'),
-                'wallet_credit_added': Decimal('0'),
-                'change': Decimal('0'),
-                'pending_debt': None,
-                'amount_paid_recorded': Decimal('0'),
-            }
-        else:
-            self._validate_checkout_payment(
-                payment_method, amount_paid, total, customer, allow_partial
-            )
-            payment_result = self._prepare_sale_payment(
-                customer=customer,
-                sale_type='pos',
-                total=total,
-                amount_paid=amount_paid,
-                allow_partial=allow_partial,
-                excess_payment_choice=excess_payment_choice,
-                use_wallet=use_wallet,
-                wallet_amount_requested=wallet_amount,
-            )
+        self._validate_checkout_payment(
+            payment_method, amount_paid, total, customer, allow_partial
+        )
+        payment_result = self._prepare_sale_payment(
+            customer=customer,
+            sale_type='pos',
+            total=total,
+            amount_paid=amount_paid,
+            allow_partial=allow_partial,
+            excess_payment_choice=excess_payment_choice,
+            use_wallet=use_wallet,
+            wallet_amount_requested=wallet_amount,
+        )
 
         holding.items.all().delete()
         for item_data in validated_items:
@@ -1119,26 +1127,24 @@ class SaleService(BaseService):
         )
 
         defer_complete = sale_completion_should_wait(user)
-        if defer_complete:
-            amount_paid = Decimal('0')
-            payment_result = {
-                'wallet_amount_used': Decimal('0'),
-                'wallet_credit_added': Decimal('0'),
-                'change': Decimal('0'),
-                'pending_debt': None,
-                'amount_paid_recorded': Decimal('0'),
-            }
-        else:
-            payment_result = self._prepare_sale_payment(
-                customer=customer,
-                sale_type=sale_type,
-                total=total,
-                amount_paid=amount_paid,
-                allow_partial=validated_data.get('allow_partial_payment', False),
-                excess_payment_choice=validated_data.get('excess_payment_choice', 'change'),
-                use_wallet=validated_data.get('use_wallet', False),
-                wallet_amount_requested=Decimal(str(validated_data.get('wallet_amount', 0) or 0)),
+        if sale_type in ('pos', 'normal') and not validated_data.get('_backfill'):
+            self._validate_checkout_payment(
+                payment_method,
+                amount_paid,
+                total,
+                customer,
+                bool(validated_data.get('allow_partial_payment', False)),
             )
+        payment_result = self._prepare_sale_payment(
+            customer=customer,
+            sale_type=sale_type,
+            total=total,
+            amount_paid=amount_paid,
+            allow_partial=validated_data.get('allow_partial_payment', False),
+            excess_payment_choice=validated_data.get('excess_payment_choice', 'change'),
+            use_wallet=validated_data.get('use_wallet', False),
+            wallet_amount_requested=Decimal(str(validated_data.get('wallet_amount', 0) or 0)),
+        )
 
         sale_data = {
             'sale_type': sale_type,
@@ -1189,6 +1195,9 @@ class SaleService(BaseService):
 
             attach_pending_backfill_receipt_photo(sale, pending_photo)
         if defer_complete:
+            if payment_result.get('change') is not None:
+                sale.change = payment_result['change']
+                sale.save(update_fields=['change', 'updated_at'])
             pending_change = queue_sale_complete(
                 request,
                 sale,

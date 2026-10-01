@@ -18,6 +18,29 @@ class DailyNoteSerializerTests(TestCase):
         data = DailyNoteSerializer(note).data
         self.assertEqual(data['author_name'], 'Jane Doe')
         self.assertEqual(data['author_username'], 'jdoe')
+        self.assertEqual(data['days_carried_over'], 0)
+
+    def test_days_carried_over_uses_as_of_and_stays_zero_when_done(self):
+        from datetime import timedelta
+
+        user = User.objects.create_user('carryu', password='x')
+        origin = date.today() - timedelta(days=5)
+        note = DailyNote.objects.create(
+            note_date=origin,
+            content='Still waiting',
+            author=user,
+        )
+        data = DailyNoteSerializer(
+            note,
+            context={'as_of_date': date.today()},
+        ).data
+        self.assertEqual(data['days_carried_over'], 5)
+        note.mark_done(done=True)
+        done_data = DailyNoteSerializer(
+            note,
+            context={'as_of_date': date.today()},
+        ).data
+        self.assertEqual(done_data['days_carried_over'], 0)
 
     def test_author_name_falls_back_to_username(self):
         user = User.objects.create_user('plainuser', password='x')

@@ -4,6 +4,7 @@ import {
   SALE_AWAITING_PAYMENT_MESSAGE,
   awaitingApprovalListParams,
   partitionSaleApprovalQueue,
+  saleCanAdminReturnForCorrection,
   saleCheckoutSuccessToast,
   saleIsAwaitingApproval,
   saleIsAwaitingPayment,
@@ -11,6 +12,7 @@ import {
   saleReceiptBlockedReason,
   saleRejectionReason,
   userCanApproveSales,
+  userHasAdminSaleOverride,
 } from './saleCompletionApproval';
 
 describe('saleCompletionApproval', () => {
@@ -79,6 +81,35 @@ describe('saleCompletionApproval', () => {
   });
 
   test('approved copy is stable', () => {
-    expect(SALE_APPROVED_RECEIPT_MESSAGE).toMatch(/collect payment/i);
+    expect(SALE_APPROVED_RECEIPT_MESSAGE).toMatch(/print the receipt/i);
+  });
+
+  test('admin override can return approved and unrefunded completed sales', () => {
+    expect(
+      userHasAdminSaleOverride({
+        user: { is_superuser: true },
+        profile: { role: 'cashier' },
+      })
+    ).toBe(true);
+    expect(
+      userHasAdminSaleOverride({
+        user: {},
+        profile: { role: 'admin' },
+      })
+    ).toBe(true);
+    expect(
+      userHasAdminSaleOverride({
+        user: {},
+        profile: { role: 'manager' },
+      })
+    ).toBe(false);
+    expect(saleCanAdminReturnForCorrection({ status: 'awaiting_payment' })).toBe(true);
+    expect(
+      saleCanAdminReturnForCorrection({ status: 'completed', refund_status: 'none' })
+    ).toBe(true);
+    expect(
+      saleCanAdminReturnForCorrection({ status: 'completed', refund_status: 'partial' })
+    ).toBe(false);
+    expect(saleCanAdminReturnForCorrection({ status: 'pending_approval' })).toBe(false);
   });
 });

@@ -4,6 +4,7 @@ import StickyNotesGate from './StickyNotesGate';
 import { dailyNotesAPI } from '../../services/api';
 import { getStoredAuth } from '../../utils/roleAccess';
 import { toast } from '../../utils/toast';
+import { resetLoginOverlayQueue } from '../../utils/loginOverlayQueue';
 
 const mockNavigate = jest.fn();
 
@@ -29,6 +30,7 @@ jest.mock('../../utils/toast', () => ({
 describe('StickyNotesGate', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    resetLoginOverlayQueue();
     getStoredAuth.mockReturnValue({ user: { id: 20 } });
   });
 
@@ -49,6 +51,7 @@ describe('StickyNotesGate', () => {
           is_sticky: true,
           is_done: false,
           note_date: '2026-09-24',
+          days_carried_over: 3,
           author_name: 'Bea',
           assigned_to: 20,
         },
@@ -60,6 +63,7 @@ describe('StickyNotesGate', () => {
     render(<StickyNotesGate />);
     expect(await screen.findByTestId('sticky-notes-gate')).toBeInTheDocument();
     expect(screen.getByText('Till variance')).toBeInTheDocument();
+    expect(screen.getByText(/Carried over 3 days/)).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('sticky-note-tick-5'));
     await waitFor(() => expect(dailyNotesAPI.toggleDone).toHaveBeenCalledWith(5));
     await waitFor(() => expect(screen.queryByTestId('sticky-notes-gate')).not.toBeInTheDocument());

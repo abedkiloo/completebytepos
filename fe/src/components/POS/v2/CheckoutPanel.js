@@ -130,19 +130,14 @@ export function CheckoutPanel({
   const needsReference = paymentReferenceRequired(paymentMethod) && !isMpesa;
   const referenceOk =
     isMpesa || !needsReference || String(paymentReference || '').trim().length > 0;
-  const canPay = sendForApproval
-    ? !hasOversell && itemCount > 0 && total > 0
-    : !hasOversell &&
-      itemCount > 0 &&
-      total > 0 &&
-      referenceOk &&
-      (!isCashLike || receivedCheck.ok);
+  const canPay =
+    !hasOversell &&
+    itemCount > 0 &&
+    total > 0 &&
+    referenceOk &&
+    (!isCashLike || receivedCheck.ok);
 
   const handlePay = () => {
-    if (sendForApproval) {
-      onPay();
-      return;
-    }
     if (isMpesa && collectNow && isLiveMpesaPrompt(mpesaMode)) {
       setShowMpesaErrors(true);
       if (phoneMessage(mpesaPhone, { required: true })) return;
@@ -263,10 +258,10 @@ export function CheckoutPanel({
 
       {sendForApproval ? (
         <p className="px-3 pt-2 text-xs text-muted-foreground">
-          Confirm the customer and products. A manager will approve this sale, then you collect payment.
+          Record payment and any remaining debt now. A manager will approve before stock, books, and the receipt go live.
         </p>
-      ) : (
-        <>
+      ) : null}
+
       {/* Payment method tabs */}
       <div className="px-3 pt-2">
         <Label className="mb-1 block text-xs uppercase tracking-wide text-muted-foreground">
@@ -376,8 +371,6 @@ export function CheckoutPanel({
             </div>
           )}
         </div>
-      )}
-        </>
       )}
 
       {/* Oversell warning — visible above the Pay button so the cashier

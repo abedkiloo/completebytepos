@@ -5,6 +5,8 @@ import { Star } from 'lucide-react';
 import { appraisalsAPI, dailyNotesAPI } from '../../services/api';
 import { hasInboxNotes } from '../../utils/dailyNotesSticky';
 import { getStoredAuth, hasPermission } from '../../utils/roleAccess';
+import { canShowAppraisalGreetingOverlay } from '../../utils/loginOverlayQueue';
+import { useLoginOverlayState } from '../../hooks/useLoginOverlay';
 import { Button } from '../ui/button';
 import AppraisalProgressCard from './AppraisalProgressCard';
 
@@ -16,6 +18,7 @@ export default function AppraisalGreeting() {
   const navigate = useNavigate();
   const { permissions } = getStoredAuth();
   const canView = hasPermission(permissions, 'appraisals', 'view');
+  const overlay = useLoginOverlayState();
   const [snapshot, setSnapshot] = useState(null);
   const [open, setOpen] = useState(false);
 
@@ -43,7 +46,7 @@ export default function AppraisalGreeting() {
     load();
   }, [load]);
 
-  if (!open || !snapshot) return null;
+  if (!open || !snapshot || !canShowAppraisalGreetingOverlay(overlay)) return null;
 
   const dismiss = () => {
     if (snapshot.today?.date) {

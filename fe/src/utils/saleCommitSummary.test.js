@@ -24,6 +24,7 @@ describe('saleCommitSummary', () => {
       customerName: 'Ada',
       paymentReference: '',
       kind: 'full',
+      queuedForApproval: false,
     });
     expect(saleCommitTitle('full')).toBe('Confirm sale?');
     expect(saleCommitConfirmLabel('full')).toBe('Confirm & complete sale');
@@ -49,6 +50,7 @@ describe('saleCommitSummary', () => {
       customerName: null,
       paymentReference: '',
       kind: 'full',
+      queuedForApproval: false,
     });
     expect(
       buildSaleCommitSummary({
@@ -69,7 +71,14 @@ describe('saleCommitSummary', () => {
       customerName: null,
       paymentReference: 'REF',
       kind: 'full',
+      queuedForApproval: false,
     });
+  });
+
+  test('queuedForApproval uses send-for-approval labels', () => {
+    expect(saleCommitConfirmLabel('full', true)).toBe('Send for approval');
+    expect(saleCommitTitle('partial', true)).toBe('Send this sale for approval?');
+    expect(buildSaleCommitSummary({ queuedForApproval: true }).queuedForApproval).toBe(true);
   });
 
   test('unknown kind labels fall back to full-sale copy', () => {

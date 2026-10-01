@@ -10,6 +10,7 @@ from utils.audit_helpers import _module_for, _snapshot, audited_perform_create
 from utils.audit_mixin import AuditedModelViewSetMixin
 
 from .access import user_may_access_daily_notes, user_may_view_all_daily_notes
+from .services import parse_filter_date
 
 
 class DailyAuthorScopedViewSetMixin(AuditedModelViewSetMixin):
@@ -50,6 +51,12 @@ class DailyAuthorScopedViewSetMixin(AuditedModelViewSetMixin):
         if 'is_sticky' in params:
             filters['is_sticky'] = params.get('is_sticky')
         return filters
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        filters = self._parse_filters()
+        context['as_of_date'] = parse_filter_date(filters.get(self.date_param))
+        return context
 
     def get_queryset(self):
         if self._module_disabled():

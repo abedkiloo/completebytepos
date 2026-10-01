@@ -204,9 +204,16 @@ export function useBillingPOSState() {
     setDiscount(parseFloat(holding.discount_amount) || 0);
     setDiscountType('flat');
 
+    const restoreWithoutStockCap = Boolean(
+      holding.needs_salesperson_action || String(holding.rejection_reason || '').trim()
+    );
     const lines = mergeCartLines(
       (holding.items || [])
-        .map((item) => holdingSaleItemToCartLine(item, { validateStock }))
+        .map((item) =>
+          holdingSaleItemToCartLine(item, {
+            validateStock: restoreWithoutStockCap ? false : validateStock,
+          })
+        )
         .filter((l) => l.quantity > 0)
     );
     setCart(lines);

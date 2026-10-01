@@ -31,20 +31,19 @@ describe('receiptSnapshotShare', () => {
     expect(receiptPngFileName({ sale_number: '---' })).toBe('receipt-receipt.png');
   });
 
-  it('builds a searchable share caption', () => {
+  it('uses a thank-you caption without a receipt summary', () => {
     const caption = buildReceiptShareCaption(
       { sale_number: 'S-001', total: '100.00' },
       { storeName: 'Test Duka', phone: '0700' }
     );
-    expect(caption).toContain('Test Duka');
-    expect(caption).toContain('Receipt S-001');
-    expect(caption).toContain('Total:');
-    expect(caption).toContain('Tel: 0700');
-
-    const fallback = buildReceiptShareCaption({}, { name: 'Named Store' });
-    expect(fallback).toContain('Named Store');
-    expect(buildReceiptShareCaption({}, {})).toContain('Omuwenga Suppliers');
-    expect(buildReceiptShareCaption(undefined, undefined)).toContain('0718515142');
+    expect(caption).toBe(
+      'Thank you for doing business with us. Here is your receipt.'
+    );
+    expect(caption).not.toContain('S-001');
+    expect(caption).not.toContain('Total');
+    expect(caption).not.toContain('Test Duka');
+    expect(buildReceiptShareCaption({}, {})).toBe(caption);
+    expect(buildReceiptShareCaption()).toBe(caption);
   });
 
   it('reads customer phone digits and builds a WhatsApp text url', () => {
@@ -151,7 +150,7 @@ describe('receiptSnapshotShare', () => {
     expect(result.filename).toBe('receipt-receipt.png');
     expect(share).toHaveBeenCalledWith(
       expect.objectContaining({
-        text: expect.stringContaining('Duka'),
+        text: 'Thank you for doing business with us. Here is your receipt.',
         title: 'Receipt',
         files: [expect.any(File)],
       })

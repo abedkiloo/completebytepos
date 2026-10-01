@@ -31,7 +31,7 @@ export function SaleCommitConfirm({
 }) {
   if (!summary) return null;
   const kind = summary.kind || 'full';
-  const title = saleCommitTitle(kind);
+  const title = saleCommitTitle(kind, summary.queuedForApproval);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -48,8 +48,8 @@ export function SaleCommitConfirm({
             />
           </DialogTitle>
           <DialogDescription>
-            {kind === 'approval'
-              ? 'Confirm the customer and products. A manager will approve this sale, then you collect payment.'
+            {summary.queuedForApproval
+              ? 'Record payment and any remaining debt. A manager will approve before stock, books, and the receipt go live.'
               : 'Review the payment summary, then confirm to save this sale. This cannot be undone from the register.'}
           </DialogDescription>
         </DialogHeader>
@@ -61,12 +61,8 @@ export function SaleCommitConfirm({
               <dd className="text-right tabular-nums">{summary.itemCount}</dd>
             </>
           ) : null}
-          {kind === 'approval' ? null : (
-            <>
           <dt className="text-muted-foreground">Payment method</dt>
           <dd className="text-right">{paymentMethodLabel(summary.paymentMethod)}</dd>
-            </>
-          )}
           {summary.paymentReference ? (
             <>
               <dt className="text-muted-foreground">Reference</dt>
@@ -81,8 +77,6 @@ export function SaleCommitConfirm({
           ) : null}
           <dt className="text-muted-foreground">Sale total</dt>
           <dd className="text-right tabular-nums">{formatCurrency(summary.total)}</dd>
-          {kind === 'approval' ? null : (
-            <>
           <dt className="text-muted-foreground">
             {kind === 'pay_later' ? 'Collected now' : 'Amount paid'}
           </dt>
@@ -105,8 +99,6 @@ export function SaleCommitConfirm({
               </dd>
             </>
           ) : null}
-            </>
-          )}
         </dl>
 
         <DialogFooter>
@@ -114,7 +106,7 @@ export function SaleCommitConfirm({
             Cancel
           </Button>
           <Button onClick={onConfirm} disabled={submitting}>
-            {submitting ? 'Saving…' : saleCommitConfirmLabel(kind)}
+            {submitting ? 'Saving…' : saleCommitConfirmLabel(kind, summary.queuedForApproval)}
           </Button>
         </DialogFooter>
       </DialogContent>

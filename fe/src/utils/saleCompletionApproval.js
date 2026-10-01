@@ -2,15 +2,15 @@
  * Cashier sale completion waits for a manager with sales.approve.
  */
 
-import { hasPermission } from './roleAccess';
+import { hasPermission, getStoredAuth } from './roleAccess';
 
 export const SALE_AWAITING_APPROVAL_STATUS = 'pending_approval';
 
 export const SALE_AWAITING_APPROVAL_MESSAGE =
-  'A manager will approve this sale. You collect payment after they approve.';
+  'A manager will approve this sale. Stock, books, and the receipt update after they approve.';
 
 export const SALE_APPROVED_RECEIPT_MESSAGE =
-  'Sale was approved. Collect payment to complete it.';
+  'Sale was approved and completed. You can print the receipt.';
 
 export const SALE_AWAITING_PAYMENT_STATUS = 'awaiting_payment';
 export const SALE_AWAITING_PAYMENT_MESSAGE =
@@ -67,6 +67,23 @@ export function saleCheckoutSuccessToast(sale, { completedMessage = 'Sale comple
 
 export function userCanApproveSales(permissions = []) {
   return hasPermission(permissions, 'sales', 'approve');
+}
+
+export function userHasAdminSaleOverride(auth = getStoredAuth()) {
+  const { user, profile } = auth || {};
+  if (user?.is_superuser) return true;
+  if (profile?.is_super_admin) return true;
+  const role = String(profile?.role || '');
+  return role === 'admin' || role === 'super_admin';
+}
+
+export function saleCanAdminReturnForCorrection(sale) {
+  const status = String(sale?.status || '');
+  if (status === 'awaiting_payment') return true;
+  if (status === 'completed') {
+    return String(sale?.refund_status || 'none') === 'none';
+  }
+  return false;
 }
 
 export function awaitingApprovalListParams(filters = {}) {

@@ -1,12 +1,37 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 from django.contrib.auth.models import User
 from django.db.models import Q
 from django.utils import timezone
 
 from .models import DailyNote, DailyTask
+
+
+def parse_filter_date(value):
+    """Parse ISO calendar dates from query params. Invalid values return None."""
+    if value in (None, ''):
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value).strip()[:10])
+    except ValueError:
+        return None
+
+
+def carried_over_days(*, origin, as_of=None, is_done=False) -> int:
+    """Days an open note/task has waited past its original date."""
+    if is_done or origin is None:
+        return 0
+    as_of = parse_filter_date(as_of) or timezone.localdate()
+    origin = parse_filter_date(origin)
+    if origin is None:
+        return 0
+    delta = (as_of - origin).days
+    return delta if delta > 0 else 0
 
 
 def users_with_role(role):
@@ -111,9 +136,28 @@ def _scoped_task_queryset(*, user, view_all: bool):
 
 def _apply_common_filters(qs, *, date_field: str, filters: dict | None, view_all: bool):
     filters = filters or {}
-    day = filters.get('task_date') or filters.get('note_date')
-    if day:
-        qs = qs.filter(**{date_field: day})
+    day_raw = filters.get('task_date') or filters.get('note_date')
+    day = parse_filter_date(day_raw)
+    status = filters.get('status')
+    if day is not None:
+        # Open items stay on every later day until they are acted on.
+        # Completed items stay on the day they belong to.
+        if status == 'done':
+            qs = qs.filter(**{date_field: day, 'is_done': True})
+        else:
+            qs = qs.filter(
+                Q(**{date_field: day})
+                | Q(is_done=False, **{f'{date_field}__lt': day})
+            )
+            if status == 'open':
+                qs = qs.filter(is_done=False)
+    else:
+        if day_raw:
+            qs = qs.filter(**{date_field: day_raw})
+        if status == 'done':
+            qs = qs.filter(is_done=True)
+        elif status == 'open':
+            qs = qs.filter(is_done=False)
 
     author_id = filters.get('author')
     if author_id and view_all:
@@ -129,12 +173,6 @@ def _apply_common_filters(qs, *, date_field: str, filters: dict | None, view_all
             qs = qs.filter(Q(title__icontains=search) | Q(content__icontains=search))
         else:
             qs = qs.filter(Q(title__icontains=search) | Q(description__icontains=search))
-
-    status = filters.get('status')
-    if status == 'done':
-        qs = qs.filter(is_done=True)
-    elif status == 'open':
-        qs = qs.filter(is_done=False)
 
     if getattr(qs.model, '__name__', '') == 'DailyNote':
         kind = (filters.get('kind') or '').strip().lower()
@@ -184,11 +222,17 @@ class DailyNoteService:
 
 class DailyTaskService:
     def build_queryset(self, *, user, view_all: bool, filters: dict | None = None):
+        from daily_notes.approval_notice import complete_stale_sale_notice_tasks
+
+        complete_stale_sale_notice_tasks(user=user)
         qs = _scoped_task_queryset(user=user, view_all=view_all)
         qs = _apply_common_filters(qs, date_field='task_date', filters=filters, view_all=view_all)
         return qs.order_by('is_done', '-created_at')
 
     def pending_for_user(self, *, user, limit: int = 50):
+        from daily_notes.approval_notice import complete_stale_sale_notice_tasks
+
+        complete_stale_sale_notice_tasks(user=user)
         return (
             DailyTask.objects.filter(assigned_to=user, is_done=False)
             .select_related('author', 'author__profile', 'assigned_to', 'assigned_to__profile')

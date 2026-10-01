@@ -113,6 +113,31 @@ class ActiveHoldingRecoveryAPITestCase(APITestCase):
         response = self.client.get('/api/sales/active-holding/')
         self.assertIsNone(response.data.get('holding'))
 
+    def test_returned_holding_is_not_purged(self):
+        from approvals.models import PendingChange
+        from approvals.registry import ACTION_SALE_COMPLETE
+        from sales.sale_completion_approval import QUEUE_REASON
+
+        holding = self.service.save_holding_sale(
+            self.user,
+            [{'product_id': self.product.id, 'quantity': 2, 'unit_price': '100'}],
+        )
+        PendingChange.objects.create(
+            action_type=ACTION_SALE_COMPLETE,
+            entity_type='sales.Sale',
+            entity_id=str(holding.pk),
+            entity_repr=holding.sale_number,
+            reason=QUEUE_REASON,
+            status=PendingChange.STATUS_REJECTED,
+            rejection_reason='Wrong prices',
+        )
+        stale_time = timezone.now() - timedelta(hours=13)
+        Sale.objects.filter(pk=holding.pk).update(updated_at=stale_time)
+        purged = self.service.purge_stale_holdings(self.user)
+        self.assertEqual(purged, 0)
+        holding.refresh_from_db()
+        self.assertEqual(holding.status, 'holding')
+
     def test_login_purges_stale_holdings_for_user(self):
         holding = self.service.save_holding_sale(
             self.user,

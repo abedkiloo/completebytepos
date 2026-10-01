@@ -16,6 +16,7 @@ import {
   parseApprovalRejectionNotice,
   rejectedSaleFixPath,
 } from '../../utils/approvalReturn';
+import { carriedOverLabel } from '../../utils/dailyNotesTasks';
 
 export default function DailyNotesBoard({
   notes,
@@ -101,6 +102,14 @@ export default function DailyNotesBoard({
                             ? `For ${note.assigned_to_name || note.assigned_role_name}`
                             : note.author_name}
                         </span>
+                      ) : null}
+                      {carriedOverLabel(note) ? (
+                        <Badge
+                          variant="outline"
+                          data-testid={`note-carried-over-${note.id}`}
+                        >
+                          {carriedOverLabel(note)}
+                        </Badge>
                       ) : null}
                     </div>
                     {isApprovalRejectionNote(note) &&

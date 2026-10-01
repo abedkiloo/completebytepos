@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Loader2, NotebookPen } from 'lucide-react';
 
@@ -18,7 +18,8 @@ import {
   parseApprovalRejectionNotice,
   rejectedSaleFixPath,
 } from '../../utils/approvalReturn';
-import { formatDisplayDate } from '../../utils/dailyNotesTasks';
+import { formatDisplayDate, carriedOverLabel } from '../../utils/dailyNotesTasks';
+import { setStickyNotesOverlay } from '../../utils/loginOverlayQueue';
 
 /**
  * On login, show notes assigned to the current user.
@@ -84,6 +85,12 @@ export default function StickyNotesGate() {
   const returnedSaleOpen = visibleNotes.some((n) => noticeRequiresSaleFix(n));
   const showInbox = hasInboxNotes(visibleNotes) && (stickyBlocking || !dismissedGeneral);
 
+  useLayoutEffect(() => {
+    setStickyNotesOverlay({ loading, open: Boolean(!loading && showInbox) });
+  }, [loading, showInbox]);
+
+  useEffect(() => () => setStickyNotesOverlay({ loading: false, open: false }), []);
+
   if (loading || !showInbox) {
     return null;
   }
@@ -145,6 +152,7 @@ export default function StickyNotesGate() {
                     {formatDisplayDate(note.note_date)}
                     {note.author_name ? ` · from ${note.author_name}` : ''}
                     {saleFix ? ' · Fix sale' : isStickyNote(note) ? ' · Must tick' : ''}
+                    {carriedOverLabel(note) ? ` · ${carriedOverLabel(note)}` : ''}
                   </p>
                   {saleFix ? (
                     <Button

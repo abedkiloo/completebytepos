@@ -1,5 +1,7 @@
-import { formatCurrency } from './formatters';
 import { saveBlobAsFile } from './pdfDownload';
+
+export const RECEIPT_SHARE_CAPTION =
+  'Thank you for doing business with us. Here is your receipt.';
 
 const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47];
 
@@ -14,18 +16,8 @@ export function receiptPngFileName(sale) {
   return `receipt-${safe}.png`;
 }
 
-export function buildReceiptShareCaption(sale, store) {
-  const storeName = store?.storeName || store?.name || 'Omuwenga Suppliers';
-  const phone = store?.phone || '0718515142';
-  const lines = [
-    storeName,
-    `Receipt ${sale?.sale_number || ''}`.trim(),
-    `Total: ${formatCurrency(sale?.total)}`,
-    '',
-    'Thank you for your purchase!',
-    `Tel: ${phone}`,
-  ];
-  return lines.filter((line) => line !== '').join('\n');
+export function buildReceiptShareCaption() {
+  return RECEIPT_SHARE_CAPTION;
 }
 
 export function customerPhoneDigits(sale) {

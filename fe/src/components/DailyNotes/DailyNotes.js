@@ -18,6 +18,7 @@ import {
   formatTaskCompletedAt,
   sortDailyTasks,
   taskStatusLabel,
+  carriedOverLabel,
 } from '../../utils/dailyNotesTasks';
 import {
   canToggleDailyNote,
@@ -405,6 +406,14 @@ const DailyNotes = () => {
                               <span>· by {task.author_name || task.author_username}</span>
                             )}
                             <span>{taskStatusLabel(task)}</span>
+                            {carriedOverLabel(task) ? (
+                              <Badge
+                                variant="outline"
+                                data-testid={`task-carried-over-${task.id}`}
+                              >
+                                {carriedOverLabel(task)}
+                              </Badge>
+                            ) : null}
                             {task.is_done && task.completed_at && (
                               <span title={formatTaskCompletedAt(task.completed_at)}>
                                 ✓

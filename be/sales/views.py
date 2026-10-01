@@ -735,6 +735,10 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             else:
                 approve_queued_sale(sale, request.user)
                 sale.refresh_from_db()
+                if sale.status == 'completed':
+                    from utils.audit_events import log_sale_completed
+
+                    log_sale_completed(request, sale, source='complete')
         except ValidationError as e:
             return Response(
                 {'error': validation_error_message(e)},
@@ -790,23 +794,30 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         """Manager/admin: reject a cashier sale waiting for approval."""
         from approvals.service import reject_change
         from sales.sale_completion_approval import (
-            notify_cashier_sale_rejected,
             pending_sale_complete_change,
             return_queued_sale_for_correction,
         )
 
         sale = self.get_object()
-        if sale.status != 'pending_approval':
-            return Response(
-                {'error': 'This sale is not waiting for approval.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
         reason = (
             request.data.get('rejection_reason')
             or request.data.get('reason')
             or ''
         )
         try:
+            if sale.status in ('awaiting_payment', 'completed'):
+                from sales.sale_completion_approval import admin_return_sale_for_correction
+
+                admin_return_sale_for_correction(
+                    sale, user=request.user, reason=str(reason)
+                )
+                sale.refresh_from_db()
+                return Response(SaleSerializer(sale).data)
+            if sale.status != 'pending_approval':
+                return Response(
+                    {'error': 'This sale is not waiting for approval.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             change = pending_sale_complete_change(sale)
             if change:
                 reject_change(change, request.user, str(reason), request=request)
@@ -817,25 +828,26 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                         {'rejection_reason': 'Rejection reason is required.'}
                     )
                 return_queued_sale_for_correction(sale)
-                from daily_notes.approval_notice import notify_approval_rejected
-
-                notify_approval_rejected(
-                    requester=sale.cashier,
-                    checker=request.user,
-                    action_type='sale_complete',
-                    entity_repr=sale.sale_number or str(sale.pk),
-                    rejection_reason=str(reason).strip(),
-                    source='sale_complete',
-                    record_id=sale.pk,
-                    is_sticky=True,
-                    sale=sale,
+                from sales.sale_completion_approval import (
+                    notify_sale_returned_for_correction,
+                    record_rejected_sale_complete_change,
                 )
-                notify_cashier_sale_rejected(sale, request.user, str(reason).strip())
+
+                record_rejected_sale_complete_change(
+                    sale,
+                    checker=request.user,
+                    reason=str(reason).strip(),
+                    previous_status='pending_approval',
+                )
+                notify_sale_returned_for_correction(
+                    sale, request.user, str(reason).strip()
+                )
                 sale.refresh_from_db()
         except ValidationError as e:
-            payload = getattr(e, 'message_dict', None) or {
-                'error': validation_error_message(e)
-            }
+            payload = {'error': validation_error_message(e)}
+            extra = getattr(e, 'message_dict', None)
+            if isinstance(extra, dict):
+                payload.update(extra)
             return Response(payload, status=status.HTTP_400_BAD_REQUEST)
         return Response(SaleSerializer(sale).data)
 

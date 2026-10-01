@@ -185,13 +185,27 @@ def notify_approval_rejected(
         return None
 
 
+def _complete_open_tasks(queryset) -> int:
+    closed = 0
+    now = timezone.now()
+    for task in queryset:
+        try:
+            if task.is_done:
+                continue
+            task.mark_done(done=True, at=now)
+            task.save(update_fields=['is_done', 'completed_at'])
+            closed += 1
+        except Exception:
+            logger.exception('Could not complete Daily notes sale task')
+    return closed
+
+
 def complete_sale_return_notes(*, record_id) -> int:
     """Move the salesperson's returned-sale sticky note and task to Past."""
     if record_id is None:
         return 0
     fingerprint = sale_return_notice_fingerprint(record_id)
     moved = 0
-    now = timezone.now()
     for note in DailyNote.objects.filter(content__contains=fingerprint, is_done=False):
         try:
             note.move_to_board('past')
@@ -199,35 +213,120 @@ def complete_sale_return_notes(*, record_id) -> int:
             moved += 1
         except Exception:
             logger.exception('Could not complete Daily notes sale-return card')
-    for task in DailyTask.objects.filter(description__contains=fingerprint, is_done=False):
-        try:
-            task.mark_done(done=True, at=now)
-            task.save(update_fields=['is_done', 'completed_at'])
-        except Exception:
-            logger.exception('Could not complete Daily notes sale-return task')
+    _complete_open_tasks(
+        DailyTask.objects.filter(description__contains=fingerprint, is_done=False)
+    )
     return moved
 
 
-def build_sale_approved_notice(*, sale_number: str, checker) -> tuple[str, str]:
+def sale_approved_notice_fingerprint(record_id) -> str:
+    return f'ref: approve/sale/{record_id}/'
+
+
+_APPROVE_REF = re.compile(r'ref: approve/sale/(\d+)/')
+_REJECT_REF = re.compile(r'ref: reject/sale/(\d+)/')
+_QUEUE_REF = re.compile(r'ref: sale_complete/(\d+)')
+_APPROVED_TITLE = re.compile(r'^Sale #(.+?) was approved')
+
+_POSTED_SALE_STATUSES = frozenset({'awaiting_payment', 'completed', 'cancelled'})
+
+
+def build_sale_approved_notice(*, sale_number: str, checker, sale_id=None) -> tuple[str, str]:
     checker_name = _person_name(checker)
     number = (sale_number or '').strip() or 'this sale'
     title = f'Sale #{number} was approved'[:200]
+    footer = ''
+    if sale_id is not None:
+        footer = f'\n---\n{sale_approved_notice_fingerprint(sale_id)}'
     content = (
-        f'Sale #{number} was approved. Collect payment to complete it.\n'
+        f'Sale #{number} was approved and completed. You can print the receipt.\n'
         f'Approved by {checker_name}.'
+        f'{footer}'
     )
     return title, content
 
 
+def complete_sale_approved_notices(*, sale) -> int:
+    """Close leftover open tasks after a sale is approved or collected."""
+    if sale is None:
+        return 0
+    record_id = getattr(sale, 'pk', None)
+    closed = 0
+    if record_id is not None:
+        closed += complete_sale_return_notes(record_id=record_id)
+        closed += _complete_open_tasks(
+            DailyTask.objects.filter(
+                description__contains=sale_approved_notice_fingerprint(record_id),
+                is_done=False,
+            )
+        )
+        closed += _complete_open_tasks(
+            DailyTask.objects.filter(
+                description__contains=sale_queue_notice_fingerprint(SOURCE_SALE_COMPLETE, record_id),
+                is_done=False,
+            )
+        )
+    number = (getattr(sale, 'sale_number', None) or '').strip()
+    if number:
+        closed += _complete_open_tasks(
+            DailyTask.objects.filter(
+                title__startswith=f'Sale #{number} was approved',
+                is_done=False,
+            )
+        )
+    return closed
+
+
+def _sale_for_notice_task(task):
+    from sales.models import Sale
+
+    blob = f'{task.title or ""}\n{task.description or ""}'
+    for pattern in (_APPROVE_REF, _REJECT_REF, _QUEUE_REF):
+        match = pattern.search(blob)
+        if match:
+            return Sale.objects.filter(pk=int(match.group(1))).first()
+    titled = _APPROVED_TITLE.match((task.title or '').strip())
+    if titled:
+        number = titled.group(1).strip()
+        if number and number != 'this sale':
+            return Sale.objects.filter(sale_number=number).first()
+    return None
+
+
+def complete_stale_sale_notice_tasks(*, user=None) -> int:
+    """Close open sale-approval tasks whose sale has already been approved."""
+    from django.db.models import Q
+
+    qs = DailyTask.objects.filter(is_done=False).filter(
+        Q(description__contains='ref: approve/sale/')
+        | Q(description__contains='ref: reject/sale/')
+        | Q(description__contains='ref: sale_complete/')
+        | Q(title__startswith='Sale #')
+        | Q(title__startswith='Approval rejected: sale')
+        | Q(title__startswith='Clear and move:')
+    )
+    if user is not None:
+        qs = qs.filter(Q(assigned_to=user) | Q(author=user))
+    closed = 0
+    for task in qs:
+        sale = _sale_for_notice_task(task)
+        if sale is None or getattr(sale, 'status', None) not in _POSTED_SALE_STATUSES:
+            continue
+        closed += _complete_open_tasks(DailyTask.objects.filter(pk=task.pk, is_done=False))
+    return closed
+
+
 def notify_sale_approved(*, sale, checker):
-    """Tell the cashier in Daily notes that they can collect payment."""
+    """Tell the cashier in Daily notes that the sale is complete."""
     requester = getattr(sale, 'cashier', None)
     if requester is None:
         return None
+    complete_sale_approved_notices(sale=sale)
     today = timezone.localdate()
     title, content = build_sale_approved_notice(
         sale_number=getattr(sale, 'sale_number', '') or str(getattr(sale, 'pk', '')),
         checker=checker,
+        sale_id=getattr(sale, 'pk', None),
     )
     try:
         note = DailyNote.objects.create(
@@ -235,13 +334,6 @@ def notify_sale_approved(*, sale, checker):
             title=title,
             content=content,
             author=requester,
-        )
-        DailyTask.objects.create(
-            task_date=today,
-            title=title,
-            description=content,
-            author=checker or requester,
-            assigned_to=requester,
         )
         return note
     except Exception:
@@ -390,6 +482,7 @@ def complete_manager_queue_notes(*, source: str, record_id) -> int:
     if record_id is None:
         return 0
     moved = 0
+    fingerprint = sale_queue_notice_fingerprint(source, record_id)
     for note in _notes_for_sale_queue(source, record_id).filter(is_done=False):
         try:
             note.move_to_board('past')
@@ -397,6 +490,9 @@ def complete_manager_queue_notes(*, source: str, record_id) -> int:
             moved += 1
         except Exception:
             logger.exception('Could not move Daily notes sale-queue card to Past')
+    _complete_open_tasks(
+        DailyTask.objects.filter(description__contains=fingerprint, is_done=False)
+    )
     return moved
 
 

@@ -27,6 +27,7 @@ import {
   dailySalesCustomerPath,
 } from '../../utils/dailySalesAccess';
 import { userCanRefundSales, handleSaleRefundResponse, userCanRollbackSales } from '../../utils/saleRefund';
+import { userHasAdminSaleOverride } from '../../utils/saleCompletionApproval';
 import { pendingApprovalToastMessage } from '../../utils/makerChecker';
 import SaleChannelIcon from './SaleChannelIcon';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
@@ -165,6 +166,7 @@ export default function DailySalesPage() {
     isManagerOrAdmin: isManagerOrAdminFromStorage(),
   });
   const canRollback = userCanRollbackSales(permissions);
+  const canReturnForCorrection = userHasAdminSaleOverride();
   const canCollect = hasPermission(permissions, 'customers', 'update');
 
   const todayStr = getTodayDateString();
@@ -806,6 +808,11 @@ export default function DailySalesPage() {
         onOpenChange={setShowReceiptModal}
         canRefund={canRefund}
         canRollback={canRollback}
+        canReturnForCorrection={canReturnForCorrection}
+        onReturned={() => {
+          setShowReceiptModal(false);
+          loadDailySales();
+        }}
         onRefund={(sale) => {
           setShowReceiptModal(false);
           openRefundDialog(sale);

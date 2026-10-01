@@ -17,6 +17,7 @@ import { toast } from '../../utils/toast';
 import { getStoredAuth, hasPermission, isManagerOrAdminFromStorage } from '../../utils/roleAccess';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 import { userCanRefundSales, userCanRollbackSales, handleSaleRefundResponse } from '../../utils/saleRefund';
+import { userHasAdminSaleOverride } from '../../utils/saleCompletionApproval';
 import { pendingApprovalToastMessage } from '../../utils/makerChecker';
 import {
   formatDebtTrail,
@@ -78,6 +79,7 @@ export default function CustomerDetailPage() {
     isManagerOrAdmin: isManagerOrAdminFromStorage(),
   });
   const canRollback = userCanRollbackSales(permissions);
+  const canReturnForCorrection = userHasAdminSaleOverride();
 
   const load = useCallback(async () => {
     if (!customerId) return;
@@ -440,6 +442,11 @@ export default function CustomerDetailPage() {
         onOpenChange={setSaleDetailOpen}
         canRefund={canRefund}
         canRollback={canRollback}
+        canReturnForCorrection={canReturnForCorrection}
+        onReturned={() => {
+          setSaleDetailOpen(false);
+          load();
+        }}
         onRefund={(sale) => {
           setSaleDetailOpen(false);
           setRefundSale(sale);

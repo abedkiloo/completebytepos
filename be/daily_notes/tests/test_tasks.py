@@ -1,6 +1,6 @@
 """Daily task API and model behaviour."""
 
-from datetime import date
+from datetime import date, timedelta
 
 from django.contrib.auth.models import User
 from django.core.cache import cache
@@ -50,6 +50,38 @@ class DailyTaskAPITests(ManagerAPITestCase):
         ids = {row['id'] for row in response.data.get('results', response.data)}
         self.assertIn(self.open_task.id, ids)
         self.assertIn(self.done_task.id, ids)
+        for row in response.data.get('results', response.data):
+            if row['id'] == self.open_task.id:
+                self.assertEqual(row['days_carried_over'], 0)
+
+    def test_open_tasks_carry_over_with_wait_days(self):
+        origin = date.today() - timedelta(days=2)
+        open_old = DailyTask.objects.create(
+            task_date=origin,
+            title='Still open',
+            author=self.manager_user,
+            assigned_to=self.manager_user,
+        )
+        DailyTask.objects.create(
+            task_date=origin,
+            title='Done then',
+            is_done=True,
+            completed_at=timezone.now(),
+            author=self.manager_user,
+            assigned_to=self.manager_user,
+        )
+        response = self.client.get(
+            '/api/daily-notes/tasks/',
+            {'task_date': str(date.today())},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        rows = response.data.get('results', response.data)
+        by_id = {row['id']: row for row in rows}
+        self.assertIn(open_old.id, by_id)
+        self.assertEqual(by_id[open_old.id]['days_carried_over'], 2)
+        titles = {row['title'] for row in rows}
+        self.assertIn('Still open', titles)
+        self.assertNotIn('Done then', titles)
 
     def test_manager_creates_task(self):
         response = self.client.post(

@@ -76,7 +76,7 @@ class DailyNoteViewSet(DailyAuthorScopedViewSetMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='blocking')
     def blocking(self, request):
         notes = self.entry_service.blocking_for_user(user=request.user)
-        return Response(DailyNoteSerializer(notes, many=True).data)
+        return Response(self.get_serializer(notes, many=True).data)
 
     @action(detail=True, methods=['post'], url_path='toggle-done')
     def toggle_done(self, request, pk=None):
@@ -103,7 +103,7 @@ class DailyNoteViewSet(DailyAuthorScopedViewSetMixin, viewsets.ModelViewSet):
         note.is_done = not note.is_done
         note.mark_done(done=note.is_done)
         note.save(update_fields=['is_done', 'completed_at', 'updated_at'])
-        return Response(DailyNoteSerializer(note).data)
+        return Response(self.get_serializer(note).data)
 
     @action(detail=False, methods=['get'], url_path='staff')
     def staff(self, request):
@@ -210,11 +210,11 @@ class DailyTaskViewSet(DailyAuthorScopedViewSetMixin, viewsets.ModelViewSet):
         task.is_done = not task.is_done
         task.mark_done(done=task.is_done)
         task.save(update_fields=['is_done', 'completed_at', 'updated_at'])
-        return Response(DailyTaskSerializer(task).data)
+        return Response(self.get_serializer(task).data)
 
     @action(detail=False, methods=['get'], url_path='pending')
     def pending(self, request):
         if not user_may_access_daily_notes(request.user):
             return self._access_denied()
         tasks = self.entry_service.pending_for_user(user=request.user)
-        return Response(DailyTaskSerializer(tasks, many=True).data)
+        return Response(self.get_serializer(tasks, many=True).data)

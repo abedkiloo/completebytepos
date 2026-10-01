@@ -54,6 +54,7 @@ describe('SaleApprovalsPage', () => {
             status: 'pending_approval',
             cashier_name: 'Ann',
             occurred_at: '2026-09-29T10:00:00Z',
+            amount_paid: 2300,
             items: [{ quantity: 1 }],
             customer_name: 'Jane',
           },
@@ -62,7 +63,7 @@ describe('SaleApprovalsPage', () => {
     });
     pendingChangesAPI.pending.mockResolvedValue({ data: [] });
     salesAPI.complete.mockResolvedValue({
-      data: { id: 42, status: 'awaiting_payment' },
+      data: { id: 42, status: 'completed' },
     });
   });
 

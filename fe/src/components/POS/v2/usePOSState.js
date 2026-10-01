@@ -395,9 +395,16 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
     if (holding) {
       setRecoveryBusy(true);
       try {
+        const restoreWithoutStockCap = Boolean(
+          holding.needs_salesperson_action || String(holding.rejection_reason || '').trim()
+        );
         const lines = mergeCartLines(
           (holding.items || [])
-            .map((item) => holdingSaleItemToCartLine(item, { validateStock }))
+            .map((item) =>
+              holdingSaleItemToCartLine(item, {
+                validateStock: restoreWithoutStockCap ? false : validateStock,
+              })
+            )
             .filter((line) => line.quantity > 0)
         );
         setCart(lines);
@@ -410,6 +417,13 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
         setDiscount(parseFloat(holding.discount_amount) || 0);
         setDiscountType('flat');
         if (holding.payment_method) setPaymentMethod(holding.payment_method);
+        const paid = parseFloat(holding.amount_paid);
+        if (Number.isFinite(paid) && paid >= 0) {
+          setReceivedAmount(String(paid));
+        }
+        if (holding.payment_reference) {
+          setPaymentReference(String(holding.payment_reference));
+        }
         if (holding.customer) {
           setSelectedCustomer(
             customers.find((c) => c.id === holding.customer) || {
@@ -418,6 +432,13 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
             }
           );
         }
+        const totalDue = parseFloat(holding.total);
+        setPaymentOnAccount(
+          Number.isFinite(paid) &&
+            Number.isFinite(totalDue) &&
+            paid + 1e-9 < totalDue &&
+            Boolean(holding.customer)
+        );
         setHoldingId(holding.id);
         const comment = String(holding.rejection_reason || '').trim();
         if (holding.needs_salesperson_action || comment) {
@@ -763,11 +784,9 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
         shipping_address: deliveryEnabled && shippingAddress ? shippingAddress : null,
         payment_method: paymentMethod,
         payment_reference: paymentReferenceRequired(paymentMethod) ? reference : '',
-        amount_paid: sendForApproval
-          ? 0
-          : isTendered
-            ? formatAmountPaid(received)
-            : formatAmountPaid(total),
+        amount_paid: isTendered
+          ? formatAmountPaid(received)
+          : formatAmountPaid(total),
         customer_id:
           selectedCustomer?.id && selectedCustomer.id !== 'walk-in'
             ? selectedCustomer.id
@@ -791,7 +810,6 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
       receivedAmount,
       selectedCustomer,
       total,
-      sendForApproval,
     ]
   );
 
@@ -903,25 +921,6 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
       return;
     }
 
-    if (sendForApproval) {
-      const customerName =
-        selectedCustomer && selectedCustomer.id !== 'walk-in'
-          ? selectedCustomer.name
-          : null;
-      setPendingSaleData(
-        buildSaleCommitSummary({
-          total,
-          received: 0,
-          paymentMethod: 'cash',
-          itemCount: cart.reduce((n, i) => n + (Number(i.quantity) || 0), 0),
-          customerName,
-          kind: 'approval',
-        })
-      );
-      setShowSaleCommitConfirm(true);
-      return;
-    }
-
     const paymentRef = String(overrides.paymentReference ?? paymentReference ?? '').trim();
     if (overrides.paymentReference != null) {
       setPaymentReference(paymentRef);
@@ -1011,6 +1010,7 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
           itemCount: cart.reduce((n, i) => n + (Number(i.quantity) || 0), 0),
           customerName,
           paymentReference: paymentRef,
+          queuedForApproval: sendForApproval,
         })
       );
       setShowSaleCommitConfirm(true);
@@ -1029,6 +1029,7 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
         itemCount: cart.reduce((n, i) => n + (Number(i.quantity) || 0), 0),
         customerName,
         paymentReference: paymentRef,
+        queuedForApproval: sendForApproval,
       })
     );
     setShowSaleCommitConfirm(true);

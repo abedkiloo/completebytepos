@@ -5,6 +5,7 @@ import { formatCurrency } from '../../utils/formatters';
 import { toast } from '../../utils/toast';
 import { getStoredAuth, isManagerOrAdminFromStorage } from '../../utils/roleAccess';
 import { userCanRefundSales, userCanRollbackSales, handleSaleRefundResponse } from '../../utils/saleRefund';
+import { userHasAdminSaleOverride } from '../../utils/saleCompletionApproval';
 import { pendingApprovalToastMessage } from '../../utils/makerChecker';
 import { getWalletDebtAmount } from '../../utils/walletDisplay';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
@@ -45,6 +46,7 @@ export default function CustomerDetailDialog({
     isManagerOrAdmin: isManagerOrAdminFromStorage(),
   });
   const canRollback = userCanRollbackSales(permissions);
+  const canReturnForCorrection = userHasAdminSaleOverride();
 
   const handleSelectSale = useCallback(async (sale) => {
     try {
@@ -243,6 +245,10 @@ export default function CustomerDetailDialog({
         onOpenChange={setSaleDetailOpen}
         canRefund={canRefund}
         canRollback={canRollback}
+        canReturnForCorrection={canReturnForCorrection}
+        onReturned={() => {
+          setSaleDetailOpen(false);
+        }}
         onRefund={openRefundDialog}
         onRollback={openRollbackDialog}
         showCustomerName={false}

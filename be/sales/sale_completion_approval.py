@@ -5,6 +5,9 @@ from __future__ import annotations
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
+from django.db import transaction
+from django.db.models import Sum
+from django.utils import timezone
 
 from approvals.models import PendingChange
 from approvals.registry import ACTION_SALE_COMPLETE
@@ -12,18 +15,32 @@ from approvals.service import submit_change
 from sales.models import Sale
 
 WAITING_MESSAGE = (
-    'A manager will approve this sale. You collect payment after they approve.'
+    'A manager will approve this sale. Stock, books, and the receipt update after they approve.'
 )
 APPROVED_MESSAGE_TEMPLATE = (
-    'Sale #{sale_number} was approved. Collect payment to complete it.'
+    'Sale #{sale_number} was approved and completed. You can print the receipt.'
 )
 REJECTED_MESSAGE_TEMPLATE = (
     'Sale #{sale_number} was returned. Check Daily notes for the comment, '
     'fix it on POS, and send it again.'
 )
-QUEUE_REASON = 'Sale details awaiting manager approval before funds collection.'
+QUEUE_REASON = 'Sale recorded at the till, awaiting manager approval before stock and books.'
 COLLECT_ONLY_AFTER_APPROVAL = (
     'Collect payment only after a manager approves this sale.'
+)
+COMPLETE_NOT_READY = 'This sale is not waiting for approval or collection.'
+CORRECTION_FINGERPRINT_KEY = 'correction_fingerprint'
+UNEDITED_RETURN_MESSAGE = (
+    'Update this sale before sending it back for approval.'
+)
+ADMIN_OVERRIDE_REQUIRED = (
+    'Only an admin can return an approved sale for correction.'
+)
+POSTED_RETURN_BLOCKED_REFUND = (
+    'Refunded sales cannot be returned for correction.'
+)
+ADMIN_RETURN_NOT_ALLOWED = (
+    'This sale cannot be returned for correction.'
 )
 
 
@@ -131,6 +148,256 @@ def sale_rejection_reason(sale: Sale) -> str:
     return (change.rejection_reason or '').strip() if change else ''
 
 
+def sale_correction_fingerprint(sale: Sale) -> dict:
+    """Snapshot items, customer, and totals so a resubmit requires a real edit."""
+    items = []
+    for item in sale.items.all().order_by('id'):
+        items.append({
+            'product_id': item.product_id,
+            'variant_id': item.variant_id,
+            'quantity': str(item.quantity or 0),
+            'unit_price': str(item.unit_price or 0),
+        })
+    return {
+        'items': items,
+        'customer_id': sale.customer_id,
+        'total': str(sale.total or 0),
+        'discount_amount': str(sale.discount_amount or 0),
+        'tax_amount': str(sale.tax_amount or 0),
+        'amount_paid': str(sale.amount_paid or 0),
+        'payment_method': sale.payment_method or '',
+        'payment_reference': sale.payment_reference or '',
+    }
+
+
+def _normalize_correction_fingerprint(raw) -> dict:
+    if not isinstance(raw, dict):
+        return {}
+    items = []
+    for item in raw.get('items') or []:
+        if not isinstance(item, dict):
+            continue
+        items.append({
+            'product_id': item.get('product_id'),
+            'variant_id': item.get('variant_id'),
+            'quantity': str(item.get('quantity') or 0),
+            'unit_price': str(item.get('unit_price') or 0),
+        })
+    return {
+        'items': items,
+        'customer_id': raw.get('customer_id'),
+        'total': str(raw.get('total') or 0),
+        'discount_amount': str(raw.get('discount_amount') or 0),
+        'tax_amount': str(raw.get('tax_amount') or 0),
+        'amount_paid': str(raw.get('amount_paid') or 0),
+        'payment_method': str(raw.get('payment_method') or ''),
+        'payment_reference': str(raw.get('payment_reference') or ''),
+    }
+
+
+def attach_correction_fingerprint(
+    change: PendingChange,
+    sale: Sale,
+    previous_status: str | None = None,
+) -> None:
+    values = dict(change.original_values or {})
+    values[CORRECTION_FINGERPRINT_KEY] = sale_correction_fingerprint(sale)
+    if previous_status:
+        values['returned_from_status'] = previous_status
+    change.original_values = values
+    change.save(update_fields=['original_values'])
+
+
+def stored_correction_fingerprint(sale: Sale) -> dict | None:
+    change = latest_rejected_sale_complete_change(sale)
+    if change is None:
+        return None
+    raw = (change.original_values or {}).get(CORRECTION_FINGERPRINT_KEY)
+    if not isinstance(raw, dict):
+        return None
+    return _normalize_correction_fingerprint(raw)
+
+
+def returned_sale_was_edited(sale: Sale) -> bool:
+    stored = stored_correction_fingerprint(sale)
+    if stored is None:
+        return True
+    current = _normalize_correction_fingerprint(sale_correction_fingerprint(sale))
+    return stored != current
+
+
+def assert_returned_sale_was_edited(sale: Sale) -> None:
+    if not sale_needs_salesperson_action(sale):
+        return
+    if not returned_sale_was_edited(sale):
+        raise ValidationError(UNEDITED_RETURN_MESSAGE)
+
+
+def record_rejected_sale_complete_change(
+    sale: Sale,
+    *,
+    checker,
+    reason: str,
+    previous_status: str,
+) -> PendingChange:
+    return PendingChange.objects.create(
+        action_type=ACTION_SALE_COMPLETE,
+        entity_type='sales.Sale',
+        entity_id=str(sale.pk),
+        entity_repr=sale.sale_number or str(sale.pk),
+        original_values={
+            'status': previous_status,
+            'total': str(sale.total or 0),
+            CORRECTION_FINGERPRINT_KEY: sale_correction_fingerprint(sale),
+            'returned_from_status': previous_status,
+        },
+        proposed_values={'status': 'holding'},
+        reason=reason,
+        status=PendingChange.STATUS_REJECTED,
+        made_by=sale.cashier or sale.served_by or checker,
+        checked_by=checker,
+        checked_at=timezone.now(),
+        rejection_reason=reason,
+        apply_payload={},
+    )
+
+
+def reverse_sale_wallet_effects(sale: Sale, *, user, reason: str) -> None:
+    from sales.models import CustomerWalletTransaction
+
+    customer = sale.customer
+    if customer is None:
+        return
+    originals = list(
+        CustomerWalletTransaction.objects.filter(
+            sale=sale,
+            source_type__in=('payment', 'overpayment', 'debt'),
+        ).order_by('id')
+    )
+    if not originals:
+        return
+    customer.refresh_from_db()
+    for txn in originals:
+        amount = txn.amount or Decimal('0')
+        if amount <= 0:
+            continue
+        if txn.transaction_type == 'debit':
+            customer.wallet_balance += amount
+            reverse_type = 'credit'
+        else:
+            customer.wallet_balance -= amount
+            reverse_type = 'debit'
+        customer.save(update_fields=['wallet_balance', 'updated_at'])
+        CustomerWalletTransaction.objects.create(
+            customer=customer,
+            transaction_type=reverse_type,
+            source_type='other',
+            amount=amount,
+            balance_after=customer.wallet_balance,
+            sale=sale,
+            reference=sale.sale_number,
+            notes=f'Admin returned sale {sale.sale_number} for correction: {reason}',
+            created_by=user,
+        )
+
+
+def unpost_posted_sale(sale: Sale, *, user, reason: str) -> None:
+    """Undo stock, wallet, and journals so the sale can be edited as a holding."""
+    from inventory.models import StockMovement
+    from accounting.reversal import reverse_source_documents
+
+    for item in sale.items.select_related('product', 'variant'):
+        product = item.product
+        if not product or not product.track_stock:
+            continue
+        refunded = item.refund_lines.aggregate(total=Sum('quantity'))['total'] or 0
+        qty = int(item.quantity or 0) - int(refunded)
+        if qty <= 0:
+            continue
+        unit_cost = product.cost or Decimal('0')
+        StockMovement.objects.create(
+            branch=sale.branch,
+            product=product,
+            variant=item.variant,
+            movement_type='return',
+            quantity=qty,
+            unit_cost=unit_cost,
+            total_cost=qty * unit_cost,
+            reference=sale.sale_number,
+            user=user,
+            notes=f'Admin returned sale {sale.sale_number} for correction',
+        )
+
+    reverse_source_documents('sale', sale.pk, reason=reason, user=user)
+    reverse_sale_wallet_effects(sale, user=user, reason=reason)
+
+
+def notify_sale_returned_for_correction(sale: Sale, checker, reason: str) -> None:
+    from daily_notes.approval_notice import (
+        SOURCE_SALE_COMPLETE,
+        complete_manager_queue_notes,
+        notify_approval_rejected,
+    )
+
+    requester = sale.cashier or sale.served_by
+    notify_approval_rejected(
+        requester=requester,
+        checker=checker,
+        action_type='sale_complete',
+        entity_repr=sale.sale_number or str(sale.pk),
+        rejection_reason=reason,
+        source='sale_complete',
+        record_id=sale.pk,
+        is_sticky=True,
+        sale=sale,
+    )
+    notify_cashier_sale_rejected(sale, checker, reason)
+    complete_manager_queue_notes(source=SOURCE_SALE_COMPLETE, record_id=sale.pk)
+
+
+@transaction.atomic
+def admin_return_sale_for_correction(sale: Sale, *, user, reason: str) -> Sale:
+    """Admin-only: send an approved or posted sale back to the seller for editing."""
+    from approvals.permissions import user_has_admin_checker_override
+
+    if not user_has_admin_checker_override(user):
+        raise ValidationError(ADMIN_OVERRIDE_REQUIRED)
+    reason = (reason or '').strip()
+    if not reason:
+        raise ValidationError({'rejection_reason': 'Rejection reason is required.'})
+    previous = sale.status
+    if previous == 'completed':
+        refund_status = getattr(sale, 'refund_status', 'none') or 'none'
+        if refund_status != 'none':
+            raise ValidationError(POSTED_RETURN_BLOCKED_REFUND)
+        unpost_posted_sale(sale, user=user, reason=reason)
+    elif previous != 'awaiting_payment':
+        raise ValidationError(ADMIN_RETURN_NOT_ALLOWED)
+
+    pending = pending_sale_complete_change(sale)
+    if pending:
+        pending.status = PendingChange.STATUS_REJECTED
+        pending.checked_by = user
+        pending.checked_at = timezone.now()
+        pending.rejection_reason = reason
+        pending.save(update_fields=[
+            'status', 'checked_by', 'checked_at', 'rejection_reason',
+        ])
+
+    sale.refresh_from_db()
+    fingerprint_source_status = previous
+    sale.status = 'holding'
+    sale.save(update_fields=['status', 'updated_at'])
+    record_rejected_sale_complete_change(
+        sale,
+        checker=user,
+        reason=reason,
+        previous_status=fingerprint_source_status,
+    )
+    notify_sale_returned_for_correction(sale, user, reason)
+    return sale
+
+
 def payment_payload_from_inputs(
     *,
     payment_method: str,
@@ -160,6 +427,7 @@ def queue_sale_complete(request, sale: Sale, *, payment_payload: dict | None = N
     existing = pending_sale_complete_change(sale)
     if existing:
         return existing
+    assert_returned_sale_was_edited(sale)
     payload = payment_payload or {}
     change = submit_change(
         request=request,
@@ -172,7 +440,7 @@ def queue_sale_complete(request, sale: Sale, *, payment_payload: dict | None = N
             'status': 'completed',
             'total': str(sale.total),
             'payment_method': payload.get('payment_method') or sale.payment_method,
-            'effect': 'Payment is collected after manager approval',
+            'effect': 'Payment recorded at the till; stock and books post after manager approval',
         },
         reason=QUEUE_REASON,
         apply_payload=payload,
@@ -237,13 +505,13 @@ def restore_queued_sale_for_approval(sale: Sale, change: PendingChange | None = 
 
 
 def approve_queued_sale(sale: Sale, user=None) -> Sale:
-    """Unlock funds collection after the manager confirms customer and products."""
+    """Complete a cashier sale after the manager confirms it."""
     if sale.status != 'pending_approval':
         raise ValidationError('This sale is not waiting for approval.')
-    sale.status = 'awaiting_payment'
-    sale.amount_paid = Decimal('0')
-    sale.change = Decimal('0')
-    sale.save(update_fields=['status', 'amount_paid', 'change', 'updated_at'])
+    pending = pending_sale_complete_change(sale)
+    payload = dict(pending.apply_payload or {}) if pending else {}
+    complete_queued_sale(sale, user, payload)
+    sale.refresh_from_db()
     notify_cashier_sale_approved(sale, user)
     from daily_notes.approval_notice import SOURCE_SALE_COMPLETE, complete_manager_queue_notes
 
@@ -253,8 +521,8 @@ def approve_queued_sale(sale: Sale, user=None) -> Sale:
 
 def complete_queued_sale(sale: Sale, user, payload: dict | None = None) -> Sale:
     """Re-check stock, move inventory, apply payment, post the journal."""
-    if sale.status != 'awaiting_payment':
-        raise ValidationError(COLLECT_ONLY_AFTER_APPROVAL)
+    if sale.status not in ('pending_approval', 'awaiting_payment'):
+        raise ValidationError(COMPLETE_NOT_READY)
 
     from sales.module_settings import sales_validate_stock_before_sale
     from sales.services import SaleService
@@ -332,6 +600,9 @@ def complete_queued_sale(sale: Sale, user, payload: dict | None = None) -> Sale:
             'Error creating journal entry for approved sale %s', sale.sale_number
         )
 
+    from daily_notes.approval_notice import complete_sale_approved_notices
+
+    complete_sale_approved_notices(sale=sale)
     return sale
 
 

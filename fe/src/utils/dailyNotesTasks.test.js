@@ -5,6 +5,8 @@ import {
   mergeActivityDates,
   sortDailyTasks,
   taskStatusLabel,
+  carriedOverLabel,
+  daysCarriedOver,
 } from './dailyNotesTasks';
 
 describe('dailyNotesTasks', () => {
@@ -101,6 +103,17 @@ describe('dailyNotesTasks', () => {
     };
     expect(formatDisplayDate('2026-06-01')).toBe('2026-06-01');
     Date.prototype.toLocaleDateString = orig;
+  });
+
+  test('carriedOverLabel reports wait days without changing done labels', () => {
+    expect(carriedOverLabel()).toBe('');
+    expect(carriedOverLabel({ days_carried_over: 0 })).toBe('');
+    expect(carriedOverLabel({ days_carried_over: 1 })).toBe('Carried over 1 day');
+    expect(carriedOverLabel({ days_carried_over: 3 })).toBe('Carried over 3 days');
+    expect(carriedOverLabel({ days_carried_over: '2' })).toBe('Carried over 2 days');
+    expect(daysCarriedOver({ days_carried_over: -1 })).toBe(0);
+    expect(taskStatusLabel(open)).toBe('To do');
+    expect(taskStatusLabel(done)).toMatch(/^Done /);
   });
 
   test('taskStatusLabel uses formatted completion time when present', () => {

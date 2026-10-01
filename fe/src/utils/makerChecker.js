@@ -68,9 +68,9 @@ const REASON_CONTEXT_COPY = {
   },
   sale_complete: {
     label: 'Reason for completing this sale',
-    placeholder: 'Approve customer and products so payment can be collected',
+    placeholder: 'Approve this recorded sale so stock and books can post',
     summary:
-      'This sale is customer and products only. After you approve, the salesperson collects payment. Stock and books change when payment is collected.',
+      'The salesperson already recorded payment and any remaining debt. After you approve, stock, books, and the receipt go live.',
   },
 };
 

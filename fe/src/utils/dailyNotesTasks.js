@@ -60,3 +60,16 @@ export function formatDisplayDate(iso) {
     return iso;
   }
 }
+
+export function daysCarriedOver(item) {
+  const n = Number(item?.days_carried_over);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.floor(n);
+}
+
+export function carriedOverLabel(item) {
+  const days = daysCarriedOver(item);
+  if (days <= 0) return '';
+  if (days === 1) return 'Carried over 1 day';
+  return `Carried over ${days} days`;
+}

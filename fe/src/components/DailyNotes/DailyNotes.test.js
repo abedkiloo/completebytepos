@@ -86,6 +86,7 @@ describe('DailyNotes', () => {
             content: longContent,
             is_sticky: true,
             is_done: false,
+            days_carried_over: 2,
             author: 9,
             author_name: 'Bea',
             assigned_to: 20,
@@ -137,6 +138,7 @@ describe('DailyNotes', () => {
             title: 'Restock',
             description: 'Sugar',
             is_done: false,
+            days_carried_over: 1,
             assigned_to: 20,
             assigned_to_name: 'Ann',
             author_id: 9,
@@ -153,6 +155,12 @@ describe('DailyNotes', () => {
   test('lists notes, completes them, and keeps long content scrollable', async () => {
     render(<DailyNotes />);
     expect(await screen.findByText('Till')).toBeInTheDocument();
+    expect(screen.getByTestId('note-carried-over-5')).toHaveTextContent(
+      'Carried over 2 days'
+    );
+    expect(screen.getByTestId('task-carried-over-3')).toHaveTextContent(
+      'Carried over 1 day'
+    );
     const content = screen.getByTestId('daily-note-content-5');
     expect(content.className).toMatch(/overflow-y-auto/);
     expect(content.className).toMatch(/max-h-32/);

@@ -328,6 +328,7 @@ def _on_sale_complete_rejected(change: PendingChange, checker, reason: str) -> N
         return
     from sales.models import Sale
     from sales.sale_completion_approval import (
+        attach_correction_fingerprint,
         notify_cashier_sale_rejected,
         return_queued_sale_for_correction,
     )
@@ -335,6 +336,7 @@ def _on_sale_complete_rejected(change: PendingChange, checker, reason: str) -> N
     sale = Sale.objects.filter(pk=change.entity_id).first()
     if sale is None:
         return
+    attach_correction_fingerprint(change, sale, previous_status=sale.status)
     return_queued_sale_for_correction(sale)
     notify_cashier_sale_rejected(sale, checker, reason)
     from daily_notes.approval_notice import complete_manager_notes_for_change
@@ -450,7 +452,10 @@ def _guard_sale_complete_resubmit(change: PendingChange) -> None:
     if change.action_type != ACTION_SALE_COMPLETE:
         return
     from sales.models import Sale
-    from sales.sale_completion_approval import pending_sale_complete_change
+    from sales.sale_completion_approval import (
+        assert_returned_sale_was_edited,
+        pending_sale_complete_change,
+    )
 
     sale = Sale.objects.filter(pk=change.entity_id).first()
     if sale is None:
@@ -460,6 +465,7 @@ def _guard_sale_complete_resubmit(change: PendingChange) -> None:
     existing = pending_sale_complete_change(sale)
     if existing and existing.pk != change.pk:
         raise ValidationError('This sale is already waiting for approval.')
+    assert_returned_sale_was_edited(sale)
 
 
 def _on_sale_complete_resubmitted(change: PendingChange) -> None:

@@ -24,6 +24,7 @@ import {
 import { getTodayDateString, formatDateLabel, shiftDate } from './DailySalesPage';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 import { userCanRefundSales, userCanRollbackSales, handleSaleRefundResponse } from '../../utils/saleRefund';
+import { userHasAdminSaleOverride } from '../../utils/saleCompletionApproval';
 import { saleFinalStatusLabel, saleStatusBadgeTone } from '../../utils/saleItemDisplay';
 import { pendingApprovalToastMessage } from '../../utils/makerChecker';
 
@@ -83,6 +84,7 @@ export default function CustomerDailyDetailPage() {
     isManagerOrAdmin: isManagerOrAdminFromStorage(),
   });
   const canRollback = userCanRollbackSales(permissions);
+  const canReturnForCorrection = userHasAdminSaleOverride();
   const canCollect = hasPermission(permissions, 'customers', 'update');
 
   const load = useCallback(async () => {
@@ -473,6 +475,11 @@ export default function CustomerDailyDetailPage() {
         onOpenChange={setShowReceipt}
         canRefund={canRefund}
         canRollback={canRollback}
+        canReturnForCorrection={canReturnForCorrection}
+        onReturned={() => {
+          setShowReceipt(false);
+          load();
+        }}
         onRefund={(sale) => {
           setShowReceipt(false);
           setRefundSale(sale);

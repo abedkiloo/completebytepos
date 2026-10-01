@@ -87,7 +87,7 @@ describe('CheckoutPanel', () => {
     expect(screen.getByRole('button', { name: /Complete sale/i })).toBeDisabled();
   });
 
-  it('sends customer and products for approval without collecting money', () => {
+  it('records payment before sending a sale for approval', () => {
     const onPay = jest.fn();
     render(
       <CheckoutPanel
@@ -98,11 +98,9 @@ describe('CheckoutPanel', () => {
       />
     );
 
-    expect(screen.queryByLabelText(/Amount received/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Amount received/i)).toBeInTheDocument();
     const send = screen.getByRole('button', { name: /Send for approval/i });
-    expect(send).not.toBeDisabled();
-    fireEvent.click(send);
-    expect(onPay).toHaveBeenCalled();
+    expect(send).toBeDisabled();
   });
 
   it('lets the cashier type an M-Pesa code and shows coming soon for prompt', () => {

@@ -158,23 +158,33 @@ class ApprovalNoticeTests(TestCase):
         self.assertEqual(action_label('sale_complete'), 'sale completion')
         self.assertEqual(action_label('debt_collection'), 'debt collection')
         title, content = build_sale_approved_notice(
-            sale_number='S-99', checker=self.checker
+            sale_number='S-99', checker=self.checker, sale_id=99
         )
         self.assertIn('S-99', title)
-        self.assertIn('Collect payment to complete it', content)
+        self.assertIn('print the receipt', content)
         self.assertIn('Bea Mgr', content)
+        self.assertIn('ref: approve/sale/99/', content)
 
         class FakeSale:
             cashier = self.maker
             sale_number = 'S-100'
             pk = 100
 
+        leftover = DailyTask.objects.create(
+            task_date=date.today(),
+            title='Sale #S-100 was approved',
+            description='Collect payment to complete it.',
+            author=self.checker,
+            assigned_to=self.maker,
+        )
         notify_sale_approved(sale=FakeSale(), checker=self.checker)
+        leftover.refresh_from_db()
+        self.assertTrue(leftover.is_done)
         self.assertTrue(
             DailyNote.objects.filter(author=self.maker, title__icontains='S-100').exists()
         )
-        self.assertTrue(
-            DailyTask.objects.filter(assigned_to=self.maker, title__icontains='S-100').exists()
+        self.assertFalse(
+            DailyTask.objects.filter(assigned_to=self.maker, title__icontains='S-100', is_done=False).exists()
         )
         self.assertIsNone(notify_sale_approved(sale=type('S', (), {'cashier': None, 'sale_number': 'x'})(), checker=self.checker))
         title, content = build_sale_approved_notice(sale_number='', checker=None)
@@ -454,6 +464,53 @@ class ManagerSaleQueueNoticeTests(TestCase):
                 complete_manager_queue_notes(source=SOURCE_SALE_COMPLETE, record_id=8),
                 0,
             )
+
+    def test_approved_sale_closes_open_tasks_and_pending_list(self):
+        from decimal import Decimal
+
+        from daily_notes.approval_notice import complete_stale_sale_notice_tasks
+        from daily_notes.services import DailyTaskService
+        from sales.models import Sale
+
+        sale = Sale.objects.create(
+            sale_number='S-STALE-TASK',
+            status='awaiting_payment',
+            subtotal=Decimal('10'),
+            total=Decimal('10'),
+            payment_method='cash',
+            amount_paid=Decimal('0'),
+            cashier=self.sales,
+        )
+        leftover = DailyTask.objects.create(
+            task_date=date.today(),
+            title=f'Sale #{sale.sale_number} was approved',
+            description=f'Collect payment\nref: approve/sale/{sale.pk}/',
+            author=self.manager,
+            assigned_to=self.sales,
+        )
+        keep = DailyTask.objects.create(
+            task_date=date.today(),
+            title='Count till',
+            author=self.manager,
+            assigned_to=self.sales,
+        )
+        self.assertEqual(complete_stale_sale_notice_tasks(user=self.sales), 1)
+        leftover.refresh_from_db()
+        keep.refresh_from_db()
+        self.assertTrue(leftover.is_done)
+        self.assertFalse(keep.is_done)
+
+        DailyTask.objects.create(
+            task_date=date.today(),
+            title=f'Sale #{sale.sale_number} was approved',
+            description='Collect payment to complete it.',
+            author=self.manager,
+            assigned_to=self.sales,
+        )
+        pending = DailyTaskService().pending_for_user(user=self.sales)
+        titles = {task.title for task in pending}
+        self.assertIn('Count till', titles)
+        self.assertFalse(any('was approved' in title for title in titles))
 
     def test_recipients_fall_back_to_sales_approvers(self):
         from accounts.models import Permission, Role, UserProfile

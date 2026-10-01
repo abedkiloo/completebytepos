@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CheckSquare, ClipboardCheck, ExternalLink, Loader2 } from 'lucide-react';
 
@@ -20,10 +20,15 @@ import {
   isPendingTasksPromptDismissed,
   markPendingTasksPromptDismissed,
 } from '../../utils/dailyNotesTaskAccess';
-import { formatDisplayDate } from '../../utils/dailyNotesTasks';
+import { formatDisplayDate, carriedOverLabel } from '../../utils/dailyNotesTasks';
 import { getPersonaFromStorage } from '../../utils/navAccess';
 import { dailyTasksAPI } from '../../services/api';
 import { dispatchNavBadgesRefresh, fetchNavBadgeCounts } from '../../utils/navBadges';
+import {
+  canShowPendingTasksOverlay,
+  setPendingTasksOverlay,
+} from '../../utils/loginOverlayQueue';
+import { useLoginOverlayState } from '../../hooks/useLoginOverlay';
 
 /**
  * After login, show a short summary of open tasks and pending approvals once per session.
@@ -39,6 +44,8 @@ export default function PendingTasksOnLogin() {
   const [loading, setLoading] = useState(true);
   const [togglingId, setTogglingId] = useState(null);
 
+  const overlay = useLoginOverlayState();
+  const stickyClear = canShowPendingTasksOverlay(overlay);
   const mayUseDailyNotes = userMayOpenDailyNotes(persona, permissions, moduleSettings);
 
   const mayReviewApprovals = userMayEditFinancialFieldsFromStorage();
@@ -125,7 +132,16 @@ export default function PendingTasksOnLogin() {
     }
   };
 
-  if (loading || !open || (tasks.length === 0 && approvalCount === 0)) {
+  const visible =
+    !loading && open && stickyClear && (tasks.length > 0 || approvalCount > 0);
+
+  useLayoutEffect(() => {
+    setPendingTasksOverlay({ loading, open: visible });
+  }, [loading, visible]);
+
+  useEffect(() => () => setPendingTasksOverlay({ loading: false, open: false }), []);
+
+  if (!visible) {
     return null;
   }
 
@@ -134,6 +150,7 @@ export default function PendingTasksOnLogin() {
       <DialogContent
         className="max-h-[min(92dvh,100vh)] w-[calc(100%-1rem)] max-w-md overflow-hidden p-0 sm:w-full"
         description="Your open daily tasks and approvals waiting for review."
+        data-testid="pending-tasks-on-login"
       >
         <DialogHeader className="border-b px-4 py-3">
           <DialogTitle className="text-base">Welcome back — here&apos;s your summary</DialogTitle>
@@ -175,6 +192,7 @@ export default function PendingTasksOnLogin() {
                     <p className="mt-1 text-xs text-muted-foreground">
                       Due {formatDisplayDate(task.task_date)}
                       {task.author_name ? ` · from ${task.author_name}` : ''}
+                      {carriedOverLabel(task) ? ` · ${carriedOverLabel(task)}` : ''}
                     </p>
                   </div>
                   {togglingId === task.id ? (

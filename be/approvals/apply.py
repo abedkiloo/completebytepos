@@ -269,6 +269,14 @@ def _apply_sale_complete(change: PendingChange) -> None:
     if not checker:
         raise ValidationError('Sale completion requires a manager or admin checker.')
     approve_queued_sale(sale, checker)
+    sale.refresh_from_db()
+    if sale.status == 'completed':
+        try:
+            from utils.audit_events import log_sale_completed
+
+            log_sale_completed(None, sale, source='complete')
+        except Exception:
+            pass
 
 
 def _apply_sale_rollback(change: PendingChange) -> None:

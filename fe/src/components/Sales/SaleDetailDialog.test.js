@@ -8,7 +8,7 @@ jest.mock('../../hooks/useStoreSettings', () => ({
 }));
 
 jest.mock('../../services/api', () => ({
-  salesAPI: { collect: jest.fn() },
+  salesAPI: { collect: jest.fn(), rejectComplete: jest.fn() },
 }));
 
 const sale = {
@@ -212,5 +212,35 @@ describe('SaleDetailDialog', () => {
       });
     });
     expect(onCollected).toHaveBeenCalledWith(1);
+  });
+
+  it('lets admin return an approved sale for correction', async () => {
+    salesAPI.rejectComplete.mockResolvedValue({
+      data: { id: 1, status: 'holding', needs_salesperson_action: true },
+    });
+    const onReturned = jest.fn();
+    const onOpenChange = jest.fn();
+    render(
+      <SaleDetailDialog
+        sale={{ ...sale, status: 'completed', refund_status: 'none' }}
+        open
+        onOpenChange={onOpenChange}
+        canReturnForCorrection
+        onReturned={onReturned}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Return for correction/i }));
+    fireEvent.change(screen.getByLabelText(/Reason/i), {
+      target: { value: 'Wrong customer' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Confirm return/i }));
+    await waitFor(() => {
+      expect(salesAPI.rejectComplete).toHaveBeenCalledWith(1, {
+        rejection_reason: 'Wrong customer',
+      });
+    });
+    expect(onReturned).toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });

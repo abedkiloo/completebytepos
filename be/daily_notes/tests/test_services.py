@@ -6,7 +6,13 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 
 from daily_notes.models import DailyNote, DailyTask
-from daily_notes.services import DailyNoteService, DailyTaskService, recent_activity_dates, _scoped_queryset
+from daily_notes.services import (
+    DailyNoteService,
+    DailyTaskService,
+    carried_over_days,
+    recent_activity_dates,
+    _scoped_queryset,
+)
 
 
 class DailyNoteServiceTests(TestCase):
@@ -46,6 +52,54 @@ class DailyNoteServiceTests(TestCase):
         )
         self.assertEqual(qs.count(), 1)
         self.assertEqual(qs.first().author_id, self.bob.id)
+
+    def test_open_notes_carry_over_to_later_days_done_notes_do_not(self):
+        three_days_ago = self.today - timedelta(days=3)
+        DailyNote.objects.create(
+            note_date=three_days_ago,
+            title='Still open',
+            content='Count till',
+            author=self.alice,
+        )
+        DailyNote.objects.create(
+            note_date=three_days_ago,
+            title='Already done',
+            content='Closed that day',
+            is_done=True,
+            author=self.alice,
+        )
+        today_qs = self.service.build_queryset(
+            user=self.alice,
+            view_all=True,
+            filters={'note_date': str(self.today)},
+        )
+        titles = {n.title for n in today_qs}
+        self.assertIn('Still open', titles)
+        self.assertIn('Alice today', titles)
+        self.assertNotIn('Already done', titles)
+        done_qs = self.service.build_queryset(
+            user=self.alice,
+            view_all=True,
+            filters={'note_date': str(self.today), 'status': 'done'},
+        )
+        self.assertEqual(done_qs.count(), 0)
+        origin_done = self.service.build_queryset(
+            user=self.alice,
+            view_all=True,
+            filters={'note_date': str(three_days_ago), 'status': 'done'},
+        )
+        self.assertEqual(origin_done.count(), 1)
+        self.assertEqual(origin_done.first().title, 'Already done')
+
+    def test_carried_over_days_counts_open_wait_only(self):
+        origin = self.today - timedelta(days=4)
+        self.assertEqual(carried_over_days(origin=origin, as_of=self.today), 4)
+        self.assertEqual(
+            carried_over_days(origin=origin, as_of=self.today, is_done=True),
+            0,
+        )
+        self.assertEqual(carried_over_days(origin=self.today, as_of=self.today), 0)
+        self.assertEqual(carried_over_days(origin=None, as_of=self.today), 0)
 
     def test_build_queryset_author_filter_only_when_view_all(self):
         qs = self.service.build_queryset(
@@ -155,6 +209,32 @@ class DailyTaskServiceTests(TestCase):
         )
         self.assertEqual(qs.count(), 1)
         self.assertEqual(qs.first().author_id, self.alice.id)
+
+    def test_open_tasks_carry_over_to_later_days(self):
+        yesterday = self.today - timedelta(days=1)
+        DailyTask.objects.create(
+            task_date=yesterday,
+            title='Left open',
+            author=self.alice,
+            assigned_to=self.alice,
+        )
+        DailyTask.objects.create(
+            task_date=yesterday,
+            title='Finished yesterday',
+            is_done=True,
+            author=self.alice,
+            assigned_to=self.alice,
+        )
+        qs = self.service.build_queryset(
+            user=self.alice,
+            view_all=True,
+            filters={'task_date': str(self.today)},
+        )
+        titles = {t.title for t in qs}
+        self.assertIn('Left open', titles)
+        self.assertIn('Alice open', titles)
+        self.assertNotIn('Finished yesterday', titles)
+        self.assertIn('Bob done', titles)
 
     def test_build_queryset_scoped_to_assignee(self):
         qs = self.service.build_queryset(user=self.alice, view_all=False)

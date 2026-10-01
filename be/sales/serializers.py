@@ -217,6 +217,12 @@ class SaleItemSerializer(serializers.ModelSerializer):
         refunded = self.get_quantity_refunded(obj)
         return max(0, obj.quantity - refunded)
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data['product_id'] = instance.product_id
+        data['variant_id'] = instance.variant_id
+        return data
+
 
 class SaleRefundItemSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source='product.name', read_only=True)

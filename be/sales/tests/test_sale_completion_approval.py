@@ -24,6 +24,7 @@ from reports.views import sale_report_queryset
 from sales.models import Sale
 from sales.sale_completion_approval import (
     QUEUE_REASON,
+    UNEDITED_RETURN_MESSAGE,
     WAITING_MESSAGE,
     cancel_queued_sale,
     complete_queued_sale,
@@ -297,6 +298,16 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
         session.save()
         return client
 
+    def _admin_client(self):
+        client = self.client.__class__()
+        token = RefreshToken.for_user(self.admin)
+        client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+        session = client.session
+        session['current_tenant_id'] = self.tenant.id
+        session['current_branch_id'] = self.branch.id
+        session.save()
+        return client
+
     def _sale_payload(self, quantity=1, amount=None):
         qty = Decimal(str(quantity))
         total = qty * Decimal('100.00')
@@ -316,7 +327,7 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
         self.assertIn('pending_change', response.data)
         sale = Sale.objects.get(pk=response.data['id'])
         self.assertEqual(sale.status, 'pending_approval')
-        self.assertEqual(sale.amount_paid, Decimal('0'))
+        self.assertEqual(sale.amount_paid, Decimal('100.00'))
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock_quantity, 20)
         self.assertFalse(StockMovement.objects.filter(reference=sale.sale_number).exists())
@@ -371,18 +382,28 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
         self.assertEqual(self.product.stock_quantity, 20)
 
     def test_manager_approve_completes_stock_and_notifies_cashier(self):
+        from datetime import date
+
         created = self.client.post('/api/sales/', self._sale_payload(), format='json')
         sale_id = created.data['id']
         sale_number = created.data['sale_number']
+        leftover = DailyTask.objects.create(
+            task_date=date.today(),
+            title=f'Sale #{sale_number} was approved',
+            description='Collect payment to complete it.',
+            author=self.manager_user,
+            assigned_to=self.sales_user,
+        )
         client = self._manager_client()
         response = client.post(f'/api/sales/{sale_id}/complete/', {}, format='json')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['status'], 'awaiting_payment')
+        self.assertEqual(response.data['status'], 'completed')
         self.product.refresh_from_db()
-        self.assertEqual(self.product.stock_quantity, 20)
+        self.assertEqual(self.product.stock_quantity, 19)
         sale = Sale.objects.get(pk=sale_id)
-        self.assertEqual(sale.status, 'awaiting_payment')
-        self.assertFalse(StockMovement.objects.filter(reference=sale.sale_number).exists())
+        self.assertEqual(sale.status, 'completed')
+        self.assertEqual(sale.amount_paid, Decimal('100.00'))
+        self.assertTrue(StockMovement.objects.filter(reference=sale.sale_number).exists())
         change = PendingChange.objects.get(
             action_type=ACTION_SALE_COMPLETE, entity_id=str(sale_id)
         )
@@ -395,7 +416,7 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
         self.assertTrue(
             any(
                 item['user_id'] == self.sales_user.id
-                and 'Collect payment' in item['body']
+                and 'print the receipt' in item['body'].lower()
                 for item in self.notifier.sent
             )
         )
@@ -405,17 +426,43 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
         )
         self.assertEqual(manager_note.board_column, 'past')
         self.assertTrue(manager_note.is_done)
-
-        collect = self.client.post(
-            f'/api/sales/{sale_id}/collect/',
-            {'payment_method': 'cash', 'amount_paid': '100.00'},
-            format='json',
+        leftover.refresh_from_db()
+        self.assertTrue(leftover.is_done)
+        self.assertFalse(
+            DailyTask.objects.filter(
+                assigned_to=self.sales_user,
+                is_done=False,
+                title__icontains=sale_number,
+            ).exists()
         )
-        self.assertEqual(collect.status_code, status.HTTP_200_OK, collect.data)
-        self.assertEqual(collect.data['status'], 'completed')
+
+    def test_partial_debt_is_recorded_on_send_and_posted_on_approve(self):
+        from sales.models import Customer
+
+        customer = Customer.objects.create(name='Jane Debt', phone='0700000001')
+        payload = self._sale_payload(amount='40.00')
+        payload['customer_id'] = customer.id
+        payload['allow_partial_payment'] = True
+        created = self.client.post('/api/sales/', payload, format='json')
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED, created.data)
+        sale = Sale.objects.get(pk=created.data['id'])
+        self.assertEqual(sale.status, 'pending_approval')
+        self.assertEqual(sale.amount_paid, Decimal('40.00'))
+        customer.refresh_from_db()
+        self.assertEqual(customer.wallet_balance, Decimal('0'))
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 20)
+
+        client = self._manager_client()
+        approved = client.post(f'/api/sales/{sale.id}/complete/', {}, format='json')
+        self.assertEqual(approved.status_code, status.HTTP_200_OK, approved.data)
+        self.assertEqual(approved.data['status'], 'completed')
+        sale.refresh_from_db()
+        self.assertEqual(sale.amount_paid, Decimal('40.00'))
+        customer.refresh_from_db()
+        self.assertEqual(customer.wallet_balance, Decimal('-60.00'))
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock_quantity, 19)
-        self.assertTrue(StockMovement.objects.filter(reference=sale.sale_number).exists())
 
     def test_cannot_collect_before_manager_approves(self):
         created = self.client.post('/api/sales/', self._sale_payload(), format='json')
@@ -439,6 +486,7 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         sale = Sale.objects.get(pk=sale_id)
         self.assertEqual(sale.status, 'holding')
+        self.assertEqual(sale.amount_paid, Decimal('100.00'))
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock_quantity, 20)
         self.assertFalse(StockMovement.objects.filter(reference=sale.sale_number).exists())
@@ -465,6 +513,14 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
         self.assertIn(f'sale_id: {sale_id}', sticky.content)
         self.assertIn(f'id: {change.id}', sticky.content)
 
+        opened = self.client.get(f'/api/sales/{sale_id}/')
+        self.assertEqual(opened.status_code, status.HTTP_200_OK)
+        self.assertEqual(opened.data['status'], 'holding')
+        self.assertTrue(opened.data['needs_salesperson_action'])
+        self.assertEqual(len(opened.data['items']), 1)
+        self.assertEqual(opened.data['items'][0]['product_id'], self.product.id)
+        self.assertEqual(opened.data['items'][0]['quantity'], 1)
+
         ordinary_hold = Sale.objects.create(
             sale_number='S-CART-HOLD',
             status='holding',
@@ -489,6 +545,30 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
         self.assertIn(sale_id, manager_ids)
         self.assertNotIn(ordinary_hold.id, manager_ids)
 
+        unchanged = self.client.post(
+            f'/api/approvals/pending-changes/{change.id}/resubmit/',
+            {},
+            format='json',
+        )
+        self.assertEqual(unchanged.status_code, status.HTTP_400_BAD_REQUEST)
+
+        edited = self.client.post(
+            '/api/sales/holding/',
+            {
+                'holding_id': sale_id,
+                'items': [
+                    {
+                        'product_id': self.product.id,
+                        'quantity': '2',
+                        'unit_price': '100.00',
+                    }
+                ],
+                'client_channel': 'web',
+            },
+            format='json',
+        )
+        self.assertEqual(edited.status_code, status.HTTP_200_OK, edited.data)
+
         resubmit = self.client.post(
             f'/api/approvals/pending-changes/{change.id}/resubmit/',
             {},
@@ -511,7 +591,7 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
             format='json',
         )
         self.assertEqual(reject.status_code, status.HTTP_200_OK)
-        response = self.client.post(
+        blocked = self.client.post(
             f'/api/sales/{sale_id}/checkout/',
             {
                 'payment_method': 'cash',
@@ -520,9 +600,42 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
             },
             format='json',
         )
+        self.assertEqual(blocked.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn(
+            'Update this sale',
+            str(blocked.data.get('error') or blocked.data),
+        )
+
+        edited = self.client.post(
+            '/api/sales/holding/',
+            {
+                'holding_id': sale_id,
+                'items': [
+                    {
+                        'product_id': self.product.id,
+                        'quantity': '2',
+                        'unit_price': '100.00',
+                    }
+                ],
+                'client_channel': 'web',
+            },
+            format='json',
+        )
+        self.assertEqual(edited.status_code, status.HTTP_200_OK, edited.data)
+        response = self.client.post(
+            f'/api/sales/{sale_id}/checkout/',
+            {
+                'payment_method': 'cash',
+                'amount_paid': '200.00',
+                'allow_partial_payment': False,
+            },
+            format='json',
+        )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
         sale = Sale.objects.get(pk=sale_id)
         self.assertEqual(sale.status, 'pending_approval')
+        self.assertEqual(sale.amount_paid, Decimal('200.00'))
+        self.assertEqual(sale.items.get().quantity, Decimal('2'))
         sticky = DailyNote.objects.get(
             assigned_to=self.sales_user,
             is_sticky=True,
@@ -593,9 +706,9 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
         first.checked_by = self.manager_user
         apply_pending_change(first)
         sale.refresh_from_db()
-        self.assertEqual(sale.status, 'awaiting_payment')
+        self.assertEqual(sale.status, 'completed')
         self.product.refresh_from_db()
-        self.assertEqual(self.product.stock_quantity, 20)
+        self.assertEqual(self.product.stock_quantity, 19)
         note = DailyNote.objects.get(content__contains=f'ref: sale_complete/{sale.id}')
         self.assertEqual(note.board_column, 'past')
 
@@ -649,5 +762,92 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
         self.assertEqual(response.data['message'], WAITING_MESSAGE)
         holding.refresh_from_db()
         self.assertEqual(holding.status, 'pending_approval')
+        self.assertEqual(holding.amount_paid, Decimal('100.00'))
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock_quantity, 20)
+
+    def test_manager_cannot_return_approved_sale(self):
+        created = self.client.post('/api/sales/', self._sale_payload(), format='json')
+        sale_id = created.data['id']
+        manager = self._manager_client()
+        approve = manager.post(f'/api/sales/{sale_id}/complete/', {}, format='json')
+        self.assertEqual(approve.status_code, status.HTTP_200_OK)
+        blocked = manager.post(
+            f'/api/sales/{sale_id}/reject-complete/',
+            {'rejection_reason': 'Send it back'},
+            format='json',
+        )
+        self.assertEqual(blocked.status_code, status.HTTP_404_NOT_FOUND)
+        sale = Sale.objects.get(pk=sale_id)
+        self.assertEqual(sale.status, 'completed')
+
+    def test_admin_returns_approved_and_posted_sales_for_correction(self):
+        created = self.client.post('/api/sales/', self._sale_payload(), format='json')
+        sale_id = created.data['id']
+        manager = self._manager_client()
+        approve = manager.post(f'/api/sales/{sale_id}/complete/', {}, format='json')
+        self.assertEqual(approve.status_code, status.HTTP_200_OK)
+
+        admin = self._admin_client()
+        returned = admin.post(
+            f'/api/sales/{sale_id}/reject-complete/',
+            {'rejection_reason': 'Wrong customer'},
+            format='json',
+        )
+        self.assertEqual(returned.status_code, status.HTTP_200_OK, returned.data)
+        sale = Sale.objects.get(pk=sale_id)
+        self.assertEqual(sale.status, 'holding')
+        self.assertTrue(sale_needs_salesperson_action(sale))
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 20)
+
+        edited = self.client.post(
+            '/api/sales/holding/',
+            {
+                'holding_id': sale_id,
+                'items': [
+                    {
+                        'product_id': self.product.id,
+                        'quantity': '2',
+                        'unit_price': '100.00',
+                    }
+                ],
+                'client_channel': 'web',
+            },
+            format='json',
+        )
+        self.assertEqual(edited.status_code, status.HTTP_200_OK, edited.data)
+        queued = self.client.post(
+            f'/api/sales/{sale_id}/checkout/',
+            {
+                'payment_method': 'cash',
+                'amount_paid': '200.00',
+                'allow_partial_payment': False,
+            },
+            format='json',
+        )
+        self.assertEqual(queued.status_code, status.HTTP_201_CREATED, queued.data)
+        self.assertEqual(queued.data['status'], 'pending_approval')
+
+        approve = manager.post(f'/api/sales/{sale_id}/complete/', {}, format='json')
+        self.assertEqual(approve.status_code, status.HTTP_200_OK)
+        self.assertEqual(approve.data['status'], 'completed')
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 18)
+
+        posted_return = admin.post(
+            f'/api/sales/{sale_id}/reject-complete/',
+            {'rejection_reason': 'Reverse and fix'},
+            format='json',
+        )
+        self.assertEqual(posted_return.status_code, status.HTTP_200_OK, posted_return.data)
+        sale.refresh_from_db()
+        self.assertEqual(sale.status, 'holding')
+        self.assertTrue(sale_needs_salesperson_action(sale))
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 20)
+        self.assertFalse(sale_report_queryset().filter(pk=sale.pk).exists())
+        opened = self.client.get(f'/api/sales/{sale_id}/')
+        self.assertEqual(opened.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(opened.data['items']), 1)
+        self.assertEqual(opened.data['items'][0]['product_id'], self.product.id)

@@ -15,6 +15,7 @@ import {
   saleIsAwaitingApproval,
   saleNeedsSalespersonAction,
   saleReceiptBlockedReason,
+  userHasAdminSaleOverride,
 } from '../../utils/saleCompletionApproval';
 import { saleDisplayItemCount, saleDisplayTotal, saleFinalStatusLabel, saleStatusBadgeTone } from '../../utils/saleItemDisplay';
 import RefundSaleDialog from './RefundSaleDialog';
@@ -58,6 +59,7 @@ const Sales = () => {
     isManagerOrAdmin: isManagerOrAdminFromStorage(),
   });
   const canRollback = userCanRollbackSales(permissions);
+  const canReturnForCorrection = userHasAdminSaleOverride();
   const canViewDaily = canViewDailySalesFromStorage();
   const [filters, setFilters] = useState({
     date_from: '',
@@ -589,6 +591,11 @@ const Sales = () => {
           onOpenChange={setShowReceiptModal}
           canRefund={canRefund}
           canRollback={canRollback}
+          canReturnForCorrection={canReturnForCorrection}
+          onReturned={() => {
+            setShowReceiptModal(false);
+            loadSales();
+          }}
           onRefund={(sale) => {
             setShowReceiptModal(false);
             openRefundDialog(sale);

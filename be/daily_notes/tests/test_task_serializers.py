@@ -91,3 +91,25 @@ class DailyTaskSerializerTests(TestCase):
         ser2 = DailyTaskSerializer()
         ser2._apply_completion(saved, True)
         self.assertTrue(saved.is_done)
+
+    def test_days_carried_over_for_open_and_done_tasks(self):
+        from datetime import timedelta
+
+        origin = date.today() - timedelta(days=2)
+        task = DailyTask.objects.create(
+            task_date=origin,
+            title='Waiting',
+            author=self.user,
+            assigned_to=self.user,
+        )
+        data = DailyTaskSerializer(
+            task,
+            context={'as_of_date': date.today()},
+        ).data
+        self.assertEqual(data['days_carried_over'], 2)
+        task.mark_done(done=True)
+        done_data = DailyTaskSerializer(
+            task,
+            context={'as_of_date': date.today()},
+        ).data
+        self.assertEqual(done_data['days_carried_over'], 0)
