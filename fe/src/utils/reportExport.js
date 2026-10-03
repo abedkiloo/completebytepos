@@ -60,6 +60,7 @@ export function salesHistoryExportParams(filters = {}) {
     date_to: filters.date_to,
     payment_method: filters.payment_method,
     search: filters.search,
+    cashier_id: filters.cashier_id,
   });
 }
 

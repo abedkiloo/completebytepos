@@ -272,3 +272,14 @@ class DebtCollectionApprovalAPITests(SalesAPITestCase):
         self.assertEqual(listed.status_code, status.HTTP_200_OK, listed.data)
         ids = [row['id'] for row in listed.data]
         self.assertIn(change.id, ids)
+
+    def test_pending_status_alias_still_lists_collection(self):
+        queued = self._collect(self.client)
+        self.assertEqual(queued.status_code, status.HTTP_202_ACCEPTED, queued.data)
+        change = PendingChange.objects.get(action_type=ACTION_DEBT_COLLECTION)
+        listed = self._manager_client().get(
+            '/api/approvals/pending-changes/pending/',
+            {'action_type': ACTION_DEBT_COLLECTION, 'status': 'pending'},
+        )
+        self.assertEqual(listed.status_code, status.HTTP_200_OK, listed.data)
+        self.assertIn(change.id, [row['id'] for row in listed.data])

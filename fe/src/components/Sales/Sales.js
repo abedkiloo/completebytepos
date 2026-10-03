@@ -6,7 +6,12 @@ import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { toast } from '../../utils/toast';
-import { getStoredAuth, isManagerOrAdminFromStorage } from '../../utils/roleAccess';
+import {
+  getStoredAuth,
+  isManagerOrAdminFromStorage,
+  userSeesAllSalesFromStorage,
+} from '../../utils/roleAccess';
+import { useSellerOptions } from '../../hooks/useSellerOptions';
 import { canViewDailySalesFromStorage } from '../../utils/dailySalesAccess';
 import { userCanRefundSales, saleIsRefundable, handleSaleRefundResponse, userCanRollbackSales, saleIsRollbackable } from '../../utils/saleRefund';
 import { pendingApprovalToastMessage } from '../../utils/makerChecker';
@@ -63,11 +68,14 @@ const Sales = () => {
   const canRollback = userCanRollbackSales(permissions);
   const canReturnForCorrection = userHasAdminSaleOverride();
   const canViewDaily = canViewDailySalesFromStorage();
+  const canFilterBySeller = userSeesAllSalesFromStorage();
+  const sellerOptions = useSellerOptions(canFilterBySeller);
   const [filters, setFilters] = useState({
     date_from: '',
     date_to: '',
     payment_method: '',
     search: '',
+    cashier_id: '',
   });
   const [pagination, setPagination] = useState({
     page: 1,
@@ -89,6 +97,7 @@ const Sales = () => {
       if (filters.date_to) params.date_to = filters.date_to;
       if (filters.payment_method) params.payment_method = filters.payment_method;
       if (filters.search) params.search = filters.search;
+      if (filters.cashier_id) params.cashier_id = filters.cashier_id;
       if (historyTab === 'pending') params.status = 'pending_approval';
       const response = await salesAPI.list(params);
       const data = response.data;
@@ -432,6 +441,17 @@ const Sales = () => {
               placeholder="All methods"
             />
           </FilterField>
+          {canFilterBySeller && (
+            <FilterField label="Sold by">
+              <SearchableSelect
+                name="cashier_id"
+                value={filters.cashier_id}
+                onChange={handleFilterChange}
+                options={[{ id: '', name: 'Everyone' }, ...sellerOptions]}
+                placeholder="Everyone"
+              />
+            </FilterField>
+          )}
           <FilterField label="Search" className="min-w-[200px] flex-[2]">
             <Input
               type="search"

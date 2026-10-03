@@ -18,7 +18,10 @@ jest.mock('../../utils/roleAccess', () => ({
       permission.module === module && permission.action === action
     ),
   isManagerOrAdminFromStorage: () => true,
+  userSeesAllSalesFromStorage: () => mockSeesAllSales(),
 }));
+
+const mockSeesAllSales = jest.fn(() => false);
 
 jest.mock('../../utils/saleRefund', () => ({
   userCanRefundSales: () => false,
@@ -31,6 +34,7 @@ jest.mock('../../utils/saleRefund', () => ({
 jest.mock('../../services/api', () => ({
   salesAPI: {
     list: jest.fn(),
+    sellers: jest.fn(),
     get: jest.fn(),
     refund: jest.fn(),
     rollback: jest.fn(),
@@ -64,6 +68,40 @@ describe('Sales history export', () => {
       },
     });
     reportsAPI.exportFile.mockResolvedValue('sales-history.pdf');
+    salesAPI.sellers.mockResolvedValue({
+      data: [
+        { id: 7, username: 'ada', display_name: 'Ada Lovelace' },
+        { id: 8, username: 'bob', display_name: 'Bob' },
+      ],
+    });
+    mockSeesAllSales.mockReturnValue(false);
+  });
+
+  it('hides the Sold by filter from staff who only see their own sales', async () => {
+    render(<Sales />);
+    await waitFor(() => expect(screen.getByText('S-100')).toBeInTheDocument());
+    expect(screen.queryByText('Sold by')).not.toBeInTheDocument();
+    expect(salesAPI.sellers).not.toHaveBeenCalled();
+  });
+
+  it('lets admins and managers filter history by seller', async () => {
+    mockSeesAllSales.mockReturnValue(true);
+    render(<Sales />);
+    await waitFor(() => expect(screen.getByText('S-100')).toBeInTheDocument());
+    expect(screen.getByText('Sold by')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(document.querySelector('select[name="cashier_id"] option[value="8"]')).not.toBeNull();
+    });
+
+    fireEvent.change(document.querySelector('select[name="cashier_id"]'), {
+      target: { name: 'cashier_id', value: '8' },
+    });
+
+    await waitFor(() => {
+      expect(salesAPI.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ cashier_id: '8' })
+      );
+    });
   });
 
   it('shows PDF and Excel downloads and uses the current filters', async () => {

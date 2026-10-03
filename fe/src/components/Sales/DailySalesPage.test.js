@@ -37,6 +37,7 @@ jest.mock('../../hooks/useDebouncedValue', () => ({
 jest.mock('../../services/api', () => ({
   salesAPI: {
     daily: jest.fn(),
+    sellers: jest.fn(),
     get: jest.fn(),
     refund: jest.fn(),
     rollback: jest.fn(),
@@ -345,6 +346,9 @@ describe('DailySalesPage', () => {
     jest.clearAllMocks();
     mockSearchParams = new URLSearchParams('date=2026-09-12');
     canViewDailySalesFromStorage.mockReturnValue(true);
+    salesAPI.sellers.mockResolvedValue({
+      data: [{ id: 42, username: 'wanjiku', display_name: 'Wanjiku' }],
+    });
     salesAPI.daily.mockResolvedValue({
       data: {
         date: '2026-09-12',
@@ -439,6 +443,23 @@ describe('DailySalesPage', () => {
     const link = screen.getByRole('link', { name: 'Bob Debtor' });
     expect(link).toHaveAttribute('href', '/sales/daily/customers/5?date=2026-09-12');
     expect(screen.getAllByRole('link', { name: /View day/i }).length).toBeGreaterThan(0);
+  });
+
+  it('filters the day by seller for store-wide viewers', async () => {
+    render(<DailySalesPage />);
+    await screen.findByText('Bob Debtor');
+    expect(screen.getByText('Sold by')).toBeInTheDocument();
+    const select = await waitFor(() => {
+      const el = document.querySelector('select option[value="42"]');
+      expect(el).not.toBeNull();
+      return el.parentElement;
+    });
+    fireEvent.change(select, { target: { value: '42' } });
+    await waitFor(() => {
+      expect(salesAPI.daily).toHaveBeenLastCalledWith(
+        expect.objectContaining({ cashier_id: '42' })
+      );
+    });
   });
 
   it('shows restricted empty state without permission', async () => {

@@ -1,4 +1,4 @@
-"""Sales visibility: own sales by default; admin / sales.view_all see store-wide."""
+"""Sales visibility: own sales by default; admin / manager / sales.view_all see store-wide."""
 
 from decimal import Decimal
 
@@ -72,7 +72,7 @@ class SalesVisibilityTest(TestCase):
 
     def test_user_sees_all_sales_flags(self):
         self.assertTrue(user_sees_all_sales(self.admin))
-        self.assertFalse(user_sees_all_sales(self.manager))
+        self.assertTrue(user_sees_all_sales(self.manager))
         self.assertFalse(user_sees_all_sales(self.sales_a))
 
     def test_user_sees_all_debt_flags(self):
@@ -99,15 +99,39 @@ class SalesVisibilityTest(TestCase):
         self.assertIn(self.sale_a.id, ids)
         self.assertNotIn(self.sale_b.id, ids)
 
-    def test_build_queryset_manager_sees_own_only(self):
-        # Manager with no personal sales → empty / no other cashiers.
+    def test_build_queryset_manager_sees_all_sellers(self):
         factory = RequestFactory()
         req = factory.get('/api/sales/')
         req.user = self.manager
         qs = SaleService().build_queryset({}, request=req)
         ids = set(qs.values_list('id', flat=True))
-        self.assertNotIn(self.sale_a.id, ids)
-        self.assertNotIn(self.sale_b.id, ids)
+        self.assertIn(self.sale_a.id, ids)
+        self.assertIn(self.sale_b.id, ids)
+
+    def test_build_queryset_manager_filters_by_seller(self):
+        factory = RequestFactory()
+        req = factory.get('/api/sales/')
+        req.user = self.manager
+        qs = SaleService().build_queryset({'cashier_id': self.sales_b.id}, request=req)
+        ids = set(qs.values_list('id', flat=True))
+        self.assertEqual(ids, {self.sale_b.id})
+
+    def test_sellers_endpoint_lists_everyone_who_sold(self):
+        factory = APIRequestFactory()
+        request = factory.get('/api/sales/sellers/')
+        force_authenticate(request, user=self.manager)
+        response = SaleViewSet.as_view({'get': 'sellers'})(request)
+        self.assertEqual(response.status_code, 200)
+        ids = {row['id'] for row in response.data}
+        self.assertTrue({self.sales_a.id, self.sales_b.id}.issubset(ids))
+
+    def test_sellers_endpoint_sales_agent_sees_only_self(self):
+        factory = APIRequestFactory()
+        request = factory.get('/api/sales/sellers/')
+        force_authenticate(request, user=self.sales_a)
+        response = SaleViewSet.as_view({'get': 'sellers'})(request)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([row['id'] for row in response.data], [self.sales_a.id])
 
     def test_build_queryset_admin_sees_all(self):
         factory = RequestFactory()
@@ -129,14 +153,14 @@ class SalesVisibilityTest(TestCase):
         self.assertEqual(float(response.data['today']['total']), 100.0)
         self.assertEqual(response.data['today']['sales_count'], 1)
 
-    def test_dashboard_summary_manager_does_not_see_others(self):
+    def test_dashboard_summary_manager_sees_store_total(self):
         factory = APIRequestFactory()
         request = factory.get('/api/sales/dashboard-summary/')
         force_authenticate(request, user=self.manager)
         view = SaleViewSet.as_view({'get': 'dashboard_summary'})
         response = view(request)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(float(response.data['today']['total']), 0.0)
+        self.assertEqual(float(response.data['today']['total']), 300.0)
 
     def test_manager_pack_excludes_view_all(self):
         manager_role = Role.objects.get(name=ROLE_MANAGER)

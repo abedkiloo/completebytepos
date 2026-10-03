@@ -336,6 +336,15 @@ class DailySalesOwnValuesTests(ManagerAPITestCase):
     def setUp(self):
         super().setUp()
         from django.contrib.auth.models import User
+        from accounts.models import Role
+
+        # Manager permissions without the Manager name, which sees the whole store.
+        restricted = Role.objects.create(name='Shift Supervisor', is_active=True)
+        restricted.permissions.set(self.manager_role.permissions.all())
+        profile = self.manager_user.profile
+        profile.role = 'cashier'
+        profile.custom_role = restricted
+        profile.save(update_fields=['role', 'custom_role'])
 
         self.other = User.objects.create_user('daily_other_cashier', password='x')
         self.day = '2026-09-20'
@@ -367,7 +376,24 @@ class DailySalesOwnValuesTests(ManagerAPITestCase):
             cashier=self.other,
         )
 
-    def test_manager_opens_a_past_day_with_own_values(self):
+    def test_manager_role_sees_every_seller_and_can_filter(self):
+        profile = self.manager_user.profile
+        profile.role = 'manager'
+        profile.custom_role = self.manager_role
+        profile.save(update_fields=['role', 'custom_role'])
+
+        response = self.client.get('/api/sales/daily/', {'date': self.day})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        numbers = {row['sale_number'] for row in response.data['orders']}
+        self.assertEqual(numbers, {'DAY-MINE', 'DAY-THEIRS'})
+
+        response = self.client.get(
+            '/api/sales/daily/', {'date': self.day, 'cashier_id': self.other.id},
+        )
+        numbers = {row['sale_number'] for row in response.data['orders']}
+        self.assertEqual(numbers, {'DAY-THEIRS'})
+
+    def test_staff_opens_a_past_day_with_own_values(self):
         response = self.client.get('/api/sales/daily/', {'date': self.day})
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         self.assertEqual(response.data['date'], self.day)

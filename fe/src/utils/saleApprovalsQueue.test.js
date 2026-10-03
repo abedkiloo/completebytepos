@@ -31,7 +31,6 @@ describe('saleApprovalsQueue', () => {
   test('pending debt collection list params', () => {
     expect(pendingDebtCollectionParams()).toEqual({
       action_type: DEBT_COLLECTION_ACTION,
-      status: 'pending',
     });
   });
 

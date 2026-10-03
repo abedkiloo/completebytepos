@@ -129,6 +129,7 @@ describe('reportExport', () => {
         search: '  ',
       })
     ).toEqual({ date_from: '2026-08-01', payment_method: 'cash', search: '  ' });
+    expect(salesHistoryExportParams({ cashier_id: '8' })).toEqual({ cashier_id: '8' });
     expect(salesHistoryExportParams()).toEqual({});
   });
 });

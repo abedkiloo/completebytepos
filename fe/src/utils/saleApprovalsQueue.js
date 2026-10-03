@@ -18,7 +18,7 @@ export function userCanOpenSaleApprovals(permissions = []) {
 }
 
 export function pendingDebtCollectionParams() {
-  return { action_type: DEBT_COLLECTION_ACTION, status: 'pending' };
+  return { action_type: DEBT_COLLECTION_ACTION };
 }
 
 export function isSalesDeskQueueAction(actionType) {

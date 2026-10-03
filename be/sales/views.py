@@ -133,6 +133,7 @@ SALES_PERMS = RequirePermPerAction('sales', {
     'export': 'view',
     'daily': 'view',
     'daily_customer': 'view',
+    'sellers': 'view',
     'complete': 'approve',
     'reject_complete': 'approve',
     'correct_date': 'approve',
@@ -474,6 +475,33 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 'total': float(month_sales.aggregate(total=Sum('total'))['total'] or 0),
             }
         return Response(payload)
+
+    @action(detail=False, methods=['get'], url_path='sellers')
+    def sellers(self, request):
+        """Staff who sold (cashier or served_by) — options for the "Sold by" filter."""
+        from django.contrib.auth.models import User
+        from sales.visibility import user_sees_all_sales
+
+        if user_sees_all_sales(request.user):
+            sold = Sale.objects.order_by()
+            seller_ids = set(
+                sold.exclude(cashier_id=None).values_list('cashier_id', flat=True).distinct()
+            ) | set(
+                sold.exclude(served_by_id=None).values_list('served_by_id', flat=True).distinct()
+            )
+        else:
+            seller_ids = {request.user.id}
+        users = User.objects.filter(id__in=seller_ids).order_by(
+            'first_name', 'last_name', 'username',
+        )
+        return Response([
+            {
+                'id': u.id,
+                'username': u.username,
+                'display_name': u.get_full_name().strip() or u.username,
+            }
+            for u in users
+        ])
 
     @action(detail=False, methods=['get'], url_path='daily')
     def daily(self, request):
@@ -1057,6 +1085,17 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         is_active = self.request.query_params.get('is_active', None)
         customer_type = self.request.query_params.get('customer_type', None)
         search = self.request.query_params.get('search', None)
+        created_on = (self.request.query_params.get('created_on') or '').strip()
+
+        if created_on:
+            if created_on == 'today':
+                queryset = queryset.filter(created_at__date=timezone.localdate())
+            else:
+                try:
+                    day = datetime.strptime(created_on, '%Y-%m-%d').date()
+                    queryset = queryset.filter(created_at__date=day)
+                except ValueError:
+                    queryset = queryset.none()
         
         if is_active is not None:
             try:

@@ -33,6 +33,7 @@ import { pendingApprovalToastMessage } from '../../utils/makerChecker';
 import SaleChannelIcon from './SaleChannelIcon';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import { useSellerOptions } from '../../hooks/useSellerOptions';
 import { useListOrdering } from '../../hooks/useListOrdering';
 import { withListOrdering } from '../../utils/listOrdering';
 import { saleFinalStatusLabel, saleStatusBadgeTone } from '../../utils/saleItemDisplay';
@@ -146,6 +147,7 @@ export default function DailySalesPage() {
   const [paymentStatusTab, setPaymentStatusTab] = useState(() => tabFromSearchParams(searchParams));
   const showingCollections = paymentStatusTab === 'collected';
   const [paymentMethod, setPaymentMethod] = useState('');
+  const [sellerId, setSellerId] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({
     count: 0,
@@ -172,6 +174,8 @@ export default function DailySalesPage() {
   const canRollback = userCanRollbackSales(permissions);
   const canReturnForCorrection = userHasAdminSaleOverride();
   const canCollect = hasPermission(permissions, 'customers', 'update');
+  const canFilterBySeller = userSeesAllSalesFromStorage();
+  const sellerOptions = useSellerOptions(allowed && canFilterBySeller);
 
   const todayStr = getTodayDateString();
   const isFutureOrToday = date >= todayStr;
@@ -215,10 +219,12 @@ export default function DailySalesPage() {
         params.payment_status = paymentStatusTab;
       }
       if (!showingCollections && paymentMethod) params.payment_method = paymentMethod;
-      // Own sales only unless admin / sales.view_all (backend also enforces).
-      if (!userSeesAllSalesFromStorage()) {
+      // Own sales only unless admin / manager / sales.view_all (backend also enforces).
+      if (!canFilterBySeller) {
         const { user } = getStoredAuth();
         if (user?.id) params.cashier_id = user.id;
+      } else if (!showingCollections && sellerId) {
+        params.cashier_id = sellerId;
       }
 
       const res = await salesAPI.daily(params);
@@ -237,7 +243,7 @@ export default function DailySalesPage() {
     } finally {
       setLoading(false);
     }
-  }, [allowed, date, page, debouncedSearch, paymentStatusTab, paymentMethod, showingCollections, ordering]);
+  }, [allowed, date, page, debouncedSearch, paymentStatusTab, paymentMethod, showingCollections, ordering, canFilterBySeller, sellerId]);
 
   useEffect(() => {
     loadDailySales();
@@ -576,6 +582,19 @@ export default function DailySalesPage() {
                 { id: 'mpesa', name: 'M-PESA' },
               ]}
               placeholder="All methods"
+            />
+          </FilterField>
+          ) : null}
+          {!showingCollections && canFilterBySeller ? (
+          <FilterField label="Sold by">
+            <SearchableSelect
+              value={sellerId}
+              onChange={(e) => {
+                setSellerId(e.target.value);
+                setPage(1);
+              }}
+              options={[{ id: '', name: 'Everyone' }, ...sellerOptions]}
+              placeholder="Everyone"
             />
           </FilterField>
           ) : null}

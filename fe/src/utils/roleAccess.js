@@ -136,8 +136,8 @@ export function isManagerOrAdminFromStorage() {
 }
 
 /**
- * Store-wide sales totals (today / week / month / daily tracker for all cashiers).
- * Default: Super Admin / Admin only. Grant sales.view_all to open it for others.
+ * Store-wide sales totals (today / week / month / daily tracker for all sellers).
+ * Default: Super Admin / Admin / Manager. Grant sales.view_all to open it for others.
  */
 export function userSeesAllSalesFromStorage() {
   const { permissions, user, profile } = getStoredAuth();
@@ -150,7 +150,8 @@ export function userSeesAllSalesFromStorage() {
     || profile?.role_display
     || ''
   ).toString().trim();
-  if (['Super Admin', 'Admin', 'Administrator'].includes(roleName)) return true;
+  if (['Super Admin', 'Admin', 'Administrator', 'Manager'].includes(roleName)) return true;
+  if (legacy === 'manager' && !profile?.custom_role) return true;
   return hasPermission(permissions, 'sales', 'view_all');
 }
 

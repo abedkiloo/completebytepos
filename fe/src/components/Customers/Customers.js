@@ -12,6 +12,7 @@ import {
   Trash2,
   X,
   Wallet,
+  CalendarPlus,
 } from 'lucide-react';
 
 import { customersAPI } from '../../services/api';
@@ -82,6 +83,7 @@ const Customers = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearch = useDebouncedValue(searchQuery);
+  const [addedToday, setAddedToday] = useState(false);
 
   // --- Editor / delete confirm state ---
   const [showModal, setShowModal] = useState(false);
@@ -111,6 +113,7 @@ const Customers = () => {
         page_size: pagination.page_size,
       }, ordering);
       if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
+      if (addedToday) params.created_on = 'today';
       const response = await customersAPI.list(params);
       if (signal?.aborted) return;
       const data = response.data.results || response.data || [];
@@ -125,11 +128,11 @@ const Customers = () => {
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [debouncedSearch, pagination.page, pagination.page_size, ordering]);
+  }, [debouncedSearch, addedToday, pagination.page, pagination.page_size, ordering]);
 
   useEffect(() => {
     setPagination((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
-  }, [debouncedSearch]);
+  }, [debouncedSearch, addedToday]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -321,7 +324,8 @@ const Customers = () => {
         </div>
 
         {/* --- Search toolbar --- */}
-        <div className="relative max-w-md">
+        <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full max-w-md">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="search"
@@ -340,6 +344,17 @@ const Customers = () => {
               <X className="h-4 w-4" />
             </button>
           )}
+        </div>
+          <Button
+            type="button"
+            variant={addedToday ? 'default' : 'outline'}
+            onClick={() => setAddedToday((prev) => !prev)}
+            aria-pressed={addedToday}
+            data-testid="customers-added-today"
+          >
+            <CalendarPlus className="h-4 w-4" />
+            Added today
+          </Button>
         </div>
 
         {/* --- Table --- */}

@@ -74,4 +74,28 @@ describe('Customers module', () => {
     fireEvent.click(screen.getByText('Martha'));
     expect(mockNavigate).toHaveBeenCalledWith('/customers/1');
   });
+
+  it('filters to customers added today and back', async () => {
+    const Customers = require('./Customers').default;
+    render(<Customers />);
+
+    await waitFor(() => expect(screen.getByText('Martha')).toBeInTheDocument());
+    expect(customersAPI.list).toHaveBeenLastCalledWith(
+      expect.not.objectContaining({ created_on: expect.anything() })
+    );
+
+    fireEvent.click(screen.getByTestId('customers-added-today'));
+    await waitFor(() => {
+      expect(customersAPI.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ created_on: 'today' })
+      );
+    });
+
+    fireEvent.click(screen.getByTestId('customers-added-today'));
+    await waitFor(() => {
+      expect(customersAPI.list).toHaveBeenLastCalledWith(
+        expect.not.objectContaining({ created_on: expect.anything() })
+      );
+    });
+  });
 });

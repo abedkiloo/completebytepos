@@ -213,13 +213,28 @@ describe('roleAccess', () => {
     expect(isManagerOrAdminFromStorage()).toBe(true);
   });
 
-  test('userSeesAllSalesFromStorage is admin or sales.view_all only', () => {
+  test('userSeesAllSalesFromStorage is admin, manager or sales.view_all', () => {
     localStorage.setItem('user', JSON.stringify({ id: 1, username: 'mgr' }));
     localStorage.setItem(
       'profile',
       JSON.stringify({ role: 'manager', custom_role: { name: 'Manager' } })
     );
     localStorage.setItem('permissions', JSON.stringify([]));
+    expect(userSeesAllSalesFromStorage()).toBe(true);
+
+    localStorage.setItem('profile', JSON.stringify({ role: 'manager' }));
+    expect(userSeesAllSalesFromStorage()).toBe(true);
+
+    localStorage.setItem(
+      'profile',
+      JSON.stringify({ role: 'manager', custom_role: { name: 'Dispatcher' } })
+    );
+    expect(userSeesAllSalesFromStorage()).toBe(false);
+
+    localStorage.setItem(
+      'profile',
+      JSON.stringify({ role: 'cashier', custom_role: { name: 'Sales' } })
+    );
     expect(userSeesAllSalesFromStorage()).toBe(false);
 
     localStorage.setItem(
@@ -230,7 +245,7 @@ describe('roleAccess', () => {
 
     localStorage.setItem(
       'profile',
-      JSON.stringify({ role: 'manager', custom_role: { name: 'Manager' } })
+      JSON.stringify({ role: 'cashier', custom_role: { name: 'Sales' } })
     );
     localStorage.setItem(
       'permissions',

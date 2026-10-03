@@ -152,3 +152,18 @@ class CompleteAwaitingPaymentCommandTests(TestCase):
 
         with self.assertRaises(CommandError):
             self._run('--user', 'nobody_here')
+
+    def test_audit_reports_tracked_and_untracked(self):
+        customer = Customer.objects.create(name='Debt Kept', phone='0700222333')
+        tracked = self._sale('AU-TRACKED', paid='30.00', customer=customer)
+        self._run('--sale', 'AU-TRACKED')
+        lost = self._sale('AU-LOST', paid='0')
+        Sale.objects.filter(pk=lost.pk).update(status='completed')
+        out = StringIO()
+        call_command('audit_unpaid_sales', stdout=out)
+        text = out.getvalue()
+        self.assertIn('AU-TRACKED  TRACKED  short KES 70.00', text)
+        self.assertIn('AU-LOST  NOT TRACKED  short KES 100.00', text)
+        self.assertIn('1 sale(s) with KES 100.00 owed but not tracked', text)
+        tracked.refresh_from_db()
+        self.assertEqual(tracked.status, 'completed')

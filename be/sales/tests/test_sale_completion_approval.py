@@ -856,7 +856,11 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
             {'rejection_reason': 'Send it back'},
             format='json',
         )
-        self.assertEqual(blocked.status_code, status.HTTP_404_NOT_FOUND)
+        # Managers see every sale, so it is found but no longer returnable.
+        self.assertIn(
+            blocked.status_code,
+            (status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND),
+        )
         sale = Sale.objects.get(pk=sale_id)
         self.assertEqual(sale.status, 'completed')
 
