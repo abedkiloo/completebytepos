@@ -63,6 +63,9 @@ const ORDER_OPTIONS = [
   { id: '-debt_age_days', name: 'Oldest first' },
   { id: 'debt_age_days', name: 'Newest first' },
   { id: 'name', name: 'Name A–Z' },
+  { id: '-name', name: 'Name Z–A' },
+  { id: '-saved', name: 'Newest saved' },
+  { id: 'saved', name: 'Oldest saved' },
 ];
 
 export default function DebtManagementPage() {

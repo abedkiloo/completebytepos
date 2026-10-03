@@ -41,6 +41,8 @@ import {
   ActiveStatusBadge,
   ListPaginationRail,
 } from '../page';
+import { useListOrdering } from '../../hooks/useListOrdering';
+import { withListOrdering } from '../../utils/listOrdering';
 
 const FILTER_OPTIONS = [
   { value: 'all', label: 'All' },
@@ -74,6 +76,7 @@ const Categories = () => {
   const [deactivateReason, setDeactivateReason] = useState('');
   const [expandedParentIds, setExpandedParentIds] = useState([]);
   const [page, setPage] = useState(1);
+  const { ordering, setOrdering } = useListOrdering();
 
   const toggleParentExpanded = useCallback((parentId) => {
     setExpandedParentIds((prev) =>
@@ -84,7 +87,7 @@ const Categories = () => {
   const loadCategories = useCallback(async () => {
     setLoading(true);
     try {
-      const params = {};
+      const params = withListOrdering({}, ordering);
       if (filterActive !== 'all') {
         params.is_active = filterActive === 'active';
       }
@@ -127,7 +130,7 @@ const Categories = () => {
     } finally {
       setLoading(false);
     }
-  }, [filterActive, debouncedSearch]);
+  }, [filterActive, debouncedSearch, ordering]);
 
   useEffect(() => {
     loadCategories();
@@ -330,11 +333,15 @@ const Categories = () => {
           pageSize={DEFAULT_PAGE_SIZE}
           totalCount={allDisplayRows.length}
           suffix={`${allDisplayRows.length} rows`}
+          ordering={ordering}
+          onOrderingChange={setOrdering}
           onPageChange={setPage}
         >
         <DataTable>
           <DataTableHeader>
-            <DataTableHead>Name</DataTableHead>
+            <DataTableHead sortKey="name" ordering={ordering} onOrderingChange={setOrdering}>
+              Name
+            </DataTableHead>
             <DataTableHead>Type</DataTableHead>
             <DataTableHead>Under</DataTableHead>
             <DataTableHead>Description</DataTableHead>

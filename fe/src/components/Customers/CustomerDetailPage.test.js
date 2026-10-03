@@ -18,6 +18,8 @@ jest.mock('react-router-dom', () => ({
 jest.mock('../../services/api', () => ({
   customersAPI: {
     detail: jest.fn(),
+    update: jest.fn(),
+    get: jest.fn(),
   },
   salesAPI: {
     get: jest.fn(),
@@ -35,6 +37,27 @@ jest.mock('../../utils/roleAccess', () => ({
   }),
   hasPermission: () => true,
   isManagerOrAdminFromStorage: () => true,
+}));
+
+jest.mock('../../hooks/useModuleSettings', () => ({
+  useModuleSettings: () => ({ settings: {} }),
+}));
+
+jest.mock('../../hooks/useStoreSettings', () => ({
+  useStoreSettings: () => ({ settings: {} }),
+}));
+
+jest.mock('../Shared/CommitConfirm', () => ({
+  __esModule: true,
+  default: ({ open, title, onConfirm }) =>
+    open ? (
+      <div>
+        <p>{title}</p>
+        <button type="button" onClick={onConfirm}>
+          Confirm & update
+        </button>
+      </div>
+    ) : null,
 }));
 
 jest.mock('../../utils/toast', () => ({
@@ -172,6 +195,7 @@ describe('CustomerDetailPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     customersAPI.detail.mockResolvedValue({ data: DETAIL });
+    customersAPI.get.mockResolvedValue({ data: DETAIL.customer });
   });
 
   it('loads profile, orders, and debt KPIs', async () => {
@@ -182,6 +206,15 @@ describe('CustomerDetailPage', () => {
     expect(screen.getByText('SALE-11')).toBeInTheDocument();
     expect(screen.getByText(/Wallet debt/i)).toBeInTheDocument();
     expect(screen.getByText(/Lifetime sales/i)).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /Edit/i }).length).toBeGreaterThan(0);
+  });
+
+  it('opens the edit form from the customer profile', async () => {
+    render(<CustomerDetailPage />);
+    await screen.findByRole('heading', { name: 'Jane Doe' });
+    fireEvent.click(screen.getAllByRole('button', { name: /Edit/i })[0]);
+    expect(await screen.findByRole('heading', { name: /Edit duka/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/Duka name/i)).toHaveValue('Jane Doe');
   });
 
   it('opens sale detail when an order row is clicked', async () => {

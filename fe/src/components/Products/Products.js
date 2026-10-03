@@ -64,6 +64,7 @@ import {
 } from '../ui/dropdown-menu';
 import { cn } from '../../lib/cn';
 import { PageShell, PageHeader, ListPaginationRail } from '../page';
+import { useListOrdering } from '../../hooks/useListOrdering';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { getPersonaFromStorage } from '../../utils/navAccess';
 import { PERSONA } from '../../utils/roleAccess';
@@ -121,6 +122,7 @@ const Products = () => {
     page_size: DEFAULT_PAGE_SIZE,
     count: 0,
   });
+  const { ordering, setOrdering } = useListOrdering();
 
   // --- Filters ---
   const [filters, setFilters] = useState(EMPTY_FILTERS);
@@ -187,6 +189,7 @@ const Products = () => {
     setLoading(true);
     try {
       const params = { page_size: pagination.page_size, page: pagination.page };
+      if (ordering) params.ordering = ordering;
       if (filters.search.trim()) params.search = filters.search.trim();
       if (filters.category) params.category = filters.category;
       if (showStatus && filters.is_active) params.is_active = filters.is_active;
@@ -207,7 +210,7 @@ const Products = () => {
     } finally {
       setLoading(false);
     }
-  }, [filters, showStatus, pagination.page, pagination.page_size]);
+  }, [filters, showStatus, pagination.page, pagination.page_size, ordering]);
 
   useEffect(() => {
     const fromUrl = parseProductFiltersFromSearch(searchParams);
@@ -661,6 +664,8 @@ const Products = () => {
           pageSize={pagination.page_size}
           totalCount={pagination.count}
           suffix={`${pagination.count} products`}
+          ordering={ordering}
+          onOrderingChange={setOrdering}
           onPageChange={(nextPage) =>
             setPagination((prev) => ({ ...prev, page: nextPage }))
           }
@@ -684,7 +689,20 @@ const Products = () => {
                     />
                   </th>
                   )}
-                  <th className="px-4 py-2.5 text-left font-medium">Product</th>
+                  <th className="px-4 py-2.5 text-left font-medium">
+                    <button
+                      type="button"
+                      data-testid="sort-name"
+                      className="inline-flex items-center font-medium hover:text-foreground"
+                      onClick={() =>
+                        setOrdering((prev) =>
+                          prev === 'name' ? '-name' : prev === '-name' ? '' : 'name'
+                        )
+                      }
+                    >
+                      Product
+                    </button>
+                  </th>
                   <th className="px-4 py-2.5 text-left font-medium">Category</th>
                   {!catalogOnly && (
                     <>

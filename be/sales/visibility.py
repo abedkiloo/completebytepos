@@ -62,3 +62,47 @@ def own_sales_q(user):
     if uid is None:
         return Q(pk__in=[])
     return Q(cashier_id=uid) | Q(served_by_id=uid)
+
+
+# Managers see every debtor in Debt Management even though they do not see
+# store-wide sales totals. Super Admin / Admin already match user_sees_all_sales.
+_STOREWIDE_DEBT_ROLE_NAMES = frozenset({
+    'Super Admin',
+    'Admin',
+    'Administrator',
+    'Manager',
+})
+
+_STOREWIDE_DEBT_LEGACY_ROLES = frozenset({
+    'super_admin',
+    'admin',
+    'manager',
+})
+
+
+def user_sees_all_debt(user) -> bool:
+    """
+    Store-wide Debt Management (every customer still owing).
+
+    Super Admin / Admin, legacy manager, and the Manager role see all debts.
+    Sales staff see only customers whose unpaid sale (or field order) they originated.
+    """
+    if user_sees_all_sales(user):
+        return True
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+
+    profile = getattr(user, 'profile', None)
+    if profile is None:
+        return False
+
+    if getattr(profile, 'is_manager', False):
+        return True
+
+    legacy = (getattr(profile, 'role', None) or '').strip()
+    if legacy in _STOREWIDE_DEBT_LEGACY_ROLES:
+        return True
+
+    role = getattr(profile, 'custom_role', None)
+    name = (getattr(role, 'name', None) or '').strip()
+    return name in _STOREWIDE_DEBT_ROLE_NAMES

@@ -9,7 +9,12 @@ export function isUsableFilterValue(value) {
   return s !== '' && s !== 'undefined' && s !== 'null';
 }
 
-export function buildExpenseListParams({ filters = {}, page = 1, pageSize = 20 } = {}) {
+export function buildExpenseListParams({
+  filters = {},
+  page = 1,
+  pageSize = 20,
+  ordering = '',
+} = {}) {
   const params = {
     page,
     page_size: pageSize,
@@ -22,6 +27,7 @@ export function buildExpenseListParams({ filters = {}, page = 1, pageSize = 20 }
     params.payment_method = filters.payment_method;
   }
   if (isUsableFilterValue(filters.search)) params.search = filters.search;
+  if (isUsableFilterValue(ordering)) params.ordering = ordering;
   return params;
 }
 

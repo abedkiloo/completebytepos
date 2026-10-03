@@ -15,6 +15,9 @@ import {
   SearchField,
   StatusBadge,
 } from '../page';
+import { ListSortBar } from '../page/ListSortBar';
+import { useListOrdering } from '../../hooks/useListOrdering';
+import { withListOrdering } from '../../utils/listOrdering';
 import BlogPostForm from './BlogPostForm';
 import { apiErrorMessage } from './blogPostHelpers';
 
@@ -35,11 +38,12 @@ const BlogPosts = () => {
   const debouncedSearch = useDebouncedValue(search);
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
+  const { ordering, setOrdering } = useListOrdering();
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { page_size: 100 };
+      const params = withListOrdering({ page_size: 100 }, ordering);
       if (status) params.status = status;
       if (debouncedSearch) params.search = debouncedSearch;
       const res = await cmsAPI.listPosts(params);
@@ -50,7 +54,7 @@ const BlogPosts = () => {
     } finally {
       setLoading(false);
     }
-  }, [status, debouncedSearch]);
+  }, [status, debouncedSearch, ordering]);
 
   useEffect(() => {
     load();
@@ -103,6 +107,7 @@ const BlogPosts = () => {
           placeholder="Search by title or tag…"
         />
         <FilterPills options={STATUS_OPTIONS} value={status} onChange={setStatus} />
+        <ListSortBar value={ordering} onChange={setOrdering} />
       </FilterBar>
 
       {posts.length === 0 ? (

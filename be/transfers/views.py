@@ -8,6 +8,7 @@ from rest_framework.exceptions import ValidationError
 from .models import MoneyTransfer
 from .serializers import MoneyTransferSerializer
 from .services import MoneyTransferService
+from utils.list_ordering import NameSavedOrderingFilter
 from accounts.permissions import RequirePermPerAction
 from utils.audit_events import log_approval_event
 from utils.audit_helpers import audited_perform_create, audited_perform_update
@@ -34,7 +35,7 @@ class MoneyTransferViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     serializer_class = MoneyTransferSerializer
     permission_classes = [IsAuthenticated, TRANSFERS_PERMS]
     audit_module = 'money_transfer'
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [filters.SearchFilter, NameSavedOrderingFilter]
     search_fields = ['transfer_number', 'description', 'reference']
     ordering_fields = ['transfer_date', 'amount', 'created_at']
     ordering = ['-transfer_date', '-created_at']

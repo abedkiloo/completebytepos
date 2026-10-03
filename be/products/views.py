@@ -24,6 +24,7 @@ from products.module_settings import (
     products_bulk_operations_enabled,
     products_csv_import_export_enabled,
 )
+from utils.list_ordering import NameSavedOrderingFilter
 from utils.audit_mixin import AuditedModelViewSetMixin
 import csv
 import json
@@ -73,7 +74,7 @@ class SizeViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     # Sizes are a small option catalog; paginating hid newly added rows from
     # the product form and Sizes & colors screen (same as categories).
     pagination_class = None
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [filters.SearchFilter, NameSavedOrderingFilter]
     search_fields = ['name', 'code']
     ordering_fields = ['display_order', 'name']
     ordering = ['display_order', 'name']
@@ -127,7 +128,7 @@ class ColorViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     # Colors are a small option catalog; paginating hid newly added rows from
     # the product form and Sizes & colors screen (same as categories).
     pagination_class = None
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [filters.SearchFilter, NameSavedOrderingFilter]
     search_fields = ['name']
     ordering_fields = ['name']
     ordering = ['name']
@@ -150,7 +151,7 @@ class ProductVariantViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     serializer_class = ProductVariantSerializer
     permission_classes = [IsAuthenticated, PRODUCTS_PERMS]
     audit_module = 'product_variants'
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [filters.SearchFilter, NameSavedOrderingFilter]
     search_fields = ['sku', 'barcode', 'product__name']
     ordering_fields = ['product', 'size', 'color', 'sku']
     ordering = ['product', 'size', 'color']
@@ -266,7 +267,7 @@ class CategoryViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     audit_module = 'categories'
     # Categories are a small tree; paginating hid rows from the FE client-side search.
     pagination_class = None
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [filters.SearchFilter, NameSavedOrderingFilter]
     search_fields = ['name', 'description']
     ordering_fields = ['name', 'created_at']
     ordering = ['name']
@@ -384,7 +385,7 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, PRODUCTS_PERMS]
     audit_module = 'products'
     parser_classes = [MultiPartParser, FormParser, JSONParser]
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [filters.SearchFilter, NameSavedOrderingFilter]
     search_fields = ['name', 'sku', 'barcode', 'description', 'supplier__name', 'category__name']
     ordering_fields = ['name', 'price', 'cost', 'created_at', 'stock_quantity', 'updated_at']
     ordering = ['name']

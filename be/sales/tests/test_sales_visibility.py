@@ -16,7 +16,7 @@ from accounts.role_definitions import (
 )
 from sales.models import Sale
 from sales.services import SaleService
-from sales.visibility import user_sees_all_sales
+from sales.visibility import user_sees_all_debt, user_sees_all_sales
 from sales.views import SaleViewSet
 
 
@@ -74,6 +74,11 @@ class SalesVisibilityTest(TestCase):
         self.assertTrue(user_sees_all_sales(self.admin))
         self.assertFalse(user_sees_all_sales(self.manager))
         self.assertFalse(user_sees_all_sales(self.sales_a))
+
+    def test_user_sees_all_debt_flags(self):
+        self.assertTrue(user_sees_all_debt(self.admin))
+        self.assertTrue(user_sees_all_debt(self.manager))
+        self.assertFalse(user_sees_all_debt(self.sales_a))
 
     def test_view_all_permission_grants_storewide(self):
         perm = Permission.objects.get(module='sales', action='view_all')

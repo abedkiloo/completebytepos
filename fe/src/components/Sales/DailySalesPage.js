@@ -32,6 +32,8 @@ import { pendingApprovalToastMessage } from '../../utils/makerChecker';
 import SaleChannelIcon from './SaleChannelIcon';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import { useListOrdering } from '../../hooks/useListOrdering';
+import { withListOrdering } from '../../utils/listOrdering';
 import { saleFinalStatusLabel, saleStatusBadgeTone } from '../../utils/saleItemDisplay';
 
 import { Button } from '../ui/button';
@@ -150,6 +152,7 @@ export default function DailySalesPage() {
     page_size: 25,
     total_pages: 1,
   });
+  const { ordering, setOrdering } = useListOrdering();
 
   // Modal dialog states
   const [selectedSale, setSelectedSale] = useState(null);
@@ -201,11 +204,11 @@ export default function DailySalesPage() {
     }
     setLoading(true);
     try {
-      const params = {
+      const params = withListOrdering({
         date,
         page,
         page_size: 25,
-      };
+      }, ordering);
       if (!showingCollections && debouncedSearch.trim()) params.search = debouncedSearch.trim();
       if (ORDER_TABS.includes(paymentStatusTab) && paymentStatusTab !== 'all') {
         params.payment_status = paymentStatusTab;
@@ -233,7 +236,7 @@ export default function DailySalesPage() {
     } finally {
       setLoading(false);
     }
-  }, [allowed, date, page, debouncedSearch, paymentStatusTab, paymentMethod, showingCollections]);
+  }, [allowed, date, page, debouncedSearch, paymentStatusTab, paymentMethod, showingCollections, ordering]);
 
   useEffect(() => {
     loadDailySales();
@@ -653,6 +656,8 @@ export default function DailySalesPage() {
           pageSize={pagination.page_size}
           totalCount={pagination.count}
           suffix={`${pagination.count} orders`}
+          ordering={ordering}
+          onOrderingChange={setOrdering}
           onPageChange={setPage}
         >
           <DataTable>

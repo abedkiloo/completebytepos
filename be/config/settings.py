@@ -228,6 +228,9 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    'DEFAULT_FILTER_BACKENDS': [
+        'utils.list_ordering.NameSavedOrderingFilter',
+    ],
     'DEFAULT_PAGINATION_CLASS': 'utils.pagination.StandardResultsSetPagination',
     'PAGE_SIZE': env_int('API_PAGE_SIZE', 10),
     'DEFAULT_RENDERER_CLASSES': [

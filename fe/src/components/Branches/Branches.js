@@ -10,6 +10,9 @@ import SearchableSelect from '../Shared/SearchableSelect';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { PageShell, PageHeader, PageLoading, FilterBar, SearchField } from '../page';
+import { ListSortBar } from '../page/ListSortBar';
+import { useListOrdering } from '../../hooks/useListOrdering';
+import { withListOrdering } from '../../utils/listOrdering';
 
 const Branches = () => {
   const [branches, setBranches] = useState([]);
@@ -36,16 +39,17 @@ const Branches = () => {
     longitude: '',
   });
   const [searchQuery, setSearchQuery] = useState('');
+  const { ordering, setOrdering } = useListOrdering();
 
   useEffect(() => {
     loadBranches();
     loadUsers();
-  }, []);
+  }, [ordering]);
 
   const loadBranches = async () => {
     setLoading(true);
     try {
-      const response = await branchesAPI.list({ is_active: 'true' });
+      const response = await branchesAPI.list(withListOrdering({ is_active: 'true' }, ordering));
       const branchesData = response.data.results || response.data || [];
       setBranches(Array.isArray(branchesData) ? branchesData : []);
     } catch (error) {
@@ -196,6 +200,7 @@ const Branches = () => {
             placeholder="Search branches…"
             className="min-w-[200px] flex-[2]"
           />
+          <ListSortBar value={ordering} onChange={setOrdering} />
         </FilterBar>
 
         {loading ? (

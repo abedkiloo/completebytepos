@@ -14,3 +14,4 @@ export {
 } from './DataTable';
 export { ActiveStatusBadge, StatusBadge } from './StatusBadge';
 export { ListPagination, ListPaginationRail } from './ListPagination';
+export { ListSortBar, SortableHeadButton } from './ListSortBar';

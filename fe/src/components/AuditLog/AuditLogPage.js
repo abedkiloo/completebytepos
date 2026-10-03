@@ -2,6 +2,9 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollText, Search, Loader2 } from 'lucide-react';
 import { auditLogAPI } from '../../services/api';
 import { PageShell, PageHeader, PageLoading } from '../page';
+import { ListSortBar } from '../page/ListSortBar';
+import { useListOrdering } from '../../hooks/useListOrdering';
+import { withListOrdering } from '../../utils/listOrdering';
 import { Card, CardContent } from '../ui/card';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
@@ -17,11 +20,12 @@ export default function AuditLogPage() {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [action, setAction] = useState('');
+  const { ordering, setOrdering } = useListOrdering();
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = {};
+      const params = withListOrdering({}, ordering);
       if (q.trim()) params.q = q.trim();
       if (action) params.action = action;
       const res = await auditLogAPI.list(params);
@@ -33,7 +37,7 @@ export default function AuditLogPage() {
     } finally {
       setLoading(false);
     }
-  }, [q, action]);
+  }, [q, action, ordering]);
 
   useEffect(() => {
     if (allowed) load();
@@ -75,6 +79,7 @@ export default function AuditLogPage() {
               <option value="update">Update</option>
               <option value="stock_adjust">Stock adjust</option>
             </select>
+            <ListSortBar value={ordering} onChange={setOrdering} />
             <Button type="button" onClick={load}>
               Apply
             </Button>

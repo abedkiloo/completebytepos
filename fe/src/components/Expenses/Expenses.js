@@ -38,6 +38,7 @@ import {
   StatusBadge,
   ListPaginationRail,
 } from '../page';
+import { useListOrdering } from '../../hooks/useListOrdering';
 
 const Expenses = () => {
   const [expenses, setExpenses] = useState([]);
@@ -59,6 +60,7 @@ const Expenses = () => {
     page_size: DEFAULT_PAGE_SIZE,
     count: 0,
   });
+  const { ordering, setOrdering } = useListOrdering();
   const { settings: storeSettings } = useStoreSettings();
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
 
@@ -87,6 +89,7 @@ const Expenses = () => {
         filters,
         page: pagination.page,
         pageSize: pagination.page_size,
+        ordering,
       });
 
       const response = await expensesAPI.list(params);
@@ -107,7 +110,7 @@ const Expenses = () => {
     } finally {
       setLoading(false);
     }
-  }, [filters, pagination.page, pagination.page_size]);
+  }, [filters, pagination.page, pagination.page_size, ordering]);
 
   useEffect(() => {
     loadExpenses();
@@ -333,6 +336,8 @@ const Expenses = () => {
             page={pagination.page}
             pageSize={pagination.page_size}
             totalCount={pagination.count}
+            ordering={ordering}
+            onOrderingChange={setOrdering}
             onPageChange={(nextPage) =>
               setPagination((prev) => ({ ...prev, page: nextPage }))
             }
@@ -340,9 +345,13 @@ const Expenses = () => {
             <DataTable>
               <DataTableHeader>
                 <DataTableHead>#</DataTableHead>
-                <DataTableHead>Date occurred</DataTableHead>
+                <DataTableHead sortKey="saved" ordering={ordering} onOrderingChange={setOrdering}>
+                  Date occurred
+                </DataTableHead>
                 <DataTableHead>Category</DataTableHead>
-                <DataTableHead>Description</DataTableHead>
+                <DataTableHead sortKey="name" ordering={ordering} onOrderingChange={setOrdering}>
+                  Description
+                </DataTableHead>
                 <DataTableHead align="right">Amount</DataTableHead>
                 <DataTableHead>Status</DataTableHead>
                 <DataTableHead align="right">Actions</DataTableHead>

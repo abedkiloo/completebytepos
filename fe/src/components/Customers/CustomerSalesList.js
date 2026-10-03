@@ -10,6 +10,8 @@ import {
 } from '../../utils/saleItemDisplay';
 import { Skeleton } from '../ui/skeleton';
 import { ListPaginationRail } from '../page';
+import { useListOrdering } from '../../hooks/useListOrdering';
+import { withListOrdering } from '../../utils/listOrdering';
 import SaleChannelIcon from '../Sales/SaleChannelIcon';
 
 /**
@@ -23,17 +25,18 @@ export default function CustomerSalesList({ customerId, onSelectSale }) {
     page_size: DEFAULT_PAGE_SIZE,
     count: 0,
   });
+  const { ordering, setOrdering } = useListOrdering();
 
   const loadSales = useCallback(async () => {
     if (!customerId) return;
     setLoading(true);
     try {
-      const res = await salesAPI.list({
+      const res = await salesAPI.list(withListOrdering({
         customer_id: customerId,
         status: 'completed',
         page: pagination.page,
         page_size: pagination.page_size,
-      });
+      }, ordering));
       const rows = res.data?.results || res.data || [];
       setSales(Array.isArray(rows) ? rows : []);
       setPagination((prev) => ({
@@ -45,7 +48,7 @@ export default function CustomerSalesList({ customerId, onSelectSale }) {
     } finally {
       setLoading(false);
     }
-  }, [customerId, pagination.page, pagination.page_size]);
+  }, [customerId, pagination.page, pagination.page_size, ordering]);
 
   useEffect(() => {
     setPagination((prev) => ({ ...prev, page: 1 }));
@@ -69,6 +72,8 @@ export default function CustomerSalesList({ customerId, onSelectSale }) {
         pageSize={pagination.page_size}
         totalCount={pagination.count}
         suffix="sales"
+        ordering={ordering}
+        onOrderingChange={setOrdering}
         onPageChange={(nextPage) =>
           setPagination((prev) => ({ ...prev, page: nextPage }))
         }

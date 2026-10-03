@@ -6,7 +6,7 @@ from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
-from django.db.models import Max, Min, Q, Sum
+from django.db.models import F, Max, Min, Q, Sum
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 
@@ -64,10 +64,82 @@ def parse_collection_date(value) -> date:
     return parsed
 
 
-def _debtor_queryset(search: Optional[str] = None, is_active: bool = True):
+def originating_debt_customer_ids(user) -> set:
+    """
+    Customers whose remaining wallet debt started on this user's sale or order.
+
+    Remaining balance is still customer-level: if someone else later collected
+    part of the debt, this user still sees that customer (not other cashiers'
+    debtors).
+    """
+    from sales.visibility import own_sales_q
+
+    uid = getattr(user, 'pk', None) or getattr(user, 'id', None)
+    if uid is None:
+        return set()
+
+    ids = set(
+        CustomerWalletTransaction.objects.filter(
+            source_type='debt',
+            sale_id__isnull=False,
+        )
+        .filter(Q(sale__cashier_id=uid) | Q(sale__served_by_id=uid))
+        .values_list('customer_id', flat=True)
+    )
+    ids.update(
+        CustomerWalletTransaction.objects.filter(
+            source_type='debt',
+            created_by_id=uid,
+        ).values_list('customer_id', flat=True)
+    )
+    ids.update(
+        Sale.objects.filter(
+            own_sales_q(user),
+            customer_id__isnull=False,
+            status='completed',
+            amount_paid__lt=F('total'),
+        ).values_list('customer_id', flat=True)
+    )
+    try:
+        from agents.models import FieldOrder
+
+        fo_pks = list(
+            FieldOrder.objects.filter(created_by_id=uid).values_list('pk', flat=True)
+        )
+        if fo_pks:
+            refs = [f'FO-{pk}' for pk in fo_pks]
+            ids.update(
+                CustomerWalletTransaction.objects.filter(
+                    source_type='debt',
+                    reference__in=refs,
+                ).values_list('customer_id', flat=True)
+            )
+    except Exception:
+        pass
+    ids.discard(None)
+    return ids
+
+
+def _visible_debtor_customer_ids(user) -> Optional[set]:
+    """None = every debtor; a set (possibly empty) = restrict to those customers."""
+    if user is None:
+        return None
+    from sales.visibility import user_sees_all_debt
+
+    if user_sees_all_debt(user):
+        return None
+    return originating_debt_customer_ids(user)
+
+
+def _debtor_queryset(search: Optional[str] = None, is_active: bool = True, user=None):
     qs = Customer.objects.filter(wallet_balance__lt=0)
     if is_active:
         qs = qs.filter(is_active=True)
+    visible = _visible_debtor_customer_ids(user)
+    if visible is not None:
+        if not visible:
+            return qs.none()
+        qs = qs.filter(pk__in=visible)
     if search:
         term = str(search).strip()
         if term:
@@ -80,9 +152,11 @@ def _debtor_queryset(search: Optional[str] = None, is_active: bool = True):
     return qs
 
 
-def build_debt_summary() -> Dict[str, Any]:
+def build_debt_summary(user=None) -> Dict[str, Any]:
     """Aggregate cards + aging for the Debt Management dashboard."""
-    debtors = list(_debtor_queryset().only('id', 'wallet_balance', 'created_at', 'updated_at'))
+    debtors = list(
+        _debtor_queryset(user=user).only('id', 'wallet_balance', 'created_at', 'updated_at')
+    )
     customers_with_debt = len(debtors)
     total_debt = sum(
         (debt_amount_from_balance(c.wallet_balance) for c in debtors),
@@ -94,13 +168,14 @@ def build_debt_summary() -> Dict[str, Any]:
         else Decimal('0.00')
     )
 
-    collected = (
-        CustomerWalletTransaction.objects.filter(
-            source_type='debt_settlement',
-            created_at__gte=_start_of_today(),
-        ).aggregate(total=Sum('amount'))['total']
-        or Decimal('0')
+    collected_qs = CustomerWalletTransaction.objects.filter(
+        source_type='debt_settlement',
+        created_at__gte=_start_of_today(),
     )
+    visible_ids = _visible_debtor_customer_ids(user)
+    if visible_ids is not None:
+        collected_qs = collected_qs.filter(customer_id__in=list(visible_ids) or [])
+    collected = collected_qs.aggregate(total=Sum('amount'))['total'] or Decimal('0')
 
     aging = empty_aging()
     if debtors:
@@ -168,15 +243,16 @@ def list_debtors(
     ordering: str = '-debt_amount',
     page: int = 1,
     page_size: int = 25,
+    user=None,
 ) -> Tuple[List[Dict[str, Any]], int]:
     """
     Paginated debtor rows with age and last activity.
-    ordering: debt_amount | -debt_amount | debt_age_days | -debt_age_days | name | -name
+    ordering: debt_amount | -debt_amount | debt_age_days | -debt_age_days | name | -name | saved | -saved | created_at | -created_at
     """
     page = max(1, int(page or 1))
     page_size = min(100, max(1, int(page_size or 25)))
 
-    qs = _debtor_queryset(search=search)
+    qs = _debtor_queryset(search=search, user=user)
     customers = list(qs)
     if not customers:
         return [], 0
@@ -241,6 +317,9 @@ def list_debtors(
                     if customer.id in last_payment_by_customer
                     else None
                 ),
+                'created_at': (
+                    customer.created_at.isoformat() if customer.created_at else None
+                ),
             }
         )
 
@@ -252,6 +331,8 @@ def list_debtors(
         rows.sort(key=lambda r: r['debt_age_days'], reverse=reverse)
     elif key == 'name':
         rows.sort(key=lambda r: (r['name'] or '').lower(), reverse=reverse)
+    elif key in ('saved', 'created_at'):
+        rows.sort(key=lambda r: r.get('created_at') or '', reverse=reverse)
     else:
         rows.sort(key=lambda r: Decimal(r['debt_amount']), reverse=True)
 
@@ -261,8 +342,8 @@ def list_debtors(
     return rows[start:end], total
 
 
-def debtor_count() -> int:
-    return _debtor_queryset().count()
+def debtor_count(user=None) -> int:
+    return _debtor_queryset(user=user).count()
 
 
 def _user_label(user) -> str:
@@ -277,6 +358,7 @@ def list_debt_collections(
     on_date=None,
     page: int = 1,
     page_size: int = 50,
+    user=None,
 ) -> Dict[str, Any]:
     """
     Debt payments (wallet settlements) for one local calendar day.
@@ -297,6 +379,9 @@ def list_debt_collections(
         .select_related('customer', 'created_by', 'sale')
         .order_by('-created_at', '-id')
     )
+    visible_ids = _visible_debtor_customer_ids(user)
+    if visible_ids is not None:
+        qs = qs.filter(customer_id__in=list(visible_ids) or [])
     total_amount = qs.aggregate(total=Sum('amount'))['total'] or Decimal('0')
     count = qs.count()
     start_idx = (page - 1) * page_size

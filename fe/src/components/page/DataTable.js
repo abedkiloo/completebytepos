@@ -1,6 +1,7 @@
 import React from 'react';
 import { cn } from '../../lib/cn';
 import { Card } from '../ui/card';
+import { SortableHeadButton } from './ListSortBar';
 
 export function DataTable({ children, className }) {
   return (
@@ -20,7 +21,14 @@ export function DataTableHeader({ children }) {
   );
 }
 
-export function DataTableHead({ children, className, align = 'left' }) {
+export function DataTableHead({
+  children,
+  className,
+  align = 'left',
+  sortKey,
+  ordering,
+  onOrderingChange,
+}) {
   return (
     <th
       className={cn(
@@ -30,7 +38,13 @@ export function DataTableHead({ children, className, align = 'left' }) {
         className
       )}
     >
-      {children}
+      <SortableHeadButton
+        sortKey={sortKey}
+        ordering={ordering}
+        onOrderingChange={onOrderingChange}
+      >
+        {children}
+      </SortableHeadButton>
     </th>
   );
 }

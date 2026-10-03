@@ -44,6 +44,8 @@ import {
   StatusBadge,
   ListPaginationRail,
 } from '../page';
+import { useListOrdering } from '../../hooks/useListOrdering';
+import { withListOrdering } from '../../utils/listOrdering';
 
 const STATUS_OPTIONS = [
   { value: '', label: 'All statuses' },
@@ -104,6 +106,7 @@ const FieldSalesPage = () => {
     page_size: DEFAULT_PAGE_SIZE,
     count: 0,
   });
+  const { ordering, setOrdering } = useListOrdering();
 
   const loadDrivers = useCallback(async () => {
     try {
@@ -117,10 +120,10 @@ const FieldSalesPage = () => {
   const loadOrders = useCallback(async () => {
     setLoading(true);
     try {
-      const params = {
+      const params = withListOrdering({
         page: pagination.page,
         page_size: pagination.page_size,
-      };
+      }, ordering);
       if (filters.date_from) params.date_from = filters.date_from;
       if (filters.date_to) params.date_to = filters.date_to;
       if (filters.status) params.status = filters.status;
@@ -146,7 +149,7 @@ const FieldSalesPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [filters, pagination.page, pagination.page_size]);
+  }, [filters, pagination.page, pagination.page_size, ordering]);
 
   useEffect(() => {
     loadOrders();
@@ -468,16 +471,22 @@ const FieldSalesPage = () => {
           pageSize={pagination.page_size}
           totalCount={pagination.count}
           suffix={`${pagination.count} orders`}
+          ordering={ordering}
+          onOrderingChange={setOrdering}
           onPageChange={(page) => setPagination((prev) => ({ ...prev, page }))}
         >
           <DataTable>
             <DataTableHeader>
               <DataTableHead>Order</DataTableHead>
-              <DataTableHead>Customer</DataTableHead>
+              <DataTableHead sortKey="name" ordering={ordering} onOrderingChange={setOrdering}>
+                Customer
+              </DataTableHead>
               <DataTableHead>Products</DataTableHead>
               <DataTableHead>Total</DataTableHead>
               <DataTableHead>Status</DataTableHead>
-              <DataTableHead>Created</DataTableHead>
+              <DataTableHead sortKey="saved" ordering={ordering} onOrderingChange={setOrdering}>
+                Created
+              </DataTableHead>
               <DataTableHead className="text-right">Actions</DataTableHead>
             </DataTableHeader>
             <DataTableBody>

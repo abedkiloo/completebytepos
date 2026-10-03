@@ -2,6 +2,9 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Calendar, CheckSquare, NotebookPen, Pencil, Plus, Redo2, Trash2 } from 'lucide-react';
 import { dailyNotesAPI, dailyTasksAPI, expensesAPI, incomeAPI, pendingChangesAPI, transfersAPI } from '../../services/api';
+import { useListOrdering } from '../../hooks/useListOrdering';
+import { sortRecords, withListOrdering } from '../../utils/listOrdering';
+import { ListSortBar } from '../page/ListSortBar';
 import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { toast } from '../../utils/toast';
 import { getPersonaFromStorage, getStoredAuth } from '../../utils/roleAccess';
@@ -78,9 +81,16 @@ const DailyNotes = () => {
   const [togglingTaskId, setTogglingTaskId] = useState(null);
   const [togglingNoteId, setTogglingNoteId] = useState(null);
   const [resubmittingKey, setResubmittingKey] = useState(null);
+  const { ordering, setOrdering } = useListOrdering();
 
-  const sortedTasks = useMemo(() => sortDailyTasks(tasks), [tasks]);
-  const sortedNotes = useMemo(() => sortDailyNotes(notes), [notes]);
+  const sortedTasks = useMemo(
+    () => (ordering ? sortRecords(tasks, ordering, { nameKey: 'title' }) : sortDailyTasks(tasks)),
+    [tasks, ordering]
+  );
+  const sortedNotes = useMemo(
+    () => (ordering ? sortRecords(notes, ordering, { nameKey: 'title' }) : sortDailyNotes(notes)),
+    [notes, ordering]
+  );
   const openTaskCount = useMemo(() => countOpenTasks(tasks), [tasks]);
 
   const loadRecentDates = useCallback(async () => {
@@ -95,7 +105,7 @@ const DailyNotes = () => {
   const loadDay = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { page_size: DEFAULT_PAGE_SIZE };
+      const params = withListOrdering({ page_size: DEFAULT_PAGE_SIZE }, ordering);
       const noteParams = { ...params, note_date: selectedDate };
       const taskParams = { ...params, task_date: selectedDate };
       const [notesRes, tasksRes] = await Promise.all([
@@ -113,7 +123,7 @@ const DailyNotes = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedDate]);
+  }, [selectedDate, ordering]);
 
   useEffect(() => {
     const fromUrl = searchParams.get('date');
@@ -304,6 +314,7 @@ const DailyNotes = () => {
             onChange={(e) => setSelectedDate(e.target.value)}
           />
         </div>
+        <ListSortBar value={ordering} onChange={setOrdering} />
         <div className="form-group flex-1">
           <label className="mb-1 block text-sm font-medium">Recent days with activity</label>
           <select

@@ -108,6 +108,7 @@ def get_daily_sales_report(
     branch_id: Optional[int] = None,
     base_queryset: Optional[Any] = None,
     cashier_id: Optional[int] = None,
+    user=None,
 ) -> Dict[str, Any]:
     """Compile daily sales summaries, metrics, and filtered order list for a specific date."""
     target_date, start_of_day, end_of_day = parse_target_date(date_str)
@@ -169,7 +170,9 @@ def get_daily_sales_report(
         by_method_breakdown[method]['total'] += p_amount
 
     # Settlements of prior customer debts collected on that day (who paid, how much)
-    collections = list_debt_collections(on_date=target_date, page=1, page_size=200)
+    collections = list_debt_collections(
+        on_date=target_date, page=1, page_size=200, user=user,
+    )
     total_debt_collected = Decimal(str(collections.get('total') or 0))
     debt_settlement_count = int(collections.get('count') or 0)
 
@@ -208,16 +211,22 @@ def get_daily_sales_report(
         orders_qs = orders_qs.filter(amount_paid__gt=0, amount_paid__lt=F('total'))
 
     # Ordering
-    valid_orderings = {
-        '-occurred_at': '-occurred_at',
-        'occurred_at': 'occurred_at',
-        '-total': '-total',
-        'total': 'total',
-        '-created_at': '-created_at',
-        'created_at': 'created_at',
-    }
-    order_by_field = valid_orderings.get(ordering, '-occurred_at')
-    orders_qs = orders_qs.order_by(order_by_field)
+    from utils.list_ordering import mapped_ordering
+
+    order_fields = mapped_ordering(
+        ordering,
+        aliases={'name': 'customer__name', 'saved': 'created_at'},
+        allowed={
+            'occurred_at',
+            'created_at',
+            'total',
+            'name',
+            'saved',
+            'customer__name',
+        },
+        default='-occurred_at',
+    )
+    orders_qs = orders_qs.order_by(*order_fields)
 
     # Pagination
     page_num = max(1, int(page or 1))

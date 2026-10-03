@@ -180,7 +180,7 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     # Sales are part of the audit trail - never deletable via the API. Use a
     # void/refund flow instead (modelled separately).
     http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
-    ordering = ['-occurred_at']
+    ordering_aliases = {'name': 'customer__name', 'saved': 'created_at'}
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -525,6 +525,7 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 page_size=page_size,
                 base_queryset=base_qs,
                 cashier_id=cashier_id,
+                user=request.user,
             )
             return Response(report)
         except (ValueError, TypeError) as exc:
@@ -997,6 +998,7 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, CUSTOMERS_PERMS]
     audit_module = 'customers'
     ordering = ['name']
+    ordering_aliases = {'saved': 'created_at'}
 
     @staticmethod
     def _feature_disabled_response(feature_label: str):
@@ -1123,7 +1125,7 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
         if not customers_show_wallet_balance():
             return self._feature_disabled_response('Wallet balance')
-        return Response(serialize_debt_summary(build_debt_summary()))
+        return Response(serialize_debt_summary(build_debt_summary(user=request.user)))
 
     @action(
         detail=False,
@@ -1152,6 +1154,7 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             ordering=request.query_params.get('ordering') or '-debt_amount',
             page=page,
             page_size=page_size,
+            user=request.user,
         )
         return Response(
             {
@@ -1175,7 +1178,7 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
         if not customers_show_wallet_balance():
             return Response({'count': 0})
-        return Response({'count': count_debtors()})
+        return Response({'count': count_debtors(user=request.user)})
 
     @action(
         detail=False,
@@ -1202,7 +1205,9 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             page_size = int(request.query_params.get('page_size', 50))
         except (TypeError, ValueError):
             page_size = 50
-        payload = list_debt_collections(on_date=on_date, page=page, page_size=page_size)
+        payload = list_debt_collections(
+            on_date=on_date, page=page, page_size=page_size, user=request.user,
+        )
         return Response(payload)
 
     @action(detail=True, methods=['get'], url_path='detail')
@@ -1234,6 +1239,8 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 orders_page_size=orders_page_size,
                 ledger_page=ledger_page,
                 ledger_page_size=ledger_page_size,
+                orders_ordering=request.query_params.get('orders_ordering'),
+                ledger_ordering=request.query_params.get('ledger_ordering'),
             )
         except (LookupError, Customer.DoesNotExist):
             return Response({'error': 'Customer not found.'}, status=status.HTTP_404_NOT_FOUND)
@@ -1343,6 +1350,7 @@ class InvoiceViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     # Invoices are part of the audit trail - never deletable via the API.
     http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
     ordering = ['-created_at']
+    ordering_aliases = {'name': 'customer_name', 'saved': 'created_at'}
     
     def get_queryset(self):
         queryset = Invoice.objects.all().select_related('sale', 'created_by', 'branch').prefetch_related(

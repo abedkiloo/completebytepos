@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button } from '../ui/button';
 import { cn } from '../../lib/cn';
+import { ListSortBar } from './ListSortBar';
 
 /**
  * "Page X of Y" bar with prev/next. Returns null when a single page holds all rows.
@@ -54,10 +55,33 @@ export function ListPagination({
 }
 
 /** Pagination above and below list content (same controls in both places). */
-export function ListPaginationRail({ children, className, ...paginationProps }) {
+export function ListPaginationRail({
+  children,
+  className,
+  ordering,
+  onOrderingChange,
+  sortOptions,
+  ...paginationProps
+}) {
+  const handleOrderingChange = (next) => {
+    onOrderingChange?.(next);
+    if (paginationProps.onPageChange && paginationProps.page !== 1) {
+      paginationProps.onPageChange(1);
+    }
+  };
+
   return (
     <div className={cn('space-y-3', className)}>
-      <ListPagination {...paginationProps} />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {onOrderingChange ? (
+          <ListSortBar
+            value={ordering}
+            onChange={handleOrderingChange}
+            options={sortOptions}
+          />
+        ) : null}
+        <ListPagination {...paginationProps} />
+      </div>
       {children}
       <ListPagination {...paginationProps} />
     </div>

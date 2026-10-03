@@ -44,6 +44,8 @@ import {
   StatusBadge,
   ListPaginationRail,
 } from '../page';
+import { useListOrdering } from '../../hooks/useListOrdering';
+import { withListOrdering } from '../../utils/listOrdering';
 
 const Sales = () => {
   const [sales, setSales] = useState([]);
@@ -72,15 +74,16 @@ const Sales = () => {
     page_size: DEFAULT_PAGE_SIZE,
     count: 0,
   });
+  const { ordering, setOrdering } = useListOrdering();
   const [historyTab, setHistoryTab] = useState('completed');
 
   const loadSales = useCallback(async () => {
     setLoading(true);
     try {
-      const params = {
+      const params = withListOrdering({
         page: pagination.page,
         page_size: pagination.page_size,
-      };
+      }, ordering);
       
       if (filters.date_from) params.date_from = filters.date_from;
       if (filters.date_to) params.date_to = filters.date_to;
@@ -106,7 +109,7 @@ const Sales = () => {
     } finally {
       setLoading(false);
     }
-  }, [filters, pagination.page, pagination.page_size, historyTab]);
+  }, [filters, pagination.page, pagination.page_size, historyTab, ordering]);
 
   useEffect(() => {
     loadSales();
@@ -467,6 +470,8 @@ const Sales = () => {
             pageSize={pagination.page_size}
             totalCount={pagination.count}
             suffix={`${pagination.count} sales`}
+            ordering={ordering}
+            onOrderingChange={setOrdering}
             onPageChange={(nextPage) =>
               setPagination((prev) => ({ ...prev, page: nextPage }))
             }
@@ -474,7 +479,9 @@ const Sales = () => {
             <DataTable>
               <DataTableHeader>
                 <DataTableHead>Sale #</DataTableHead>
-                <DataTableHead>Date</DataTableHead>
+                <DataTableHead sortKey="saved" ordering={ordering} onOrderingChange={setOrdering}>
+                  Date
+                </DataTableHead>
                 <DataTableHead>Cashier</DataTableHead>
                 <DataTableHead align="right">Items</DataTableHead>
                 <DataTableHead align="right">Total</DataTableHead>

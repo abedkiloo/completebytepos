@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import CustomerDetailDialog from './CustomerDetailDialog';
-import { salesAPI } from '../../services/api';
+import { salesAPI, customersAPI } from '../../services/api';
 
 jest.mock('../../services/api', () => ({
   salesAPI: {
@@ -14,6 +14,8 @@ jest.mock('../../services/api', () => ({
   customersAPI: {
     walletTransactions: jest.fn(),
     receiveWalletPayment: jest.fn(),
+    update: jest.fn(),
+    get: jest.fn(),
   },
 }));
 
@@ -31,6 +33,10 @@ jest.mock('../../utils/makerChecker', () => ({
     submitLabel: 'Confirm void / refund',
   }),
   pendingApprovalToastMessage: () => 'Submitted for approval',
+}));
+
+jest.mock('../../hooks/useModuleSettings', () => ({
+  useModuleSettings: () => ({ settings: {} }),
 }));
 
 jest.mock('../../hooks/useStoreSettings', () => ({
@@ -143,6 +149,8 @@ describe('CustomerDetailDialog', () => {
       },
     });
     salesAPI.refund.mockResolvedValue({ data: { refund_number: 'RF-001' } });
+    customersAPI.update.mockResolvedValue({ data: customer });
+    customersAPI.get.mockResolvedValue({ data: customer });
   });
 
   it('lists customer sales and opens sale detail on click', async () => {
@@ -152,6 +160,7 @@ describe('CustomerDetailDialog', () => {
 
     expect(screen.getByText('Martha')).toBeInTheDocument();
     expect(screen.getByText('martha@example.com')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Edit/i })).toBeInTheDocument();
 
     await waitFor(() => {
       expect(salesAPI.list).toHaveBeenCalledWith(

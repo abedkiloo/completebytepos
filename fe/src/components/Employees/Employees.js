@@ -53,6 +53,9 @@ import {
 } from '../ui/dialog';
 import { cn } from '../../lib/cn';
 import { PageShell, PageHeader, ListPaginationRail } from '../page';
+import { useListOrdering } from '../../hooks/useListOrdering';
+import { withListOrdering } from '../../utils/listOrdering';
+import { SortableHeadButton } from '../page/ListSortBar';
 
 const DEPARTMENTS = [
   { value: 'production', label: 'Production' },
@@ -118,14 +121,15 @@ export default function Employees() {
     page_size: DEFAULT_PAGE_SIZE,
     count: 0,
   });
+  const { ordering, setOrdering } = useListOrdering();
 
   const loadEmployees = useCallback(async () => {
     setLoading(true);
     try {
-      const params = {
+      const params = withListOrdering({
         page: pagination.page,
         page_size: pagination.page_size,
-      };
+      }, ordering);
       if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
       if (statusFilter) params.status = statusFilter;
       const res = await employeesAPI.list(params);
@@ -141,7 +145,7 @@ export default function Employees() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, statusFilter, pagination.page, pagination.page_size]);
+  }, [debouncedSearch, statusFilter, pagination.page, pagination.page_size, ordering]);
 
   useEffect(() => {
     setPagination((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
@@ -373,6 +377,8 @@ export default function Employees() {
         pageSize={pagination.page_size}
         totalCount={pagination.count}
         suffix={`${pagination.count} employees`}
+        ordering={ordering}
+        onOrderingChange={setOrdering}
         onPageChange={(nextPage) =>
           setPagination((prev) => ({ ...prev, page: nextPage }))
         }
@@ -381,7 +387,15 @@ export default function Employees() {
         <table className="min-w-full divide-y divide-border text-sm">
           <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
             <tr>
-              <th className="px-4 py-2.5 text-left font-medium">Employee</th>
+              <th className="px-4 py-2.5 text-left font-medium">
+                <SortableHeadButton
+                  sortKey="name"
+                  ordering={ordering}
+                  onOrderingChange={setOrdering}
+                >
+                  Employee
+                </SortableHeadButton>
+              </th>
               {showEmployeeId && <th className="px-4 py-2.5 text-left font-medium">ID</th>}
               <th className="px-4 py-2.5 text-left font-medium">Position</th>
               {showDepartment && <th className="px-4 py-2.5 text-left font-medium">Dept</th>}

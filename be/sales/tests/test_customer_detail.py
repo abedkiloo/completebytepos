@@ -220,6 +220,8 @@ class CustomerDetailAPITests(ManagerAPITestCase):
         response = self.client.get(f'/api/sales/customers/{self.customer.id}/detail/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['customer']['name'], 'Detail Customer')
+        self.assertIn('owner_name', response.data['customer'])
+        self.assertIn('typical_goods', response.data['customer'])
         self.assertEqual(response.data['customer']['wallet_debt'], '300.00')
         self.assertEqual(response.data['standing_summary']['lifetime_orders'], 1)
         self.assertEqual(len(response.data['orders']), 1)

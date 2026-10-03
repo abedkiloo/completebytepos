@@ -24,6 +24,9 @@ import {
 } from '../../utils/userDisplay';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { ListSortBar } from '../page/ListSortBar';
+import { useListOrdering } from '../../hooks/useListOrdering';
+import { withListOrdering } from '../../utils/listOrdering';
 import {
   PageShell,
   PageHeader,
@@ -67,16 +70,17 @@ const Users = () => {
   const [deleting, setDeleting] = useState(false);
   const [pendingRole, setPendingRole] = useState(null);
   const [assigningRole, setAssigningRole] = useState(false);
+  const { ordering, setOrdering } = useListOrdering();
 
   useEffect(() => {
     loadUsers();
     loadRoles();
-  }, []);
+  }, [ordering]);
 
   const loadUsers = async () => {
     setLoading(true);
     try {
-      const response = await usersAPI.list({ page_size: 1000 });
+      const response = await usersAPI.list(withListOrdering({ page_size: 1000 }, ordering));
       const usersData = response.data.results || response.data || [];
       setUsers(Array.isArray(usersData) ? usersData : []);
     } catch (error) {
@@ -224,6 +228,9 @@ const Users = () => {
             placeholder="Search by name, email, username…"
             className="min-w-[220px] flex-[2]"
           />
+          <FilterField label="Rank">
+            <ListSortBar value={ordering} onChange={setOrdering} />
+          </FilterField>
           <FilterField label="Role">
             <SearchableSelect
               value={filterRole}
@@ -265,12 +272,22 @@ const Users = () => {
         ) : (
           <DataTable>
             <DataTableHeader>
-              <DataTableHead>Username</DataTableHead>
-              {showFullName ? <DataTableHead>Name</DataTableHead> : null}
+              <DataTableHead sortKey="name" ordering={ordering} onOrderingChange={setOrdering}>
+                Username
+              </DataTableHead>
+              {showFullName ? (
+                <DataTableHead sortKey="name" ordering={ordering} onOrderingChange={setOrdering}>
+                  Name
+                </DataTableHead>
+              ) : null}
               {showEmail ? <DataTableHead>Email</DataTableHead> : null}
               <DataTableHead>Role</DataTableHead>
               {showStatus ? <DataTableHead>Status</DataTableHead> : null}
-              {showDateJoined ? <DataTableHead>Joined</DataTableHead> : null}
+              {showDateJoined ? (
+                <DataTableHead sortKey="saved" ordering={ordering} onOrderingChange={setOrdering}>
+                  Joined
+                </DataTableHead>
+              ) : null}
               <DataTableHead align="right">Actions</DataTableHead>
             </DataTableHeader>
             <DataTableBody>

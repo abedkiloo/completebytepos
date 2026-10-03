@@ -8,6 +8,9 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
 import { PageShell, PageHeader, PageLoading, FilterBar, SearchField, FilterField } from '../page';
+import { ListSortBar } from '../page/ListSortBar';
+import { useListOrdering } from '../../hooks/useListOrdering';
+import { withListOrdering } from '../../utils/listOrdering';
 import '../../styles/barcodePrint.css';
 
 const Barcodes = () => {
@@ -30,15 +33,16 @@ const Barcodes = () => {
     has_barcode: 'all', // all, yes, no
   });
   const [showConfirmGenerate, setShowConfirmGenerate] = useState(false);
+  const { ordering, setOrdering } = useListOrdering();
 
   useEffect(() => {
     loadProducts();
-  }, [filters]);
+  }, [filters, ordering]);
 
   const loadProducts = async () => {
     setLoading(true);
     try {
-      const params = { is_active: 'true' };
+      const params = withListOrdering({ is_active: 'true' }, ordering);
       if (filters.search) params.search = filters.search;
       
       const response = await productsAPI.list(params);
@@ -325,6 +329,7 @@ const Barcodes = () => {
             placeholder="All products"
           />
         </FilterField>
+        <ListSortBar value={ordering} onChange={setOrdering} />
       </FilterBar>
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm">

@@ -32,6 +32,8 @@ import {
   StatusBadge,
   ListPaginationRail,
 } from '../page';
+import { useListOrdering } from '../../hooks/useListOrdering';
+import { withListOrdering } from '../../utils/listOrdering';
 
 const Income = () => {
   const [incomes, setIncomes] = useState([]);
@@ -53,6 +55,7 @@ const Income = () => {
     page_size: DEFAULT_PAGE_SIZE,
     count: 0,
   });
+  const { ordering, setOrdering } = useListOrdering();
   const { settings: storeSettings } = useStoreSettings();
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
 
@@ -72,10 +75,10 @@ const Income = () => {
   const loadIncomes = useCallback(async () => {
     setLoading(true);
     try {
-      const params = {
+      const params = withListOrdering({
         page: pagination.page,
         page_size: pagination.page_size,
-      };
+      }, ordering);
       
       if (filters.category) params.category = filters.category;
       if (filters.status) params.status = filters.status;
@@ -101,7 +104,7 @@ const Income = () => {
     } finally {
       setLoading(false);
     }
-  }, [filters, pagination.page, pagination.page_size]);
+  }, [filters, pagination.page, pagination.page_size, ordering]);
 
   useEffect(() => {
     loadIncomes();
@@ -283,6 +286,8 @@ const Income = () => {
             page={pagination.page}
             pageSize={pagination.page_size}
             totalCount={pagination.count}
+            ordering={ordering}
+            onOrderingChange={setOrdering}
             onPageChange={(nextPage) =>
               setPagination((prev) => ({ ...prev, page: nextPage }))
             }
@@ -290,9 +295,13 @@ const Income = () => {
             <DataTable>
               <DataTableHeader>
                 <DataTableHead>#</DataTableHead>
-                <DataTableHead>Date</DataTableHead>
+                <DataTableHead sortKey="saved" ordering={ordering} onOrderingChange={setOrdering}>
+                  Date
+                </DataTableHead>
                 <DataTableHead>Category</DataTableHead>
-                <DataTableHead>Description</DataTableHead>
+                <DataTableHead sortKey="name" ordering={ordering} onOrderingChange={setOrdering}>
+                  Description
+                </DataTableHead>
                 <DataTableHead align="right">Amount</DataTableHead>
                 <DataTableHead>Status</DataTableHead>
                 <DataTableHead align="right">Actions</DataTableHead>

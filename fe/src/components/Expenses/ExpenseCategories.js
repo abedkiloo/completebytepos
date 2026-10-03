@@ -28,6 +28,9 @@ import {
   DataTableCell,
   ActiveStatusBadge,
 } from '../page';
+import { ListSortBar } from '../page/ListSortBar';
+import { useListOrdering } from '../../hooks/useListOrdering';
+import { withListOrdering } from '../../utils/listOrdering';
 
 const EMPTY_FORM = { name: '', description: '', is_active: true };
 
@@ -38,6 +41,7 @@ export default function ExpenseCategories() {
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
   const [showForm, setShowForm] = useState(false);
+  const { ordering, setOrdering } = useListOrdering();
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -47,7 +51,7 @@ export default function ExpenseCategories() {
   const loadCategories = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { page_size: CATALOG_FETCH_PAGE_SIZE };
+      const params = withListOrdering({ page_size: CATALOG_FETCH_PAGE_SIZE }, ordering);
       if (activeFilter === 'active') params.is_active = 'true';
       if (activeFilter === 'inactive') params.is_active = 'false';
       if (search.trim()) params.search = search.trim();
@@ -60,7 +64,7 @@ export default function ExpenseCategories() {
     } finally {
       setLoading(false);
     }
-  }, [activeFilter, search]);
+  }, [activeFilter, search, ordering]);
 
   useEffect(() => {
     const t = setTimeout(loadCategories, 200);
@@ -177,6 +181,7 @@ export default function ExpenseCategories() {
             <option value="inactive">Inactive</option>
           </select>
         </FilterField>
+        <ListSortBar value={ordering} onChange={setOrdering} />
       </FilterBar>
 
       {categories.length === 0 ? (
@@ -190,7 +195,9 @@ export default function ExpenseCategories() {
       ) : (
         <DataTable>
           <DataTableHeader>
-            <DataTableHead>Name</DataTableHead>
+            <DataTableHead sortKey="name" ordering={ordering} onOrderingChange={setOrdering}>
+              Name
+            </DataTableHead>
             <DataTableHead>Description</DataTableHead>
             <DataTableHead align="right">Expenses</DataTableHead>
             <DataTableHead>Status</DataTableHead>

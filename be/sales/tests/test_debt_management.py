@@ -3,12 +3,14 @@
 from decimal import Decimal
 from datetime import timedelta
 
+from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.utils import timezone
 from rest_framework import status
 
-from accounts.models import Permission
-from sales.models import Customer, CustomerWalletTransaction
+from accounts.models import Permission, Role, UserProfile
+from accounts.role_definitions import ROLE_SALES
+from sales.models import Customer, CustomerWalletTransaction, Sale
 from sales.debt_management import (
     aging_bucket_for_days,
     build_debt_summary,
@@ -17,7 +19,7 @@ from sales.debt_management import (
 )
 from settings.models import ModuleSetting
 from settings.settings_service import SettingsService
-from utils.tests.api_test_base import ManagerAPITestCase
+from utils.tests.api_test_base import ManagerAPITestCase, SalesAPITestCase
 
 
 def _seed_wallet_visible():
@@ -188,3 +190,160 @@ class DebtManagementAPITests(ManagerAPITestCase):
             {'date': 'not-a-date'},
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_manager_sees_other_cashier_debtors(self):
+        other_user = User.objects.create_user('debt_other_cashier', password='x')
+        other_customer = Customer.objects.create(
+            name='Other Cashier Debtor',
+            phone='0700333000',
+            wallet_balance=Decimal('-80.00'),
+            is_active=True,
+        )
+        sale = Sale.objects.create(
+            cashier=other_user,
+            customer=other_customer,
+            subtotal=Decimal('80.00'),
+            total=Decimal('80.00'),
+            amount_paid=Decimal('0.00'),
+            status='completed',
+            payment_method='other',
+        )
+        CustomerWalletTransaction.objects.create(
+            customer=other_customer,
+            transaction_type='debit',
+            source_type='debt',
+            amount=Decimal('80.00'),
+            balance_after=Decimal('-80.00'),
+            sale=sale,
+            created_by=other_user,
+        )
+
+        response = self.client.get('/api/sales/customers/debtors/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        ids = {row['id'] for row in response.data['results']}
+        self.assertIn(self.debtor.id, ids)
+        self.assertIn(other_customer.id, ids)
+        self.assertEqual(response.data['count'], 2)
+
+
+def _create_sale_debt(user, customer, amount, *, served_by=None, created_by=None):
+    sale = Sale.objects.create(
+        cashier=user,
+        served_by=served_by,
+        customer=customer,
+        subtotal=amount,
+        total=amount,
+        amount_paid=Decimal('0.00'),
+        status='completed',
+        payment_method='other',
+    )
+    CustomerWalletTransaction.objects.create(
+        customer=customer,
+        transaction_type='debit',
+        source_type='debt',
+        amount=amount,
+        balance_after=customer.wallet_balance,
+        sale=sale,
+        created_by=created_by or user,
+    )
+    return sale
+
+
+class SalesDebtVisibilityAPITests(SalesAPITestCase):
+    def setUp(self):
+        super().setUp()
+        _seed_wallet_visible()
+        self.other_sales = User.objects.create_user('debt_sales_b', password='x')
+        UserProfile.objects.create(
+            user=self.other_sales,
+            role='cashier',
+            custom_role=Role.objects.get(name=ROLE_SALES),
+            is_active=True,
+        )
+        self.my_customer = Customer.objects.create(
+            name='My Credit Sale',
+            phone='0710111000',
+            wallet_balance=Decimal('-200.00'),
+            is_active=True,
+        )
+        self.other_customer = Customer.objects.create(
+            name='Other Credit Sale',
+            phone='0710222000',
+            wallet_balance=Decimal('-90.00'),
+            is_active=True,
+        )
+        _create_sale_debt(self.sales_user, self.my_customer, Decimal('200.00'))
+        _create_sale_debt(self.other_sales, self.other_customer, Decimal('90.00'))
+
+    def test_salesperson_sees_only_own_debt_customers(self):
+        response = self.client.get('/api/sales/customers/debtors/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        ids = {row['id'] for row in response.data['results']}
+        self.assertEqual(ids, {self.my_customer.id})
+        self.assertEqual(response.data['count'], 1)
+
+        summary = self.client.get('/api/sales/customers/debt-summary/')
+        self.assertEqual(summary.status_code, status.HTTP_200_OK, summary.data)
+        self.assertEqual(summary.data['customers_with_debt'], 1)
+        self.assertEqual(Decimal(summary.data['total_debt']), Decimal('200.00'))
+
+        count = self.client.get('/api/sales/customers/debtor-count/')
+        self.assertEqual(count.status_code, status.HTTP_200_OK)
+        self.assertEqual(count.data['count'], 1)
+
+    def test_salesperson_still_sees_customer_after_someone_else_collects(self):
+        CustomerWalletTransaction.objects.create(
+            customer=self.my_customer,
+            transaction_type='credit',
+            source_type='debt_settlement',
+            amount=Decimal('50.00'),
+            balance_after=Decimal('-150.00'),
+            created_by=self.other_sales,
+        )
+        self.my_customer.wallet_balance = Decimal('-150.00')
+        self.my_customer.save(update_fields=['wallet_balance'])
+
+        other_pay = CustomerWalletTransaction.objects.create(
+            customer=self.other_customer,
+            transaction_type='credit',
+            source_type='debt_settlement',
+            amount=Decimal('20.00'),
+            balance_after=Decimal('-70.00'),
+            created_by=self.other_sales,
+        )
+
+        response = self.client.get('/api/sales/customers/debtors/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(response.data['results'][0]['id'], self.my_customer.id)
+        self.assertEqual(Decimal(response.data['results'][0]['debt_amount']), Decimal('150.00'))
+
+        collections = self.client.get('/api/sales/customers/debt-collections/')
+        self.assertEqual(collections.status_code, status.HTTP_200_OK, collections.data)
+        self.assertEqual(collections.data['count'], 1)
+        self.assertEqual(collections.data['results'][0]['customer_id'], self.my_customer.id)
+        self.assertNotEqual(collections.data['results'][0]['id'], other_pay.id)
+
+        summary = self.client.get('/api/sales/customers/debt-summary/')
+        self.assertEqual(Decimal(summary.data['collected_today']), Decimal('50.00'))
+
+    def test_served_by_salesperson_sees_the_debt(self):
+        served_customer = Customer.objects.create(
+            name='Served Credit Sale',
+            phone='0710333000',
+            wallet_balance=Decimal('-40.00'),
+            is_active=True,
+        )
+        _create_sale_debt(
+            self.other_sales,
+            served_customer,
+            Decimal('40.00'),
+            served_by=self.sales_user,
+            created_by=self.other_sales,
+        )
+
+        response = self.client.get('/api/sales/customers/debtors/')
+        ids = {row['id'] for row in response.data['results']}
+        self.assertIn(self.my_customer.id, ids)
+        self.assertIn(served_customer.id, ids)
+        self.assertNotIn(self.other_customer.id, ids)

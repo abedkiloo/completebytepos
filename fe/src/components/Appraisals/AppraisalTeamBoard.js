@@ -6,6 +6,9 @@ import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Input } from '../ui/input';
 import { EmptyState } from '../page';
+import { ListSortBar } from '../page/ListSortBar';
+import { useListOrdering } from '../../hooks/useListOrdering';
+import { sortRecords } from '../../utils/listOrdering';
 import AppraisalProgressBar from './AppraisalProgressBar';
 
 function InsightGrid({ insights }) {
@@ -68,6 +71,7 @@ export default function AppraisalTeamBoard({ team, showIncrement }) {
   const [role, setRole] = useState('all');
   const [star, setStar] = useState('all');
   const [status, setStatus] = useState('all');
+  const { ordering, setOrdering } = useListOrdering();
 
   const roles = useMemo(
     () => Array.from(new Set(results.map((row) => row.staff?.role).filter(Boolean))).sort(),
@@ -84,6 +88,14 @@ export default function AppraisalTeamBoard({ team, showIncrement }) {
     if (status !== 'all' && row.annual_status !== status) return false;
     return true;
   });
+
+  const ranked = useMemo(
+    () => sortRecords(
+      filtered.map((row) => ({ ...row, name: row.staff?.name || '' })),
+      ordering,
+    ),
+    [filtered, ordering],
+  );
 
   if (!results.length) {
     return (
@@ -149,7 +161,8 @@ export default function AppraisalTeamBoard({ team, showIncrement }) {
           <option value="Close">Close</option>
           <option value="At risk">At risk</option>
         </select>
-        <Button type="button" variant="outline" onClick={() => exportCsv(filtered)}>
+        <ListSortBar value={ordering} onChange={setOrdering} />
+        <Button type="button" variant="outline" onClick={() => exportCsv(ranked)}>
           Export
         </Button>
       </div>
@@ -169,7 +182,7 @@ export default function AppraisalTeamBoard({ team, showIncrement }) {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((row) => {
+            {ranked.map((row) => {
               const theme = appraisalTone(row.today?.tone);
               return (
                 <tr key={row.staff.id} className="border-t">
@@ -199,7 +212,7 @@ export default function AppraisalTeamBoard({ team, showIncrement }) {
       </div>
 
       <div className="space-y-3 lg:hidden">
-        {filtered.map((row) => {
+        {ranked.map((row) => {
           const theme = appraisalTone(row.today?.tone);
           return (
             <Card key={`m-${row.staff.id}`} className={cn('border', theme.border)}>

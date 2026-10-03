@@ -6,7 +6,10 @@ import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import CommitConfirm from '../Shared/CommitConfirm';
 import { invoiceCommitRows, invoiceSendRows } from '../../utils/formCommitSummary';
 import SearchableSelect from '../Shared/SearchableSelect';
-import { PageShell, PageHeader, PageLoading, EmptyState, FilterBar, SearchField, FilterPills } from '../page';
+import { PageShell, PageHeader, PageLoading, EmptyState, FilterBar, SearchField, FilterPills, FilterField } from '../page';
+import { ListSortBar } from '../page/ListSortBar';
+import { useListOrdering } from '../../hooks/useListOrdering';
+import { withListOrdering } from '../../utils/listOrdering';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Plus, FileText } from 'lucide-react';
@@ -28,6 +31,7 @@ const Invoices = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const { ordering, setOrdering } = useListOrdering();
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 450);
@@ -75,7 +79,7 @@ const Invoices = () => {
     loadCustomers();
     loadSales();
     loadProducts();
-  }, [debouncedSearch, statusFilter]);
+  }, [debouncedSearch, statusFilter, ordering]);
 
   // Reload customers when modal opens to ensure we have the latest customers
   useEffect(() => {
@@ -111,7 +115,7 @@ const Invoices = () => {
   const loadInvoices = async () => {
     setLoading(true);
     try {
-      const params = {};
+      const params = withListOrdering({}, ordering);
       if (debouncedSearch) {
         params.search = debouncedSearch;
       }
@@ -617,6 +621,7 @@ const Invoices = () => {
             options={statusOptions.map((o) => ({ id: o.value, name: o.label }))}
             placeholder="Status"
           />
+          <ListSortBar value={ordering} onChange={setOrdering} />
         </FilterBar>
 
         {loading ? (

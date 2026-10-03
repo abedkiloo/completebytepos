@@ -37,6 +37,9 @@ import {
   FilterField,
   SummaryCard,
 } from '../page';
+import { ListSortBar } from '../page/ListSortBar';
+import { useListOrdering } from '../../hooks/useListOrdering';
+import { withListOrdering } from '../../utils/listOrdering';
 
 const Suppliers = () => {
   const { settings: supplierSettings } = useModuleSettings('suppliers');
@@ -68,16 +71,17 @@ const Suppliers = () => {
     is_preferred: '',
   });
   const [statistics, setStatistics] = useState(null);
+  const { ordering, setOrdering } = useListOrdering();
 
   useEffect(() => {
     loadSuppliers();
     loadStatistics();
-  }, [debouncedSearch, filters]);
+  }, [debouncedSearch, filters, ordering]);
 
   const loadSuppliers = async () => {
     setLoading(true);
     try {
-      const params = {};
+      const params = withListOrdering({}, ordering);
       if (debouncedSearch) {
         params.search = debouncedSearch;
       }
@@ -249,6 +253,7 @@ const Suppliers = () => {
             />
           </FilterField>
           )}
+          <ListSortBar value={ordering} onChange={setOrdering} />
         </FilterBar>
 
         {suppliers.length === 0 ? (

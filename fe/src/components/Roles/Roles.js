@@ -14,6 +14,9 @@ import {
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
+import { ListSortBar } from '../page/ListSortBar';
+import { useListOrdering } from '../../hooks/useListOrdering';
+import { withListOrdering } from '../../utils/listOrdering';
 import {
   PageShell,
   PageHeader,
@@ -45,18 +48,19 @@ const Roles = () => {
   const [loadingRole, setLoadingRole] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const { ordering, setOrdering } = useListOrdering();
 
   useEffect(() => {
     loadRoles();
     if (showPermissionCatalog) {
       loadPermissions();
     }
-  }, [showPermissionCatalog]);
+  }, [showPermissionCatalog, ordering]);
 
   const loadRoles = async () => {
     setLoading(true);
     try {
-      const response = await rolesAPI.list();
+      const response = await rolesAPI.list(withListOrdering({}, ordering));
       setRoles(response.data.results || response.data || []);
     } catch (error) {
       toast.error('Failed to load roles');
@@ -166,6 +170,7 @@ const Roles = () => {
             placeholder="Search roles…"
             className="max-w-md"
           />
+          <ListSortBar value={ordering} onChange={setOrdering} />
         </FilterBar>
 
         {filteredRoles.length === 0 ? (
@@ -179,7 +184,9 @@ const Roles = () => {
         ) : (
           <DataTable>
             <DataTableHeader>
-              <DataTableHead>Name</DataTableHead>
+              <DataTableHead sortKey="name" ordering={ordering} onOrderingChange={setOrdering}>
+                Name
+              </DataTableHead>
               <DataTableHead>Description</DataTableHead>
               <DataTableHead align="right">Permissions</DataTableHead>
               <DataTableHead align="right">Users</DataTableHead>

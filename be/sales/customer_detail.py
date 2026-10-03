@@ -11,6 +11,7 @@ from django.db.models import Sum
 from sales.daily_sales import classify_sale_payment, serialize_daily_order
 from sales.debt_management import debt_amount_from_balance
 from sales.models import Customer, CustomerWalletTransaction, Sale
+from utils.list_ordering import mapped_ordering
 
 
 def _q(value) -> Decimal:
@@ -129,6 +130,9 @@ def _serialize_customer_profile(customer: Customer) -> Dict[str, Any]:
         'country': customer.country or '',
         'tax_id': customer.tax_id or '',
         'notes': customer.notes or '',
+        'owner_name': customer.owner_name or '',
+        'contact_person': customer.contact_person or '',
+        'typical_goods': list(customer.typical_goods or []),
         'is_active': customer.is_active,
         'wallet_balance': str(wallet_balance),
         'wallet_debt': str(wallet_debt),
@@ -191,6 +195,8 @@ def get_customer_detail(
     orders_page_size: int = 25,
     ledger_page: int = 1,
     ledger_page_size: int = 50,
+    orders_ordering: str | None = None,
+    ledger_ordering: str | None = None,
     base_sales_queryset=None,
 ) -> Dict[str, Any]:
     """Compose lifetime customer profile for the detail screen."""
@@ -204,18 +210,30 @@ def get_customer_detail(
     else:
         sales_qs = Sale.objects.filter(customer_id=customer.id, status='completed')
 
+    order_fields = mapped_ordering(
+        orders_ordering,
+        aliases={'name': 'sale_number', 'saved': 'created_at'},
+        allowed={'name', 'saved', 'created_at', 'occurred_at', 'sale_number'},
+        default=('-occurred_at', '-created_at'),
+    )
     sales_qs = (
         sales_qs.select_related('customer', 'cashier', 'served_by')
         .prefetch_related('items__product', 'items__refund_lines')
-        .order_by('-occurred_at', '-created_at')
+        .order_by(*order_fields)
     )
     order_rows, orders_pagination = _paginate(sales_qs, orders_page, orders_page_size)
     orders = [serialize_daily_order(sale) for sale in order_rows]
 
+    ledger_fields = mapped_ordering(
+        ledger_ordering,
+        aliases={'name': 'source_type', 'saved': 'created_at'},
+        allowed={'name', 'saved', 'created_at', 'source_type'},
+        default=('-created_at', '-id'),
+    )
     ledger_qs = (
         CustomerWalletTransaction.objects.filter(customer_id=customer.id)
         .select_related('sale', 'created_by')
-        .order_by('-created_at', '-id')
+        .order_by(*ledger_fields)
     )
     ledger_rows, ledger_pagination = _paginate(ledger_qs, ledger_page, ledger_page_size)
     ledger = [serialize_ledger_entry(txn) for txn in ledger_rows]

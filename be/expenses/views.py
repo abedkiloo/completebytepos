@@ -12,6 +12,7 @@ from .serializers import (
     ExpenseCategorySerializer, ExpenseSerializer, ExpenseListSerializer
 )
 from .services import ExpenseCategoryService, ExpenseService
+from utils.list_ordering import NameSavedOrderingFilter
 from accounts.permissions import RequirePermPerAction, IsSuperAdmin
 from utils.audit_events import log_approval_event
 from utils.audit_helpers import audited_perform_create, audited_perform_update
@@ -43,7 +44,7 @@ class ExpenseCategoryViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     serializer_class = ExpenseCategorySerializer
     permission_classes = [IsAuthenticated, EXPENSES_PERMS]
     audit_module = 'expense_categories'
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [filters.SearchFilter, NameSavedOrderingFilter]
     search_fields = ['name', 'description']
     ordering_fields = ['name', 'created_at']
     ordering = ['name']
@@ -105,7 +106,7 @@ class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     serializer_class = ExpenseSerializer
     permission_classes = [IsAuthenticated, EXPENSES_PERMS]
     audit_module = 'expenses'
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [filters.SearchFilter, NameSavedOrderingFilter]
     search_fields = ['expense_number', 'description', 'vendor', 'receipt_number']
     ordering_fields = ['expense_date', 'amount', 'created_at']
     ordering = ['-expense_date', '-created_at']

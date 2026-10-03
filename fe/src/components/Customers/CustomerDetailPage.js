@@ -4,9 +4,11 @@ import {
   ArrowLeft,
   Mail,
   MapPin,
+  Pencil,
   Phone,
   Receipt,
   TrendingDown,
+  User,
   Users,
   Wallet,
 } from 'lucide-react';
@@ -25,6 +27,25 @@ import {
   standingLabel,
 } from '../../utils/customerDetail';
 import { getWalletDebtAmount } from '../../utils/walletDisplay';
+import { customerCommitRows } from '../../utils/formCommitSummary';
+import {
+  EMPTY_CUSTOMER_FORM,
+  customerFormBackendErrors,
+  customerFormFromRecord,
+  customerSavePayload,
+  validateCustomerForm,
+} from '../../utils/customerFormState';
+import {
+  customersEnableEdit,
+  customersShowCustomerType,
+  customersShowNotes,
+  customersShowStatus,
+  customersShowTaxId,
+} from '../../utils/customerDisplay';
+import { useModuleSettings } from '../../hooks/useModuleSettings';
+import { useStoreSettings } from '../../hooks/useStoreSettings';
+import CommitConfirm from '../Shared/CommitConfirm';
+import CustomerFormDialog from './CustomerFormDialog';
 
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -48,6 +69,7 @@ import {
   DataTableCell,
   ListPaginationRail,
 } from '../page';
+import { useListOrdering } from '../../hooks/useListOrdering';
 
 const TABS = [
   { id: 'orders', label: 'Orders' },
@@ -64,6 +86,8 @@ export default function CustomerDetailPage() {
   const [payload, setPayload] = useState(null);
   const [ordersPage, setOrdersPage] = useState(1);
   const [ledgerPage, setLedgerPage] = useState(1);
+  const { ordering: ordersOrdering, setOrdering: setOrdersOrdering } = useListOrdering();
+  const { ordering: ledgerOrdering, setOrdering: setLedgerOrdering } = useListOrdering();
   const [selectedSale, setSelectedSale] = useState(null);
   const [saleDetailOpen, setSaleDetailOpen] = useState(false);
   const [refundSale, setRefundSale] = useState(null);
@@ -71,8 +95,20 @@ export default function CustomerDetailPage() {
   const [rollbackSale, setRollbackSale] = useState(null);
   const [rollbackSubmitting, setRollbackSubmitting] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [formData, setFormData] = useState(EMPTY_CUSTOMER_FORM);
+  const [formErrors, setFormErrors] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [showCommitConfirm, setShowCommitConfirm] = useState(false);
 
   const { permissions } = getStoredAuth();
+  const { settings: customerModuleSettings } = useModuleSettings('customers');
+  const { settings: storeSettings } = useStoreSettings();
+  const canEdit = customersEnableEdit(customerModuleSettings);
+  const showCustomerType = customersShowCustomerType(customerModuleSettings);
+  const showTaxId = customersShowTaxId(customerModuleSettings);
+  const showNotes = customersShowNotes(customerModuleSettings);
+  const showStatus = customersShowStatus(customerModuleSettings, storeSettings);
   const canViewDebt = hasPermission(permissions, 'debt_management', 'view');
   const canCollect = hasPermission(permissions, 'debt_management', 'update');
   const canRefund = userCanRefundSales(permissions, {
@@ -90,6 +126,8 @@ export default function CustomerDetailPage() {
         orders_page_size: 25,
         ledger_page: ledgerPage,
         ledger_page_size: 50,
+        ...(ordersOrdering ? { orders_ordering: ordersOrdering } : {}),
+        ...(ledgerOrdering ? { ledger_ordering: ledgerOrdering } : {}),
       });
       setPayload(res.data);
     } catch (err) {
@@ -98,7 +136,7 @@ export default function CustomerDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [customerId, ordersPage, ledgerPage]);
+  }, [customerId, ordersPage, ledgerPage, ordersOrdering, ledgerOrdering]);
 
   useEffect(() => {
     load();
@@ -175,6 +213,60 @@ export default function CustomerDetailPage() {
     }
   };
 
+  const openEdit = async () => {
+    if (!customer) return;
+    setFormData(customerFormFromRecord(customer));
+    setFormErrors({});
+    setEditOpen(true);
+    try {
+      const res = await customersAPI.get(customer.id);
+      setFormData(customerFormFromRecord(res.data));
+    } catch (_err) {
+      // Keep the profile already on screen if the full record cannot load.
+    }
+  };
+
+  const updateField = (key, value) => {
+    setFormData((prev) => ({ ...prev, [key]: value }));
+    if (formErrors[key]) {
+      setFormErrors((prev) => ({ ...prev, [key]: '' }));
+    }
+  };
+
+  const handleEditSubmit = (e) => {
+    e?.preventDefault?.();
+    const errors = validateCustomerForm(formData);
+    setFormErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      toast.error(Object.values(errors)[0]);
+      return;
+    }
+    setShowCommitConfirm(true);
+  };
+
+  const confirmEdit = async () => {
+    if (saving || !customer) return;
+    setSaving(true);
+    try {
+      await customersAPI.update(customer.id, customerSavePayload(formData));
+      toast.success('Duka updated');
+      setShowCommitConfirm(false);
+      setEditOpen(false);
+      load();
+    } catch (error) {
+      const data = error.response?.data;
+      const backendErrors = customerFormBackendErrors(data);
+      if (backendErrors) {
+        setFormErrors(backendErrors);
+        toast.error(Object.values(backendErrors)[0] || 'Failed to save customer');
+      } else {
+        toast.error(data?.error || data?.detail || error.message || 'Failed to save customer');
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading && !payload) {
     return <PageLoading rows={8} showStats />;
   }
@@ -213,6 +305,12 @@ export default function CustomerDetailPage() {
             Customers
           </Link>
         </Button>
+        {canEdit && (
+          <Button variant="outline" size="sm" onClick={openEdit}>
+            <Pencil className="mr-1 h-4 w-4" />
+            Edit
+          </Button>
+        )}
         {canViewDebt && walletDebt > 0 && (
           <Button variant="outline" size="sm" asChild>
             <Link to="/customers/debt">Debt board</Link>
@@ -275,6 +373,8 @@ export default function CustomerDetailPage() {
               page={ordersPagination?.page || ordersPage}
               pageSize={ordersPagination?.page_size || 25}
               totalCount={ordersPagination?.count || 0}
+              ordering={ordersOrdering}
+              onOrderingChange={setOrdersOrdering}
               onPageChange={setOrdersPage}
             >
               {orders.length === 0 ? (
@@ -286,8 +386,12 @@ export default function CustomerDetailPage() {
               ) : (
                 <DataTable>
                   <DataTableHeader>
-                    <DataTableHead>Sale</DataTableHead>
-                    <DataTableHead>When</DataTableHead>
+                    <DataTableHead sortKey="name" ordering={ordersOrdering} onOrderingChange={setOrdersOrdering}>
+                      Sale
+                    </DataTableHead>
+                    <DataTableHead sortKey="saved" ordering={ordersOrdering} onOrderingChange={setOrdersOrdering}>
+                      When
+                    </DataTableHead>
                     <DataTableHead align="right">Total</DataTableHead>
                     <DataTableHead align="right">Paid</DataTableHead>
                     <DataTableHead align="right">Debt</DataTableHead>
@@ -338,6 +442,8 @@ export default function CustomerDetailPage() {
               page={ledgerPagination?.page || ledgerPage}
               pageSize={ledgerPagination?.page_size || 50}
               totalCount={ledgerPagination?.count || 0}
+              ordering={ledgerOrdering}
+              onOrderingChange={setLedgerOrdering}
               onPageChange={setLedgerPage}
             >
               {ledger.length === 0 ? (
@@ -349,8 +455,12 @@ export default function CustomerDetailPage() {
               ) : (
                 <DataTable>
                   <DataTableHeader>
-                    <DataTableHead>When</DataTableHead>
-                    <DataTableHead>Type</DataTableHead>
+                    <DataTableHead sortKey="saved" ordering={ledgerOrdering} onOrderingChange={setLedgerOrdering}>
+                      When
+                    </DataTableHead>
+                    <DataTableHead sortKey="name" ordering={ledgerOrdering} onOrderingChange={setLedgerOrdering}>
+                      Type
+                    </DataTableHead>
                     <DataTableHead>Debt flow</DataTableHead>
                     <DataTableHead align="right">Amount</DataTableHead>
                     <DataTableHead align="right">Balance</DataTableHead>
@@ -390,11 +500,28 @@ export default function CustomerDetailPage() {
         </div>
 
         <aside className="space-y-4 rounded-lg border border-border p-4">
-          <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-            Profile
-          </h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+              Profile
+            </h2>
+            {canEdit && (
+              <Button variant="ghost" size="sm" onClick={openEdit}>
+                <Pencil className="mr-1 h-3.5 w-3.5" />
+                Edit
+              </Button>
+            )}
+          </div>
           <CustomerWalletBalance balance={customer.wallet_balance} />
           <dl className="space-y-3 text-sm">
+            {customer.owner_name && (
+              <div className="flex gap-2">
+                <User className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                <div>
+                  <dt className="text-muted-foreground">Owner</dt>
+                  <dd>{customer.owner_name}</dd>
+                </div>
+              </div>
+            )}
             {customer.phone && (
               <div className="flex gap-2">
                 <Phone className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
@@ -430,6 +557,12 @@ export default function CustomerDetailPage() {
               <div>
                 <dt className="text-muted-foreground">Notes</dt>
                 <dd className="mt-1 whitespace-pre-wrap">{customer.notes}</dd>
+              </div>
+            )}
+            {customer.contact_person && (
+              <div>
+                <dt className="text-muted-foreground">Contact person</dt>
+                <dd className="mt-1">{customer.contact_person}</dd>
               </div>
             )}
           </dl>
@@ -490,6 +623,37 @@ export default function CustomerDetailPage() {
           dispatchNavBadgesRefresh();
           load();
         }}
+      />
+
+      <CustomerFormDialog
+        open={editOpen}
+        onOpenChange={(next) => {
+          if (saving) return;
+          setEditOpen(next);
+          if (!next) setShowCommitConfirm(false);
+        }}
+        editing={customer}
+        formData={formData}
+        formErrors={formErrors}
+        onChange={updateField}
+        onSubmit={handleEditSubmit}
+        saving={saving}
+        showCustomerType={showCustomerType}
+        showTaxId={showTaxId}
+        showNotes={showNotes}
+        showStatus={showStatus}
+      />
+      <CommitConfirm
+        open={showCommitConfirm}
+        onOpenChange={(open) => {
+          if (!open && !saving) setShowCommitConfirm(false);
+        }}
+        title="Update this duka?"
+        description="Review the customer details, then confirm to save."
+        rows={customerCommitRows(formData, { isEdit: true })}
+        submitting={saving}
+        confirmText="Confirm & update"
+        onConfirm={confirmEdit}
       />
     </PageShell>
   );

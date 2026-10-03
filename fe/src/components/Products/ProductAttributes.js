@@ -20,6 +20,9 @@ import {
   DataTableCell,
   ActiveStatusBadge,
 } from '../page';
+import { ListSortBar } from '../page/ListSortBar';
+import { useListOrdering } from '../../hooks/useListOrdering';
+import { withListOrdering } from '../../utils/listOrdering';
 
 const TABS = [
   { id: 'sizes', label: 'Sizes', icon: Ruler },
@@ -38,14 +41,15 @@ const ProductAttributes = () => {
   const [showCommitConfirm, setShowCommitConfirm] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [saving, setSaving] = useState(false);
+  const { ordering, setOrdering } = useListOrdering();
   const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const [sRes, cRes] = await Promise.all([
-        sizesAPI.list({ page_size: CATALOG_FETCH_PAGE_SIZE }),
-        colorsAPI.list({ page_size: CATALOG_FETCH_PAGE_SIZE }),
+        sizesAPI.list(withListOrdering({ page_size: CATALOG_FETCH_PAGE_SIZE }, ordering)),
+        colorsAPI.list(withListOrdering({ page_size: CATALOG_FETCH_PAGE_SIZE }, ordering)),
       ]);
       setSizes(sRes.data.results || sRes.data || []);
       setColors(cRes.data.results || cRes.data || []);
@@ -54,7 +58,7 @@ const ProductAttributes = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [ordering]);
 
   useEffect(() => {
     load();
@@ -195,6 +199,9 @@ const ProductAttributes = () => {
           </button>
         ))}
       </div>
+      <div className="mb-4">
+        <ListSortBar value={ordering} onChange={setOrdering} />
+      </div>
 
       {rows.length === 0 ? (
         <EmptyState
@@ -207,7 +214,9 @@ const ProductAttributes = () => {
       ) : (
         <DataTable>
           <DataTableHeader>
-            <DataTableHead>Name</DataTableHead>
+            <DataTableHead sortKey="name" ordering={ordering} onOrderingChange={setOrdering}>
+              Name
+            </DataTableHead>
             {tab === 'sizes' ? <DataTableHead>Code</DataTableHead> : <DataTableHead>Hex</DataTableHead>}
             {tab === 'sizes' && <DataTableHead align="right">Order</DataTableHead>}
             <DataTableHead>Status</DataTableHead>

@@ -6,6 +6,7 @@ from django.db.models import Sum, Count
 from .models import BankAccount, BankTransaction
 from .serializers import BankAccountSerializer, BankTransactionSerializer
 from .services import BankAccountService, BankTransactionService
+from utils.list_ordering import NameSavedOrderingFilter
 from accounts.permissions import RequirePermPerAction
 from utils.audit_helpers import audited_perform_create
 from utils.audit_mixin import AuditedModelViewSetMixin
@@ -27,7 +28,7 @@ class BankAccountViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     serializer_class = BankAccountSerializer
     permission_classes = [IsAuthenticated, BANK_ACCOUNTS_PERMS]
     audit_module = 'bank_accounts'
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [filters.SearchFilter, NameSavedOrderingFilter]
     search_fields = ['account_name', 'account_number', 'bank_name']
     ordering_fields = ['bank_name', 'account_name', 'created_at']
     ordering = ['bank_name', 'account_name']
@@ -62,7 +63,7 @@ class BankTransactionViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     audit_module = 'bank_accounts'
     # Bank transactions are part of the audit trail - immutable via API.
     http_method_names = ['get', 'post', 'head', 'options']
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [filters.SearchFilter, NameSavedOrderingFilter]
     search_fields = ['transaction_number', 'description', 'reference']
     ordering_fields = ['transaction_date', 'amount', 'created_at']
     ordering = ['-transaction_date', '-created_at']

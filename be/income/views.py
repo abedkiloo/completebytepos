@@ -10,6 +10,7 @@ from datetime import datetime
 from .models import IncomeCategory, Income
 from .serializers import IncomeCategorySerializer, IncomeSerializer
 from .services import IncomeCategoryService, IncomeService
+from utils.list_ordering import NameSavedOrderingFilter
 from accounts.permissions import RequirePermPerAction
 from utils.audit_events import log_approval_event
 from utils.audit_helpers import audited_perform_create, audited_perform_update
@@ -41,7 +42,7 @@ class IncomeCategoryViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     serializer_class = IncomeCategorySerializer
     permission_classes = [IsAuthenticated, INCOME_PERMS]
     audit_module = 'income_categories'
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [filters.SearchFilter, NameSavedOrderingFilter]
     search_fields = ['name', 'description']
     ordering_fields = ['name', 'created_at']
     ordering = ['name']
@@ -63,7 +64,7 @@ class IncomeViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     serializer_class = IncomeSerializer
     permission_classes = [IsAuthenticated, INCOME_PERMS]
     audit_module = 'income'
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [filters.SearchFilter, NameSavedOrderingFilter]
     search_fields = ['income_number', 'description', 'payer', 'reference_number']
     ordering_fields = ['income_date', 'amount', 'created_at']
     ordering = ['-income_date', '-created_at']

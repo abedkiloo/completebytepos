@@ -9,6 +9,7 @@ from decimal import Decimal
 from .models import Supplier
 from .serializers import SupplierSerializer, SupplierListSerializer
 from .services import SupplierService
+from utils.list_ordering import NameSavedOrderingFilter
 from accounts.permissions import IsSuperAdmin, IsAdmin, HasPermission, HasModuleAccess
 from utils.audit_helpers import audited_perform_create, audited_perform_destroy, audited_perform_update
 from utils.audit_mixin import AuditedModelViewSetMixin
@@ -54,7 +55,7 @@ class SupplierViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     serializer_class = SupplierSerializer
     permission_classes = [IsAuthenticated]
     audit_module = 'suppliers'
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [filters.SearchFilter, NameSavedOrderingFilter]
     search_fields = ['name', 'supplier_code', 'email', 'phone', 'contact_person', 'tax_id']
     ordering_fields = ['name', 'created_at', 'rating', 'account_balance']
     ordering = ['name']

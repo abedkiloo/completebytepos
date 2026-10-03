@@ -15,6 +15,7 @@ from .serializers import (
 from .services import StockMovementService, inclusive_end_datetime, inclusive_start_datetime
 from products.models import Product, ProductVariant
 from settings.utils import get_current_branch, get_current_tenant, is_branch_support_enabled
+from utils.list_ordering import NameSavedOrderingFilter
 from accounts.permissions import RequirePermPerAction
 from utils.audit_mixin import AuditedModelViewSetMixin
 from django.core.exceptions import ValidationError
@@ -72,7 +73,7 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     # the `undo` action which creates a compensating movement.
     http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
     ordering = ['-created_at']
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [filters.SearchFilter, NameSavedOrderingFilter]
     search_fields = ['product__name', 'product__sku', 'reference', 'notes']
     ordering_fields = ['created_at', 'quantity', 'movement_type']
     

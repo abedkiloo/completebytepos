@@ -49,6 +49,9 @@ import {
   SummaryCard,
 } from '../page';
 import { cn } from '../../lib/cn';
+import { useListOrdering } from '../../hooks/useListOrdering';
+import { withListOrdering } from '../../utils/listOrdering';
+import { ListSortBar } from '../page/ListSortBar';
 
 const Inventory = () => {
   const location = useLocation();
@@ -84,6 +87,7 @@ const Inventory = () => {
     date_from: '',
     date_to: '',
   });
+  const { ordering, setOrdering } = useListOrdering();
   const firstAvailableTab = useMemo(() => {
     if (canShowMovements) return 'movements';
     if (canShowLowStock) return 'low_stock';
@@ -133,7 +137,7 @@ const Inventory = () => {
 
   useEffect(() => {
     loadData();
-  }, [filters, activeTab]);
+  }, [filters, activeTab, ordering]);
 
   const loadData = async () => {
     setLoading(true);
@@ -155,7 +159,7 @@ const Inventory = () => {
 
   const loadMovements = async () => {
     try {
-      const params = {};
+      const params = withListOrdering({}, ordering);
       if (filters.movement_type) params.movement_type = filters.movement_type;
       if (filters.product) params.product = filters.product;
       if (filters.date_from) params.date_from = filters.date_from;
@@ -334,6 +338,7 @@ const Inventory = () => {
                   }
                 />
               </FilterField>
+              <ListSortBar value={ordering} onChange={setOrdering} />
             </FilterBar>
 
             {loading ? (
@@ -349,8 +354,12 @@ const Inventory = () => {
             ) : (
               <DataTable>
                 <DataTableHeader>
-                  <DataTableHead>Date</DataTableHead>
-                  <DataTableHead>Product</DataTableHead>
+                  <DataTableHead sortKey="saved" ordering={ordering} onOrderingChange={setOrdering}>
+                    Date
+                  </DataTableHead>
+                  <DataTableHead sortKey="name" ordering={ordering} onOrderingChange={setOrdering}>
+                    Product
+                  </DataTableHead>
                   <DataTableHead>Type</DataTableHead>
                   <DataTableHead align="right">Qty</DataTableHead>
                   <DataTableHead align="right">After</DataTableHead>
