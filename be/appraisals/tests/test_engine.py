@@ -178,6 +178,22 @@ class AppraisalEngineTests(SimpleTestCase):
         self.assertEqual(daily_star(35000, manager)['stars'], 4)
         self.assertEqual(daily_star(20000, manager)['stars'], 2)
 
+    def test_admin_roles_are_not_given_a_daily_target(self):
+        template = normalize_template({
+            'role_daily_targets': {
+                'Super Admin': 20000,
+                'Admin': 15000,
+                'Administrator': 18000,
+                'Manager': 35000,
+                'Sales Personnel': 20000,
+            },
+        })
+        self.assertNotIn('Super Admin', template['role_daily_targets'])
+        self.assertNotIn('Admin', template['role_daily_targets'])
+        self.assertNotIn('Administrator', template['role_daily_targets'])
+        self.assertEqual(template_for_role(template, 'Super Admin')['daily_target'], 0)
+        self.assertEqual(template_for_role(template, 'Admin')['daily_target'], 0)
+
     def test_greeting_omits_bonus_and_daily_tips_rotate(self):
         today = daily_star(18500, self.template)
         greeting = greeting_copy(

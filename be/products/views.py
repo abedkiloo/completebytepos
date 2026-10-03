@@ -70,6 +70,9 @@ class SizeViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     serializer_class = SizeSerializer
     permission_classes = [IsAuthenticated, PRODUCTS_PERMS]
     audit_module = 'product_sizes'
+    # Sizes are a small option catalog; paginating hid newly added rows from
+    # the product form and Sizes & colors screen (same as categories).
+    pagination_class = None
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'code']
     ordering_fields = ['display_order', 'name']
@@ -121,6 +124,9 @@ class ColorViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     serializer_class = ColorSerializer
     permission_classes = [IsAuthenticated, PRODUCTS_PERMS]
     audit_module = 'product_colors'
+    # Colors are a small option catalog; paginating hid newly added rows from
+    # the product form and Sizes & colors screen (same as categories).
+    pagination_class = None
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name']
     ordering_fields = ['name']

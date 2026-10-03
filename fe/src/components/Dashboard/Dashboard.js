@@ -98,7 +98,10 @@ const Dashboard = () => {
         ]);
         if (meRes?.data) setMe(meRes.data);
         if (dashRes?.data) setDashboardData(dashRes.data);
-        if (appraisalRes?.data?.show_on_home !== false) {
+        if (
+          appraisalRes?.data?.show_on_home !== false &&
+          appraisalRes?.data?.has_personal_target !== false
+        ) {
           setAppraisal(appraisalRes?.data || null);
         }
         const products = stockRes?.data?.results || stockRes?.data || [];

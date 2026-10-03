@@ -34,7 +34,7 @@ export default function AppraisalProgressCard({
   actions,
   className,
 }) {
-  if (!snapshot) return null;
+  if (!snapshot || snapshot.has_personal_target === false) return null;
   const { today, month, year, greeting, staff, today_tips: todayTips, policy } = snapshot;
   const tone = today?.tone || month?.tone || 'rose';
   const theme = appraisalTone(tone);

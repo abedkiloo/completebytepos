@@ -84,4 +84,11 @@ describe('AppraisalProgressCard', () => {
     expect(screen.getByTestId('appraisal-today-move')).toHaveTextContent('Call five customers you already sold to.');
     expect(screen.queryByTestId('appraisal-daily-tips')).not.toBeInTheDocument();
   });
+
+  it('does not render a personal target card for admins', () => {
+    const { container } = render(
+      <AppraisalProgressCard snapshot={{ ...snapshot, has_personal_target: false }} />
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
 });

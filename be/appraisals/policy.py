@@ -113,9 +113,15 @@ class PolicyError(ValueError):
     pass
 
 
-APPRAISAL_ROLE_SKIP = frozenset({'Super Admin'})
+APPRAISAL_ROLE_SKIP = frozenset({'Super Admin', 'Admin', 'Administrator'})
+_APPRAISAL_ROLE_SKIP_LOWER = frozenset(name.lower() for name in APPRAISAL_ROLE_SKIP)
 DEFAULT_SALES_ROLES = ('Sales Personnel', 'Field Sales')
 DEFAULT_MANAGER_ROLES = ('Manager',)
+
+
+def is_skipped_appraisal_role(name: str) -> bool:
+    """Admins are not scored against a personal daily target."""
+    return (name or '').strip().lower() in _APPRAISAL_ROLE_SKIP_LOWER
 
 
 def _is_manager_role_name(name: str) -> bool:
@@ -143,7 +149,7 @@ def _normalize_role_daily_targets(
         rows = incoming.items()
         for name, value in rows:
             key = str(name).strip()
-            if not key or key in APPRAISAL_ROLE_SKIP:
+            if not key or is_skipped_appraisal_role(key):
                 continue
             fallback = manager_daily_target if _is_manager_role_name(key) else daily_target
             targets[key] = max(0, _float(value, fallback))
@@ -152,7 +158,7 @@ def _normalize_role_daily_targets(
             if not isinstance(row, dict):
                 continue
             key = str(row.get('role') or row.get('name') or '').strip()
-            if not key or key in APPRAISAL_ROLE_SKIP:
+            if not key or is_skipped_appraisal_role(key):
                 continue
             fallback = manager_daily_target if _is_manager_role_name(key) else daily_target
             targets[key] = max(
@@ -178,7 +184,7 @@ def catalog_role_names() -> list[str]:
         )
         for name in extra:
             label = str(name or '').strip()
-            if label and label not in names and label not in APPRAISAL_ROLE_SKIP:
+            if label and label not in names and not is_skipped_appraisal_role(label):
                 names.append(label)
     except Exception:
         pass
@@ -188,7 +194,11 @@ def catalog_role_names() -> list[str]:
 def merge_role_daily_targets(template: dict[str, Any]) -> dict[str, float]:
     daily = _float(template.get('daily_target'), 20000)
     manager = _float(template.get('manager_daily_target'), 35000)
-    targets = dict(template.get('role_daily_targets') or {})
+    targets = {
+        name: value
+        for name, value in dict(template.get('role_daily_targets') or {}).items()
+        if not is_skipped_appraisal_role(name)
+    }
     for name in catalog_role_names():
         targets.setdefault(
             name,
@@ -200,6 +210,8 @@ def merge_role_daily_targets(template: dict[str, Any]) -> dict[str, float]:
 def resolve_role_daily_target(template: dict[str, Any], role_name: str) -> float:
     targets = template.get('role_daily_targets') or {}
     name = (role_name or '').strip()
+    if is_skipped_appraisal_role(name):
+        return 0
     if name and name in targets:
         return _float(targets[name], 0)
     if _is_manager_role_name(name):

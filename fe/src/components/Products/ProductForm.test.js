@@ -396,4 +396,18 @@ describe('ProductForm integration', () => {
       expect(onSave).toHaveBeenCalled();
     }, { timeout: 1000 });
   });
+
+  test('loads the full size catalog so newly added sizes can be selected', async () => {
+    render(<ProductForm categories={categories} onClose={jest.fn()} onSave={jest.fn()} />);
+    await waitFor(() => {
+      expect(sizesAPI.list).toHaveBeenCalledWith({
+        is_active: 'true',
+        page_size: 500,
+      });
+    });
+    expect(colorsAPI.list).toHaveBeenCalledWith({
+      is_active: 'true',
+      page_size: 500,
+    });
+  });
 });

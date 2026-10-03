@@ -6,6 +6,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
+import { filterRoleDailyTargets, isAppraisalAdminRole } from '../../utils/appraisalRoles';
 
 function BandTable({ title, rows, columns, onChange, onAdd, onRemove }) {
   return (
@@ -72,14 +73,14 @@ function roleTargetsFromPolicy(policy) {
   const incoming = policy?.role_daily_targets && typeof policy.role_daily_targets === 'object'
     ? policy.role_daily_targets
     : {};
-  return {
+  return filterRoleDailyTargets({
     Manager: num(incoming.Manager, num(policy?.manager_daily_target, 35000)),
     'Sales Personnel': num(incoming['Sales Personnel'], num(policy?.daily_target, 20000)),
     'Field Sales': num(incoming['Field Sales'], num(policy?.daily_target, 20000)),
     ...Object.fromEntries(
       Object.entries(incoming).map(([role, target]) => [role, num(target, 0)]),
     ),
-  };
+  });
 }
 
 export default function AppraisalTemplateForm({ policy, saving, onSave }) {
@@ -149,7 +150,7 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
 
   const addRoleTarget = () => {
     const role = newRole.trim();
-    if (!role) return;
+    if (!role || isAppraisalAdminRole(role)) return;
     setRoleTarget(role, num(newRoleTarget, num(form.daily_target, 20000)));
     setNewRole('');
     setNewRoleTarget('');
@@ -166,8 +167,10 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const targets = Object.fromEntries(
-      Object.entries(form.role_daily_targets || {}).map(([role, target]) => [role, num(target)]),
+    const targets = filterRoleDailyTargets(
+      Object.fromEntries(
+        Object.entries(form.role_daily_targets || {}).map(([role, target]) => [role, num(target)]),
+      )
     );
     onSave({
       ...form,
@@ -251,7 +254,7 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            Each manager and sales role has its own daily target. 4-star “target met” scales with the amount you set.
+            Each manager and sales role has its own daily target. 4-star “target met” scales with the amount you set. Admin roles are not scored.
           </p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {roleNames.map((role) => (

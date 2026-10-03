@@ -56,6 +56,7 @@ class AppraisalMeAPITests(SalesAPITestCase):
         self.assertEqual(today['stars'], 3)
         self.assertEqual(today['amount_to_target'], 1500)
         self.assertEqual(today['tone'], 'amber')
+        self.assertTrue(response.data['has_personal_target'])
         self.assertIn('headline', response.data['greeting'])
         self.assertNotIn('Bonus', response.data['greeting']['detail'])
         self.assertEqual(len(response.data['today_tips']['tips']), 5)
@@ -180,6 +181,21 @@ class AppraisalPolicyAPITests(SuperAdminAPITestCase):
         self.assertEqual(response.data['year_end_increment'], 3000)
         self.assertEqual(response.data['working_days'], 26)
         self.assertTrue(response.data['greet_when_no_sticky_notes'])
+        self.assertNotIn('Super Admin', response.data['role_daily_targets'])
+        self.assertNotIn('Admin', response.data['role_daily_targets'])
+
+    def test_admin_has_no_personal_target(self):
+        save_template(default_template())
+        _sale(self.admin, 50000, timezone.now())
+        me = self.client.get('/api/appraisals/me/')
+        self.assertEqual(me.status_code, status.HTTP_200_OK)
+        self.assertFalse(me.data['has_personal_target'])
+        self.assertFalse(me.data['show_on_home'])
+        self.assertIsNone(me.data['today'])
+        team = self.client.get('/api/appraisals/team/')
+        self.assertEqual(team.status_code, status.HTTP_200_OK)
+        ids = {row['staff']['id'] for row in team.data['results']}
+        self.assertNotIn(self.admin.id, ids)
 
     def test_rejects_duplicate_daily_bands(self):
         payload = default_template()

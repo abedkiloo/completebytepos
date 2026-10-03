@@ -925,6 +925,21 @@ class SizeViewSetTestCase(APITestCase):
         """Test listing sizes"""
         response = self.client.get('/api/products/sizes/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_list_sizes_returns_every_size_after_create(self):
+        for i in range(12):
+            Size.objects.create(name=f'Fit {i}', code=f'F{i}', display_order=i)
+        created = self.client.post(
+            '/api/products/sizes/',
+            {'name': 'Custom Fit', 'code': 'CF', 'display_order': 20, 'is_active': True},
+            format='json',
+        )
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED)
+        response = self.client.get('/api/products/sizes/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        rows = response.data if isinstance(response.data, list) else response.data.get('results', [])
+        self.assertIn('Custom Fit', {row['name'] for row in rows})
+        self.assertGreaterEqual(len(rows), 13)
     
     def test_create_size(self):
         """Test creating a size"""

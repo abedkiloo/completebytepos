@@ -15,6 +15,7 @@ import {
   STOCK_OPENING_LABEL,
   STOCK_OPENING_HINT,
 } from '../../utils/productDisplay';
+import { CATALOG_FETCH_PAGE_SIZE } from '../../config/pagination';
 import { moneyMessage, required } from '../../utils/formValidation';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import { useProductUnits } from '../../hooks/useProductUnits';
@@ -151,8 +152,8 @@ const ProductForm = ({
     const loadSizesAndColors = async () => {
       try {
         const [sizesRes, colorsRes] = await Promise.all([
-          sizesAPI.list({ is_active: 'true' }),
-          colorsAPI.list({ is_active: 'true' })
+          sizesAPI.list({ is_active: 'true', page_size: CATALOG_FETCH_PAGE_SIZE }),
+          colorsAPI.list({ is_active: 'true', page_size: CATALOG_FETCH_PAGE_SIZE })
         ]);
         setSizes(sizesRes.data.results || sizesRes.data || []);
         setColors(colorsRes.data.results || colorsRes.data || []);

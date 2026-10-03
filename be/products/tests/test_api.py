@@ -842,6 +842,22 @@ class ProductAPITestCase(TransactionTestCase):
         
         response = self.client.get('/api/products/sizes/?is_active=true')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_list_sizes_includes_sizes_beyond_default_page(self):
+        """New sizes used to vanish because the list was capped at 10 rows."""
+        token = self.get_auth_token(self.superuser)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+        for i in range(12):
+            Size.objects.create(name=f'Custom Size {i}', code=f'CS{i}', display_order=i + 10)
+        newest = Size.objects.create(name='Brand New Size', code='BNS', display_order=99)
+
+        response = self.client.get('/api/products/sizes/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        rows = response.data if isinstance(response.data, list) else response.data.get('results', [])
+        names = {row['name'] for row in rows}
+        self.assertIn('Brand New Size', names)
+        self.assertGreaterEqual(len(rows), 13)
+        self.assertIn(newest.id, {row['id'] for row in rows})
     
     def test_list_colors(self):
         """Test listing colors"""

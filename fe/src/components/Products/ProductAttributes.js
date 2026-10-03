@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Palette, Ruler, Plus, Pencil, Trash2 } from 'lucide-react';
 import { sizesAPI, colorsAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
+import { CATALOG_FETCH_PAGE_SIZE } from '../../config/pagination';
 import { useProductVariantsEnabled } from '../../hooks/useProductVariantsEnabled';
 import { Button } from '../ui/button';
 import CommitConfirm from '../Shared/CommitConfirm';
@@ -43,8 +44,8 @@ const ProductAttributes = () => {
     setLoading(true);
     try {
       const [sRes, cRes] = await Promise.all([
-        sizesAPI.list(),
-        colorsAPI.list(),
+        sizesAPI.list({ page_size: CATALOG_FETCH_PAGE_SIZE }),
+        colorsAPI.list({ page_size: CATALOG_FETCH_PAGE_SIZE }),
       ]);
       setSizes(sRes.data.results || sRes.data || []);
       setColors(cRes.data.results || cRes.data || []);

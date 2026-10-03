@@ -26,7 +26,7 @@ from .engine import (
     star_tone,
     year_end_result,
 )
-from .policy import load_template, public_policy, show_on_home, template_for_role
+from .policy import load_template, public_policy, show_on_home, template_for_role, is_skipped_appraisal_role
 from .tips import pick_daily_tips
 
 
@@ -86,6 +86,10 @@ def staff_role_name(user: User | None) -> str:
 def uses_manager_daily_target(user: User | None) -> bool:
     name = staff_role_name(user)
     return name == 'Manager' or 'manager' in name.lower()
+
+
+def user_has_personal_target(user: User | None) -> bool:
+    return not is_skipped_appraisal_role(staff_role_name(user))
 
 
 def template_for_user(user: User | None, template: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -274,6 +278,22 @@ def staff_snapshot(user: User, *, year: int | None = None, today=None, template=
     today = today or timezone.localdate()
     year = int(year or today.year)
     base = template or load_template()
+    if not user_has_personal_target(user):
+        return {
+            'staff': {
+                'id': user.id,
+                'username': user.username,
+                'name': _display_name(user),
+            },
+            'policy': public_policy(base),
+            'has_personal_target': False,
+            'today': None,
+            'month': None,
+            'year': None,
+            'greeting': None,
+            'today_tips': None,
+            'show_on_home': False,
+        }
     applied = template_for_user(user, base)
     start, end = _year_bounds(year)
     daily_net = _net_sales_by_day(user.id, start, end)
@@ -313,6 +333,7 @@ def staff_snapshot(user: User, *, year: int | None = None, today=None, template=
         'greeting': greeting,
         'today_tips': pick_daily_tips(base, today),
         'show_on_home': show_on_home(),
+        'has_personal_target': True,
     }
 
 
@@ -337,6 +358,8 @@ def team_snapshots(*, year: int | None = None, today=None, template=None) -> dic
     }
     results = []
     for user in sorted(users.values(), key=lambda u: _display_name(u).lower()):
+        if not user_has_personal_target(user):
+            continue
         snap = staff_snapshot(user, year=year, today=today, template=template)
         results.append({
             'staff': snap['staff'],

@@ -72,22 +72,34 @@ export default function AppraisalsPage() {
 
   const months = me.year?.months || [];
   const showIncrement = Boolean(me.policy?.show_year_end_increment);
-  const defaultTab = 'progress';
+  const hasPersonalTarget = me.has_personal_target !== false;
+  const defaultTab = hasPersonalTarget
+    ? 'progress'
+    : canTeam
+      ? 'team'
+      : canManage
+        ? 'template'
+        : 'progress';
 
   return (
     <PageShell>
       <PageHeader
         eyebrow="People"
         title="Target delivery"
-        description="Hit your daily closed-sales target. Stars come from collected sales. Use today’s five moves to follow up, talk well, and win more customers."
+        description={
+          hasPersonalTarget
+            ? 'Hit your daily closed-sales target. Stars come from collected sales. Use today’s five moves to follow up, talk well, and win more customers.'
+            : 'Set daily targets for sales roles and follow the team. Admin accounts are not scored against a personal target.'
+        }
       />
       <Tabs defaultValue={defaultTab} className="space-y-4">
         <TabsList>
-          <TabsTrigger value="progress">My progress</TabsTrigger>
+          {hasPersonalTarget ? <TabsTrigger value="progress">My progress</TabsTrigger> : null}
           {canTeam ? <TabsTrigger value="team">Team</TabsTrigger> : null}
           {canManage ? <TabsTrigger value="template">Template</TabsTrigger> : null}
         </TabsList>
 
+        {hasPersonalTarget ? (
         <TabsContent value="progress" className="space-y-4">
           <AppraisalProgressCard snapshot={me} emphasis />
           {showIncrement ? (
@@ -118,6 +130,7 @@ export default function AppraisalsPage() {
           </Card>
           ) : null}
         </TabsContent>
+        ) : null}
 
         {canTeam ? (
           <TabsContent value="team">

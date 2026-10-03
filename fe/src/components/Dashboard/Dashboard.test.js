@@ -216,6 +216,23 @@ describe('Dashboard', () => {
     expect(screen.getByText(/walk-in cash\/card sales/)).toBeInTheDocument();
   });
 
+  it('does not show a personal target card for admins', async () => {
+    resolvePersona.mockReturnValue('admin');
+    appraisalsAPI.me.mockResolvedValue({
+      data: {
+        has_personal_target: false,
+        show_on_home: false,
+        greeting: { headline: '3-Star day — KES 1,500 to hit the daily target' },
+        today: { target: 20000, sales: 0, amount_to_target: 20000 },
+      },
+    });
+    render(<Dashboard />);
+    await waitFor(() => {
+      expect(screen.getByText('This week')).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/daily target/i)).not.toBeInTheDocument();
+  });
+
   it('falls back to sales actions for an unknown persona', async () => {
     resolvePersona.mockReturnValue('warehouse');
     render(<Dashboard />);
