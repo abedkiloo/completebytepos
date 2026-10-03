@@ -12,6 +12,22 @@ class PendingChangeSerializer(serializers.ModelSerializer):
     )
     business_date = serializers.SerializerMethodField()
     past_dated = serializers.SerializerMethodField()
+    details = serializers.SerializerMethodField()
+
+    def get_details(self, obj):
+        if obj.status != PendingChange.STATUS_PENDING:
+            return None
+        import logging
+
+        from approvals.details import pending_change_details
+
+        try:
+            return pending_change_details(obj)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                'Could not build approval details for change %s', obj.pk,
+            )
+            return None
 
     def get_business_date(self, obj):
         from approvals.permissions import change_business_dates, earliest_business_day
@@ -47,6 +63,7 @@ class PendingChangeSerializer(serializers.ModelSerializer):
             'apply_payload',
             'business_date',
             'past_dated',
+            'details',
         ]
         read_only_fields = fields
 

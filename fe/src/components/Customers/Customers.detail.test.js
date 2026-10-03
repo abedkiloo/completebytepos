@@ -70,24 +70,31 @@ describe('Customers module', () => {
     const Customers = require('./Customers').default;
     render(<Customers />);
 
-    await waitFor(() => expect(screen.getByText('Martha')).toBeInTheDocument());
+    await screen.findByText('Martha');
     fireEvent.click(screen.getByText('Martha'));
     expect(mockNavigate).toHaveBeenCalledWith('/customers/1');
   });
 
   it('filters to customers added today and back', async () => {
+    const { getTodayDateString } = require('../../utils/debtManagement');
     const Customers = require('./Customers').default;
     render(<Customers />);
 
-    await waitFor(() => expect(screen.getByText('Martha')).toBeInTheDocument());
+    await screen.findByText('Martha');
     expect(customersAPI.list).toHaveBeenLastCalledWith(
       expect.not.objectContaining({ created_on: expect.anything() })
     );
+    expect(screen.queryByTestId('customers-added-count')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId('customers-added-today'));
     await waitFor(() => {
       expect(customersAPI.list).toHaveBeenLastCalledWith(
-        expect.objectContaining({ created_on: 'today' })
+        expect.objectContaining({ created_on: getTodayDateString() })
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('customers-added-count')).toHaveTextContent(
+        '1 customer added today'
       );
     });
 
@@ -95,6 +102,37 @@ describe('Customers module', () => {
     await waitFor(() => {
       expect(customersAPI.list).toHaveBeenLastCalledWith(
         expect.not.objectContaining({ created_on: expect.anything() })
+      );
+    });
+  });
+
+  it('shows how many customers were added on a picked day', async () => {
+    const Customers = require('./Customers').default;
+    render(<Customers />);
+    await screen.findByText('Martha');
+
+    customersAPI.list.mockResolvedValue({
+      data: {
+        count: 3,
+        results: [
+          { id: 2, name: 'A', is_active: true, total_outstanding: '0', wallet_balance: '0' },
+          { id: 3, name: 'B', is_active: true, total_outstanding: '0', wallet_balance: '0' },
+          { id: 4, name: 'C', is_active: true, total_outstanding: '0', wallet_balance: '0' },
+        ],
+      },
+    });
+    fireEvent.change(screen.getByTestId('customers-added-on'), {
+      target: { value: '2026-09-15' },
+    });
+
+    await waitFor(() => {
+      expect(customersAPI.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ created_on: '2026-09-15' })
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('customers-added-count')).toHaveTextContent(
+        /3 customers added on 15 Sept? 2026/
       );
     });
   });

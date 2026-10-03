@@ -30,6 +30,7 @@ import {
 } from '../../utils/saleApprovalsQueue';
 import HelpHint from '../Shared/HelpHint';
 import PastDatedNotice from '../Approvals/PastDatedNotice';
+import ApprovalDetails from '../Approvals/ApprovalDetails';
 import {
   isPastDated,
   pastDatedBlocksUser,
@@ -110,6 +111,7 @@ function SaleApprovalRow({ sale, onResolved }) {
           {itemCount} line{itemCount === 1 ? '' : 's'}
           {sale.customer_name ? ` · ${sale.customer_name}` : ''}
         </p>
+        <ApprovalDetails details={sale.approval_details} />
         {returned ? (
           <div className="space-y-1 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm">
             <p className="font-medium text-amber-950">
@@ -229,6 +231,7 @@ function DebtCollectionApprovalRow({ change, onResolved }) {
           Debt collection
           {change.reason ? ` · ${change.reason}` : ''}
         </p>
+        <ApprovalDetails details={change.details} />
         {pastDated ? <PastDatedNotice dates={dates} blocked={adminOnly} /> : null}
         {adminOnly ? null : (
           <>

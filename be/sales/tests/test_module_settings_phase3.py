@@ -140,7 +140,37 @@ class SaleCreateModuleSettingsIntegrationTests(ManagerAPITestCase):
         response = self.client.post('/api/sales/', payload, format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
         self.product.refresh_from_db()
-        self.assertEqual(self.product.stock_quantity, 2)
+        # Oversell is allowed; stock is used up (it can never go negative).
+        self.assertEqual(self.product.stock_quantity, 0)
+        from inventory.models import StockMovement
+
+        movement = StockMovement.objects.get(reference=response.data['sale_number'])
+        self.assertEqual(movement.quantity, 2)
+        self.assertIn('oversold by 3', movement.notes)
+
+    def test_sale_reduces_stock_when_stock_validation_off(self):
+        SettingsService.set('sales', 'validate_stock_before_sale', False)
+        self.product.stock_quantity = 10
+        self.product.save(update_fields=['stock_quantity'])
+        payload = self._sale_payload()
+        payload['items'][0]['quantity'] = 3
+        payload['amount_paid'] = '500.00'
+        response = self.client.post('/api/sales/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 7)
+
+    def test_sale_reduces_stock_when_stock_validation_on(self):
+        SettingsService.set('sales', 'validate_stock_before_sale', True)
+        self.product.stock_quantity = 10
+        self.product.save(update_fields=['stock_quantity'])
+        payload = self._sale_payload()
+        payload['items'][0]['quantity'] = 3
+        payload['amount_paid'] = '500.00'
+        response = self.client.post('/api/sales/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 7)
 
     def test_create_rejects_walk_in_when_customer_required(self):
         SettingsService.set('sales', 'require_customer', True)

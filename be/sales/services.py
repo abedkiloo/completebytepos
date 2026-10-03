@@ -18,7 +18,6 @@ from products.stock_utils import (
     active_variant_stock_sum,
     sellable_unit_price,
     sellable_unit_cost,
-    variants_sold_as_simple,
 )
 from inventory.models import StockMovement
 from settings.models import Branch
@@ -256,80 +255,80 @@ class SaleService(BaseService):
         quantity: int,
         unit_cost,
     ):
-        """Create stock movement(s) for a sale line, FIFO across variants when needed."""
+        """
+        Reduce stock for one sale line (FIFO across variants when no size was picked).
+
+        With stock validation on, an oversell raises. With it off the sale still
+        reduces stock, but only down to zero (stock may never be negative).
+        """
+        from sales.module_settings import sales_validate_stock_before_sale
+
         if not product.track_stock:
             return
+        strict = sales_validate_stock_before_sale()
+        requested = int(quantity)
 
-        if variant is None and variants_sold_as_simple(product):
-            remaining = int(quantity)
-            for v in product.variants.filter(is_active=True, stock_quantity__gt=0).order_by('id'):
+        def record(target_variant, qty, *, short=0):
+            if qty <= 0:
+                return
+            line_notes = notes
+            if short > 0:
+                line_notes = f'{notes} (oversold by {short}; stock was already used up)'
+            StockMovement.objects.create(
+                branch=branch,
+                product=product,
+                variant=target_variant,
+                movement_type='sale',
+                quantity=qty,
+                unit_cost=unit_cost,
+                total_cost=qty * unit_cost,
+                reference=reference,
+                user=user,
+                notes=line_notes,
+            )
+
+        def capped(available):
+            if strict:
+                return requested, 0
+            take = min(requested, max(0, int(available or 0)))
+            return take, requested - take
+
+        active_variants = product.variants.filter(is_active=True).order_by('id')
+        # Parent stock of a variant product is re-synced from its variants, so a
+        # parent-only movement would be wiped out — always draw from variants.
+        if variant is None and product.has_variants and active_variants.exists():
+            remaining = requested
+            for v in active_variants.filter(stock_quantity__gt=0):
                 if remaining <= 0:
                     break
                 take = min(remaining, v.stock_quantity)
-                StockMovement.objects.create(
-                    branch=branch,
-                    product=product,
-                    variant=v,
-                    movement_type='sale',
-                    quantity=take,
-                    unit_cost=unit_cost,
-                    total_cost=take * unit_cost,
-                    reference=reference,
-                    user=user,
-                    notes=notes,
-                )
                 remaining -= take
-            return
-
-        if (
-            variant is not None
-            and is_product_variants_enabled()
-            and product.has_variants
-        ):
-            remaining = int(quantity)
-            v_qty = int(variant.stock_quantity or 0)
-            if v_qty > 0:
-                take = min(remaining, v_qty)
-                StockMovement.objects.create(
-                    branch=branch,
-                    product=product,
-                    variant=variant,
-                    movement_type='sale',
-                    quantity=take,
-                    unit_cost=unit_cost,
-                    total_cost=take * unit_cost,
-                    reference=reference,
-                    user=user,
-                    notes=notes,
-                )
-                remaining -= take
+                record(v, take)
             if remaining > 0:
-                StockMovement.objects.create(
-                    branch=branch,
-                    product=product,
-                    variant=variant,
-                    movement_type='sale',
-                    quantity=remaining,
-                    unit_cost=unit_cost,
-                    total_cost=remaining * unit_cost,
-                    reference=reference,
-                    user=user,
-                    notes=notes,
-                )
+                if strict:
+                    record(active_variants.first(), remaining)
+                else:
+                    logger.warning(
+                        'Sale %s oversold %s by %s; stock already at zero',
+                        reference, product.name, remaining,
+                    )
             return
 
-        StockMovement.objects.create(
-            branch=branch,
-            product=product,
-            variant=variant,
-            movement_type='sale',
-            quantity=quantity,
-            unit_cost=unit_cost,
-            total_cost=quantity * unit_cost,
-            reference=reference,
-            user=user,
-            notes=notes,
+        if variant is not None:
+            available = (
+                ProductVariant.objects.filter(pk=variant.pk)
+                .values_list('stock_quantity', flat=True).first()
+            )
+            take, short = capped(available)
+            record(variant, take, short=short)
+            return
+
+        available = (
+            Product.objects.filter(pk=product.pk)
+            .values_list('stock_quantity', flat=True).first()
         )
+        take, short = capped(available)
+        record(None, take, short=short)
 
     def get_active_holding(self, user, branch: Optional[Branch] = None) -> Optional[Sale]:
         """Return the cashier's open holding invoice for this branch, if any."""
@@ -545,11 +544,7 @@ class SaleService(BaseService):
                 unit_price=item_data['unit_price'],
                 subtotal=item_data['subtotal'],
             )
-            if (
-                not defer_complete
-                and item_data['product'].track_stock
-                and sales_validate_stock_before_sale()
-            ):
+            if not defer_complete and item_data['product'].track_stock:
                 self._create_sale_stock_movements(
                     branch=branch or holding.branch,
                     user=user,
@@ -657,8 +652,6 @@ class SaleService(BaseService):
         if not entry_source:
             entry_source = 'normal' if sale_type == 'normal' else 'pos'
 
-        is_backfill = entry_source == 'backfill'
-
         # Create sale
         sale = Sale.objects.create(
             sale_type=sale_type,
@@ -698,11 +691,7 @@ class SaleService(BaseService):
                 subtotal=item_data['subtotal']
             )
 
-            if (
-                complete
-                and item_data['product'].track_stock
-                and (sales_validate_stock_before_sale() or is_backfill)
-            ):
+            if complete and item_data['product'].track_stock:
                 self._create_sale_stock_movements(
                     branch=branch,
                     user=user,

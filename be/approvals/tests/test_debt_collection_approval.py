@@ -273,6 +273,21 @@ class DebtCollectionApprovalAPITests(SalesAPITestCase):
         ids = [row['id'] for row in listed.data]
         self.assertIn(change.id, ids)
 
+    def test_pending_collection_carries_full_details(self):
+        queued = self._collect(self.client, amount='100.00', notes='Shop visit')
+        self.assertEqual(queued.status_code, status.HTTP_202_ACCEPTED, queued.data)
+        listed = self._manager_client().get(
+            '/api/approvals/pending-changes/pending/',
+            {'action_type': ACTION_DEBT_COLLECTION},
+        )
+        row = listed.data[0]
+        sections = {s['title']: s for s in row['details']['sections']}
+        collection = {f['label']: f['value'] for f in sections['Collection']['facts']}
+        self.assertEqual(Decimal(collection['Amount collected']), Decimal('100.00'))
+        self.assertEqual(collection['Notes'], 'Shop visit')
+        customer = {f['label']: f['value'] for f in sections['Customer']['facts']}
+        self.assertIn('Customer', customer)
+
     def test_pending_status_alias_still_lists_collection(self):
         queued = self._collect(self.client)
         self.assertEqual(queued.status_code, status.HTTP_202_ACCEPTED, queued.data)

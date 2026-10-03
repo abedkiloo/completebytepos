@@ -184,6 +184,26 @@ export function buildApprovalDiffRows(original = {}, proposed = {}) {
   return rows.sort((a, b) => a.label.localeCompare(b.label));
 }
 
+const EXPENSE_PAYMENT_LABELS = { cash: 'Cash', mpesa: 'M-PESA', bank: 'Bank', card: 'Card' };
+
+/** Expense rows come from the expenses API, so build their approval details here. */
+export function expenseApprovalDetails(expense = {}) {
+  const facts = [
+    { label: 'Reference', value: expense.expense_number },
+    { label: 'Amount', value: expense.amount, kind: 'money' },
+    { label: 'Category', value: expense.category_name },
+    { label: 'Expense date', value: expense.expense_date },
+    {
+      label: 'Payment method',
+      value: EXPENSE_PAYMENT_LABELS[expense.payment_method] || expense.payment_method,
+    },
+    { label: 'Vendor', value: expense.vendor },
+    { label: 'Receipt number', value: expense.receipt_number },
+    { label: 'Notes', value: expense.notes },
+  ].filter((fact) => fact.value !== undefined && fact.value !== null && fact.value !== '');
+  return { sections: [{ title: 'Expense', facts }] };
+}
+
 export function describeApprovalSummary(row) {
   const action = formatActionTypeLabel(row?.action_type);
   const item = formatEntityTypeLabel(row?.entity_type, row?.entity_repr);

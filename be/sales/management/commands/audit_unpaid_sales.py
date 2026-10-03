@@ -16,6 +16,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db.models import F, Sum
 from django.utils import timezone
 
+from accounts.models import AuditLog
 from approvals.models import PendingChange
 from approvals.registry import ACTION_SALE_COMPLETE
 from sales.models import CustomerWalletTransaction, Sale
@@ -106,6 +107,16 @@ class Command(BaseCommand):
                     f'{payload.get("allow_partial", "-")}  wallet '
                     f'{payload.get("use_wallet", "-")}'
                 )
+                resubmitted = AuditLog.objects.filter(
+                    action='pending_resubmit',
+                    module='approvals',
+                    changes__pending_change_id=change.id,
+                ).exists()
+                if resubmitted and Decimal(str(payload.get('amount_paid') or 0)) <= 0:
+                    self.stdout.write(self.style.WARNING(
+                        '  returned for correction and resubmitted: the payment taken at '
+                        'the till was dropped on resubmit (bug, now fixed)'
+                    ))
             else:
                 self.stdout.write('  approval none (completed directly)')
 

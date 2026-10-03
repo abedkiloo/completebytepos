@@ -167,3 +167,26 @@ class CompleteAwaitingPaymentCommandTests(TestCase):
         self.assertIn('1 sale(s) with KES 100.00 owed but not tracked', text)
         tracked.refresh_from_db()
         self.assertEqual(tracked.status, 'completed')
+
+    def test_audit_flags_payment_dropped_on_resubmit(self):
+        from accounts.models import AuditLog
+
+        sale = self._sale('AU-RESUB', paid='0')
+        Sale.objects.filter(pk=sale.pk).update(status='completed')
+        change = PendingChange.objects.create(
+            action_type=ACTION_SALE_COMPLETE,
+            entity_type='sales.Sale',
+            entity_id=str(sale.pk),
+            entity_repr=sale.sale_number,
+            status=PendingChange.STATUS_APPROVED,
+            checked_by=self.manager,
+            apply_payload={'amount_paid': '0'},
+        )
+        AuditLog.objects.create(
+            action='pending_resubmit',
+            module='approvals',
+            changes={'pending_change_id': change.id},
+        )
+        out = StringIO()
+        call_command('audit_unpaid_sales', '--sale', 'AU-RESUB', stdout=out)
+        self.assertIn('dropped on resubmit', out.getvalue())

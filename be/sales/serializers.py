@@ -294,6 +294,7 @@ class SaleSerializer(serializers.ModelSerializer):
     can_correct_date = serializers.SerializerMethodField()
     needs_salesperson_action = serializers.SerializerMethodField()
     rejection_reason = serializers.SerializerMethodField()
+    approval_details = serializers.SerializerMethodField()
 
     class Meta:
         model = Sale
@@ -308,6 +309,7 @@ class SaleSerializer(serializers.ModelSerializer):
             'backfill_receipt_photo_url',
             'items', 'item_count', 'amount_refunded', 'refundable_remaining', 'can_refund',
             'can_rollback', 'can_correct_date', 'needs_salesperson_action', 'rejection_reason',
+            'approval_details',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
@@ -370,6 +372,17 @@ class SaleSerializer(serializers.ModelSerializer):
         from sales.sale_completion_approval import sale_rejection_reason
 
         return sale_rejection_reason(obj)
+
+    def get_approval_details(self, obj):
+        """Full sale breakdown for the manager's approval card (pending sales only)."""
+        if obj.status != 'pending_approval':
+            return None
+        from approvals.details import sale_sections
+        from sales.sale_completion_approval import pending_sale_complete_change
+
+        change = pending_sale_complete_change(obj)
+        payload = (change.apply_payload or {}) if change else {}
+        return {'sections': sale_sections(obj, payment_payload=payload)}
 
     def to_representation(self, instance):
         refunded_qty = self._refunded_qty_by_sale_item(instance)

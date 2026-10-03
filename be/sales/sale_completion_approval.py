@@ -547,6 +547,18 @@ def return_queued_sale_for_correction(sale: Sale) -> Sale:
     return sale
 
 
+def _resubmitted_amount_paid(sale: Sale, change: PendingChange, existing: dict) -> Decimal:
+    """Saving the returned cart zeroes ``sale.amount_paid``; keep what was taken at the till."""
+    current = Decimal(str(sale.amount_paid or 0))
+    if current > 0:
+        return current
+    submitted = Decimal(str(existing.get('amount_paid') or 0))
+    original_total = Decimal(str((change.original_values or {}).get('total') or 0))
+    if submitted > 0 and original_total > 0 and submitted >= original_total:
+        return max(submitted, Decimal(str(sale.total or 0)))
+    return submitted
+
+
 def restore_queued_sale_for_approval(sale: Sale, change: PendingChange | None = None) -> Sale:
     """Re-queue a holding sale after the salesperson sends it back."""
     if sale.status != 'holding':
@@ -562,7 +574,7 @@ def restore_queued_sale_for_approval(sale: Sale, change: PendingChange | None = 
         **existing,
         **payment_payload_from_inputs(
             payment_method=sale.payment_method or existing.get('payment_method') or 'cash',
-            amount_paid=sale.amount_paid if sale.amount_paid is not None else existing.get('amount_paid') or '0',
+            amount_paid=_resubmitted_amount_paid(sale, change, existing),
             allow_partial=bool(existing.get('allow_partial')),
             excess_payment_choice=existing.get('excess_payment_choice') or 'change',
             use_wallet=use_wallet,
@@ -652,7 +664,7 @@ def complete_queued_sale(sale: Sale, user, payload: dict | None = None) -> Sale:
     )
 
     for item_data in validated_items:
-        if item_data['product'].track_stock and sales_validate_stock_before_sale():
+        if item_data['product'].track_stock:
             service._create_sale_stock_movements(
                 branch=sale.branch,
                 user=user,

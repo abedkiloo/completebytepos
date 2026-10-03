@@ -16,13 +16,18 @@ import {
   canApproveFinancialRecord,
   needsExtremePriceConfirm,
 } from '../../utils/makerChecker';
-import { describeApprovalSummary, formatApprovalValue } from '../../utils/approvalDisplay';
+import {
+  describeApprovalSummary,
+  expenseApprovalDetails,
+  formatApprovalValue,
+} from '../../utils/approvalDisplay';
 import { otherPendingApprovalRows } from '../../utils/saleApprovalsQueue';
 import { backfillRejectionSuccessMessage } from '../../utils/recordPastSaleBackfill';
 import { getActionHelp } from '../../utils/actionHelp';
 import HelpHint from '../Shared/HelpHint';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import ApprovalChangeTable from './ApprovalChangeTable';
+import ApprovalDetails from './ApprovalDetails';
 import PastDatedNotice from './PastDatedNotice';
 import {
   isPastDated,
@@ -121,15 +126,19 @@ function PendingRow({ row, onResolved }) {
           {row.reason || 'No reason provided'}
         </div>
 
-        <div>
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Review the change
-          </p>
-          <ApprovalChangeTable
-            originalValues={row.original_values}
-            proposedValues={row.proposed_values}
-          />
-        </div>
+        <ApprovalDetails details={row.details} />
+
+        {row.action_type === 'sale_backfill' && row.details ? null : (
+          <div>
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Review the change
+            </p>
+            <ApprovalChangeTable
+              originalValues={row.original_values}
+              proposedValues={row.proposed_values}
+            />
+          </div>
+        )}
 
         {extremeRequired ? (
           <div className="rounded-md border border-amber-300 bg-amber-50/90 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/40">
@@ -289,13 +298,7 @@ function PendingExpenseRow({ expense, settings, onResolved }) {
           </p>
         </div>
 
-        <div className="rounded-md bg-muted/30 px-3 py-2 text-sm">
-          <p><span className="font-medium">Reference: </span>{expense.expense_number}</p>
-          <p><span className="font-medium">Category: </span>{expense.category_name || '—'}</p>
-          {expense.vendor ? (
-            <p><span className="font-medium">Vendor: </span>{expense.vendor}</p>
-          ) : null}
-        </div>
+        <ApprovalDetails details={expenseApprovalDetails(expense)} />
 
         {pastDated ? <PastDatedNotice dates={expenseDates} blocked={adminOnly} /> : null}
 

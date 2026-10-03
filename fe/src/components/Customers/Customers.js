@@ -17,7 +17,8 @@ import {
 
 import { customersAPI } from '../../services/api';
 import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
-import { formatCurrency } from '../../utils/formatters';
+import { formatCurrency, formatDate } from '../../utils/formatters';
+import { getTodayDateString } from '../../utils/debtManagement';
 import { toast } from '../../utils/toast';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import CommitConfirm from '../Shared/CommitConfirm';
@@ -83,7 +84,8 @@ const Customers = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearch = useDebouncedValue(searchQuery);
-  const [addedToday, setAddedToday] = useState(false);
+  const [addedOn, setAddedOn] = useState('');
+  const todayStr = getTodayDateString();
 
   // --- Editor / delete confirm state ---
   const [showModal, setShowModal] = useState(false);
@@ -113,7 +115,7 @@ const Customers = () => {
         page_size: pagination.page_size,
       }, ordering);
       if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
-      if (addedToday) params.created_on = 'today';
+      if (addedOn) params.created_on = addedOn;
       const response = await customersAPI.list(params);
       if (signal?.aborted) return;
       const data = response.data.results || response.data || [];
@@ -128,11 +130,11 @@ const Customers = () => {
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [debouncedSearch, addedToday, pagination.page, pagination.page_size, ordering]);
+  }, [debouncedSearch, addedOn, pagination.page, pagination.page_size, ordering]);
 
   useEffect(() => {
     setPagination((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
-  }, [debouncedSearch, addedToday]);
+  }, [debouncedSearch, addedOn]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -345,17 +347,64 @@ const Customers = () => {
             </button>
           )}
         </div>
-          <Button
-            type="button"
-            variant={addedToday ? 'default' : 'outline'}
-            onClick={() => setAddedToday((prev) => !prev)}
-            aria-pressed={addedToday}
-            data-testid="customers-added-today"
-          >
-            <CalendarPlus className="h-4 w-4" />
-            Added today
-          </Button>
+          <div className="flex items-center gap-2">
+            <label
+              htmlFor="customers-added-on"
+              className="whitespace-nowrap text-sm text-muted-foreground"
+            >
+              Added on
+            </label>
+            <Input
+              id="customers-added-on"
+              type="date"
+              value={addedOn}
+              max={todayStr}
+              onChange={(e) => setAddedOn(e.target.value)}
+              className="h-10 w-auto"
+              data-testid="customers-added-on"
+            />
+            <Button
+              type="button"
+              variant={addedOn === todayStr ? 'default' : 'outline'}
+              onClick={() => setAddedOn(addedOn === todayStr ? '' : todayStr)}
+              aria-pressed={addedOn === todayStr}
+              data-testid="customers-added-today"
+            >
+              <CalendarPlus className="h-4 w-4" />
+              Today
+            </Button>
+            {addedOn && addedOn !== todayStr && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setAddedOn('')}
+                aria-label="Clear added-on date"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
         </div>
+
+        {addedOn && (
+          <div
+            className="flex items-center gap-2 rounded-lg border bg-muted/40 px-4 py-3 text-sm"
+            data-testid="customers-added-count"
+          >
+            <CalendarPlus className="h-4 w-4 text-muted-foreground" />
+            {loading ? (
+              <span className="text-muted-foreground">Counting…</span>
+            ) : (
+              <span>
+                <strong className="text-base">{pagination.count.toLocaleString()}</strong>{' '}
+                {pagination.count === 1 ? 'customer' : 'customers'} added{' '}
+                {addedOn === todayStr ? 'today' : `on ${formatDate(`${addedOn}T00:00:00`)}`}
+                {debouncedSearch.trim() ? ' (matching your search)' : ''}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* --- Table --- */}
         <ListPaginationRail

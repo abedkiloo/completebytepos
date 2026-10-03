@@ -88,6 +88,36 @@ describe('SaleApprovalsPage', () => {
     );
   });
 
+  test('shows the items and money of the sale before approving', async () => {
+    salesAPI.list.mockResolvedValue({
+      data: {
+        results: [
+          {
+            ...waitingSale(new Date().toISOString()),
+            approval_details: {
+              sections: [
+                {
+                  title: 'Items',
+                  lines: [
+                    { name: 'Red Shuka', variant: '', quantity: '2', unit_price: '1150.00', subtotal: '2300.00' },
+                  ],
+                },
+                {
+                  title: 'Money',
+                  facts: [{ label: 'Payment method', value: 'M-PESA', kind: 'text' }],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    render(<SaleApprovalsPage />);
+    expect(await screen.findByText('Red Shuka')).toBeInTheDocument();
+    expect(screen.getByText('M-PESA')).toBeInTheDocument();
+    expect(screen.getByTestId('approval-details')).toBeInTheDocument();
+  });
+
   test('shows the API error when approve fails', async () => {
     salesAPI.complete.mockRejectedValue({
       response: { data: { error: 'This sale is not waiting for approval.' } },
