@@ -113,6 +113,19 @@ describe('Dashboard', () => {
     expect(screen.queryByText('HOLD')).not.toBeInTheDocument();
     expect(screen.getAllByText(/Milk/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/2 orders today/).length).toBeGreaterThan(0);
+    expect(screen.getByRole('link', { name: 'Open sales for Tue 2026-08-18' })).toHaveAttribute(
+      'href',
+      '/sales/daily?date=2026-08-18'
+    );
+  });
+
+  it('keeps weekly days as plain rows without sales access', async () => {
+    hasPermission.mockImplementation((_perms, mod) => mod !== 'sales');
+    render(<Dashboard />);
+    await waitFor(() => {
+      expect(screen.getByText('Weekly sales')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('link', { name: /Open sales for/ })).not.toBeInTheDocument();
   });
 
   it('shows a loading skeleton until data arrives', () => {

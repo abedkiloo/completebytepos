@@ -90,8 +90,6 @@ const Sales = () => {
       if (filters.payment_method) params.payment_method = filters.payment_method;
       if (filters.search) params.search = filters.search;
       if (historyTab === 'pending') params.status = 'pending_approval';
-      if (historyTab === 'collect') params.status = 'awaiting_payment';
-      
       const response = await salesAPI.list(params);
       const data = response.data;
       
@@ -402,17 +400,6 @@ const Sales = () => {
           >
             Awaiting approval
           </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={historyTab === 'collect' ? 'default' : 'outline'}
-            onClick={() => {
-              setHistoryTab('collect');
-              setPagination((prev) => ({ ...prev, page: 1 }));
-            }}
-          >
-            Collect payment
-          </Button>
         </div>
 
         <FilterBar>
@@ -612,11 +599,6 @@ const Sales = () => {
             openRollbackDialog(sale);
           }}
           onPrint={handlePrintReceipt}
-          onCollected={async (id) => {
-            const refreshed = await salesAPI.get(id);
-            setSelectedSale(refreshed.data);
-            loadSales();
-          }}
           onUpdated={(updated) => {
             setSelectedSale(updated);
             loadSales();

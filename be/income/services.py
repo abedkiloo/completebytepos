@@ -127,9 +127,13 @@ class IncomeService(BaseService):
     @transaction.atomic
     def approve_income(self, income: Income, approved_by) -> Income:
         """Approve an income record and create journal entry"""
-        from approvals.financial_workflow import validate_checker_not_maker
+        from approvals.financial_workflow import (
+            validate_checker_not_maker,
+            validate_past_dated_checker,
+        )
 
         validate_checker_not_maker(approved_by, income.created_by_id)
+        validate_past_dated_checker(approved_by, income.income_date, income.created_at)
         if income.status == 'approved':
             raise ValidationError('Income is already approved')
         
@@ -151,10 +155,14 @@ class IncomeService(BaseService):
 
     @transaction.atomic
     def reject_income(self, income: Income, rejected_by, reason: str) -> Income:
-        from approvals.financial_workflow import validate_checker_not_maker
+        from approvals.financial_workflow import (
+            validate_checker_not_maker,
+            validate_past_dated_checker,
+        )
         from daily_notes.approval_notice import SOURCE_INCOME, notify_approval_rejected
 
         validate_checker_not_maker(rejected_by, income.created_by_id)
+        validate_past_dated_checker(rejected_by, income.income_date, income.created_at)
         reason = (reason or '').strip()
         if not reason:
             raise ValidationError({'rejection_reason': 'Say why you are returning this income.'})

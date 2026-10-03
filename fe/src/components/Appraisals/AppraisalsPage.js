@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { appraisalsAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import { getStoredAuth, hasPermission } from '../../utils/roleAccess';
+import { canViewDailySalesFromStorage, dailySalesListPath } from '../../utils/dailySalesAccess';
 import { PageShell, PageHeader, PageLoading, EmptyState } from '../page';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Button } from '../ui/button';
@@ -118,7 +119,10 @@ export default function AppraisalsPage() {
 
         {hasPersonalTarget ? (
         <TabsContent value="progress" className="space-y-4">
-          <AppraisalDashboard snapshot={me} />
+          <AppraisalDashboard
+            snapshot={me}
+            dayHref={canViewDailySalesFromStorage() ? dailySalesListPath : undefined}
+          />
         </TabsContent>
         ) : null}
 

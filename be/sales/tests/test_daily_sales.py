@@ -330,16 +330,117 @@ class DailySalesAPITests(SuperAdminAPITestCase):
         self.assertIsNone(get_role_by_name('Does Not Exist'))
 
 
-class DailySalesDeniedForManagerTests(ManagerAPITestCase):
-    def test_manager_without_daily_sales_gets_403(self):
-        response = self.client.get('/api/sales/daily/')
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+class DailySalesOwnValuesTests(ManagerAPITestCase):
+    """Staff without sales.view_all open any day but only see their own sales."""
 
-    def test_manager_customer_day_gets_403(self):
-        customer = Customer.objects.create(
-            name='X',
-            phone='0700000000',
-            wallet_balance=Decimal('0'),
+    def setUp(self):
+        super().setUp()
+        from django.contrib.auth.models import User
+
+        self.other = User.objects.create_user('daily_other_cashier', password='x')
+        self.day = '2026-09-20'
+        tz = timezone.get_current_timezone()
+        at = timezone.make_aware(datetime(2026, 9, 20, 11, 0), tz)
+        self.customer = Customer.objects.create(
+            name='Shared Customer', phone='0700555000', wallet_balance=Decimal('-300'),
         )
-        response = self.client.get(f'/api/sales/daily/customer/{customer.id}/')
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.mine = Sale.objects.create(
+            sale_number='DAY-MINE',
+            status='completed',
+            subtotal=Decimal('700.00'),
+            total=Decimal('700.00'),
+            amount_paid=Decimal('400.00'),
+            payment_method='cash',
+            customer=self.customer,
+            occurred_at=at,
+            cashier=self.manager_user,
+        )
+        self.theirs = Sale.objects.create(
+            sale_number='DAY-THEIRS',
+            status='completed',
+            subtotal=Decimal('5000.00'),
+            total=Decimal('5000.00'),
+            amount_paid=Decimal('5000.00'),
+            payment_method='cash',
+            customer=self.customer,
+            occurred_at=at,
+            cashier=self.other,
+        )
+
+    def test_manager_opens_a_past_day_with_own_values(self):
+        response = self.client.get('/api/sales/daily/', {'date': self.day})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['date'], self.day)
+        numbers = {row['sale_number'] for row in response.data['orders']}
+        self.assertEqual(numbers, {'DAY-MINE'})
+        self.assertEqual(Decimal(response.data['summary']['total_sales']), Decimal('700.00'))
+        self.assertEqual(Decimal(response.data['summary']['total_paid']), Decimal('400.00'))
+
+    def test_pending_approval_sales_are_summarised_not_counted(self):
+        tz = timezone.get_current_timezone()
+        at = timezone.make_aware(datetime(2026, 9, 20, 16, 0), tz)
+        Sale.objects.create(
+            sale_number='DAY-WAIT',
+            status='pending_approval',
+            subtotal=Decimal('250.00'),
+            total=Decimal('250.00'),
+            amount_paid=Decimal('100.00'),
+            payment_method='cash',
+            occurred_at=at,
+            cashier=self.manager_user,
+        )
+        Sale.objects.create(
+            sale_number='DAY-WAIT-OTHER',
+            status='pending_approval',
+            subtotal=Decimal('900.00'),
+            total=Decimal('900.00'),
+            amount_paid=Decimal('900.00'),
+            payment_method='cash',
+            occurred_at=at,
+            cashier=self.other,
+        )
+        response = self.client.get('/api/sales/daily/', {'date': self.day})
+        summary = response.data['summary']
+        self.assertEqual(summary['pending_approval_count'], 1)
+        self.assertEqual(summary['pending_approval_total'], '250.00')
+        self.assertEqual(summary['pending_approval_paid'], '100.00')
+        self.assertEqual(Decimal(summary['total_sales']), Decimal('700.00'))
+        numbers = {row['sale_number'] for row in response.data['orders']}
+        self.assertEqual(numbers, {'DAY-MINE'})
+
+    def test_cashier_id_for_someone_else_is_ignored(self):
+        response = self.client.get(
+            '/api/sales/daily/', {'date': self.day, 'cashier_id': self.other.id},
+        )
+        numbers = {row['sale_number'] for row in response.data['orders']}
+        self.assertEqual(numbers, {'DAY-MINE'})
+
+    def test_customer_day_shows_only_own_sales_and_totals(self):
+        response = self.client.get(
+            f'/api/sales/daily/customer/{self.customer.id}/', {'date': self.day},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        numbers = {row['sale_number'] for row in response.data['orders']}
+        self.assertEqual(numbers, {'DAY-MINE'})
+        self.assertEqual(response.data['standing_summary']['lifetime_orders'], 1)
+
+    def test_collections_limited_to_own_debt_customers(self):
+        stranger = Customer.objects.create(
+            name='Other Debtor', phone='0700666000', wallet_balance=Decimal('-50'),
+        )
+        tz = timezone.get_current_timezone()
+        at = timezone.make_aware(datetime(2026, 9, 20, 15, 0), tz)
+        for customer, amount in ((self.customer, '100.00'), (stranger, '50.00')):
+            txn = CustomerWalletTransaction.objects.create(
+                customer=customer,
+                transaction_type='credit',
+                source_type='debt_settlement',
+                amount=Decimal(amount),
+                balance_after=Decimal('0'),
+            )
+            CustomerWalletTransaction.objects.filter(pk=txn.pk).update(created_at=at)
+
+        response = self.client.get('/api/sales/daily/', {'date': self.day})
+        collections = response.data['collections']
+        self.assertEqual(collections['count'], 1)
+        self.assertEqual(collections['results'][0]['customer_name'], 'Shared Customer')

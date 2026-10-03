@@ -5,6 +5,7 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
+  Clock,
   Receipt,
   Search,
   ShoppingCart,
@@ -346,7 +347,7 @@ export default function DailySalesPage() {
         <EmptyState
           icon={Receipt}
           title="Daily Sales is restricted"
-          description="Ask a Super Admin to grant the sales.daily_sales permission for your role."
+          description="Your role cannot view sales. Ask an admin to grant sales.view for your role."
           actionLabel="Back to Sales History"
           onAction={() => {
             window.location.assign('/sales');
@@ -363,7 +364,7 @@ export default function DailySalesPage() {
         description={
           userSeesAllSalesFromStorage()
             ? 'Monitor daily sales revenue, upfront payments collected, and credit orders taken as debt.'
-            : 'Your sales only — revenue, payments collected, and credit you booked today.'
+            : 'Your sales only — pick any day to see your revenue, payments collected, and credit booked.'
         }
       >
         <div className="flex flex-wrap items-center gap-2">
@@ -428,6 +429,24 @@ export default function DailySalesPage() {
           <span>{formattedDateTitle}</span>
         </div>
       </div>
+
+      {Number(summary.pending_approval_count) > 0 ? (
+        <div
+          className="flex flex-wrap items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm text-sky-950"
+          data-testid="daily-pending-approval"
+        >
+          <Clock className="h-4 w-4 shrink-0" />
+          <span className="font-semibold">
+            {summary.pending_approval_count} sale{Number(summary.pending_approval_count) === 1 ? '' : 's'} awaiting approval
+          </span>
+          <span>
+            · {formatCurrency(summary.pending_approval_total)} ({formatCurrency(summary.pending_approval_paid)} already collected)
+          </span>
+          <span className="text-xs text-sky-900">
+            Not in the totals below until a manager approves.
+          </span>
+        </div>
+      ) : null}
 
       {/* Daily Summary Cards */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">

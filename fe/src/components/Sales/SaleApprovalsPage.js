@@ -29,6 +29,13 @@ import {
   userCanOpenSaleApprovals,
 } from '../../utils/saleApprovalsQueue';
 import HelpHint from '../Shared/HelpHint';
+import PastDatedNotice from '../Approvals/PastDatedNotice';
+import {
+  isPastDated,
+  pastDatedBlocksUser,
+  pendingChangeDates,
+  userMayApprovePastItems,
+} from '../../utils/pastDatedApproval';
 
 function SaleApprovalRow({ sale, onResolved }) {
   const [rejectReason, setRejectReason] = useState('');
@@ -37,6 +44,9 @@ function SaleApprovalRow({ sale, onResolved }) {
   const itemCount = saleDisplayItemCount(sale);
   const returned = saleNeedsSalespersonAction(sale);
   const managerComment = saleRejectionReason(sale);
+  const saleDates = [sale.occurred_at || sale.created_at];
+  const pastDated = isPastDated(...saleDates);
+  const adminOnly = pastDatedBlocksUser(saleDates);
 
   const approve = async () => {
     setBusy(true);
@@ -110,8 +120,11 @@ function SaleApprovalRow({ sale, onResolved }) {
             ) : null}
             <p className="text-xs text-amber-800">A sticky Daily note was also sent to them.</p>
           </div>
+        ) : adminOnly ? (
+          <PastDatedNotice dates={saleDates} blocked />
         ) : (
           <>
+        {pastDated ? <PastDatedNotice dates={saleDates} blocked={false} /> : null}
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" onClick={approve} disabled={busy}>
             {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}
@@ -155,6 +168,9 @@ function DebtCollectionApprovalRow({ change, onResolved }) {
   const [busy, setBusy] = useState(false);
   const amount = collectionAmount(change);
   const method = collectionMethod(change);
+  const dates = pendingChangeDates(change);
+  const pastDated = Boolean(change.past_dated) || isPastDated(...dates);
+  const adminOnly = pastDated && !userMayApprovePastItems();
 
   const approve = async () => {
     setBusy(true);
@@ -213,6 +229,9 @@ function DebtCollectionApprovalRow({ change, onResolved }) {
           Debt collection
           {change.reason ? ` · ${change.reason}` : ''}
         </p>
+        {pastDated ? <PastDatedNotice dates={dates} blocked={adminOnly} /> : null}
+        {adminOnly ? null : (
+          <>
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" onClick={approve} disabled={busy}>
             {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}
@@ -243,6 +262,8 @@ function DebtCollectionApprovalRow({ change, onResolved }) {
             </Button>
           </div>
         ) : null}
+          </>
+        )}
       </CardContent>
     </Card>
   );

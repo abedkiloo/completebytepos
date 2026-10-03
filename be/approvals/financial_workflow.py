@@ -65,6 +65,14 @@ def validate_checker_not_maker(approved_by, created_by_id) -> None:
         )
 
 
+def validate_past_dated_checker(checker, *dates) -> None:
+    """Managers act on today's records only; anything dated earlier needs an admin."""
+    from approvals.permissions import PAST_DATED_ADMIN_ONLY_MESSAGE, user_may_approve_dated_item
+
+    if not user_may_approve_dated_item(checker, *dates):
+        raise ValidationError(PAST_DATED_ADMIN_ONLY_MESSAGE)
+
+
 def validate_locked_record_update(instance) -> None:
     """Block edits to finalized rows when maker-checker is on."""
     if not is_maker_checker_enabled():

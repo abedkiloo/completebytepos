@@ -23,6 +23,13 @@ import { getActionHelp } from '../../utils/actionHelp';
 import HelpHint from '../Shared/HelpHint';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import ApprovalChangeTable from './ApprovalChangeTable';
+import PastDatedNotice from './PastDatedNotice';
+import {
+  isPastDated,
+  pastDatedBlocksUser,
+  pendingChangeDates,
+  userMayApprovePastItems,
+} from '../../utils/pastDatedApproval';
 import CommitConfirm from '../Shared/CommitConfirm';
 import { approvalCommitRows, approvalExpenseRows } from '../../utils/formCommitSummary';
 
@@ -34,6 +41,9 @@ function PendingRow({ row, onResolved }) {
   const [busy, setBusy] = useState(false);
   const extremeRequired = needsExtremePriceConfirm(row);
   const { headline, action, item } = describeApprovalSummary(row);
+  const dates = pendingChangeDates(row);
+  const pastDated = Boolean(row.past_dated) || isPastDated(...dates);
+  const adminOnly = pastDated && !userMayApprovePastItems();
 
   const requestApprove = () => {
     if (extremeRequired && !extremeConfirm) {
@@ -145,7 +155,9 @@ function PendingRow({ row, onResolved }) {
           </p>
         ) : null}
 
-        {showReject ? (
+        {pastDated ? <PastDatedNotice dates={dates} blocked={adminOnly} /> : null}
+
+        {adminOnly ? null : showReject ? (
           <div className="space-y-2">
             <Label>Why are you returning this to the requester?</Label>
             <Input
@@ -220,6 +232,9 @@ function PendingExpenseRow({ expense, settings, onResolved }) {
     undefined,
     'expenses',
   );
+  const expenseDates = [expense.expense_date, expense.created_at];
+  const pastDated = isPastDated(...expenseDates);
+  const adminOnly = pastDatedBlocksUser(expenseDates);
 
   const approve = async () => {
     setBusy(true);
@@ -282,7 +297,9 @@ function PendingExpenseRow({ expense, settings, onResolved }) {
           ) : null}
         </div>
 
-        {canApprove ? (
+        {pastDated ? <PastDatedNotice dates={expenseDates} blocked={adminOnly} /> : null}
+
+        {adminOnly ? null : canApprove ? (
           <div className="flex flex-wrap items-center gap-2">
             <Button type="button" size="sm" onClick={() => setShowApproveConfirm(true)} disabled={busy}>
               <Check className="mr-1 h-4 w-4" />

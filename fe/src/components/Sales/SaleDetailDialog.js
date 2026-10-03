@@ -28,9 +28,7 @@ import {
 } from '../../utils/saleItemDisplay';
 import {
   SALE_AWAITING_APPROVAL_MESSAGE,
-  SALE_AWAITING_PAYMENT_MESSAGE,
   saleIsAwaitingApproval,
-  saleIsAwaitingPayment,
   saleNeedsSalespersonAction,
   saleReceiptBlockedReason,
   saleRejectionReason,
@@ -54,7 +52,6 @@ export default function SaleDetailDialog({
   onRollback,
   canRollback = false,
   onPrint,
-  onCollected,
   canReturnForCorrection = false,
   onReturned,
   onUpdated,
@@ -64,8 +61,6 @@ export default function SaleDetailDialog({
   const { settings } = useStoreSettings();
   const storeName = resolveStoreName(settings);
   const logoUrl = resolveReceiptLogoUrl(settings);
-  const [collectAmount, setCollectAmount] = useState(() => String(sale?.total || ''));
-  const [collecting, setCollecting] = useState(false);
   const [showReturn, setShowReturn] = useState(false);
   const [returnReason, setReturnReason] = useState('');
   const [returning, setReturning] = useState(false);
@@ -73,11 +68,10 @@ export default function SaleDetailDialog({
   const [savingDate, setSavingDate] = useState(false);
 
   useEffect(() => {
-    setCollectAmount(String(sale?.total || ''));
     setShowReturn(false);
     setReturnReason('');
     setSaleDate(saleDateInputValue(sale?.occurred_at || sale?.created_at));
-  }, [sale?.id, sale?.total, sale?.occurred_at, sale?.created_at]);
+  }, [sale?.id, sale?.occurred_at, sale?.created_at]);
 
   if (!sale) return null;
 
@@ -97,23 +91,6 @@ export default function SaleDetailDialog({
     (sale.can_correct_date === true || userCanCorrectSaleDate());
   const originalSaleDate = saleDateInputValue(sale.occurred_at || sale.created_at);
   const saleDateChanged = Boolean(saleDate) && saleDate !== originalSaleDate;
-
-  const collectPayment = async () => {
-    setCollecting(true);
-    try {
-      await salesAPI.collect(sale.id, {
-        payment_method: 'cash',
-        amount_paid: collectAmount || sale.total,
-      });
-      toast.success('Payment collected. Sale is complete.');
-      onCollected?.(sale.id);
-    } catch (err) {
-      const data = err.response?.data;
-      toast.error(data?.error || data?.detail || 'Could not collect payment');
-    } finally {
-      setCollecting(false);
-    }
-  };
 
   const returnForCorrection = async () => {
     if (!returnReason.trim()) {
@@ -186,22 +163,6 @@ export default function SaleDetailDialog({
         ) : saleIsAwaitingApproval(sale) ? (
           <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
             {SALE_AWAITING_APPROVAL_MESSAGE}
-          </div>
-        ) : saleIsAwaitingPayment(sale) ? (
-          <div className="space-y-2 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm">
-            <p className="font-semibold text-emerald-950">{SALE_AWAITING_PAYMENT_MESSAGE}</p>
-            <Label htmlFor="collect-amount">Amount received</Label>
-            <Input
-              id="collect-amount"
-              type="number"
-              min="0"
-              step="0.01"
-              value={collectAmount}
-              onChange={(event) => setCollectAmount(event.target.value)}
-            />
-            <Button size="sm" onClick={collectPayment} disabled={collecting}>
-              {collecting ? 'Collecting…' : 'Collect payment'}
-            </Button>
           </div>
         ) : null}
 

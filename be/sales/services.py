@@ -586,6 +586,7 @@ class SaleService(BaseService):
                     payment_reference=payment_reference,
                     sale_type='pos',
                     client_channel=client_channel or '',
+                    wallet_amount_locked=payment_result['wallet_amount_used'],
                 ),
             )
             return holding
@@ -1121,6 +1122,7 @@ class SaleService(BaseService):
 
         from sales.sale_completion_approval import (
             WAITING_MESSAGE,
+            invoice_payload_from_validated_data,
             payment_payload_from_inputs,
             queue_sale_complete,
             sale_completion_should_wait,
@@ -1213,6 +1215,8 @@ class SaleService(BaseService):
                     payment_reference=validated_data.get('payment_reference', ''),
                     sale_type=sale_type,
                     client_channel=sale_data.get('client_channel') or '',
+                    wallet_amount_locked=payment_result['wallet_amount_used'],
+                    invoice=invoice_payload_from_validated_data(validated_data),
                 ),
             )
             result = {

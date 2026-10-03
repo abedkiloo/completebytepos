@@ -95,7 +95,15 @@ export const ROUTE_PERMISSION_GATES = [
       { module: 'debt_management', action: 'approve' },
     ],
   },
-  { prefix: '/sales/daily', module: 'sales', action: 'daily_sales' },
+  {
+    prefix: '/sales/daily',
+    module: 'sales',
+    action: 'view',
+    anyOf: [
+      { module: 'sales', action: 'view' },
+      { module: 'sales', action: 'daily_sales' },
+    ],
+  },
   { prefix: '/sales/field', module: 'dispatch', action: 'view' },
 ];
 

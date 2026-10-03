@@ -69,9 +69,13 @@ class MoneyTransferService(BaseService):
     @transaction.atomic
     def approve_transfer(self, transfer: 'MoneyTransfer', approved_by) -> 'MoneyTransfer':
         """Approve and complete a transfer"""
-        from approvals.financial_workflow import validate_checker_not_maker
+        from approvals.financial_workflow import (
+            validate_checker_not_maker,
+            validate_past_dated_checker,
+        )
 
         validate_checker_not_maker(approved_by, transfer.created_by_id)
+        validate_past_dated_checker(approved_by, transfer.transfer_date, transfer.created_at)
         if transfer.status == 'completed':
             raise ValidationError('Transfer is already completed')
         
@@ -83,10 +87,14 @@ class MoneyTransferService(BaseService):
 
     @transaction.atomic
     def reject_transfer(self, transfer: 'MoneyTransfer', rejected_by, reason: str) -> 'MoneyTransfer':
-        from approvals.financial_workflow import validate_checker_not_maker
+        from approvals.financial_workflow import (
+            validate_checker_not_maker,
+            validate_past_dated_checker,
+        )
         from daily_notes.approval_notice import SOURCE_TRANSFER, notify_approval_rejected
 
         validate_checker_not_maker(rejected_by, transfer.created_by_id)
+        validate_past_dated_checker(rejected_by, transfer.transfer_date, transfer.created_at)
         reason = (reason or '').strip()
         if not reason:
             raise ValidationError({'rejection_reason': 'Say why you are returning this transfer.'})

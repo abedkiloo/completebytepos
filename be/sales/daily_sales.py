@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
 from django.core.paginator import Paginator
-from django.db.models import F, Q, Sum
+from django.db.models import Count, F, Q, Sum
 from django.utils import timezone
 
 from sales.debt_management import list_debt_collections
@@ -118,22 +118,28 @@ def get_daily_sales_report(
     else:
         qs = Sale.objects.all().select_related('customer', 'cashier', 'served_by', 'branch')
 
-    base_qs = (
-        qs.filter(
-            status='completed',
-            occurred_at__gte=start_of_day,
-            occurred_at__lte=end_of_day,
-        )
-        .prefetch_related('items__product', 'items__refund_lines')
+    day_qs = qs.filter(occurred_at__gte=start_of_day, occurred_at__lte=end_of_day)
+    if branch_id:
+        day_qs = day_qs.filter(branch_id=branch_id)
+    if cashier_id:
+        day_qs = day_qs.filter(Q(cashier_id=cashier_id) | Q(served_by_id=cashier_id))
+
+    base_qs = day_qs.filter(status='completed').prefetch_related(
+        'items__product', 'items__refund_lines',
     )
 
-    if branch_id:
-        base_qs = base_qs.filter(branch_id=branch_id)
-
-    if cashier_id:
-        base_qs = base_qs.filter(
-            Q(cashier_id=cashier_id) | Q(served_by_id=cashier_id)
-        )
+    # Sales sent by salespeople but not yet approved: money is already taken,
+    # but stock, debt, and books post only after a manager approves.
+    pending = day_qs.filter(status='pending_approval').aggregate(
+        count=Count('id'),
+        total=Sum('total'),
+        paid=Sum('amount_paid'),
+    )
+    pending_summary = {
+        'pending_approval_count': int(pending['count'] or 0),
+        'pending_approval_total': str(Decimal(str(pending['total'] or 0)).quantize(Decimal('0.01'))),
+        'pending_approval_paid': str(Decimal(str(pending['paid'] or 0)).quantize(Decimal('0.01'))),
+    }
 
     # Compute daily aggregates across all completed sales of that day
     all_day_sales = list(base_qs)
@@ -170,8 +176,13 @@ def get_daily_sales_report(
         by_method_breakdown[method]['total'] += p_amount
 
     # Settlements of prior customer debts collected on that day (who paid, how much)
+    own_only = False
+    if user is not None:
+        from sales.visibility import user_sees_all_sales
+
+        own_only = not user_sees_all_sales(user)
     collections = list_debt_collections(
-        on_date=target_date, page=1, page_size=200, user=user,
+        on_date=target_date, page=1, page_size=200, user=user, own_only=own_only,
     )
     total_debt_collected = Decimal(str(collections.get('total') or 0))
     debt_settlement_count = int(collections.get('count') or 0)
@@ -256,6 +267,7 @@ def get_daily_sales_report(
                 }
                 for k, v in by_method_breakdown.items()
             },
+            **pending_summary,
         },
         'orders': serialized_orders,
         'collections': collections,
@@ -360,7 +372,7 @@ def get_customer_day_detail(
         or Decimal('0.00')
     )
 
-    lifetime_sales = Sale.objects.filter(customer_id=customer.id, status='completed')
+    lifetime_sales = qs.filter(customer_id=customer.id, status='completed')
     lifetime_count = lifetime_sales.count()
     lifetime_total = lifetime_sales.aggregate(t=Sum('total'))['t'] or Decimal('0.00')
 

@@ -1,4 +1,4 @@
-"""Managers and admins can move a sale onto another business date."""
+"""Managers move today's sales; only admins may move a sale onto or off a past date."""
 
 from datetime import timedelta
 from decimal import Decimal
@@ -9,6 +9,7 @@ from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounting.models import JournalEntry, Transaction
+from approvals.permissions import PAST_DATED_ADMIN_ONLY_MESSAGE
 from accounts.models import Role, UserProfile
 from accounts.role_definitions import ROLE_SALES
 from products.models import Category, Product
@@ -62,12 +63,34 @@ class SaleDateCorrectionTests(ManagerAPITestCase):
         self.assertEqual(sale.status, 'completed')
         return sale
 
-    def test_manager_moves_sale_date_and_books(self):
+    def _admin_client(self):
+        admin = User.objects.create_superuser('date_admin', 'date_admin@test.com', 'x')
+        client = self.client.__class__()
+        token = RefreshToken.for_user(admin)
+        client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+        session = client.session
+        session['current_tenant_id'] = self.tenant.id
+        session['current_branch_id'] = self.branch.id
+        session.save()
+        return client
+
+    def test_manager_cannot_move_sale_into_the_past(self):
+        sale = self._create_completed_sale()
+        target = (timezone.localdate() - timedelta(days=1)).isoformat()
+        response = self.client.post(
+            f'/api/sales/{sale.id}/correct-date/',
+            {'occurred_on': target},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn(PAST_DATED_ADMIN_ONLY_MESSAGE, str(response.data))
+
+    def test_admin_moves_sale_date_and_books(self):
         sale = self._create_completed_sale()
         original_local = timezone.localtime(sale.occurred_at)
         target = (timezone.localdate() - timedelta(days=1)).isoformat()
 
-        response = self.client.post(
+        response = self._admin_client().post(
             f'/api/sales/{sale.id}/correct-date/',
             {'occurred_on': target},
             format='json',

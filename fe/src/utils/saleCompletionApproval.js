@@ -12,14 +12,6 @@ export const SALE_AWAITING_APPROVAL_MESSAGE =
 export const SALE_APPROVED_RECEIPT_MESSAGE =
   'Sale was approved and completed. You can print the receipt.';
 
-export const SALE_AWAITING_PAYMENT_STATUS = 'awaiting_payment';
-export const SALE_AWAITING_PAYMENT_MESSAGE =
-  'This sale is approved. Collect payment to complete it and issue the receipt.';
-
-export function saleIsAwaitingPayment(sale) {
-  return String(sale?.status || '') === SALE_AWAITING_PAYMENT_STATUS;
-}
-
 export function saleIsAwaitingApproval(sale) {
   return String(sale?.status || '') === SALE_AWAITING_APPROVAL_STATUS;
 }
@@ -48,9 +40,6 @@ export function partitionSaleApprovalQueue(sales = []) {
 export function saleReceiptBlockedReason(sale) {
   if (saleIsAwaitingApproval(sale)) {
     return SALE_AWAITING_APPROVAL_MESSAGE;
-  }
-  if (saleIsAwaitingPayment(sale)) {
-    return SALE_AWAITING_PAYMENT_MESSAGE;
   }
   if (sale && sale.status && sale.status !== 'completed') {
     return 'Receipt is available after the sale is completed.';

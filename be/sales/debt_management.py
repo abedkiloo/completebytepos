@@ -359,11 +359,14 @@ def list_debt_collections(
     page: int = 1,
     page_size: int = 50,
     user=None,
+    own_only: bool = False,
 ) -> Dict[str, Any]:
     """
     Debt payments (wallet settlements) for one local calendar day.
 
     Each row is one payment: who paid, how much, when, and who recorded it.
+    ``own_only`` limits rows to customers whose debt this user originated, even
+    for managers (used by the per-person daily sales view).
     """
     day = on_date or timezone.localdate()
     start, end = _local_day_bounds(day)
@@ -379,7 +382,10 @@ def list_debt_collections(
         .select_related('customer', 'created_by', 'sale')
         .order_by('-created_at', '-id')
     )
-    visible_ids = _visible_debtor_customer_ids(user)
+    if own_only and user is not None:
+        visible_ids = originating_debt_customer_ids(user)
+    else:
+        visible_ids = _visible_debtor_customer_ids(user)
     if visible_ids is not None:
         qs = qs.filter(customer_id__in=list(visible_ids) or [])
     total_amount = qs.aggregate(total=Sum('amount'))['total'] or Decimal('0')

@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import {
   CartesianGrid,
   Line,
@@ -211,7 +212,7 @@ function SalaryCard({ year, policy }) {
   );
 }
 
-function DayStrip({ days }) {
+function DayStrip({ days, dayHref }) {
   const rows = Array.isArray(days) ? days.slice(-14) : [];
   if (!rows.length) return null;
   return (
@@ -223,14 +224,29 @@ function DayStrip({ days }) {
         <div className="flex gap-2 overflow-x-auto pb-1">
           {rows.map((day) => {
             const theme = appraisalTone(day.tone);
-            return (
-              <div
-                key={day.date}
-                className={cn('min-w-[4.75rem] rounded-lg border p-2 text-center', theme.border, theme.bg)}
-              >
+            const tileClass = cn('min-w-[4.75rem] rounded-lg border p-2 text-center', theme.border, theme.bg);
+            const body = (
+              <>
                 <p className="text-[10px] font-bold uppercase text-muted-foreground">{weekday(day.date)}</p>
                 <p className="text-xs font-semibold tabular-nums">{kes(day.sales).replace('KES ', '')}</p>
                 <StarRow stars={day.stars} className="text-sm text-amber-500" />
+              </>
+            );
+            if (dayHref && day.date) {
+              return (
+                <Link
+                  key={day.date}
+                  to={dayHref(day.date)}
+                  className={cn(tileClass, 'transition hover:ring-2 hover:ring-primary/40')}
+                  aria-label={`Open sales for ${day.date}`}
+                >
+                  {body}
+                </Link>
+              );
+            }
+            return (
+              <div key={day.date} className={tileClass}>
+                {body}
               </div>
             );
           })}
@@ -271,7 +287,7 @@ function TrendChart({ days, target }) {
   );
 }
 
-export default function AppraisalDashboard({ snapshot }) {
+export default function AppraisalDashboard({ snapshot, dayHref }) {
   if (!snapshot || snapshot.has_personal_target === false) return null;
   const { today, month, year, greeting, policy, today_tips: todayTips } = snapshot;
   return (
@@ -288,7 +304,7 @@ export default function AppraisalDashboard({ snapshot }) {
       <MonthCard month={month} policy={policy} />
       <BonusLadder month={month} bands={policy?.monthly_bonus_bands} />
       <SalaryCard year={year} policy={policy} />
-      <DayStrip days={month?.days} />
+      <DayStrip days={month?.days} dayHref={dayHref} />
       <TrendChart days={month?.days} target={today?.target} />
       {policy?.show_year_end_increment && Array.isArray(year?.months) ? (
         <Card>

@@ -8,8 +8,12 @@ jest.mock('react-router-dom', () => ({
   Navigate: () => null,
 }));
 
+let mockProfile = { role: 'manager', custom_role: { name: 'Manager' } };
+
 jest.mock('../../utils/roleAccess', () => ({
   getStoredAuth: () => ({
+    user: {},
+    profile: mockProfile,
     permissions: [{ module: 'sales', action: 'approve' }],
   }),
   hasPermission: (permissions, module, action) =>
@@ -41,25 +45,32 @@ jest.mock('../../services/api', () => ({
   },
 }));
 
+function waitingSale(occurredAt) {
+  return {
+    id: 42,
+    sale_number: 'S-2300',
+    total: 2300,
+    status: 'pending_approval',
+    cashier_name: 'Ann',
+    occurred_at: occurredAt,
+    amount_paid: 2300,
+    items: [{ quantity: 1 }],
+    customer_name: 'Jane',
+  };
+}
+
+function daysAgoIso(days) {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString();
+}
+
 describe('SaleApprovalsPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockProfile = { role: 'manager', custom_role: { name: 'Manager' } };
     salesAPI.list.mockResolvedValue({
-      data: {
-        results: [
-          {
-            id: 42,
-            sale_number: 'S-2300',
-            total: 2300,
-            status: 'pending_approval',
-            cashier_name: 'Ann',
-            occurred_at: '2026-09-29T10:00:00Z',
-            amount_paid: 2300,
-            items: [{ quantity: 1 }],
-            customer_name: 'Jane',
-          },
-        ],
-      },
+      data: { results: [waitingSale(new Date().toISOString())] },
     });
     pendingChangesAPI.pending.mockResolvedValue({ data: [] });
     salesAPI.complete.mockResolvedValue({
@@ -86,5 +97,22 @@ describe('SaleApprovalsPage', () => {
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith('This sale is not waiting for approval.')
     );
+  });
+
+  test('leaves a past-dated sale for an admin when signed in as manager', async () => {
+    salesAPI.list.mockResolvedValue({ data: { results: [waitingSale(daysAgoIso(2))] } });
+    render(<SaleApprovalsPage />);
+    expect(await screen.findByTestId('past-dated-notice')).toHaveTextContent(
+      /Only an admin can approve/i
+    );
+    expect(screen.queryByRole('button', { name: /Approve/i })).not.toBeInTheDocument();
+  });
+
+  test('admin can approve a past-dated sale', async () => {
+    mockProfile = { role: 'super_admin', custom_role: { name: 'Super Admin' } };
+    salesAPI.list.mockResolvedValue({ data: { results: [waitingSale(daysAgoIso(2))] } });
+    render(<SaleApprovalsPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /Approve/i }));
+    await waitFor(() => expect(salesAPI.complete).toHaveBeenCalledWith(42));
   });
 });

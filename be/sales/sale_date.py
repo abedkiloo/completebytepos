@@ -79,6 +79,10 @@ def correct_sale_occurred_at(sale, occurred_at: datetime, *, user) -> object:
     if getattr(sale, 'status', None) in BLOCKED_STATUSES:
         raise ValidationError(DATE_CORRECTION_STATUS_BLOCKED)
     validate_sale_date_correction(occurred_at)
+    from approvals.permissions import PAST_DATED_ADMIN_ONLY_MESSAGE, user_may_approve_dated_item
+
+    if not user_may_approve_dated_item(user, sale.occurred_at, occurred_at):
+        raise ValidationError(PAST_DATED_ADMIN_ONLY_MESSAGE)
 
     previous = sale.occurred_at
     previous_day = _sale_local_date(previous)

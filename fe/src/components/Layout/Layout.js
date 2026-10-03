@@ -123,7 +123,17 @@ export const NAV_SECTIONS = [
       { to: '/categories', label: 'Categories', icon: FolderTree, salesCatalogItem: true, module: 'products', permission: ['categories', 'view'] },
       { to: '/product-attributes', label: 'Sizes & colors', icon: Palette, salesCatalogItem: true, module: 'products', feature: ['products', 'product_variants'], permission: ['products', 'view'] },
       { to: '/normal-sale', label: 'Normal Sale', icon: Briefcase, feature: ['sales', 'normal_sale'], permission: ['sales', 'create'] },
-      { to: '/sales/daily', label: 'Daily Sales', icon: Calendar, feature: ['sales', 'sales_history'], permission: ['sales', 'daily_sales'] },
+      {
+        to: '/sales/daily',
+        label: 'Daily Sales',
+        icon: Calendar,
+        feature: ['sales', 'sales_history'],
+        permission: ['sales', 'view'],
+        anyPermission: [
+          ['sales', 'view'],
+          ['sales', 'daily_sales'],
+        ],
+      },
       { to: '/sales', label: 'Sales History', icon: DollarSign, feature: ['sales', 'sales_history'], permission: ['sales', 'view'] },
       {
         to: '/sales/approvals',
@@ -206,7 +216,16 @@ export const NAV_SECTIONS = [
       { to: '/reports?report=sales', label: 'Sales Summary', icon: BarChart3, match: 'report=sales', permission: ['reports', 'view'] },
       { to: '/reports?report=sales-by-person', label: 'Sales by staff', icon: UsersIcon, match: 'report=sales-by-person', permission: ['reports', 'view'] },
       { to: '/reports?report=sales-by-method', label: 'Sales by Payment', icon: CreditCard, match: 'report=sales-by-method', permission: ['reports', 'view'] },
-      { to: '/sales/daily', label: 'Daily Sales', icon: Calendar, permission: ['sales', 'daily_sales'] },
+      {
+        to: '/sales/daily',
+        label: 'Daily Sales',
+        icon: Calendar,
+        permission: ['sales', 'view'],
+        anyPermission: [
+          ['sales', 'view'],
+          ['sales', 'daily_sales'],
+        ],
+      },
       { to: '/reports?report=products', label: 'Product Performance', icon: Boxes, match: 'report=products', permission: ['reports', 'view'] },
       { to: '/reports?report=inventory', label: 'Inventory Overview', icon: PieChart, match: 'report=inventory', permission: ['reports', 'view'] },
       { to: '/reports?report=stock-valuation', label: 'Stock valuation', icon: Package, match: 'report=stock-valuation', permission: ['reports', 'view'] },

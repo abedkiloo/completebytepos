@@ -494,6 +494,32 @@ describe('DailySalesPage', () => {
     expect(await screen.findByText(/No orders found/i)).toBeInTheDocument();
   });
 
+  it('shows sales awaiting approval separately from the totals', async () => {
+    salesAPI.daily.mockResolvedValueOnce({
+      data: {
+        date: '2026-09-12',
+        summary: {
+          ...MOCK_SUMMARY,
+          pending_approval_count: 2,
+          pending_approval_total: '350.00',
+          pending_approval_paid: '200.00',
+        },
+        orders: [],
+        pagination: { count: 0, page: 1, page_size: 25, total_pages: 1 },
+      },
+    });
+    render(<DailySalesPage />);
+    const banner = await screen.findByTestId('daily-pending-approval');
+    expect(banner).toHaveTextContent(/2 sales awaiting approval/);
+    expect(banner).toHaveTextContent(/already collected/);
+  });
+
+  it('hides the awaiting-approval banner when nothing is waiting', async () => {
+    render(<DailySalesPage />);
+    await screen.findByText('SALE-PAID-01');
+    expect(screen.queryByTestId('daily-pending-approval')).not.toBeInTheDocument();
+  });
+
   it('shows who paid and how much on the Debt collected tab', async () => {
     render(<DailySalesPage />);
     await screen.findByText('SALE-PAID-01');

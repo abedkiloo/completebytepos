@@ -25,9 +25,6 @@ REJECTED_MESSAGE_TEMPLATE = (
     'fix it on POS, and send it again.'
 )
 QUEUE_REASON = 'Sale recorded at the till, awaiting manager approval before stock and books.'
-COLLECT_ONLY_AFTER_APPROVAL = (
-    'Collect payment only after a manager approves this sale.'
-)
 COMPLETE_NOT_READY = 'This sale is not waiting for approval or collection.'
 CORRECTION_FINGERPRINT_KEY = 'correction_fingerprint'
 UNEDITED_RETURN_MESSAGE = (
@@ -398,6 +395,72 @@ def admin_return_sale_for_correction(sale: Sale, *, user, reason: str) -> Sale:
     return sale
 
 
+WALLET_CHANGED_MESSAGE = (
+    '{customer} now has KES {balance} in their wallet, but this sale was sent '
+    'using KES {locked} from the wallet. Return the sale to the salesperson to '
+    'update the payment.'
+)
+
+INVOICE_PAYLOAD_KEYS = (
+    'create_invoice',
+    'customer_name',
+    'customer_email',
+    'customer_phone',
+    'customer_address',
+    'due_date',
+    'notes',
+    'create_payment_plan',
+    'number_of_installments',
+    'installment_frequency',
+    'payment_plan_start_date',
+)
+
+
+def wallet_amount_to_lock(customer, total, *, use_wallet: bool, requested=None) -> Decimal:
+    """Wallet money the salesperson's sale uses, fixed at send time."""
+    if not customer or not use_wallet:
+        return Decimal('0')
+    balance = customer.wallet_balance or Decimal('0')
+    if balance <= 0:
+        return Decimal('0')
+    requested = Decimal(str(requested or 0))
+    total = Decimal(str(total or 0))
+    if requested > 0:
+        return min(requested, balance, total)
+    return min(balance, total)
+
+
+def invoice_payload_from_validated_data(validated_data: dict) -> dict | None:
+    """JSON-safe invoice options so approval can create the invoice later."""
+    sale_type = validated_data.get('sale_type', 'pos')
+    if sale_type != 'normal' and not validated_data.get('create_invoice'):
+        return None
+    payload = {}
+    for key in INVOICE_PAYLOAD_KEYS:
+        value = validated_data.get(key)
+        if value is None or value == '':
+            continue
+        if hasattr(value, 'isoformat'):
+            value = value.isoformat()
+        payload[key] = value
+    return payload
+
+
+def _invoice_validated_data(sale: Sale, payload: dict) -> dict | None:
+    from django.utils.dateparse import parse_date
+
+    raw = payload.get('invoice')
+    if raw is None:
+        return None
+    data = dict(raw)
+    for key in ('due_date', 'payment_plan_start_date'):
+        if isinstance(data.get(key), str):
+            data[key] = parse_date(data[key])
+    data['sale_type'] = payload.get('sale_type') or sale.sale_type or 'pos'
+    data['payment_method'] = payload.get('payment_method') or sale.payment_method
+    return data
+
+
 def payment_payload_from_inputs(
     *,
     payment_method: str,
@@ -409,8 +472,10 @@ def payment_payload_from_inputs(
     payment_reference: str = '',
     sale_type: str = 'pos',
     client_channel: str = '',
+    wallet_amount_locked=None,
+    invoice: dict | None = None,
 ) -> dict:
-    return {
+    payload = {
         'payment_method': payment_method or 'cash',
         'amount_paid': str(amount_paid or '0'),
         'allow_partial': bool(allow_partial),
@@ -421,6 +486,11 @@ def payment_payload_from_inputs(
         'sale_type': sale_type or 'pos',
         'client_channel': client_channel or '',
     }
+    if wallet_amount_locked is not None:
+        payload['wallet_amount_locked'] = str(wallet_amount_locked)
+    if invoice is not None:
+        payload['invoice'] = invoice
+    return payload
 
 
 def queue_sale_complete(request, sale: Sale, *, payment_payload: dict | None = None) -> PendingChange:
@@ -486,6 +556,8 @@ def restore_queued_sale_for_approval(sale: Sale, change: PendingChange | None = 
     if change is None:
         return sale
     existing = change.apply_payload or {}
+    use_wallet = bool(existing.get('use_wallet'))
+    wallet_amount = existing.get('wallet_amount') or '0'
     change.apply_payload = {
         **existing,
         **payment_payload_from_inputs(
@@ -493,11 +565,14 @@ def restore_queued_sale_for_approval(sale: Sale, change: PendingChange | None = 
             amount_paid=sale.amount_paid if sale.amount_paid is not None else existing.get('amount_paid') or '0',
             allow_partial=bool(existing.get('allow_partial')),
             excess_payment_choice=existing.get('excess_payment_choice') or 'change',
-            use_wallet=bool(existing.get('use_wallet')),
-            wallet_amount=existing.get('wallet_amount') or '0',
+            use_wallet=use_wallet,
+            wallet_amount=wallet_amount,
             payment_reference=sale.payment_reference or existing.get('payment_reference') or '',
             sale_type=existing.get('sale_type') or sale.sale_type or 'pos',
             client_channel=existing.get('client_channel') or getattr(sale, 'client_channel', '') or '',
+            wallet_amount_locked=wallet_amount_to_lock(
+                sale.customer, sale.total, use_wallet=use_wallet, requested=wallet_amount,
+            ),
         ),
     }
     change.save(update_fields=['apply_payload'])
@@ -548,7 +623,23 @@ def complete_queued_sale(sale: Sale, user, payload: dict | None = None) -> Sale:
 
     payload = payload or {}
     customer = sale.customer
+    if customer is not None:
+        customer.refresh_from_db()
     amount_paid = Decimal(str(payload.get('amount_paid', sale.amount_paid or 0)))
+    use_wallet = bool(payload.get('use_wallet'))
+    wallet_requested = Decimal(str(payload.get('wallet_amount') or 0))
+    if 'wallet_amount_locked' in payload:
+        locked = Decimal(str(payload.get('wallet_amount_locked') or 0))
+        use_wallet = use_wallet and locked > 0
+        wallet_requested = locked
+        if use_wallet and customer is not None and customer.wallet_balance < locked:
+            raise ValidationError(
+                WALLET_CHANGED_MESSAGE.format(
+                    customer=customer.name or 'This customer',
+                    balance=customer.wallet_balance,
+                    locked=locked,
+                )
+            )
     payment_result = service._prepare_sale_payment(
         customer=customer,
         sale_type=payload.get('sale_type') or sale.sale_type or 'pos',
@@ -556,8 +647,8 @@ def complete_queued_sale(sale: Sale, user, payload: dict | None = None) -> Sale:
         amount_paid=amount_paid,
         allow_partial=bool(payload.get('allow_partial')),
         excess_payment_choice=payload.get('excess_payment_choice') or 'change',
-        use_wallet=bool(payload.get('use_wallet')),
-        wallet_amount_requested=Decimal(str(payload.get('wallet_amount') or 0)),
+        use_wallet=use_wallet,
+        wallet_amount_requested=wallet_requested,
     )
 
     for item_data in validated_items:
@@ -588,6 +679,12 @@ def complete_queued_sale(sale: Sale, user, payload: dict | None = None) -> Sale:
     ])
 
     service._apply_sale_payment(customer, sale, user, payment_result)
+
+    invoice_data = _invoice_validated_data(sale, payload)
+    if invoice_data is not None:
+        service._maybe_create_invoice_for_sale(
+            sale, invoice_data, customer, user, amount_paid,
+        )
 
     try:
         from accounting.services import create_sale_journal_entry

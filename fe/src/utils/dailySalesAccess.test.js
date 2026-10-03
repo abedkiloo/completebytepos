@@ -23,9 +23,17 @@ describe('dailySalesAccess', () => {
     ).toBe(true);
   });
 
-  it('denies users without the permission', () => {
+  it('allows anyone who can view sales (they see their own day)', () => {
     expect(
       canViewDailySales([{ module: 'sales', action: 'view' }], {
+        isSuperAdmin: false,
+      })
+    ).toBe(true);
+  });
+
+  it('denies users without sales access', () => {
+    expect(
+      canViewDailySales([{ module: 'pos', action: 'create' }], {
         isSuperAdmin: false,
       })
     ).toBe(false);

@@ -1,6 +1,7 @@
 /**
- * Access helpers for Daily Sales Tracker (`sales.daily_sales`).
- * Default role pack: Super Admin only. Grantable via Roles UI.
+ * Access helpers for the Daily Sales page (sales of one chosen day).
+ * Anyone with `sales.view` opens it and sees their own sales; admins and
+ * `sales.view_all` see the whole store. `sales.daily_sales` still grants access.
  */
 import { getStoredAuth, hasPermission } from './roleAccess';
 
@@ -16,7 +17,10 @@ function isSuperAdminFromAuth() {
 
 export function canViewDailySales(permissions, { isSuperAdmin = false } = {}) {
   if (isSuperAdmin) return true;
-  return hasPermission(permissions, 'sales', 'daily_sales');
+  return (
+    hasPermission(permissions, 'sales', 'view') ||
+    hasPermission(permissions, 'sales', 'daily_sales')
+  );
 }
 
 export function canViewDailySalesFromStorage() {

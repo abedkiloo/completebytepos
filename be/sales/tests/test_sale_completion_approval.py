@@ -464,7 +464,7 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock_quantity, 19)
 
-    def test_cannot_collect_before_manager_approves(self):
+    def test_collect_endpoint_is_gone(self):
         created = self.client.post('/api/sales/', self._sale_payload(), format='json')
         sale_id = created.data['id']
         response = self.client.post(
@@ -472,7 +472,86 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
             {'payment_method': 'cash', 'amount_paid': '100.00'},
             format='json',
         )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn(
+            response.status_code,
+            (status.HTTP_404_NOT_FOUND, status.HTTP_405_METHOD_NOT_ALLOWED),
+        )
+
+    def test_normal_sale_partial_creates_invoice_on_approve(self):
+        from sales.models import Customer, Invoice
+
+        customer = Customer.objects.create(name='Invoice Debt', phone='0700000002')
+        payload = self._sale_payload(amount='40.00')
+        payload.update({
+            'customer_id': customer.id,
+            'allow_partial_payment': True,
+            'sale_type': 'normal',
+            'due_date': '2026-10-31',
+        })
+        created = self.client.post('/api/sales/', payload, format='json')
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED, created.data)
+        sale = Sale.objects.get(pk=created.data['id'])
+        self.assertEqual(sale.status, 'pending_approval')
+        self.assertFalse(Invoice.objects.filter(sale=sale).exists())
+
+        approved = self._manager_client().post(f'/api/sales/{sale.id}/complete/', {}, format='json')
+        self.assertEqual(approved.status_code, status.HTTP_200_OK, approved.data)
+        invoice = Invoice.objects.get(sale=sale)
+        self.assertEqual(invoice.customer_id, customer.id)
+        self.assertEqual(invoice.amount_paid, Decimal('40.00'))
+        self.assertEqual(invoice.balance, Decimal('60.00'))
+        self.assertEqual(str(invoice.due_date), '2026-10-31')
+
+    def test_wallet_amount_is_locked_when_sent(self):
+        from sales.models import Customer
+
+        customer = Customer.objects.create(
+            name='Wallet Lock', phone='0700000003', wallet_balance=Decimal('100.00'),
+        )
+        payload = self._sale_payload(amount='0')
+        payload.update({
+            'customer_id': customer.id,
+            'use_wallet': True,
+            'allow_partial_payment': True,
+        })
+        created = self.client.post('/api/sales/', payload, format='json')
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED, created.data)
+        change = pending_sale_complete_change(Sale.objects.get(pk=created.data['id']))
+        self.assertEqual(Decimal(change.apply_payload['wallet_amount_locked']), Decimal('100.00'))
+
+        Customer.objects.filter(pk=customer.pk).update(wallet_balance=Decimal('30.00'))
+        blocked = self._manager_client().post(
+            f'/api/sales/{created.data["id"]}/complete/', {}, format='json',
+        )
+        self.assertEqual(blocked.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('Return the sale to the salesperson', blocked.data['error'])
+        customer.refresh_from_db()
+        self.assertEqual(customer.wallet_balance, Decimal('30.00'))
+        self.assertEqual(Sale.objects.get(pk=created.data['id']).status, 'pending_approval')
+
+    def test_wallet_lock_uses_sent_amount_not_new_balance(self):
+        from sales.models import Customer
+
+        customer = Customer.objects.create(
+            name='Wallet Grow', phone='0700000004', wallet_balance=Decimal('30.00'),
+        )
+        payload = self._sale_payload(amount='0')
+        payload.update({
+            'customer_id': customer.id,
+            'use_wallet': True,
+            'allow_partial_payment': True,
+        })
+        created = self.client.post('/api/sales/', payload, format='json')
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED, created.data)
+        Customer.objects.filter(pk=customer.pk).update(wallet_balance=Decimal('500.00'))
+
+        approved = self._manager_client().post(
+            f'/api/sales/{created.data["id"]}/complete/', {}, format='json',
+        )
+        self.assertEqual(approved.status_code, status.HTTP_200_OK, approved.data)
+        customer.refresh_from_db()
+        # 30 from wallet as sent, 70 becomes debt: 500 - 30 - 70.
+        self.assertEqual(customer.wallet_balance, Decimal('400.00'))
 
     def test_manager_reject_returns_sale_with_sticky_note(self):
         created = self.client.post('/api/sales/', self._sale_payload(), format='json')

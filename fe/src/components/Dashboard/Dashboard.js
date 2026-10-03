@@ -38,6 +38,7 @@ import {
   resolvePersona,
   userSeesAllSalesFromStorage,
 } from '../../utils/roleAccess';
+import { canViewDailySalesFromStorage, dailySalesListPath } from '../../utils/dailySalesAccess';
 
 const QUICK_ACTIONS = {
   super_admin: [
@@ -116,6 +117,8 @@ const Dashboard = () => {
   }, [dashboardReportsEnabled]);
 
   const persona = useMemo(() => resolvePersona(me), [me]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- permissions are re-read when `me` loads
+  const canOpenDay = useMemo(() => canViewDailySalesFromStorage(), [me]);
   const displayName = me?.user?.username || me?.user?.first_name || 'there';
   const roleLabel =
     me?.profile?.custom_role?.name || me?.profile?.role_display || 'Team member';
@@ -286,8 +289,8 @@ const Dashboard = () => {
                 {data.week.days.map((day) => {
                   const maxTotal = Math.max(...data.week.days.map((d) => Number(d.total) || 0), 1);
                   const pct = Math.round(((Number(day.total) || 0) / maxTotal) * 100);
-                  return (
-                    <li key={day.date} className="flex items-center gap-3">
+                  const row = (
+                    <>
                       <span className="w-9 shrink-0 text-xs text-muted-foreground">{day.label}</span>
                       <div className="h-2 min-w-0 flex-1 rounded-full bg-muted">
                         <div
@@ -301,6 +304,21 @@ const Dashboard = () => {
                       <span className="w-24 shrink-0 text-right text-sm tabular-nums">
                         {formatCurrency(day.total || 0)}
                       </span>
+                    </>
+                  );
+                  return (
+                    <li key={day.date}>
+                      {canOpenDay && day.date ? (
+                        <Link
+                          to={dailySalesListPath(day.date)}
+                          className="-mx-2 flex items-center gap-3 rounded-md px-2 py-1 hover:bg-muted/60"
+                          aria-label={`Open sales for ${day.label} ${day.date}`}
+                        >
+                          {row}
+                        </Link>
+                      ) : (
+                        <div className="flex items-center gap-3">{row}</div>
+                      )}
                     </li>
                   );
                 })}

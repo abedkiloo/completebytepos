@@ -8,7 +8,7 @@ jest.mock('../../hooks/useStoreSettings', () => ({
 }));
 
 jest.mock('../../services/api', () => ({
-  salesAPI: { collect: jest.fn(), rejectComplete: jest.fn(), correctDate: jest.fn() },
+  salesAPI: { rejectComplete: jest.fn(), correctDate: jest.fn() },
 }));
 
 const sale = {
@@ -191,27 +191,15 @@ describe('SaleDetailDialog', () => {
     expect(screen.queryByRole('button', { name: /Print receipt/i })).not.toBeInTheDocument();
   });
 
-  it('lets the salesperson collect payment after approval', async () => {
-    salesAPI.collect.mockResolvedValue({ data: { status: 'completed' } });
-    const onCollected = jest.fn();
+  it('has no separate collect-payment step (money is taken before approval)', () => {
     render(
       <SaleDetailDialog
-        sale={{ ...sale, status: 'awaiting_payment', amount_paid: '0', refund_status: 'none' }}
+        sale={{ ...sale, status: 'pending_approval', refund_status: 'none' }}
         open
         onOpenChange={() => {}}
-        onCollected={onCollected}
       />
     );
-
-    expect(screen.getByText(/Collect payment to complete it/i)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Collect payment/i }));
-    await waitFor(() => {
-      expect(salesAPI.collect).toHaveBeenCalledWith(1, {
-        payment_method: 'cash',
-        amount_paid: '1000',
-      });
-    });
-    expect(onCollected).toHaveBeenCalledWith(1);
+    expect(screen.queryByRole('button', { name: /Collect payment/i })).not.toBeInTheDocument();
   });
 
   it('lets admin return an approved sale for correction', async () => {

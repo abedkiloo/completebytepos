@@ -90,11 +90,15 @@ describe('permissionRoutes registry', () => {
     expect(routePermissionGateForPath('/customers/debt')).toEqual(
       expect.objectContaining({ module: 'debt_management', action: 'view' })
     );
+    const dailyAnyOf = [
+      { module: 'sales', action: 'view' },
+      { module: 'sales', action: 'daily_sales' },
+    ];
     expect(routePermissionGateForPath('/sales/daily')).toEqual(
-      expect.objectContaining({ module: 'sales', action: 'daily_sales' })
+      expect.objectContaining({ module: 'sales', anyOf: dailyAnyOf })
     );
     expect(routePermissionGateForPath('/sales/daily/customers/9')).toEqual(
-      expect.objectContaining({ action: 'daily_sales' })
+      expect.objectContaining({ anyOf: dailyAnyOf })
     );
     expect(routePermissionGateForPath('/sales/field')).toEqual(
       expect.objectContaining({ module: 'dispatch', action: 'view' })

@@ -174,7 +174,7 @@ export default function CustomerDailyDetailPage() {
         <EmptyState
           icon={Receipt}
           title="Daily Sales is restricted"
-          description="Ask a Super Admin to grant the sales.daily_sales permission for your role."
+          description="Your role cannot view sales. Ask an admin to grant sales.view for your role."
           actionLabel="Back to Sales History"
           onAction={() => navigate('/sales')}
         />

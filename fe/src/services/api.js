@@ -344,7 +344,6 @@ export const salesAPI = {
   get: (id) => api.get(`/sales/${id}/`),
   create: (data) => api.post('/sales/', data),
   receipt: (id) => api.get(`/sales/${id}/receipt/`),
-  collect: (id, data) => api.post(`/sales/${id}/collect/`, data),
   complete: (id, data) => api.post(`/sales/${id}/complete/`, data || {}),
   rejectComplete: (id, data) => api.post(`/sales/${id}/reject-complete/`, data),
   /** Register draft invoice (holding) — synced as items are added */

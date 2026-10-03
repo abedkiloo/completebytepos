@@ -155,9 +155,13 @@ class ExpenseService(BaseService):
     @transaction.atomic
     def approve_expense(self, expense: Expense, approved_by) -> Expense:
         """Approve an expense and create journal entry"""
-        from approvals.financial_workflow import validate_checker_not_maker
+        from approvals.financial_workflow import (
+            validate_checker_not_maker,
+            validate_past_dated_checker,
+        )
 
         validate_checker_not_maker(approved_by, expense.created_by_id)
+        validate_past_dated_checker(approved_by, expense.expense_date, expense.created_at)
         if expense.status == 'approved':
             raise ValidationError('Expense is already approved')
         
@@ -179,10 +183,14 @@ class ExpenseService(BaseService):
 
     @transaction.atomic
     def reject_expense(self, expense: Expense, rejected_by, reason: str) -> Expense:
-        from approvals.financial_workflow import validate_checker_not_maker
+        from approvals.financial_workflow import (
+            validate_checker_not_maker,
+            validate_past_dated_checker,
+        )
         from daily_notes.approval_notice import SOURCE_EXPENSE, notify_approval_rejected
 
         validate_checker_not_maker(rejected_by, expense.created_by_id)
+        validate_past_dated_checker(rejected_by, expense.expense_date, expense.created_at)
         reason = (reason or '').strip()
         if not reason:
             raise ValidationError({'rejection_reason': 'Say why you are returning this expense.'})

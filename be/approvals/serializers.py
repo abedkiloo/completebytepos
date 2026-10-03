@@ -10,6 +10,19 @@ class PendingChangeSerializer(serializers.ModelSerializer):
         read_only=True,
         allow_null=True,
     )
+    business_date = serializers.SerializerMethodField()
+    past_dated = serializers.SerializerMethodField()
+
+    def get_business_date(self, obj):
+        from approvals.permissions import change_business_dates, earliest_business_day
+
+        day = earliest_business_day(*change_business_dates(obj))
+        return day.isoformat() if day else None
+
+    def get_past_dated(self, obj):
+        from approvals.permissions import change_is_past_dated
+
+        return obj.status == PendingChange.STATUS_PENDING and change_is_past_dated(obj)
 
     class Meta:
         model = PendingChange
@@ -32,6 +45,8 @@ class PendingChangeSerializer(serializers.ModelSerializer):
             'checked_at',
             'rejection_reason',
             'apply_payload',
+            'business_date',
+            'past_dated',
         ]
         read_only_fields = fields
 

@@ -1,6 +1,16 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import AppraisalDashboard from './AppraisalDashboard';
+
+jest.mock('react-router-dom', () => ({
+  Link: ({ children, to, ...props }) => (
+    <a href={to} {...props}>
+      {children}
+    </a>
+  ),
+  MemoryRouter: ({ children }) => <>{children}</>,
+}));
 
 jest.mock('recharts', () => ({
   ResponsiveContainer: ({ children }) => <div data-testid="chart">{children}</div>,
@@ -87,5 +97,18 @@ describe('AppraisalDashboard', () => {
     expect(screen.getByTestId('appraisal-bonus')).toHaveTextContent(/125,000 more to unlock/);
     expect(screen.getByTestId('appraisal-salary')).toHaveTextContent(/One more 4-Star month/);
     expect(screen.getByTestId('appraisal-calendar')).toHaveTextContent(/MON|TUE|WED|THU|FRI|SAT|SUN/);
+    expect(screen.queryByRole('link', { name: /Open sales for/ })).not.toBeInTheDocument();
+  });
+
+  it('links each day tile to that day’s sales when dayHref is given', () => {
+    render(
+      <MemoryRouter>
+        <AppraisalDashboard snapshot={snapshot} dayHref={(d) => `/sales/daily?date=${d}`} />
+      </MemoryRouter>
+    );
+    expect(screen.getByRole('link', { name: 'Open sales for 2026-10-02' })).toHaveAttribute(
+      'href',
+      '/sales/daily?date=2026-10-02'
+    );
   });
 });
