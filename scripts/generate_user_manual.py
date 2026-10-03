@@ -292,13 +292,14 @@ MANUAL_ROWS = [
         "task": "Set up sizes and colors",
         "role": "Manager",
         "steps": (
-            "1. Open Sizes & Colors (Product attributes).\n"
-            "2. Create sizes (S, M, L) and colors.\n"
-            "3. In product form, enable variants and assign size/color combinations.\n"
-            "4. Set price and stock per variant row."
+            "1. Open Sizes & colors (Sales or Inventory).\n"
+            "2. Add each size and color you will sell (name required; size code optional).\n"
+            "3. Products → Add product → check This product has size/color variants.\n"
+            "4. Pick a size and color, click Add variant, then set price and opening stock on that row.\n"
+            "5. Repeat Add variant for every combination, then save."
         ),
         "result": "POS prompts for size/color when adding variant products.",
-        "notes": "Requires product_variants feature in Module Settings.",
+        "notes": "Requires Variants (size/color) in Module Settings. Add sizes/colors before the product form so they appear in the picker.",
         "shot_file": "13-product-attributes.png",
     },
     {

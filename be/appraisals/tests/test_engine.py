@@ -3,6 +3,7 @@ from django.test import SimpleTestCase
 from appraisals.engine import (
     daily_star,
     greeting_copy,
+    increment_progress_message,
     is_four_star_month,
     monthly_average,
     monthly_bonus,
@@ -14,6 +15,7 @@ from appraisals.policy import (
     normalize_template,
     validate_template,
     PolicyError,
+    template_at_date,
     template_for_role,
     template_for_track,
 )
@@ -48,6 +50,7 @@ class AppraisalEngineTests(SimpleTestCase):
         self.assertEqual(over['tone'], 'gold')
         below = daily_star(18500, self.template)
         self.assertEqual(below['amount_to_target'], 1500)
+        self.assertEqual(below['status_label'], 'Near target')
         self.assertLess(below['progress'], 1)
 
     def test_monthly_bonus_bands(self):
@@ -107,6 +110,97 @@ class AppraisalEngineTests(SimpleTestCase):
         none = year_end_result(low, self.template)
         self.assertFalse(none['qualifies'])
         self.assertIn('stays', none['summary'].lower())
+
+        exactly_four = [4.0] * 12
+        self.assertTrue(year_end_result(exactly_four, self.template)['qualifies'])
+        below_annual = [4.0] * 7 + [3.0] * 5
+        missed_avg = year_end_result(below_annual, self.template)
+        self.assertEqual(missed_avg['four_star_months'], 7)
+        self.assertFalse(missed_avg['qualifies'])
+
+    def test_year_on_year_qualification_is_repeatable(self):
+        year_one = year_end_result([4.5] * 8 + [3.0] * 4, self.template)
+        self.assertTrue(year_one['qualifies'])
+        self.assertEqual(year_one['new_basic'], 18000)
+        year_two = year_end_result([4.1] * 12, {
+            **self.template,
+            'basic_pay': year_one['new_basic'],
+        })
+        self.assertTrue(year_two['qualifies'])
+        self.assertEqual(year_two['new_basic'], 21000)
+
+    def test_role_frameworks_override_targets_and_increments(self):
+        template = normalize_template({
+            'role_frameworks': {
+                'Sales Personnel': {'daily_target': 20000, 'year_end_increment': 3000},
+                'Field Sales': {'daily_target': 30000, 'year_end_increment': 4000},
+                'Manager': {'daily_target': 40000, 'year_end_increment': 5000},
+            },
+        })
+        field = template_for_role(template, 'Field Sales')
+        self.assertEqual(field['daily_target'], 30000)
+        self.assertEqual(field['year_end_increment'], 4000)
+        self.assertEqual(daily_star(30000, field)['stars'], 4)
+        manager = template_for_role(template, 'Manager')
+        self.assertEqual(manager['daily_target'], 40000)
+        self.assertEqual(daily_star(40000, manager)['stars'], 4)
+
+    def test_historical_template_does_not_rewrite_past_days(self):
+        from datetime import date
+
+        old = normalize_template({'daily_target': 20000, 'active_from': '2026-01-01'})
+        new = normalize_template({
+            'daily_target': 25000,
+            'role_daily_targets': {
+                'Manager': 35000,
+                'Sales Personnel': 25000,
+                'Field Sales': 20000,
+            },
+            'active_from': '2026-07-01',
+            'versions': [{
+                'id': 1,
+                'effective_from': '2026-01-01',
+                'effective_until': '2026-07-01',
+                'snapshot': {
+                    'daily_target': 20000,
+                    'role_daily_targets': old['role_daily_targets'],
+                    'daily_star_bands': old['daily_star_bands'],
+                    'role_frameworks': old['role_frameworks'],
+                },
+            }],
+        })
+        january = template_for_role(template_at_date(new, date(2026, 1, 15)), 'Sales Personnel')
+        july = template_for_role(template_at_date(new, date(2026, 7, 15)), 'Sales Personnel')
+        self.assertEqual(january['daily_target'], 20000)
+        self.assertEqual(daily_star(20000, january)['stars'], 4)
+        self.assertEqual(july['daily_target'], 25000)
+        self.assertEqual(daily_star(20000, july)['stars'], 3)
+
+    def test_increment_progress_message_only_when_supported(self):
+        self.assertEqual(
+            increment_progress_message(
+                {'four_star_months': 7, 'four_star_months_required': 8, 'annual_average': 4.1, 'qualifies': False},
+                self.template,
+            ),
+            'One more 4-Star month to qualify for your KES 3,000 annual increment.',
+        )
+        self.assertEqual(
+            increment_progress_message(
+                {'four_star_months': 3, 'four_star_months_required': 8, 'annual_average': 3.2, 'qualifies': False},
+                self.template,
+            ),
+            '',
+        )
+
+    def test_invalid_inverted_star_bands_rejected(self):
+        with self.assertRaises(PolicyError):
+            validate_template({
+                'daily_star_bands': [
+                    {'min': 0, 'stars': 1},
+                    {'min': 30000, 'stars': 4},
+                    {'min': 10000, 'stars': 5},
+                ],
+            })
 
     def test_star_tone_scale(self):
         self.assertEqual(star_tone(1), 'rose')

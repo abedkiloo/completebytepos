@@ -131,7 +131,7 @@ If you use **size/color variants** on products:
 docker exec completebytepos_backend python manage.py init_sizes_colors
 ```
 
-3. **Products → Add product** — check **This product has size/color variants**, then select sizes/colors (Ctrl/Cmd for multiple).
+3. **Products → Add product** — check **This product has size/color variants**, then pick a size and color and click **Add variant** for each combination.
 
 A fresh database has **no** sizes/colors until you add them on that page or run `init_sizes_colors`.
 

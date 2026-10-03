@@ -58,5 +58,6 @@ PLAYWRIGHT_BASE_URL=http://YOUR_SERVER_IP:3000 node scripts/capture_user_manual_
 ## Related documentation
 
 - [SETUP.md](../SETUP.md) — installation  
+- [PRODUCT_MANAGEMENT.md](../PRODUCT_MANAGEMENT.md) — categories, sizes, products, stock  
 - [POS_UX_ROLES_AND_TESTING.md](../POS_UX_ROLES_AND_TESTING.md) — roles detail  
 - [MAKER_CHECKER.md](../MAKER_CHECKER.md) — approval workflows  

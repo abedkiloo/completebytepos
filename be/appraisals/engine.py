@@ -57,6 +57,7 @@ def daily_star(amount, template: dict[str, Any]) -> dict[str, Any]:
     return {
         'sales': float(sales),
         'stars': stars,
+        'status_label': status_label(stars, template),
         'label': str(band.get('label') or ''),
         'next_stars': _float(nxt.get('stars'), stars) if nxt else stars,
         'next_min': float(money(nxt['min'])) if nxt else None,
@@ -100,6 +101,61 @@ def is_four_star_month(average, template: dict[str, Any]) -> bool:
     return float(average or 0) >= float(template.get('four_star_month_min_avg') or 4)
 
 
+def status_label(stars, template: dict[str, Any] | None = None) -> str:
+    """Human label for a star rating. Configurable via template.status_labels."""
+    labels = (template or {}).get('status_labels') or {}
+    value = float(stars or 0)
+    if value >= 5:
+        key = '5'
+    elif value >= 4.5:
+        key = '4.5'
+    elif value >= 4:
+        key = '4'
+    elif value >= 3:
+        key = '3'
+    elif value >= 2:
+        key = '2'
+    else:
+        key = '1'
+    defaults = {
+        '5': 'Exceptional',
+        '4.5': 'Target exceeded',
+        '4': 'Target achieved',
+        '3': 'Near target',
+        '2': 'Below target',
+        '1': 'Needs attention',
+    }
+    return str(labels.get(key) or defaults[key])
+
+
+def increment_progress_message(year: dict[str, Any], template: dict[str, Any]) -> str:
+    """Copy for the salary-growth card; empty when not supported by the data."""
+    increment = float(template.get('year_end_increment') or 0)
+    if increment <= 0:
+        return ''
+    needed = int(year.get('four_star_months_required') or 8)
+    have = int(year.get('four_star_months') or 0)
+    annual_needed = float(template.get('annual_avg_required') or 4)
+    annual = float(year.get('annual_average') or year.get('ytd_average') or 0)
+    if year.get('qualifies'):
+        return f'On track for the KES {int(increment):,} annual increment.'
+    remaining_months = max(0, needed - have)
+    if remaining_months == 1 and annual >= annual_needed:
+        return f'One more 4-Star month to qualify for your KES {int(increment):,} annual increment.'
+    if remaining_months > 1 and annual >= annual_needed:
+        return (
+            f'{remaining_months} more 4-Star months to qualify for your '
+            f'KES {int(increment):,} annual increment.'
+        )
+    if remaining_months <= 0 and annual < annual_needed:
+        gap = annual_needed - annual
+        return (
+            f'Hold a {annual_needed:.1f} annual average '
+            f'({gap:.2f} still to close) to qualify for the KES {int(increment):,} increment.'
+        )
+    return ''
+
+
 def year_end_result(monthly_averages: list[float], template: dict[str, Any]) -> dict[str, Any]:
     avgs = list(monthly_averages) + [0.0] * (12 - len(monthly_averages))
     avgs = avgs[:12]
@@ -119,14 +175,27 @@ def year_end_result(monthly_averages: list[float], template: dict[str, Any]) -> 
         'increment_awarded': increment,
         'basic_pay': basic,
         'new_basic': basic + increment,
-        'summary': year_end_summary(annual_avg, four_star_months, months_needed, qualifies),
+        'summary': year_end_summary(
+            annual_avg,
+            four_star_months,
+            months_needed,
+            qualifies,
+            annual_needed=annual_needed,
+        ),
     }
 
 
-def year_end_summary(annual_avg, four_star_months, months_needed, qualifies) -> str:
+def year_end_summary(
+    annual_avg,
+    four_star_months,
+    months_needed,
+    qualifies,
+    *,
+    annual_needed: float = 4.0,
+) -> str:
     if qualifies:
         return 'Gets the permanent increment. New basic applies at year-end.'
-    if annual_avg >= 4.0 and four_star_months < months_needed:
+    if annual_avg >= annual_needed and four_star_months < months_needed:
         return 'No increment. Needs consistency — more 4-Star months.'
     return 'No increment. Stays at current basic.'
 

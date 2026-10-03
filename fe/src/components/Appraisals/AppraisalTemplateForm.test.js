@@ -38,5 +38,6 @@ describe('AppraisalTemplateForm', () => {
     expect(screen.queryByLabelText('Admin')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Manager')).toBeInTheDocument();
     expect(screen.getByLabelText('Sales Personnel')).toBeInTheDocument();
+    expect(screen.getByTestId('appraisal-rules-preview')).toHaveTextContent(/Daily target/i);
   });
 });

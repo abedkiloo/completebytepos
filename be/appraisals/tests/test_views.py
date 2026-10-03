@@ -99,6 +99,11 @@ class AppraisalMeAPITests(SalesAPITestCase):
             self.client.put('/api/appraisals/policy/', {'basic_pay': 20000}, format='json').status_code,
             status.HTTP_403_FORBIDDEN,
         )
+        self.assertEqual(self.client.get('/api/appraisals/increments/').status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            self.client.post('/api/appraisals/increments/1/decision/', {'decision': 'approve'}, format='json').status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
 
     def test_admin_can_change_bands(self):
         admin = User.objects.create_superuser('appraisal_admin', 'a@test.com', 'admin123')
@@ -147,6 +152,8 @@ class AppraisalTeamAPITests(ManagerAPITestCase):
         self.assertEqual(team.status_code, status.HTTP_200_OK)
         names = {row['staff']['id'] for row in team.data['results']}
         self.assertIn(self.manager_user.id, names)
+        self.assertIn('insights', team.data)
+        self.assertIn('lines', team.data['insights'])
 
     def test_manager_daily_target_is_configurable(self):
         payload = default_template()
@@ -205,3 +212,94 @@ class AppraisalPolicyAPITests(SuperAdminAPITestCase):
         ]
         response = self.client.put('/api/appraisals/policy/', payload, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_policy_preview_and_versions(self):
+        payload = default_template()
+        payload['daily_target'] = 25000
+        payload['role_daily_targets']['Sales Personnel'] = 25000
+        payload['change_reason'] = 'Updated sales expectations'
+        payload['effective_from'] = timezone.localdate().isoformat()
+        response = self.client.put('/api/appraisals/policy/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['daily_target'], 25000)
+        self.assertIn('Sales Personnel', response.data['role_previews'])
+        self.assertEqual(response.data['role_previews']['Sales Personnel']['four_star_target'], 25000)
+        self.assertTrue(response.data['versions'])
+        self.assertEqual(response.data['versions'][-1]['snapshot']['daily_target'], 20000)
+
+
+class AppraisalIncrementAPITests(SuperAdminAPITestCase):
+    def setUp(self):
+        super().setUp()
+        _enable_appraisals()
+
+    def test_admin_can_approve_qualifying_increment(self):
+        from appraisals.models import AppraisalSalaryIncrement
+        from employees.models import Employee
+
+        sales = User.objects.create_user('inc_sales', email='inc@test.com', password='x')
+        Employee.objects.create(
+            employee_id='E-INC-1',
+            first_name='Ina',
+            last_name='Cash',
+            email='inc@test.com',
+            position='Sales',
+            hire_date=timezone.localdate(),
+            salary=Decimal('15000'),
+        )
+        row = AppraisalSalaryIncrement.objects.create(
+            user=sales,
+            year=2025,
+            role_name='Sales Personnel',
+            previous_basic=Decimal('15000'),
+            increment_amount=Decimal('3000'),
+            new_basic=Decimal('18000'),
+            qualifies=True,
+            status=AppraisalSalaryIncrement.STATUS_PENDING,
+        )
+        response = self.client.post(
+            f'/api/appraisals/increments/{row.id}/decision/',
+            {'decision': 'approve', 'reason': 'Year-end review'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['status'], 'approved')
+        row.refresh_from_db()
+        self.assertEqual(row.status, 'approved')
+        self.assertEqual(Employee.objects.get(email='inc@test.com').salary, Decimal('18000'))
+
+
+class AppraisalRecalcAPITests(SalesAPITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        _enable_appraisals()
+
+    def setUp(self):
+        super().setUp()
+        _enable_appraisals()
+        save_template(default_template())
+
+    def test_refund_recalculates_daily_stars(self):
+        from sales.models import SaleRefund
+
+        sale = _sale(self.sales_user, 24000, timezone.now())
+        me = self.client.get('/api/appraisals/me/')
+        self.assertEqual(me.data['today']['stars'], 5)
+        SaleRefund.objects.create(
+            sale=sale,
+            refund_type='partial',
+            amount=Decimal('15000'),
+            reason='customer return',
+            refunded_by=self.sales_user,
+        )
+        me = self.client.get('/api/appraisals/me/')
+        self.assertEqual(me.data['today']['sales'], 9000)
+        self.assertEqual(me.data['today']['stars'], 1)
+
+    def test_cancelled_sale_does_not_count(self):
+        _sale(self.sales_user, 50000, timezone.now(), status='cancelled')
+        me = self.client.get('/api/appraisals/me/')
+        self.assertEqual(me.data['today']['sales'], 0)
+        self.assertEqual(me.data['today']['stars'], 1)
+

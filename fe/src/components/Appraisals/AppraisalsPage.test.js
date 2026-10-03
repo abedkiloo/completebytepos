@@ -46,7 +46,7 @@ describe('AppraisalsPage', () => {
         },
       },
     });
-    appraisalsAPI.team.mockResolvedValue({ data: { results: [] } });
+    appraisalsAPI.team.mockResolvedValue({ data: { results: [], insights: { lines: [] } } });
 
     render(<AppraisalsPage />);
 
@@ -55,6 +55,7 @@ describe('AppraisalsPage', () => {
     });
     expect(screen.queryByRole('tab', { name: /My progress/i })).not.toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Team/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Template/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Performance rules/i })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /^Template$/i })).not.toBeInTheDocument();
   });
 });

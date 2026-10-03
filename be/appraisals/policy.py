@@ -6,7 +6,10 @@ import copy
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from datetime import datetime as _dt, date as _date
+
 from settings.settings_service import SettingsService
+from django.utils import timezone
 
 from .tips import DEFAULT_DAILY_TIP_PACKS, normalize_daily_tip_packs
 
@@ -61,6 +64,19 @@ DEFAULT_TEMPLATE: dict[str, Any] = {
     'bonus_policy_line': BONUS_POLICY_LINE,
     'daily_tip_packs': DEFAULT_DAILY_TIP_PACKS,
     'show_year_end_increment': False,
+    'sales_basis': 'posted_net',
+    'status_labels': {
+        '5': 'Exceptional',
+        '4.5': 'Target exceeded',
+        '4': 'Target achieved',
+        '3': 'Near target',
+        '2': 'Below target',
+        '1': 'Needs attention',
+    },
+    'role_frameworks': {},
+    'versions': [],
+    'active_from': '',
+    'last_change_reason': '',
 }
 
 
@@ -244,9 +260,200 @@ def apply_daily_target(template: dict[str, Any], target: float) -> dict[str, Any
     return data
 
 
+def _normalize_one_framework(raw: dict[str, Any], base: dict[str, Any]) -> dict[str, Any]:
+    daily = max(0.0, _float(raw.get('daily_target'), base.get('daily_target') or 20000))
+    bands = raw.get('daily_star_bands')
+    daily_bands = None
+    if isinstance(bands, list) and bands:
+        daily_bands = _sorted_bands(
+            [b for b in (_normalize_daily_band(row) for row in bands) if b]
+        )
+    bonus = raw.get('monthly_bonus_bands')
+    bonus_bands = None
+    if isinstance(bonus, list) and bonus:
+        bonus_bands = _sorted_bands(
+            [b for b in (_normalize_bonus_band(row) for row in bonus) if b]
+        )
+    days = _int(raw.get('working_days'), _int(base.get('working_days'), 26))
+    months_needed = _int(
+        raw.get('four_star_months_required'),
+        _int(base.get('four_star_months_required'), 8),
+    )
+    return {
+        'basic_pay': max(0.0, _float(raw.get('basic_pay'), base.get('basic_pay') or 0)),
+        'daily_target': daily,
+        'year_end_increment': max(
+            0.0, _float(raw.get('year_end_increment'), base.get('year_end_increment') or 0)
+        ),
+        'working_days': min(31, max(1, days)),
+        'four_star_month_min_avg': max(
+            0.0,
+            _float(raw.get('four_star_month_min_avg'), base.get('four_star_month_min_avg') or 4),
+        ),
+        'four_star_months_required': min(12, max(1, months_needed)),
+        'annual_avg_required': max(
+            0.0,
+            _float(raw.get('annual_avg_required'), base.get('annual_avg_required') or 4),
+        ),
+        'daily_star_bands': daily_bands,
+        'monthly_bonus_bands': bonus_bands,
+    }
+
+
+def _normalize_role_frameworks(raw: Any, base: dict[str, Any]) -> dict[str, Any]:
+    incoming = raw.get('role_frameworks') if isinstance(raw, dict) else None
+    frameworks: dict[str, Any] = {}
+    if isinstance(incoming, dict):
+        for name, cfg in incoming.items():
+            key = str(name).strip()
+            if not key or is_skipped_appraisal_role(key) or not isinstance(cfg, dict):
+                continue
+            frameworks[key] = _normalize_one_framework(cfg, base)
+    for name, target in (base.get('role_daily_targets') or {}).items():
+        if is_skipped_appraisal_role(name):
+            continue
+        frameworks.setdefault(
+            name,
+            _normalize_one_framework({'daily_target': target}, base),
+        )
+    return dict(sorted(frameworks.items(), key=lambda item: item[0].lower()))
+
+
+SCORING_KEYS = (
+    'basic_pay',
+    'daily_target',
+    'manager_daily_target',
+    'role_daily_targets',
+    'role_frameworks',
+    'year_end_increment',
+    'working_days',
+    'four_star_month_min_avg',
+    'four_star_months_required',
+    'annual_avg_required',
+    'daily_star_bands',
+    'monthly_bonus_bands',
+    'sales_basis',
+    'status_labels',
+)
+
+
+def scoring_snapshot(data: dict[str, Any]) -> dict[str, Any]:
+    return {key: copy.deepcopy(data.get(key)) for key in SCORING_KEYS}
+
+
+def _parse_iso_date(value) -> Any:
+    raw = str(value or '')[:10]
+    if len(raw) != 10:
+        return None
+    try:
+        return _dt.strptime(raw, '%Y-%m-%d').date()
+    except ValueError:
+        return None
+
+
+def _normalize_versions(raw: Any) -> list[dict[str, Any]]:
+    rows = raw.get('versions') if isinstance(raw, dict) else None
+    if not isinstance(rows, list):
+        return []
+    versions = []
+    for row in rows[-50:]:
+        if not isinstance(row, dict):
+            continue
+        snapshot = row.get('snapshot')
+        versions.append({
+            'id': _int(row.get('id'), len(versions) + 1),
+            'effective_from': str(row.get('effective_from') or '')[:10],
+            'effective_until': str(row.get('effective_until') or '')[:10] or None,
+            'saved_at': str(row.get('saved_at') or ''),
+            'saved_by': str(row.get('saved_by') or ''),
+            'reason': str(row.get('reason') or '')[:500],
+            'role_daily_targets': row.get('role_daily_targets')
+            if isinstance(row.get('role_daily_targets'), dict)
+            else {},
+            'role_frameworks': row.get('role_frameworks')
+            if isinstance(row.get('role_frameworks'), dict)
+            else {},
+            'daily_target': _float(row.get('daily_target'), 0),
+            'year_end_increment': _float(row.get('year_end_increment'), 0),
+            'snapshot': snapshot if isinstance(snapshot, dict) else scoring_snapshot(row),
+        })
+    return versions
+
+
+def template_at_date(template: dict[str, Any] | None, on_date) -> dict[str, Any]:
+    """Return the scoring rules that were in force on on_date."""
+    data = copy.deepcopy(template or load_template())
+    if on_date is None:
+        return data
+    if isinstance(on_date, _dt):
+        on_date = on_date.date()
+    elif not isinstance(on_date, _date):
+        return data
+    active_from = _parse_iso_date(data.get('active_from'))
+    if active_from is None or on_date >= active_from:
+        return data
+    for row in reversed(list(data.get('versions') or [])):
+        start = _parse_iso_date(row.get('effective_from'))
+        until = _parse_iso_date(row.get('effective_until'))
+        if start and on_date < start:
+            continue
+        if until and on_date >= until:
+            continue
+        snapshot = row.get('snapshot')
+        if not isinstance(snapshot, dict):
+            continue
+        merged = copy.deepcopy(data)
+        for key, value in snapshot.items():
+            merged[key] = copy.deepcopy(value)
+        return merged
+    return data
+
+
+def preview_for_role(template: dict[str, Any], role_name: str) -> dict[str, Any]:
+    applied = template_for_role(template, role_name)
+    bands = applied.get('daily_star_bands') or []
+    four = next((b for b in bands if abs(_float(b.get('stars'), 0) - 4) < 0.01), None)
+    five = next((b for b in bands if abs(_float(b.get('stars'), 0) - 5) < 0.01), None)
+    return {
+        'role': role_name,
+        'daily_target': applied.get('daily_target'),
+        'four_star_target': _float((four or {}).get('min'), applied.get('daily_target')),
+        'five_star_target': _float((five or {}).get('min'), 0) or None,
+        'basic_pay': applied.get('basic_pay'),
+        'year_end_increment': applied.get('year_end_increment'),
+        'working_days': applied.get('working_days'),
+        'four_star_month_min_avg': applied.get('four_star_month_min_avg'),
+        'four_star_months_required': applied.get('four_star_months_required'),
+        'annual_avg_required': applied.get('annual_avg_required'),
+        'sales_basis': applied.get('sales_basis') or 'posted_net',
+    }
+
+
 def template_for_role(template: dict[str, Any] | None, role_name: str) -> dict[str, Any]:
     data = copy.deepcopy(template or load_template())
-    return apply_daily_target(data, resolve_role_daily_target(data, role_name))
+    name = (role_name or '').strip()
+    if is_skipped_appraisal_role(name):
+        return apply_daily_target(data, 0)
+    frameworks = data.get('role_frameworks') or {}
+    framework = frameworks.get(name)
+    if isinstance(framework, dict):
+        for key in (
+            'basic_pay',
+            'year_end_increment',
+            'working_days',
+            'four_star_month_min_avg',
+            'four_star_months_required',
+            'annual_avg_required',
+        ):
+            if key in framework and framework[key] is not None:
+                data[key] = framework[key]
+        if framework.get('monthly_bonus_bands'):
+            data['monthly_bonus_bands'] = copy.deepcopy(framework['monthly_bonus_bands'])
+        if framework.get('daily_star_bands'):
+            data['daily_star_bands'] = copy.deepcopy(framework['daily_star_bands'])
+        target = _float(framework.get('daily_target'), resolve_role_daily_target(data, name))
+        return apply_daily_target(data, target)
+    return apply_daily_target(data, resolve_role_daily_target(data, name))
 
 
 def template_for_track(template: dict[str, Any] | None = None, *, manager: bool) -> dict[str, Any]:
@@ -292,6 +499,15 @@ def normalize_template(raw: Any) -> dict[str, Any]:
         data['bonus_policy_line'] = str(raw.get('bonus_policy_line') or data['bonus_policy_line'])
     if 'show_year_end_increment' in raw:
         data['show_year_end_increment'] = bool(raw.get('show_year_end_increment'))
+    if 'sales_basis' in raw:
+        basis = str(raw.get('sales_basis') or 'posted_net').strip()
+        data['sales_basis'] = basis if basis else 'posted_net'
+    labels = raw.get('status_labels')
+    if isinstance(labels, dict) and labels:
+        merged = dict(data['status_labels'])
+        for key, value in labels.items():
+            merged[str(key)] = str(value or '')
+        data['status_labels'] = merged
 
     data['daily_tip_packs'] = normalize_daily_tip_packs(raw)
 
@@ -320,22 +536,69 @@ def normalize_template(raw: Any) -> dict[str, Any]:
         data['role_daily_targets'].get('Manager', data['manager_daily_target']),
         data['manager_daily_target'],
     )
+    data['role_frameworks'] = _normalize_role_frameworks(raw, data)
+    for name, framework in data['role_frameworks'].items():
+        data['role_daily_targets'][name] = _float(
+            framework.get('daily_target'),
+            data['role_daily_targets'].get(name, data['daily_target']),
+        )
+    data['versions'] = _normalize_versions(raw)
+    if raw.get('change_reason') is not None:
+        data['change_reason'] = str(raw.get('change_reason') or '')[:500]
+    if raw.get('effective_from'):
+        data['effective_from'] = str(raw.get('effective_from'))[:10]
+    if raw.get('active_from'):
+        data['active_from'] = str(raw.get('active_from'))[:10]
+    if raw.get('last_change_reason') is not None:
+        data['last_change_reason'] = str(raw.get('last_change_reason') or '')[:500]
 
     return data
 
 
+def _validate_star_bands(bands: list[dict[str, Any]], *, label: str = 'Daily star') -> None:
+    if not bands:
+        raise PolicyError(f'{label} bands cannot be empty.')
+    mins = [b['min'] for b in bands]
+    if len(mins) != len(set(mins)):
+        raise PolicyError(f'{label} band minimums must be unique.')
+    star_order = sorted(bands, key=lambda b: _float(b.get('stars'), 0))
+    for previous, current in zip(star_order, star_order[1:]):
+        if _float(current.get('min'), 0) < _float(previous.get('min'), 0):
+            raise PolicyError(
+                f'{label}: higher star bands cannot start below lower star bands.'
+            )
+
+
+def _validate_bonus_bands(bands: list[dict[str, Any]], *, label: str = 'Monthly bonus') -> None:
+    if not bands:
+        raise PolicyError(f'{label} bands cannot be empty.')
+    mins = [b['min'] for b in bands]
+    if len(mins) != len(set(mins)):
+        raise PolicyError(f'{label} band minimums must be unique.')
+    for band in bands:
+        if _float(band.get('bonus'), 0) < 0:
+            raise PolicyError(f'{label} amounts cannot be negative.')
+
+
 def validate_template(template: dict[str, Any]) -> dict[str, Any]:
     data = normalize_template(template)
-    if not data['daily_star_bands']:
-        raise PolicyError('Daily star bands cannot be empty.')
-    if not data['monthly_bonus_bands']:
-        raise PolicyError('Monthly bonus bands cannot be empty.')
-    mins = [b['min'] for b in data['daily_star_bands']]
-    if len(mins) != len(set(mins)):
-        raise PolicyError('Daily star band minimums must be unique.')
-    bonus_mins = [b['min'] for b in data['monthly_bonus_bands']]
-    if len(bonus_mins) != len(set(bonus_mins)):
-        raise PolicyError('Monthly bonus band minimums must be unique.')
+    _validate_star_bands(data['daily_star_bands'])
+    _validate_bonus_bands(data['monthly_bonus_bands'])
+    if data['daily_target'] <= 0:
+        raise PolicyError('Daily target must be greater than zero.')
+    if data['year_end_increment'] < 0:
+        raise PolicyError('Annual increment cannot be negative.')
+    if data['four_star_months_required'] > 12:
+        raise PolicyError('Required 4-star months cannot exceed 12.')
+    for name, framework in (data.get('role_frameworks') or {}).items():
+        if _float(framework.get('daily_target'), 0) <= 0:
+            raise PolicyError(f'{name}: daily target must be greater than zero.')
+        if _float(framework.get('year_end_increment'), 0) < 0:
+            raise PolicyError(f'{name}: annual increment cannot be negative.')
+        if framework.get('daily_star_bands'):
+            _validate_star_bands(framework['daily_star_bands'], label=f'{name} daily star')
+        if framework.get('monthly_bonus_bands'):
+            _validate_bonus_bands(framework['monthly_bonus_bands'], label=f'{name} monthly bonus')
     return data
 
 
@@ -352,8 +615,37 @@ def load_template() -> dict[str, Any]:
     return normalize_template(stored)
 
 
-def save_template(raw: dict[str, Any], *, user=None) -> dict[str, Any]:
+def save_template(raw: dict[str, Any], *, user=None, request=None) -> dict[str, Any]:
+    previous = load_template()
     data = validate_template(raw)
+    reason = str(raw.get('change_reason') or data.pop('change_reason', '') or '')[:500]
+    effective_from = str(raw.get('effective_from') or data.pop('effective_from', '') or '')[:10]
+    if not effective_from:
+        effective_from = timezone.localdate().isoformat()
+    incoming_from = _parse_iso_date(effective_from)
+    previous_from = _parse_iso_date(previous.get('active_from'))
+    if incoming_from and previous_from and incoming_from < previous_from:
+        raise PolicyError('Effective date cannot precede the previous configuration.')
+    versions = list(previous.get('versions') or [])
+    if scoring_snapshot(previous) != scoring_snapshot(data):
+        versions.append({
+            'id': (versions[-1]['id'] + 1) if versions else 1,
+            'effective_from': previous.get('active_from') or '',
+            'effective_until': effective_from,
+            'saved_at': timezone.now().isoformat(),
+            'saved_by': getattr(user, 'username', '') or '',
+            'reason': previous.get('last_change_reason') or reason,
+            'role_daily_targets': copy.deepcopy(previous.get('role_daily_targets') or {}),
+            'role_frameworks': copy.deepcopy(previous.get('role_frameworks') or {}),
+            'daily_target': previous.get('daily_target'),
+            'year_end_increment': previous.get('year_end_increment'),
+            'snapshot': scoring_snapshot(previous),
+        })
+    data['versions'] = versions[-50:]
+    data['active_from'] = effective_from
+    data['last_change_reason'] = reason
+    data.pop('change_reason', None)
+    data.pop('effective_from', None)
     SettingsService.set(MODULE, TEMPLATE_KEY, data, user=user)
     flags = {}
     if 'greet_when_no_sticky_notes' in raw:
@@ -362,7 +654,58 @@ def save_template(raw: dict[str, Any], *, user=None) -> dict[str, Any]:
         flags['show_on_home'] = bool(raw['show_on_home'])
     if flags:
         SettingsService.set_many(MODULE, flags, user=user)
+    try:
+        from accounts.models import AuditLog
+        from utils.audit import log_audit
+
+        log_audit(
+            request,
+            AuditLog.ACTION_UPDATE,
+            None,
+            module='appraisals',
+            object_repr='Performance rules',
+            changes=_policy_audit_changes(previous, data, reason, effective_from, user),
+        )
+    except Exception:
+        pass
     return public_policy(data)
+
+
+def _policy_audit_changes(previous, data, reason, effective_from, user) -> dict[str, Any]:
+    fields = []
+    for key in (
+        'daily_target',
+        'year_end_increment',
+        'working_days',
+        'four_star_month_min_avg',
+        'four_star_months_required',
+        'annual_avg_required',
+        'basic_pay',
+    ):
+        old = previous.get(key)
+        new = data.get(key)
+        if old != new:
+            fields.append({'field': key, 'previous': old, 'new': new})
+    old_targets = previous.get('role_daily_targets') or {}
+    new_targets = data.get('role_daily_targets') or {}
+    for role in sorted(set(old_targets) | set(new_targets)):
+        if old_targets.get(role) != new_targets.get(role):
+            fields.append({
+                'field': f'role_daily_targets.{role}',
+                'previous': old_targets.get(role),
+                'new': new_targets.get(role),
+            })
+    return {
+        'admin': getattr(user, 'get_full_name', lambda: '')() or getattr(user, 'username', '') or '',
+        'reason': reason,
+        'effective_from': effective_from,
+        'fields': fields,
+        'previous_daily_target': previous.get('daily_target'),
+        'daily_target': data.get('daily_target'),
+        'previous_year_end_increment': previous.get('year_end_increment'),
+        'year_end_increment': data.get('year_end_increment'),
+        'role_daily_targets': data.get('role_daily_targets'),
+    }
 
 
 def public_policy(template: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -376,6 +719,10 @@ def public_policy(template: dict[str, Any] | None = None) -> dict[str, Any]:
         data['role_daily_targets'].get('Manager', data.get('manager_daily_target')),
         35000,
     )
+    data['role_frameworks'] = _normalize_role_frameworks(data, data)
+    data['role_previews'] = {
+        name: preview_for_role(data, name) for name in data['role_daily_targets']
+    }
     data['greet_when_no_sticky_notes'] = greet_when_no_sticky_notes()
     data['show_on_home'] = show_on_home()
     return data

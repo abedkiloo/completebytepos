@@ -324,6 +324,8 @@ export const appraisalsAPI = {
   savePolicy: (data) => api.put('/appraisals/policy/', data),
   me: (params) => api.get('/appraisals/me/', { params }),
   team: (params) => api.get('/appraisals/team/', { params }),
+  increments: (params) => api.get('/appraisals/increments/', { params }),
+  decideIncrement: (id, data) => api.post(`/appraisals/increments/${id}/decision/`, data),
 };
 
 export const variantsAPI = {
