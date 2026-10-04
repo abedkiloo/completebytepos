@@ -192,12 +192,18 @@ def _apply_common_filters(qs, *, date_field: str, filters: dict | None, view_all
 
 class DailyNoteService:
     def build_queryset(self, *, user, view_all: bool, filters: dict | None = None):
+        from daily_notes.approval_notice import complete_stale_approval_notices
+
+        complete_stale_approval_notices(user=None if view_all else user)
         qs = _scoped_queryset(DailyNote, user=user, view_all=view_all)
         qs = _apply_common_filters(qs, date_field='note_date', filters=filters, view_all=view_all)
         return qs.order_by('-is_sticky', 'is_done', '-note_date', '-created_at')
 
     def blocking_for_user(self, *, user, limit: int = 50):
         """Open notes assigned to this user (sticky first) — shown on login."""
+        from daily_notes.approval_notice import complete_stale_approval_notices
+
+        complete_stale_approval_notices(user=user)
         qs = (
             DailyNote.objects.filter(
                 is_done=False,
@@ -224,7 +230,7 @@ class DailyTaskService:
     def build_queryset(self, *, user, view_all: bool, filters: dict | None = None):
         from daily_notes.approval_notice import complete_stale_sale_notice_tasks
 
-        complete_stale_sale_notice_tasks(user=user)
+        complete_stale_sale_notice_tasks(user=None if view_all else user)
         qs = _scoped_task_queryset(user=user, view_all=view_all)
         qs = _apply_common_filters(qs, date_field='task_date', filters=filters, view_all=view_all)
         return qs.order_by('is_done', '-created_at')

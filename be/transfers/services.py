@@ -82,6 +82,9 @@ class MoneyTransferService(BaseService):
         transfer.status = 'completed'
         transfer.approved_by = approved_by
         transfer.save()
+        from daily_notes.approval_notice import SOURCE_TRANSFER, complete_rejection_notices
+
+        complete_rejection_notices(source=SOURCE_TRANSFER, record_id=transfer.id)
         
         return transfer
 
@@ -127,6 +130,9 @@ class MoneyTransferService(BaseService):
             raise ValidationError('You can only resubmit your own transfers.')
         transfer.status = 'pending'
         transfer.save(update_fields=['status', 'updated_at'])
+        from daily_notes.approval_notice import SOURCE_TRANSFER, complete_rejection_notices
+
+        complete_rejection_notices(source=SOURCE_TRANSFER, record_id=transfer.id)
         return transfer
     
     def get_transfer_statistics(self) -> Dict[str, Any]:

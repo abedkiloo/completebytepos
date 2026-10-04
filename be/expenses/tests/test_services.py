@@ -27,7 +27,7 @@ class ExpenseServiceTestCase(TestCase):
             category=self.cat,
             description='Office rent',
             amount=Decimal('1000.00'),
-            expense_date=timezone.now().date(),
+            expense_date=timezone.localdate(),
             status='pending',
             created_by=self.user,
         )
@@ -42,7 +42,7 @@ class ExpenseServiceTestCase(TestCase):
             category=self.cat,
             description='Office rent',
             amount=Decimal('1000.00'),
-            expense_date=timezone.now().date(),
+            expense_date=timezone.localdate(),
             status='pending',
             created_by=self.user,
         )
@@ -62,7 +62,7 @@ class ExpenseServiceTestCase(TestCase):
             category=self.cat,
             description='Fuel',
             amount=Decimal('80.00'),
-            expense_date=timezone.now().date(),
+            expense_date=timezone.localdate(),
             status='pending',
             created_by=self.user,
         )
@@ -87,7 +87,7 @@ class ExpenseServiceTestCase(TestCase):
             category=self.cat,
             description='Fuel',
             amount=Decimal('80.00'),
-            expense_date=timezone.now().date(),
+            expense_date=timezone.localdate(),
             status='pending',
             created_by=self.user,
         )
@@ -104,7 +104,7 @@ class ExpenseServiceTestCase(TestCase):
             category=self.cat,
             description='Paid',
             amount=Decimal('50.00'),
-            expense_date=timezone.now().date(),
+            expense_date=timezone.localdate(),
             status='approved',
             created_by=self.user,
         )
@@ -116,7 +116,7 @@ class ExpenseServiceTestCase(TestCase):
             category=self.cat,
             description='A',
             amount=Decimal('200.00'),
-            expense_date=timezone.now().date(),
+            expense_date=timezone.localdate(),
             status='approved',
             created_by=self.user,
         )
@@ -136,7 +136,7 @@ class ExpenseServiceTestCase(TestCase):
             category=self.cat,
             description='Pending bill',
             amount=Decimal('75.00'),
-            expense_date=timezone.now().date(),
+            expense_date=timezone.localdate(),
             status='pending',
             payment_method='cash',
             created_by=self.user,
@@ -161,7 +161,7 @@ class ExpenseServiceTestCase(TestCase):
         tenant, branch_a, branch_b = ManagerAPITestCase.create_tenant_with_branches(
             self.user, code='EXP'
         )
-        today = timezone.now().date()
+        today = timezone.localdate()
         Expense.objects.create(
             category=self.cat,
             description='Branch spend',
@@ -198,7 +198,7 @@ class ExpenseServiceTestCase(TestCase):
             category=self.cat,
             description='Mpesa pay',
             amount=Decimal('30.00'),
-            expense_date=timezone.now().date(),
+            expense_date=timezone.localdate(),
             status='approved',
             payment_method='mpesa',
             created_by=self.user,
@@ -218,7 +218,7 @@ class ExpenseServiceTestCase(TestCase):
             category=self.cat,
             description='Session branch',
             amount=Decimal('15.00'),
-            expense_date=timezone.now().date(),
+            expense_date=timezone.localdate(),
             status='approved',
             branch=branch_a,
             created_by=self.user,
@@ -241,7 +241,7 @@ class ExpenseServiceTestCase(TestCase):
             category=self.cat,
             description='Journal fail',
             amount=Decimal('10.00'),
-            expense_date=timezone.now().date(),
+            expense_date=timezone.localdate(),
             status='pending',
             created_by=self.user,
         )
@@ -260,7 +260,7 @@ class ExpenseServiceTestCase(TestCase):
         tenant, branch_a, _ = ManagerAPITestCase.create_tenant_with_branches(
             self.user, code='STX'
         )
-        today = timezone.now().date()
+        today = timezone.localdate()
         Expense.objects.create(
             category=self.cat,
             description='Scoped',
@@ -282,7 +282,7 @@ class ExpenseServiceTestCase(TestCase):
             category=self.cat,
             description='Waiting',
             amount=Decimal('999.00'),
-            expense_date=timezone.now().date(),
+            expense_date=timezone.localdate(),
             status='pending',
             created_by=self.user,
         )
@@ -298,7 +298,7 @@ class ExpenseServiceTestCase(TestCase):
             category=self.cat,
             description='Wrong vendor',
             amount=Decimal('75.00'),
-            expense_date=timezone.now().date(),
+            expense_date=timezone.localdate(),
             status='pending',
             created_by=self.user,
         )
@@ -316,7 +316,7 @@ class ExpenseServiceTestCase(TestCase):
             category=self.cat,
             description='Draft',
             amount=Decimal('10.00'),
-            expense_date=timezone.now().date(),
+            expense_date=timezone.localdate(),
             status='pending',
             created_by=self.user,
         )

@@ -535,6 +535,9 @@ def cancel_queued_sale(sale: Sale) -> Sale:
         return sale
     sale.status = 'cancelled'
     sale.save(update_fields=['status', 'updated_at'])
+    from daily_notes.approval_notice import SOURCE_SALE_COMPLETE, complete_manager_queue_notes
+
+    complete_manager_queue_notes(source=SOURCE_SALE_COMPLETE, record_id=sale.pk)
     return sale
 
 

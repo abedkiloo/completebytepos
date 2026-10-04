@@ -146,11 +146,14 @@ def resubmit_sale_backfill(request, change: PendingChange, validated_data: Dict[
     from approvals.service import _audit_pending
 
     _audit_pending(request, change, 'pending_resubmit')
-    from daily_notes.approval_notice import complete_sale_return_notes, notify_managers_for_change
+    from daily_notes.approval_notice import (
+        complete_requester_notices_for_change,
+        notify_managers_for_change,
+    )
 
     notify_managers_for_change(
         author=getattr(request, 'user', None),
         change=change,
     )
-    complete_sale_return_notes(record_id=change.id)
+    complete_requester_notices_for_change(change)
     return change

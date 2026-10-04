@@ -27,7 +27,7 @@ class IncomeServiceTestCase(TestCase):
             category=self.cat,
             description='Consulting',
             amount=Decimal('500.00'),
-            income_date=timezone.now().date(),
+            income_date=timezone.localdate(),
             status='pending',
             created_by=self.user,
         )
@@ -41,7 +41,7 @@ class IncomeServiceTestCase(TestCase):
             category=self.cat,
             description='Consulting',
             amount=Decimal('500.00'),
-            income_date=timezone.now().date(),
+            income_date=timezone.localdate(),
             status='pending',
             created_by=self.user,
         )
@@ -59,7 +59,7 @@ class IncomeServiceTestCase(TestCase):
             category=self.cat,
             description='Fee',
             amount=Decimal('10.00'),
-            income_date=timezone.now().date(),
+            income_date=timezone.localdate(),
             status='approved',
             created_by=self.user,
         )
@@ -72,7 +72,7 @@ class IncomeServiceTestCase(TestCase):
             category=self.cat,
             description='Fee',
             amount=Decimal('10.00'),
-            income_date=timezone.now().date(),
+            income_date=timezone.localdate(),
             status='pending',
             created_by=self.user,
         )
@@ -92,7 +92,7 @@ class IncomeServiceTestCase(TestCase):
             category=self.cat,
             description='Fee',
             amount=Decimal('10.00'),
-            income_date=timezone.now().date(),
+            income_date=timezone.localdate(),
             status='pending',
             created_by=self.user,
         )
@@ -106,7 +106,7 @@ class IncomeServiceTestCase(TestCase):
             category=self.cat,
             description='Gone',
             amount=Decimal('1.00'),
-            income_date=timezone.now().date(),
+            income_date=timezone.localdate(),
             status='cancelled',
             created_by=self.user,
         )
@@ -121,7 +121,7 @@ class IncomeServiceTestCase(TestCase):
             category=self.cat,
             description='Fee',
             amount=Decimal('90.00'),
-            income_date=timezone.now().date(),
+            income_date=timezone.localdate(),
             status='pending',
             created_by=self.user,
         )
@@ -138,7 +138,7 @@ class IncomeServiceTestCase(TestCase):
             category=self.cat,
             description='Done',
             amount=Decimal('100.00'),
-            income_date=timezone.now().date(),
+            income_date=timezone.localdate(),
             status='approved',
             created_by=self.user,
         )
@@ -150,7 +150,7 @@ class IncomeServiceTestCase(TestCase):
             category=self.cat,
             description='Fee',
             amount=Decimal('300.00'),
-            income_date=timezone.now().date(),
+            income_date=timezone.localdate(),
             status='approved',
             created_by=self.user,
         )
@@ -162,7 +162,7 @@ class IncomeServiceTestCase(TestCase):
             category=self.cat,
             description='Any',
             amount=Decimal('1.00'),
-            income_date=timezone.now().date(),
+            income_date=timezone.localdate(),
             status='approved',
             created_by=self.user,
         )
@@ -175,7 +175,7 @@ class IncomeServiceTestCase(TestCase):
             category=self.cat,
             description='Pending fee',
             amount=Decimal('120.00'),
-            income_date=timezone.now().date(),
+            income_date=timezone.localdate(),
             status='pending',
             payment_method='mpesa',
             created_by=self.user,
@@ -199,7 +199,7 @@ class IncomeServiceTestCase(TestCase):
         tenant, branch_a, branch_b = ManagerAPITestCase.create_tenant_with_branches(
             self.user, code='INC'
         )
-        today = timezone.now().date()
+        today = timezone.localdate()
         Income.objects.create(
             category=self.cat,
             description='Branch income',
@@ -237,7 +237,7 @@ class IncomeServiceTestCase(TestCase):
             category=self.cat,
             description='Session income',
             amount=Decimal('25.00'),
-            income_date=timezone.now().date(),
+            income_date=timezone.localdate(),
             status='approved',
             branch=branch_a,
             created_by=self.user,
@@ -260,7 +260,7 @@ class IncomeServiceTestCase(TestCase):
             category=self.cat,
             description='Mpesa',
             amount=Decimal('50.00'),
-            income_date=timezone.now().date(),
+            income_date=timezone.localdate(),
             status='approved',
             payment_method='mpesa',
             created_by=self.user,
@@ -273,7 +273,7 @@ class IncomeServiceTestCase(TestCase):
             category=self.cat,
             description='Journal fail',
             amount=Decimal('10.00'),
-            income_date=timezone.now().date(),
+            income_date=timezone.localdate(),
             status='pending',
             created_by=self.user,
         )
@@ -292,7 +292,7 @@ class IncomeServiceTestCase(TestCase):
         tenant, branch_a, _ = ManagerAPITestCase.create_tenant_with_branches(
             self.user, code='INS'
         )
-        today = timezone.now().date()
+        today = timezone.localdate()
         Income.objects.create(
             category=self.cat,
             description='Scoped income',
@@ -317,7 +317,7 @@ class IncomeServiceTestCase(TestCase):
             category=self.cat,
             description='Wrong payer',
             amount=Decimal('40.00'),
-            income_date=timezone.now().date(),
+            income_date=timezone.localdate(),
             status='pending',
             created_by=self.user,
         )

@@ -296,11 +296,14 @@ def approve_change(
 def _apply_single_change(change: PendingChange, checker, request) -> PendingChange:
     from approvals.apply import apply_pending_change
 
+    from daily_notes.approval_notice import complete_requester_notices_for_change
+
     change.checked_by = checker
     apply_pending_change(change)
     change.status = PendingChange.STATUS_APPROVED
     change.checked_at = timezone.now()
     change.save(update_fields=['status', 'checked_by', 'checked_at'])
+    complete_requester_notices_for_change(change)
     if request:
         _audit_pending(
             request,
@@ -438,6 +441,9 @@ def resubmit_change(
         item.save(update_fields=fields)
         if request:
             _audit_pending(request, item, 'pending_resubmit')
+        from daily_notes.approval_notice import complete_requester_notices_for_change
+
+        complete_requester_notices_for_change(item)
 
     if change.batch_id:
         batch = PendingChange.objects.filter(

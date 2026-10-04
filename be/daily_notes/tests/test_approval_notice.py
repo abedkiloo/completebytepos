@@ -202,7 +202,9 @@ class ApprovalNoticeTests(TestCase):
             record_id=12,
             sale=type('S', (), {'pk': None, 'customer_name': '', 'customer': NamedCustomer()})(),
         )
-        self.assertIn('ref: reject/sale/12/', content)
+        self.assertIn('ref: reject/backfill/12/', content)
+        self.assertNotIn('ref: reject/sale/', content)
+        self.assertTrue(is_sale_return_notice_text(content))
         title, content = build_rejection_notice(
             action_type='sale_complete',
             entity_repr='',

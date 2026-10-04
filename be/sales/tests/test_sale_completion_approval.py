@@ -43,6 +43,34 @@ from sales.sale_completion_approval import (
 from utils.tests.api_test_base import ManagerAPITestCase, SalesAPITestCase
 
 
+class ResubmittedPaymentTests(TestCase):
+    def test_partial_payment_is_kept_on_resubmit(self):
+        cashier = User.objects.create_user('partial_till', password='x')
+        sale = Sale.objects.create(
+            sale_number='S-PARTIAL-RESUB',
+            status='holding',
+            cashier=cashier,
+            subtotal=Decimal('300'),
+            total=Decimal('300'),
+            payment_method='cash',
+            amount_paid=Decimal('0'),
+        )
+        change = PendingChange.objects.create(
+            action_type=ACTION_SALE_COMPLETE,
+            entity_type='sales.Sale',
+            entity_id=str(sale.pk),
+            reason=QUEUE_REASON,
+            status=PendingChange.STATUS_REJECTED,
+            made_by=cashier,
+            original_values={'status': 'pending_approval', 'total': '200'},
+            apply_payload={'amount_paid': '50', 'allow_partial': True},
+        )
+        restore_queued_sale_for_approval(sale, change)
+        change.refresh_from_db()
+        self.assertEqual(change.apply_payload['amount_paid'], '50')
+        self.assertTrue(change.apply_payload['allow_partial'])
+
+
 class SaleCompletionHelperTests(TestCase):
     def test_user_without_profile_completes_immediately(self):
         user = User.objects.create_user('bare_till', password='x')
@@ -707,6 +735,105 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
         self.assertEqual(change.status, PendingChange.STATUS_PENDING)
         sticky.refresh_from_db()
         self.assertTrue(sticky.is_done)
+
+    def _queue_card(self, sale_id):
+        return DailyNote.objects.get(
+            assigned_to=self.manager_user,
+            content__contains=f'ref: sale_complete/{sale_id}/',
+        )
+
+    def test_approving_from_approvals_page_clears_daily_notes(self):
+        created = self.client.post('/api/sales/', self._sale_payload(), format='json')
+        sale_id = created.data['id']
+        self.assertEqual(self._queue_card(sale_id).board_column, 'todo')
+        change = pending_sale_complete_change(Sale.objects.get(pk=sale_id))
+        approve = self._admin_client().post(
+            f'/api/approvals/pending-changes/{change.id}/approve/', {}, format='json',
+        )
+        self.assertEqual(approve.status_code, status.HTTP_200_OK, approve.data)
+        self.assertEqual(self._queue_card(sale_id).board_column, 'past')
+        approved_note = DailyNote.objects.get(
+            author=self.sales_user, title__contains='was approved',
+        )
+        self.assertEqual(approved_note.board_column, 'past')
+        manager_board = self._manager_client().get('/api/daily-notes/notes/', {'status': 'open'})
+        open_ids = [n['id'] for n in manager_board.data.get('results', manager_board.data)]
+        self.assertNotIn(self._queue_card(sale_id).id, open_ids)
+
+    def test_return_fix_resubmit_approve_clears_every_card(self):
+        created = self.client.post('/api/sales/', self._sale_payload(), format='json')
+        sale_id = created.data['id']
+        self._manager_client().post(
+            f'/api/sales/{sale_id}/reject-complete/',
+            {'rejection_reason': 'Wrong quantity'},
+            format='json',
+        )
+        self.assertEqual(self._queue_card(sale_id).board_column, 'past')
+        fingerprint = f'ref: reject/sale/{sale_id}/'
+        self.assertTrue(
+            DailyNote.objects.filter(
+                assigned_to=self.sales_user, is_sticky=True, is_done=False,
+                content__contains=fingerprint,
+            ).exists()
+        )
+        self.assertTrue(
+            DailyTask.objects.filter(
+                assigned_to=self.sales_user, is_done=False, description__contains=fingerprint,
+            ).exists()
+        )
+
+        self.client.post(
+            '/api/sales/holding/',
+            {
+                'holding_id': sale_id,
+                'items': [{'product_id': self.product.id, 'quantity': '2', 'unit_price': '100.00'}],
+                'client_channel': 'web',
+            },
+            format='json',
+        )
+        change = PendingChange.objects.get(entity_type='sales.Sale', entity_id=str(sale_id))
+        self.client.post(
+            f'/api/approvals/pending-changes/{change.id}/resubmit/', {}, format='json',
+        )
+        self.assertFalse(
+            DailyNote.objects.filter(content__contains=fingerprint, is_done=False).exists()
+        )
+        self.assertFalse(
+            DailyTask.objects.filter(description__contains=fingerprint, is_done=False).exists()
+        )
+        self.assertEqual(self._queue_card(sale_id).board_column, 'todo')
+
+        self._manager_client().post(f'/api/sales/{sale_id}/complete/', {}, format='json')
+        self.assertEqual(self._queue_card(sale_id).board_column, 'past')
+        self.assertFalse(
+            DailyNote.objects.filter(assigned_to=self.sales_user, is_done=False).exists()
+        )
+        self.assertFalse(
+            DailyTask.objects.filter(assigned_to=self.sales_user, is_done=False).exists()
+        )
+
+    def test_cancelling_queued_sale_clears_manager_card(self):
+        created = self.client.post('/api/sales/', self._sale_payload(), format='json')
+        sale = Sale.objects.get(pk=created.data['id'])
+        cancel_queued_sale(sale)
+        self.assertEqual(self._queue_card(sale.pk).board_column, 'past')
+
+    def test_cancelling_returned_sale_clears_salesperson_note(self):
+        from sales.services import SaleService
+
+        created = self.client.post('/api/sales/', self._sale_payload(), format='json')
+        sale_id = created.data['id']
+        self._manager_client().post(
+            f'/api/sales/{sale_id}/reject-complete/',
+            {'rejection_reason': 'Customer left'},
+            format='json',
+        )
+        SaleService().cancel_holding_sale(Sale.objects.get(pk=sale_id))
+        self.assertFalse(
+            DailyNote.objects.filter(
+                content__contains=f'ref: reject/sale/{sale_id}/', is_done=False,
+            ).exists()
+        )
 
     def test_resubmitted_sale_is_paid_after_approval(self):
         created = self.client.post('/api/sales/', self._sale_payload(), format='json')

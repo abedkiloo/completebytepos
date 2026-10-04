@@ -214,10 +214,23 @@ class DailyTaskAssignmentTests(ManagerAPITestCase):
         self.assertTrue(response.data['is_done'])
 
     def test_returned_sale_task_cannot_be_ticked(self):
+        from decimal import Decimal
+
+        from sales.models import Sale
+
+        sale = Sale.objects.create(
+            sale_number='S-RETURNED-TASK',
+            status='holding',
+            cashier=self.sales_user,
+            subtotal=Decimal('10'),
+            total=Decimal('10'),
+            payment_method='cash',
+            amount_paid=Decimal('0'),
+        )
         task = DailyTask.objects.create(
             task_date=date.today(),
             title='Approval rejected: sale completion',
-            description='Wrong prices\nsale_id: 99\nref: reject/sale/99/',
+            description=f'Wrong prices\nsale_id: {sale.pk}\nref: reject/sale/{sale.pk}/',
             author=self.manager_user,
             assigned_to=self.sales_user,
         )

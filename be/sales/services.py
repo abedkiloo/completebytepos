@@ -1270,6 +1270,9 @@ class SaleService(BaseService):
             raise ValidationError('Only holding invoices can be cancelled.')
         holding.status = 'cancelled'
         holding.save(update_fields=['status', 'updated_at'])
+        from daily_notes.approval_notice import complete_sale_return_notes
+
+        complete_sale_return_notes(record_id=holding.pk)
         return holding
 
 

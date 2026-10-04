@@ -606,6 +606,57 @@ class BackfillResubmitAndServedByTests(TestCase):
         self.assertEqual(mine.status_code, status.HTTP_200_OK)
         self.assertEqual(len(mine.data), 0)
 
+    def test_backfill_daily_notes_clear_through_reject_resubmit_approve(self):
+        from daily_notes.models import DailyNote, DailyTask
+
+        store = StoreSettings.load()
+        store.maker_checker_enabled = True
+        store.backfill_maker_checker_enabled = True
+        store.save(update_fields=['maker_checker_enabled', 'backfill_maker_checker_enabled'])
+
+        create = self.sales_client.post(
+            '/api/sales/backfill/', self._backfill_payload(), format='json',
+        )
+        pending_id = create.data['pending_change']['id']
+        queue_ref = f'ref: sale_backfill/{pending_id}/'
+        return_ref = f'ref: reject/backfill/{pending_id}/'
+
+        def open_notes(ref):
+            return DailyNote.objects.filter(content__contains=ref, is_done=False)
+
+        self.assertTrue(open_notes(queue_ref).exists())
+
+        self.checker_client.post(
+            f'/api/approvals/pending-changes/{pending_id}/reject/',
+            {'rejection_reason': 'Wrong date'},
+            format='json',
+        )
+        self.assertFalse(open_notes(queue_ref).exists())
+        self.assertTrue(open_notes(return_ref).filter(assigned_to=self.sales_user).exists())
+
+        self.sales_client.post(
+            '/api/sales/backfill/',
+            self._backfill_payload(
+                backfill_reason='Corrected date after manager review',
+                resubmit_of=pending_id,
+            ),
+            format='json',
+        )
+        self.assertFalse(open_notes(return_ref).exists())
+        self.assertFalse(
+            DailyTask.objects.filter(description__contains=return_ref, is_done=False).exists()
+        )
+        self.assertTrue(open_notes(queue_ref).exists())
+
+        approve = self.checker_client.post(
+            f'/api/approvals/pending-changes/{pending_id}/approve/', {}, format='json',
+        )
+        self.assertEqual(approve.status_code, status.HTTP_200_OK, approve.content)
+        self.assertFalse(open_notes(queue_ref).exists())
+        self.assertFalse(
+            DailyNote.objects.filter(assigned_to=self.sales_user, is_done=False).exists()
+        )
+
     def test_served_by_forced_for_sales_user(self):
         store = StoreSettings.load()
         store.maker_checker_enabled = False

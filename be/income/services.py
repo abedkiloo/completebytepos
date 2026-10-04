@@ -140,6 +140,9 @@ class IncomeService(BaseService):
         income.status = 'approved'
         income.approved_by = approved_by
         income.save()
+        from daily_notes.approval_notice import SOURCE_INCOME, complete_rejection_notices
+
+        complete_rejection_notices(source=SOURCE_INCOME, record_id=income.id)
         
         # Create journal entry for income
         try:
@@ -195,6 +198,9 @@ class IncomeService(BaseService):
             raise ValidationError('You can only resubmit your own income records.')
         income.status = 'pending'
         income.save(update_fields=['status', 'updated_at'])
+        from daily_notes.approval_notice import SOURCE_INCOME, complete_rejection_notices
+
+        complete_rejection_notices(source=SOURCE_INCOME, record_id=income.id)
         return income
 
     @transaction.atomic

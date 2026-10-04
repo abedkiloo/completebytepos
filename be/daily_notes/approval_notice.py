@@ -65,6 +65,30 @@ def sale_return_notice_fingerprint(record_id) -> str:
     return f'ref: reject/sale/{record_id}/'
 
 
+def backfill_return_notice_fingerprint(change_id) -> str:
+    return f'ref: reject/backfill/{change_id}/'
+
+
+def rejection_notice_fingerprint(source: str, record_id) -> str:
+    return f'ref: reject/{source}/{record_id}/'
+
+
+PAST_SALE_TITLE = 'past sale entry'
+
+
+def _id_pattern(prefix: str, record_id) -> re.Pattern:
+    """``prefix`` + id, never followed by another digit (so 15 does not match 150)."""
+    return re.compile(re.escape(f'{prefix}{record_id}') + r'(?!\d)')
+
+
+def _matching(queryset, field: str, prefix: str, record_id) -> list:
+    if record_id is None:
+        return []
+    pattern = _id_pattern(prefix, record_id)
+    candidates = queryset.filter(**{f'{field}__contains': f'{prefix}{record_id}'})
+    return [row for row in candidates if pattern.search(getattr(row, field) or '')]
+
+
 _SALE_ID_LINE = re.compile(r'(?m)^sale_id:\s*\d+')
 
 SALE_RETURN_TICK_ERROR = (
@@ -76,7 +100,7 @@ SALE_RETURN_TICK_ERROR = (
 def is_sale_return_notice_text(text: str | None) -> bool:
     """True when the Daily note/task is a returned sale that must be fixed on POS."""
     raw = text or ''
-    if 'ref: reject/sale/' in raw:
+    if 'ref: reject/sale/' in raw or 'ref: reject/backfill/' in raw:
         return True
     return bool(_SALE_ID_LINE.search(raw))
 
@@ -110,8 +134,11 @@ def build_rejection_notice(
     sale_pk = getattr(sale, 'pk', None)
     if action_type == 'sale_complete' and sale_pk is not None:
         footer += f'\nsale_id: {sale_pk}\n{sale_return_notice_fingerprint(sale_pk)}'
-    elif action_type in SALE_RETURN_ACTIONS:
-        footer += f'\n{sale_return_notice_fingerprint(sale_pk or record_id)}'
+    elif action_type == 'sale_complete':
+        footer += f'\n{sale_return_notice_fingerprint(record_id)}'
+    elif action_type == 'sale_backfill':
+        footer += f'\n{backfill_return_notice_fingerprint(record_id)}'
+    footer += f'\n{rejection_notice_fingerprint(source, record_id)}'
 
     if action_type == 'sale_complete':
         number = item if item != 'your request' else 'this sale'
@@ -200,22 +227,62 @@ def _complete_open_tasks(queryset) -> int:
     return closed
 
 
-def complete_sale_return_notes(*, record_id) -> int:
-    """Move the salesperson's returned-sale sticky note and task to Past."""
-    if record_id is None:
-        return 0
-    fingerprint = sale_return_notice_fingerprint(record_id)
+def _move_notes_to_past(notes) -> int:
     moved = 0
-    for note in DailyNote.objects.filter(content__contains=fingerprint, is_done=False):
+    for note in notes:
         try:
+            if note.is_done:
+                continue
             note.move_to_board('past')
             note.save(update_fields=['is_done', 'in_progress', 'completed_at', 'updated_at'])
             moved += 1
         except Exception:
-            logger.exception('Could not complete Daily notes sale-return card')
-    _complete_open_tasks(
-        DailyTask.objects.filter(description__contains=fingerprint, is_done=False)
-    )
+            logger.exception('Could not move Daily notes card to Past')
+    return moved
+
+
+def _close_by_ref(prefix: str, record_id, *, title_filter=None) -> int:
+    """Move matching open notes to Past and tick matching open tasks."""
+    notes = DailyNote.objects.filter(is_done=False)
+    tasks = DailyTask.objects.filter(is_done=False)
+    if title_filter is not None:
+        notes = title_filter(notes)
+        tasks = title_filter(tasks)
+    moved = _move_notes_to_past(_matching(notes, 'content', prefix, record_id))
+    _complete_open_tasks(_matching(tasks, 'description', prefix, record_id))
+    return moved
+
+
+def _not_past_sale(qs):
+    return qs.exclude(title__icontains=PAST_SALE_TITLE)
+
+
+def _only_past_sale(qs):
+    return qs.filter(title__icontains=PAST_SALE_TITLE)
+
+
+def complete_sale_return_notes(*, record_id) -> int:
+    """Move the salesperson's returned-sale sticky note and task to Past."""
+    if record_id is None:
+        return 0
+    return _close_by_ref('ref: reject/sale/', record_id, title_filter=_not_past_sale)
+
+
+def complete_backfill_return_notes(*, change_id) -> int:
+    """Move a returned past-sale entry's sticky note and task to Past."""
+    if change_id is None:
+        return 0
+    moved = _close_by_ref('ref: reject/backfill/', change_id)
+    moved += _close_by_ref('ref: reject/sale/', change_id, title_filter=_only_past_sale)
+    return moved
+
+
+def complete_rejection_notices(*, source: str, record_id) -> int:
+    """Clear the requester's "Approval rejected" note and task once it is resubmitted or approved."""
+    if record_id is None:
+        return 0
+    moved = _close_by_ref(f'ref: reject/{source}/', record_id)
+    moved += _close_by_ref(f'source: {source}\nid: ', record_id)
     return moved
 
 
@@ -225,7 +292,6 @@ def sale_approved_notice_fingerprint(record_id) -> str:
 
 _APPROVE_REF = re.compile(r'ref: approve/sale/(\d+)/')
 _REJECT_REF = re.compile(r'ref: reject/sale/(\d+)/')
-_QUEUE_REF = re.compile(r'ref: sale_complete/(\d+)')
 _APPROVED_TITLE = re.compile(r'^Sale #(.+?) was approved')
 
 _POSTED_SALE_STATUSES = frozenset({'awaiting_payment', 'completed', 'cancelled'})
@@ -255,15 +321,19 @@ def complete_sale_approved_notices(*, sale) -> int:
     if record_id is not None:
         closed += complete_sale_return_notes(record_id=record_id)
         closed += _complete_open_tasks(
-            DailyTask.objects.filter(
-                description__contains=sale_approved_notice_fingerprint(record_id),
-                is_done=False,
+            _matching(
+                DailyTask.objects.filter(is_done=False),
+                'description',
+                'ref: approve/sale/',
+                record_id,
             )
         )
         closed += _complete_open_tasks(
-            DailyTask.objects.filter(
-                description__contains=sale_queue_notice_fingerprint(SOURCE_SALE_COMPLETE, record_id),
-                is_done=False,
+            _matching(
+                DailyTask.objects.filter(is_done=False),
+                'description',
+                f'ref: {SOURCE_SALE_COMPLETE}/',
+                record_id,
             )
         )
     number = (getattr(sale, 'sale_number', None) or '').strip()
@@ -277,43 +347,117 @@ def complete_sale_approved_notices(*, sale) -> int:
     return closed
 
 
-def _sale_for_notice_task(task):
+_REF_RULES = (
+    (re.compile(r'ref: sale_complete/(\d+)'), 'sale_queue'),
+    (re.compile(r'ref: sale_backfill/(\d+)'), 'backfill_queue'),
+    (re.compile(r'ref: reject/backfill/(\d+)/'), 'backfill_return'),
+    (_REJECT_REF, 'sale_return'),
+    (_APPROVE_REF, 'sale_approved'),
+    (re.compile(r'ref: reject/(pending_change|expense|income|transfer)/(\d+)/'), 'rejection'),
+    (re.compile(r'(?m)^source: (pending_change|expense|income|transfer)\nid: (\d+)$'), 'rejection'),
+)
+
+_REJECTION_MODELS = {
+    'expense': ('expenses', 'Expense', 'rejected'),
+    'income': ('income', 'Income', 'rejected'),
+    'transfer': ('transfers', 'MoneyTransfer', 'cancelled'),
+}
+
+
+def _sale_status(pk):
     from sales.models import Sale
 
-    blob = f'{task.title or ""}\n{task.description or ""}'
-    for pattern in (_APPROVE_REF, _REJECT_REF, _QUEUE_REF):
+    return Sale.objects.filter(pk=pk).values_list('status', flat=True).first()
+
+
+def _change_status(pk):
+    from approvals.models import PendingChange
+
+    return PendingChange.objects.filter(pk=pk).values_list('status', flat=True).first()
+
+
+def _still_rejected(source: str, pk) -> bool:
+    if source == SOURCE_PENDING_CHANGE:
+        from approvals.models import PendingChange
+
+        return _change_status(pk) == PendingChange.STATUS_REJECTED
+    app_label, model_name, rejected_status = _REJECTION_MODELS[source]
+    from django.apps import apps
+
+    model = apps.get_model(app_label, model_name)
+    return model.objects.filter(pk=pk).values_list('status', flat=True).first() == rejected_status
+
+
+def _notice_is_resolved(title: str, text: str) -> bool:
+    """True when the record behind an approval card no longer needs anyone to act."""
+    from approvals.models import PendingChange
+
+    blob = f'{title or ""}\n{text or ""}'
+    past_sale = PAST_SALE_TITLE in (title or '').lower()
+    for pattern, kind in _REF_RULES:
         match = pattern.search(blob)
-        if match:
-            return Sale.objects.filter(pk=int(match.group(1))).first()
-    titled = _APPROVED_TITLE.match((task.title or '').strip())
+        if not match:
+            continue
+        if kind == 'sale_queue':
+            return _sale_status(int(match.group(1))) != 'pending_approval'
+        if kind == 'backfill_queue':
+            return _change_status(int(match.group(1))) != PendingChange.STATUS_PENDING
+        if kind == 'backfill_return' or (kind == 'sale_return' and past_sale):
+            return _change_status(int(match.group(1))) != PendingChange.STATUS_REJECTED
+        if kind == 'sale_return':
+            return _sale_status(int(match.group(1))) != 'holding'
+        if kind == 'sale_approved':
+            return _sale_status(int(match.group(1))) in _POSTED_SALE_STATUSES
+        if kind == 'rejection':
+            return not _still_rejected(match.group(1), int(match.group(2)))
+    titled = _APPROVED_TITLE.match((title or '').strip())
     if titled:
         number = titled.group(1).strip()
         if number and number != 'this sale':
-            return Sale.objects.filter(sale_number=number).first()
-    return None
+            from sales.models import Sale
+
+            status = Sale.objects.filter(sale_number=number).values_list('status', flat=True).first()
+            return status in _POSTED_SALE_STATUSES
+    return False
+
+
+def _notice_filter(text_field: str):
+    from django.db.models import Q
+
+    return (
+        Q(**{f'{text_field}__contains': 'ref: '})
+        | Q(**{f'{text_field}__contains': 'source: '})
+        | Q(title__startswith='Sale #')
+    )
+
+
+def complete_stale_approval_notices(*, user=None) -> int:
+    """Close open approval notes and tasks whose sale or request has already been dealt with."""
+    from django.db.models import Q
+
+    notes = DailyNote.objects.filter(is_done=False).filter(_notice_filter('content'))
+    tasks = DailyTask.objects.filter(is_done=False).filter(_notice_filter('description'))
+    if user is not None:
+        notes = notes.filter(Q(assigned_to=user) | Q(author=user))
+        tasks = tasks.filter(Q(assigned_to=user) | Q(author=user))
+    closed = 0
+    for note in notes:
+        try:
+            if _notice_is_resolved(note.title, note.content):
+                closed += _move_notes_to_past([note])
+        except Exception:
+            logger.exception('Could not check Daily notes approval card %s', note.pk)
+    for task in tasks:
+        try:
+            if _notice_is_resolved(task.title, task.description):
+                closed += _complete_open_tasks([task])
+        except Exception:
+            logger.exception('Could not check Daily notes approval task %s', task.pk)
+    return closed
 
 
 def complete_stale_sale_notice_tasks(*, user=None) -> int:
-    """Close open sale-approval tasks whose sale has already been approved."""
-    from django.db.models import Q
-
-    qs = DailyTask.objects.filter(is_done=False).filter(
-        Q(description__contains='ref: approve/sale/')
-        | Q(description__contains='ref: reject/sale/')
-        | Q(description__contains='ref: sale_complete/')
-        | Q(title__startswith='Sale #')
-        | Q(title__startswith='Approval rejected: sale')
-        | Q(title__startswith='Clear and move:')
-    )
-    if user is not None:
-        qs = qs.filter(Q(assigned_to=user) | Q(author=user))
-    closed = 0
-    for task in qs:
-        sale = _sale_for_notice_task(task)
-        if sale is None or getattr(sale, 'status', None) not in _POSTED_SALE_STATUSES:
-            continue
-        closed += _complete_open_tasks(DailyTask.objects.filter(pk=task.pk, is_done=False))
-    return closed
+    return complete_stale_approval_notices(user=user)
 
 
 def notify_sale_approved(*, sale, checker):
@@ -334,6 +478,8 @@ def notify_sale_approved(*, sale, checker):
             title=title,
             content=content,
             author=requester,
+            is_done=True,
+            completed_at=timezone.now(),
         )
         return note
     except Exception:
@@ -346,15 +492,11 @@ SOURCE_SALE_BACKFILL = 'sale_backfill'
 
 
 def sale_queue_notice_fingerprint(source: str, record_id) -> str:
-    return f'ref: {source}/{record_id}'
+    return f'ref: {source}/{record_id}/'
 
 
-def _notes_for_sale_queue(source: str, record_id):
-    if record_id is None:
-        return DailyNote.objects.none()
-    return DailyNote.objects.filter(
-        content__contains=sale_queue_notice_fingerprint(source, record_id)
-    )
+def _notes_for_sale_queue(source: str, record_id) -> list:
+    return _matching(DailyNote.objects.all(), 'content', f'ref: {source}/', record_id)
 
 
 def manager_notice_recipients(*, exclude_user=None):
@@ -481,19 +623,7 @@ def complete_manager_queue_notes(*, source: str, record_id) -> int:
     """Move the manager sale-queue cards to Past (done)."""
     if record_id is None:
         return 0
-    moved = 0
-    fingerprint = sale_queue_notice_fingerprint(source, record_id)
-    for note in _notes_for_sale_queue(source, record_id).filter(is_done=False):
-        try:
-            note.move_to_board('past')
-            note.save(update_fields=['is_done', 'in_progress', 'completed_at', 'updated_at'])
-            moved += 1
-        except Exception:
-            logger.exception('Could not move Daily notes sale-queue card to Past')
-    _complete_open_tasks(
-        DailyTask.objects.filter(description__contains=fingerprint, is_done=False)
-    )
-    return moved
+    return _close_by_ref(f'ref: {source}/', record_id)
 
 
 def complete_manager_notes_for_change(change) -> int:
@@ -509,6 +639,15 @@ def complete_manager_notes_for_change(change) -> int:
             record_id=getattr(change, 'id', None),
         )
     return 0
+
+
+def complete_requester_notices_for_change(change) -> int:
+    """Clear the requester's rejection note once the change is resubmitted or approved."""
+    change_id = getattr(change, 'id', None)
+    moved = complete_rejection_notices(source=SOURCE_PENDING_CHANGE, record_id=change_id)
+    if getattr(change, 'action_type', '') == 'sale_backfill':
+        moved += complete_backfill_return_notes(change_id=change_id)
+    return moved
 
 
 def notify_managers_for_change(*, author, change, sale=None):

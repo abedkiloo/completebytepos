@@ -168,6 +168,9 @@ class ExpenseService(BaseService):
         expense.status = 'approved'
         expense.approved_by = approved_by
         expense.save()
+        from daily_notes.approval_notice import SOURCE_EXPENSE, complete_rejection_notices
+
+        complete_rejection_notices(source=SOURCE_EXPENSE, record_id=expense.id)
         
         # Create journal entry for expense
         try:
@@ -223,6 +226,9 @@ class ExpenseService(BaseService):
             raise ValidationError('You can only resubmit your own expenses.')
         expense.status = 'pending'
         expense.save(update_fields=['status', 'updated_at'])
+        from daily_notes.approval_notice import SOURCE_EXPENSE, complete_rejection_notices
+
+        complete_rejection_notices(source=SOURCE_EXPENSE, record_id=expense.id)
         return expense
 
     @transaction.atomic
