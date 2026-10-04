@@ -29,7 +29,7 @@ export function parseApprovalRejectionNotice(text) {
 export function isReturnedSaleNotice(parsed, text = '', title = '') {
   if (Number.isFinite(parsed?.saleId)) return true;
   const raw = String(text || '');
-  if (/ref:\s*reject\/sale\//i.test(raw)) return true;
+  if (/ref:\s*reject\/(sale|backfill)\//i.test(raw)) return true;
   return (
     /(?:^|\n)sale_id:\s*\d+/i.test(raw) &&
     /approval rejected/i.test(String(title || ''))

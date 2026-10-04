@@ -205,11 +205,8 @@ const DailyNotes = () => {
         await transfersAPI.resubmit(parsed.id);
       }
       toast.success(resubmitSuccessMessage());
-      if (kind === 'task' && canToggleTask(entry) && !entry.is_done) {
-        const res = await dailyTasksAPI.toggleDone(entry.id);
-        setTasks((prev) => prev.map((t) => (t.id === entry.id ? res.data : t)));
-        dispatchNavBadgesRefresh();
-      }
+      await loadDay();
+      dispatchNavBadgesRefresh();
     } catch (error) {
       toast.error(error.response?.data?.error || 'Could not send this back for approval');
     } finally {

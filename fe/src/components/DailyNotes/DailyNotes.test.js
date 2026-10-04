@@ -219,6 +219,9 @@ describe('DailyNotes', () => {
     const buttons = await screen.findAllByRole('button', { name: /Send back for approval/i });
     fireEvent.click(buttons[buttons.length - 1]);
     await waitFor(() => expect(expensesAPI.resubmit).toHaveBeenCalledWith(44));
+    await waitFor(() => expect(dailyNotesAPI.list).toHaveBeenCalledTimes(2));
+    expect(dailyTasksAPI.list).toHaveBeenCalledTimes(2);
+    expect(dailyTasksAPI.toggleDone).not.toHaveBeenCalled();
   });
 
   test('opens POS to fix a returned sale from a sticky note', async () => {

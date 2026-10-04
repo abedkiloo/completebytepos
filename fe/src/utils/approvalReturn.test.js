@@ -1,4 +1,6 @@
 import {
+  canResubmitRejection,
+  isReturnedSaleNotice,
   isApprovalRejectionNote,
   isApprovalRejectionTask,
   parseApprovalRejectionNotice,
@@ -32,6 +34,16 @@ describe('approvalReturn', () => {
     });
     expect(parseApprovalRejectionNotice('no footer')).toBeNull();
     expect(parseApprovalRejectionNotice('')).toBeNull();
+  });
+
+  it('treats a returned past-sale entry as needing a fix, not a plain resend', () => {
+    const text =
+      'Returned.\n---\nsource: pending_change\nid: 7\nref: reject/backfill/7/\nref: reject/pending_change/7/';
+    const parsed = parseApprovalRejectionNotice(text);
+    expect(isReturnedSaleNotice(parsed, text, 'Approval rejected: past sale entry')).toBe(true);
+    expect(canResubmitRejection(parsed, text, 'Approval rejected: past sale entry')).toBe(false);
+    const expenseText = 'Returned.\n---\nsource: expense\nid: 4\nref: reject/expense/4/';
+    expect(canResubmitRejection(parseApprovalRejectionNotice(expenseText), expenseText)).toBe(true);
   });
 
   it('routes a returned sale to Terminal POS or Record past sale', () => {
