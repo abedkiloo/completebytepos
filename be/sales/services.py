@@ -945,33 +945,62 @@ class SaleService(BaseService):
                 created_by=user,
             )
 
-        pending_debt = payment_result.get('pending_debt')
-        if pending_debt:
-            if CustomerWalletTransaction.objects.filter(
+        pending_debt = payment_result.get('pending_debt') or Decimal('0')
+        if not isinstance(pending_debt, Decimal):
+            pending_debt = Decimal(str(pending_debt))
+        active_debt = (
+            CustomerWalletTransaction.objects.filter(
                 sale=sale,
                 source_type='debt',
-            ).exists():
-                logger.warning(
-                    'Skipping duplicate wallet debt for sale %s',
-                    sale.sale_number,
-                )
-            else:
-                customer.wallet_balance -= pending_debt
-                customer.save(update_fields=['wallet_balance', 'updated_at'])
-                CustomerWalletTransaction.objects.create(
-                    customer=customer,
-                    transaction_type='debit',
-                    source_type='debt',
-                    amount=pending_debt,
-                    balance_after=customer.wallet_balance,
-                    sale=sale,
-                    reference=sale.sale_number,
-                    notes=(
-                        f'Unpaid balance from sale added to customer debt '
-                        f'(wallet balance: {customer.wallet_balance})'
-                    ),
-                    created_by=user,
-                )
+                transaction_type='debit',
+            ).aggregate(total=Sum('amount'))['total']
+            or Decimal('0')
+        )
+        debt_delta = pending_debt - active_debt
+        if debt_delta > 0:
+            customer.wallet_balance -= debt_delta
+            customer.save(update_fields=['wallet_balance', 'updated_at'])
+            CustomerWalletTransaction.objects.create(
+                customer=customer,
+                transaction_type='debit',
+                source_type='debt',
+                amount=debt_delta,
+                balance_after=customer.wallet_balance,
+                sale=sale,
+                reference=sale.sale_number,
+                notes=(
+                    f'Unpaid balance from sale added to customer debt '
+                    f'(wallet balance: {customer.wallet_balance})'
+                ),
+                created_by=user,
+            )
+        elif debt_delta < 0:
+            # Sale corrected to a smaller unpaid balance while an active debt row
+            # remains (should be rare after reverse invalidates originals).
+            reduce_by = abs(debt_delta)
+            customer.wallet_balance += reduce_by
+            customer.save(update_fields=['wallet_balance', 'updated_at'])
+            CustomerWalletTransaction.objects.create(
+                customer=customer,
+                transaction_type='credit',
+                source_type='other',
+                amount=reduce_by,
+                balance_after=customer.wallet_balance,
+                sale=sale,
+                reference=sale.sale_number,
+                notes=(
+                    f'Debt reduced after sale correction '
+                    f'(new unpaid {pending_debt}, was {active_debt})'
+                ),
+                created_by=user,
+            )
+            logger.warning(
+                'Adjusted wallet debt down by %s for sale %s (active %s → unpaid %s)',
+                reduce_by,
+                sale.sale_number,
+                active_debt,
+                pending_debt,
+            )
 
         wallet_credit_added = payment_result['wallet_credit_added']
         if wallet_credit_added > 0:

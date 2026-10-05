@@ -17,5 +17,5 @@ class MigrationGraphTests(TestCase):
         )
         self.assertEqual(
             sales,
-            [('sales', '0017_field_sales')],
+            [('sales', '0018_merge_alter_sale_status_and_field_sales')],
         )

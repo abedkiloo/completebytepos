@@ -1152,3 +1152,75 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
         self.assertEqual(opened.status_code, status.HTTP_200_OK)
         self.assertEqual(len(opened.data['items']), 1)
         self.assertEqual(opened.data['items'][0]['product_id'], self.product.id)
+
+    def test_admin_correction_resyncs_customer_debt_to_new_unpaid(self):
+        """Return-for-correction must re-post debt for the edited unpaid total."""
+        from sales.models import Customer, CustomerWalletTransaction
+
+        customer = Customer.objects.create(name='Debt Fix', phone='0700999001')
+        payload = self._sale_payload(amount='40.00')
+        payload['customer_id'] = customer.id
+        payload['allow_partial_payment'] = True
+        created = self.client.post('/api/sales/', payload, format='json')
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED, created.data)
+        sale_id = created.data['id']
+
+        manager = self._manager_client()
+        approved = manager.post(f'/api/sales/{sale_id}/complete/', {}, format='json')
+        self.assertEqual(approved.status_code, status.HTTP_200_OK, approved.data)
+        customer.refresh_from_db()
+        self.assertEqual(customer.wallet_balance, Decimal('-60.00'))
+
+        admin = self._admin_client()
+        returned = admin.post(
+            f'/api/sales/{sale_id}/reject-complete/',
+            {'rejection_reason': 'Wrong qty and discount'},
+            format='json',
+        )
+        self.assertEqual(returned.status_code, status.HTTP_200_OK, returned.data)
+        customer.refresh_from_db()
+        self.assertEqual(customer.wallet_balance, Decimal('0.00'))
+        self.assertFalse(
+            CustomerWalletTransaction.objects.filter(sale_id=sale_id, source_type='debt').exists()
+        )
+
+        # Corrected cart: 2 × 100 = 200, still paid only 40 → unpaid 160
+        edited = self.client.post(
+            '/api/sales/holding/',
+            {
+                'holding_id': sale_id,
+                'items': [
+                    {
+                        'product_id': self.product.id,
+                        'quantity': '2',
+                        'unit_price': '100.00',
+                    }
+                ],
+                'customer_id': customer.id,
+                'client_channel': 'web',
+            },
+            format='json',
+        )
+        self.assertEqual(edited.status_code, status.HTTP_200_OK, edited.data)
+        queued = self.client.post(
+            f'/api/sales/{sale_id}/checkout/',
+            {
+                'payment_method': 'cash',
+                'amount_paid': '40.00',
+                'allow_partial_payment': True,
+                'customer_id': customer.id,
+            },
+            format='json',
+        )
+        self.assertEqual(queued.status_code, status.HTTP_201_CREATED, queued.data)
+        reapproved = manager.post(f'/api/sales/{sale_id}/complete/', {}, format='json')
+        self.assertEqual(reapproved.status_code, status.HTTP_200_OK, reapproved.data)
+
+        sale = Sale.objects.get(pk=sale_id)
+        self.assertEqual(sale.status, 'completed')
+        self.assertEqual(sale.total, Decimal('200.00'))
+        self.assertEqual(sale.amount_paid, Decimal('40.00'))
+        customer.refresh_from_db()
+        self.assertEqual(customer.wallet_balance, Decimal('-160.00'))
+        debt = CustomerWalletTransaction.objects.get(sale=sale, source_type='debt')
+        self.assertEqual(debt.amount, Decimal('160.00'))
