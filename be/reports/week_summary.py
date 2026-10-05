@@ -19,7 +19,7 @@ def coerce_day_key(value):
 
 def week_sales_summary(completed_sales, at_field='occurred_at'):
     """Last 7 days including today: totals plus per-day rows."""
-    today = timezone.now().date()
+    today = timezone.localdate()
     start = timezone.make_aware(datetime.combine(today - timedelta(days=6), datetime.min.time()))
     week_qs = completed_sales.filter(**{f'{at_field}__gte': start})
     week_total = week_qs.aggregate(total=Sum('total'))['total'] or 0

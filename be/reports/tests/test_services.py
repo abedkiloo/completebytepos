@@ -11,7 +11,7 @@ from products.models import Category, Product
 from reports.services import ReportDashboardService, resolve_period
 from rest_framework.test import APIRequestFactory
 from rest_framework.request import Request
-from sales.models import Sale
+from sales.models import Sale, SaleRefund
 
 
 class ReportServicesTestCase(TestCase):
@@ -140,9 +140,9 @@ class ReportServicesTestCase(TestCase):
         this_sale = Sale.objects.create(
             status='completed',
             payment_method='mpesa',
-            subtotal=Decimal('80'),
-            total=Decimal('80'),
-            amount_paid=Decimal('80'),
+            subtotal=Decimal('100'),
+            total=Decimal('100'),
+            amount_paid=Decimal('100'),
             cashier=user,
         )
         last_sale = Sale.objects.create(
@@ -153,31 +153,17 @@ class ReportServicesTestCase(TestCase):
             amount_paid=Decimal('40'),
             cashier=user,
         )
-        Sale.objects.filter(pk=last_sale.pk).update(created_at=last_month)
+        Sale.objects.filter(pk=last_sale.pk).update(occurred_at=last_month)
 
-        this_return = Sale.objects.create(
-            status='completed',
-            payment_method='cash',
-            subtotal=Decimal('10'),
-            discount_amount=Decimal('20'),
-            total=Decimal('0'),
-            amount_paid=Decimal('0'),
-            cashier=user,
+        this_return = SaleRefund.objects.create(
+            sale=this_sale, refund_type='partial', amount=Decimal('5'),
+            reason='Damaged', refunded_by=user,
         )
-        last_return = Sale.objects.create(
-            status='completed',
-            payment_method='cash',
-            subtotal=Decimal('8'),
-            discount_amount=Decimal('16'),
-            total=Decimal('0'),
-            amount_paid=Decimal('0'),
-            cashier=user,
+        last_return = SaleRefund.objects.create(
+            sale=last_sale, refund_type='partial', amount=Decimal('4'),
+            reason='Damaged', refunded_by=user,
         )
-        Sale.objects.filter(pk=this_return.pk).update(total=Decimal('-5'))
-        Sale.objects.filter(pk=last_return.pk).update(
-            created_at=last_month,
-            total=Decimal('-4'),
-        )
+        SaleRefund.objects.filter(pk=last_return.pk).update(created_at=last_month)
 
         this_buy = StockMovement.objects.create(
             product=product,
@@ -232,5 +218,5 @@ class ReportServicesTestCase(TestCase):
         self.assertNotEqual(growth['profit'], 0)
         self.assertNotEqual(growth['payment_returns'], 0)
         self.assertGreaterEqual(this_sale.total, 0)
-        self.assertGreaterEqual(this_return.total, Decimal('-5'))
+        self.assertEqual(data['sales_returns'], {'total': float(this_return.amount), 'count': 1})
         self.assertEqual(this_buy.movement_type, 'purchase')

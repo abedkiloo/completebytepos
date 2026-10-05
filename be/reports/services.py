@@ -3,13 +3,14 @@ Reports service layer — aggregations and period parsing (no ORM in views).
 """
 from datetime import datetime, timedelta
 
-from django.db.models import F, Q, Sum
+from django.db.models import F, Sum
 from django.utils import timezone
 
 from expenses.models import Expense
 from inventory.models import StockMovement
 from products.models import Product
 from reports.sale_scope import posted_sale_items, posted_sales
+from sales.models import SaleRefund
 
 from .week_summary import week_sales_summary
 
@@ -61,7 +62,7 @@ class ReportDashboardService:
 
     @staticmethod
     def get_dashboard_summary():
-        today = timezone.now().date()
+        today = timezone.localdate()
         start_of_day = timezone.make_aware(datetime.combine(today, datetime.min.time()))
         start_of_month = timezone.make_aware(datetime(today.year, today.month, 1))
         start_of_last_month = timezone.make_aware(
@@ -78,8 +79,8 @@ class ReportDashboardService:
         month_total = month_sales.aggregate(total=Sum('total'))['total'] or 0
 
         last_month_sales = completed.filter(
-            created_at__gte=start_of_last_month,
-            created_at__lt=start_of_month,
+            occurred_at__gte=start_of_last_month,
+            occurred_at__lt=start_of_month,
         )
         last_month_total = last_month_sales.aggregate(total=Sum('total'))['total'] or 0
 
@@ -89,17 +90,16 @@ class ReportDashboardService:
 
         total_sales_all = completed.aggregate(total=Sum('total'))['total'] or 0
 
-        sales_returns = completed.filter(
-            Q(total__lt=0) | Q(discount_amount__gt=F('subtotal'))
-        )
-        sales_returns_total = sales_returns.aggregate(total=Sum('total'))['total'] or 0
+        refunds = SaleRefund.objects.filter(sale__status='completed')
+        sales_returns = refunds.filter(created_at__gte=start_of_month)
+        sales_returns_total = sales_returns.aggregate(total=Sum('amount'))['total'] or 0
         sales_returns_count = sales_returns.count()
 
-        last_month_returns = sales_returns.filter(
+        last_month_returns = refunds.filter(
             created_at__gte=start_of_last_month,
             created_at__lt=start_of_month,
         )
-        last_month_returns_total = last_month_returns.aggregate(total=Sum('total'))['total'] or 0
+        last_month_returns_total = last_month_returns.aggregate(total=Sum('amount'))['total'] or 0
         returns_growth = 0
         if last_month_returns_total != 0:
             returns_growth = (
@@ -168,7 +168,7 @@ class ReportDashboardService:
 
         top_products = list(
             posted_sale_items()
-            .filter(sale__created_at__gte=start_of_month)
+            .filter(sale__occurred_at__gte=start_of_month)
             .values('product__id', 'product__name', 'product__sku')
             .annotate(total_quantity=Sum('quantity'), total_revenue=Sum('subtotal'))
             .order_by('-total_revenue')[:5]

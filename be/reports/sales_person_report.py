@@ -15,7 +15,7 @@ from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from reports.sale_scope import posted_sales
-from sales.models import SaleRefund
+from sales.models import SaleItem, SaleRefund
 from utils.document_branding import brand_contact_line, brand_name_line
 
 from .services import resolve_period
@@ -91,10 +91,18 @@ class SalesPersonReportService:
             .annotate(
                 sales_count=Count('id', distinct=True),
                 gross_sales=Sum('total'),
-                items_sold=Sum('items__quantity'),
             )
             .order_by('-gross_sales')
         )
+        items_by_staff = {
+            row['staff_id']: row['items_sold']
+            for row in SaleItem.objects.filter(sale__in=sales_qs.values('pk'))
+            .annotate(staff_id=Coalesce('sale__served_by_id', 'sale__cashier_id'))
+            .values('staff_id')
+            .annotate(items_sold=Sum('quantity'))
+        }
+        for row in staff_rows:
+            row['items_sold'] = items_by_staff.get(row['staff_id'], 0)
 
         user_ids = [row['staff_id'] for row in staff_rows if row['staff_id']]
         users_by_id = {u.id: u for u in User.objects.filter(id__in=user_ids)}

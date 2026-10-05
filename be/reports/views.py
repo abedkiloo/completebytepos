@@ -8,7 +8,7 @@ from django.utils import timezone
 from datetime import datetime, timedelta
 from functools import wraps
 from decimal import Decimal
-from reports.sale_scope import posted_sales, posted_sale_items
+from reports.sale_scope import items_sold, posted_sales, posted_sale_items
 from sales.models import Invoice, Customer, Payment
 from products.models import Product
 from inventory.models import StockMovement
@@ -146,11 +146,11 @@ class ReportViewSet(viewsets.ViewSet):
         summary = queryset.aggregate(
             total_sales=Count('id'),
             total_revenue=Sum('total'),
-            total_items=Sum('items__quantity'),
             total_subtotal=Sum('subtotal'),
             total_tax=Sum('tax_amount'),
             total_discount=Sum('discount_amount'),
         )
+        summary['total_items'] = items_sold(queryset)
         
         # Sales by payment method
         by_payment = queryset.values('payment_method').annotate(
@@ -685,10 +685,10 @@ class ReportViewSet(viewsets.ViewSet):
         agg = qs.aggregate(
             sales_count=Count('id'),
             gross_revenue=Sum('total'),
-            items_sold=Sum('items__quantity'),
             tax=Sum('tax_amount'),
             discount=Sum('discount_amount'),
         )
+        agg['items_sold'] = items_sold(qs)
 
         gross = float(agg['gross_revenue'] or 0)
         count = agg['sales_count'] or 0
@@ -903,7 +903,7 @@ class ReportViewSet(viewsets.ViewSet):
         outstanding = Invoice.objects.filter(balance__gt=0).exclude(status='cancelled')
 
         # Aging buckets: 0-30, 31-60, 61-90, 90+.
-        today = timezone.now().date()
+        today = timezone.localdate()
 
         def days_overdue(due):
             if not due:
