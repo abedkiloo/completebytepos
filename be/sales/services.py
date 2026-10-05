@@ -114,6 +114,12 @@ class SaleService(BaseService):
             except (ValueError, TypeError):
                 queryset = queryset.none()
 
+        sale_origin = filters.get('sale_origin')
+        if sale_origin == 'field':
+            queryset = queryset.filter(entry_source='field')
+        elif sale_origin == 'shop':
+            queryset = queryset.exclude(entry_source='field')
+
         # Status filter — default hides register drafts and waiting sales from history.
         from sales.sale_completion_approval import (
             annotate_sale_approval_state,

@@ -5,6 +5,7 @@ import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import SaleChannelIcon, { saleChannelLabel } from './SaleChannelIcon';
+import SaleOriginBadge from './SaleOriginBadge';
 import {
   Dialog,
   DialogContent,
@@ -178,8 +179,9 @@ export default function SaleDetailDialog({
           </div>
 
           <div className="receipt-info space-y-1">
-            <p>
+            <p className="inline-flex items-center gap-1.5">
               <strong>Sale number:</strong> {sale.sale_number}
+              <SaleOriginBadge sale={sale} />
             </p>
             {saleChannelLabel(sale.client_channel) ? (
               <p className="inline-flex items-center gap-1.5">

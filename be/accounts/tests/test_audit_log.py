@@ -66,6 +66,20 @@ class AuditLogAPITests(SuperAdminAPITestCase):
         response = self.client.get('/api/accounts/audit-logs/', {'action': 'checkout'})
         self.assertEqual(response.status_code, 200)
 
+    def test_retrieve_includes_entered_values(self):
+        row = AuditLog.objects.get(action='checkout')
+        response = self.client.get(f'/api/accounts/audit-logs/{row.id}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['action'], 'checkout')
+        self.assertEqual(response.data['changes'], {'total': '100'})
+        self.assertEqual(response.data['object_repr'], 'SALE-1')
+
+    def test_list_exposes_change_values_for_ui(self):
+        response = self.client.get('/api/accounts/audit-logs/', {'action': 'checkout'})
+        self.assertEqual(response.status_code, 200)
+        rows = response.data.get('results', response.data)
+        self.assertEqual(rows[0]['changes']['total'], '100')
+
 
 class AuditLogManagerAccessTests(TestCase):
     def setUp(self):

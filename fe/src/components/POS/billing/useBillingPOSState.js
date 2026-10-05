@@ -139,9 +139,13 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
     [cart]
   );
 
-  const loadCustomers = useCallback(async () => {
+  const loadCustomers = useCallback(async (search = '') => {
     try {
-      const res = await customersAPI.list({ is_active: true, page_size: 500 });
+      const res = await customersAPI.list({
+        is_active: true,
+        page_size: 50,
+        ...(String(search || '').trim() ? { search: String(search).trim() } : {}),
+      });
       const data = res.data.results || res.data || [];
       if (requireCustomer) {
         setCustomers(data);
@@ -177,6 +181,12 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
     }
   }, [selectedCustomer, partialPayment]);
 
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      loadCustomers(customerQuery);
+    }, 280);
+    return () => clearTimeout(handle);
+  }, [customerQuery, loadCustomers]);
   const attemptSetPartialPayment = useCallback((checked) => {
     const { allow } = evaluatePartialPaymentToggle(checked, selectedCustomer);
     if (allow) {
@@ -714,18 +724,9 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
   }, [submitting]);
 
   const filteredCustomers = useMemo(() => {
-    const q = customerQuery.trim().toLowerCase();
     const registered = customers.filter((c) => !isWalkInCustomer(c));
-    if (!q) return registered.slice(0, 8);
-    return registered
-      .filter(
-        (c) =>
-          c.name?.toLowerCase().includes(q) ||
-          c.phone?.includes(q) ||
-          c.customer_code?.toLowerCase().includes(q)
-      )
-      .slice(0, 8);
-  }, [customers, customerQuery]);
+    return registered.slice(0, 25);
+  }, [customers]);
 
   return {
     searchQuery,

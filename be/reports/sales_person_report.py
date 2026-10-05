@@ -91,6 +91,8 @@ class SalesPersonReportService:
             .annotate(
                 sales_count=Count('id', distinct=True),
                 gross_sales=Sum('total'),
+                field_sales_count=Count('id', filter=Q(entry_source='field'), distinct=True),
+                field_sales=Sum('total', filter=Q(entry_source='field')),
             )
             .order_by('-gross_sales')
         )
@@ -140,6 +142,10 @@ class SalesPersonReportService:
             'refunds_total': 0.0,
             'net_sales': 0.0,
             'items_sold': 0,
+            'field_sales_count': 0,
+            'field_sales': 0.0,
+            'shop_sales_count': 0,
+            'shop_sales': 0.0,
         }
 
         for row in staff_rows:
@@ -152,6 +158,8 @@ class SalesPersonReportService:
             ref_total = _decimal_float(ref.get('refunds_total'))
             net = gross - ref_total
             avg_ticket = (gross / count) if count else 0.0
+            field_count = row.get('field_sales_count') or 0
+            field_gross = _decimal_float(row.get('field_sales'))
 
             user_stub = users_by_id.get(sid) if sid else None
             name = _display_name(user_stub) if user_stub else 'Unassigned'
@@ -167,6 +175,10 @@ class SalesPersonReportService:
                 'net_sales': round(net, 2),
                 'items_sold': items,
                 'avg_ticket': round(avg_ticket, 2),
+                'field_sales_count': field_count,
+                'field_sales': round(field_gross, 2),
+                'shop_sales_count': count - field_count,
+                'shop_sales': round(gross - field_gross, 2),
             })
 
             totals['sales_count'] += count
@@ -175,8 +187,12 @@ class SalesPersonReportService:
             totals['refunds_total'] += ref_total
             totals['net_sales'] += net
             totals['items_sold'] += items
+            totals['field_sales_count'] += field_count
+            totals['field_sales'] += field_gross
+            totals['shop_sales_count'] += count - field_count
+            totals['shop_sales'] += gross - field_gross
 
-        for key in ('gross_sales', 'refunds_total', 'net_sales'):
+        for key in ('gross_sales', 'refunds_total', 'net_sales', 'field_sales', 'shop_sales'):
             totals[key] = round(totals[key], 2)
 
         detail = []
@@ -219,6 +235,9 @@ class SalesPersonReportService:
                     'net': round(_decimal_float(sale.total) - refunded, 2),
                     'refund_status': sale.refund_status,
                     'client_channel': sale.client_channel or 'unknown',
+                    'entry_source': sale.entry_source,
+                    'is_field_sale': sale.is_field_sale,
+                    'sale_origin': sale.sale_origin,
                 })
 
         period_display = label

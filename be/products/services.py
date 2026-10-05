@@ -9,6 +9,7 @@ from django.db.models import Q, Sum, Count, Avg, F, QuerySet
 from django.core.exceptions import ValidationError
 from .models import Product, Category, Size, Color, ProductVariant
 from .category_validation import normalize_category_name
+from .duplicates import duplicate_product_message, find_duplicate_product, normalize_product_name
 from .status_rules import (
     apply_operational_product_filter,
     products_show_status_enabled,
@@ -739,12 +740,19 @@ class ProductService(BaseService):
         
         return updated
     
-    def bulk_delete_products(self, product_ids: List[int]) -> int:
-        """Bulk delete multiple products"""
-        products = self.model.objects.filter(id__in=product_ids)
-        count = products.count()
-        products.delete()
-        return count
+    def bulk_delete_products(self, product_ids: List[int]) -> Dict[str, Any]:
+        """Permanently delete products added in error; products in use are skipped."""
+        from .deletion import permanently_delete_product
+
+        deleted = 0
+        skipped: List[str] = []
+        for product in self.model.objects.filter(id__in=product_ids):
+            try:
+                permanently_delete_product(product)
+                deleted += 1
+            except ValidationError as exc:
+                skipped.append(' '.join(exc.messages))
+        return {'deleted_count': deleted, 'skipped': skipped}
     
     def bulk_activate_products(self, product_ids: List[int]) -> int:
         """Bulk activate products"""
@@ -904,7 +912,18 @@ class ProductService(BaseService):
                     
                     # Parse row data
                     parsed_data = self._parse_product_row(row)
-                    product_exists = self.model.objects.filter(sku=sku).exists()
+                    existing_by_sku = self.model.objects.filter(sku=sku).first()
+                    product_exists = existing_by_sku is not None
+
+                    duplicate = find_duplicate_product(
+                        name, exclude_id=existing_by_sku.pk if existing_by_sku else None
+                    )
+                    if duplicate:
+                        results['errors'].append(
+                            f"Row {row_num}: {duplicate_product_message(duplicate)}"
+                        )
+                        continue
+                    parsed_data['name'] = normalize_product_name(name)
 
                     # Sales catalog import: never set pricing from CSV
                     if user is not None:

@@ -76,7 +76,7 @@ class ClaimAndDriversAPITestCase(APITestCase):
         )
         cls.customer = Customer.objects.create(name='Claim Cust', phone='0799')
         cls.product = Product.objects.create(
-            name='Tiles', sku='TIL-1', price=50, cost=20,
+            name='Tiles', sku='TIL-1', price=50, cost=20, stock_quantity=1000,
         )
         cls.site = CustomerSite.objects.create(
             customer=cls.customer,

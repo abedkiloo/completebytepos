@@ -54,7 +54,7 @@ class AgentsCoverageGapTests(APITestCase):
         )
         cls.customer = Customer.objects.create(name='Gap Cust', phone='0733')
         cls.product = Product.objects.create(
-            name='Ballast', sku='BAL-1', price=80, cost=40,
+            name='Ballast', sku='BAL-1', price=80, cost=40, stock_quantity=1000,
         )
         cls.site = CustomerSite.objects.create(
             customer=cls.customer,

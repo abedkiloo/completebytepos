@@ -28,6 +28,7 @@ import RefundSaleDialog from './RefundSaleDialog';
 import SaleRollbackDialog from './SaleRollbackDialog';
 import SaleDetailDialog from './SaleDetailDialog';
 import SaleChannelIcon from './SaleChannelIcon';
+import SaleOriginBadge from './SaleOriginBadge';
 import HelpHint from '../Shared/HelpHint';
 import ReportExportButtons from '../Reports/ReportExportButtons';
 import { salesHistoryExportParams } from '../../utils/reportExport';
@@ -472,7 +473,7 @@ const Sales = () => {
               />
             </FilterField>
           )}
-          <FilterField label="Search" className="min-w-[200px] flex-[2]">
+          <FilterField label="Search" className="min-w-[12rem] flex-1 sm:min-w-[14rem]">
             <Input
               type="search"
               name="search"
@@ -532,6 +533,7 @@ const Sales = () => {
                         <SaleChannelIcon channel={sale.client_channel} />
                         {sale.sale_number}
                       </button>
+                      <SaleOriginBadge sale={sale} className="ml-1" />
                       {sale.is_late_entry ? (
                         <Badge variant="outline" className="ml-1 text-[10px]">
                           Late entry

@@ -92,6 +92,9 @@ def serialize_daily_order(sale: Sale) -> Dict[str, Any]:
         'amount_refunded': str(sale.amount_refunded.quantize(Decimal('0.01'))),
         'is_late_entry': sale.is_late_entry,
         'client_channel': sale.client_channel or 'unknown',
+        'entry_source': sale.entry_source,
+        'is_field_sale': sale.is_field_sale,
+        'sale_origin': sale.sale_origin,
         'notes': sale.notes or '',
     }
 
@@ -150,6 +153,8 @@ def get_daily_sales_report(
     paid_orders_count = 0
     debt_orders_count = 0
     partial_orders_count = 0
+    field_orders_count = 0
+    field_sales_total = Decimal('0.00')
     by_method_breakdown: Dict[str, Dict[str, Any]] = {}
 
     for s in all_day_sales:
@@ -160,6 +165,9 @@ def get_daily_sales_report(
         total_sales += s_total
         total_paid_upfront += p_amount
         total_debt_incurred += d_amount
+        if s.is_field_sale:
+            field_orders_count += 1
+            field_sales_total += s_total
 
         if p_status == 'paid':
             paid_orders_count += 1
@@ -257,6 +265,10 @@ def get_daily_sales_report(
             'total_debt_incurred': str(total_debt_incurred.quantize(Decimal('0.01'))),
             'debt_orders_count': debt_orders_count,
             'partial_orders_count': partial_orders_count,
+            'field_orders_count': field_orders_count,
+            'field_sales_total': str(field_sales_total.quantize(Decimal('0.01'))),
+            'shop_orders_count': len(all_day_sales) - field_orders_count,
+            'shop_sales_total': str((total_sales - field_sales_total).quantize(Decimal('0.01'))),
             'total_debt_collected': str(Decimal(str(total_debt_collected)).quantize(Decimal('0.01'))),
             'debt_settlement_count': debt_settlement_count,
             'total_collected': str(total_cash_in.quantize(Decimal('0.01'))),

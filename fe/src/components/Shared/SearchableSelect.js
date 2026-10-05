@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '../../lib/cn';
 
 const SearchableSelect = ({
@@ -18,12 +19,53 @@ const SearchableSelect = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const dropdownRef = useRef(null);
+  const [menuStyle, setMenuStyle] = useState(null);
+  const rootRef = useRef(null);
+  const triggerRef = useRef(null);
+  const menuRef = useRef(null);
   const inputRef = useRef(null);
+
+  const updateMenuPosition = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const width = Math.max(rect.width, 180);
+    const viewportPad = 8;
+    let left = rect.left;
+    if (left + width > window.innerWidth - viewportPad) {
+      left = Math.max(viewportPad, window.innerWidth - width - viewportPad);
+    }
+    setMenuStyle({
+      position: 'fixed',
+      top: rect.bottom + 4,
+      left,
+      width,
+      zIndex: 4000,
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      setMenuStyle(null);
+      return undefined;
+    }
+    updateMenuPosition();
+    const onReposition = () => updateMenuPosition();
+    window.addEventListener('resize', onReposition);
+    // Capture scroll on any ancestor so the menu stays under the trigger.
+    window.addEventListener('scroll', onReposition, true);
+    return () => {
+      window.removeEventListener('resize', onReposition);
+      window.removeEventListener('scroll', onReposition, true);
+    };
+  }, [isOpen, updateMenuPosition]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+      const target = event.target;
+      const inRoot = rootRef.current?.contains(target);
+      const inMenu = menuRef.current?.contains(target);
+      if (!inRoot && !inMenu) {
         setIsOpen(false);
         setSearchTerm('');
       }
@@ -76,33 +118,14 @@ const SearchableSelect = ({
     }
   };
 
-  return (
-    <div className={cn('relative w-full', className)} ref={dropdownRef}>
-      <div
-        className={cn(
-          'searchable-select-trigger flex min-h-10 cursor-pointer items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors',
-          isOpen && 'border-ring ring-2 ring-ring/20',
-          disabled && 'cursor-not-allowed bg-muted opacity-60',
-          invalid && 'border-destructive ring-2 ring-destructive/25'
-        )}
-        onClick={handleToggle}
-      >
-        <span className={cn('flex-1 text-left', selectedOption ? 'text-foreground' : 'text-muted-foreground')}>
-          {selectedOption ? (selectedOption.name || selectedOption.label) : placeholder}
-        </span>
-        <span
-          className={cn(
-            'ml-2 text-xs text-muted-foreground transition-transform',
-            isOpen && 'rotate-180'
-          )}
-          aria-hidden
+  const menu = isOpen && menuStyle
+    ? createPortal(
+        <div
+          ref={menuRef}
+          data-testid="searchable-select-menu"
+          style={menuStyle}
+          className="app-scroll-region flex max-h-[300px] flex-col rounded-md border border-border bg-background shadow-lg animate-in fade-in-0 zoom-in-95"
         >
-          ▼
-        </span>
-      </div>
-
-      {isOpen && (
-        <div className="app-scroll-region absolute left-0 right-0 top-full z-[1000] mt-1 flex max-h-[300px] flex-col rounded-md border border-border bg-background shadow-lg animate-in fade-in-0 zoom-in-95">
           {searchable && (
             <div className="border-b border-border p-2">
               <input
@@ -174,8 +197,38 @@ const SearchableSelect = ({
               <span>{addNewLabel}</span>
             </button>
           )}
-        </div>
-      )}
+        </div>,
+        document.body
+      )
+    : null;
+
+  return (
+    <div className={cn('relative w-full', className)} ref={rootRef}>
+      <div
+        ref={triggerRef}
+        className={cn(
+          'searchable-select-trigger flex min-h-10 cursor-pointer items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors',
+          isOpen && 'border-ring ring-2 ring-ring/20',
+          disabled && 'cursor-not-allowed bg-muted opacity-60',
+          invalid && 'border-destructive ring-2 ring-destructive/25'
+        )}
+        onClick={handleToggle}
+      >
+        <span className={cn('flex-1 text-left', selectedOption ? 'text-foreground' : 'text-muted-foreground')}>
+          {selectedOption ? (selectedOption.name || selectedOption.label) : placeholder}
+        </span>
+        <span
+          className={cn(
+            'ml-2 text-xs text-muted-foreground transition-transform',
+            isOpen && 'rotate-180'
+          )}
+          aria-hidden
+        >
+          ▼
+        </span>
+      </div>
+
+      {menu}
 
       <select
         name={name}

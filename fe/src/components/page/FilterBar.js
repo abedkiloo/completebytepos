@@ -7,15 +7,16 @@ import { Button } from '../ui/button';
 
 export function FilterBar({ children, className }) {
   return (
-    <Card className={cn('shadow-sm', className)}>
-      <CardContent className="flex flex-wrap items-end gap-2 overflow-x-hidden p-3">{children}</CardContent>
+    <Card className={cn('shadow-sm overflow-visible', className)}>
+      {/* overflow-visible so SearchableSelect menus are not clipped/pushed into the card */}
+      <CardContent className="flex flex-wrap items-end gap-2 overflow-visible p-3">{children}</CardContent>
     </Card>
   );
 }
 
 export function FilterField({ label, children, className }) {
   return (
-    <div className={cn('flex min-w-0 flex-1 flex-col gap-1 sm:min-w-[140px]', className)}>
+    <div className={cn('flex w-full min-w-[9.5rem] flex-col gap-1 sm:w-auto sm:min-w-[10.5rem]', className)}>
       {label && (
         <label className="text-xs font-medium text-muted-foreground">{label}</label>
       )}

@@ -42,6 +42,7 @@ PRODUCTS_PERMS = RequirePermPerAction('products', {
     'partial_update': 'update',
     'destroy': 'delete',
     'search': 'view',
+    'check_duplicate': 'view',
     'low_stock': 'view',
     'out_of_stock': 'view',
     'statistics': 'view',
@@ -395,12 +396,9 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         self.product_service = ProductService()
 
     def get_permissions(self):
-        """With maker-checker, DELETE queues a proposal — ``update`` is enough for makers."""
-        if getattr(self, 'action', None) == 'destroy':
-            from approvals.permissions import is_maker_checker_enabled
-
-            if is_maker_checker_enabled():
-                return [IsAuthenticated(), HasPermission('products', 'update')]
+        """Delete is checked in ``destroy`` itself: admins only, products not in use."""
+        if getattr(self, 'action', None) in ('destroy', 'bulk_delete'):
+            return [IsAuthenticated()]
         return [IsAuthenticated(), PRODUCTS_PERMS()]
 
     @staticmethod
@@ -649,28 +647,49 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             ProductVariant.objects.filter(product=product).delete()
 
     def destroy(self, request, *args, **kwargs):
-        from approvals.integration import queue_product_delete
-        from approvals.permissions import is_maker_checker_enabled
-        from approvals.serializers import PendingChangeSerializer
+        from accounts.models import AuditLog
+        from products.deletion import (
+            permanently_delete_product,
+            require_product_delete_admin,
+        )
+        from utils.audit_events import log_product_write
 
-        if is_maker_checker_enabled():
-            instance = self.get_object()
-            try:
-                pending = queue_product_delete(request, instance)
-            except ValidationError as exc:
-                from rest_framework.exceptions import ValidationError as DRFValidationError
-
-                if hasattr(exc, 'message_dict'):
-                    raise DRFValidationError(exc.message_dict)
-                raise DRFValidationError(str(exc))
+        require_product_delete_admin(request.user)
+        instance = self.get_object()
+        try:
+            permanently_delete_product(instance)
+        except ValidationError as exc:
             return Response(
-                {
-                    'message': 'Change submitted for approval, not yet active.',
-                    'pending_change': PendingChangeSerializer(pending).data,
-                },
-                status=status.HTTP_202_ACCEPTED,
+                {'error': ' '.join(exc.messages)},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-        return super().destroy(request, *args, **kwargs)
+        log_product_write(request, instance, before=None, action=AuditLog.ACTION_DELETE)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=['get'])
+    def check_duplicate(self, request):
+        """Tell the form, while typing, that a product with this name already exists."""
+        from products.duplicates import duplicate_product_message, find_duplicate_product
+
+        exclude = request.query_params.get('exclude')
+        try:
+            exclude_id = int(exclude) if exclude else None
+        except (TypeError, ValueError):
+            exclude_id = None
+        existing = find_duplicate_product(request.query_params.get('name'), exclude_id=exclude_id)
+        if not existing:
+            return Response({'duplicate': None})
+        return Response(
+            {
+                'duplicate': {
+                    'id': existing.id,
+                    'name': existing.name,
+                    'sku': existing.sku,
+                    'is_active': existing.is_active,
+                },
+                'message': duplicate_product_message(existing),
+            }
+        )
 
     @action(detail=False, methods=['get'])
     def search(self, request):
@@ -743,9 +762,12 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def bulk_delete(self, request):
-        """Bulk delete products"""
+        """Permanently delete products added in error (admins only)."""
+        from products.deletion import require_product_delete_admin
+
         if not products_bulk_operations_enabled():
             return self._feature_disabled_response('Bulk operations')
+        require_product_delete_admin(request.user)
         product_ids = request.data.get('product_ids', [])
         
         if not product_ids:
@@ -755,16 +777,21 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             )
         
         try:
-            deleted_count = self.product_service.bulk_delete_products(product_ids)
-            return Response({
-                'message': f'{deleted_count} products deleted successfully',
-                'deleted_count': deleted_count
-            })
+            result = self.product_service.bulk_delete_products(product_ids)
         except Exception as e:
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        deleted_count = result['deleted_count']
+        message = f'{deleted_count} products deleted successfully'
+        if result['skipped']:
+            message += f'; {len(result["skipped"])} kept because they are in use'
+        return Response({
+            'message': message,
+            'deleted_count': deleted_count,
+            'skipped': result['skipped'],
+        })
 
     @action(detail=False, methods=['post'])
     def bulk_activate(self, request):

@@ -79,9 +79,12 @@ def apply_pending_change(change: PendingChange) -> None:
 
 
 def _apply_product_delete(change: PendingChange) -> None:
+    from products.deletion import permanently_delete_product
     from products.models import Product
 
-    Product.objects.filter(pk=change.entity_id).delete()
+    product = Product.objects.filter(pk=change.entity_id).first()
+    if product is not None:
+        permanently_delete_product(product)
 
 
 def _apply_variant_delete(change: PendingChange) -> None:

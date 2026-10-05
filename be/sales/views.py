@@ -194,7 +194,7 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         query_params = self.request.query_params
         
         # Extract all filter parameters
-        for param in ['branch_id', 'show_all', 'date_from', 'date_to', 'payment_method', 'search', 'customer_id', 'status', 'cashier_id']:
+        for param in ['branch_id', 'show_all', 'date_from', 'date_to', 'payment_method', 'search', 'customer_id', 'status', 'cashier_id', 'sale_origin']:
             if param in query_params:
                 filters[param] = query_params.get(param)
 
@@ -1107,20 +1107,14 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             queryset = queryset.filter(customer_type=customer_type)
         
         if search:
-            search = search.strip()
-            if search:  # Only search if not empty after stripping
-                try:
-                    queryset = queryset.filter(
-                        Q(name__icontains=search) |
-                        Q(customer_code__icontains=search) |
-                        Q(email__icontains=search) |
-                        Q(phone__icontains=search) |
-                        Q(tax_id__icontains=search)
-                    )
-                except Exception:
-                    # If search fails, return empty queryset rather than crashing
-                    queryset = queryset.none()
-        
+            try:
+                from sales.customer_search import apply_customer_search
+
+                queryset = apply_customer_search(queryset, search)
+            except Exception:
+                # If search fails, return empty queryset rather than crashing
+                queryset = queryset.none()
+
         return queryset
 
     @action(

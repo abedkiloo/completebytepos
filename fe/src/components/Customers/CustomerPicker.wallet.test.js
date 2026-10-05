@@ -2,6 +2,16 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { CustomerPicker } from '../POS/v2/CustomerPicker';
 
+jest.mock('../../services/api', () => ({
+  customersAPI: {
+    list: jest.fn().mockResolvedValue({ data: { results: [] } }),
+  },
+}));
+
+jest.mock('../../hooks/useDebouncedValue', () => ({
+  useDebouncedValue: (value) => value,
+}));
+
 const customers = [
   { id: 1, name: 'Alice', phone: '0700111222', wallet_balance: '-80.00' },
   { id: 2, name: 'Bob', phone: '0700333444', wallet_balance: '25.00' },
@@ -15,6 +25,7 @@ describe('CustomerPicker wallet display', () => {
         selectedCustomer={customers[0]}
         onSelect={jest.fn()}
         showWalletBalance
+        searchOnServer={false}
       />
     );
 
@@ -28,6 +39,7 @@ describe('CustomerPicker wallet display', () => {
         selectedCustomer={customers[0]}
         onSelect={jest.fn()}
         showWalletBalance={false}
+        searchOnServer={false}
       />
     );
 

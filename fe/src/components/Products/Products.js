@@ -22,12 +22,7 @@ import {
 import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { productsAPI, categoriesAPI, variantsAPI } from '../../services/api';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
-import {
-  isMakerCheckerEnabled,
-  isPendingApprovalResponse,
-  PENDING_APPROVAL_MESSAGE,
-} from '../../utils/makerChecker';
-import ChangeReasonField from '../Approvals/ChangeReasonField';
+import { isCurrentUserAdmin } from '../../utils/makerChecker';
 import PendingApprovalBadges from '../Approvals/PendingApprovalBadges';
 import { formatCurrency } from '../../utils/formatters';
 import { catalogSellableStock } from '../../utils/catalogStock';
@@ -81,6 +76,15 @@ import {
   productCsvImportExportEnabled,
 } from '../../utils/productDisplay';
 
+const PERMANENT_DELETE_MESSAGE =
+  'Use this for a product added in error. It is removed for good and cannot be undone. ' +
+  'Products that have stock or have been sold, bought or delivered cannot be deleted — deactivate them instead.';
+
+function deleteErrorMessage(error, fallback) {
+  const data = error?.response?.data;
+  return data?.error || data?.detail || fallback;
+}
+
 const EMPTY_FILTERS = {
   search: '',
   category: '',
@@ -110,7 +114,7 @@ const Products = () => {
   const showLowStock = showProductLowStockBadges(productModuleSettings);
   const bulkEnabled = productBulkOperationsEnabled(productModuleSettings);
   const csvEnabled = productCsvImportExportEnabled(productModuleSettings);
-  const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
+  const canDeleteProducts = isCurrentUserAdmin();
 
   // --- Data ---
   const [products, setProducts] = useState([]);
@@ -154,7 +158,6 @@ const Products = () => {
 
   // --- Confirms ---
   const [confirmDelete, setConfirmDelete] = useState(null); // product id
-  const [deleteReason, setDeleteReason] = useState('');
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [busy, setBusy] = useState(false);
   const [stockCountContext, setStockCountContext] = useState(null);
@@ -315,40 +318,33 @@ const Products = () => {
 
   const confirmDeleteAction = async () => {
     if (!confirmDelete) return;
-    if (makerCheckerOn && !deleteReason.trim()) {
-      toast.warning('Enter a reason for deleting this product.');
-      return;
-    }
     setBusy(true);
     try {
-      const payload = makerCheckerOn ? { reason: deleteReason.trim() } : {};
-      const res = await productsAPI.delete(confirmDelete, payload);
-      if (isPendingApprovalResponse(res.status)) {
-        toast.warning(PENDING_APPROVAL_MESSAGE);
-      } else {
-        toast.success('Product deleted');
-      }
+      await productsAPI.delete(confirmDelete);
+      toast.success('Product permanently deleted');
       loadProducts();
       loadStatistics();
     } catch (error) {
-      toast.error('Failed to delete product');
+      toast.error(deleteErrorMessage(error, 'Could not delete this product'));
     } finally {
       setBusy(false);
       setConfirmDelete(null);
-      setDeleteReason('');
     }
   };
 
   const confirmBulkDeleteAction = async () => {
     setBusy(true);
     try {
-      await productsAPI.bulkDelete({ product_ids: selectedProductIds });
-      toast.success(`Deleted ${selectedProductIds.length} product(s)`);
+      const res = await productsAPI.bulkDelete({ product_ids: selectedProductIds });
+      const deleted = res.data?.deleted_count ?? 0;
+      const skipped = res.data?.skipped || [];
+      if (deleted) toast.success(`Permanently deleted ${deleted} product(s)`);
+      if (skipped.length) toast.warning(skipped.join(' '));
       setSelectedProductIds([]);
       loadProducts();
       loadStatistics();
     } catch (error) {
-      toast.error('Failed to delete products');
+      toast.error(deleteErrorMessage(error, 'Failed to delete products'));
     } finally {
       setBusy(false);
       setConfirmBulkDelete(false);
@@ -646,6 +642,7 @@ const Products = () => {
               </Button>
                 </>
               )}
+              {canDeleteProducts ? (
               <Button
                 variant="destructive"
                 size="sm"
@@ -654,6 +651,7 @@ const Products = () => {
                 <Trash2 className="h-3.5 w-3.5" />
                 Delete
               </Button>
+              ) : null}
             </div>
           </div>
         )}
@@ -754,7 +752,7 @@ const Products = () => {
                         onToggle={() => toggleProductSelection(product.id)}
                         onView={() => openView(product)}
                         onEdit={() => openEdit(product)}
-                        onDelete={() => setConfirmDelete(product.id)}
+                        onDelete={canDeleteProducts ? () => setConfirmDelete(product.id) : undefined}
                         onSetStock={
                           canSetStock && product.track_stock
                             ? () => setStockCountContext({ product, variant: null })
@@ -860,13 +858,9 @@ const Products = () => {
       {/* --- Confirms --- */}
       <ConfirmDialog
         isOpen={!!confirmDelete}
-        title="Delete product"
-        message={
-          makerCheckerOn
-            ? 'Submit a delete proposal for checker approval. The product stays active until approved.'
-            : 'Are you sure you want to delete this product? This action cannot be undone.'
-        }
-        confirmText={makerCheckerOn ? 'Submit for approval' : 'Delete product'}
+        title="Permanently delete product?"
+        message={PERMANENT_DELETE_MESSAGE}
+        confirmText="Delete permanently"
         cancelText="Cancel"
         type="danger"
         busy={busy}
@@ -874,18 +868,13 @@ const Products = () => {
         onCancel={() => {
           if (busy) return;
           setConfirmDelete(null);
-          setDeleteReason('');
         }}
-      >
-        {makerCheckerOn && confirmDelete ? (
-          <ChangeReasonField context="catalog" value={deleteReason} onChange={setDeleteReason} />
-        ) : null}
-      </ConfirmDialog>
+      />
 
       <ConfirmDialog
         isOpen={confirmBulkDelete}
         title="Delete selected products?"
-        message={`This will permanently remove ${selectedProductIds.length} product(s). Their sales history will be preserved.`}
+        message={`This permanently removes the selected product(s) added in error. Any that have stock or have been sold, bought or delivered are kept — deactivate those instead.`}
         confirmText={`Delete ${selectedProductIds.length} product(s)`}
         cancelText="Cancel"
         type="danger"
@@ -1312,7 +1301,7 @@ function ProductRow({
             <Pencil className="h-3.5 w-3.5" />
             <span className="sr-only sm:not-sr-only sm:ml-1">Edit</span>
           </Button>
-          {!catalogOnly && (
+          {!catalogOnly && (onSetStock || onDelete) && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm" aria-label="More actions">
@@ -1326,13 +1315,15 @@ function ProductRow({
                   Set stock on hand
                 </DropdownMenuItem>
               ) : null}
-              <DropdownMenuItem
-                onClick={onDelete}
-                className="text-destructive focus:text-destructive"
-              >
-                <Trash2 className="mr-2 h-3.5 w-3.5" />
-                Delete product
-              </DropdownMenuItem>
+              {onDelete ? (
+                <DropdownMenuItem
+                  onClick={onDelete}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="mr-2 h-3.5 w-3.5" />
+                  Delete product
+                </DropdownMenuItem>
+              ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
           )}

@@ -58,7 +58,7 @@ class DeliveryExtraCoverageTests(APITestCase):
         )
         cls.superuser = User.objects.create_superuser('dx_su', 'su@x.com', 'x')
         cls.customer = Customer.objects.create(name='DX', phone='071')
-        cls.product = Product.objects.create(name='X', sku='X1', price=1, cost=1)
+        cls.product = Product.objects.create(name='X', sku='X1', price=1, cost=1, stock_quantity=1000)
         cls.site = CustomerSite.objects.create(
             customer=cls.customer, label='L', latitude='-1', longitude='36',
             created_by=cls.agent, status=CustomerSite.STATUS_FINALIZED,

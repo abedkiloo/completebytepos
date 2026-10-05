@@ -108,14 +108,37 @@ function SinglePastSaleForm({
     });
   }, [canPickServedBy]);
 
-  useEffect(() => {
-    customersAPI.list({ page_size: 100, is_active: true }).then((res) => {
+  const [customerSearchTerm, setCustomerSearchTerm] = useState('');
+
+  const loadCustomerOptions = useCallback(async (term = '') => {
+    try {
+      const res = await customersAPI.list({
+        page_size: 50,
+        is_active: true,
+        ...(term.trim() ? { search: term.trim() } : {}),
+      });
       const rows = res.data?.results || res.data || [];
       setCustomerOptions(
-        rows.map((c) => ({ value: String(c.id), label: c.name || c.customer_code || `#${c.id}` }))
+        rows.map((c) => ({
+          value: String(c.id),
+          label: [c.name, c.phone, c.customer_code].filter(Boolean).join(' · ') || `#${c.id}`,
+        }))
       );
-    });
+    } catch {
+      setCustomerOptions([]);
+    }
   }, []);
+
+  useEffect(() => {
+    loadCustomerOptions('');
+  }, [loadCustomerOptions]);
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      loadCustomerOptions(customerSearchTerm);
+    }, 280);
+    return () => clearTimeout(handle);
+  }, [customerSearchTerm, loadCustomerOptions]);
 
   useEffect(() => {
     if (!resubmitId) {
@@ -554,8 +577,10 @@ function SinglePastSaleForm({
           <SearchableSelect
             value={customerId}
             onChange={selectValue(setCustomerId)}
-            placeholder="Walk-in (optional)"
+            placeholder="Search name, phone, or code…"
             options={[{ value: '', label: 'None' }, ...customerOptions]}
+            onSearchTermChange={setCustomerSearchTerm}
+            noResultsHint="Type more of the name or phone — every customer is searchable."
           />
         </div>
         <div className="space-y-1.5 sm:col-span-2">

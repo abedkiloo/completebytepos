@@ -6,7 +6,7 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
-from sales.models import Customer, CustomerWalletTransaction
+from sales.models import Customer
 
 from .config import MIN_SITE_MEDIA
 from .models import FieldOrder
@@ -71,40 +71,6 @@ def require_field_order_customer(order: FieldOrder) -> Customer:
     return order.customer
 
 
-def post_field_order_debt(order: FieldOrder, user=None) -> None:
-    """
-    When goods are packed/ready, the customer owes the order total.
-    Collection then goes through normal debt collection (cash / M-Pesa).
-    """
-    customer = require_field_order_customer(order)
-    amount = field_order_total(order)
-    if amount <= 0:
-        return
-    reference = f'FO-{order.pk}'
-    if CustomerWalletTransaction.objects.filter(
-        customer=customer,
-        source_type='debt',
-        reference=reference,
-    ).exists():
-        return
-    locked = Customer.objects.select_for_update().get(pk=customer.pk)
-    locked.wallet_balance -= amount
-    locked.save(update_fields=['wallet_balance', 'updated_at'])
-    CustomerWalletTransaction.objects.create(
-        customer=locked,
-        transaction_type='debit',
-        source_type='debt',
-        amount=amount,
-        balance_after=locked.wallet_balance,
-        reference=reference,
-        notes=(
-            f'Field order #{order.pk} packed — unpaid balance added as customer debt'
-        ),
-        created_by=user or order.created_by,
-    )
-    order.customer = locked
-
-
 def transition(order: FieldOrder, to_status: str) -> FieldOrder:
     allowed = ALLOWED_TRANSITIONS.get(order.status, set())
     if to_status not in allowed:
@@ -130,10 +96,12 @@ def start_packing(order: FieldOrder) -> FieldOrder:
 
 def pack_order(order: FieldOrder, user=None) -> FieldOrder:
     """
-    Allocate-on-pack: mark stock_allocated without inventing a second inventory ledger.
-    Real stock movements can hook here later; S08 records the policy decision.
-    Packed field sales post customer debt so cash is collected through debt management.
+    Packing is when a field order becomes a sale: it is recorded for the agent
+    who took the order, stock moves, the books post, and the unpaid total goes
+    on the customer's debt (collected through debt management).
     """
+    from .field_sale import record_field_sale
+
     if order.status == FieldOrder.STATUS_SUBMITTED:
         transition(order, FieldOrder.STATUS_PACKING)
         order.refresh_from_db()
@@ -149,7 +117,7 @@ def pack_order(order: FieldOrder, user=None) -> FieldOrder:
         order.save(update_fields=[
             'stock_allocated', 'packed_at', 'status', 'updated_at',
         ])
-        post_field_order_debt(order, user=user)
+        record_field_sale(order, user=user)
     return order
 
 

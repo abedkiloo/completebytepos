@@ -24,6 +24,7 @@ jest.mock('../../services/api', () => ({
   productsAPI: {
     create: jest.fn(),
     update: jest.fn(),
+    checkDuplicate: jest.fn(),
     units: {
       options: jest.fn().mockResolvedValue({ data: { results: [] } }),
     },
@@ -146,6 +147,69 @@ describe('ProductForm integration', () => {
     productsAPI.create.mockResolvedValue({ status: 201, data: { id: 99 } });
     productsAPI.update.mockResolvedValue({ status: 200, data: { id: 1, name: 'Updated' } });
     applyVariantDraftsAfterProductSave.mockResolvedValue({ applied: 1 });
+    productsAPI.checkDuplicate.mockReset();
+    productsAPI.checkDuplicate.mockResolvedValue({ data: { duplicate: null } });
+  });
+
+  const duplicateMessage =
+    '"Sugar 2kg" already exists (SKU SUG-1). Open that product and update it instead of adding it again.';
+
+  test('warns while typing that the product already exists and blocks saving', async () => {
+    useProductVariantsEnabled.mockReturnValue(false);
+    productsAPI.checkDuplicate.mockResolvedValue({
+      data: { duplicate: { id: 7, name: 'Sugar 2kg', sku: 'SUG-1' }, message: duplicateMessage },
+    });
+    render(<ProductForm categories={categories} onClose={jest.fn()} onSave={jest.fn()} />);
+    fireEvent.change(document.querySelector('input[name="name"]'), {
+      target: { value: 'sugar 2KG', name: 'name' },
+    });
+
+    expect(await screen.findByText(duplicateMessage)).toBeInTheDocument();
+    expect(productsAPI.checkDuplicate).toHaveBeenLastCalledWith('sugar 2KG', undefined);
+
+    fireEvent.click(screen.getByRole('button', { name: /create/i }));
+    expect(screen.queryByTestId('commit-confirm-ok')).not.toBeInTheDocument();
+    expect(productsAPI.create).not.toHaveBeenCalled();
+  });
+
+  test('does not flag a product as a duplicate of itself when editing', async () => {
+    render(
+      <ProductForm
+        product={{ id: 7, name: 'Sugar 2kg', category: 1, price: '50', selling_price: '50' }}
+        categories={categories}
+        onClose={jest.fn()}
+        onSave={jest.fn()}
+      />
+    );
+    await waitFor(() =>
+      expect(document.querySelector('input[name="name"]').value).toBe('Sugar 2kg')
+    );
+    expect(productsAPI.checkDuplicate).not.toHaveBeenCalled();
+
+    fireEvent.change(document.querySelector('input[name="name"]'), {
+      target: { value: 'Sugar 1kg', name: 'name' },
+    });
+    await waitFor(() =>
+      expect(productsAPI.checkDuplicate).toHaveBeenLastCalledWith('Sugar 1kg', 7)
+    );
+  });
+
+  test('shows the server duplicate message if it slips past the live check', async () => {
+    useProductVariantsEnabled.mockReturnValue(false);
+    productsAPI.create.mockRejectedValue({
+      response: { status: 400, data: { name: [duplicateMessage] } },
+    });
+    render(<ProductForm categories={categories} onClose={jest.fn()} onSave={jest.fn()} />);
+    fireEvent.change(document.querySelector('input[name="name"]'), {
+      target: { value: 'Sugar 2kg', name: 'name' },
+    });
+    fireEvent.change(document.querySelector('input[name="selling_price"]'), {
+      target: { value: '50', name: 'selling_price' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /create/i }));
+    fireEvent.click(await screen.findByTestId('commit-confirm-ok'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(duplicateMessage));
+    expect(screen.getByText(duplicateMessage)).toBeInTheDocument();
   });
 
   const fillNameAndEnableVariants = async () => {

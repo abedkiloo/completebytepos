@@ -61,7 +61,7 @@ class FieldOrderExtraTests(APITestCase):
             custom_role=Role.objects.get(name=ROLE_DELIVERY_AGENT), is_active=True,
         )
         cls.customer = Customer.objects.create(name='C2', phone='0722')
-        cls.product = Product.objects.create(name='Sand', sku='SND-1', price=100, cost=50)
+        cls.product = Product.objects.create(name='Sand', sku='SND-1', price=100, cost=50, stock_quantity=1000)
         cls.site = CustomerSite.objects.create(
             customer=cls.customer, latitude='-1.1', longitude='36.7',
             created_by=cls.agent, status=CustomerSite.STATUS_FINALIZED,
@@ -245,7 +245,8 @@ class FieldOrderExtraTests(APITestCase):
     def test_pack_requires_customer_and_posts_debt_once(self):
         from decimal import Decimal
 
-        from agents.order_services import pack_order, post_field_order_debt
+        from agents.field_sale import record_field_sale
+        from agents.order_services import pack_order
         from sales.models import CustomerWalletTransaction
 
         orphan_site = CustomerSite.objects.create(
@@ -271,14 +272,14 @@ class FieldOrderExtraTests(APITestCase):
         self.customer.refresh_from_db()
         self.assertEqual(self.customer.wallet_balance, Decimal('-200.00'))
         self.assertEqual(
-            CustomerWalletTransaction.objects.filter(reference=f'FO-{order.id}').count(),
+            CustomerWalletTransaction.objects.filter(sale=order.sale, source_type='debt').count(),
             1,
         )
-        post_field_order_debt(order, user=self.dispatch)
+        self.assertEqual(record_field_sale(order, user=self.dispatch), order.sale)
         self.customer.refresh_from_db()
         self.assertEqual(self.customer.wallet_balance, Decimal('-200.00'))
         self.assertEqual(
-            CustomerWalletTransaction.objects.filter(reference=f'FO-{order.id}').count(),
+            CustomerWalletTransaction.objects.filter(customer=self.customer, source_type='debt').count(),
             1,
         )
 
@@ -298,7 +299,7 @@ class FieldOrderExtraTests(APITestCase):
         self.customer.refresh_from_db()
         self.assertEqual(self.customer.wallet_balance, Decimal('0.00'))
         self.assertFalse(
-            CustomerWalletTransaction.objects.filter(reference=f'FO-{order.id}').exists()
+            CustomerWalletTransaction.objects.filter(sale=order.sale, source_type='debt').exists()
         )
 
     def test_pack_copies_customer_from_site(self):

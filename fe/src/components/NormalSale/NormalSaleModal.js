@@ -95,23 +95,32 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
   }, [isOpen]);
 
   useEffect(() => {
-    // Filter customers based on search
-    if (customerSearch.trim()) {
-      const searchLower = customerSearch.toLowerCase();
-      const filtered = customers.filter(customer => 
-        customer.name.toLowerCase().includes(searchLower) ||
-        customer.customer_code?.toLowerCase().includes(searchLower) ||
-        customer.phone?.includes(customerSearch) ||
-        customer.email?.toLowerCase().includes(searchLower)
-      );
-      setFilteredCustomers(filtered);
-      setShowCustomerSearch(true);
-    } else {
-      // Show all customers when search is empty
-      setFilteredCustomers(customers);
-      setShowCustomerSearch(false);
-    }
-  }, [customerSearch, customers]);
+    let cancelled = false;
+    const handle = setTimeout(async () => {
+      try {
+        const response = await customersAPI.list({
+          is_active: true,
+          page_size: 50,
+          ...(customerSearch.trim() ? { search: customerSearch.trim() } : {}),
+        });
+        if (cancelled) return;
+        const customersData = response.data.results || response.data || [];
+        const list = Array.isArray(customersData) ? customersData : [];
+        setCustomers(list);
+        setFilteredCustomers(list);
+        setShowCustomerSearch(Boolean(customerSearch.trim()));
+      } catch (error) {
+        if (!cancelled) {
+          setCustomers([]);
+          setFilteredCustomers([]);
+        }
+      }
+    }, 280);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [customerSearch, isOpen]);
 
   // Auto-update amount paid when grand total changes (for pay now)
   // Only update if user hasn't manually changed it
@@ -132,8 +141,7 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
 
   const loadCustomers = async () => {
     try {
-      // Fetch all customers with large page size to ensure newly added customers are included
-      const response = await customersAPI.list({ is_active: true, page_size: 1000 });
+      const response = await customersAPI.list({ is_active: true, page_size: 50 });
       const customersData = response.data.results || response.data || [];
       setCustomers(Array.isArray(customersData) ? customersData : []);
     } catch (error) {

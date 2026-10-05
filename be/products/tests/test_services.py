@@ -476,8 +476,8 @@ class ProductServiceTestCase(TestCase):
             cost=Decimal('50.00')
         )
         
-        deleted = self.service.bulk_delete_products([p1.id, p2.id])
-        self.assertEqual(deleted, 2)
+        result = self.service.bulk_delete_products([p1.id, p2.id])
+        self.assertEqual(result, {'deleted_count': 2, 'skipped': []})
         self.assertFalse(Product.objects.filter(id__in=[p1.id, p2.id]).exists())
     
     def test_bulk_activate_products(self):
@@ -878,8 +878,8 @@ IMPORT-001,Imported Product,Test Category,100.00,50.00,10,true"""
     
     def test_bulk_delete_empty_list(self):
         """Test bulk delete with empty list"""
-        deleted = self.service.bulk_delete_products([])
-        self.assertEqual(deleted, 0)
+        result = self.service.bulk_delete_products([])
+        self.assertEqual(result['deleted_count'], 0)
     
     def test_export_products_with_queryset(self):
         """Test export with specific queryset"""

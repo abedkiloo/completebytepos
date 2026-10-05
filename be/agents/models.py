@@ -154,6 +154,14 @@ class FieldOrder(models.Model):
         default=False,
         help_text='True after allocate-on-pack succeeds',
     )
+    sale = models.OneToOneField(
+        'sales.Sale',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='field_order',
+        help_text='Sale recorded for the agent when the order was packed',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

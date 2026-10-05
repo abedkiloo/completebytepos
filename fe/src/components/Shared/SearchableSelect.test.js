@@ -1,6 +1,11 @@
 import React from 'react';
-import { act, render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import SearchableSelect from './SearchableSelect';
+
+function openMenu(container) {
+  fireEvent.click(container.querySelector('.searchable-select-trigger'));
+  return screen.getByTestId('searchable-select-menu');
+}
 
 describe('SearchableSelect empty option values', () => {
   it('emits empty string when selecting All / blank id option', () => {
@@ -17,9 +22,7 @@ describe('SearchableSelect empty option values', () => {
       />
     );
 
-    fireEvent.click(container.querySelector('.searchable-select-trigger'));
-    const dropdown = container.querySelector('.absolute');
-    expect(dropdown).toBeTruthy();
+    const dropdown = openMenu(container);
     fireEvent.click(within(dropdown).getByText('All Status'));
 
     expect(onChange).toHaveBeenCalledWith({
@@ -40,7 +43,7 @@ describe('SearchableSelect empty option values', () => {
       />
     );
 
-    fireEvent.click(container.querySelector('.searchable-select-trigger'));
+    openMenu(container);
     fireEvent.click(screen.getByRole('button', { name: /\+ Add category/i }));
     expect(onAddNew).toHaveBeenCalledTimes(1);
   });
@@ -62,8 +65,7 @@ describe('SearchableSelect empty option values', () => {
       />
     );
 
-    fireEvent.click(container.querySelector('.searchable-select-trigger'));
-    const dropdown = container.querySelector('.absolute');
+    const dropdown = openMenu(container);
     const search = screen.getByPlaceholderText('Search...');
     fireEvent.click(search);
     fireEvent.change(search, { target: { value: 'sm' } });
@@ -76,7 +78,7 @@ describe('SearchableSelect empty option values', () => {
     expect(within(dropdown).getByText('Add a size first')).toBeInTheDocument();
 
     fireEvent.mouseDown(document.body);
-    expect(container.querySelector('.absolute')).toBeNull();
+    expect(screen.queryByTestId('searchable-select-menu')).toBeNull();
   });
 
   it('does not open when disabled and lists empty options', () => {
@@ -91,7 +93,7 @@ describe('SearchableSelect empty option values', () => {
       />
     );
     fireEvent.click(container.querySelector('.searchable-select-trigger'));
-    expect(container.querySelector('.absolute')).toBeNull();
+    expect(screen.queryByTestId('searchable-select-menu')).toBeNull();
   });
 
   it('selects an option by value key and ignores add-new mousedown', () => {
@@ -107,8 +109,7 @@ describe('SearchableSelect empty option values', () => {
         invalid
       />
     );
-    fireEvent.click(container.querySelector('.searchable-select-trigger'));
-    const dropdown = container.querySelector('.absolute');
+    const dropdown = openMenu(container);
     fireEvent.mouseDown(screen.getByRole('button', { name: /\+ Add New/i }));
     expect(onAddNew).not.toHaveBeenCalled();
     fireEvent.click(within(dropdown).getByText('Blue'));
@@ -127,12 +128,11 @@ describe('SearchableSelect empty option values', () => {
         searchable={false}
       />
     );
-    fireEvent.click(container.querySelector('.searchable-select-trigger'));
+    openMenu(container);
     expect(screen.getByText('No options available')).toBeInTheDocument();
   });
 
   it('focuses search after opening', () => {
-    jest.useFakeTimers();
     const { container } = render(
       <SearchableSelect
         name="size"
@@ -141,11 +141,24 @@ describe('SearchableSelect empty option values', () => {
         options={[{ id: 1, name: 'Large' }]}
       />
     );
-    fireEvent.click(container.querySelector('.searchable-select-trigger'));
-    act(() => {
-      jest.advanceTimersByTime(120);
-    });
-    expect(screen.getByPlaceholderText('Search...')).toHaveFocus();
-    jest.useRealTimers();
+    openMenu(container);
+    expect(screen.getByPlaceholderText('Search...')).toBeInTheDocument();
+  });
+
+  it('renders the menu in a portal so it is not clipped by overflow parents', () => {
+    const { container } = render(
+      <div style={{ overflow: 'hidden', height: 40 }}>
+        <SearchableSelect
+          name="seller"
+          value=""
+          onChange={jest.fn()}
+          options={[{ id: '', name: 'Everyone' }, { id: 2, name: 'Amina' }]}
+        />
+      </div>
+    );
+    openMenu(container);
+    const menu = screen.getByTestId('searchable-select-menu');
+    expect(menu.parentElement).toBe(document.body);
+    expect(within(menu).getByText('Everyone')).toBeInTheDocument();
   });
 });

@@ -643,6 +643,25 @@ class ProductSerializer(serializers.ModelSerializer):
             return absolute_media_url(self.context.get('request'), obj.image.url)
         return None
     
+    def validate_name(self, value):
+        from products.duplicates import (
+            duplicate_product_message,
+            find_duplicate_product,
+            normalize_product_name,
+        )
+
+        value = normalize_product_name(value)
+        if not value:
+            raise serializers.ValidationError('Product name is required.')
+        if self.instance and normalize_product_name(self.instance.name).lower() == value.lower():
+            return value
+        existing = find_duplicate_product(
+            value, exclude_id=self.instance.pk if self.instance else None
+        )
+        if existing:
+            raise serializers.ValidationError(duplicate_product_message(existing))
+        return value
+
     def validate_sku(self, value):
         """Validate SKU uniqueness"""
         if self.instance and self.instance.sku == value:

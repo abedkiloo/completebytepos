@@ -279,24 +279,43 @@ class MakerCheckerProductTests(ManagerAPITestCase):
         self.product.refresh_from_db()
         self.assertFalse(self.product.is_active)
 
-    def test_delete_pending_keeps_product_until_checker_approves(self):
+    def test_only_admin_deletes_products_and_only_when_unused(self):
         product_id = self.product.id
         resp = self.client.delete(
             f'/api/products/{product_id}/',
             {'reason': 'Duplicate SKU cleanup'},
             format='json',
         )
-        self.assertEqual(resp.status_code, status.HTTP_202_ACCEPTED, resp.data)
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN, resp.data)
+        self.assertFalse(PendingChange.objects.filter(action_type=ACTION_PRODUCT_DELETE).exists())
+
+        admin = self._checker_client()
+        stocked = admin.delete(f'/api/products/{product_id}/')
+        self.assertEqual(stocked.status_code, status.HTTP_400_BAD_REQUEST, stocked.data)
+        self.assertIn('50 in stock', stocked.data['error'])
         self.assertTrue(Product.objects.filter(pk=product_id).exists())
-        pending = PendingChange.objects.get(action_type=ACTION_PRODUCT_DELETE)
-        checker = self._checker_client()
-        approve = checker.post(
-            f'/api/approvals/pending-changes/{pending.id}/approve/',
-            {},
-            format='json',
+
+        mistake = Product.objects.create(
+            name='MC Product typo', sku='MC-PROD-TYPO', category=self.category,
+            price=Decimal('100'), cost=Decimal('50'), stock_quantity=0,
         )
-        self.assertEqual(approve.status_code, status.HTTP_200_OK)
-        self.assertFalse(Product.objects.filter(pk=product_id).exists())
+        gone = admin.delete(f'/api/products/{mistake.id}/')
+        self.assertEqual(gone.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Product.objects.filter(pk=mistake.id).exists())
+
+    def test_approving_an_old_delete_proposal_keeps_a_stocked_product(self):
+        from approvals.integration import queue_product_delete
+        from rest_framework.test import APIRequestFactory
+
+        request = APIRequestFactory().delete('/', {'reason': 'old proposal'}, format='json')
+        request.user = self.manager_user
+        request.data = {'reason': 'old proposal'}
+        pending = queue_product_delete(request, self.product)
+        approve = self._checker_client().post(
+            f'/api/approvals/pending-changes/{pending.id}/approve/', {}, format='json',
+        )
+        self.assertNotEqual(approve.status_code, status.HTTP_200_OK)
+        self.assertTrue(Product.objects.filter(pk=self.product.id).exists())
 
     def test_extreme_price_requires_confirmation_on_approve(self):
         self.client.patch(

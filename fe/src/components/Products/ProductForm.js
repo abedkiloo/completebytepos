@@ -146,6 +146,30 @@ const ProductForm = ({
   const [showSupplierForm, setShowSupplierForm] = useState(false);
   const [allCategories, setAllCategories] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [duplicateMessage, setDuplicateMessage] = useState('');
+  const debouncedName = useDebouncedValue(formData.name);
+
+  useEffect(() => {
+    const name = String(debouncedName || '').trim();
+    const unchanged =
+      product && name.toLowerCase() === String(product.name || '').trim().toLowerCase();
+    if (!name || unchanged) {
+      setDuplicateMessage('');
+      return undefined;
+    }
+    let cancelled = false;
+    productsAPI
+      .checkDuplicate(name, product?.id)
+      .then((res) => {
+        if (!cancelled) setDuplicateMessage(res.data?.duplicate ? res.data.message : '');
+      })
+      .catch(() => {
+        if (!cancelled) setDuplicateMessage('');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedName, product]);
 
   useEffect(() => {
     // Load sizes and colors
@@ -320,6 +344,7 @@ const ProductForm = ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value
     }));
+    if (name === 'name') setDuplicateMessage('');
     // Clear error for this field
     if (errors[name]) {
       setErrors(prev => {
@@ -443,6 +468,7 @@ const ProductForm = ({
     
     const nameErr = required(formData.name, 'Enter product name, e.g. Sugar 2kg');
     if (nameErr) newErrors.name = nameErr;
+    else if (duplicateMessage) newErrors.name = duplicateMessage;
     
     if (showPricingFields && !formData.has_variants) {
       const sellingErr = moneyMessage(formData.selling_price, {
@@ -840,8 +866,13 @@ const ProductForm = ({
                 value={formData.name}
                 onChange={handleChange}
                 required
+                aria-invalid={Boolean(errors.name || duplicateMessage)}
               />
-              {errors.name && <span className="error">{errors.name}</span>}
+              {errors.name ? (
+                <span className="error">{errors.name}</span>
+              ) : duplicateMessage ? (
+                <span className="error" role="alert">{duplicateMessage}</span>
+              ) : null}
             </div>
 
           </div>

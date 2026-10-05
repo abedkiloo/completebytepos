@@ -22,6 +22,7 @@ import { cn } from '../../lib/cn';
 import { PageShell } from '../page';
 import AppraisalProgressCard from '../Appraisals/AppraisalProgressCard';
 import SaleChannelIcon from '../Sales/SaleChannelIcon';
+import SaleOriginBadge from '../Sales/SaleOriginBadge';
 import {
   getDefaultPosRoute,
   isBillingPosEnabled,
@@ -383,6 +384,7 @@ const Dashboard = () => {
                           <span className="truncate">
                             {sale.sale_number || `Sale #${sale.id}`}
                           </span>
+                          <SaleOriginBadge sale={sale} />
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {sale.created_at

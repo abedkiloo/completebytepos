@@ -12,6 +12,7 @@ import PeriodPills from './PeriodPills';
 import { DEFAULT_REPORT_PERIOD } from '../../utils/reportPeriods';
 import ReportExportButtons from './ReportExportButtons';
 import SaleChannelIcon from '../Sales/SaleChannelIcon';
+import SaleOriginBadge from '../Sales/SaleOriginBadge';
 import PrintBrandHeader from '../Shared/PrintBrandHeader';
 
 function currentMonthValue() {
@@ -164,6 +165,7 @@ export default function SalesPersonReportView() {
                 <tr>
                   <th>Staff member</th>
                   <th>Sales</th>
+                  <th>Shop / field</th>
                   <th>Gross</th>
                   <th>Refunds</th>
                   <th>Net sales</th>
@@ -181,6 +183,14 @@ export default function SalesPersonReportView() {
                       ) : null}
                     </td>
                     <td>{formatNumber(row.sales_count)}</td>
+                    <td>
+                      <span>{formatNumber(row.shop_sales_count ?? row.sales_count)} shop</span>
+                      {row.field_sales_count > 0 ? (
+                        <div className="text-xs text-muted-foreground">
+                          {formatNumber(row.field_sales_count)} field · {formatCurrency(row.field_sales)}
+                        </div>
+                      ) : null}
+                    </td>
                     <td>{formatCurrency(row.gross_sales)}</td>
                     <td>
                       {row.refunds_count > 0 ? (
@@ -223,6 +233,7 @@ export default function SalesPersonReportView() {
                           <span className="inline-flex items-center gap-1.5">
                             <SaleChannelIcon channel={tx.client_channel} />
                             {tx.sale_number}
+                            <SaleOriginBadge sale={tx} />
                           </span>
                         </td>
                         <td>{formatDateTime(tx.date)}</td>

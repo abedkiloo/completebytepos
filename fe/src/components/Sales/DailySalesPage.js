@@ -31,6 +31,7 @@ import { userCanRefundSales, handleSaleRefundResponse, userCanRollbackSales } fr
 import { userHasAdminSaleOverride } from '../../utils/saleCompletionApproval';
 import { pendingApprovalToastMessage } from '../../utils/makerChecker';
 import SaleChannelIcon from './SaleChannelIcon';
+import SaleOriginBadge from './SaleOriginBadge';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { useSellerOptions } from '../../hooks/useSellerOptions';
@@ -460,7 +461,11 @@ export default function DailySalesPage() {
           icon={Receipt}
           label="Total Sales"
           value={formatCurrency(summary.total_sales)}
-          subtext={`${summary.orders_count} completed orders`}
+          subtext={
+            Number(summary.field_orders_count) > 0
+              ? `${summary.orders_count} completed · ${summary.shop_orders_count} shop, ${summary.field_orders_count} field (${formatCurrency(summary.field_sales_total)})`
+              : `${summary.orders_count} completed orders`
+          }
         />
         <SummaryCard
           icon={CheckCircle2}
@@ -551,7 +556,7 @@ export default function DailySalesPage() {
         </div>
 
         <FilterBar>
-          <FilterField label="Search" className="min-w-[220px] flex-[2]">
+          <FilterField label="Search" className="min-w-[12rem] flex-1 sm:min-w-[14rem]">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -725,6 +730,7 @@ export default function DailySalesPage() {
                         <SaleChannelIcon channel={order.client_channel} />
                         {order.sale_number}
                       </button>
+                      <SaleOriginBadge sale={order} className="ml-1" />
                       <div className="text-xs text-muted-foreground whitespace-nowrap">
                         {order.occurred_at ? formatDateTime(order.occurred_at) : '—'}
                       </div>

@@ -295,6 +295,8 @@ class SaleSerializer(serializers.ModelSerializer):
     needs_salesperson_action = serializers.SerializerMethodField()
     rejection_reason = serializers.SerializerMethodField()
     approval_details = serializers.SerializerMethodField()
+    is_field_sale = serializers.BooleanField(read_only=True)
+    sale_origin = serializers.CharField(read_only=True)
 
     class Meta:
         model = Sale
@@ -305,7 +307,8 @@ class SaleSerializer(serializers.ModelSerializer):
             'delivery_method', 'delivery_cost',
             'shipping_address', 'shipping_location',
             'payment_method', 'payment_reference', 'amount_paid', 'change', 'notes',
-            'occurred_at', 'entry_source', 'client_channel', 'backfill_reason', 'is_late_entry',
+            'occurred_at', 'entry_source', 'is_field_sale', 'sale_origin',
+            'client_channel', 'backfill_reason', 'is_late_entry',
             'backfill_receipt_photo_url',
             'items', 'item_count', 'amount_refunded', 'refundable_remaining', 'can_refund',
             'can_rollback', 'can_correct_date', 'needs_salesperson_action', 'rejection_reason',

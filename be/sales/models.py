@@ -134,6 +134,7 @@ class Sale(models.Model):
         ('billing', 'Billing'),
         ('normal', 'Normal sale'),
         ('backfill', 'Past sale entry'),
+        ('field', 'Field sale'),
     ]
 
     CLIENT_CHANNEL_CHOICES = [
@@ -259,6 +260,15 @@ class Sale(models.Model):
         default='pos',
         db_index=True,
     )
+
+    @property
+    def is_field_sale(self) -> bool:
+        return self.entry_source == 'field'
+
+    @property
+    def sale_origin(self) -> str:
+        """'field' for sales from field orders, 'shop' for everything sold in store."""
+        return 'field' if self.is_field_sale else 'shop'
     client_channel = models.CharField(
         max_length=16,
         choices=CLIENT_CHANNEL_CHOICES,

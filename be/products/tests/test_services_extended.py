@@ -367,8 +367,8 @@ class ProductServiceBuildQuerysetTestCase(TestCase):
     
     def test_bulk_delete_empty_list(self):
         """Test bulk delete with empty list"""
-        deleted = self.service.bulk_delete_products([])
-        self.assertEqual(deleted, 0)
+        result = self.service.bulk_delete_products([])
+        self.assertEqual(result['deleted_count'], 0)
     
     def test_export_products_with_queryset(self):
         """Test export with specific queryset"""

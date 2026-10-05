@@ -87,7 +87,7 @@ class DeliveryAPITestCase(APITestCase):
         )
         cls.customer = Customer.objects.create(name='Del Cust', phone='0700')
         cls.product = Product.objects.create(
-            name='Paint', sku='PNT-1', price=100, cost=50,
+            name='Paint', sku='PNT-1', price=100, cost=50, stock_quantity=1000,
         )
         cls.site = CustomerSite.objects.create(
             customer=cls.customer,

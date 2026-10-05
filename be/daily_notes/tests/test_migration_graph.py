@@ -17,5 +17,5 @@ class MigrationGraphTests(TestCase):
         )
         self.assertEqual(
             sales,
-            [('sales', '0016_merge_payment_reference_and_pending_approval')],
+            [('sales', '0017_field_sales')],
         )

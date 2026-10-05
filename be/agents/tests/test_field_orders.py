@@ -75,7 +75,7 @@ class FieldOrderAPITestCase(APITestCase):
         )
         cls.customer = Customer.objects.create(name='FO Cust', phone='0711')
         cls.product = Product.objects.create(
-            name='Cement', sku='CEM-1', price=500, cost=400,
+            name='Cement', sku='CEM-1', price=500, cost=400, stock_quantity=1000,
         )
         cls.site = CustomerSite.objects.create(
             customer=cls.customer,
@@ -171,9 +171,10 @@ class FieldOrderAPITestCase(APITestCase):
         self.customer.refresh_from_db()
         self.assertEqual(self.customer.wallet_balance, Decimal('-1000.00'))
         from sales.models import CustomerWalletTransaction
-        txn = CustomerWalletTransaction.objects.get(
-            reference=f'FO-{order_id}', source_type='debt',
-        )
+        order = FieldOrder.objects.select_related('sale').get(pk=order_id)
+        self.assertTrue(order.sale.is_field_sale)
+        self.assertEqual(order.sale.cashier, self.agent_user)
+        txn = CustomerWalletTransaction.objects.get(sale=order.sale, source_type='debt')
         self.assertEqual(txn.amount, Decimal('1000.00'))
 
         assigned = self.client.post(
