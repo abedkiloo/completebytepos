@@ -20,6 +20,18 @@ class AuditLogHelperTests(TestCase):
         log_audit(None, AuditLog.ACTION_LOGIN, user, module='users')
         self.assertEqual(AuditLog.objects.filter(action='login').count(), 1)
 
+    def test_log_audit_stores_uploaded_files_by_name_without_breaking_queries(self):
+        from cms.tests.helpers import png_upload
+
+        user = User.objects.create_user('u2', password='x')
+        log_audit(
+            None, AuditLog.ACTION_UPDATE, user, module='store_settings',
+            changes={'receipt_logo': png_upload('brand.png'), 'amount': Decimal('5.50')},
+        )
+        row = AuditLog.objects.get(module='store_settings')
+        self.assertEqual(row.changes, {'receipt_logo': 'brand.png', 'amount': '5.50'})
+        self.assertTrue(User.objects.filter(pk=user.pk).exists())
+
     def test_diff_instance_detects_change(self):
         cat = Category.objects.create(name='A', is_active=True)
         p1 = Product.objects.create(

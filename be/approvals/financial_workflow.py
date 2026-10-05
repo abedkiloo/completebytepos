@@ -74,10 +74,12 @@ def validate_past_dated_checker(checker, *dates) -> None:
 
 
 def validate_locked_record_update(instance) -> None:
-    """Block edits to finalized rows when maker-checker is on."""
+    """Block edits to voided rows always, and to finalized rows when maker-checker is on."""
+    status = getattr(instance, 'status', None)
+    if status == 'voided':
+        raise ValidationError('Voided records cannot be edited.')
     if not is_maker_checker_enabled():
         return
-    status = getattr(instance, 'status', None)
     if status in ('approved', 'completed', 'paid'):
         raise ValidationError(
             'Approved records cannot be edited when maker-checker is enabled.'

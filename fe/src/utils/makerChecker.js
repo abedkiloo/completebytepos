@@ -448,6 +448,18 @@ export function financialRecordNeedsReason() {
   return true;
 }
 
+const FINALIZED_FINANCIAL_STATUSES = ['approved', 'completed', 'paid'];
+
+/** Mirrors the server: voided rows never change; finalized rows are locked under maker-checker. */
+export function financialRecordEditable(record, settings) {
+  const status = record?.status;
+  if (status === 'voided') return false;
+  if (isMakerCheckerEnabled(settings) && FINALIZED_FINANCIAL_STATUSES.includes(status)) {
+    return false;
+  }
+  return true;
+}
+
 export function getPermissionsFromStorage() {
   try {
     const raw = localStorage.getItem('permissions');
@@ -474,6 +486,25 @@ export function getCurrentUserId() {
   }
 }
 
+export function isCurrentUserAdmin() {
+  try {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const profile = JSON.parse(localStorage.getItem('profile') || '{}');
+    const role = profile?.role;
+    return (
+      Boolean(user?.is_superuser) ||
+      Boolean(profile?.is_super_admin) ||
+      role === 'admin' ||
+      role === 'super_admin'
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Expenses are approved or returned by an admin only (server enforces the same). */
+const ADMIN_ONLY_APPROVAL_MODULES = ['expenses'];
+
 /**
  * @param {'expenses'|'income'|'money_transfer'} module
  */
@@ -484,6 +515,9 @@ export function canApproveFinancialRecord(
   module = 'expenses',
   permissions = getPermissionsFromStorage(),
 ) {
+  if (ADMIN_ONLY_APPROVAL_MODULES.includes(module)) {
+    return isCurrentUserAdmin();
+  }
   if (!userMayApproveModule(module, permissions)) {
     return false;
   }
@@ -495,19 +529,7 @@ export function canApproveFinancialRecord(
     return true;
   }
   if (Number(makerId) === Number(currentUserId)) {
-    try {
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
-      const profile = JSON.parse(localStorage.getItem('profile') || '{}');
-      const role = profile?.role;
-      const isAdmin =
-        Boolean(user?.is_superuser) ||
-        Boolean(profile?.is_super_admin) ||
-        role === 'admin' ||
-        role === 'super_admin';
-      return isAdmin;
-    } catch {
-      return false;
-    }
+    return isCurrentUserAdmin();
   }
   return true;
 }

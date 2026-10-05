@@ -15,6 +15,7 @@ import {
 import { findCategoryByName } from '../../utils/expenseFilters';
 import { CATALOG_FETCH_PAGE_SIZE } from '../../config/pagination';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
+import { formatApiError } from '../../utils/apiErrors';
 import {
   dateMessage,
   moneyMessage,
@@ -32,7 +33,6 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
     receipt_number: '',
     expense_date: toLocalISODate(),
     notes: '',
-    status: 'pending',
   });
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
@@ -41,8 +41,9 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
   const [creatingCategory, setCreatingCategory] = useState(false);
   const [proposalReason, setProposalReason] = useState('');
   const [showCommitConfirm, setShowCommitConfirm] = useState(false);
-  const { settings: storeSettings } = useStoreSettings();
+  const { settings: storeSettings, refresh: refreshStoreSettings } = useStoreSettings();
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
+  const showReasonField = makerCheckerOn || Boolean(errors.proposal_reason);
 
   useEffect(() => {
     if (expense) {
@@ -55,7 +56,6 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
         receipt_number: expense.receipt_number || '',
         expense_date: toDateInputValue(expense.expense_date),
         notes: expense.notes || '',
-        status: expense.status || 'pending',
       });
     }
   }, [expense]);
@@ -173,9 +173,8 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
     setLoading(true);
     try {
       const payload = { ...formData };
-      if (makerCheckerOn) {
+      if (proposalReason.trim()) {
         payload.proposal_reason = proposalReason.trim();
-        payload.status = 'pending';
       }
       if (expense) {
         await expensesAPI.update(expense.id, payload);
@@ -192,16 +191,11 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
       onSave();
     } catch (error) {
       const errorData = error.response?.data;
-      if (errorData) {
+      if (errorData && typeof errorData === 'object' && !Array.isArray(errorData)) {
         setErrors(errorData);
-        toast.error(
-          errorData.detail ||
-            errorData.error ||
-            'Failed to save expense. Check the form fields.'
-        );
-      } else {
-        toast.error('Failed to save expense: ' + error.message);
+        if (errorData.proposal_reason) refreshStoreSettings().catch(() => {});
       }
+      toast.error(formatApiError(error, 'Failed to save expense. Check the form fields.'));
       setShowCommitConfirm(false);
     } finally {
       setLoading(false);
@@ -391,7 +385,7 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
               />
             </div>
 
-            {makerCheckerOn ? (
+            {showReasonField ? (
               <ChangeReasonField
                 context="financial"
                 value={proposalReason}
@@ -399,24 +393,6 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
                 error={errors.proposal_reason}
               />
             ) : null}
-
-            {expense && !makerCheckerOn && (
-              <div className="form-group">
-                <label>Status</label>
-                <SearchableSelect
-                  name="status"
-                  value={formData.status}
-                  onChange={handleChange}
-                  options={[
-                    { id: 'pending', name: 'Pending' },
-                    { id: 'approved', name: 'Approved' },
-                    { id: 'rejected', name: 'Rejected' },
-                    { id: 'paid', name: 'Paid' }
-                  ]}
-                  placeholder="Select Status"
-                />
-              </div>
-            )}
 
             <div className="form-group full-width">
               <label>Notes</label>

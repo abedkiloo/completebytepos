@@ -5,7 +5,11 @@ import { reportsAPI } from '../../services/api';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { reportsShowCostAndProfit } from '../../utils/reportDisplay';
-import { resolveStoreName, DEFAULT_STORE_TAGLINE } from '../../utils/storeBranding';
+import {
+  resolveStoreName,
+  resolveStoreLogoUrl,
+  DEFAULT_STORE_TAGLINE,
+} from '../../utils/storeBranding';
 import { formatCurrency, formatDateTime, formatNumber } from '../../utils/formatters';
 import { toast } from '../../utils/toast';
 import { EmptyState, PageLoading } from '../page';
@@ -53,10 +57,10 @@ export default function StockValuationReportView() {
   const sellingValue = summary.selling_value ?? summary.retail_value ?? 0;
 
   return (
-    <div className="space-y-6 print:space-y-4">
+    <div className="print-document space-y-6 print:space-y-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-center gap-3">
-          <BrandMark className="h-14 w-14" name={storeName} />
+          <BrandMark className="h-14 w-14" name={storeName} src={resolveStoreLogoUrl(settings)} />
           <div>
             <p className="text-lg font-semibold leading-tight">{storeName}</p>
             <p className="text-sm font-medium">Stock valuation</p>

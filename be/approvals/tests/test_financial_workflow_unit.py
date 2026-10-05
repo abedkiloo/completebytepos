@@ -94,6 +94,15 @@ class FinancialWorkflowUnitTests(TestCase):
         with self.assertRaises(ValidationError):
             validate_locked_record_update(expense)
 
+    def test_voided_records_are_locked_even_without_maker_checker(self):
+        _set_mc(False)
+        voided = Expense(description='x', amount='1', expense_date='2026-01-01', status='voided')
+        with self.assertRaises(ValidationError) as ctx:
+            validate_locked_record_update(voided)
+        self.assertIn('Voided records cannot be edited.', str(ctx.exception.detail))
+        approved = Expense(description='x', amount='1', expense_date='2026-01-01', status='approved')
+        validate_locked_record_update(approved)
+
     def test_finalize_financial_create_sets_pending_and_notes(self):
         expense = Expense.objects.create(
             description='Office',

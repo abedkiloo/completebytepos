@@ -12,6 +12,7 @@ import PeriodPills from './PeriodPills';
 import { DEFAULT_REPORT_PERIOD } from '../../utils/reportPeriods';
 import ReportExportButtons from './ReportExportButtons';
 import SaleChannelIcon from '../Sales/SaleChannelIcon';
+import PrintBrandHeader from '../Shared/PrintBrandHeader';
 
 function currentMonthValue() {
   const now = new Date();
@@ -69,7 +70,8 @@ export default function SalesPersonReportView() {
   }, []);
 
   return (
-    <div className="sales-person-report space-y-6 print:space-y-4">
+    <div className="sales-person-report print-document space-y-6 print:space-y-4">
+      <PrintBrandHeader title="Sales by person" />
       <FilterBar className="print:hidden">
         <FilterField label="Period" className="sm:col-span-2">
           <PeriodPills

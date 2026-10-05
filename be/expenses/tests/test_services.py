@@ -5,7 +5,6 @@ from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
-from rest_framework.exceptions import ValidationError as DRFValidationError
 from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
@@ -21,6 +20,14 @@ class ExpenseServiceTestCase(TestCase):
         self.user = User.objects.create_user(username='exp_user', password='x')
         self.cat = ExpenseCategory.objects.create(name='Rent', is_active=True)
         self.service = ExpenseService()
+        self.admin = self._admin('exp_admin')
+
+    def _admin(self, username):
+        from accounts.models import UserProfile
+
+        user = User.objects.create_user(username=username, password='x')
+        UserProfile.objects.create(user=user, role='admin', is_active=True)
+        return user
 
     def test_approve_expense(self):
         expense = Expense.objects.create(
@@ -31,9 +38,9 @@ class ExpenseServiceTestCase(TestCase):
             status='pending',
             created_by=self.user,
         )
-        approved = self.service.approve_expense(expense, self.user)
+        approved = self.service.approve_expense(expense, self.admin)
         self.assertEqual(approved.status, 'approved')
-        self.assertEqual(approved.approved_by, self.user)
+        self.assertEqual(approved.approved_by, self.admin)
 
     def test_reject_expense_notifies_requester(self):
         from daily_notes.models import DailyNote, DailyTask
@@ -46,7 +53,7 @@ class ExpenseServiceTestCase(TestCase):
             status='pending',
             created_by=self.user,
         )
-        checker = User.objects.create_user(username='exp_rejector', password='x')
+        checker = self._admin('exp_rejector')
         rejected = self.service.reject_expense(expense, checker, 'Need receipt')
         self.assertEqual(rejected.status, 'rejected')
         self.assertIn('Need receipt', rejected.notes)
@@ -66,7 +73,7 @@ class ExpenseServiceTestCase(TestCase):
             status='pending',
             created_by=self.user,
         )
-        checker = User.objects.create_user(username='exp_rejector2', password='x')
+        checker = self._admin('exp_rejector2')
         with self.assertRaises(ValidationError):
             self.service.reject_expense(expense, checker, '  ')
         expense.status = 'approved'
@@ -79,25 +86,52 @@ class ExpenseServiceTestCase(TestCase):
         with self.assertRaises(ValidationError):
             self.service.resubmit_expense(expense, other)
 
-    def test_maker_checker_blocks_self_approve(self):
-        store = StoreSettings.load()
-        store.maker_checker_enabled = True
-        store.save(update_fields=['maker_checker_enabled'])
+    def test_only_admins_approve_or_return_expenses(self):
+        from django.core.exceptions import PermissionDenied
+
+        from accounts.models import UserProfile
+        from expenses.services import EXPENSE_ADMIN_ONLY_MESSAGE
+
+        manager = User.objects.create_user(username='exp_manager', password='x')
+        UserProfile.objects.create(user=manager, role='manager', is_active=True)
+        for maker_checker in (True, False):
+            store = StoreSettings.load()
+            store.maker_checker_enabled = maker_checker
+            store.save(update_fields=['maker_checker_enabled'])
+            expense = Expense.objects.create(
+                category=self.cat,
+                description='Fuel',
+                amount=Decimal('80.00'),
+                expense_date=timezone.localdate(),
+                status='pending',
+                created_by=self.user,
+            )
+            for checker in (self.user, manager):
+                with self.assertRaisesMessage(PermissionDenied, EXPENSE_ADMIN_ONLY_MESSAGE):
+                    self.service.approve_expense(expense, checker)
+                with self.assertRaisesMessage(PermissionDenied, EXPENSE_ADMIN_ONLY_MESSAGE):
+                    self.service.reject_expense(expense, checker, 'No receipt')
+            expense.refresh_from_db()
+            self.assertEqual(expense.status, 'pending')
+            approved = self.service.approve_expense(expense, self.admin)
+            self.assertEqual(approved.status, 'approved')
+        disable_maker_checker()
+
+    def test_admin_may_approve_own_expense(self):
         expense = Expense.objects.create(
-            category=self.cat,
-            description='Fuel',
-            amount=Decimal('80.00'),
-            expense_date=timezone.localdate(),
-            status='pending',
-            created_by=self.user,
+            category=self.cat, description='Admin fuel', amount=Decimal('20.00'),
+            expense_date=timezone.localdate(), status='pending', created_by=self.admin,
         )
-        checker = User.objects.create_user(username='checker_exp', password='x')
-        with self.assertRaises(DRFValidationError):
-            self.service.approve_expense(expense, self.user)
-        approved = self.service.approve_expense(expense, checker)
-        self.assertEqual(approved.status, 'approved')
-        store.maker_checker_enabled = False
-        store.save(update_fields=['maker_checker_enabled'])
+        self.assertEqual(self.service.approve_expense(expense, self.admin).status, 'approved')
+
+    def test_only_pending_expenses_can_be_approved(self):
+        for status in ('rejected', 'voided', 'paid'):
+            expense = Expense.objects.create(
+                category=self.cat, description=status, amount=Decimal('5.00'),
+                expense_date=timezone.localdate(), status=status, created_by=self.user,
+            )
+            with self.assertRaisesMessage(ValidationError, 'Only pending expenses can be approved.'):
+                self.service.approve_expense(expense, self.admin)
 
     def test_approve_already_approved_raises(self):
         expense = Expense.objects.create(
@@ -109,7 +143,7 @@ class ExpenseServiceTestCase(TestCase):
             created_by=self.user,
         )
         with self.assertRaises(ValidationError):
-            self.service.approve_expense(expense, self.user)
+            self.service.approve_expense(expense, self.admin)
 
     def test_statistics_include_approved(self):
         Expense.objects.create(
@@ -249,7 +283,7 @@ class ExpenseServiceTestCase(TestCase):
             'accounting.services.create_expense_journal_entry',
             side_effect=RuntimeError('ledger offline'),
         ):
-            approved = self.service.approve_expense(expense, self.user)
+            approved = self.service.approve_expense(expense, self.admin)
         self.assertEqual(approved.status, 'approved')
 
     def test_statistics_with_branch_and_date_range(self):
@@ -302,7 +336,7 @@ class ExpenseServiceTestCase(TestCase):
             status='pending',
             created_by=self.user,
         )
-        self.service.approve_expense(expense, self.user)
+        self.service.approve_expense(expense, self.admin)
         txn = Transaction.objects.get(reference_type='expense', reference_id=expense.id)
         voided = self.service.void_expense(expense, reason='wrong vendor', user=self.user)
         self.assertEqual(voided.status, 'voided')

@@ -6,6 +6,7 @@ import ChangeReasonField from '../Approvals/ChangeReasonField';
 import CommitConfirm from '../Shared/CommitConfirm';
 import { formatCurrency } from '../../utils/formatters';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
+import { formatApiError } from '../../utils/apiErrors';
 import {
   financialSubmitSuccessMessage,
   isMakerCheckerEnabled,
@@ -32,8 +33,9 @@ const IncomeForm = ({ income, categories, onClose, onSave }) => {
   const [errors, setErrors] = useState({});
   const [proposalReason, setProposalReason] = useState('');
   const [showCommitConfirm, setShowCommitConfirm] = useState(false);
-  const { settings: storeSettings } = useStoreSettings();
+  const { settings: storeSettings, refresh: refreshStoreSettings } = useStoreSettings();
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
+  const showReasonField = makerCheckerOn || Boolean(errors.proposal_reason);
 
   useEffect(() => {
     if (income) {
@@ -97,8 +99,10 @@ const IncomeForm = ({ income, categories, onClose, onSave }) => {
     setLoading(true);
     try {
       const payload = { ...formData };
-      if (makerCheckerOn) {
+      if (proposalReason.trim()) {
         payload.proposal_reason = proposalReason.trim();
+      }
+      if (makerCheckerOn) {
         payload.status = 'pending';
       }
       if (income) {
@@ -113,16 +117,11 @@ const IncomeForm = ({ income, categories, onClose, onSave }) => {
       onSave();
     } catch (error) {
       const errorData = error.response?.data;
-      if (errorData) {
+      if (errorData && typeof errorData === 'object' && !Array.isArray(errorData)) {
         setErrors(errorData);
-        toast.error(
-          errorData.detail ||
-            errorData.error ||
-            'Failed to save income. Check the form fields.'
-        );
-      } else {
-        toast.error('Failed to save income: ' + error.message);
+        if (errorData.proposal_reason) refreshStoreSettings().catch(() => {});
       }
+      toast.error(formatApiError(error, 'Failed to save income. Check the form fields.'));
       setShowCommitConfirm(false);
     } finally {
       setLoading(false);
@@ -253,7 +252,7 @@ const IncomeForm = ({ income, categories, onClose, onSave }) => {
               />
             </div>
 
-            {makerCheckerOn ? (
+            {showReasonField ? (
               <ChangeReasonField
                 context="financial"
                 value={proposalReason}

@@ -211,11 +211,9 @@ class StoreSettingsSerializer(serializers.ModelSerializer):
     def get_receipt_logo_url(self, obj):
         if not obj.receipt_logo:
             return None
-        request = self.context.get('request')
-        url = obj.receipt_logo.url
-        if request:
-            return request.build_absolute_uri(url)
-        return url
+        from config.media_urls import absolute_media_url
+
+        return absolute_media_url(self.context.get('request'), obj.receipt_logo.url)
 
     def validate_store_name(self, value):
         text = str(value or '').strip()

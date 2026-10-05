@@ -49,7 +49,9 @@ class ExpenseSerializer(serializers.ModelSerializer):
             'created_by', 'created_by_name', 'approved_by', 'approved_by_name',
             'notes', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['expense_number', 'created_at', 'updated_at']
+        read_only_fields = [
+            'expense_number', 'status', 'approved_by', 'created_at', 'updated_at',
+        ]
 
     def validate_description(self, value):
         raise_field_error(

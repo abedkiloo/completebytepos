@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from django.db import transaction
 from django.db.models import Model
 from django.forms.models import model_to_dict
 
@@ -92,20 +93,21 @@ def log_audit(
                 except Exception:
                     object_repr = f"<{object_type}#{object_id}>"
 
-        AuditLog.objects.create(
-            user=user,
-            username_snapshot=username[:150],
-            action=action[:32],
-            module=(module or '')[:32],
-            object_type=object_type[:64],
-            object_id=object_id,
-            object_repr=(object_repr or '')[:255],
-            changes=changes or {},
-            ip_address=ip,
-            user_agent=ua,
-            path=path,
-            method=method[:8],
-        )
+        with transaction.atomic():
+            AuditLog.objects.create(
+                user=user,
+                username_snapshot=username[:150],
+                action=action[:32],
+                module=(module or '')[:32],
+                object_type=object_type[:64],
+                object_id=object_id,
+                object_repr=(object_repr or '')[:255],
+                changes=_json_safe(changes or {}),
+                ip_address=ip,
+                user_agent=ua,
+                path=path,
+                method=method[:8],
+            )
     except Exception:  # pragma: no cover - audit must never break the request
         logger.exception("Failed to write audit log for action=%s", action)
 

@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { THERMAL_RECEIPT_CSS, ThermalReceipt } from './ThermalReceipt';
 import React from 'react';
+import { loadableLogoUrl } from '../../../utils/storeBranding';
 
 /**
  * Send a receipt straight to the printer without disturbing the visible page.
@@ -22,7 +23,12 @@ import React from 'react';
  * Returns a Promise that resolves once the print dialog has been shown
  * (it does NOT wait for the user to confirm — that's not observable).
  */
-export function printThermalReceipt({ sale, store, density = '80mm' }) {
+export async function printThermalReceipt({ sale, store, density = '80mm' }) {
+  const receiptLogoUrl = await loadableLogoUrl(store?.receiptLogoUrl);
+  return printWithStore({ sale, store: { ...store, receiptLogoUrl }, density });
+}
+
+function printWithStore({ sale, store, density }) {
   return new Promise((resolve) => {
     const markup = renderToStaticMarkup(
       <ThermalReceipt sale={sale} store={store} />

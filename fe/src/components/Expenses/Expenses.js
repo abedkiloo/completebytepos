@@ -12,6 +12,7 @@ import { formatOccurredDate } from '../../utils/localDate';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import {
   canApproveFinancialRecord,
+  financialRecordEditable,
   isMakerCheckerEnabled,
 } from '../../utils/makerChecker';
 import {
@@ -170,7 +171,7 @@ const Expenses = () => {
       loadExpenses();
       toast.success('Expense approved successfully');
     } catch (error) {
-      toast.error('Failed to approve expense: ' + (error.response?.data?.error || error.message));
+      toast.error('Failed to approve expense: ' + (error.response?.data?.error || error.response?.data?.detail || error.message));
     }
   };
 
@@ -182,7 +183,7 @@ const Expenses = () => {
       loadExpenses();
       toast.success(rejectionReturnedMessage('expense'));
     } catch (error) {
-      toast.error('Could not return this expense: ' + (error.response?.data?.error || error.message));
+      toast.error('Could not return this expense: ' + (error.response?.data?.error || error.response?.data?.detail || error.message));
     }
   };
 
@@ -404,13 +405,16 @@ const Expenses = () => {
                             <HelpHint actionKey="reject_change" />
                           </>
                         )}
+                        {financialRecordEditable(expense, storeSettings) && (
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => handleEdit(expense)}
+                          aria-label="Edit expense"
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
+                        )}
                         {expense.status !== 'voided' && (
                         <Button
                           variant="ghost"

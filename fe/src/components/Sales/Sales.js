@@ -15,6 +15,7 @@ import { useSellerOptions } from '../../hooks/useSellerOptions';
 import { canViewDailySalesFromStorage } from '../../utils/dailySalesAccess';
 import { userCanRefundSales, saleIsRefundable, handleSaleRefundResponse, userCanRollbackSales, saleIsRollbackable } from '../../utils/saleRefund';
 import { pendingApprovalToastMessage } from '../../utils/makerChecker';
+import { DEFAULT_BRAND_LOGO } from '../../utils/storeBranding';
 import {
   SALE_AWAITING_APPROVAL_MESSAGE,
   saleIsAwaitingApproval,
@@ -259,6 +260,13 @@ const Sales = () => {
                   padding-bottom: 1rem;
                   border-bottom: 2px solid #e5e7eb;
                 }
+                .receipt-header img {
+                  display: block;
+                  height: 64px;
+                  width: 64px;
+                  margin: 0 auto 0.5rem;
+                  object-fit: contain;
+                }
                 .receipt-header h3 {
                   margin: 0 0 0.5rem 0;
                   font-size: 1.5rem;
@@ -325,18 +333,30 @@ const Sales = () => {
         `);
         
         printWindow.document.close();
-        
-        // Wait for content to load, then print
-        setTimeout(() => {
+
+        const images = Array.from(printWindow.document.images || []);
+        const imagesReady = Promise.all(
+          images.map((img) =>
+            img.complete
+              ? null
+              : new Promise((done) => {
+                  img.onload = done;
+                  img.onerror = () => {
+                    img.src = DEFAULT_BRAND_LOGO;
+                    done();
+                  };
+                })
+          )
+        );
+        const timeout = new Promise((done) => setTimeout(done, 3000));
+        Promise.race([imagesReady, timeout]).then(() => {
           printWindow.focus();
           printWindow.print();
-          // Restore original title
           document.title = originalTitle;
-          // Close the print window after printing
           setTimeout(() => {
             printWindow.close();
           }, 250);
-        }, 250);
+        });
       } else {
         window.print();
         // Restore original title after a delay

@@ -256,6 +256,7 @@ function PendingExpenseRow({ expense, settings, onResolved }) {
     } catch (err) {
       toast.error(
         err.response?.data?.error ||
+          err.response?.data?.detail ||
           'Could not approve this expense',
       );
     } finally {
@@ -275,7 +276,11 @@ function PendingExpenseRow({ expense, settings, onResolved }) {
       onResolved();
       dispatchNavBadgesRefresh();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Could not return this expense');
+      toast.error(
+        err.response?.data?.error ||
+          err.response?.data?.detail ||
+          'Could not return this expense',
+      );
     } finally {
       setBusy(false);
     }
@@ -341,7 +346,7 @@ function PendingExpenseRow({ expense, settings, onResolved }) {
           </div>
         ) : (
           <p className="text-xs text-muted-foreground">
-            This submission requires approval from another checker.
+            Only an admin can approve or return expenses.
           </p>
         )}
       </CardContent>

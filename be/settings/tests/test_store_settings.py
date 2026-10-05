@@ -235,6 +235,39 @@ class StoreSettingsAPITests(SuperAdminAPITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+    def test_uploaded_logo_reaches_receipts_and_documents(self):
+        import tempfile
+        from pathlib import Path
+
+        from django.test import override_settings
+
+        from cms.tests.helpers import png_upload
+        from settings.test_utils import enable_maker_checker
+        from utils.document_branding import resolved_logo_path
+
+        enable_maker_checker()
+        media = tempfile.mkdtemp()
+        with override_settings(
+            MEDIA_ROOT=media, ALLOWED_HOSTS=['*'], MEDIA_PUBLIC_BASE_URL='', PUBLIC_HOST='',
+        ):
+            response = self.client.patch(
+                self.url,
+                {'receipt_logo': png_upload('brand.png')},
+                format='multipart',
+                HTTP_HOST='backend:8000',
+            )
+            self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+            url = response.data['receipt_logo_url']
+            self.assertTrue(url.startswith('/media/receipt/brand'), url)
+            self.assertNotIn('backend', url)
+
+            stored = StoreSettings.load()
+            self.assertTrue(Path(stored.receipt_logo.path).is_file())
+            self.assertEqual(resolved_logo_path(), stored.receipt_logo.path)
+
+            served = self.client.get(self.url, HTTP_HOST='backend:8000')
+            self.assertEqual(served.data['receipt_logo_url'], url)
+
     def test_super_admin_can_toggle_maker_checker(self):
         response = self.client.patch(
             self.url,

@@ -42,6 +42,7 @@ import { toast } from '../../utils/toast';
 import { hasDuplicateSaleLines } from '../../utils/detectDuplicateSaleLines';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import { resolveStoreName, resolveReceiptLogoUrl, DEFAULT_STORE_TAGLINE } from '../../utils/storeBranding';
+import StoreLogo from '../Shared/StoreLogo';
 
 export default function SaleDetailDialog({
   sale,
@@ -169,7 +170,7 @@ export default function SaleDetailDialog({
         <div className="receipt-content space-y-4 text-sm">
           <div className="receipt-header text-center">
             {logoUrl ? (
-              <img src={logoUrl} alt="" className="mx-auto mb-2 h-16 w-16 object-contain" />
+              <StoreLogo src={logoUrl} className="mx-auto mb-2 h-16 w-16 object-contain" />
             ) : null}
             <h3 className="text-lg font-semibold">{storeName}</h3>
             <p className="text-xs text-muted-foreground">{DEFAULT_STORE_TAGLINE}</p>

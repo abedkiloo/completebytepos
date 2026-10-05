@@ -331,8 +331,11 @@ class FinancialRejectionClearingTests(TestCase):
         from settings.test_utils import disable_maker_checker
 
         disable_maker_checker()
+        from accounts.models import UserProfile
+
         self.maker = User.objects.create_user('fin_maker', password='x')
         self.checker = User.objects.create_user('fin_checker', password='x')
+        UserProfile.objects.create(user=self.checker, role='admin', is_active=True)
         self.today = timezone.localdate()
 
     def _assert_cleared(self):

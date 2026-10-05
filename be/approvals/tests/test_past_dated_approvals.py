@@ -1,14 +1,12 @@
-"""Managers approve today's items; anything dated before today needs an admin."""
+"""Managers approve today's items; anything dated before today needs an admin. Expenses always need an admin."""
 
 from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth.models import User
-from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.exceptions import PermissionDenied, ValidationError as DjangoValidationError
 from django.test import TestCase
 from django.utils import timezone
-from rest_framework.exceptions import ValidationError as DRFValidationError
-
 from accounts.models import Role, UserProfile
 from accounts.role_definitions import (
     ROLE_MANAGER,
@@ -116,15 +114,17 @@ class PastDatedApprovalTests(TestCase):
             created_by=self.sales,
         )
 
-    def test_manager_approves_todays_expense(self):
+    def test_expenses_need_an_admin_even_when_dated_today(self):
         expense = self._expense(timezone.localdate())
-        ExpenseService().approve_expense(expense, self.manager)
+        with self.assertRaises(PermissionDenied):
+            ExpenseService().approve_expense(expense, self.manager)
+        ExpenseService().approve_expense(expense, self.admin)
         expense.refresh_from_db()
         self.assertEqual(expense.status, 'approved')
 
     def test_past_expense_needs_admin(self):
         expense = self._expense(timezone.localdate() - timedelta(days=1))
-        with self.assertRaises(DRFValidationError):
+        with self.assertRaises(PermissionDenied):
             ExpenseService().approve_expense(expense, self.manager)
         ExpenseService().approve_expense(expense, self.admin)
         expense.refresh_from_db()

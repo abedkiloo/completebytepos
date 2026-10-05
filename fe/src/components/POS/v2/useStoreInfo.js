@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { readCachedStoreSettings } from '../../../utils/storeSettingsCache';
 import {
   resolveStoreName,
-  DEFAULT_BRAND_LOGO,
+  resolveReceiptLogoUrl,
   DEFAULT_STORE_TAGLINE,
 } from '../../../utils/storeBranding';
 
@@ -46,10 +46,7 @@ export function useStoreInfo(sale) {
         tenant.receipt_footer ||
         'Thank you for your business!',
       receiptHeader: storePrefs.receipt_header_text || '',
-      receiptLogoUrl:
-        storePrefs.receipt_show_logo === false
-          ? null
-          : storePrefs.receipt_logo_url || DEFAULT_BRAND_LOGO,
+      receiptLogoUrl: resolveReceiptLogoUrl(storePrefs),
       tagline: DEFAULT_STORE_TAGLINE,
       showSku: Boolean(storePrefs.receipt_show_sku),
     };

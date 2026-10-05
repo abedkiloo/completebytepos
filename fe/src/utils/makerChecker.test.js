@@ -25,8 +25,10 @@ import {
   handleWriteResponse,
   PENDING_APPROVAL_MESSAGE,
   canApproveFinancialRecord,
+  isCurrentUserAdmin,
   financialSubmitSuccessMessage,
   financialRecordNeedsReason,
+  financialRecordEditable,
   getCurrentUserId,
   getPermissionsFromStorage,
   userMayApproveModule,
@@ -369,22 +371,22 @@ describe('makerChecker', () => {
   it('requires module approve permission on financial records', () => {
     localStorage.setItem(
       'permissions',
-      JSON.stringify([{ name: 'expenses.create', module: 'expenses', action: 'create' }]),
+      JSON.stringify([{ name: 'income.create', module: 'income', action: 'create' }]),
     );
     const settings = { maker_checker_enabled: true };
-    expect(canApproveFinancialRecord({ created_by: 5 }, settings, 6, 'expenses')).toBe(false);
+    expect(canApproveFinancialRecord({ created_by: 5 }, settings, 6, 'income')).toBe(false);
   });
 
   it('blocks self-approval for financial records when maker-checker on', () => {
     localStorage.setItem('user', JSON.stringify({ id: 5 }));
     localStorage.setItem(
       'permissions',
-      JSON.stringify([{ name: 'expenses.approve', module: 'expenses', action: 'approve' }]),
+      JSON.stringify([{ name: 'income.approve', module: 'income', action: 'approve' }]),
     );
     const settings = { maker_checker_enabled: true };
-    expect(canApproveFinancialRecord({ created_by: 5 }, settings, 5, 'expenses')).toBe(false);
-    expect(canApproveFinancialRecord({ created_by: 5 }, settings, 6, 'expenses')).toBe(true);
-    expect(canApproveFinancialRecord({ created_by: 5 }, { maker_checker_enabled: false }, 5, 'expenses')).toBe(
+    expect(canApproveFinancialRecord({ created_by: 5 }, settings, 5, 'income')).toBe(false);
+    expect(canApproveFinancialRecord({ created_by: 5 }, settings, 6, 'income')).toBe(true);
+    expect(canApproveFinancialRecord({ created_by: 5 }, { maker_checker_enabled: false }, 5, 'income')).toBe(
       true
     );
     expect(getCurrentUserId()).toBe(5);
@@ -394,15 +396,41 @@ describe('makerChecker', () => {
     localStorage.setItem('user', JSON.stringify({ id: 5 }));
     localStorage.setItem(
       'permissions',
-      JSON.stringify([{ name: 'expenses.approve', module: 'expenses', action: 'approve' }]),
+      JSON.stringify([{ name: 'income.approve', module: 'income', action: 'approve' }]),
     );
     const settings = { maker_checker_enabled: true };
 
     localStorage.setItem('profile', JSON.stringify({ role: 'admin' }));
-    expect(canApproveFinancialRecord({ created_by: 5 }, settings, 5, 'expenses')).toBe(true);
+    expect(canApproveFinancialRecord({ created_by: 5 }, settings, 5, 'income')).toBe(true);
 
     localStorage.setItem('profile', JSON.stringify({ role: 'manager' }));
-    expect(canApproveFinancialRecord({ created_by: 5 }, settings, 5, 'expenses')).toBe(false);
+    expect(canApproveFinancialRecord({ created_by: 5 }, settings, 5, 'income')).toBe(false);
+  });
+
+  it('lets only admins approve or return expenses', () => {
+    localStorage.setItem('user', JSON.stringify({ id: 5 }));
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([{ name: 'expenses.approve', module: 'expenses', action: 'approve' }]),
+    );
+    const on = { maker_checker_enabled: true };
+    const off = { maker_checker_enabled: false };
+
+    localStorage.setItem('profile', JSON.stringify({ role: 'manager' }));
+    expect(canApproveFinancialRecord({ created_by: 6 }, on, 5, 'expenses')).toBe(false);
+    expect(canApproveFinancialRecord({ created_by: 6 }, off, 5, 'expenses')).toBe(false);
+
+    localStorage.setItem('profile', JSON.stringify({ role: 'admin' }));
+    expect(canApproveFinancialRecord({ created_by: 5 }, on, 5, 'expenses')).toBe(true);
+    expect(canApproveFinancialRecord({ created_by: 6 }, off, 5, 'expenses')).toBe(true);
+
+    localStorage.setItem('profile', JSON.stringify({ role: 'manager' }));
+    localStorage.setItem('user', JSON.stringify({ id: 5, is_superuser: true }));
+    expect(canApproveFinancialRecord({ created_by: 6 }, on, 5, 'expenses')).toBe(true);
+    expect(isCurrentUserAdmin()).toBe(true);
+
+    localStorage.setItem('user', 'not-json');
+    expect(isCurrentUserAdmin()).toBe(false);
   });
 
   it('financialSubmitSuccessMessage only when MC enabled', () => {
@@ -417,6 +445,19 @@ describe('makerChecker', () => {
     localStorage.setItem('profile', JSON.stringify({ user_id: 13 }));
     expect(getCurrentUserId()).toBe(13);
     expect(financialRecordNeedsReason()).toBe(true);
+  });
+
+  it('financialRecordEditable matches the server edit lock', () => {
+    const on = { maker_checker_enabled: true };
+    const off = { maker_checker_enabled: false };
+    expect(financialRecordEditable({ status: 'pending' }, on)).toBe(true);
+    expect(financialRecordEditable({ status: 'rejected' }, on)).toBe(true);
+    ['approved', 'completed', 'paid'].forEach((status) => {
+      expect(financialRecordEditable({ status }, on)).toBe(false);
+      expect(financialRecordEditable({ status }, off)).toBe(true);
+    });
+    expect(financialRecordEditable({ status: 'voided' }, off)).toBe(false);
+    expect(financialRecordEditable({ status: 'voided' }, on)).toBe(false);
   });
 
   it('getCurrentUserId returns null on invalid storage', () => {
@@ -446,13 +487,13 @@ describe('makerChecker', () => {
   it('allows financial approve when maker or checker id is unknown', () => {
     localStorage.setItem(
       'permissions',
-      JSON.stringify([{ name: 'expenses.approve', module: 'expenses', action: 'approve' }]),
+      JSON.stringify([{ name: 'income.approve', module: 'income', action: 'approve' }]),
     );
     expect(
-      canApproveFinancialRecord({}, { maker_checker_enabled: true }, null, 'expenses')
+      canApproveFinancialRecord({}, { maker_checker_enabled: true }, null, 'income')
     ).toBe(true);
     expect(
-      canApproveFinancialRecord({ created_by: null }, { maker_checker_enabled: true }, 5, 'expenses')
+      canApproveFinancialRecord({ created_by: null }, { maker_checker_enabled: true }, 5, 'income')
     ).toBe(true);
   });
 

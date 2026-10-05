@@ -3,6 +3,8 @@ import {
   DEFAULT_BRAND_LOGO,
   resolveStoreName,
   resolveReceiptLogoUrl,
+  resolveStoreLogoUrl,
+  loadableLogoUrl,
 } from './storeBranding';
 
 describe('storeBranding', () => {
@@ -32,5 +34,55 @@ describe('storeBranding', () => {
       '/media/custom.png'
     );
     expect(resolveReceiptLogoUrl({ receipt_show_logo: false })).toBeNull();
+  });
+
+  it('keeps the store logo on documents even when receipts hide it', () => {
+    expect(resolveStoreLogoUrl({ receipt_show_logo: false, receipt_logo_url: '/media/x.png' })).toBe(
+      '/media/x.png'
+    );
+    expect(resolveStoreLogoUrl({ receipt_show_logo: false })).toBe(DEFAULT_BRAND_LOGO);
+  });
+
+  describe('loadableLogoUrl', () => {
+    const RealImage = global.Image;
+    afterEach(() => {
+      global.Image = RealImage;
+    });
+
+    function stubImage(outcome) {
+      global.Image = class {
+        set src(value) {
+          this._src = value;
+          if (outcome === 'load') setTimeout(() => this.onload());
+          if (outcome === 'error') setTimeout(() => this.onerror());
+        }
+      };
+    }
+
+    it('keeps an uploaded logo that loads', async () => {
+      stubImage('load');
+      await expect(loadableLogoUrl('/media/receipt/brand.png')).resolves.toBe(
+        '/media/receipt/brand.png'
+      );
+    });
+
+    it('falls back to the packaged logo when the upload is broken', async () => {
+      stubImage('error');
+      await expect(loadableLogoUrl('http://backend:8000/media/x.png')).resolves.toBe(
+        DEFAULT_BRAND_LOGO
+      );
+    });
+
+    it('falls back when the upload never answers', async () => {
+      stubImage('hang');
+      await expect(loadableLogoUrl('/media/slow.png', { timeoutMs: 5 })).resolves.toBe(
+        DEFAULT_BRAND_LOGO
+      );
+    });
+
+    it('passes through the packaged logo and a hidden logo untouched', async () => {
+      await expect(loadableLogoUrl(DEFAULT_BRAND_LOGO)).resolves.toBe(DEFAULT_BRAND_LOGO);
+      await expect(loadableLogoUrl(null)).resolves.toBeNull();
+    });
   });
 });

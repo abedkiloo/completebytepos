@@ -6,6 +6,7 @@ import { formatCurrency, formatDate } from '../../utils/formatters';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import {
   canApproveFinancialRecord,
+  financialRecordEditable,
   isMakerCheckerEnabled,
 } from '../../utils/makerChecker';
 import IncomeForm from './IncomeForm';
@@ -347,9 +348,16 @@ const Income = () => {
                             <HelpHint actionKey="reject_change" />
                           </>
                         )}
-                        <Button variant="ghost" size="sm" onClick={() => handleEdit(income)}>
+                        {financialRecordEditable(income, storeSettings) && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEdit(income)}
+                          aria-label="Edit income"
+                        >
                           <Pencil className="h-4 w-4" />
                         </Button>
+                        )}
                         {income.status !== 'voided' && (
                         <Button
                           variant="ghost"

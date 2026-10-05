@@ -6,6 +6,7 @@ import {
   saleBalanceDue,
   saleChangeDue,
 } from '../../../utils/saleItemDisplay';
+import StoreLogo from '../../Shared/StoreLogo';
 
 export const RECEIPT_REACH_US_PHONE = '0718515142';
 export const RECEIPT_REACH_US_LABEL = `You can reach us via ${RECEIPT_REACH_US_PHONE}`;
@@ -75,9 +76,8 @@ export const ThermalReceipt = forwardRef(function ThermalReceipt(
       {/* Header */}
       <header className="receipt-thermal__header">
         {store.receiptLogoUrl && (
-          <img
+          <StoreLogo
             src={store.receiptLogoUrl}
-            alt=""
             className={`receipt-thermal__logo mx-auto mb-0.5 object-contain ${compact ? 'max-h-8' : 'max-h-12'}`}
           />
         )}

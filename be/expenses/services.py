@@ -71,6 +71,18 @@ class ExpenseCategoryService(BaseService):
         category.delete()
 
 
+EXPENSE_ADMIN_ONLY_MESSAGE = 'Only an admin can approve or return expenses.'
+
+
+def require_expense_admin(user) -> None:
+    from django.core.exceptions import PermissionDenied
+
+    from approvals.permissions import user_has_admin_checker_override
+
+    if not user_has_admin_checker_override(user):
+        raise PermissionDenied(EXPENSE_ADMIN_ONLY_MESSAGE)
+
+
 class ExpenseService(BaseService):
     """Service for expense operations"""
     
@@ -160,10 +172,13 @@ class ExpenseService(BaseService):
             validate_past_dated_checker,
         )
 
+        require_expense_admin(approved_by)
         validate_checker_not_maker(approved_by, expense.created_by_id)
         validate_past_dated_checker(approved_by, expense.expense_date, expense.created_at)
         if expense.status == 'approved':
             raise ValidationError('Expense is already approved')
+        if expense.status != 'pending':
+            raise ValidationError('Only pending expenses can be approved.')
         
         expense.status = 'approved'
         expense.approved_by = approved_by
@@ -192,6 +207,7 @@ class ExpenseService(BaseService):
         )
         from daily_notes.approval_notice import SOURCE_EXPENSE, notify_approval_rejected
 
+        require_expense_admin(rejected_by)
         validate_checker_not_maker(rejected_by, expense.created_by_id)
         validate_past_dated_checker(rejected_by, expense.expense_date, expense.created_at)
         reason = (reason or '').strip()
