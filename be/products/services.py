@@ -4,6 +4,8 @@ Moved from be/services/products_service.py to be/products/services.py
 """
 from typing import Optional, List, Dict, Any
 from decimal import Decimal
+import re
+import uuid
 from django.db import transaction, IntegrityError
 from django.db.models import Q, Sum, Count, Avg, F, QuerySet
 from django.core.exceptions import ValidationError
@@ -22,6 +24,62 @@ from .stock_alerts import (
 )
 from suppliers.models import Supplier
 from services.base import BaseService, QueryService
+
+
+def build_variant_sku(
+    product: Product,
+    size: Optional[Size] = None,
+    color: Optional[Color] = None,
+    *,
+    reserved: Optional[set] = None,
+) -> str:
+    """
+    Build a unique variant SKU.
+
+    Color used to contribute only ``name[:3]``, so ``GOLD`` and ``GOLD/ BLACK``
+    both became ``…-GOL`` and the second insert 500'd mid-create.
+    """
+    parts = [product.sku]
+    if size is not None:
+        parts.append(size.code or f'S{size.pk}')
+    if color is not None:
+        token = re.sub(r'[^A-Za-z0-9]+', '', color.name or '')[:3].upper() or 'C'
+        parts.append(token)
+    base = '-'.join(parts)
+    return allocate_unique_variant_sku(
+        base,
+        reserved=reserved,
+        prefer_suffix=str(color.pk) if color is not None else None,
+    )
+
+
+def allocate_unique_variant_sku(
+    base: str,
+    *,
+    reserved: Optional[set] = None,
+    prefer_suffix: Optional[str] = None,
+) -> str:
+    reserved = reserved if reserved is not None else set()
+
+    def _taken(candidate: str) -> bool:
+        return candidate in reserved or ProductVariant.objects.filter(sku=candidate).exists()
+
+    if not _taken(base):
+        reserved.add(base)
+        return base
+    if prefer_suffix:
+        with_id = f'{base}{prefer_suffix}'
+        if not _taken(with_id):
+            reserved.add(with_id)
+            return with_id
+    for _ in range(12):
+        candidate = f'{base}-{uuid.uuid4().hex[:4].upper()}'
+        if not _taken(candidate):
+            reserved.add(candidate)
+            return candidate
+    fallback = f'{base}-{uuid.uuid4().hex[:8].upper()}'
+    reserved.add(fallback)
+    return fallback
 
 
 class CategoryService(BaseService):
@@ -195,6 +253,7 @@ class ProductVariantService(BaseService):
 
         # Build variant instances to bulk_create where possible
         to_create = []
+        reserved_skus: set = set()
         if size_objs and color_objs:
             for size in size_objs:
                 for color in color_objs:
@@ -202,7 +261,7 @@ class ProductVariantService(BaseService):
                         product=product,
                         size=size,
                         color=color,
-                        sku=self._build_variant_sku(product, size, color),
+                        sku=build_variant_sku(product, size, color, reserved=reserved_skus),
                         price=product.price,
                         mrp=product.mrp or product.price,
                         cost=product.cost,
@@ -217,7 +276,7 @@ class ProductVariantService(BaseService):
                     product=product,
                     size=size,
                     color=None,
-                    sku=self._build_variant_sku(product, size, None),
+                    sku=build_variant_sku(product, size, None, reserved=reserved_skus),
                     price=product.price,
                     mrp=product.mrp or product.price,
                     cost=product.cost,
@@ -232,7 +291,7 @@ class ProductVariantService(BaseService):
                     product=product,
                     size=None,
                     color=color,
-                    sku=self._build_variant_sku(product, None, color),
+                    sku=build_variant_sku(product, None, color, reserved=reserved_skus),
                     price=product.price,
                     mrp=product.mrp or product.price,
                     cost=product.cost,
@@ -267,41 +326,37 @@ class ProductVariantService(BaseService):
             return created
 
     def _build_variant_sku(self, product: Product, size: Optional[Size], color: Optional[Color]) -> str:
-        sku_parts = [product.sku]
-        if size:
-            sku_parts.append(size.code)
-        if color:
-            sku_parts.append(color.name[:3].upper())
-        return '-'.join(sku_parts)
+        return build_variant_sku(product, size, color)
     
     def _create_variant(self, product: Product, size: Optional[Size], 
                        color: Optional[Color]) -> ProductVariant:
-        """Create a single variant"""
-        sku_parts = [product.sku]
-        if size:
-            sku_parts.append(size.code)
-        if color:
-            sku_parts.append(color.name[:3].upper())
-        
-        variant_sku = '-'.join(sku_parts)
-        
-        # Calculate variant price (can be customized)
-        variant_price = product.price
-        variant_mrp = product.mrp or product.price
-        variant_cost = product.cost
-        
-        return ProductVariant.objects.create(
+        """Create a single variant with a collision-safe SKU."""
+        variant_sku = build_variant_sku(product, size, color)
+        payload = dict(
             product=product,
             size=size,
             color=color,
             sku=variant_sku,
-            price=variant_price,
-            mrp=variant_mrp,
-            cost=variant_cost,
+            price=product.price,
+            mrp=product.mrp or product.price,
+            cost=product.cost,
             stock_quantity=0,
             low_stock_threshold=product.low_stock_threshold,
-            is_active=True
+            is_active=True,
         )
+        try:
+            with transaction.atomic():
+                return ProductVariant.objects.create(**payload)
+        except IntegrityError:
+            # Savepoint so we can retry inside an outer create transaction.
+            payload['sku'] = allocate_unique_variant_sku(
+                variant_sku,
+                prefer_suffix=(
+                    str(color.pk) if color is not None else uuid.uuid4().hex[:4].upper()
+                ),
+            )
+            with transaction.atomic():
+                return ProductVariant.objects.create(**payload)
     
     def get_variants_for_product(self, product_id: int) -> List[ProductVariant]:
         """Get all variants for a product"""

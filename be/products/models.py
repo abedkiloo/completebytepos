@@ -385,15 +385,9 @@ class ProductVariant(models.Model):
         return self.stock_quantity <= threshold
 
     def save(self, *args, **kwargs):
-        # Auto-generate SKU if not provided
+        # Auto-generate SKU if not provided (collision-safe for similar color names).
         if not self.sku:
-            import uuid
-            base_sku = self.product.sku
-            variant_parts = []
-            if self.size:
-                variant_parts.append(self.size.code)
-            if self.color:
-                variant_parts.append(self.color.name[:3].upper())
-            variant_suffix = "-".join(variant_parts) if variant_parts else uuid.uuid4().hex[:4].upper()
-            self.sku = f"{base_sku}-{variant_suffix}"
+            from products.services import build_variant_sku
+
+            self.sku = build_variant_sku(self.product, self.size, self.color)
         super().save(*args, **kwargs)

@@ -92,3 +92,104 @@ class VariantCombinationsTests(TestCase):
         variant = ProductVariant.objects.get(product=self.product)
         self.assertEqual(variant.size_id, self.size_m.id)
         self.assertEqual(variant.color_id, self.color_blue.id)
+
+    def test_similar_color_names_get_distinct_skus(self):
+        """GOLD and GOLD/ BLACK both truncate to GOL — must not collide."""
+        gold = Color.objects.create(name='GOLD', is_active=True)
+        gold_black = Color.objects.create(name='GOLD/ BLACK', is_active=True)
+        size = Size.objects.create(name='14', code='14', is_active=True)
+        sync_product_variant_combinations(
+            self.product,
+            [
+                {'size': size.id, 'color': gold.id},
+                {'size': size.id, 'color': gold_black.id},
+            ],
+        )
+        variants = list(ProductVariant.objects.filter(product=self.product))
+        self.assertEqual(len(variants), 2)
+        skus = {v.sku for v in variants}
+        self.assertEqual(len(skus), 2)
+        self.assertTrue(all(sku.startswith('SHIRT-X-14-GOL') for sku in skus))
+
+
+class VariantProductCreateAPITests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import RefreshToken
+        from settings.test_utils import disable_maker_checker, enable_product_variants
+
+        disable_maker_checker()
+        enable_product_variants()
+        self.client = APIClient()
+        self.user = User.objects.create_superuser('var_admin', 'v@t.com', 'x')
+        token = RefreshToken.for_user(self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+        self.category = Category.objects.create(name='Cookers', is_active=True)
+        self.size = Size.objects.create(name='14', code='14', is_active=True)
+        self.colors = [
+            Color.objects.create(name='Bronze', is_active=True),
+            Color.objects.create(name='copper Bronze[brown]', is_active=True),
+            Color.objects.create(name='GOLD', is_active=True),
+            Color.objects.create(name='GOLD/ BLACK', is_active=True),
+            Color.objects.create(name='SILVER', is_active=True),
+        ]
+
+    def test_create_with_many_similar_color_variants_succeeds(self):
+        import json
+
+        combinations = [
+            {'size': self.size.id, 'color': c.id} for c in self.colors
+        ]
+        response = self.client.post(
+            '/api/products/',
+            {
+                'name': '14* cookers [sofa pins]',
+                'category': self.category.id,
+                'price': '300',
+                'cost': '210',
+                'has_variants': True,
+                'track_stock': True,
+                'available_sizes': [self.size.id],
+                'available_colors': [c.id for c in self.colors],
+                'variant_combinations': json.dumps(combinations),
+            },
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        product = Product.objects.get(pk=response.data['id'])
+        self.assertEqual(
+            ProductVariant.objects.filter(product=product).count(),
+            5,
+        )
+        skus = list(
+            ProductVariant.objects.filter(product=product).values_list('sku', flat=True)
+        )
+        self.assertEqual(len(skus), len(set(skus)))
+
+    def test_failed_variant_sync_does_not_leave_orphan_product(self):
+        import json
+        from unittest.mock import patch
+
+        combinations = [{'size': self.size.id, 'color': self.colors[0].id}]
+        with patch(
+            'products.variant_combinations.sync_product_variant_combinations',
+            side_effect=RuntimeError('boom'),
+        ):
+            with self.assertRaises(RuntimeError):
+                self.client.post(
+                    '/api/products/',
+                    {
+                        'name': 'Should Roll Back',
+                        'category': self.category.id,
+                        'price': '100',
+                        'cost': '40',
+                        'has_variants': True,
+                        'track_stock': True,
+                        'available_sizes': [self.size.id],
+                        'available_colors': [self.colors[0].id],
+                        'variant_combinations': json.dumps(combinations),
+                    },
+                    format='multipart',
+                )
+        self.assertFalse(Product.objects.filter(name='Should Roll Back').exists())
