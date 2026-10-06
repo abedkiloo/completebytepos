@@ -18,14 +18,63 @@ from messaging.providers import (
 )
 from messaging.templates_sms import (
     customer_first_name,
+    format_balance_note,
+    format_payment_ref_note,
+    format_sale_items_summary,
+    format_sale_number_for_sms,
     render_debt_settlement_sms,
     render_sale_completed_sms,
+    sale_number_token,
 )
-from sales.models import Customer, Sale
+from products.models import Category, Product
+from sales.models import Customer, Sale, SaleItem
 from sales.services import CustomerService
 
 
-class TemplateSmsTests(SimpleTestCase):
+class SaleNumberFormatUnitTests(SimpleTestCase):
+    def test_sale_number_token_and_short_format(self):
+        self.assertEqual(sale_number_token('SALE-0001'), '0001')
+        self.assertEqual(sale_number_token('HOLD-042'), '042')
+        self.assertEqual(
+            format_sale_number_for_sms('SALE-ABC12', short=True, prefix='S-'),
+            'S-ABC12',
+        )
+        self.assertEqual(
+            format_sale_number_for_sms('SALE-ABC12', short=False, prefix='S-'),
+            'SALE-ABC12',
+        )
+        self.assertEqual(
+            format_sale_number_for_sms('SALE-9', short=True, prefix='REF-'),
+            'REF-9',
+        )
+
+    def test_items_summary_is_minified_receipt(self):
+        class _P:
+            name = 'Bar soap deluxe long name'
+
+        class _I:
+            product = _P()
+            quantity = 2
+            subtotal = Decimal('400')
+            size = None
+            color = None
+            variant = None
+
+        class _I2:
+            product = type('P', (), {'name': 'Oil'})()
+            quantity = 1
+            subtotal = Decimal('1100')
+            size = None
+            color = None
+            variant = None
+
+        summary = format_sale_items_summary([_I(), _I2()])
+        self.assertIn('x2=400', summary)
+        self.assertIn('Oil x1=1100', summary)
+        self.assertIn('…', summary)  # long name truncated
+
+
+class TemplateSmsTests(TestCase):
     def test_first_name_prefers_owner(self):
         c = Customer(
             name='Sunrise Duka',
@@ -41,10 +90,15 @@ class TemplateSmsTests(SimpleTestCase):
             total='1000',
             paid='1000',
             balance_owed=None,
+            items_summary='Soap x2=1000',
         )
         self.assertIn('Hi Jane', paid)
-        self.assertIn('SALE-1', paid)
+        self.assertIn('S-1', paid)
+        self.assertIn('Soap x2=1000', paid)
+        self.assertIn('Total KES 1000', paid)
+        self.assertNotIn('SALE-1', paid)
         self.assertNotIn('Balance now', paid)
+        self.assertNotIn(' Ref ', paid)
 
         debt = render_sale_completed_sms(
             first_name='Jane',
@@ -52,14 +106,49 @@ class TemplateSmsTests(SimpleTestCase):
             total='1000',
             paid='400',
             balance_owed='600',
+            items_summary='Oil x1=1000',
+            payment_reference='QHX1ABC2DE',
         )
         self.assertIn('Balance now KES 600', debt)
+        self.assertIn('S-2', debt)
+        self.assertIn('Oil x1=1000', debt)
+        self.assertIn('Ref QHX1ABC2DE', debt)
 
         settled = render_debt_settlement_sms(
-            first_name='Jane', amount='200', balance_owed='400',
+            first_name='Jane',
+            amount='200',
+            balance_owed='400',
+            payment_reference='QHX99',
         )
         self.assertIn('received KES 200', settled)
         self.assertIn('Balance now KES 400', settled)
+        self.assertIn('Ref QHX99', settled)
+
+        cleared = render_debt_settlement_sms(
+            first_name='Jane',
+            amount='400',
+            balance_owed='0',
+            payment_reference='QHX00',
+        )
+        self.assertIn('Ref QHX00', cleared)
+        self.assertNotIn('Balance now', cleared)
+
+    def test_balance_and_payment_ref_helpers_respect_flags(self):
+        self.assertEqual(format_balance_note(0, show_when_zero=False), '')
+        self.assertEqual(
+            format_balance_note(0, show_when_zero=True),
+            ' Balance now KES 0.',
+        )
+        self.assertEqual(
+            format_balance_note(50, show_when_zero=False),
+            ' Balance now KES 50.',
+        )
+        self.assertEqual(
+            format_payment_ref_note('QHX1', include=True),
+            ' Ref QHX1.',
+        )
+        self.assertEqual(format_payment_ref_note('QHX1', include=False), '')
+        self.assertEqual(format_payment_ref_note('', include=True), '')
 
 
 class MobileSasaProviderTests(SimpleTestCase):
@@ -126,15 +215,40 @@ class CustomerNotifyTests(TestCase):
             total=Decimal('500.00'),
             amount_paid=Decimal('500.00'),
             change=Decimal('0'),
-            payment_method='cash',
+            payment_method='mpesa',
+            payment_reference='QHX1ABC2DE',
+        )
+        cat = Category.objects.create(name='SMS Cat', is_active=True)
+        product = Product.objects.create(
+            name='Soap',
+            sku='SMS-SOAP-1',
+            category=cat,
+            price=Decimal('250'),
+            cost=Decimal('100'),
+            stock_quantity=10,
+            track_stock=True,
+            is_active=True,
+        )
+        SaleItem.objects.create(
+            sale=sale,
+            product=product,
+            quantity=2,
+            unit_price=Decimal('250'),
+            subtotal=Decimal('500'),
         )
         with self.captureOnCommitCallbacks(execute=True):
             msg = notify_customer_sale_completed(sale)
         self.assertIsNotNone(msg)
         self.assertEqual(msg.template_key, MessageOutbox.TEMPLATE_SALE_COMPLETED)
         self.assertEqual(len(self.sms.sent), 1)
-        self.assertIn('Hi Jane', self.sms.sent[0]['body'])
-        self.assertIn('SALE-SMS-1', self.sms.sent[0]['body'])
+        body = self.sms.sent[0]['body']
+        self.assertIn('Hi Jane', body)
+        self.assertIn('S-1', body)
+        self.assertNotIn('SALE-SMS-1', body)
+        self.assertIn('Soap x2=500', body)
+        self.assertIn('Total KES 500', body)
+        self.assertIn('Ref QHX1ABC2DE', body)
+        self.assertNotIn('Balance now', body)
 
     def test_backfill_skipped(self):
         sale = Sale.objects.create(
@@ -162,12 +276,15 @@ class CustomerNotifyTests(TestCase):
             CustomerService().record_wallet_payment(
                 customer=self.customer,
                 amount=Decimal('100.00'),
-                payment_method='cash',
+                payment_method='mpesa',
+                reference='QHXDEB01',
             )
         self.assertEqual(len(self.sms.sent), 1)
         body = self.sms.sent[0]['body']
         self.assertIn('Hi Jane', body)
         self.assertIn('100', body)
+        self.assertIn('Ref QHXDEB01', body)
+        self.assertIn('Balance now KES 200', body)
         self.assertEqual(
             MessageOutbox.objects.filter(
                 template_key=MessageOutbox.TEMPLATE_DEBT_SETTLEMENT,
@@ -175,6 +292,21 @@ class CustomerNotifyTests(TestCase):
             ).count(),
             1,
         )
+
+    def test_debt_settlement_omits_zero_balance(self):
+        self.customer.wallet_balance = Decimal('-100.00')
+        self.customer.save(update_fields=['wallet_balance'])
+        with self.captureOnCommitCallbacks(execute=True):
+            CustomerService().record_wallet_payment(
+                customer=self.customer,
+                amount=Decimal('100.00'),
+                payment_method='cash',
+                reference='CASH-1',
+            )
+        self.assertEqual(len(self.sms.sent), 1)
+        body = self.sms.sent[0]['body']
+        self.assertIn('Ref CASH-1', body)
+        self.assertNotIn('Balance now', body)
 
     def test_no_phone_skips(self):
         self.customer.phone = ''

@@ -37,9 +37,9 @@ export default function ModuleSettingsCard({
   const [busy, setBusy] = useState(false);
 
   const entries = meta?.settings
-    ? Object.entries(meta.settings).sort(
-        ([, a], [, b]) => (a.display_order ?? 0) - (b.display_order ?? 0)
-      )
+    ? Object.entries(meta.settings)
+        .filter(([, item]) => typeof (item?.default_value) === 'boolean')
+        .sort(([, a], [, b]) => (a.display_order ?? 0) - (b.display_order ?? 0))
     : [];
 
   const groups = useMemo(() => groupModuleSettings(entries), [entries]);

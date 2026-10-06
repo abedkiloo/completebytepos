@@ -198,6 +198,36 @@ MODULE_SETTING_DEFINITIONS: dict[str, list[dict[str, Any]]] = {
             7,
             impact='high',
         ),
+        _setting(
+            'sms_short_sale_number',
+            'Short sale number in SMS',
+            'In sale SMS, show only the number part with a prefix (e.g. SALE-0001 → S-0001). '
+            'When off, the full sale number is used.',
+            True,
+            8,
+        ),
+        _setting(
+            'sms_sale_number_prefix',
+            'Sale SMS number prefix',
+            'Prefix before the short sale number in customer SMS (default S-).',
+            'S-',
+            9,
+        ),
+        _setting(
+            'sms_include_payment_ref',
+            'Include payment reference in SMS',
+            'When a sale or debt payment has a receipt/M-PESA reference, add it to the customer SMS.',
+            True,
+            10,
+        ),
+        _setting(
+            'sms_show_balance_when_zero',
+            'Show zero balance in SMS',
+            'When off (default), a cleared balance is omitted from sale/debt SMS. '
+            'When on, the text still says Balance now KES 0.',
+            False,
+            11,
+        ),
     ],
     'inventory': [
         _setting(

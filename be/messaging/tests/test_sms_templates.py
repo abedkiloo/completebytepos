@@ -56,8 +56,9 @@ class SmsTemplatesAPITests(APITestCase):
             total='100',
             paid='100',
             balance_owed=0,
+            items_summary='Soap x2=80',
         )
-        self.assertEqual(text, 'Hi Jane! Sale SALE-9 done. Paid 100.')
+        self.assertEqual(text, 'Hi Jane! Sale S-9 done. Paid 100.')
 
     def test_reset_restores_default(self):
         save_sms_template(

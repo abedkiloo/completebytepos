@@ -28,17 +28,32 @@ SMS_TEMPLATE_SPECS: dict[str, SmsTemplateSpec] = {
     SmsTemplate.KEY_SALE_COMPLETED: SmsTemplateSpec(
         key=SmsTemplate.KEY_SALE_COMPLETED,
         label='Sale completed',
-        description='Sent when a sale is finalized. {balance_note} is empty when paid in full.',
-        default_body=(
-            'Hi {first_name}, sale {sale_number} of KES {total} is complete. '
-            'Paid KES {paid}.{balance_note} Karibu.'
+        description=(
+            'Minified receipt SMS when a sale is finalized. '
+            '{items} is the goods summary (e.g. Soap x2=400; Oil x1=1100). '
+            '{payment_ref} is the receipt/M-PESA reference when present (configurable). '
+            '{balance_note} is empty when balance is zero unless configured to show it.'
         ),
-        placeholders=('first_name', 'sale_number', 'total', 'paid', 'balance_note'),
+        default_body=(
+            'Hi {first_name}, {sale_number}. {items}'
+            'Total KES {total}. Paid KES {paid}.{payment_ref}{balance_note} Karibu.'
+        ),
+        placeholders=(
+            'first_name',
+            'sale_number',
+            'items',
+            'total',
+            'paid',
+            'payment_ref',
+            'balance_note',
+        ),
         sample={
             'first_name': 'Jane',
-            'sale_number': 'SALE-0001',
+            'sale_number': 'S-0001',
+            'items': 'Soap x2=400; Cooking oil x1=1100. ',
             'total': '1500',
             'paid': '1000',
+            'payment_ref': ' Ref QHX1ABC2DE.',
             'balance_note': ' Balance now KES 500.',
         },
         category='sales',
@@ -46,25 +61,41 @@ SMS_TEMPLATE_SPECS: dict[str, SmsTemplateSpec] = {
     SmsTemplate.KEY_DEBT_SETTLEMENT: SmsTemplateSpec(
         key=SmsTemplate.KEY_DEBT_SETTLEMENT,
         label='Debt payment received',
-        description='Sent when a customer settles part or all of their wallet debt.',
-        default_body=(
-            'Hi {first_name}, we received KES {amount}. '
-            'Balance now KES {balance}. Asante.'
+        description=(
+            'Sent when a customer settles part or all of their wallet debt. '
+            '{payment_ref} is the receipt/M-PESA reference when present. '
+            '{balance_note} is omitted when the balance is cleared (unless configured).'
         ),
-        placeholders=('first_name', 'amount', 'balance'),
-        sample={'first_name': 'Jane', 'amount': '200', 'balance': '300'},
+        default_body=(
+            'Hi {first_name}, we received KES {amount}.{payment_ref}{balance_note} Asante.'
+        ),
+        placeholders=('first_name', 'amount', 'payment_ref', 'balance_note', 'balance'),
+        sample={
+            'first_name': 'Jane',
+            'amount': '200',
+            'payment_ref': ' Ref QHX1ABC2DE.',
+            'balance_note': ' Balance now KES 300.',
+            'balance': '300',
+        },
         category='debt',
     ),
     SmsTemplate.KEY_DEBT_INCREASE: SmsTemplateSpec(
         key=SmsTemplate.KEY_DEBT_INCREASE,
         label='Debt increased',
-        description='Sent when debt is added outside a sale-complete notice.',
-        default_body=(
-            'Hi {first_name}, KES {amount} was added to your account. '
-            'Balance now KES {balance}. Karibu.'
+        description=(
+            'Sent when debt is added outside a sale-complete notice. '
+            '{balance_note} is omitted when balance is zero unless configured.'
         ),
-        placeholders=('first_name', 'amount', 'balance'),
-        sample={'first_name': 'Jane', 'amount': '400', 'balance': '900'},
+        default_body=(
+            'Hi {first_name}, KES {amount} was added to your account.{balance_note} Karibu.'
+        ),
+        placeholders=('first_name', 'amount', 'balance_note', 'balance'),
+        sample={
+            'first_name': 'Jane',
+            'amount': '400',
+            'balance_note': ' Balance now KES 900.',
+            'balance': '900',
+        },
         category='debt',
     ),
     SmsTemplate.KEY_DEBT_REMINDER: SmsTemplateSpec(

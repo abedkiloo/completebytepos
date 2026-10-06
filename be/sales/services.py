@@ -1730,7 +1730,12 @@ class CustomerService(BaseService):
         try:
             from messaging.customer_notify import notify_customer_debt_settlement
 
-            notify_customer_debt_settlement(customer, amount=amount, user=user)
+            notify_customer_debt_settlement(
+                customer,
+                amount=amount,
+                payment_reference=reference or '',
+                user=user,
+            )
         except Exception:
             logger.exception(
                 'Debt settlement SMS failed for customer %s', customer.pk

@@ -83,12 +83,17 @@ def notify_customer_sale_completed(sale, *, user=None) -> MessageOutbox | None:
         show_balance = unpaid if unpaid > 0 else (balance if balance > 0 else None)
         if unpaid > 0 and balance > 0:
             show_balance = balance
+        items = sale.items.select_related(
+            'product', 'variant', 'variant__size', 'variant__color', 'size', 'color'
+        ).all()
         body = render_sale_completed_sms(
             first_name=customer_first_name(customer),
             sale_number=sale.sale_number or str(sale.pk),
             total=total,
             paid=paid,
             balance_owed=show_balance,
+            items=items,
+            payment_reference=getattr(sale, 'payment_reference', None) or '',
         )
         return _queue_customer_sms(
             customer=customer,
@@ -124,7 +129,9 @@ def notify_customer_debt_increase(customer, *, amount, user=None) -> MessageOutb
         return None
 
 
-def notify_customer_debt_settlement(customer, *, amount, user=None) -> MessageOutbox | None:
+def notify_customer_debt_settlement(
+    customer, *, amount, payment_reference: str | None = None, user=None,
+) -> MessageOutbox | None:
     """SMS when a debt payment is received."""
     try:
         amount = Decimal(str(amount or 0))
@@ -135,6 +142,7 @@ def notify_customer_debt_settlement(customer, *, amount, user=None) -> MessageOu
             first_name=customer_first_name(customer),
             amount=amount,
             balance_owed=_owed(customer),
+            payment_reference=payment_reference,
         )
         return _queue_customer_sms(
             customer=customer,

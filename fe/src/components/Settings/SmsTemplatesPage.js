@@ -5,10 +5,13 @@ import { MessageSquareText, RotateCcw, Save } from 'lucide-react';
 import { messagingAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import { getStoredAuth, hasPermission } from '../../utils/roleAccess';
+import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { PageShell, PageHeader, PageLoading, EmptyState } from '../page';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Label } from '../ui/label';
+import { Switch } from '../ui/switch';
+import { Input } from '../ui/input';
 
 const CATEGORY_LABELS = {
   sales: 'Sales',
@@ -16,13 +19,31 @@ const CATEGORY_LABELS = {
   payments: 'Payments',
 };
 
+function saleNumberToken(saleNumber) {
+  const raw = String(saleNumber || '').trim();
+  if (!raw) return '';
+  if (raw.includes('-') || raw.includes('_')) {
+    const parts = raw.split(/[-_]/);
+    return parts[parts.length - 1] || raw;
+  }
+  const match = raw.match(/([0-9][0-9A-Za-z]*)$/);
+  return match ? match[1] : raw;
+}
+
+function formatSaleNumberForSms(saleNumber, { short = true, prefix = 'S-' } = {}) {
+  const raw = String(saleNumber || '').trim() || 'sale';
+  if (!short) return raw;
+  const token = saleNumberToken(raw);
+  if (!token) return raw;
+  return `${prefix}${token}`;
+}
+
 function livePreview(body, sample) {
   if (!body || !sample) return '';
   let out = body;
   Object.entries(sample).forEach(([key, value]) => {
     out = out.split(`{${key}}`).join(String(value));
   });
-  // sale templates may still mention debt_bit
   if (sample.balance_note != null) {
     out = out.split('{debt_bit}').join(String(sample.balance_note));
   }
@@ -41,11 +62,29 @@ export default function SmsTemplatesPage() {
     hasPermission(permissions, 'debt_management', 'update') ||
     hasPermission(permissions, 'settings', 'manage');
 
+  const { settings: salesSettings, patch: patchSalesSettings } = useModuleSettings('sales');
+
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedKey, setSelectedKey] = useState('');
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
+  const [prefixDraft, setPrefixDraft] = useState('S-');
+  const [savingSaleRef, setSavingSaleRef] = useState(false);
+  const [savingSmsOpts, setSavingSmsOpts] = useState(false);
+
+  const shortSaleNumber = salesSettings?.sms_short_sale_number !== false;
+  const includePaymentRef = salesSettings?.sms_include_payment_ref !== false;
+  const showBalanceWhenZero = salesSettings?.sms_show_balance_when_zero === true;
+  const salePrefix =
+    typeof salesSettings?.sms_sale_number_prefix === 'string' &&
+    salesSettings.sms_sale_number_prefix.trim()
+      ? salesSettings.sms_sale_number_prefix
+      : 'S-';
+
+  useEffect(() => {
+    setPrefixDraft(salePrefix);
+  }, [salePrefix]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -81,14 +120,23 @@ export default function SmsTemplatesPage() {
 
   const samplePreview = useMemo(() => {
     if (!selected) return '';
-    if (draft === selected.body) return selected.sample_preview || '';
+    const saleRef = formatSaleNumberForSms('SALE-0001', {
+      short: shortSaleNumber,
+      prefix: prefixDraft.trim() || 'S-',
+    });
+    const paymentRef = includePaymentRef ? ' Ref QHX1ABC2DE.' : '';
+    // Preview with a remaining balance so operators see the clause; when zero and
+    // showBalanceWhenZero is off, balance_note would be empty in real sends.
+    const balanceNote = ' Balance now KES 500.';
     const demo = {
       first_name: 'Jane',
-      sale_number: 'SALE-0001',
+      sale_number: saleRef,
+      items: 'Soap x2=400; Cooking oil x1=1100. ',
       total: '1500',
       paid: '1000',
-      balance_note: ' Balance now KES 500.',
-      debt_bit: ' Balance now KES 500.',
+      payment_ref: paymentRef,
+      balance_note: balanceNote,
+      debt_bit: balanceNote,
       amount: '200',
       balance: '300',
       name: 'Mama Mboga',
@@ -98,8 +146,15 @@ export default function SmsTemplatesPage() {
       invoice_no: 'INV-100',
       link: 'https://example.com/i/abc',
     };
+    if (
+      draft === selected.body &&
+      selected.key !== 'sale_completed' &&
+      selected.key !== 'debt_settlement'
+    ) {
+      return selected.sample_preview || '';
+    }
     return livePreview(draft, demo);
-  }, [selected, draft]);
+  }, [selected, draft, shortSaleNumber, prefixDraft, includePaymentRef]);
 
   const dirty = selected && draft !== (selected.body || '');
 
@@ -136,6 +191,32 @@ export default function SmsTemplatesPage() {
       toast.error('Could not restore default');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveSaleNumberFormat = async (payload) => {
+    if (!canEdit) return;
+    setSavingSaleRef(true);
+    try {
+      await patchSalesSettings(payload);
+      toast.success('Sale SMS number format saved');
+    } catch {
+      toast.error('Could not save sale number format');
+    } finally {
+      setSavingSaleRef(false);
+    }
+  };
+
+  const saveSmsOptions = async (payload, successMsg) => {
+    if (!canEdit) return;
+    setSavingSmsOpts(true);
+    try {
+      await patchSalesSettings(payload);
+      toast.success(successMsg || 'SMS option saved');
+    } catch {
+      toast.error('Could not save SMS option');
+    } finally {
+      setSavingSmsOpts(false);
     }
   };
 
@@ -219,6 +300,113 @@ export default function SmsTemplatesPage() {
                 ))}
               </p>
             </div>
+
+            {selected.key === 'sale_completed' ? (
+              <div
+                className="space-y-3 rounded-md border bg-muted/20 p-3"
+                data-testid="sale-sms-number-format"
+              >
+                <p className="text-sm font-medium">Sale number in SMS</p>
+                <p className="text-xs text-muted-foreground">
+                  Short form shows only the number part with a prefix (e.g. SALE-0001 →{' '}
+                  {formatSaleNumberForSms('SALE-0001', {
+                    short: true,
+                    prefix: prefixDraft.trim() || 'S-',
+                  })}
+                  ).
+                </p>
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor="sms-short-sale-number">Use short number</Label>
+                  <Switch
+                    id="sms-short-sale-number"
+                    checked={shortSaleNumber}
+                    disabled={!canEdit || savingSaleRef}
+                    onCheckedChange={(checked) =>
+                      saveSaleNumberFormat({ sms_short_sale_number: checked })
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="sms-sale-prefix">Prefix</Label>
+                  <div className="flex flex-wrap gap-2">
+                    <Input
+                      id="sms-sale-prefix"
+                      value={prefixDraft}
+                      disabled={!canEdit || savingSaleRef || !shortSaleNumber}
+                      onChange={(e) => setPrefixDraft(e.target.value)}
+                      className="max-w-[8rem]"
+                      placeholder="S-"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={
+                        !canEdit ||
+                        savingSaleRef ||
+                        !shortSaleNumber ||
+                        prefixDraft === salePrefix
+                      }
+                      onClick={() =>
+                        saveSaleNumberFormat({
+                          sms_sale_number_prefix: prefixDraft.trim() || 'S-',
+                        })
+                      }
+                    >
+                      Save prefix
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {selected.key === 'sale_completed' || selected.key === 'debt_settlement' ? (
+              <div
+                className="space-y-3 rounded-md border bg-muted/20 p-3"
+                data-testid="sms-payment-balance-options"
+              >
+                <p className="text-sm font-medium">Payment reference &amp; balance</p>
+                <p className="text-xs text-muted-foreground">
+                  Applies to sale and debt payment SMS. Use {'{payment_ref}'} and{' '}
+                  {'{balance_note}'} in the message body.
+                </p>
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor="sms-include-payment-ref">
+                    Include receipt / payment reference
+                  </Label>
+                  <Switch
+                    id="sms-include-payment-ref"
+                    checked={includePaymentRef}
+                    disabled={!canEdit || savingSmsOpts}
+                    onCheckedChange={(checked) =>
+                      saveSmsOptions(
+                        { sms_include_payment_ref: checked },
+                        'Payment reference option saved',
+                      )
+                    }
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <Label htmlFor="sms-show-balance-zero">Show balance when zero</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Off by default — cleared balances are omitted from the text.
+                    </p>
+                  </div>
+                  <Switch
+                    id="sms-show-balance-zero"
+                    checked={showBalanceWhenZero}
+                    disabled={!canEdit || savingSmsOpts}
+                    onCheckedChange={(checked) =>
+                      saveSmsOptions(
+                        { sms_show_balance_when_zero: checked },
+                        'Zero-balance option saved',
+                      )
+                    }
+                  />
+                </div>
+              </div>
+            ) : null}
 
             <div>
               <Label htmlFor="sms-template-body">Message</Label>

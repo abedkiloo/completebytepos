@@ -42,6 +42,30 @@ def sales_validate_stock_before_sale() -> bool:
     return _enabled('validate_stock_before_sale', True)
 
 
+def sales_sms_short_sale_number() -> bool:
+    """When True, sale SMS uses prefix + number token instead of full sale_number."""
+    return _enabled('sms_short_sale_number', True)
+
+
+def sales_sms_sale_number_prefix() -> str:
+    """Configurable prefix for short sale refs in SMS (default ``S-``)."""
+    raw = SettingsService.get(MODULE, 'sms_sale_number_prefix', default='S-')
+    if raw is None:
+        return 'S-'
+    text = str(raw).strip()
+    return text if text else 'S-'
+
+
+def sales_sms_include_payment_ref() -> bool:
+    """Include payment/M-PESA receipt reference in sale and debt SMS when set."""
+    return _enabled('sms_include_payment_ref', True)
+
+
+def sales_sms_show_balance_when_zero() -> bool:
+    """When False, omit balance text from SMS if the customer owes nothing."""
+    return _enabled('sms_show_balance_when_zero', False)
+
+
 def apply_sale_module_settings(attrs: dict) -> dict:
     """
     Enforce module flags on incoming sale payloads (create / checkout).
