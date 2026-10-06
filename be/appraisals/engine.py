@@ -77,18 +77,31 @@ def monthly_bonus(amount, template: dict[str, Any]) -> dict[str, Any]:
     sales = money(amount)
     stars = _float(band.get('stars'), 1)
     bonus = money(band.get('bonus'))
+    # Cash starts only at bonus_min_stars (default 4★). Lower bands may keep star labels.
+    min_stars = _float(template.get('bonus_min_stars'), 4)
+    if stars < min_stars:
+        bonus = Decimal('0')
+    cap = money(template.get('bonus_cap') or 0)
+    if cap > 0 and bonus > cap:
+        bonus = cap
     amount_to_next = money(nxt['min']) - sales if nxt else Decimal('0')
+    next_bonus = money(nxt.get('bonus')) if nxt else bonus
+    if nxt and _float(nxt.get('stars'), stars) < min_stars:
+        next_bonus = Decimal('0')
+    if cap > 0 and next_bonus > cap:
+        next_bonus = cap
     return {
         'sales': float(sales),
         'stars': stars,
         'bonus': float(bonus),
         'label': str(band.get('label') or ''),
         'next_stars': _float(nxt.get('stars'), stars) if nxt else stars,
-        'next_bonus': float(money(nxt.get('bonus'))) if nxt else float(bonus),
+        'next_bonus': float(next_bonus),
         'next_min': float(money(nxt['min'])) if nxt else None,
         'amount_to_next': float(max(Decimal('0'), amount_to_next)),
         'progress': band_progress(amount, bands),
         'tone': star_tone(stars),
+        'bonus_min_stars': min_stars,
     }
 
 

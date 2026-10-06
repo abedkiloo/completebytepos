@@ -55,6 +55,7 @@ class SaleNumberFormatUnitTests(SimpleTestCase):
         class _I:
             product = _P()
             quantity = 2
+            unit_price = Decimal('200')
             subtotal = Decimal('400')
             size = None
             color = None
@@ -63,15 +64,17 @@ class SaleNumberFormatUnitTests(SimpleTestCase):
         class _I2:
             product = type('P', (), {'name': 'Oil'})()
             quantity = 1
+            unit_price = Decimal('1100')
             subtotal = Decimal('1100')
             size = None
             color = None
             variant = None
 
         summary = format_sale_items_summary([_I(), _I2()])
-        self.assertIn('x2=400', summary)
-        self.assertIn('Oil x1=1100', summary)
+        self.assertIn('2 @each 200', summary)
+        self.assertIn('Oil 1 @each 1100', summary)
         self.assertIn('…', summary)  # long name truncated
+        self.assertIn(', ', summary)
 
 
 class TemplateSmsTests(TestCase):
@@ -90,11 +93,10 @@ class TemplateSmsTests(TestCase):
             total='1000',
             paid='1000',
             balance_owed=None,
-            items_summary='Soap x2=1000',
+            items_summary='Soap 2 @each 500',
         )
-        self.assertIn('Hi Jane', paid)
-        self.assertIn('S-1', paid)
-        self.assertIn('Soap x2=1000', paid)
+        self.assertIn('Hi Jane, your order S-1.', paid)
+        self.assertIn('Soap 2 @each 500', paid)
         self.assertIn('Total KES 1000', paid)
         self.assertNotIn('SALE-1', paid)
         self.assertNotIn('Balance now', paid)
@@ -106,12 +108,12 @@ class TemplateSmsTests(TestCase):
             total='1000',
             paid='400',
             balance_owed='600',
-            items_summary='Oil x1=1000',
+            items_summary='Oil 1 @each 1000',
             payment_reference='QHX1ABC2DE',
         )
+        self.assertIn('your order S-2.', debt)
         self.assertIn('Balance now KES 600', debt)
-        self.assertIn('S-2', debt)
-        self.assertIn('Oil x1=1000', debt)
+        self.assertIn('Oil 1 @each 1000', debt)
         self.assertIn('Ref QHX1ABC2DE', debt)
 
         settled = render_debt_settlement_sms(
@@ -245,7 +247,8 @@ class CustomerNotifyTests(TestCase):
         self.assertIn('Hi Jane', body)
         self.assertIn('S-1', body)
         self.assertNotIn('SALE-SMS-1', body)
-        self.assertIn('Soap x2=500', body)
+        self.assertIn('your order S-1.', body)
+        self.assertIn('Soap 2 @each 250', body)
         self.assertIn('Total KES 500', body)
         self.assertIn('Ref QHX1ABC2DE', body)
         self.assertNotIn('Balance now', body)

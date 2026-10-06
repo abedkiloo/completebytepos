@@ -23,8 +23,8 @@ CONTRACT_LINE = (
 )
 
 BONUS_POLICY_LINE = (
-    'Monthly bonus is based on closed sales collected. 600K = 2 Stars = 2K bonus. '
-    '1M = 4 Stars = 7K bonus. 1.5M = 5 Stars = 10K maximum bonus.'
+    'Monthly bonus starts only at 4 Stars (KES 2,000 base). '
+    'Higher sales unlock more for each role, up to KES 10,000 at 5 Stars.'
 )
 
 DEFAULT_DAILY_BANDS = [
@@ -35,12 +35,13 @@ DEFAULT_DAILY_BANDS = [
     {'min': 24000, 'stars': 5, 'label': 'OVER TARGET'},
 ]
 
+# Cash bonus begins at 4★ (KES 2,000). Segments below that keep star labels but pay 0.
 DEFAULT_BONUS_BANDS = [
     {'min': 0, 'stars': 1, 'bonus': 0, 'label': ''},
-    {'min': 600000, 'stars': 2, 'bonus': 2000, 'label': ''},
-    {'min': 800000, 'stars': 3, 'bonus': 4000, 'label': ''},
-    {'min': 1000000, 'stars': 4, 'bonus': 7000, 'label': ''},
-    {'min': 1200000, 'stars': 4.5, 'bonus': 8500, 'label': ''},
+    {'min': 600000, 'stars': 2, 'bonus': 0, 'label': ''},
+    {'min': 800000, 'stars': 3, 'bonus': 0, 'label': ''},
+    {'min': 1000000, 'stars': 4, 'bonus': 2000, 'label': 'BASE'},
+    {'min': 1250000, 'stars': 4.5, 'bonus': 6000, 'label': ''},
     {'min': 1500000, 'stars': 5, 'bonus': 10000, 'label': 'MAX'},
 ]
 
@@ -58,6 +59,8 @@ DEFAULT_TEMPLATE: dict[str, Any] = {
     'four_star_month_min_avg': 4.0,
     'four_star_months_required': 8,
     'annual_avg_required': 4.0,
+    'bonus_min_stars': 4.0,
+    'bonus_cap': 10000,
     'daily_star_bands': DEFAULT_DAILY_BANDS,
     'monthly_bonus_bands': DEFAULT_BONUS_BANDS,
     'contract_line': CONTRACT_LINE,
@@ -330,6 +333,8 @@ SCORING_KEYS = (
     'four_star_month_min_avg',
     'four_star_months_required',
     'annual_avg_required',
+    'bonus_min_stars',
+    'bonus_cap',
     'daily_star_bands',
     'monthly_bonus_bands',
     'sales_basis',
@@ -493,6 +498,10 @@ def normalize_template(raw: Any) -> dict[str, Any]:
         data['four_star_months_required'] = min(12, max(1, needed))
     if 'annual_avg_required' in raw:
         data['annual_avg_required'] = max(0, _float(raw['annual_avg_required'], 4))
+    if 'bonus_min_stars' in raw:
+        data['bonus_min_stars'] = max(0, _float(raw['bonus_min_stars'], 4))
+    if 'bonus_cap' in raw:
+        data['bonus_cap'] = max(0, _float(raw['bonus_cap'], 10000))
     if 'contract_line' in raw:
         data['contract_line'] = str(raw.get('contract_line') or data['contract_line'])
     if 'bonus_policy_line' in raw:
@@ -569,21 +578,44 @@ def _validate_star_bands(bands: list[dict[str, Any]], *, label: str = 'Daily sta
             )
 
 
-def _validate_bonus_bands(bands: list[dict[str, Any]], *, label: str = 'Monthly bonus') -> None:
+def _validate_bonus_bands(
+    bands: list[dict[str, Any]],
+    *,
+    label: str = 'Monthly bonus',
+    min_stars: float = 4.0,
+    cap: float = 10000.0,
+) -> None:
     if not bands:
         raise PolicyError(f'{label} bands cannot be empty.')
     mins = [b['min'] for b in bands]
     if len(mins) != len(set(mins)):
         raise PolicyError(f'{label} band minimums must be unique.')
     for band in bands:
-        if _float(band.get('bonus'), 0) < 0:
+        bonus = _float(band.get('bonus'), 0)
+        stars = _float(band.get('stars'), 0)
+        if bonus < 0:
             raise PolicyError(f'{label} amounts cannot be negative.')
+        if stars < min_stars and bonus > 0:
+            raise PolicyError(
+                f'{label}: cash bonus starts at {min_stars:g}★. '
+                f'Set bonus to 0 for bands below that (got {stars:g}★ → KES {bonus:g}).'
+            )
+        if cap > 0 and bonus > cap:
+            raise PolicyError(
+                f'{label}: bonus cannot exceed the KES {cap:g} cap (got KES {bonus:g}).'
+            )
 
 
 def validate_template(template: dict[str, Any]) -> dict[str, Any]:
     data = normalize_template(template)
     _validate_star_bands(data['daily_star_bands'])
-    _validate_bonus_bands(data['monthly_bonus_bands'])
+    min_stars = _float(data.get('bonus_min_stars'), 4)
+    cap = _float(data.get('bonus_cap'), 10000)
+    _validate_bonus_bands(
+        data['monthly_bonus_bands'],
+        min_stars=min_stars,
+        cap=cap,
+    )
     if data['daily_target'] <= 0:
         raise PolicyError('Daily target must be greater than zero.')
     if data['year_end_increment'] < 0:
@@ -598,7 +630,12 @@ def validate_template(template: dict[str, Any]) -> dict[str, Any]:
         if framework.get('daily_star_bands'):
             _validate_star_bands(framework['daily_star_bands'], label=f'{name} daily star')
         if framework.get('monthly_bonus_bands'):
-            _validate_bonus_bands(framework['monthly_bonus_bands'], label=f'{name} monthly bonus')
+            _validate_bonus_bands(
+                framework['monthly_bonus_bands'],
+                label=f'{name} monthly bonus',
+                min_stars=min_stars,
+                cap=cap,
+            )
     return data
 
 
@@ -608,6 +645,11 @@ def greet_when_no_sticky_notes() -> bool:
 
 def show_on_home() -> bool:
     return bool(SettingsService.get(MODULE, 'show_on_home', default=True))
+
+
+def staff_facing() -> bool:
+    """When False, hide Target delivery from staff nav/home (sellable package toggle)."""
+    return bool(SettingsService.get(MODULE, 'staff_facing', default=True))
 
 
 def load_template() -> dict[str, Any]:
@@ -652,6 +694,8 @@ def save_template(raw: dict[str, Any], *, user=None, request=None) -> dict[str, 
         flags['greet_when_no_sticky_notes'] = bool(raw['greet_when_no_sticky_notes'])
     if 'show_on_home' in raw:
         flags['show_on_home'] = bool(raw['show_on_home'])
+    if 'staff_facing' in raw:
+        flags['staff_facing'] = bool(raw['staff_facing'])
     if flags:
         SettingsService.set_many(MODULE, flags, user=user)
     try:
@@ -725,4 +769,5 @@ def public_policy(template: dict[str, Any] | None = None) -> dict[str, Any]:
     }
     data['greet_when_no_sticky_notes'] = greet_when_no_sticky_notes()
     data['show_on_home'] = show_on_home()
+    data['staff_facing'] = staff_facing()
     return data

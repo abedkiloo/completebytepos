@@ -350,6 +350,13 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
         'features': [
             _f('progress', 'Progress bars', 'Daily, monthly, and annual goal tracking.', 1),
             _f('greeting', 'Login greeting', 'Show progress when there are no sticky notes.', 2),
+            _f(
+                'monthly_bonus',
+                'Monthly bonus ladder',
+                '4★+ cash bonus (KES 2,000 base) up to KES 10,000, editable per role.',
+                3,
+            ),
+            _f('daily_tips', 'Daily sales tips', 'Short rotating coaching tips on progress screens.', 4),
         ],
     },
     # --- Platform ---

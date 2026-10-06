@@ -101,6 +101,7 @@ const Dashboard = () => {
         if (meRes?.data) setMe(meRes.data);
         if (dashRes?.data) setDashboardData(dashRes.data);
         if (
+          appraisalRes?.data?.staff_facing !== false &&
           appraisalRes?.data?.show_on_home !== false &&
           appraisalRes?.data?.has_personal_target !== false
         ) {

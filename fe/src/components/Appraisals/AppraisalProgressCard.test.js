@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import AppraisalProgressCard from './AppraisalProgressCard';
 
 jest.mock('react-router-dom', () => ({
@@ -52,12 +52,16 @@ const snapshot = {
 };
 
 describe('AppraisalProgressCard', () => {
-  it('shows daily target progress and five sales tips, not bonus', () => {
+  it('shows daily target progress and expandable tips, not bonus', () => {
     render(<AppraisalProgressCard snapshot={snapshot} />);
 
     expect(screen.getByText(/of KES 20,000 daily target/)).toBeInTheDocument();
     expect(screen.getByText(/toward a 4-star month/)).toBeInTheDocument();
     expect(screen.getByTestId('appraisal-daily-tips')).toBeInTheDocument();
+    expect(screen.getByTestId('appraisal-today-move')).toHaveTextContent(
+      'Call five customers you already sold to.',
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Show 4 more tips/i }));
     expect(screen.getByText('Follow up before they forget you')).toBeInTheDocument();
     expect(screen.getByText('Ask when to call back, then call then.')).toBeInTheDocument();
     expect(screen.queryByText(/bonus/i)).not.toBeInTheDocument();

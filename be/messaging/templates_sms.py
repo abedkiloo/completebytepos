@@ -96,6 +96,17 @@ def _item_display_name(item, *, name_max: int = 18) -> str:
     return name
 
 
+def _item_unit_price(item) -> Decimal:
+    raw = getattr(item, 'unit_price', None)
+    if raw is not None and str(raw) != '':
+        return Decimal(str(raw))
+    qty = int(getattr(item, 'quantity', 0) or 0)
+    sub = Decimal(str(getattr(item, 'subtotal', 0) or 0))
+    if qty > 0:
+        return (sub / qty).quantize(Decimal('0.01'))
+    return Decimal('0')
+
+
 def format_sale_items_summary(
     items,
     *,
@@ -103,7 +114,7 @@ def format_sale_items_summary(
     name_max: int = 18,
 ) -> str:
     """
-    Minified receipt lines for SMS, e.g. ``Soap x2=400; Oil x1=1100``.
+    Minified receipt lines for SMS, e.g. ``Soap 2 @each 300, Oil 1 @each 1100``.
 
     Caps length for single/multi-part SMS; leftover lines become ``+N more``.
     """
@@ -113,12 +124,12 @@ def format_sale_items_summary(
     parts: list[str] = []
     for item in rows[:max_items]:
         qty = int(getattr(item, 'quantity', 0) or 0)
-        sub = _money(getattr(item, 'subtotal', 0))
-        parts.append(f'{_item_display_name(item, name_max=name_max)} x{qty}={sub}')
+        each = _money(_item_unit_price(item))
+        parts.append(f'{_item_display_name(item, name_max=name_max)} {qty} @each {each}')
     extra = len(rows) - max_items
     if extra > 0:
         parts.append(f'+{extra} more')
-    return '; '.join(parts)
+    return ', '.join(parts)
 
 
 def format_balance_note(

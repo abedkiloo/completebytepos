@@ -131,7 +131,7 @@ export default function SmsTemplatesPage() {
     const demo = {
       first_name: 'Jane',
       sale_number: saleRef,
-      items: 'Soap x2=400; Cooking oil x1=1100. ',
+      items: 'Soap 2 @each 300, Cooking oil 1 @each 1100. ',
       total: '1500',
       paid: '1000',
       payment_ref: paymentRef,

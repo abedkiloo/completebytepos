@@ -133,18 +133,24 @@ function MonthCard({ month, policy }) {
   );
 }
 
-function BonusLadder({ month, bands }) {
+function BonusLadder({ month, bands, bonusMinStars = 4 }) {
   const sales = Number(month?.sales || 0);
   const current = Number(month?.bonus || 0);
   const next = month?.next_bonus;
   const toNext = Number(month?.amount_to_next_bonus || 0);
   const rows = Array.isArray(bands) ? [...bands].sort((a, b) => Number(a.min) - Number(b.min)) : [];
+  const paidRows = rows.filter(
+    (band) => Number(band.stars || 0) >= Number(bonusMinStars || 4) || Number(band.bonus || 0) > 0,
+  );
   return (
     <Card data-testid="appraisal-bonus">
       <CardHeader className="pb-2">
         <CardTitle className="text-base">Monthly bonus</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
+        <p className="text-xs text-muted-foreground">
+          Cash starts at {Number(bonusMinStars || 4)}★ (KES 2,000 base). Higher sales unlock more, up to the role cap.
+        </p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Metric label="Current sales" value={kes(sales)} tone={month?.tone} />
           <Metric label="Current bonus" value={kes(current)} tone={current ? 'emerald' : 'rose'} />
@@ -156,20 +162,23 @@ function BonusLadder({ month, bands }) {
           />
         </div>
         <ol className="space-y-2">
-          {rows.map((band) => {
+          {(paidRows.length ? paidRows : rows).map((band) => {
             const unlocked = sales >= Number(band.min || 0);
+            const pays = Number(band.bonus || 0) > 0;
             return (
               <li
                 key={`${band.min}-${band.stars}`}
                 className={cn(
                   'flex items-center justify-between rounded-lg border px-3 py-2 text-sm',
-                  unlocked ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/30' : 'border-border',
+                  unlocked && pays ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/30' : 'border-border',
                 )}
               >
                 <span className="font-medium">
                   {starGlyphs(band.stars)} · {kes(band.min)}+
                 </span>
-                <span className="tabular-nums font-semibold">{kes(band.bonus)}</span>
+                <span className="tabular-nums font-semibold">
+                  {pays ? kes(band.bonus) : 'No cash yet'}
+                </span>
               </li>
             );
           })}
@@ -302,7 +311,11 @@ export default function AppraisalDashboard({ snapshot, dayHref }) {
       ) : null}
       <TodayCard today={today} />
       <MonthCard month={month} policy={policy} />
-      <BonusLadder month={month} bands={policy?.monthly_bonus_bands} />
+      <BonusLadder
+        month={month}
+        bands={policy?.monthly_bonus_bands}
+        bonusMinStars={policy?.bonus_min_stars}
+      />
       <SalaryCard year={year} policy={policy} />
       <DayStrip days={month?.days} dayHref={dayHref} />
       <TrendChart days={month?.days} target={today?.target} />

@@ -494,6 +494,15 @@ MODULE_SETTING_DEFINITIONS: dict[str, list[dict[str, Any]]] = {
     ],
     'appraisals': [
         _setting(
+            'staff_facing',
+            'Offer target delivery to staff',
+            'When off, Target delivery is hidden from staff navigation and home cards. '
+            'Keep this off when packaging the system for a tenant that does not use appraisals. '
+            'Admins with manage permission can still edit rules.',
+            True,
+            0,
+        ),
+        _setting(
             'greet_when_no_sticky_notes',
             'Greet with progress when there are no sticky notes',
             'Shows a color-coded progress card on login when the sticky-note inbox is empty.',

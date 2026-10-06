@@ -32,6 +32,7 @@ export default function AppraisalGreeting() {
       const notes = Array.isArray(notesRes.data) ? notesRes.data : [];
       const me = meRes.data;
       if (!me?.policy?.greet_when_no_sticky_notes) return;
+      if (me?.staff_facing === false || me?.policy?.staff_facing === false) return;
       if (me.has_personal_target === false) return;
       if (hasInboxNotes(notes.filter((n) => !n.is_done))) return;
       const today = me.today?.date;

@@ -15,7 +15,7 @@ import {
   isFeatureEnabledInSettings,
   registryFeatureDefault,
 } from './moduleCache';
-import { readCachedModuleSettings } from './moduleSettingsCache';
+import { readCachedModuleSettings, isModuleFlagEnabled } from './moduleSettingsCache';
 import { readCachedStoreSettings } from './storeSettingsCache';
 import { salesCatalogAccessEnabled } from './productAccess';
 import { userMayOpenDailyNotes } from './dailyNotesAccess';
@@ -162,6 +162,15 @@ export function canSeeNavItem(item, sectionId, ctx) {
   if (item.module && !isModuleEnabled(item.module)) return false;
   if (item.feature && !isFeatureEnabled(item.feature[0], item.feature[1])) {
     return false;
+  }
+
+  // Target delivery: hide from staff when packaging toggle is off (admins with manage still see it).
+  if (item.to === '/appraisals') {
+    const appraisalSettings = readCachedModuleSettings('appraisals');
+    const offered = isModuleFlagEnabled(appraisalSettings, 'staff_facing', true);
+    if (!offered && !hasPermission(permissions, 'appraisals', 'manage') && !isSuperAdmin) {
+      return false;
+    }
   }
 
   if (item.anyPermission?.length) {

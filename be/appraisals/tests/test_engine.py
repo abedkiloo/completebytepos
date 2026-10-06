@@ -57,10 +57,10 @@ class AppraisalEngineTests(SimpleTestCase):
         cases = [
             (0, 1, 0),
             (599999, 1, 0),
-            (600000, 2, 2000),
-            (800000, 3, 4000),
-            (1000000, 4, 7000),
-            (1200000, 4.5, 8500),
+            (600000, 2, 0),  # stars below 4★ → no cash
+            (800000, 3, 0),
+            (1000000, 4, 2000),  # base bonus at 4★
+            (1250000, 4.5, 6000),
             (1500000, 5, 10000),
             (2000000, 5, 10000),
         ]
@@ -68,9 +68,23 @@ class AppraisalEngineTests(SimpleTestCase):
             rating = monthly_bonus(amount, self.template)
             self.assertEqual(rating['stars'], stars, msg=amount)
             self.assertEqual(rating['bonus'], bonus, msg=amount)
-        almost = monthly_bonus(900000, self.template)
-        self.assertEqual(almost['next_bonus'], 7000)
-        self.assertEqual(almost['amount_to_next'], 100000)
+        almost = monthly_bonus(1100000, self.template)
+        self.assertEqual(almost['bonus'], 2000)
+        self.assertEqual(almost['next_bonus'], 6000)
+        self.assertEqual(almost['amount_to_next'], 150000)
+
+    def test_bonus_gated_below_four_stars_even_if_band_misconfigured(self):
+        custom = normalize_template({
+            **self.template,
+            'bonus_min_stars': 4,
+            'monthly_bonus_bands': [
+                {'min': 0, 'stars': 1, 'bonus': 0},
+                {'min': 500000, 'stars': 2, 'bonus': 0},
+                {'min': 1000000, 'stars': 4, 'bonus': 2000},
+            ],
+        })
+        self.assertEqual(monthly_bonus(500000, custom)['bonus'], 0)
+        self.assertEqual(monthly_bonus(1000000, custom)['bonus'], 2000)
 
     def test_monthly_average_and_four_star_month(self):
         avg = monthly_average(104, 26)
@@ -225,6 +239,7 @@ class AppraisalEngineTests(SimpleTestCase):
                 {'min': 0, 'stars': 1, 'bonus': 0},
                 {'min': 100000, 'stars': 5, 'bonus': 20000},
             ],
+            'bonus_cap': 20000,
         })
         self.assertEqual(daily_star(5000, custom)['stars'], 5)
         self.assertEqual(monthly_bonus(100000, custom)['bonus'], 20000)

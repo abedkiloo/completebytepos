@@ -1,48 +1,69 @@
 import React, { useMemo, useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Save } from 'lucide-react';
 
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
+import { Badge } from '../ui/badge';
 import { kes } from '../../utils/appraisalStars';
 import { filterRoleDailyTargets, isAppraisalAdminRole } from '../../utils/appraisalRoles';
+import { cn } from '../../lib/cn';
 
-function BandTable({ title, rows, columns, onChange, onAdd, onRemove }) {
+const SECTIONS = [
+  { key: 'role', label: 'Role & pay' },
+  { key: 'stars', label: 'Daily stars' },
+  { key: 'bonus', label: 'Monthly bonus' },
+  { key: 'tips', label: 'Daily tips' },
+  { key: 'options', label: 'Visibility' },
+  { key: 'publish', label: 'Publish' },
+];
+
+const LOCKED_ROLES = ['Manager', 'Sales Personnel', 'Field Sales'];
+
+function num(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function BandTable({ title, hint, rows, columns, onChange, onAdd, onRemove }) {
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-base">{title}</CardTitle>
+    <div className="space-y-2" data-testid="appraisal-band-table">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-medium">{title}</p>
+          {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
+        </div>
         <Button type="button" size="sm" variant="outline" onClick={onAdd}>
           <Plus className="mr-1 h-3.5 w-3.5" />
-          Add band
+          Add
         </Button>
-      </CardHeader>
-      <CardContent className="overflow-x-auto">
-        <table className="w-full min-w-[32rem] text-sm">
+      </div>
+      <div className="overflow-x-auto rounded-md border">
+        <table className="w-full min-w-[28rem] text-sm">
           <thead>
-            <tr className="text-left text-xs uppercase text-muted-foreground">
+            <tr className="border-b bg-muted/40 text-left text-xs uppercase text-muted-foreground">
               {columns.map((col) => (
-                <th key={col.key} className="pb-2 pr-2 font-medium">{col.label}</th>
+                <th key={col.key} className="px-2 py-2 font-medium">{col.label}</th>
               ))}
-              <th className="pb-2 w-10" />
+              <th className="w-10 px-2 py-2" />
             </tr>
           </thead>
           <tbody>
             {rows.map((row, index) => (
-              <tr key={`${row.min}-${index}`}>
+              <tr key={`${row.min}-${index}`} className="border-b border-border/60 last:border-0">
                 {columns.map((col) => (
-                  <td key={col.key} className="py-1 pr-2">
+                  <td key={col.key} className="px-2 py-1.5">
                     <Input
                       type={col.type || 'number'}
                       step={col.step}
                       value={row[col.key] ?? ''}
                       onChange={(e) => onChange(index, col.key, e.target.value)}
+                      className="h-8"
                     />
                   </td>
                 ))}
-                <td className="py-1">
+                <td className="px-1 py-1.5">
                   <Button
                     type="button"
                     size="icon"
@@ -58,17 +79,10 @@ function BandTable({ title, rows, columns, onChange, onAdd, onRemove }) {
             ))}
           </tbody>
         </table>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
-
-function num(value, fallback = 0) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-const LOCKED_ROLES = ['Manager', 'Sales Personnel', 'Field Sales'];
 
 function roleTargetsFromPolicy(policy) {
   const incoming = policy?.role_daily_targets && typeof policy.role_daily_targets === 'object'
@@ -128,14 +142,19 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
     ...policy,
     role_daily_targets: roleTargetsFromPolicy(policy),
     role_frameworks: policy?.role_frameworks || {},
+    bonus_min_stars: num(policy?.bonus_min_stars, 4),
+    bonus_cap: num(policy?.bonus_cap, 10000),
+    staff_facing: policy?.staff_facing !== false,
     change_reason: '',
     effective_from: '',
   }));
+  const [section, setSection] = useState('role');
   const [newRole, setNewRole] = useState('');
   const [newRoleTarget, setNewRoleTarget] = useState('');
   const [selectedRole, setSelectedRole] = useState(
     () => (policy?.role_daily_targets?.['Sales Personnel'] != null ? 'Sales Personnel' : Object.keys(roleTargetsFromPolicy(policy))[0] || ''),
   );
+  const [selectedTipIndex, setSelectedTipIndex] = useState(0);
 
   const dailyColumns = useMemo(
     () => [
@@ -143,7 +162,7 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
       { key: 'stars', label: 'Stars', step: '0.5' },
       { key: 'label', label: 'Label', type: 'text' },
     ],
-    []
+    [],
   );
   const bonusColumns = useMemo(
     () => [
@@ -152,15 +171,16 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
       { key: 'bonus', label: 'Bonus (KES)', step: '1' },
       { key: 'label', label: 'Label', type: 'text' },
     ],
-    []
+    [],
   );
+
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
   const emptyTipPack = () => ({
     id: `pack-${Date.now()}`,
     title: '',
     why: '',
-    tips: ['', '', '', '', ''],
+    tips: ['', '', ''],
   });
 
   const patchTipPack = (index, key, value) => {
@@ -174,19 +194,11 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
   const patchTipLine = (packIndex, tipIndex, value) => {
     setForm((prev) => {
       const next = [...(prev.daily_tip_packs || [])];
-      const tips = [...(next[packIndex]?.tips || ['', '', '', '', ''])];
-      while (tips.length < 5) tips.push('');
+      const tips = [...(next[packIndex]?.tips || ['', '', ''])];
+      while (tips.length < 3) tips.push('');
       tips[tipIndex] = value;
       next[packIndex] = { ...next[packIndex], tips };
       return { ...prev, daily_tip_packs: next };
-    });
-  };
-
-  const patchBand = (listKey, index, key, value) => {
-    setForm((prev) => {
-      const next = [...(prev[listKey] || [])];
-      next[index] = { ...next[index], [key]: key === 'label' ? value : num(value, next[index][key]) };
-      return { ...prev, [listKey]: next };
     });
   };
 
@@ -196,6 +208,8 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
   const selectedFramework = selectedRole
     ? { ...frameworkFromPolicy(form, selectedRole), ...(form.role_frameworks?.[selectedRole] || {}) }
     : null;
+  const tipPacks = form.daily_tip_packs || [];
+  const activeTip = tipPacks[selectedTipIndex] || null;
 
   const patchFramework = (role, key, value) => {
     if (!role) return;
@@ -269,7 +283,7 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
     const targets = filterRoleDailyTargets(
       Object.fromEntries(
         Object.entries(form.role_daily_targets || {}).map(([role, target]) => [role, num(target)]),
-      )
+      ),
     );
     onSave({
       ...form,
@@ -282,7 +296,10 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
       four_star_month_min_avg: num(form.four_star_month_min_avg, 4),
       four_star_months_required: num(form.four_star_months_required, 8),
       annual_avg_required: num(form.annual_avg_required, 4),
+      bonus_min_stars: num(form.bonus_min_stars, 4),
+      bonus_cap: num(form.bonus_cap, 10000),
       show_year_end_increment: Boolean(form.show_year_end_increment),
+      staff_facing: form.staff_facing !== false,
       change_reason: String(form.change_reason || '').trim(),
       effective_from: String(form.effective_from || '').trim(),
       role_frameworks: form.role_frameworks || {},
@@ -295,358 +312,419 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
     });
   };
 
+  const rolePicker = (
+    <div className="mb-3">
+      <Label htmlFor="selected_role">Editing role</Label>
+      <select
+        id="selected_role"
+        className="mt-1 h-10 w-full rounded-md border bg-background px-3 text-sm"
+        value={selectedRole}
+        onChange={(e) => setSelectedRole(e.target.value)}
+      >
+        {roleNames.map((role) => (
+          <option key={role} value={role}>{role}</option>
+        ))}
+      </select>
+    </div>
+  );
+
   return (
-    <form className="space-y-4" onSubmit={handleSubmit}>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Performance rules</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            Choose a role, then set its salary, daily target, stars, monthly bonus, and annual increment. Saving publishes a versioned rule set.
-          </p>
-          <div>
-            <Label htmlFor="selected_role">Role</Label>
-            <select
-              id="selected_role"
-              className="mt-1 h-10 w-full rounded-md border bg-background px-3 text-sm"
-              value={selectedRole}
-              onChange={(e) => setSelectedRole(e.target.value)}
+    <form className="space-y-4" onSubmit={handleSubmit} data-testid="appraisal-rules-form">
+      <div className="grid gap-4 lg:grid-cols-[200px_1fr]">
+        <nav className="space-y-1 rounded-lg border bg-card p-2" aria-label="Performance rules sections">
+          {SECTIONS.map((row) => (
+            <button
+              key={row.key}
+              type="button"
+              onClick={() => setSection(row.key)}
+              className={cn(
+                'flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-sm transition-colors',
+                section === row.key
+                  ? 'bg-primary/10 font-medium text-foreground'
+                  : 'hover:bg-muted/60',
+              )}
             >
-              {roleNames.map((role) => (
-                <option key={role} value={role}>{role}</option>
-              ))}
-            </select>
-          </div>
-          {selectedFramework ? (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div>
-                <Label htmlFor="fw_basic">Basic salary</Label>
-                <Input id="fw_basic" type="number" value={selectedFramework.basic_pay ?? ''} onChange={(e) => patchFramework(selectedRole, 'basic_pay', e.target.value)} />
-              </div>
-              <div>
-                <Label htmlFor="fw_target">Daily target</Label>
-                <Input id="fw_target" type="number" value={selectedFramework.daily_target ?? ''} onChange={(e) => patchFramework(selectedRole, 'daily_target', e.target.value)} />
-              </div>
-              <div>
-                <Label htmlFor="fw_increment">Annual increment</Label>
-                <Input id="fw_increment" type="number" value={selectedFramework.year_end_increment ?? ''} onChange={(e) => patchFramework(selectedRole, 'year_end_increment', e.target.value)} />
-              </div>
-              <div>
-                <Label htmlFor="fw_days">Working days</Label>
-                <Input id="fw_days" type="number" value={selectedFramework.working_days ?? ''} onChange={(e) => patchFramework(selectedRole, 'working_days', e.target.value)} />
-              </div>
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
+              {row.label}
+            </button>
+          ))}
+        </nav>
 
-      {preview ? (
-        <Card data-testid="appraisal-rules-preview">
-          <CardHeader>
-            <CardTitle className="text-base">Preview · {preview.role}</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-2 text-sm sm:grid-cols-2">
-            <p>Daily target <span className="font-semibold">{kes(preview.daily_target)}</span></p>
-            <p>4-Star target <span className="font-semibold">{kes(preview.four_star_target)}</span></p>
-            <p>5-Star target <span className="font-semibold">{preview.five_star_target ? `${kes(preview.five_star_target)}+` : '—'}</span></p>
-            <p>Monthly 4-Star requirement <span className="font-semibold">{Number(preview.four_star_month_min_avg).toFixed(1)} average</span></p>
-            <p>Annual requirement <span className="font-semibold">{Number(preview.annual_avg_required).toFixed(1)} average · {preview.four_star_months_required} 4-Star months</span></p>
-            <p>Annual increment <span className="font-semibold">{kes(preview.year_end_increment)}</span></p>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Pay and qualification</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <div>
-            <Label htmlFor="basic_pay">Basic pay (KES)</Label>
-            <Input id="basic_pay" type="number" value={form.basic_pay} onChange={(e) => setField('basic_pay', e.target.value)} />
-          </div>
-          <div>
-            <Label htmlFor="working_days">Working days / month</Label>
-            <Input id="working_days" type="number" value={form.working_days} onChange={(e) => setField('working_days', e.target.value)} />
-          </div>
-          {form.show_year_end_increment ? (
-            <>
+        <section className="min-w-0 rounded-lg border bg-card p-4 shadow-sm">
+          {section === 'role' ? (
+            <div className="space-y-4">
               <div>
-                <Label htmlFor="year_end_increment">Year-end increment (KES)</Label>
-                <Input id="year_end_increment" type="number" value={form.year_end_increment} onChange={(e) => setField('year_end_increment', e.target.value)} />
+                <h2 className="text-base font-semibold">Role &amp; pay</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Pick a role, set its daily target and pay. Admin roles are not scored.
+                </p>
               </div>
-              <div>
-                <Label htmlFor="four_star_months_required">4-star months required</Label>
-                <Input id="four_star_months_required" type="number" value={form.four_star_months_required} onChange={(e) => setField('four_star_months_required', e.target.value)} />
-              </div>
-              <div>
-                <Label htmlFor="annual_avg_required">Annual average required</Label>
-                <Input id="annual_avg_required" type="number" step="0.1" value={form.annual_avg_required} onChange={(e) => setField('annual_avg_required', e.target.value)} />
-              </div>
-            </>
-          ) : null}
-          <label className="flex items-center gap-2 text-sm sm:col-span-2">
-            <Switch
-              checked={Boolean(form.greet_when_no_sticky_notes)}
-              onCheckedChange={(checked) => setField('greet_when_no_sticky_notes', checked)}
-            />
-            Greet with progress when there are no sticky notes
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <Switch
-              checked={Boolean(form.show_on_home)}
-              onCheckedChange={(checked) => setField('show_on_home', checked)}
-            />
-            Show on home / dashboard
-          </label>
-          <label className="flex items-center gap-2 text-sm sm:col-span-2">
-            <Switch
-              checked={Boolean(form.show_year_end_increment)}
-              onCheckedChange={(checked) => setField('show_year_end_increment', checked)}
-            />
-            Show year-end increment to staff
-          </label>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Daily targets by role</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            Each manager and sales role has its own daily target. 4-star “target met” scales with the amount you set. Admin roles are not scored.
-          </p>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {roleNames.map((role) => (
-              <div key={role}>
-                <div className="mb-1 flex items-center justify-between gap-2">
-                  <Label htmlFor={`role_target_${role}`}>{role}</Label>
-                  {!LOCKED_ROLES.includes(role) ? (
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      aria-label={`Remove ${role}`}
-                      onClick={() => removeRoleTarget(role)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+              {rolePicker}
+              {selectedFramework ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor="fw_basic">Basic salary</Label>
+                    <Input id="fw_basic" type="number" value={selectedFramework.basic_pay ?? ''} onChange={(e) => patchFramework(selectedRole, 'basic_pay', e.target.value)} />
+                  </div>
+                  <div>
+                    <Label htmlFor="fw_target">Daily target</Label>
+                    <Input id="fw_target" type="number" value={selectedFramework.daily_target ?? ''} onChange={(e) => patchFramework(selectedRole, 'daily_target', e.target.value)} />
+                  </div>
+                  <div>
+                    <Label htmlFor="fw_days">Working days / month</Label>
+                    <Input id="fw_days" type="number" value={selectedFramework.working_days ?? ''} onChange={(e) => patchFramework(selectedRole, 'working_days', e.target.value)} />
+                  </div>
+                  {form.show_year_end_increment ? (
+                    <div>
+                      <Label htmlFor="fw_increment">Annual increment</Label>
+                      <Input id="fw_increment" type="number" value={selectedFramework.year_end_increment ?? ''} onChange={(e) => patchFramework(selectedRole, 'year_end_increment', e.target.value)} />
+                    </div>
                   ) : null}
                 </div>
-                <Input
-                  id={`role_target_${role}`}
-                  type="number"
-                  value={roleTargets[role] ?? ''}
-                  onChange={(e) => setRoleTarget(role, e.target.value)}
-                />
-              </div>
-            ))}
-          </div>
-          <div className="grid gap-2 sm:grid-cols-[1fr_8rem_auto]">
-            <Input
-              placeholder="Add another role…"
-              value={newRole}
-              onChange={(e) => setNewRole(e.target.value)}
-              aria-label="New role name"
-            />
-            <Input
-              type="number"
-              placeholder="KES"
-              value={newRoleTarget}
-              onChange={(e) => setNewRoleTarget(e.target.value)}
-              aria-label="New role daily target"
-            />
-            <Button type="button" variant="outline" onClick={addRoleTarget}>
-              <Plus className="mr-1 h-3.5 w-3.5" />
-              Add role
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <BandTable
-        title="Daily star rating (defaults)"
-        rows={form.daily_star_bands || []}
-        columns={dailyColumns}
-        onChange={(i, k, v) => patchBand('daily_star_bands', i, k, v)}
-        onAdd={() => setField('daily_star_bands', [...(form.daily_star_bands || []), { min: 0, stars: 1, label: '' }])}
-        onRemove={(i) => setField('daily_star_bands', (form.daily_star_bands || []).filter((_, idx) => idx !== i))}
-      />
-
-      {selectedRole ? (
-        <BandTable
-          title={`Daily star rating · ${selectedRole}`}
-          rows={selectedFramework?.daily_star_bands || []}
-          columns={dailyColumns}
-          onChange={(i, k, v) => patchFrameworkBand(selectedRole, 'daily_star_bands', i, k, v)}
-          onAdd={() => patchFramework(selectedRole, 'daily_star_bands', [...(selectedFramework?.daily_star_bands || []), { min: 0, stars: 1, label: '' }])}
-          onRemove={(i) => patchFramework(
-            selectedRole,
-            'daily_star_bands',
-            (selectedFramework?.daily_star_bands || []).filter((_, idx) => idx !== i),
-          )}
-        />
-      ) : null}
-
-      <BandTable
-        title="Monthly bonus (defaults)"
-        rows={form.monthly_bonus_bands || []}
-        columns={bonusColumns}
-        onChange={(i, k, v) => patchBand('monthly_bonus_bands', i, k, v)}
-        onAdd={() => setField('monthly_bonus_bands', [...(form.monthly_bonus_bands || []), { min: 0, stars: 1, bonus: 0, label: '' }])}
-        onRemove={(i) => setField('monthly_bonus_bands', (form.monthly_bonus_bands || []).filter((_, idx) => idx !== i))}
-      />
-
-      {selectedRole ? (
-        <BandTable
-          title={`Monthly bonus · ${selectedRole}`}
-          rows={selectedFramework?.monthly_bonus_bands || []}
-          columns={bonusColumns}
-          onChange={(i, k, v) => patchFrameworkBand(selectedRole, 'monthly_bonus_bands', i, k, v)}
-          onAdd={() => patchFramework(selectedRole, 'monthly_bonus_bands', [...(selectedFramework?.monthly_bonus_bands || []), { min: 0, stars: 1, bonus: 0, label: '' }])}
-          onRemove={(i) => patchFramework(
-            selectedRole,
-            'monthly_bonus_bands',
-            (selectedFramework?.monthly_bonus_bands || []).filter((_, idx) => idx !== i),
-          )}
-        />
-      ) : null}
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-base">Daily sales tips</CardTitle>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => setField('daily_tip_packs', [...(form.daily_tip_packs || []), emptyTipPack()])}
-          >
-            <Plus className="mr-1 h-3.5 w-3.5" />
-            Add pack
-          </Button>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            One pack of five tips shows each day in the greeting. Paste follow-up, conversation, and new-customer tips here.
-          </p>
-          {(form.daily_tip_packs || []).map((pack, packIndex) => (
-            <div key={pack.id || packIndex} className="space-y-2 rounded-md border p-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="grid flex-1 gap-2 sm:grid-cols-2">
-                  <div>
-                    <Label htmlFor={`tip_title_${packIndex}`}>Title</Label>
-                    <Input
-                      id={`tip_title_${packIndex}`}
-                      value={pack.title || ''}
-                      onChange={(e) => patchTipPack(packIndex, 'title', e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor={`tip_why_${packIndex}`}>Why it matters</Label>
-                    <Input
-                      id={`tip_why_${packIndex}`}
-                      value={pack.why || ''}
-                      onChange={(e) => patchTipPack(packIndex, 'why', e.target.value)}
-                    />
-                  </div>
+              ) : null}
+              {preview ? (
+                <div className="grid gap-2 rounded-md border bg-muted/20 p-3 text-sm sm:grid-cols-2" data-testid="appraisal-rules-preview">
+                  <p>Daily target <span className="font-semibold">{kes(preview.daily_target)}</span></p>
+                  <p>4★ target <span className="font-semibold">{kes(preview.four_star_target)}</span></p>
+                  <p>5★ target <span className="font-semibold">{preview.five_star_target ? `${kes(preview.five_star_target)}+` : '—'}</span></p>
+                  <p>Basic <span className="font-semibold">{kes(preview.basic_pay)}</span></p>
                 </div>
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  aria-label={`Remove tip pack ${packIndex + 1}`}
-                  onClick={() => setField(
-                    'daily_tip_packs',
-                    (form.daily_tip_packs || []).filter((_, idx) => idx !== packIndex),
-                  )}
-                  disabled={(form.daily_tip_packs || []).length <= 1}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+              ) : null}
+              <div className="space-y-2 border-t pt-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">All role targets</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {roleNames.map((role) => (
+                    <div key={role}>
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <Label htmlFor={`role_target_${role}`}>{role}</Label>
+                        {!LOCKED_ROLES.includes(role) ? (
+                          <Button type="button" size="icon" variant="ghost" aria-label={`Remove ${role}`} onClick={() => removeRoleTarget(role)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        ) : null}
+                      </div>
+                      <Input
+                        id={`role_target_${role}`}
+                        type="number"
+                        value={roleTargets[role] ?? ''}
+                        onChange={(e) => setRoleTarget(role, e.target.value)}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="grid gap-2 sm:grid-cols-[1fr_7rem_auto]">
+                  <Input placeholder="Add another role…" value={newRole} onChange={(e) => setNewRole(e.target.value)} aria-label="New role name" />
+                  <Input type="number" placeholder="KES" value={newRoleTarget} onChange={(e) => setNewRoleTarget(e.target.value)} aria-label="New role daily target" />
+                  <Button type="button" variant="outline" onClick={addRoleTarget}>
+                    <Plus className="mr-1 h-3.5 w-3.5" />
+                    Add
+                  </Button>
+                </div>
               </div>
-              {[0, 1, 2, 3, 4].map((tipIndex) => (
-                <div key={tipIndex}>
-                  <Label htmlFor={`tip_${packIndex}_${tipIndex}`}>Tip {tipIndex + 1}</Label>
-                  <textarea
-                    id={`tip_${packIndex}_${tipIndex}`}
-                    className="min-h-[3.25rem] w-full rounded-md border bg-background px-2.5 py-2 text-sm"
-                    value={(pack.tips || [])[tipIndex] || ''}
-                    onChange={(e) => patchTipLine(packIndex, tipIndex, e.target.value)}
+            </div>
+          ) : null}
+
+          {section === 'stars' ? (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-base font-semibold">Daily stars</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Sales thresholds that unlock each star for the selected role.
+                </p>
+              </div>
+              {rolePicker}
+              <BandTable
+                title={`Star bands · ${selectedRole || 'role'}`}
+                hint="4★ is target met. Edit per role."
+                rows={selectedFramework?.daily_star_bands || []}
+                columns={dailyColumns}
+                onChange={(i, k, v) => patchFrameworkBand(selectedRole, 'daily_star_bands', i, k, v)}
+                onAdd={() => patchFramework(selectedRole, 'daily_star_bands', [...(selectedFramework?.daily_star_bands || []), { min: 0, stars: 1, label: '' }])}
+                onRemove={(i) => patchFramework(
+                  selectedRole,
+                  'daily_star_bands',
+                  (selectedFramework?.daily_star_bands || []).filter((_, idx) => idx !== i),
+                )}
+              />
+            </div>
+          ) : null}
+
+          {section === 'bonus' ? (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-base font-semibold">Monthly bonus</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Cash starts at {num(form.bonus_min_stars, 4)}★ with a KES {num(form.bonus_cap, 10000).toLocaleString('en-KE')}{' '}
+                  cap. Bands below that keep star labels but must pay 0. Each role has its own ladder.
+                </p>
+              </div>
+              {rolePicker}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="bonus_min_stars">Bonus starts at (★)</Label>
+                  <Input
+                    id="bonus_min_stars"
+                    type="number"
+                    step="0.5"
+                    value={form.bonus_min_stars ?? 4}
+                    onChange={(e) => setField('bonus_min_stars', e.target.value)}
                   />
                 </div>
-              ))}
+                <div>
+                  <Label htmlFor="bonus_cap">Bonus cap (KES)</Label>
+                  <Input
+                    id="bonus_cap"
+                    type="number"
+                    value={form.bonus_cap ?? 10000}
+                    onChange={(e) => setField('bonus_cap', e.target.value)}
+                  />
+                </div>
+              </div>
+              <BandTable
+                title={`Bonus ladder · ${selectedRole || 'role'}`}
+                hint="Example: 4★ → 2,000 · 4.5★ → 6,000 · 5★ → 10,000"
+                rows={selectedFramework?.monthly_bonus_bands || []}
+                columns={bonusColumns}
+                onChange={(i, k, v) => patchFrameworkBand(selectedRole, 'monthly_bonus_bands', i, k, v)}
+                onAdd={() => patchFramework(selectedRole, 'monthly_bonus_bands', [...(selectedFramework?.monthly_bonus_bands || []), { min: 0, stars: 4, bonus: 2000, label: 'BASE' }])}
+                onRemove={(i) => patchFramework(
+                  selectedRole,
+                  'monthly_bonus_bands',
+                  (selectedFramework?.monthly_bonus_bands || []).filter((_, idx) => idx !== i),
+                )}
+              />
             </div>
-          ))}
-        </CardContent>
-      </Card>
+          ) : null}
 
-      {form.show_year_end_increment ? (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Staff policy line</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Label htmlFor="contract_line">Year-end increment</Label>
-          <textarea
-            id="contract_line"
-            className="min-h-[4.5rem] w-full rounded-md border bg-background px-2.5 py-2 text-sm"
-            value={form.contract_line || ''}
-            onChange={(e) => setField('contract_line', e.target.value)}
-          />
-        </CardContent>
-      </Card>
-      ) : null}
+          {section === 'tips' ? (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-base font-semibold">Daily tips</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  One pack rotates each day. Staff see a single tip first — keep packs short (3 lines).
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-[180px_1fr]">
+                <div className="space-y-1 rounded-md border p-2">
+                  {tipPacks.map((pack, index) => (
+                    <button
+                      key={pack.id || index}
+                      type="button"
+                      onClick={() => setSelectedTipIndex(index)}
+                      className={cn(
+                        'flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm',
+                        selectedTipIndex === index ? 'bg-primary/10 font-medium' : 'hover:bg-muted/60',
+                      )}
+                    >
+                      <span className="truncate">{pack.title || `Pack ${index + 1}`}</span>
+                    </button>
+                  ))}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="mt-2 w-full"
+                    onClick={() => {
+                      setField('daily_tip_packs', [...tipPacks, emptyTipPack()]);
+                      setSelectedTipIndex(tipPacks.length);
+                    }}
+                  >
+                    <Plus className="mr-1 h-3.5 w-3.5" />
+                    Add pack
+                  </Button>
+                </div>
+                {activeTip ? (
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="grid flex-1 gap-2 sm:grid-cols-2">
+                        <div>
+                          <Label htmlFor="tip_title">Title</Label>
+                          <Input
+                            id="tip_title"
+                            value={activeTip.title || ''}
+                            onChange={(e) => patchTipPack(selectedTipIndex, 'title', e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="tip_why">Why (optional)</Label>
+                          <Input
+                            id="tip_why"
+                            value={activeTip.why || ''}
+                            onChange={(e) => patchTipPack(selectedTipIndex, 'why', e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        aria-label="Remove tip pack"
+                        disabled={tipPacks.length <= 1}
+                        onClick={() => {
+                          const next = tipPacks.filter((_, idx) => idx !== selectedTipIndex);
+                          setField('daily_tip_packs', next);
+                          setSelectedTipIndex(Math.max(0, selectedTipIndex - 1));
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    {[0, 1, 2].map((tipIndex) => (
+                      <div key={tipIndex}>
+                        <Label htmlFor={`tip_line_${tipIndex}`}>Tip {tipIndex + 1}</Label>
+                        <textarea
+                          id={`tip_line_${tipIndex}`}
+                          className="mt-1 min-h-[2.75rem] w-full rounded-md border bg-background px-2.5 py-2 text-sm"
+                          value={(activeTip.tips || [])[tipIndex] || ''}
+                          onChange={(e) => patchTipLine(selectedTipIndex, tipIndex, e.target.value)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Add a tip pack to edit coaching lines.</p>
+                )}
+              </div>
+            </div>
+          ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Effective date</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="effective_from">Effective from</Label>
-            <Input
-              id="effective_from"
-              type="date"
-              value={form.effective_from || ''}
-              onChange={(e) => setField('effective_from', e.target.value)}
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <Label htmlFor="change_reason">Reason / comment</Label>
-            <textarea
-              id="change_reason"
-              className="min-h-[3.5rem] w-full rounded-md border bg-background px-2.5 py-2 text-sm"
-              value={form.change_reason || ''}
-              onChange={(e) => setField('change_reason', e.target.value)}
-              placeholder="Why these rules are changing"
-            />
-          </div>
-        </CardContent>
-      </Card>
+          {section === 'options' ? (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-base font-semibold">Visibility</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Package toggles for tenants — turn Target delivery off when selling the system without this module.
+                </p>
+              </div>
+              <div className="space-y-3">
+                <label className="flex items-start justify-between gap-3 rounded-md border p-3">
+                  <div>
+                    <p className="text-sm font-medium">Offer to staff</p>
+                    <p className="text-xs text-muted-foreground">
+                      When off, hide from staff nav and home. Admins can still edit rules here.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={form.staff_facing !== false}
+                    onCheckedChange={(checked) => setField('staff_facing', checked)}
+                  />
+                </label>
+                <label className="flex items-start justify-between gap-3 rounded-md border p-3">
+                  <div>
+                    <p className="text-sm font-medium">Show on home / dashboard</p>
+                    <p className="text-xs text-muted-foreground">Progress card on the main dashboard.</p>
+                  </div>
+                  <Switch
+                    checked={Boolean(form.show_on_home)}
+                    onCheckedChange={(checked) => setField('show_on_home', checked)}
+                  />
+                </label>
+                <label className="flex items-start justify-between gap-3 rounded-md border p-3">
+                  <div>
+                    <p className="text-sm font-medium">Login greeting</p>
+                    <p className="text-xs text-muted-foreground">Progress popup when sticky notes are empty.</p>
+                  </div>
+                  <Switch
+                    checked={Boolean(form.greet_when_no_sticky_notes)}
+                    onCheckedChange={(checked) => setField('greet_when_no_sticky_notes', checked)}
+                  />
+                </label>
+                <label className="flex items-start justify-between gap-3 rounded-md border p-3">
+                  <div>
+                    <p className="text-sm font-medium">Year-end increment</p>
+                    <p className="text-xs text-muted-foreground">Show salary growth tracking to staff.</p>
+                  </div>
+                  <Switch
+                    checked={Boolean(form.show_year_end_increment)}
+                    onCheckedChange={(checked) => setField('show_year_end_increment', checked)}
+                  />
+                </label>
+              </div>
+              {form.show_year_end_increment ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor="four_star_months_required">4★ months required</Label>
+                    <Input id="four_star_months_required" type="number" value={form.four_star_months_required} onChange={(e) => setField('four_star_months_required', e.target.value)} />
+                  </div>
+                  <div>
+                    <Label htmlFor="annual_avg_required">Annual average required</Label>
+                    <Input id="annual_avg_required" type="number" step="0.1" value={form.annual_avg_required} onChange={(e) => setField('annual_avg_required', e.target.value)} />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Label htmlFor="contract_line">Staff policy line</Label>
+                    <textarea
+                      id="contract_line"
+                      className="mt-1 min-h-[3.5rem] w-full rounded-md border bg-background px-2.5 py-2 text-sm"
+                      value={form.contract_line || ''}
+                      onChange={(e) => setField('contract_line', e.target.value)}
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
-      {Array.isArray(form.versions) && form.versions.length ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Previous versions</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            {[...form.versions].reverse().slice(0, 8).map((row) => (
-              <p key={row.id || row.saved_at}>
-                {row.effective_from || '—'} → {row.effective_until || 'now'}
-                {row.daily_target != null ? ` · target ${kes(row.daily_target)}` : ''}
-                {row.reason ? ` · ${row.reason}` : ''}
-              </p>
-            ))}
-          </CardContent>
-        </Card>
-      ) : null}
+          {section === 'publish' ? (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-base font-semibold">Publish</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Saving creates a versioned rule set effective from the date you choose.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="effective_from">Effective from</Label>
+                  <Input
+                    id="effective_from"
+                    type="date"
+                    value={form.effective_from || ''}
+                    onChange={(e) => setField('effective_from', e.target.value)}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <Label htmlFor="change_reason">Reason / comment</Label>
+                  <textarea
+                    id="change_reason"
+                    className="mt-1 min-h-[3.5rem] w-full rounded-md border bg-background px-2.5 py-2 text-sm"
+                    value={form.change_reason || ''}
+                    onChange={(e) => setField('change_reason', e.target.value)}
+                    placeholder="Why these rules are changing"
+                  />
+                </div>
+              </div>
+              {Array.isArray(form.versions) && form.versions.length ? (
+                <div className="space-y-2 rounded-md border p-3 text-sm">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Previous versions</p>
+                  {[...form.versions].reverse().slice(0, 6).map((row) => (
+                    <p key={row.id || row.saved_at}>
+                      {row.effective_from || '—'} → {row.effective_until || 'now'}
+                      {row.daily_target != null ? ` · target ${kes(row.daily_target)}` : ''}
+                      {row.reason ? ` · ${row.reason}` : ''}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
+              <div className="flex justify-end">
+                <Button type="submit" disabled={saving}>
+                  <Save className="mr-1.5 h-4 w-4" />
+                  {saving ? 'Saving…' : 'Publish performance rules'}
+                </Button>
+              </div>
+            </div>
+          ) : null}
 
-      <div className="flex justify-end">
-        <Button type="submit" disabled={saving}>
-          {saving ? 'Saving…' : 'Publish performance rules'}
-        </Button>
+          {section !== 'publish' ? (
+            <div className="mt-4 flex items-center justify-between border-t pt-3">
+              <Badge variant="secondary" className="text-[10px]">
+                {selectedRole || 'No role'}
+              </Badge>
+              <Button type="submit" size="sm" disabled={saving}>
+                <Save className="mr-1.5 h-3.5 w-3.5" />
+                {saving ? 'Saving…' : 'Save'}
+              </Button>
+            </div>
+          ) : null}
+        </section>
       </div>
     </form>
   );

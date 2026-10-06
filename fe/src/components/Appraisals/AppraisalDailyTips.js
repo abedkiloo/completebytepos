@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Star } from 'lucide-react';
 
 import { cn } from '../../lib/cn';
+import { Button } from '../ui/button';
 
 export default function AppraisalDailyTips({ pack, compact = false, emphasis = false }) {
   const tips = Array.isArray(pack?.tips) ? pack.tips.filter(Boolean).slice(0, 5) : [];
+  const [expanded, setExpanded] = useState(false);
   if (!tips.length) return null;
 
   if (compact) {
@@ -21,6 +23,42 @@ export default function AppraisalDailyTips({ pack, compact = false, emphasis = f
         </span>
         {tips[0]}
       </p>
+    );
+  }
+
+  if (!expanded) {
+    return (
+      <div
+        className={cn(
+          'rounded-lg border px-3 py-2.5',
+          emphasis ? 'border-white/20 bg-black/25' : 'border-border bg-background/60',
+        )}
+        data-testid="appraisal-daily-tips"
+      >
+        <p
+          className={cn(
+            'text-sm leading-snug',
+            emphasis ? 'text-white/85' : 'text-muted-foreground',
+          )}
+          data-testid="appraisal-today-move"
+        >
+          <span className={cn('font-semibold', emphasis ? 'text-white' : 'text-foreground')}>
+            Today’s move:{' '}
+          </span>
+          {tips[0]}
+        </p>
+        {tips.length > 1 ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={cn('mt-1 h-7 px-0', emphasis ? 'text-white/80 hover:text-white' : '')}
+            onClick={() => setExpanded(true)}
+          >
+            Show {tips.length - 1} more tip{tips.length - 1 === 1 ? '' : 's'}
+          </Button>
+        ) : null}
+      </div>
     );
   }
 
@@ -64,6 +102,15 @@ export default function AppraisalDailyTips({ pack, compact = false, emphasis = f
           </li>
         ))}
       </ol>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className={cn('mt-2 h-7 px-0', emphasis ? 'text-white/80 hover:text-white' : '')}
+        onClick={() => setExpanded(false)}
+      >
+        Show less
+      </Button>
     </section>
   );
 }
