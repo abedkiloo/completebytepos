@@ -35,6 +35,7 @@ import {
   Building2,
   Calculator,
   SlidersHorizontal,
+  MessageSquareText,
   UserCog,
   Palette,
   NotebookPen,
@@ -160,6 +161,12 @@ export const NAV_SECTIONS = [
         icon: Wallet,
         permission: ['debt_management', 'view'],
       },
+      {
+        to: '/sms-templates',
+        label: 'SMS templates',
+        icon: MessageSquareText,
+        permission: ['messaging', 'view'],
+      },
     ],
   },
   {
@@ -260,6 +267,7 @@ export const NAV_SECTIONS = [
       { to: '/roles', label: 'Role Management', icon: ShieldCheck, feature: ['settings', 'role_management'], permission: ['roles', 'view'] },
       { to: '/module-settings', label: 'Module Settings', icon: KeyRound, requireSuperAdmin: true, permission: ['modules', 'view'] },
       { to: '/system-settings', label: 'System Settings', icon: SlidersHorizontal, requireSuperAdmin: true, permission: ['settings', 'view'] },
+      { to: '/sms-templates', label: 'SMS templates', icon: MessageSquareText, permission: ['messaging', 'view'] },
       { to: '/branches', label: 'Branch Management', icon: Building2, requireSuperAdmin: true, permission: ['settings', 'manage'] },
     ],
   },

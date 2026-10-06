@@ -47,5 +47,8 @@ def enable_inventory_api_features() -> None:
         'show_out_of_stock_alerts',
         'enable_stock_purchases',
         'enable_stock_adjustments',
+        'show_stock_movements',
+        'show_product_stock_history',
+        'show_movement_cost',
     ):
         _set_module_flag('inventory', key, True)

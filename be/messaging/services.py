@@ -1,4 +1,4 @@
-"""Debt collection reminder preview + Mobile Sasa personalized bulk send."""
+"""SMS template CRUD + debt collection reminder preview/send."""
 
 from __future__ import annotations
 
@@ -13,8 +13,14 @@ from settings.store_settings_helpers import resolved_store_name
 
 from .models import MessageOutbox, SmsTemplate
 from .providers import get_sms_provider
+from .template_catalog import (
+    all_template_specs,
+    get_spec,
+    get_template_body,
+    is_customized,
+)
 from .templates_sms import (
-    DEFAULT_DEBT_COLLECTION_TEMPLATE,
+    apply_sms_placeholders,
     customer_greeting_name,
     render_debt_collection_reminder,
 )
@@ -24,23 +30,70 @@ class MessagingError(ValidationError):
     pass
 
 
-def get_debt_reminder_template_body() -> str:
-    row = SmsTemplate.objects.filter(key=SmsTemplate.KEY_DEBT_REMINDER).first()
-    body = (row.body if row else '') or ''
-    return body.strip() or DEFAULT_DEBT_COLLECTION_TEMPLATE
+# Avoid circular import — preview helper lives next to catalog usage below.
+def _preview_body(spec, body: str) -> str:
+    return apply_sms_placeholders(body, **spec.sample)
 
 
-def save_debt_reminder_template(body: str, *, user=None) -> SmsTemplate:
+def serialize_template(key: str) -> dict:
+    spec = get_spec(key)
+    if spec is None:
+        raise MessagingError({'key': f'Unknown template: {key}'})
+    body = get_template_body(key)
+    row = SmsTemplate.objects.filter(key=key).first()
+    return {
+        'key': spec.key,
+        'label': spec.label,
+        'description': spec.description,
+        'category': spec.category,
+        'body': body,
+        'default_body': spec.default_body,
+        'placeholders': [f'{{{p}}}' for p in spec.placeholders],
+        'sample_preview': _preview_body(spec, body),
+        'is_customized': is_customized(key),
+        'updated_at': row.updated_at if row else None,
+        'updated_by': (
+            getattr(row.updated_by, 'username', None) if row and row.updated_by_id else None
+        ),
+    }
+
+
+def list_sms_templates() -> list[dict]:
+    return [serialize_template(spec.key) for spec in all_template_specs()]
+
+
+def save_sms_template(key: str, body: str, *, user=None) -> dict:
+    spec = get_spec(key)
+    if spec is None:
+        raise MessagingError({'key': f'Unknown template: {key}'})
     text = (body or '').strip()
     if not text:
         raise MessagingError({'body': 'Template cannot be empty.'})
     if len(text) > 600:
         raise MessagingError({'body': 'Keep the template under 600 characters.'})
-    row, _ = SmsTemplate.objects.update_or_create(
-        key=SmsTemplate.KEY_DEBT_REMINDER,
+    SmsTemplate.objects.update_or_create(
+        key=key,
         defaults={'body': text, 'updated_by': user},
     )
-    return row
+    return serialize_template(key)
+
+
+def reset_sms_template(key: str, *, user=None) -> dict:
+    spec = get_spec(key)
+    if spec is None:
+        raise MessagingError({'key': f'Unknown template: {key}'})
+    SmsTemplate.objects.filter(key=key).delete()
+    # Optionally store default explicitly so updated_by is tracked — prefer delete → default.
+    return serialize_template(key)
+
+
+def get_debt_reminder_template_body() -> str:
+    return get_template_body(SmsTemplate.KEY_DEBT_REMINDER)
+
+
+def save_debt_reminder_template(body: str, *, user=None) -> SmsTemplate:
+    save_sms_template(SmsTemplate.KEY_DEBT_REMINDER, body, user=user)
+    return SmsTemplate.objects.get(key=SmsTemplate.KEY_DEBT_REMINDER)
 
 
 def _owed(customer: Customer) -> Decimal:
@@ -110,10 +163,6 @@ def send_debt_reminders(
     customer_ids: list[int] | None = None,
     save_template: bool = False,
 ) -> dict:
-    """
-    Personalized bulk via Mobile Sasa (different name/amount per phone).
-    Creates MessageOutbox rows for audit; provider returns one bulkId.
-    """
     preview = build_debt_reminder_preview(template=template, customer_ids=customer_ids)
     recipients = preview['recipients']
     if not recipients:
@@ -173,7 +222,6 @@ def send_debt_reminders(
 
 @transaction.atomic
 def queue_debt_reminders(*, created_by=None, limit: int = 50) -> list[MessageOutbox]:
-    """Legacy one-by-one path (kept for older clients / tests). Prefer send_debt_reminders."""
     debtors = (
         Customer.objects.filter(wallet_balance__lt=0)
         .order_by('wallet_balance')[:limit]

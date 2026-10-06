@@ -219,10 +219,15 @@ export default function DebtManagementPage() {
         description="See who owes money, how old the debt is, and collect payments."
       >
         {canSendReminders ? (
-          <Button type="button" variant="outline" onClick={() => setReminderOpen(true)}>
-            <MessageSquareText className="mr-1.5 h-4 w-4" />
-            SMS reminders
-          </Button>
+          <>
+            <Button type="button" variant="outline" onClick={() => setReminderOpen(true)}>
+              <MessageSquareText className="mr-1.5 h-4 w-4" />
+              SMS reminders
+            </Button>
+            <Button type="button" variant="ghost" asChild>
+              <Link to="/sms-templates">SMS templates</Link>
+            </Button>
+          </>
         ) : null}
       </PageHeader>
 

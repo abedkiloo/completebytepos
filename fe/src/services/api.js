@@ -416,6 +416,10 @@ export const customersAPI = {
 };
 
 export const messagingAPI = {
+  listTemplates: () => api.get('/messaging/templates/'),
+  getTemplate: (key) => api.get(`/messaging/templates/${key}/`),
+  saveTemplate: (key, body) => api.patch(`/messaging/templates/${key}/`, { body }),
+  resetTemplate: (key) => api.delete(`/messaging/templates/${key}/`),
   debtReminderTemplate: () => api.get('/messaging/reminders/debt/template/'),
   saveDebtReminderTemplate: (body) =>
     api.patch('/messaging/reminders/debt/template/', { body }),

@@ -1,0 +1,146 @@
+"""
+Registry of every customer SMS the system can send.
+
+Each entry has a code default. Operators can override the body in SmsTemplate;
+get_template_body() returns the override when present, otherwise the default.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from .models import SmsTemplate
+
+
+@dataclass(frozen=True)
+class SmsTemplateSpec:
+    key: str
+    label: str
+    description: str
+    default_body: str
+    placeholders: tuple[str, ...]
+    sample: dict[str, str]
+    category: str  # sales | debt | payments
+
+
+# Keep bodies short (ideally ≤160 chars when rendered) and collections-friendly.
+SMS_TEMPLATE_SPECS: dict[str, SmsTemplateSpec] = {
+    SmsTemplate.KEY_SALE_COMPLETED: SmsTemplateSpec(
+        key=SmsTemplate.KEY_SALE_COMPLETED,
+        label='Sale completed',
+        description='Sent when a sale is finalized. {balance_note} is empty when paid in full.',
+        default_body=(
+            'Hi {first_name}, sale {sale_number} of KES {total} is complete. '
+            'Paid KES {paid}.{balance_note} Karibu.'
+        ),
+        placeholders=('first_name', 'sale_number', 'total', 'paid', 'balance_note'),
+        sample={
+            'first_name': 'Jane',
+            'sale_number': 'SALE-0001',
+            'total': '1500',
+            'paid': '1000',
+            'balance_note': ' Balance now KES 500.',
+        },
+        category='sales',
+    ),
+    SmsTemplate.KEY_DEBT_SETTLEMENT: SmsTemplateSpec(
+        key=SmsTemplate.KEY_DEBT_SETTLEMENT,
+        label='Debt payment received',
+        description='Sent when a customer settles part or all of their wallet debt.',
+        default_body=(
+            'Hi {first_name}, we received KES {amount}. '
+            'Balance now KES {balance}. Asante.'
+        ),
+        placeholders=('first_name', 'amount', 'balance'),
+        sample={'first_name': 'Jane', 'amount': '200', 'balance': '300'},
+        category='debt',
+    ),
+    SmsTemplate.KEY_DEBT_INCREASE: SmsTemplateSpec(
+        key=SmsTemplate.KEY_DEBT_INCREASE,
+        label='Debt increased',
+        description='Sent when debt is added outside a sale-complete notice.',
+        default_body=(
+            'Hi {first_name}, KES {amount} was added to your account. '
+            'Balance now KES {balance}. Karibu.'
+        ),
+        placeholders=('first_name', 'amount', 'balance'),
+        sample={'first_name': 'Jane', 'amount': '400', 'balance': '900'},
+        category='debt',
+    ),
+    SmsTemplate.KEY_DEBT_REMINDER: SmsTemplateSpec(
+        key=SmsTemplate.KEY_DEBT_REMINDER,
+        label='Debt collection reminder',
+        description=(
+            'Bulk Monday-style reminders. {name} is the duka name when set, '
+            'otherwise the owner first name.'
+        ),
+        default_body=(
+            'Hi {name}, hope you are well. Your balance with {store_name} is KES {amount}. '
+            'Settling keeps your orders moving and stock ready for your next delivery. '
+            'Asante — we value your business.'
+        ),
+        placeholders=('name', 'amount', 'store_name'),
+        sample={
+            'name': 'Mama Mboga',
+            'amount': '2500',
+            'store_name': 'Omuwenga Suppliers',
+        },
+        category='debt',
+    ),
+    SmsTemplate.KEY_INVOICE: SmsTemplateSpec(
+        key=SmsTemplate.KEY_INVOICE,
+        label='Invoice / payment link',
+        description='Sent with a public invoice or payment link.',
+        default_body=(
+            'Hi {customer_name}. {brand_blurb} '
+            'Invoice {invoice_no} for KES {amount}. Pay/view: {link}'
+        ),
+        placeholders=('customer_name', 'brand_blurb', 'invoice_no', 'amount', 'link'),
+        sample={
+            'customer_name': 'Jane',
+            'brand_blurb': 'Thank you for shopping with Omuwenga Suppliers.',
+            'invoice_no': 'INV-100',
+            'amount': '3200',
+            'link': 'https://example.com/i/abc',
+        },
+        category='payments',
+    ),
+}
+
+
+def all_template_specs() -> list[SmsTemplateSpec]:
+    return list(SMS_TEMPLATE_SPECS.values())
+
+
+def get_spec(key: str) -> SmsTemplateSpec | None:
+    return SMS_TEMPLATE_SPECS.get(key)
+
+
+def get_default_body(key: str) -> str:
+    spec = SMS_TEMPLATE_SPECS.get(key)
+    return spec.default_body if spec else ''
+
+
+def get_template_body(key: str) -> str:
+    """Stored override if present, otherwise the code default."""
+    try:
+        row = SmsTemplate.objects.filter(key=key).only('body').first()
+    except Exception:
+        # SimpleTestCase / no DB — use code default.
+        return get_default_body(key)
+    body = (row.body if row else '') or ''
+    body = body.strip()
+    if body:
+        return body
+    return get_default_body(key)
+
+
+def is_customized(key: str) -> bool:
+    try:
+        row = SmsTemplate.objects.filter(key=key).only('body').first()
+    except Exception:
+        return False
+    if not row:
+        return False
+    stored = (row.body or '').strip()
+    return bool(stored) and stored != get_default_body(key)

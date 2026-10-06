@@ -1,45 +1,11 @@
-"""SMS template rendering — keep customer texts short."""
+"""SMS template rendering — defaults + DB overrides via template_catalog."""
 
 from decimal import Decimal
 
 from payments.config import PUBLIC_INVOICE_BASE_URL, get_brand_blurb
 
-
-INVOICE_TEMPLATE = (
-    'Hi {customer_name}. {brand_blurb} '
-    'Invoice {invoice_no} for KES {amount}. Pay/view: {link}'
-)
-
-DEBT_REMINDER_TEMPLATE = (
-    'Hi {customer_name}. Reminder: you owe KES {amount}. '
-    '{brand_blurb} Settle here: {link}'
-)
-
-# Default weekly collection reminder — warm, clear amount, reason to settle.
-# Placeholders: {name} (duka, else first name), {amount}, {store_name}
-DEFAULT_DEBT_COLLECTION_TEMPLATE = (
-    'Hi {name}, hope you are well. Your balance with {store_name} is KES {amount}. '
-    'Settling keeps your orders moving and stock ready for your next delivery. '
-    'Asante — we value your business.'
-)
-
-# Sale + debt — first name only, no links (avoid over-messaging).
-SALE_COMPLETED_TEMPLATE = (
-    'Hi {first_name}, sale {sale_number} of KES {total} is complete. '
-    'Paid KES {paid}.{debt_bit} Karibu.'
-)
-
-DEBT_INCREASE_TEMPLATE = (
-    'Hi {first_name}, KES {amount} was added to your account. '
-    'Balance now KES {balance}. Karibu.'
-)
-
-DEBT_SETTLEMENT_TEMPLATE = (
-    'Hi {first_name}, we received KES {amount}. '
-    'Balance now KES {balance}. Asante.'
-)
-
-DEBT_REMINDER_PLACEHOLDERS = ('{name}', '{amount}', '{store_name}')
+from .models import SmsTemplate
+from .template_catalog import get_template_body
 
 
 def _money(amount) -> str:
@@ -93,9 +59,12 @@ def render_invoice_sms(
     amount,
     public_token: str,
     brand_blurb: str | None = None,
+    template: str | None = None,
 ) -> str:
     link = f'{PUBLIC_INVOICE_BASE_URL.rstrip("/")}/{public_token}'
-    return INVOICE_TEMPLATE.format(
+    body = (template or '').strip() or get_template_body(SmsTemplate.KEY_INVOICE)
+    return apply_sms_placeholders(
+        body,
         customer_name=customer_name or 'Customer',
         brand_blurb=brand_blurb or get_brand_blurb(),
         invoice_no=invoice_no,
@@ -104,6 +73,23 @@ def render_invoice_sms(
     )
 
 
+def render_debt_collection_reminder(
+    *,
+    template: str | None = None,
+    name: str,
+    amount,
+    store_name: str,
+) -> str:
+    body = (template or '').strip() or get_template_body(SmsTemplate.KEY_DEBT_REMINDER)
+    return apply_sms_placeholders(
+        body,
+        name=name or 'Customer',
+        amount=_money(amount),
+        store_name=store_name or 'us',
+    )
+
+
+# Back-compat alias used by older tests / debt reminder with payment link.
 def render_debt_reminder_sms(
     *,
     customer_name: str,
@@ -112,26 +98,12 @@ def render_debt_reminder_sms(
     brand_blurb: str | None = None,
 ) -> str:
     link = f'{PUBLIC_INVOICE_BASE_URL.rstrip("/")}/{public_token}'
-    return DEBT_REMINDER_TEMPLATE.format(
+    return apply_sms_placeholders(
+        'Hi {customer_name}. Reminder: you owe KES {amount}. {brand_blurb} Settle here: {link}',
         customer_name=customer_name or 'Customer',
         brand_blurb=brand_blurb or get_brand_blurb(),
         amount=f'{amount}',
         link=link,
-    )
-
-
-def render_debt_collection_reminder(
-    *,
-    template: str,
-    name: str,
-    amount,
-    store_name: str,
-) -> str:
-    return apply_sms_placeholders(
-        template or DEFAULT_DEBT_COLLECTION_TEMPLATE,
-        name=name or 'Customer',
-        amount=_money(amount),
-        store_name=store_name or 'us',
     )
 
 
@@ -142,32 +114,61 @@ def render_sale_completed_sms(
     total,
     paid,
     balance_owed=None,
+    template: str | None = None,
 ) -> str:
     owed = Decimal(str(balance_owed or 0))
     if owed > 0:
-        debt_bit = f' Balance now KES {_money(owed)}.'
+        balance_note = f' Balance now KES {_money(owed)}.'
     else:
-        debt_bit = ''
-    return SALE_COMPLETED_TEMPLATE.format(
+        balance_note = ''
+    body = (template or '').strip() or get_template_body(SmsTemplate.KEY_SALE_COMPLETED)
+    return apply_sms_placeholders(
+        body,
         first_name=first_name or 'Customer',
         sale_number=sale_number or 'sale',
         total=_money(total),
         paid=_money(paid),
-        debt_bit=debt_bit,
+        balance_note=balance_note,
+        # Older templates may still use {debt_bit}
+        debt_bit=balance_note,
     )
 
 
-def render_debt_increase_sms(*, first_name: str, amount, balance_owed) -> str:
-    return DEBT_INCREASE_TEMPLATE.format(
+def render_debt_increase_sms(
+    *,
+    first_name: str,
+    amount,
+    balance_owed,
+    template: str | None = None,
+) -> str:
+    body = (template or '').strip() or get_template_body(SmsTemplate.KEY_DEBT_INCREASE)
+    return apply_sms_placeholders(
+        body,
         first_name=first_name or 'Customer',
         amount=_money(amount),
         balance=_money(balance_owed),
     )
 
 
-def render_debt_settlement_sms(*, first_name: str, amount, balance_owed) -> str:
-    return DEBT_SETTLEMENT_TEMPLATE.format(
+def render_debt_settlement_sms(
+    *,
+    first_name: str,
+    amount,
+    balance_owed,
+    template: str | None = None,
+) -> str:
+    body = (template or '').strip() or get_template_body(SmsTemplate.KEY_DEBT_SETTLEMENT)
+    return apply_sms_placeholders(
+        body,
         first_name=first_name or 'Customer',
         amount=_money(amount),
         balance=_money(balance_owed),
     )
+
+
+# Re-export for callers that imported the constant name.
+DEFAULT_DEBT_COLLECTION_TEMPLATE = (
+    'Hi {name}, hope you are well. Your balance with {store_name} is KES {amount}. '
+    'Settling keeps your orders moving and stock ready for your next delivery. '
+    'Asante — we value your business.'
+)

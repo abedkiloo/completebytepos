@@ -58,6 +58,7 @@ const Invoices = lazy(() => import('./components/Invoices/Invoices'));
 const Branches = lazy(() => import('./components/Branches/Branches'));
 const BlogPosts = lazy(() => import('./components/Website/BlogPosts'));
 const SystemSettings = lazy(() => import('./components/Settings/SystemSettings'));
+const SmsTemplatesPage = lazy(() => import('./components/Settings/SmsTemplatesPage'));
 const Installation = lazy(() => import('./components/Installation/Installation'));
 
 const ProtectedRoute = () => {
@@ -213,6 +214,7 @@ function App() {
                 <Route path="/normal-sale" element={<NormalSale />} />
                 <Route path="/module-settings" element={<ModuleSettings />} />
                 <Route path="/system-settings" element={<SystemSettings />} />
+                <Route path="/sms-templates" element={<SmsTemplatesPage />} />
                 <Route path="/invoices" element={<Invoices />} />
                 <Route path="/branches" element={<Branches />} />
                 <Route path="/website/blog" element={<BlogPosts />} />

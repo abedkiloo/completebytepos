@@ -60,12 +60,20 @@ class MessageOutbox(models.Model):
 
 
 class SmsTemplate(models.Model):
-    """Editable SMS bodies. Placeholders: {name}, {amount}, {store_name}."""
+    """Editable SMS bodies. Defaults live in messaging.template_catalog."""
 
+    KEY_SALE_COMPLETED = 'sale_completed'
+    KEY_DEBT_SETTLEMENT = 'debt_settlement'
+    KEY_DEBT_INCREASE = 'debt_increase'
     KEY_DEBT_REMINDER = 'debt_reminder'
+    KEY_INVOICE = 'invoice_receipt'
 
     KEY_CHOICES = [
+        (KEY_SALE_COMPLETED, 'Sale completed'),
+        (KEY_DEBT_SETTLEMENT, 'Debt payment received'),
+        (KEY_DEBT_INCREASE, 'Debt increased'),
         (KEY_DEBT_REMINDER, 'Debt collection reminder'),
+        (KEY_INVOICE, 'Invoice / payment link'),
     ]
 
     key = models.CharField(max_length=64, unique=True, choices=KEY_CHOICES)

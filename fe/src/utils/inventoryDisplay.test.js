@@ -7,6 +7,7 @@ import {
   inventoryShowOutOfStockAlerts,
   inventoryReportEnabled,
   inventoryShowMovementCost,
+  inventoryShowProductStockHistory,
   inventoryAllowMovementUndo,
   movementSignedQuantity,
 } from './inventoryDisplay';
@@ -22,6 +23,7 @@ describe('inventoryDisplay', () => {
     expect(inventoryReportEnabled({})).toBe(true);
     expect(inventoryShowMovementCost({})).toBe(true);
     expect(inventoryAllowMovementUndo({})).toBe(true);
+    expect(inventoryShowProductStockHistory({})).toBe(true);
   });
 
   test('flags respect explicit false', () => {
@@ -35,6 +37,7 @@ describe('inventoryDisplay', () => {
       enable_inventory_report: false,
       show_movement_cost: false,
       allow_movement_undo: false,
+      show_product_stock_history: false,
     };
     expect(inventoryShowStockMovements(off)).toBe(false);
     expect(inventoryAdjustmentsEnabled(off)).toBe(false);
@@ -45,6 +48,7 @@ describe('inventoryDisplay', () => {
     expect(inventoryReportEnabled(off)).toBe(false);
     expect(inventoryShowMovementCost(off)).toBe(false);
     expect(inventoryAllowMovementUndo(off)).toBe(false);
+    expect(inventoryShowProductStockHistory(off)).toBe(false);
   });
 
   test('movementSignedQuantity prefers stock_delta so sales display as removals', () => {

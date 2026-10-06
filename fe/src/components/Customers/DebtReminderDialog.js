@@ -162,7 +162,7 @@ export default function DebtReminderDialog({ open, onOpenChange }) {
               rows={4}
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
-            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <div className="mt-2 flex flex-wrap items-center gap-3">
               <label className="flex items-center gap-2 text-xs text-muted-foreground">
                 <input
                   type="checkbox"
@@ -171,6 +171,16 @@ export default function DebtReminderDialog({ open, onOpenChange }) {
                 />
                 Save as default template
               </label>
+              <a
+                href="/sms-templates"
+                className="text-xs font-medium text-primary hover:underline"
+                onClick={(e) => {
+                  e.preventDefault();
+                  window.location.assign('/sms-templates');
+                }}
+              >
+                Edit all SMS templates
+              </a>
               <Button
                 type="button"
                 variant="outline"

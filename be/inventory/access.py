@@ -13,6 +13,7 @@ from inventory.module_settings import (
     inventory_show_low_stock_alerts,
     inventory_show_movement_cost,
     inventory_show_out_of_stock_alerts,
+    inventory_show_product_stock_history,
     inventory_show_stock_movements,
 )
 
@@ -67,3 +68,8 @@ def movement_undo_allowed() -> bool:
 
 def movement_cost_visible() -> bool:
     return inventory_show_movement_cost()
+
+
+def product_stock_history_feature_allowed() -> bool:
+    """Module config: product stock ledger enabled and movements feature on."""
+    return inventory_show_product_stock_history() and stock_movements_allowed()

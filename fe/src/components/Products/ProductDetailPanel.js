@@ -15,9 +15,11 @@ import {
 import { resolveProductDetailVisibility } from '../../utils/productAccess';
 import { proposedPendingCost } from '../../utils/makerChecker';
 import PendingApprovalBadges from '../Approvals/PendingApprovalBadges';
+import StockHistoryModal from '../Inventory/StockHistoryModal';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Skeleton } from '../ui/skeleton';
+import { cn } from '../../lib/cn';
 
 function DetailRow({ label, children }) {
   if (children == null || children === '') return null;
@@ -39,10 +41,13 @@ export default function ProductDetailPanel({
   fieldAccess,
   productModuleSettings = {},
   storeSettings = {},
+  canViewStockHistory = false,
+  showMovementCost = true,
 }) {
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [tab, setTab] = useState('details');
 
   const visibility = useMemo(
     () => resolveProductDetailVisibility(fieldAccess, productModuleSettings, storeSettings),
@@ -68,6 +73,12 @@ export default function ProductDetailPanel({
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (!canViewStockHistory && tab === 'history') {
+      setTab('details');
+    }
+  }, [canViewStockHistory, tab]);
+
   const variants = product?.variants || [];
   const imageSrc = product ? resolveMediaUrl(product.image_url || product.image) : null;
   const sellingPrice = parseFloat(product?.selling_price ?? product?.price ?? 0);
@@ -77,10 +88,12 @@ export default function ProductDetailPanel({
   const showVariantFinancialCols =
     visibility.showPricing || visibility.showCost || visibility.showStock;
 
+  const panelWide = canViewStockHistory && tab === 'history';
+
   return (
     <div className="slide-in-overlay" onClick={onClose}>
       <div
-        className="slide-in-panel max-w-lg"
+        className={cn('slide-in-panel', panelWide ? 'max-w-3xl' : 'max-w-lg')}
         onClick={(e) => e.stopPropagation()}
         data-testid="product-detail-panel"
       >
@@ -91,6 +104,44 @@ export default function ProductDetailPanel({
           </button>
         </div>
 
+        {canViewStockHistory && product && !loading && !error ? (
+          <div
+            className="flex gap-1 border-b px-4 pt-1"
+            role="tablist"
+            data-testid="product-detail-tabs"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'details'}
+              className={cn(
+                'px-3 py-2 text-sm font-medium border-b-2 -mb-px',
+                tab === 'details'
+                  ? 'border-primary text-foreground'
+                  : 'border-transparent text-muted-foreground'
+              )}
+              onClick={() => setTab('details')}
+            >
+              Details
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'history'}
+              data-testid="product-stock-history-tab"
+              className={cn(
+                'px-3 py-2 text-sm font-medium border-b-2 -mb-px',
+                tab === 'history'
+                  ? 'border-primary text-foreground'
+                  : 'border-transparent text-muted-foreground'
+              )}
+              onClick={() => setTab('history')}
+            >
+              Stock history
+            </button>
+          </div>
+        ) : null}
+
         <div className="slide-in-panel-body space-y-5">
           {loading ? (
             <div className="space-y-3">
@@ -100,6 +151,13 @@ export default function ProductDetailPanel({
             </div>
           ) : error ? (
             <p className="text-sm text-destructive">{error}</p>
+          ) : product && tab === 'history' && canViewStockHistory ? (
+            <StockHistoryModal
+              product={product}
+              embedded
+              showCost={showMovementCost}
+              onClose={onClose}
+            />
           ) : product ? (
             <>
               <div className="flex gap-4">
@@ -383,7 +441,7 @@ export default function ProductDetailPanel({
           ) : null}
         </div>
 
-        {product && (onEdit || onSetStock) ? (
+        {product && tab === 'details' && (onEdit || onSetStock) ? (
           <div className="slide-in-panel-footer">
             <Button type="button" variant="outline" onClick={onClose}>
               Close

@@ -41,6 +41,11 @@ def inventory_show_movement_cost() -> bool:
     return _enabled('show_movement_cost', True)
 
 
+def inventory_show_product_stock_history() -> bool:
+    """Admin product detail stock ledger (previous → change → new)."""
+    return _enabled('show_product_stock_history', True)
+
+
 def inventory_allow_movement_undo() -> bool:
     return _enabled('allow_movement_undo', True)
 

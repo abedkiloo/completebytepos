@@ -62,7 +62,6 @@ import { PageShell, PageHeader, ListPaginationRail } from '../page';
 import { useListOrdering } from '../../hooks/useListOrdering';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { getPersonaFromStorage } from '../../utils/navAccess';
-import { PERSONA } from '../../utils/roleAccess';
 import { resolveProductFieldAccess } from '../../utils/productAccess';
 import {
   SELLING_PRICE_CLASS,
@@ -75,6 +74,8 @@ import {
   productBulkOperationsEnabled,
   productCsvImportExportEnabled,
 } from '../../utils/productDisplay';
+import { canViewProductStockHistory } from '../../utils/stockHistory';
+import { inventoryShowMovementCost } from '../../utils/inventoryDisplay';
 
 const PERMANENT_DELETE_MESSAGE =
   'Use this for a product added in error. It is removed for good and cannot be undone. ' +
@@ -97,6 +98,7 @@ const Products = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { settings: storeSettings } = useStoreSettings();
   const { settings: productModuleSettings } = useModuleSettings('products');
+  const { settings: inventoryModuleSettings } = useModuleSettings('inventory');
   const persona = getPersonaFromStorage();
   const fieldAccess = resolveProductFieldAccess(
     persona,
@@ -115,6 +117,11 @@ const Products = () => {
   const bulkEnabled = productBulkOperationsEnabled(productModuleSettings);
   const csvEnabled = productCsvImportExportEnabled(productModuleSettings);
   const canDeleteProducts = isCurrentUserAdmin();
+  const canViewStockHistory = canViewProductStockHistory({
+    persona,
+    inventorySettings: inventoryModuleSettings,
+  });
+  const showMovementCost = inventoryShowMovementCost(inventoryModuleSettings);
 
   // --- Data ---
   const [products, setProducts] = useState([]);
@@ -821,6 +828,8 @@ const Products = () => {
           fieldAccess={fieldAccess}
           productModuleSettings={productModuleSettings}
           storeSettings={storeSettings}
+          canViewStockHistory={canViewStockHistory}
+          showMovementCost={showMovementCost}
           onClose={() => setViewProductId(null)}
           onSetStock={
             canSetStock

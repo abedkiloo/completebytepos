@@ -257,11 +257,19 @@ MODULE_SETTING_DEFINITIONS: dict[str, list[dict[str, Any]]] = {
             8,
         ),
         _setting(
+            'show_product_stock_history',
+            'Show product stock history (admin)',
+            'On product detail, admins can open the full stock ledger '
+            '(previous stock · sold/received · new stock · by whom) since the product was added.',
+            True,
+            9,
+        ),
+        _setting(
             'allow_movement_undo',
             'Allow undo on transfers',
             'When off, reversing a stock transfer from the UI is disabled.',
             True,
-            9,
+            10,
         ),
     ],
     'customers': [

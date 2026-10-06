@@ -616,9 +616,19 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def product_history(self, request):
-        """Get stock movement history for a specific product"""
-        if not stock_movements_allowed():
-            return self._feature_disabled_response('Stock movements')
+        """Get stock movement history for a specific product (admin ledger)."""
+        from inventory.stock_history import product_stock_history_allowed
+
+        if not product_stock_history_allowed(request.user):
+            return Response(
+                {
+                    'error': (
+                        'Product stock history is only available to admins '
+                        'when enabled in inventory settings.'
+                    ),
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
         product_id = request.query_params.get('product_id', None)
         
         if not product_id:

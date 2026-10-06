@@ -442,9 +442,16 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 product = serializer.save()
                 from accounts.models import AuditLog
                 from utils.audit_events import log_product_write
+                from inventory.stock_history import record_opening_stock_movement
+                from settings.utils import get_current_branch
 
                 log_product_write(
                     self.request, product, before=None, action=AuditLog.ACTION_CREATE
+                )
+                record_opening_stock_movement(
+                    product=product,
+                    user=self.request.user,
+                    branch=get_current_branch(self.request),
                 )
 
                 if is_product_variants_enabled() and product.has_variants:

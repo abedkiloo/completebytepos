@@ -40,6 +40,10 @@ export function inventoryShowMovementCost(settings) {
   return isModuleFlagEnabled(settings, 'show_movement_cost', true);
 }
 
+export function inventoryShowProductStockHistory(settings) {
+  return isModuleFlagEnabled(settings, 'show_product_stock_history', true);
+}
+
 export function inventoryAllowMovementUndo(settings) {
   return isModuleFlagEnabled(settings, 'allow_movement_undo', true);
 }

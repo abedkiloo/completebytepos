@@ -32,6 +32,56 @@ def _can_view_debt_reminders(user) -> bool:
     )
 
 
+def _can_view_templates(user) -> bool:
+    return _can_view_debt_reminders(user)
+
+
+def _can_edit_templates(user) -> bool:
+    return (
+        _user_can(user, 'messaging', 'create')
+        or _user_can(user, 'settings', 'manage')
+        or _user_can(user, 'debt_management', 'update')
+    )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def sms_templates_list(request):
+    if not _can_view_templates(request.user):
+        return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+    return Response({'results': services.list_sms_templates()})
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def sms_template_detail(request, key: str):
+    if not _can_view_templates(request.user):
+        return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    if request.method == 'GET':
+        try:
+            return Response(services.serialize_template(key))
+        except services.MessagingError as exc:
+            return Response(exc.detail, status=status.HTTP_404_NOT_FOUND)
+
+    if not _can_edit_templates(request.user):
+        return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    if request.method == 'DELETE' or request.data.get('reset'):
+        try:
+            return Response(services.reset_sms_template(key, user=request.user))
+        except services.MessagingError as exc:
+            return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+
+    body = request.data.get('body')
+    if body is None:
+        return Response({'body': 'Required.'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        return Response(services.save_sms_template(key, str(body), user=request.user))
+    except services.MessagingError as exc:
+        return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def debt_reminders(request):
@@ -52,15 +102,7 @@ def debt_reminder_template(request):
         return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     if request.method == 'GET':
-        return Response({
-            'key': 'debt_reminder',
-            'body': services.get_debt_reminder_template_body(),
-            'placeholders': ['{name}', '{amount}', '{store_name}'],
-            'hint': (
-                '{name} = duka name when set, otherwise owner first name. '
-                'Edit, preview the debtor list, then send.'
-            ),
-        })
+        return Response(services.serialize_template('debt_reminder'))
 
     if not _can_send_debt_reminders(request.user):
         return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
@@ -68,12 +110,9 @@ def debt_reminder_template(request):
     body = request.data.get('body')
     if body is None:
         return Response({'body': 'Required.'}, status=status.HTTP_400_BAD_REQUEST)
-    row = services.save_debt_reminder_template(str(body), user=request.user)
-    return Response({
-        'key': row.key,
-        'body': row.body,
-        'updated_at': row.updated_at,
-    })
+    return Response(
+        services.save_sms_template('debt_reminder', str(body), user=request.user)
+    )
 
 
 @api_view(['GET', 'POST'])

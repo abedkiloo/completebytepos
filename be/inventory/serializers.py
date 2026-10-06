@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import StockMovement
 from products.serializers import ProductListSerializer, ProductVariantSerializer
+from inventory.stock_history import serialize_stock_history_entry
 
 
 class StockMovementSerializer(serializers.ModelSerializer):
@@ -9,7 +10,7 @@ class StockMovementSerializer(serializers.ModelSerializer):
     product_detail = ProductListSerializer(source='product', read_only=True)
     variant_detail = ProductVariantSerializer(source='variant', read_only=True)
     variant_info = serializers.SerializerMethodField()
-    user_name = serializers.CharField(source='user.username', read_only=True)
+    user_name = serializers.SerializerMethodField()
     stock_delta = serializers.SerializerMethodField()
     
     class Meta:
@@ -19,9 +20,11 @@ class StockMovementSerializer(serializers.ModelSerializer):
             'variant', 'variant_detail', 'variant_info',
             'movement_type', 'quantity', 'stock_delta', 'unit_cost', 'total_cost',
             'reference', 'notes', 'user', 'user_name',
-            'stock_before', 'stock_after', 'created_at'
+            'stock_before', 'stock_after', 'created_at',
         ]
-        read_only_fields = ['created_at', 'total_cost', 'stock_before', 'stock_after', 'stock_delta']
+        read_only_fields = [
+            'created_at', 'total_cost', 'stock_before', 'stock_after', 'stock_delta',
+        ]
     
     def get_variant_info(self, obj):
         """Get variant information as string"""
@@ -38,10 +41,16 @@ class StockMovementSerializer(serializers.ModelSerializer):
         """Signed change this movement applied to on-hand stock."""
         return obj._stock_delta()
 
+    def get_user_name(self, obj):
+        from inventory.stock_history import movement_user_display
+        return movement_user_display(obj.user)
+
     def to_representation(self, instance):
         from inventory.module_settings import apply_stock_movement_representation_flags
 
-        return apply_stock_movement_representation_flags(super().to_representation(instance))
+        data = super().to_representation(instance)
+        data = serialize_stock_history_entry(instance, data)
+        return apply_stock_movement_representation_flags(data)
 
 
 class StockAdjustmentSerializer(serializers.Serializer):
