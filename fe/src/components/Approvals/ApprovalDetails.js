@@ -1,6 +1,18 @@
 import React from 'react';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 
+/** Qty for display — coerces scientific notation like ``1E+1`` to ``10``. */
+export function formatApprovalQty(value) {
+  if (value === null || value === undefined || value === '') return '—';
+  const n = Number(value);
+  if (!Number.isFinite(n)) return String(value);
+  if (Number.isInteger(n)) return String(n);
+  const text = String(n);
+  return text.includes('e') || text.includes('E')
+    ? n.toFixed(6).replace(/\.?0+$/, '')
+    : text;
+}
+
 function formatFact(fact) {
   if (fact.kind === 'money') return formatCurrency(Number(fact.value) || 0);
   if (fact.kind === 'datetime') return formatDateTime(fact.value);
@@ -41,7 +53,7 @@ function LinesTable({ lines }) {
                   <span className="block text-xs text-muted-foreground">{line.variant}</span>
                 ) : null}
               </td>
-              <td className="px-3 py-2 text-right">{line.quantity}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{formatApprovalQty(line.quantity)}</td>
               <td className="px-3 py-2 text-right">{formatCurrency(Number(line.unit_price) || 0)}</td>
               <td className="px-3 py-2 text-right font-medium">
                 {formatCurrency(Number(line.subtotal) || 0)}

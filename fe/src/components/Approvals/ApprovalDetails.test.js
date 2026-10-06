@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import ApprovalDetails from './ApprovalDetails';
+import ApprovalDetails, { formatApprovalQty } from './ApprovalDetails';
 import { expenseApprovalDetails } from '../../utils/approvalDisplay';
 
 describe('ApprovalDetails', () => {
@@ -38,6 +38,36 @@ describe('ApprovalDetails', () => {
     expect(screen.getByText('L / Blue')).toBeInTheDocument();
     expect(screen.getByText('Unit price')).toBeInTheDocument();
     expect(screen.getAllByText(/500/).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('shows plain qty instead of scientific notation', () => {
+    render(
+      <ApprovalDetails
+        details={{
+          sections: [
+            {
+              title: 'Items',
+              lines: [
+                {
+                  name: 'Sofa pins',
+                  quantity: '1E+1',
+                  unit_price: '430.00',
+                  subtotal: '4300.00',
+                },
+              ],
+            },
+          ],
+        }}
+      />
+    );
+    expect(screen.getByText('10')).toBeInTheDocument();
+    expect(screen.queryByText('1E+1')).not.toBeInTheDocument();
+  });
+
+  it('formats scientific qty strings', () => {
+    expect(formatApprovalQty('1E+1')).toBe('10');
+    expect(formatApprovalQty(10)).toBe('10');
+    expect(formatApprovalQty('2.5')).toBe('2.5');
   });
 
   it('renders nothing without sections', () => {

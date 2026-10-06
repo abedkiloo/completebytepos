@@ -32,6 +32,18 @@ jest.mock('../../utils/navBadges', () => ({
 
 jest.mock('../Shared/HelpHint', () => () => null);
 
+jest.mock('../ui/dialog', () => {
+  const React = require('react');
+  return {
+    Dialog: ({ open, children }) => (open ? <div data-testid="approval-dialog">{children}</div> : null),
+    DialogContent: ({ children }) => <div>{children}</div>,
+    DialogHeader: ({ children }) => <div>{children}</div>,
+    DialogFooter: ({ children }) => <div>{children}</div>,
+    DialogTitle: ({ children }) => <h2>{children}</h2>,
+    DialogDescription: ({ children }) => <p>{children}</p>,
+  };
+});
+
 jest.mock('../../services/api', () => ({
   salesAPI: {
     list: jest.fn(),
@@ -65,6 +77,12 @@ function daysAgoIso(days) {
   return d.toISOString();
 }
 
+async function openSaleRow() {
+  const row = await screen.findByTestId('sale-approval-list-row');
+  fireEvent.click(row);
+  expect(await screen.findByTestId('approval-dialog')).toBeInTheDocument();
+}
+
 describe('SaleApprovalsPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -78,9 +96,11 @@ describe('SaleApprovalsPage', () => {
     });
   });
 
-  test('approves a waiting sale via POST /sales/:id/complete/', async () => {
+  test('lists sales as compact rows then approves from the popup', async () => {
     render(<SaleApprovalsPage />);
     expect(await screen.findByText('S-2300')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Approve/i })).not.toBeInTheDocument();
+    await openSaleRow();
     fireEvent.click(screen.getByRole('button', { name: /Approve/i }));
     await waitFor(() => expect(salesAPI.complete).toHaveBeenCalledWith(42));
     expect(toast.success).toHaveBeenCalledWith(
@@ -113,6 +133,7 @@ describe('SaleApprovalsPage', () => {
       },
     });
     render(<SaleApprovalsPage />);
+    await openSaleRow();
     expect(await screen.findByText('Red Shuka')).toBeInTheDocument();
     expect(screen.getByText('M-PESA')).toBeInTheDocument();
     expect(screen.getByTestId('approval-details')).toBeInTheDocument();
@@ -123,7 +144,8 @@ describe('SaleApprovalsPage', () => {
       response: { data: { error: 'This sale is not waiting for approval.' } },
     });
     render(<SaleApprovalsPage />);
-    fireEvent.click(await screen.findByRole('button', { name: /Approve/i }));
+    await openSaleRow();
+    fireEvent.click(screen.getByRole('button', { name: /Approve/i }));
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith('This sale is not waiting for approval.')
     );
@@ -132,6 +154,7 @@ describe('SaleApprovalsPage', () => {
   test('leaves a past-dated sale for an admin when signed in as manager', async () => {
     salesAPI.list.mockResolvedValue({ data: { results: [waitingSale(daysAgoIso(2))] } });
     render(<SaleApprovalsPage />);
+    await openSaleRow();
     expect(await screen.findByTestId('past-dated-notice')).toHaveTextContent(
       /Only an admin can approve/i
     );
@@ -142,7 +165,8 @@ describe('SaleApprovalsPage', () => {
     mockProfile = { role: 'super_admin', custom_role: { name: 'Super Admin' } };
     salesAPI.list.mockResolvedValue({ data: { results: [waitingSale(daysAgoIso(2))] } });
     render(<SaleApprovalsPage />);
-    fireEvent.click(await screen.findByRole('button', { name: /Approve/i }));
+    await openSaleRow();
+    fireEvent.click(screen.getByRole('button', { name: /Approve/i }));
     await waitFor(() => expect(salesAPI.complete).toHaveBeenCalledWith(42));
   });
 });

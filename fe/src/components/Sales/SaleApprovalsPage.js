@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Check, CheckCircle2, Loader2, X } from 'lucide-react';
+import { Check, CheckCircle2, ChevronRight, Loader2, X } from 'lucide-react';
 import { pendingChangesAPI, salesAPI } from '../../services/api';
 import { PageShell, PageHeader, PageLoading, EmptyState } from '../page';
 import { Card, CardContent } from '../ui/card';
@@ -8,6 +8,14 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
 import { toast } from '../../utils/toast';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { getStoredAuth } from '../../utils/roleAccess';
@@ -37,16 +45,89 @@ import {
   pendingChangeDates,
   userMayApprovePastItems,
 } from '../../utils/pastDatedApproval';
+import { cn } from '../../lib/cn';
 
-function SaleApprovalRow({ sale, onResolved }) {
-  const [rejectReason, setRejectReason] = useState('');
-  const [showReject, setShowReject] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const itemCount = saleDisplayItemCount(sale);
+const KIND_SALE = 'sale';
+const KIND_COLLECTION = 'collection';
+
+function ApprovalListRow({ title, subtitle, badge, amount, meta, selected, onOpen }) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={cn(
+        'flex w-full items-center gap-3 border-b border-border/60 px-3 py-2.5 text-left transition-colors',
+        'hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        selected && 'bg-primary/5',
+      )}
+      data-testid="sale-approval-list-row"
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="secondary" className="shrink-0 text-[10px]">
+            {badge}
+          </Badge>
+          {meta ? (
+            <Badge variant="outline" className="shrink-0 text-[10px]">
+              {meta}
+            </Badge>
+          ) : null}
+          <span className="truncate text-sm font-medium">{title}</span>
+        </div>
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">{subtitle}</p>
+      </div>
+      {amount != null ? (
+        <span className="shrink-0 text-sm font-semibold tabular-nums">{formatCurrency(amount)}</span>
+      ) : null}
+      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+    </button>
+  );
+}
+
+function SaleReviewBody({ sale }) {
   const returned = saleNeedsSalespersonAction(sale);
   const managerComment = saleRejectionReason(sale);
   const saleDates = [sale.occurred_at || sale.created_at];
   const pastDated = isPastDated(...saleDates);
+  const adminOnly = pastDatedBlocksUser(saleDates);
+  const itemCount = saleDisplayItemCount(sale);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2 text-sm">
+        <Badge variant="outline">
+          {Number(sale.amount_paid || 0) < Number(sale.total || 0)
+            ? `Paid ${formatCurrency(sale.amount_paid || 0)} · debt remaining`
+            : `Paid ${formatCurrency(sale.amount_paid || sale.total || 0)}`}
+        </Badge>
+        <span className="text-muted-foreground">
+          {itemCount} line{itemCount === 1 ? '' : 's'}
+          {sale.customer_name ? ` · ${sale.customer_name}` : ''}
+        </span>
+      </div>
+      <ApprovalDetails details={sale.approval_details} />
+      {returned ? (
+        <div className="space-y-1 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm">
+          <p className="font-medium text-amber-950">
+            Waiting on the salesperson to fix this sale and send it again.
+          </p>
+          {managerComment ? (
+            <p className="text-amber-900">Manager comment: {managerComment}</p>
+          ) : null}
+          <p className="text-xs text-amber-800">A sticky Daily note was also sent to them.</p>
+        </div>
+      ) : null}
+      {pastDated ? <PastDatedNotice dates={saleDates} blocked={adminOnly} /> : null}
+    </div>
+  );
+}
+
+function SaleReviewActions({ sale, onResolved, onClose }) {
+  const [rejectReason, setRejectReason] = useState('');
+  const [showReject, setShowReject] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const returned = saleNeedsSalespersonAction(sale);
+  const saleDates = [sale.occurred_at || sale.created_at];
   const adminOnly = pastDatedBlocksUser(saleDates);
 
   const approve = async () => {
@@ -54,6 +135,7 @@ function SaleApprovalRow({ sale, onResolved }) {
     try {
       await salesAPI.complete(sale.id);
       toast.success(`Sale ${sale.sale_number} approved. Stock, books, and the receipt are live.`);
+      onClose();
       onResolved();
       dispatchNavBadgesRefresh();
     } catch (err) {
@@ -73,6 +155,7 @@ function SaleApprovalRow({ sale, onResolved }) {
     try {
       await salesAPI.rejectComplete(sale.id, { rejection_reason: rejectReason.trim() });
       toast.success(rejectionReturnedMessage('sale_complete'));
+      onClose();
       onResolved();
       dispatchNavBadgesRefresh();
     } catch (err) {
@@ -83,93 +166,64 @@ function SaleApprovalRow({ sale, onResolved }) {
     }
   };
 
-  return (
-    <Card>
-      <CardContent className="space-y-3 py-4">
-        <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className="truncate font-semibold">{sale.sale_number}</p>
-            <p className="truncate text-sm text-muted-foreground">
-              {sale.cashier_name || 'Cashier'} · {formatDateTime(sale.occurred_at || sale.created_at)}
-            </p>
-          </div>
-          <div className="min-w-0 shrink-0 text-right">
-            <p className="truncate font-semibold">{formatCurrency(sale.total)}</p>
-            <Badge variant="outline">
-              {Number(sale.amount_paid || 0) < Number(sale.total || 0)
-                ? `Paid ${formatCurrency(sale.amount_paid || 0)} · debt remaining`
-                : `Paid ${formatCurrency(sale.amount_paid || sale.total || 0)}`}
-            </Badge>
-            {returned ? (
-              <Badge variant="destructive" className="mt-1">
-                Needs salesperson action
-              </Badge>
-            ) : null}
-          </div>
-        </div>
-        <p className="truncate text-sm text-muted-foreground">
-          {itemCount} line{itemCount === 1 ? '' : 's'}
-          {sale.customer_name ? ` · ${sale.customer_name}` : ''}
-        </p>
-        <ApprovalDetails details={sale.approval_details} />
-        {returned ? (
-          <div className="space-y-1 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm">
-            <p className="font-medium text-amber-950">
-              Waiting on the salesperson to fix this sale and send it again.
-            </p>
-            {managerComment ? (
-              <p className="text-amber-900">Manager comment: {managerComment}</p>
-            ) : null}
-            <p className="text-xs text-amber-800">A sticky Daily note was also sent to them.</p>
-          </div>
-        ) : adminOnly ? (
-          <PastDatedNotice dates={saleDates} blocked />
-        ) : (
-          <>
-        {pastDated ? <PastDatedNotice dates={saleDates} blocked={false} /> : null}
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" onClick={approve} disabled={busy}>
-            {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}
-            Approve
-          </Button>
-          <HelpHint actionKey="sale_complete" />
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setShowReject((open) => !open)}
-            disabled={busy}
-          >
-            <X className="mr-1 h-4 w-4" />
-            Reject
-          </Button>
-        </div>
-        {showReject ? (
-          <div className="space-y-2">
-            <Label htmlFor={`reject-${sale.id}`}>Reason</Label>
-            <Input
-              id={`reject-${sale.id}`}
-              value={rejectReason}
-              onChange={(event) => setRejectReason(event.target.value)}
-              placeholder="Why should this sale not complete?"
-            />
-            <Button size="sm" variant="destructive" onClick={reject} disabled={busy}>
-              Confirm reject
-            </Button>
-          </div>
-        ) : null}
-          </>
-        )}
-      </CardContent>
-    </Card>
+  if (returned || adminOnly) return null;
+
+  return showReject ? (
+    <div className="w-full space-y-2">
+      <Label htmlFor={`reject-${sale.id}`}>Reason</Label>
+      <Input
+        id={`reject-${sale.id}`}
+        value={rejectReason}
+        onChange={(event) => setRejectReason(event.target.value)}
+        placeholder="Why should this sale not complete?"
+      />
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="destructive" onClick={reject} disabled={busy}>
+          Confirm reject
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setShowReject(false)} disabled={busy}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  ) : (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button size="sm" onClick={approve} disabled={busy}>
+        {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}
+        Approve
+      </Button>
+      <HelpHint actionKey="sale_complete" />
+      <Button size="sm" variant="outline" onClick={() => setShowReject(true)} disabled={busy}>
+        <X className="mr-1 h-4 w-4" />
+        Reject
+      </Button>
+    </div>
   );
 }
 
-function DebtCollectionApprovalRow({ change, onResolved }) {
+function CollectionReviewBody({ change }) {
+  const dates = pendingChangeDates(change);
+  const pastDated = Boolean(change.past_dated) || isPastDated(...dates);
+  const adminOnly = pastDated && !userMayApprovePastItems();
+
+  return (
+    <div className="space-y-4">
+      {change.reason ? (
+        <div className="rounded-md bg-muted/30 px-3 py-2 text-sm">
+          <span className="font-medium">Reason: </span>
+          {change.reason}
+        </div>
+      ) : null}
+      <ApprovalDetails details={change.details} />
+      {pastDated ? <PastDatedNotice dates={dates} blocked={adminOnly} /> : null}
+    </div>
+  );
+}
+
+function CollectionReviewActions({ change, onResolved, onClose }) {
   const [rejectReason, setRejectReason] = useState('');
   const [showReject, setShowReject] = useState(false);
   const [busy, setBusy] = useState(false);
-  const amount = collectionAmount(change);
-  const method = collectionMethod(change);
   const dates = pendingChangeDates(change);
   const pastDated = Boolean(change.past_dated) || isPastDated(...dates);
   const adminOnly = pastDated && !userMayApprovePastItems();
@@ -179,8 +233,9 @@ function DebtCollectionApprovalRow({ change, onResolved }) {
     try {
       await pendingChangesAPI.approve(change.id);
       toast.success(
-        `Collection for ${change.entity_repr || 'customer'} approved. The wallet is updated.`
+        `Collection for ${change.entity_repr || 'customer'} approved. The wallet is updated.`,
       );
+      onClose();
       onResolved();
       dispatchNavBadgesRefresh();
     } catch (err) {
@@ -200,6 +255,7 @@ function DebtCollectionApprovalRow({ change, onResolved }) {
     try {
       await pendingChangesAPI.reject(change.id, { rejection_reason: rejectReason.trim() });
       toast.success('Collection was returned. The customer wallet was not changed.');
+      onClose();
       onResolved();
       dispatchNavBadgesRefresh();
     } catch (err) {
@@ -210,65 +266,50 @@ function DebtCollectionApprovalRow({ change, onResolved }) {
     }
   };
 
+  if (adminOnly) return null;
+
+  return showReject ? (
+    <div className="w-full space-y-2">
+      <Label htmlFor={`reject-collection-${change.id}`}>Reason</Label>
+      <Input
+        id={`reject-collection-${change.id}`}
+        value={rejectReason}
+        onChange={(event) => setRejectReason(event.target.value)}
+        placeholder="Why should this collection not apply?"
+      />
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="destructive" onClick={reject} disabled={busy}>
+          Confirm reject
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setShowReject(false)} disabled={busy}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  ) : (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button size="sm" onClick={approve} disabled={busy}>
+        {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}
+        Approve
+      </Button>
+      <HelpHint actionKey="debt_collection" />
+      <Button size="sm" variant="outline" onClick={() => setShowReject(true)} disabled={busy}>
+        <X className="mr-1 h-4 w-4" />
+        Reject
+      </Button>
+    </div>
+  );
+}
+
+function ListSection({ title, children }) {
+  if (!children) return null;
   return (
-    <Card>
-      <CardContent className="space-y-3 py-4">
-        <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className="truncate font-semibold">{change.entity_repr || 'Customer'}</p>
-            <p className="truncate text-sm text-muted-foreground">
-              {change.made_by_username || 'Salesperson'} · {formatDateTime(change.made_at)}
-            </p>
-          </div>
-          <div className="min-w-0 shrink-0 text-right">
-            <p className="truncate font-semibold">{formatCurrency(amount)}</p>
-            <Badge variant="outline" className="capitalize">
-              {method}
-            </Badge>
-          </div>
-        </div>
-        <p className="truncate text-sm text-muted-foreground">
-          Debt collection
-          {change.reason ? ` · ${change.reason}` : ''}
-        </p>
-        <ApprovalDetails details={change.details} />
-        {pastDated ? <PastDatedNotice dates={dates} blocked={adminOnly} /> : null}
-        {adminOnly ? null : (
-          <>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" onClick={approve} disabled={busy}>
-            {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}
-            Approve
-          </Button>
-          <HelpHint actionKey="debt_collection" />
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setShowReject((open) => !open)}
-            disabled={busy}
-          >
-            <X className="mr-1 h-4 w-4" />
-            Reject
-          </Button>
-        </div>
-        {showReject ? (
-          <div className="space-y-2">
-            <Label htmlFor={`reject-collection-${change.id}`}>Reason</Label>
-            <Input
-              id={`reject-collection-${change.id}`}
-              value={rejectReason}
-              onChange={(event) => setRejectReason(event.target.value)}
-              placeholder="Why should this collection not apply?"
-            />
-            <Button size="sm" variant="destructive" onClick={reject} disabled={busy}>
-              Confirm reject
-            </Button>
-          </div>
-        ) : null}
-          </>
-        )}
-      </CardContent>
-    </Card>
+    <section className="overflow-hidden rounded-lg border bg-card">
+      <div className="border-b bg-muted/30 px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {title}
+      </div>
+      <div>{children}</div>
+    </section>
   );
 }
 
@@ -280,6 +321,7 @@ export default function SaleApprovalsPage() {
   const [sales, setSales] = useState([]);
   const [collections, setCollections] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -292,7 +334,7 @@ export default function SaleApprovalsPage() {
             .then((response) => {
               const data = response.data;
               setSales(data.results || (Array.isArray(data) ? data : []));
-            })
+            }),
         );
       } else {
         setSales([]);
@@ -302,7 +344,7 @@ export default function SaleApprovalsPage() {
           pendingChangesAPI.pending(pendingDebtCollectionParams()).then((response) => {
             const data = response.data;
             setCollections(Array.isArray(data) ? data : data?.results || []);
-          })
+          }),
         );
       } else {
         setCollections([]);
@@ -324,18 +366,24 @@ export default function SaleApprovalsPage() {
     if (allowed) load();
   }, [allowed, load]);
 
+  const { waiting: waitingSales, returned: returnedSales } = useMemo(
+    () => partitionSaleApprovalQueue(sales),
+    [sales],
+  );
+
   if (!allowed) {
     return <Navigate to="/" replace />;
   }
 
   const empty = saleApprovalsEmpty({ sales, collections });
-  const { waiting: waitingSales, returned: returnedSales } = partitionSaleApprovalQueue(sales);
+  const selectedSale = selected?.kind === KIND_SALE ? selected.data : null;
+  const selectedCollection = selected?.kind === KIND_COLLECTION ? selected.data : null;
 
   return (
     <PageShell>
       <PageHeader
         title="Approve sales"
-        description="Review cashier sales (payment and any remaining debt included) before stock and books go live. Salesperson debt collections wait here before the customer wallet changes. Both permissions are set on Roles."
+        description="Tap a row to review the sale or collection, then approve or reject from the popup."
         icon={CheckCircle2}
       >
         <Button type="button" variant="outline" onClick={load} disabled={loading}>
@@ -350,43 +398,117 @@ export default function SaleApprovalsPage() {
           description="New cashier checkouts and salesperson collections will appear here."
         />
       ) : (
-        <div className="space-y-6">
-          {canSales && sales.length > 0 ? (
-            <>
-              {waitingSales.length > 0 ? (
-                <section className="space-y-3">
-                  <h2 className="text-sm font-semibold text-muted-foreground">Cashier sales</h2>
-                  {waitingSales.map((sale) => (
-                    <SaleApprovalRow key={`sale-${sale.id}`} sale={sale} onResolved={load} />
-                  ))}
-                </section>
-              ) : null}
-              {returnedSales.length > 0 ? (
-                <section className="space-y-3">
-                  <h2 className="text-sm font-semibold text-muted-foreground">
-                    Needs salesperson action
-                  </h2>
-                  {returnedSales.map((sale) => (
-                    <SaleApprovalRow key={`sale-${sale.id}`} sale={sale} onResolved={load} />
-                  ))}
-                </section>
-              ) : null}
-            </>
-          ) : null}
-          {canCollections && collections.length > 0 ? (
-            <section className="space-y-3">
-              <h2 className="text-sm font-semibold text-muted-foreground">Debt collections</h2>
-              {collections.map((change) => (
-                <DebtCollectionApprovalRow
-                  key={`collection-${change.id}`}
-                  change={change}
-                  onResolved={load}
+        <div className="space-y-4" data-testid="sale-approvals-list">
+          {canSales && waitingSales.length > 0 ? (
+            <ListSection title={`Cashier sales · ${waitingSales.length}`}>
+              {waitingSales.map((sale) => (
+                <ApprovalListRow
+                  key={`sale-${sale.id}`}
+                  title={sale.sale_number}
+                  subtitle={`${sale.cashier_name || 'Cashier'} · ${formatDateTime(sale.occurred_at || sale.created_at)}`}
+                  badge="Sale"
+                  amount={Number(sale.total) || 0}
+                  selected={selected?.key === `sale-${sale.id}`}
+                  onOpen={() =>
+                    setSelected({ key: `sale-${sale.id}`, kind: KIND_SALE, data: sale })
+                  }
                 />
               ))}
-            </section>
+            </ListSection>
+          ) : null}
+          {canSales && returnedSales.length > 0 ? (
+            <ListSection title={`Needs salesperson action · ${returnedSales.length}`}>
+              {returnedSales.map((sale) => (
+                <ApprovalListRow
+                  key={`sale-${sale.id}`}
+                  title={sale.sale_number}
+                  subtitle={`${sale.cashier_name || 'Cashier'} · ${formatDateTime(sale.occurred_at || sale.created_at)}`}
+                  badge="Sale"
+                  meta="Returned"
+                  amount={Number(sale.total) || 0}
+                  selected={selected?.key === `sale-${sale.id}`}
+                  onOpen={() =>
+                    setSelected({ key: `sale-${sale.id}`, kind: KIND_SALE, data: sale })
+                  }
+                />
+              ))}
+            </ListSection>
+          ) : null}
+          {canCollections && collections.length > 0 ? (
+            <ListSection title={`Debt collections · ${collections.length}`}>
+              {collections.map((change) => (
+                <ApprovalListRow
+                  key={`collection-${change.id}`}
+                  title={change.entity_repr || 'Customer'}
+                  subtitle={`${change.made_by_username || 'Salesperson'} · ${formatDateTime(change.made_at)}`}
+                  badge="Collection"
+                  meta={collectionMethod(change)}
+                  amount={collectionAmount(change)}
+                  selected={selected?.key === `collection-${change.id}`}
+                  onOpen={() =>
+                    setSelected({
+                      key: `collection-${change.id}`,
+                      kind: KIND_COLLECTION,
+                      data: change,
+                    })
+                  }
+                />
+              ))}
+            </ListSection>
           ) : null}
         </div>
       )}
+
+      <Dialog
+        open={Boolean(selected)}
+        onOpenChange={(open) => {
+          if (!open) setSelected(null);
+        }}
+      >
+        <DialogContent
+          className="max-h-[90vh] max-w-2xl overflow-y-auto"
+          description="Review this sale or collection, then approve or reject."
+        >
+          <DialogHeader>
+            <DialogTitle className="pr-8">
+              {selectedSale
+                ? selectedSale.sale_number
+                : selectedCollection
+                  ? selectedCollection.entity_repr || 'Debt collection'
+                  : 'Approval'}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedSale
+                ? `${selectedSale.cashier_name || 'Cashier'} · ${formatDateTime(selectedSale.occurred_at || selectedSale.created_at)}`
+                : selectedCollection
+                  ? `${selectedCollection.made_by_username || 'Salesperson'} · ${formatDateTime(selectedCollection.made_at)}`
+                  : 'Review and decide'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedSale ? <SaleReviewBody sale={selectedSale} /> : null}
+          {selectedCollection ? <CollectionReviewBody change={selectedCollection} /> : null}
+
+          <DialogFooter className="flex-col items-stretch gap-2 sm:flex-col sm:space-x-0">
+            {selectedSale ? (
+              <SaleReviewActions
+                key={`sale-actions-${selectedSale.id}`}
+                sale={selectedSale}
+                onResolved={load}
+                onClose={() => setSelected(null)}
+              />
+            ) : null}
+            {selectedCollection ? (
+              <CollectionReviewActions
+                key={`collection-actions-${selectedCollection.id}`}
+                change={selectedCollection}
+                onResolved={load}
+                onClose={() => setSelected(null)}
+              />
+            ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageShell>
   );
 }

@@ -75,6 +75,16 @@ def _variant_label(size=None, color=None, fallback_sku: str = '') -> str:
     return label or fallback_sku or ''
 
 
+def _format_qty(qty: Decimal) -> str:
+    """Plain quantity text — never scientific notation (``Decimal.normalize`` → ``1E+1``)."""
+    if qty == qty.to_integral():
+        return str(int(qty))
+    text = format(qty, 'f')
+    if '.' in text:
+        text = text.rstrip('0').rstrip('.')
+    return text or '0'
+
+
 def _line(name, variant, quantity, unit_price, subtotal=None) -> dict:
     qty = _dec(quantity)
     price = _dec(unit_price)
@@ -82,7 +92,7 @@ def _line(name, variant, quantity, unit_price, subtotal=None) -> dict:
     return {
         'name': name or 'Item',
         'variant': variant or '',
-        'quantity': str(qty.normalize()) if qty == qty.to_integral() else str(qty),
+        'quantity': _format_qty(qty),
         'unit_price': str(price),
         'subtotal': str(total),
     }
