@@ -26,7 +26,7 @@ describe('CustomerPicker server search', () => {
   it('searches the server so customers beyond the first page are found', async () => {
     render(<CustomerPicker onSelect={jest.fn()} requireCustomer />);
     fireEvent.click(screen.getByText('Select customer'));
-    fireEvent.change(screen.getByPlaceholderText(/Search name, phone/i), {
+    fireEvent.change(screen.getByPlaceholderText(/Search duka, owner, contact/i), {
       target: { value: '0712345678' },
     });
     await waitFor(() =>

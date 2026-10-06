@@ -1,4 +1,4 @@
-"""Customer lookup for POS and past-sale entry — name, code, email, or phone."""
+"""Customer lookup for POS and past-sale entry — duka, owner, contact, code, email, or phone."""
 
 from __future__ import annotations
 
@@ -32,13 +32,15 @@ def _phone_digits_expression():
 
 
 def apply_customer_search(queryset, search: str | None):
-    """Filter customers by name, code, email, tax id, or phone (any formatting)."""
+    """Filter by duka name, owner, contact person, code, email, tax id, or phone."""
     term = (search or '').strip()
     if not term:
         return queryset
 
     query = (
         Q(name__icontains=term)
+        | Q(owner_name__icontains=term)
+        | Q(contact_person__icontains=term)
         | Q(customer_code__icontains=term)
         | Q(email__icontains=term)
         | Q(phone__icontains=term)

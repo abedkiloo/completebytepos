@@ -104,6 +104,10 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
 
   const syncTimerRef = useRef(null);
   const skipNextSyncRef = useRef(false);
+  /** Load active holding once per Terminal session — not on every customer search. */
+  const holdingCheckedRef = useRef(false);
+  /** After Continue / Start new, never re-open the recovery prompt this session. */
+  const recoveryResolvedRef = useRef(false);
 
   const subtotal = useMemo(
     () => cart.reduce((s, i) => s + i.price * i.quantity, 0),
@@ -242,12 +246,15 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
     setCart(lines);
 
     if (holding.customer) {
-      setSelectedCustomer(
-        customers.find((c) => c.id === holding.customer) || {
+      setSelectedCustomer((prev) => {
+        if (prev && String(prev.id) === String(holding.customer)) {
+          return prev;
+        }
+        return {
           id: holding.customer,
           name: holding.customer_name || 'Customer',
-        }
-      );
+        };
+      });
     } else {
       setSelectedCustomer(WALK_IN_CUSTOMER);
     }
@@ -267,9 +274,12 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
     } else {
       setReturnedSaleNotice(null);
     }
-  }, [customers, validateStock]);
+  }, [validateStock]);
 
   const loadActiveHolding = useCallback(async () => {
+    if (!resumeSalePk && holdingCheckedRef.current) {
+      return;
+    }
     setLoadingHolding(true);
     try {
       if (resumeSalePk) {
@@ -289,6 +299,9 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
       const res = await salesAPI.activeHolding();
       const holding = res.data?.holding;
       if (shouldPromptForHoldingRecovery(holding)) {
+        if (recoveryResolvedRef.current) {
+          return;
+        }
         setCartRecovery({
           source: 'holding',
           holding,
@@ -309,6 +322,7 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
         toast.error('Could not open this sale on POS.');
       }
     } finally {
+      holdingCheckedRef.current = true;
       setLoadingHolding(false);
     }
   }, [hydrateFromHolding, resumeSalePk]);
@@ -318,6 +332,8 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
     setRecoveryBusy(true);
     try {
       skipNextSyncRef.current = true;
+      recoveryResolvedRef.current = true;
+      holdingCheckedRef.current = true;
       hydrateFromHolding(cartRecovery.holding);
       setCartRecovery(null);
     } finally {
@@ -336,6 +352,8 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
           /* best effort */
         }
       }
+      recoveryResolvedRef.current = true;
+      holdingCheckedRef.current = true;
       setCart([]);
       setHoldingId(null);
       setHoldingNumber('');
@@ -353,8 +371,13 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
   }, [loadCustomers]);
 
   useEffect(() => {
-    if (customers.length) loadActiveHolding();
-  }, [customers.length, loadActiveHolding]);
+    holdingCheckedRef.current = false;
+    recoveryResolvedRef.current = false;
+    loadActiveHolding();
+    // One-shot per Terminal session / resumed sale — do not re-bind to loadActiveHolding
+    // or customer search will reset the Continue-sale latch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resumeSalePk]);
 
   const searchProducts = useCallback(async (q) => {
     const term = q.trim();

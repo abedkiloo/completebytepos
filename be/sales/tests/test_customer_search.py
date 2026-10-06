@@ -17,12 +17,40 @@ class CustomerSearchTests(SuperAdminAPITestCase):
             name='John Cement Yard', phone='0712987654', is_active=True,
         )
         Customer.objects.create(name='Inactive Shop', phone='0700111222', is_active=False)
+        cls.by_owner = Customer.objects.create(
+            name='Westlands Kiosk',
+            owner_name='Amina Otieno',
+            phone='0700555001',
+            is_active=True,
+        )
+        cls.by_contact = Customer.objects.create(
+            name='River Road Shop',
+            contact_person='Brian Kamau',
+            phone='0700555002',
+            is_active=True,
+        )
 
     def test_search_by_name_finds_customer(self):
         response = self.client.get('/api/sales/customers/', {'search': 'Hardware', 'is_active': 'true'})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         ids = [row['id'] for row in response.data['results']]
         self.assertIn(self.jane.id, ids)
+
+    def test_search_by_owner_name(self):
+        response = self.client.get(
+            '/api/sales/customers/', {'search': 'Amina', 'is_active': 'true'}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = [row['id'] for row in response.data['results']]
+        self.assertIn(self.by_owner.id, ids)
+
+    def test_search_by_contact_person(self):
+        response = self.client.get(
+            '/api/sales/customers/', {'search': 'Brian Kamau', 'is_active': 'true'}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = [row['id'] for row in response.data['results']]
+        self.assertIn(self.by_contact.id, ids)
 
     def test_search_by_local_phone_matches_international_format(self):
         response = self.client.get(

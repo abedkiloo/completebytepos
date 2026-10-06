@@ -219,4 +219,46 @@ describe('useBillingPOSState cart recovery', () => {
     expect(result.current.cart).toHaveLength(0);
     expect(result.current.cartRecovery).toBeNull();
   });
+
+  it('does not re-prompt continue-sale after Continue when searching customers', async () => {
+    salesAPI.activeHolding.mockResolvedValue({ data: { holding: SAMPLE_HOLDING } });
+
+    const { result } = renderHook(() => useBillingPOSState());
+
+    await waitFor(() => {
+      expect(result.current.cartRecovery).toBeTruthy();
+    });
+
+    act(() => {
+      result.current.continueCartRecovery();
+    });
+
+    await waitFor(() => {
+      expect(result.current.cartRecovery).toBeNull();
+    });
+
+    const callsAfterContinue = salesAPI.activeHolding.mock.calls.length;
+
+    customersAPI.list.mockResolvedValue({
+      data: {
+        results: [
+          { id: 1, name: 'Jane', phone: '0700' },
+          { id: 2, name: 'New Duka', owner_name: 'Wanjiku', phone: '0711' },
+        ],
+      },
+    });
+
+    await act(async () => {
+      result.current.setCustomerQuery('Wanjiku');
+    });
+
+    await waitFor(() => {
+      expect(customersAPI.list).toHaveBeenCalledWith(
+        expect.objectContaining({ search: 'Wanjiku' })
+      );
+    });
+
+    expect(result.current.cartRecovery).toBeNull();
+    expect(salesAPI.activeHolding.mock.calls.length).toBe(callsAfterContinue);
+  });
 });

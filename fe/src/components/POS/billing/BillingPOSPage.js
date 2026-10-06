@@ -469,7 +469,7 @@ export default function BillingPOSPage() {
               </div>
               <Input
                 ref={customerSearchRef}
-                placeholder="Search by name or phone…"
+                placeholder="Search duka, owner, contact, or phone…"
                 value={state.customerQuery}
                 onChange={(e) => state.setCustomerQuery(e.target.value)}
                 className="h-10"
@@ -489,7 +489,14 @@ export default function BillingPOSPage() {
                       >
                         <div className="font-medium">{c.name}</div>
                         <div className="text-xs text-muted-foreground">
-                          {[c.phone, c.customer_code].filter(Boolean).join(' · ')}
+                          {[
+                            c.owner_name ? `Owner: ${c.owner_name}` : null,
+                            c.contact_person ? `Contact: ${c.contact_person}` : null,
+                            c.phone,
+                            c.customer_code,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
                         </div>
                         {showWalletBalance && c.wallet_balance != null && (
                           <div className="mt-0.5">

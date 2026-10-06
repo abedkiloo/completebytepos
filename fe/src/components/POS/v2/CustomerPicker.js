@@ -86,6 +86,8 @@ export function CustomerPicker({
     return base.filter(
       (c) =>
         c.name?.toLowerCase().includes(q) ||
+        c.owner_name?.toLowerCase().includes(q) ||
+        c.contact_person?.toLowerCase().includes(q) ||
         c.phone?.toLowerCase().includes(q) ||
         c.email?.toLowerCase().includes(q) ||
         c.customer_code?.toLowerCase().includes(q)
@@ -145,7 +147,7 @@ export function CustomerPicker({
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               autoFocus
-              placeholder="Search name, phone, email, or code…"
+              placeholder="Search duka, owner, contact, phone…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="h-10 pl-10"
@@ -198,6 +200,8 @@ export function CustomerPicker({
                           <div className="truncate font-medium">{c.name}</div>
                           <div className="truncate text-xs text-muted-foreground">
                             {[
+                              c.owner_name ? `Owner: ${c.owner_name}` : null,
+                              c.contact_person ? `Contact: ${c.contact_person}` : null,
                               c.phone,
                               c.email,
                               showCustomerCode ? c.customer_code : null,

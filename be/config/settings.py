@@ -463,6 +463,11 @@ SMS_BRAND_BLURB = env_str(
     'Thank you for shopping with {store_name}.',
 )
 PUBLIC_INVOICE_BASE_URL = env_str('PUBLIC_INVOICE_BASE_URL', 'https://example.com/i')
+# SMS: Mobile Sasa (preferred) — https://docs.mobilesasa.com/sms/send
+# Set SMS_PROVIDER=mobilesasa (or leave blank when token+sender are set).
+SMS_PROVIDER = env_str('SMS_PROVIDER', '')
+MOBILESASA_API_TOKEN = env_str('MOBILESASA_API_TOKEN', '')
+MOBILESASA_SENDER_ID = env_str('MOBILESASA_SENDER_ID', '')
 AFRICASTALKING_API_KEY = env_str('AFRICASTALKING_API_KEY', '')
 AFRICASTALKING_USERNAME = env_str('AFRICASTALKING_USERNAME', '')
 

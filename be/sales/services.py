@@ -1023,6 +1023,18 @@ class SaleService(BaseService):
         sale.change = payment_result['change']
         sale.save(update_fields=['customer', 'amount_paid', 'change', 'updated_at'])
 
+        # One customer SMS on final sale (includes balance if they still owe).
+        # Debt from this sale is covered here — no separate "debt increase" SMS.
+        if sale.status == 'completed':
+            try:
+                from messaging.customer_notify import notify_customer_sale_completed
+
+                notify_customer_sale_completed(sale, user=user)
+            except Exception:
+                logger.exception(
+                    'Sale completion SMS failed for %s', sale.sale_number
+                )
+
     def _maybe_create_invoice_for_sale(
         self,
         sale: Sale,
@@ -1706,7 +1718,7 @@ class CustomerService(BaseService):
         if reference:
             default_notes = f'{default_notes} (ref: {reference})'
 
-        return self.update_wallet_balance(
+        txn = self.update_wallet_balance(
             customer=customer,
             amount=amount,
             transaction_type='credit',
@@ -1715,6 +1727,15 @@ class CustomerService(BaseService):
             notes=notes.strip() or default_notes,
             user=user,
         )
+        try:
+            from messaging.customer_notify import notify_customer_debt_settlement
+
+            notify_customer_debt_settlement(customer, amount=amount, user=user)
+        except Exception:
+            logger.exception(
+                'Debt settlement SMS failed for customer %s', customer.pk
+            )
+        return txn
 
     def get_customer_statistics(self, customer_id: int) -> Dict[str, Any]:
         """Get comprehensive statistics for a customer"""

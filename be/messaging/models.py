@@ -14,6 +14,9 @@ class MessageOutbox(models.Model):
 
     TEMPLATE_INVOICE = 'invoice_receipt'
     TEMPLATE_DEBT_REMINDER = 'debt_reminder'
+    TEMPLATE_SALE_COMPLETED = 'sale_completed'
+    TEMPLATE_DEBT_INCREASE = 'debt_increase'
+    TEMPLATE_DEBT_SETTLEMENT = 'debt_settlement'
 
     to_phone = models.CharField(max_length=20)
     body = models.TextField()
