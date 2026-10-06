@@ -53,7 +53,7 @@ class MessagingAPITestCase(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.data)
         self.assertEqual(res.data['queued'], 1)
         self.assertEqual(len(self.sms.sent), 1)
-        self.assertIn('Reminder', self.sms.sent[0]['body'])
+        self.assertIn('balance', self.sms.sent[0]['body'].lower())
         self.assertEqual(
             MessageOutbox.objects.filter(
                 template_key=MessageOutbox.TEMPLATE_DEBT_REMINDER,

@@ -415,6 +415,17 @@ export const customersAPI = {
   debtCollections: (params) => api.get('/sales/customers/debt-collections/', { params }),
 };
 
+export const messagingAPI = {
+  debtReminderTemplate: () => api.get('/messaging/reminders/debt/template/'),
+  saveDebtReminderTemplate: (body) =>
+    api.patch('/messaging/reminders/debt/template/', { body }),
+  debtReminderPreview: (data) =>
+    data
+      ? api.post('/messaging/reminders/debt/preview/', data)
+      : api.get('/messaging/reminders/debt/preview/'),
+  debtReminderSend: (data) => api.post('/messaging/reminders/debt/send/', data),
+};
+
 export const invoicesAPI = {
   list: (params) => api.get('/sales/invoices/', { params }),
   get: (id) => api.get(`/sales/invoices/${id}/`),

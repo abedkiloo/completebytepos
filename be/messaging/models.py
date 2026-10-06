@@ -57,3 +57,30 @@ class MessageOutbox(models.Model):
 
     def __str__(self):
         return f'Message {self.pk} → {self.to_phone} ({self.status})'
+
+
+class SmsTemplate(models.Model):
+    """Editable SMS bodies. Placeholders: {name}, {amount}, {store_name}."""
+
+    KEY_DEBT_REMINDER = 'debt_reminder'
+
+    KEY_CHOICES = [
+        (KEY_DEBT_REMINDER, 'Debt collection reminder'),
+    ]
+
+    key = models.CharField(max_length=64, unique=True, choices=KEY_CHOICES)
+    body = models.TextField()
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='sms_templates_updated',
+    )
+
+    class Meta:
+        ordering = ['key']
+
+    def __str__(self):
+        return self.key

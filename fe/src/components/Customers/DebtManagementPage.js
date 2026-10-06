@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  MessageSquareText,
 } from 'lucide-react';
 
 import { customersAPI } from '../../services/api';
@@ -35,6 +36,7 @@ import {
 } from '../../utils/debtManagement';
 import { customerDetailPath } from '../../utils/customerDetail';
 import ReceiveWalletPaymentDialog from './ReceiveWalletPaymentDialog';
+import DebtReminderDialog from './DebtReminderDialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
@@ -76,6 +78,9 @@ export default function DebtManagementPage() {
   const canCollect =
     hasPermission(permissions, 'debt_management', 'update') &&
     customersEnableWalletPayment(customerSettings);
+  const canSendReminders =
+    hasPermission(permissions, 'messaging', 'create') ||
+    hasPermission(permissions, 'debt_management', 'update');
 
   const [summary, setSummary] = useState(emptyDebtSummary());
   const [debtors, setDebtors] = useState([]);
@@ -92,6 +97,7 @@ export default function DebtManagementPage() {
   const [collectionDate, setCollectionDate] = useState(getTodayDateString);
   const [collections, setCollections] = useState(emptyDebtCollections());
   const [collectionsLoading, setCollectionsLoading] = useState(false);
+  const [reminderOpen, setReminderOpen] = useState(false);
 
   const loadSummary = useCallback(async () => {
     if (!showWallet) {
@@ -211,7 +217,14 @@ export default function DebtManagementPage() {
       <PageHeader
         title="Debt Management"
         description="See who owes money, how old the debt is, and collect payments."
-      />
+      >
+        {canSendReminders ? (
+          <Button type="button" variant="outline" onClick={() => setReminderOpen(true)}>
+            <MessageSquareText className="mr-1.5 h-4 w-4" />
+            SMS reminders
+          </Button>
+        ) : null}
+      </PageHeader>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard
@@ -557,6 +570,9 @@ export default function DebtManagementPage() {
           refreshAll();
         }}
       />
+      {canSendReminders ? (
+        <DebtReminderDialog open={reminderOpen} onOpenChange={setReminderOpen} />
+      ) : null}
     </PageShell>
   );
 }

@@ -36,6 +36,17 @@ jest.mock('../../services/api', () => ({
       walletTransactions: jest.fn(),
       receiveWalletPayment: jest.fn(),
     },
+    messagingAPI: {
+      debtReminderPreview: jest.fn(),
+      debtReminderSend: jest.fn(),
+      debtReminderTemplate: jest.fn(),
+      saveDebtReminderTemplate: jest.fn(),
+    },
+}));
+
+jest.mock('./DebtReminderDialog', () => ({
+  __esModule: true,
+  default: ({ open }) => (open ? <div data-testid="debt-reminder-dialog" /> : null),
 }));
 
 jest.mock('../../hooks/useModuleSettings', () => ({
@@ -136,10 +147,11 @@ jest.mock('../ui/dialog', () => ({
 jest.mock('../page', () => ({
   __esModule: true,
   PageShell: ({ children }) => <div data-testid="page-shell">{children}</div>,
-  PageHeader: ({ title, description }) => (
+  PageHeader: ({ title, description, children }) => (
     <header>
       <h1>{title}</h1>
       {description ? <p>{description}</p> : null}
+      {children}
     </header>
   ),
   PageLoading: () => <div>Loading…</div>,
