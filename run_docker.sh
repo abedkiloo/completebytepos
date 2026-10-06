@@ -98,10 +98,13 @@ start_containers_prod() {
     COMPOSE_FILE="docker-compose.yml"
 
     if [ "$1" == "--rebuild" ]; then
-        print_info "Rebuilding production images from scratch..."
-        compose -f $COMPOSE_FILE build --no-cache
+        print_info "Rebuilding production images from scratch (backend, then frontend)..."
+        compose -f $COMPOSE_FILE build --no-cache backend
+        compose -f $COMPOSE_FILE build --no-cache frontend
     else
-        compose -f $COMPOSE_FILE build
+        print_info "Building images (backend, then frontend — avoids npm OOM on small VPS)..."
+        compose -f $COMPOSE_FILE build backend
+        compose -f $COMPOSE_FILE build frontend
     fi
 
     compose -f $COMPOSE_FILE up -d

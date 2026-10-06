@@ -73,12 +73,15 @@ run_docker() {
         docker buildx prune -f 2>/dev/null || true
     fi
     
-    # Build and start
-    print_info "Building Docker images..."
-    # Try with BuildKit first, fallback to legacy builder if it fails
-    if ! DOCKER_BUILDKIT=1 $COMPOSE_CMD build --no-cache --progress=plain; then
-        print_warning "Build with BuildKit failed, trying without BuildKit..."
-        DOCKER_BUILDKIT=0 $COMPOSE_CMD build --no-cache
+    # Build and start — sequential to avoid npm OOM when frontend+backend build together
+    print_info "Building Docker images (backend, then frontend)..."
+    if ! DOCKER_BUILDKIT=1 $COMPOSE_CMD build --no-cache --progress=plain backend; then
+        print_warning "BuildKit backend failed, trying without BuildKit..."
+        DOCKER_BUILDKIT=0 $COMPOSE_CMD build --no-cache backend
+    fi
+    if ! DOCKER_BUILDKIT=1 $COMPOSE_CMD build --no-cache --progress=plain frontend; then
+        print_warning "BuildKit frontend failed, trying without BuildKit..."
+        DOCKER_BUILDKIT=0 $COMPOSE_CMD build --no-cache frontend
     fi
     
     print_info "Starting containers..."

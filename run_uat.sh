@@ -35,6 +35,15 @@ compose() {
     $COMPOSE_CMD -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" -f docker-compose.yml "$@"
 }
 
+# Backend + frontend npm/pip builds in parallel OOM small VPS boxes (npm exit 152).
+build_images() {
+    local extra=("$@")
+    print_info "Building backend image..."
+    compose build "${extra[@]}" backend
+    print_info "Building frontend image (sequential — avoids npm OOM on small VPS)..."
+    compose build "${extra[@]}" frontend
+}
+
 check_docker() {
     if ! command -v docker &> /dev/null; then
         print_error "Docker is not installed!"
@@ -171,14 +180,14 @@ run_docker() {
     if [[ "$*" == *"--clear-cache"* ]] || [[ "$*" == *"-c"* ]]; then
         clear_docker_cache
         print_info "Building Docker images from scratch..."
-        compose build --no-cache
+        build_images --no-cache
     elif [[ "$*" == *"--rebuild"* ]]; then
         print_info "Building Docker images from scratch..."
-        compose build --no-cache
+        build_images --no-cache
     else
         # Match ./run_docker.sh --prod: reuse layers (especially npm ci) unless package-lock changed.
         print_info "Building Docker images (reusing cache when lockfile is unchanged)..."
-        compose build
+        build_images
     fi
 
     print_info "Starting containers..."
