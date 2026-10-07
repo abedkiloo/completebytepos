@@ -41,6 +41,7 @@ import {
   NotebookPen,
   Star,
   Wallet,
+  Banknote,
   MapPin,
   Newspaper,
 } from 'lucide-react';
@@ -159,6 +160,12 @@ export const NAV_SECTIONS = [
         to: '/customers/debt',
         label: 'Debt Management',
         icon: Wallet,
+        permission: ['debt_management', 'view'],
+      },
+      {
+        to: '/customers/payments',
+        label: 'Payments trail',
+        icon: Banknote,
         permission: ['debt_management', 'view'],
       },
       {

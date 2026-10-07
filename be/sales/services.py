@@ -1739,7 +1739,7 @@ class CustomerService(BaseService):
         )
         from sales.sale_debt_sync import apply_settlement_to_underpaid_sales
 
-        apply_settlement_to_underpaid_sales(customer, amount)
+        apply_settlement_to_underpaid_sales(customer, amount, wallet_txn=txn)
         try:
             from messaging.customer_notify import notify_customer_debt_settlement
 

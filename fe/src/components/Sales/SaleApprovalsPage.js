@@ -406,7 +406,7 @@ export default function SaleApprovalsPage() {
     <PageShell>
       <PageHeader
         title="Approve sales"
-        description="Review waiting sales and collections, or open My decisions for a trail of what you already approved or rejected."
+        description="Review waiting sales and collections, or open Decisions for the full trail — filter by date and people."
         icon={CheckCircle2}
       />
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
@@ -429,7 +429,7 @@ export default function SaleApprovalsPage() {
             aria-selected={tab === TAB_HISTORY}
             onClick={() => setTab(TAB_HISTORY)}
           >
-            My decisions
+            Decisions
           </Button>
         </div>
         {tab === TAB_WAITING ? (
@@ -441,7 +441,7 @@ export default function SaleApprovalsPage() {
       {tab === TAB_HISTORY ? (
         <MyDecisionsTrail
           actionTypes={historyActionTypes}
-          emptyDescription="Sales and collections you approve or reject will appear here with the decision time and any comments."
+          emptyDescription="Approved and rejected sales and collections appear here. Filter by date or person."
         />
       ) : loading ? (
         <PageLoading />

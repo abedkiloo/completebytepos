@@ -506,7 +506,7 @@ export default function PendingApprovalsPage() {
     <PageShell>
       <PageHeader
         title="Approvals"
-        description="Review waiting requests, or open My decisions for a trail of what you already approved or rejected — with time and comments."
+        description="Review waiting requests, or open Decisions for the full approval trail — filter by date and people."
         icon={ClipboardCheck}
       />
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
@@ -530,7 +530,7 @@ export default function PendingApprovalsPage() {
             aria-selected={tab === TAB_HISTORY}
             onClick={() => setTab(TAB_HISTORY)}
           >
-            My decisions
+            Decisions
           </Button>
         </div>
         {tab === TAB_WAITING ? (

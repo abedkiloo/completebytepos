@@ -102,19 +102,24 @@ def _underpaid_sales_with_live_debt(customer_id: int) -> list[Sale]:
 
 
 @transaction.atomic
-def apply_settlement_to_underpaid_sales(customer, amount) -> Decimal:
+def apply_settlement_to_underpaid_sales(customer, amount, *, wallet_txn=None) -> Decimal:
     """
     FIFO-bump sale.amount_paid when a wallet debt settlement is recorded.
 
     Settlements credit the wallet without touching sales; Orders still classified
     from amount_paid, so without this the profile shows stale 'debt' rows while
     Debt Management correctly shows the customer as clear.
+
+    When ``wallet_txn`` is provided, persist allocation rows for the payments trail.
     """
+    from sales.models import DebtSettlementAllocation
+
     remaining = Decimal(str(amount or 0)).quantize(Decimal('0.01'))
     if remaining <= 0:
         return Decimal('0.00')
 
     applied = Decimal('0.00')
+    allocations = []
     for sale in _underpaid_sales_with_live_debt(customer.pk):
         unpaid = sale_unpaid_balance(sale)
         if unpaid <= 0:
@@ -124,10 +129,23 @@ def apply_settlement_to_underpaid_sales(customer, amount) -> Decimal:
             Decimal('0.01')
         )
         sale.save(update_fields=['amount_paid', 'updated_at'])
+        allocations.append((sale, chunk))
         applied += chunk
         remaining -= chunk
         if remaining <= 0:
             break
+
+    if wallet_txn is not None and allocations:
+        DebtSettlementAllocation.objects.bulk_create(
+            [
+                DebtSettlementAllocation(
+                    wallet_transaction=wallet_txn,
+                    sale=sale,
+                    amount=chunk,
+                )
+                for sale, chunk in allocations
+            ]
+        )
     return applied
 
 

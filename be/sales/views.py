@@ -1226,6 +1226,41 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         )
         return Response(payload)
 
+    @action(
+        detail=False,
+        methods=['get'],
+        url_path='payments-trail',
+        permission_classes=[IsAuthenticated, RequirePerm('debt_management', 'view')],
+    )
+    def payments_trail(self, request):
+        """Store-wide money-in trail with paid-towards targets and debt balancing."""
+        from sales.customer_module_settings import customers_show_wallet_balance
+        from sales.payments_trail import list_payments_trail
+
+        if not customers_show_wallet_balance():
+            return self._feature_disabled_response('Wallet balance')
+        try:
+            page = int(request.query_params.get('page', 1))
+        except (TypeError, ValueError):
+            page = 1
+        try:
+            page_size = int(request.query_params.get('page_size', 20))
+        except (TypeError, ValueError):
+            page_size = 20
+        try:
+            payload = list_payments_trail(
+                kind=request.query_params.get('kind'),
+                date_from=request.query_params.get('date_from'),
+                date_to=request.query_params.get('date_to'),
+                search=request.query_params.get('search'),
+                page=page,
+                page_size=page_size,
+                user=request.user,
+            )
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(payload)
+
     @action(detail=True, methods=['get'], url_path='detail')
     def lifetime_detail(self, request, pk=None):
         """Lifetime customer profile: standing, orders, and debt/payment trail."""

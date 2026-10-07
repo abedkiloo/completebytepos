@@ -4,6 +4,7 @@ import { expensesAPI, pendingChangesAPI } from '../../services/api';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { Input } from '../ui/input';
 import {
   Dialog,
   DialogContent,
@@ -11,11 +12,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../ui/dialog';
-import { PageLoading, ListPaginationRail } from '../page';
+import { PageLoading, ListPaginationRail, FilterBar, FilterField } from '../page';
+import SearchableSelect from '../Shared/SearchableSelect';
 import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { toast } from '../../utils/toast';
 import { formatDateTime } from '../../utils/formatters';
-import { getStoredAuth } from '../../utils/roleAccess';
 import {
   formatExpenseDecisionRow,
   formatMyDecisionRow,
@@ -27,28 +28,62 @@ import ApprovalDetails from './ApprovalDetails';
 import { expenseApprovalDetails } from '../../utils/approvalDisplay';
 import { cn } from '../../lib/cn';
 
+const ANYONE = { id: '', name: 'Anyone' };
+
 /**
- * Accountability trail of items the signed-in checker has already decided.
+ * Accountability trail of decided approval requests (all checkers by default).
  */
 export default function MyDecisionsTrail({
   actionTypes = null,
   includeExpenses = false,
   emptyTitle = 'No decisions yet',
-  emptyDescription = 'When you approve or reject a request, it will show here with the time and any comments.',
+  emptyDescription = 'When someone approves or rejects a request, it will show here with the time and any comments.',
 }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [madeBy, setMadeBy] = useState('');
+  const [checkedBy, setCheckedBy] = useState('');
+  const [requesters, setRequesters] = useState([ANYONE]);
+  const [checkers, setCheckers] = useState([ANYONE]);
   const [selected, setSelected] = useState(null);
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const pageSize = DEFAULT_PAGE_SIZE;
+
+  useEffect(() => {
+    let cancelled = false;
+    pendingChangesAPI
+      .decisionPeople()
+      .then((res) => {
+        if (cancelled) return;
+        const data = res.data || {};
+        const toOptions = (list) => [
+          ANYONE,
+          ...(Array.isArray(list) ? list : []).map((p) => ({
+            id: String(p.id),
+            name: p.name || `User ${p.id}`,
+          })),
+        ];
+        setRequesters(toOptions(data.requesters));
+        setCheckers(toOptions(data.checkers));
+      })
+      .catch(() => {
+        /* filters still work with typed ids if list fails */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     const params = {
       page,
       page_size: pageSize,
+      scope: 'all',
     };
     if (statusFilter === DECISION_STATUS_APPROVED || statusFilter === DECISION_STATUS_REJECTED) {
       params.status = statusFilter;
@@ -56,21 +91,26 @@ export default function MyDecisionsTrail({
     if (Array.isArray(actionTypes) && actionTypes.length > 0) {
       params.action_type = actionTypes.join(',');
     }
+    if (dateFrom) params.date_from = dateFrom;
+    if (dateTo) params.date_to = dateTo;
+    if (madeBy) params.made_by = madeBy;
+    if (checkedBy) params.checked_by = checkedBy;
 
     const loadExpenses =
       includeExpenses && statusFilter !== DECISION_STATUS_REJECTED;
     const tasks = [pendingChangesAPI.myDecisions(params)];
-    const { user } = getStoredAuth();
-    if (loadExpenses && user?.id) {
-      tasks.push(
-        expensesAPI.list({
-          status: 'approved',
-          approved_by: user.id,
-          show_all: 'true',
-          page,
-          page_size: pageSize,
-        }),
-      );
+    if (loadExpenses) {
+      const expenseParams = {
+        status: 'approved',
+        show_all: 'true',
+        page,
+        page_size: pageSize,
+      };
+      if (dateFrom) expenseParams.date_from = dateFrom;
+      if (dateTo) expenseParams.date_to = dateTo;
+      if (madeBy) expenseParams.created_by = madeBy;
+      if (checkedBy) expenseParams.approved_by = checkedBy;
+      tasks.push(expensesAPI.list(expenseParams));
     }
 
     const results = await Promise.allSettled(tasks);
@@ -97,7 +137,7 @@ export default function MyDecisionsTrail({
     }
 
     if (results.every((r) => r.status === 'rejected')) {
-      toast.error('Could not load your approval history');
+      toast.error('Could not load approval history');
       setRows([]);
       setTotalCount(0);
     } else {
@@ -110,7 +150,17 @@ export default function MyDecisionsTrail({
       setTotalCount(decisionCount + (loadExpenses ? expenseCount : 0));
     }
     setLoading(false);
-  }, [actionTypes, includeExpenses, page, pageSize, statusFilter]);
+  }, [
+    actionTypes,
+    checkedBy,
+    dateFrom,
+    dateTo,
+    includeExpenses,
+    madeBy,
+    page,
+    pageSize,
+    statusFilter,
+  ]);
 
   useEffect(() => {
     load();
@@ -127,28 +177,80 @@ export default function MyDecisionsTrail({
 
   return (
     <div className="space-y-4" data-testid="my-decisions-trail">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-1">
-          {filters.map((f) => (
-            <Button
-              key={f.id}
-              type="button"
-              size="sm"
-              variant={statusFilter === f.id ? 'default' : 'outline'}
-              onClick={() => {
-                setStatusFilter(f.id);
-                setPage(1);
-              }}
-              aria-pressed={statusFilter === f.id}
-            >
-              {f.label}
-            </Button>
-          ))}
+      <FilterBar>
+        <FilterField label="From">
+          <Input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => {
+              setDateFrom(e.target.value || '');
+              setPage(1);
+            }}
+            className="h-9 w-[11.5rem]"
+            data-testid="decisions-date-from"
+          />
+        </FilterField>
+        <FilterField label="To">
+          <Input
+            type="date"
+            value={dateTo}
+            onChange={(e) => {
+              setDateTo(e.target.value || '');
+              setPage(1);
+            }}
+            className="h-9 w-[11.5rem]"
+            data-testid="decisions-date-to"
+          />
+        </FilterField>
+        <FilterField label="Requested by" className="min-w-[12rem]">
+          <SearchableSelect
+            value={madeBy}
+            onChange={(e) => {
+              setMadeBy(e.target.value || '');
+              setPage(1);
+            }}
+            options={requesters}
+            placeholder="Anyone"
+            data-testid="decisions-made-by"
+          />
+        </FilterField>
+        <FilterField label="Decided by" className="min-w-[12rem]">
+          <SearchableSelect
+            value={checkedBy}
+            onChange={(e) => {
+              setCheckedBy(e.target.value || '');
+              setPage(1);
+            }}
+            options={checkers}
+            placeholder="Anyone"
+            data-testid="decisions-checked-by"
+          />
+        </FilterField>
+        <FilterField label="Status">
+          <div className="flex flex-wrap gap-1">
+            {filters.map((f) => (
+              <Button
+                key={f.id}
+                type="button"
+                size="sm"
+                variant={statusFilter === f.id ? 'default' : 'outline'}
+                onClick={() => {
+                  setStatusFilter(f.id);
+                  setPage(1);
+                }}
+                aria-pressed={statusFilter === f.id}
+              >
+                {f.label}
+              </Button>
+            ))}
+          </div>
+        </FilterField>
+        <div className="flex items-end">
+          <Button type="button" variant="outline" size="sm" onClick={load} disabled={loading}>
+            Refresh
+          </Button>
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={load} disabled={loading}>
-          Refresh
-        </Button>
-      </div>
+      </FilterBar>
 
       {loading ? (
         <PageLoading rows={4} />
@@ -213,8 +315,9 @@ export default function MyDecisionsTrail({
                           </div>
                           <p className="mt-0.5 text-xs text-muted-foreground">
                             Requested by {row.requestedBy}
+                            {row.decidedBy ? ` ù Decided by ${row.decidedBy}` : null}
                             {row.decidedAt
-                              ? ` ¬∑ You decided ${formatDateTime(row.decidedAt)}`
+                              ? ` ù ${formatDateTime(row.decidedAt)}`
                               : null}
                           </p>
                           {row.comment ? (
@@ -242,7 +345,7 @@ export default function MyDecisionsTrail({
       >
         <DialogContent
           className="max-h-[90vh] max-w-2xl overflow-y-auto"
-          description="Accountability record for a request you already decided."
+          description="Accountability record for a decided request."
         >
           {selected ? (
             <>
@@ -251,9 +354,10 @@ export default function MyDecisionsTrail({
                 <DialogDescription>
                   {selected.statusLabel}
                   {selected.decidedAt
-                    ? ` ¬∑ ${formatDateTime(selected.decidedAt)}`
+                    ? ` ù ${formatDateTime(selected.decidedAt)}`
                     : null}
-                  {` ¬∑ Requested by ${selected.requestedBy}`}
+                  {` ù Requested by ${selected.requestedBy}`}
+                  {selected.decidedBy ? ` ù Decided by ${selected.decidedBy}` : null}
                 </DialogDescription>
               </DialogHeader>
 
@@ -269,7 +373,7 @@ export default function MyDecisionsTrail({
                 {selected.checkerComment ? (
                   <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 dark:border-rose-900 dark:bg-rose-950/40">
                     <p className="text-xs font-medium uppercase tracking-wide text-rose-800 dark:text-rose-200">
-                      Your comment on reject
+                      Checker comment on reject
                     </p>
                     <p className="mt-1 whitespace-pre-wrap">{selected.checkerComment}</p>
                   </div>

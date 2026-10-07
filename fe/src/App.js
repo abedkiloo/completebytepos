@@ -48,6 +48,7 @@ const Roles = lazy(() => import('./components/Roles/Roles'));
 const Customers = lazy(() => import('./components/Customers/Customers'));
 const CustomerDetail = lazy(() => import('./components/Customers/CustomerDetailPage'));
 const DebtManagement = lazy(() => import('./components/Customers/DebtManagementPage'));
+const PaymentsTrail = lazy(() => import('./components/Customers/PaymentsTrailPage'));
 const Suppliers = lazy(() => import('./components/Suppliers/Suppliers'));
 const Employees = lazy(() => import('./components/Employees/Employees'));
 const DailyNotes = lazy(() => import('./components/DailyNotes/DailyNotes'));
@@ -206,6 +207,7 @@ function App() {
                 <Route path="/roles" element={<Roles />} />
                 <Route path="/customers" element={<Customers />} />
                 <Route path="/customers/debt" element={<DebtManagement />} />
+                <Route path="/customers/payments" element={<PaymentsTrail />} />
                 <Route path="/customers/:customerId" element={<CustomerDetail />} />
                 <Route path="/suppliers" element={<Suppliers />} />
                 <Route path="/employees" element={<Employees />} />

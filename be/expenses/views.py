@@ -130,6 +130,7 @@ class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             'date_to',
             'payment_method',
             'approved_by',
+            'created_by',
         ]:
             if param in query_params:
                 filters[param] = query_params.get(param)

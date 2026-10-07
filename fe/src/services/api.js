@@ -414,6 +414,8 @@ export const customersAPI = {
   debtors: (params) => api.get('/sales/customers/debtors/', { params, timeout: 30000 }),
   debtorCount: () => api.get('/sales/customers/debtor-count/'),
   debtCollections: (params) => api.get('/sales/customers/debt-collections/', { params }),
+  paymentsTrail: (params) =>
+    api.get('/sales/customers/payments-trail/', { params, timeout: 30000 }),
 };
 
 export const messagingAPI = {
@@ -533,6 +535,7 @@ export const pendingChangesAPI = {
     api.get('/approvals/pending-changes/pending-count/', { params }),
   mySubmissions: (params) => api.get('/approvals/pending-changes/my-submissions/', { params }),
   myDecisions: (params) => api.get('/approvals/pending-changes/my-decisions/', { params }),
+  decisionPeople: () => api.get('/approvals/pending-changes/decision-people/'),
   get: (id) => api.get(`/approvals/pending-changes/${id}/`),
   approve: (id, data = {}) => api.post(`/approvals/pending-changes/${id}/approve/`, data),
   reject: (id, data) => api.post(`/approvals/pending-changes/${id}/reject/`, data),

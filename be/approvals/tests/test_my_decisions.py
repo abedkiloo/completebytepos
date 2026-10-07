@@ -1,4 +1,6 @@
-"""Checker accountability trail: my-decisions lists rows this user decided."""
+"""Checker accountability trail: my-decisions lists decided rows with filters."""
+
+from datetime import datetime
 
 from django.contrib.auth.models import User
 from django.utils import timezone
@@ -155,7 +157,7 @@ class MyDecisionsAPITests(ManagerAPITestCase):
         page2_ids = {r['id'] for r in page2.data['results']}
         self.assertFalse(page1_ids & page2_ids)
 
-    def test_my_decisions_excludes_other_checkers_work(self):
+    def test_my_decisions_shows_all_checkers_by_default(self):
         mine = self._make_decision(
             checker=self.manager_user,
             status_value=PendingChange.STATUS_APPROVED,
@@ -169,7 +171,85 @@ class MyDecisionsAPITests(ManagerAPITestCase):
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         ids = [r['id'] for r in resp.data['results']]
         self.assertIn(mine.id, ids)
-        self.assertNotIn(theirs.id, ids)
+        self.assertIn(theirs.id, ids)
+
+        mine_only = self.client.get(
+            '/api/approvals/pending-changes/my-decisions/',
+            {'scope': 'mine'},
+        )
+        self.assertEqual(mine_only.status_code, status.HTTP_200_OK)
+        mine_ids = [r['id'] for r in mine_only.data['results']]
+        self.assertIn(mine.id, mine_ids)
+        self.assertNotIn(theirs.id, mine_ids)
+
+    def test_my_decisions_date_and_people_filters(self):
+        early = self._make_decision(
+            checker=self.manager_user,
+            status_value=PendingChange.STATUS_APPROVED,
+        )
+        PendingChange.objects.filter(pk=early.pk).update(
+            checked_at=timezone.make_aware(datetime(2020, 1, 15, 12, 0, 0)),
+        )
+        recent = self._make_decision(
+            checker=self.other_manager,
+            status_value=PendingChange.STATUS_APPROVED,
+        )
+        other_requester = User.objects.create_user('dec_sales2', password='x')
+        UserProfile.objects.create(
+            user=other_requester,
+            role='cashier',
+            custom_role=Role.objects.get(name=ROLE_SALES),
+            is_active=True,
+        )
+        by_other = PendingChange.objects.create(
+            action_type=ACTION_PRODUCT_PRICE,
+            entity_type='products.Product',
+            entity_id='9',
+            entity_repr='Other requester',
+            original_values={},
+            proposed_values={'price': '11'},
+            reason='x',
+            status=PendingChange.STATUS_APPROVED,
+            made_by=other_requester,
+            checked_by=self.manager_user,
+            checked_at=timezone.now(),
+        )
+
+        by_date = self.client.get(
+            '/api/approvals/pending-changes/my-decisions/',
+            {
+                'date_from': timezone.localdate().isoformat(),
+                'date_to': timezone.localdate().isoformat(),
+            },
+        )
+        self.assertEqual(by_date.status_code, status.HTTP_200_OK)
+        date_ids = {r['id'] for r in by_date.data['results']}
+        self.assertIn(recent.id, date_ids)
+        self.assertIn(by_other.id, date_ids)
+        self.assertNotIn(early.id, date_ids)
+
+        by_checker = self.client.get(
+            '/api/approvals/pending-changes/my-decisions/',
+            {'checked_by': self.other_manager.id},
+        )
+        self.assertEqual(by_checker.status_code, status.HTTP_200_OK)
+        self.assertEqual([r['id'] for r in by_checker.data['results']], [recent.id])
+
+        by_requester = self.client.get(
+            '/api/approvals/pending-changes/my-decisions/',
+            {'made_by': other_requester.id},
+        )
+        self.assertEqual(by_requester.status_code, status.HTTP_200_OK)
+        self.assertEqual([r['id'] for r in by_requester.data['results']], [by_other.id])
+
+        people = self.client.get('/api/approvals/pending-changes/decision-people/')
+        self.assertEqual(people.status_code, status.HTTP_200_OK)
+        requester_ids = {p['id'] for p in people.data['requesters']}
+        checker_ids = {p['id'] for p in people.data['checkers']}
+        self.assertIn(self.sales.id, requester_ids)
+        self.assertIn(other_requester.id, requester_ids)
+        self.assertIn(self.manager_user.id, checker_ids)
+        self.assertIn(self.other_manager.id, checker_ids)
 
     def test_sales_cannot_open_my_decisions(self):
         client = self.client.__class__()

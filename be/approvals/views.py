@@ -1,8 +1,9 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
+from django.utils.dateparse import parse_date
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -15,6 +16,25 @@ from approvals.serializers import (
     ResubmitChangeSerializer,
 )
 from approvals.service import approve_change, reject_change, resubmit_change
+
+
+def _parse_query_date(raw, *, field_name):
+    """YYYY-MM-DD (or blank) → date, else raise ValidationError."""
+    if raw in (None, ''):
+        return None
+    day = parse_date(str(raw).strip())
+    if day is None:
+        raise ValidationError({field_name: 'Invalid date. Use YYYY-MM-DD.'})
+    return day
+
+
+def _parse_optional_int(raw):
+    if raw in (None, ''):
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
 
 
 class PendingChangeViewSet(viewsets.ReadOnlyModelViewSet):
@@ -111,16 +131,71 @@ class PendingChangeViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = self.get_serializer(qs.order_by('-made_at')[:limit], many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=['get'], url_path='decision-people')
+    def decision_people(self, request):
+        """Distinct requesters and checkers for decision trail filters."""
+        self._require_checker(request)
+        decided = PendingChange.objects.exclude(
+            status=PendingChange.STATUS_PENDING
+        ).filter(checked_by__isnull=False)
+        requesters = (
+            decided.filter(made_by__isnull=False)
+            .values('made_by_id', 'made_by__username')
+            .distinct()
+            .order_by('made_by__username')
+        )
+        checkers = (
+            decided.values('checked_by_id', 'checked_by__username')
+            .distinct()
+            .order_by('checked_by__username')
+        )
+        return Response(
+            {
+                'requesters': [
+                    {'id': row['made_by_id'], 'name': row['made_by__username']}
+                    for row in requesters
+                    if row['made_by_id']
+                ],
+                'checkers': [
+                    {'id': row['checked_by_id'], 'name': row['checked_by__username']}
+                    for row in checkers
+                    if row['checked_by_id']
+                ],
+            }
+        )
+
     @action(detail=False, methods=['get'], url_path='my-decisions')
     def my_decisions(self, request):
-        """Rows this user approved or rejected — accountability trail."""
+        """Decided rows — all checkers by default; filter by date and people."""
         self._require_checker(request)
         qs = (
-            PendingChange.objects.filter(checked_by=request.user)
-            .exclude(status=PendingChange.STATUS_PENDING)
+            PendingChange.objects.exclude(status=PendingChange.STATUS_PENDING)
+            .filter(checked_by__isnull=False)
             .select_related('made_by', 'checked_by')
             .order_by('-checked_at', '-id')
         )
+
+        scope = (request.query_params.get('scope') or 'all').strip().lower()
+        checked_by_id = _parse_optional_int(request.query_params.get('checked_by'))
+        made_by_id = _parse_optional_int(request.query_params.get('made_by'))
+        if checked_by_id is not None:
+            qs = qs.filter(checked_by_id=checked_by_id)
+        elif scope == 'mine':
+            qs = qs.filter(checked_by=request.user)
+        if made_by_id is not None:
+            qs = qs.filter(made_by_id=made_by_id)
+
+        day_from = _parse_query_date(
+            request.query_params.get('date_from'), field_name='date_from'
+        )
+        day_to = _parse_query_date(
+            request.query_params.get('date_to'), field_name='date_to'
+        )
+        if day_from is not None:
+            qs = qs.filter(checked_at__date__gte=day_from)
+        if day_to is not None:
+            qs = qs.filter(checked_at__date__lte=day_to)
+
         status_filter = self._status_param(request)
         if status_filter:
             qs = qs.filter(status=status_filter)

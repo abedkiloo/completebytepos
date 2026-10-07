@@ -31,11 +31,12 @@ export function formatMyDecisionRow(row) {
     title: summary.item,
     headline: summary.headline,
     requestedBy: row.made_by_username || 'a team member',
+    decidedBy: row.checked_by_username || 'a checker',
     decidedAt: row.checked_at || null,
     requesterReason: (row.reason || '').trim(),
     checkerComment: isRejected ? (row.rejection_reason || '').trim() : '',
     comment,
-    commentLabel: isRejected ? 'Your comment' : 'Requester reason',
+    commentLabel: isRejected ? 'Checker comment' : 'Requester reason',
     data: row,
   };
 }
@@ -50,6 +51,7 @@ export function formatExpenseDecisionRow(expense) {
     title: expense.description || expense.expense_number || 'Expense',
     headline: expense.description || expense.expense_number || 'Expense',
     requestedBy: expense.created_by_name || 'a team member',
+    decidedBy: expense.approved_by_name || expense.approved_by_username || 'a checker',
     decidedAt: expense.updated_at || expense.approved_at || expense.created_at || null,
     requesterReason: (expense.notes || expense.description || '').trim(),
     checkerComment: '',

@@ -1060,7 +1060,40 @@ class CustomerWalletTransaction(models.Model):
             models.Index(fields=['customer', 'created_at']),
             models.Index(fields=['sale']),
             models.Index(fields=['invoice']),
+            models.Index(fields=['source_type', 'created_at']),
         ]
     
     def __str__(self):
         return f"{self.customer.name} - {self.get_transaction_type_display()} {self.amount} KES ({self.get_source_type_display()})"
+
+
+class DebtSettlementAllocation(models.Model):
+    """Which POS sale(s) a debt_settlement payment was applied to (FIFO trail)."""
+
+    wallet_transaction = models.ForeignKey(
+        CustomerWalletTransaction,
+        on_delete=models.CASCADE,
+        related_name='sale_allocations',
+        limit_choices_to={'source_type': 'debt_settlement'},
+    )
+    sale = models.ForeignKey(
+        Sale,
+        on_delete=models.CASCADE,
+        related_name='debt_settlement_allocations',
+    )
+    amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.01'))],
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['id']
+        indexes = [
+            models.Index(fields=['wallet_transaction']),
+            models.Index(fields=['sale']),
+        ]
+
+    def __str__(self):
+        return f'{self.wallet_transaction_id} → {self.sale_id}: {self.amount}'

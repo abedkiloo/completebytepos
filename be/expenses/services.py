@@ -156,6 +156,13 @@ class ExpenseService(BaseService):
             except (TypeError, ValueError):
                 pass
 
+        created_by = _clean_filter_value(filters.get('created_by'))
+        if created_by:
+            try:
+                queryset = queryset.filter(created_by_id=int(created_by))
+            except (TypeError, ValueError):
+                pass
+
         # Date filters
         date_from = _clean_filter_value(filters.get('date_from'))
         if date_from:
