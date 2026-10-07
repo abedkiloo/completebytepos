@@ -25,6 +25,33 @@ def _money(amount) -> str:
     return text.rstrip('0').rstrip('.') if '.' in text else text
 
 
+def sms_cap_name(value: str | None, *, fallback: str = '') -> str:
+    """
+    Clean a person or shop name for SMS.
+
+    - Drop everything from the first ``[`` onward (internal tags), e.g.
+      ``Sunrise Duka [Route 3]`` → ``Sunrise Duka``,
+      ``Mama Njeri [Kibera] Shop`` → ``Mama Njeri``.
+    - Capitalize the first letter of each remaining word:
+      ``jane`` → ``Jane``, ``sunrise duka`` → ``Sunrise Duka``.
+    - Leaves the rest of each word unchanged (``MPESA`` stays ``MPESA``).
+    """
+    text = str(value or '').strip()
+    if not text:
+        return fallback
+    bracket = text.find('[')
+    if bracket >= 0:
+        text = text[:bracket].strip()
+    if not text:
+        return fallback
+    parts: list[str] = []
+    for word in text.split():
+        if not word:
+            continue
+        parts.append(word[:1].upper() + word[1:])
+    return ' '.join(parts) if parts else fallback
+
+
 def apply_sms_placeholders(template: str, **values) -> str:
     """Replace {key} tokens without str.format (avoids brace crashes)."""
     body = template or ''
@@ -180,7 +207,7 @@ def customer_first_name(customer) -> str:
     ):
         text = str(raw or '').strip()
         if text:
-            return text.split()[0]
+            return sms_cap_name(text.split()[0], fallback='Customer')
     return 'Customer'
 
 
@@ -190,7 +217,7 @@ def customer_greeting_name(customer) -> str:
         return 'Customer'
     duka = str(getattr(customer, 'name', None) or '').strip()
     if duka:
-        return duka
+        return sms_cap_name(duka, fallback='Customer')
     return customer_first_name(customer)
 
 
@@ -207,7 +234,7 @@ def render_invoice_sms(
     body = (template or '').strip() or get_template_body(SmsTemplate.KEY_INVOICE)
     return apply_sms_placeholders(
         body,
-        customer_name=customer_name or 'Customer',
+        customer_name=sms_cap_name(customer_name, fallback='Customer'),
         brand_blurb=brand_blurb or get_brand_blurb(),
         invoice_no=invoice_no,
         amount=f'{amount}',
@@ -225,9 +252,9 @@ def render_debt_collection_reminder(
     body = (template or '').strip() or get_template_body(SmsTemplate.KEY_DEBT_REMINDER)
     return apply_sms_placeholders(
         body,
-        name=name or 'Customer',
+        name=sms_cap_name(name, fallback='Customer'),
         amount=_money(amount),
-        store_name=store_name or 'us',
+        store_name=sms_cap_name(store_name, fallback='us'),
     )
 
 
@@ -242,7 +269,7 @@ def render_debt_reminder_sms(
     link = f'{PUBLIC_INVOICE_BASE_URL.rstrip("/")}/{public_token}'
     return apply_sms_placeholders(
         'Hi {customer_name}. Reminder: you owe KES {amount}. {brand_blurb} Settle here: {link}',
-        customer_name=customer_name or 'Customer',
+        customer_name=sms_cap_name(customer_name, fallback='Customer'),
         brand_blurb=brand_blurb or get_brand_blurb(),
         amount=f'{amount}',
         link=link,
@@ -269,7 +296,7 @@ def render_sale_completed_sms(
     body = (template or '').strip() or get_template_body(SmsTemplate.KEY_SALE_COMPLETED)
     return apply_sms_placeholders(
         body,
-        first_name=first_name or 'Customer',
+        first_name=sms_cap_name(first_name, fallback='Customer'),
         sale_number=format_sale_number_for_sms(sale_number),
         items=items_clause,
         total=_money(total),
@@ -292,7 +319,7 @@ def render_debt_increase_sms(
     body = (template or '').strip() or get_template_body(SmsTemplate.KEY_DEBT_INCREASE)
     return apply_sms_placeholders(
         body,
-        first_name=first_name or 'Customer',
+        first_name=sms_cap_name(first_name, fallback='Customer'),
         amount=_money(amount),
         balance=_money(balance_owed),
         balance_note=balance_note,
@@ -312,7 +339,7 @@ def render_debt_settlement_sms(
     body = (template or '').strip() or get_template_body(SmsTemplate.KEY_DEBT_SETTLEMENT)
     return apply_sms_placeholders(
         body,
-        first_name=first_name or 'Customer',
+        first_name=sms_cap_name(first_name, fallback='Customer'),
         amount=_money(amount),
         balance=_money(balance_owed),
         payment_ref=payment_ref,

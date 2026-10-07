@@ -18,6 +18,7 @@ from messaging.providers import (
 )
 from messaging.templates_sms import (
     customer_first_name,
+    customer_greeting_name,
     format_balance_note,
     format_payment_ref_note,
     format_sale_items_summary,
@@ -25,6 +26,7 @@ from messaging.templates_sms import (
     render_debt_settlement_sms,
     render_sale_completed_sms,
     sale_number_token,
+    sms_cap_name,
 )
 from products.models import Category, Product
 from sales.models import Customer, Sale, SaleItem
@@ -78,17 +80,43 @@ class SaleNumberFormatUnitTests(SimpleTestCase):
 
 
 class TemplateSmsTests(TestCase):
+    def test_sms_cap_name_capitalizes_people_and_shops(self):
+        self.assertEqual(sms_cap_name('jane'), 'Jane')
+        self.assertEqual(sms_cap_name('sunrise duka'), 'Sunrise Duka')
+        self.assertEqual(sms_cap_name('MPESA shop'), 'MPESA Shop')
+        self.assertEqual(sms_cap_name(''), '')
+        self.assertEqual(sms_cap_name(None, fallback='Customer'), 'Customer')
+
+    def test_sms_cap_name_strips_from_first_bracket(self):
+        self.assertEqual(sms_cap_name('Sunrise Duka [Route 3]'), 'Sunrise Duka')
+        self.assertEqual(sms_cap_name('Mama Njeri [Kibera] Shop'), 'Mama Njeri')
+        self.assertEqual(sms_cap_name('Shop [A] [B]'), 'Shop')
+        self.assertEqual(sms_cap_name('jane [vip]'), 'Jane')
+        self.assertEqual(sms_cap_name('[internal only]', fallback='Customer'), 'Customer')
+        self.assertEqual(
+            customer_greeting_name(
+                Customer(name='sunrise duka [west]', owner_name='jane')
+            ),
+            'Sunrise Duka',
+        )
+
     def test_first_name_prefers_owner(self):
         c = Customer(
             name='Sunrise Duka',
-            owner_name='Jane Wambui',
+            owner_name='jane Wambui',
             contact_person='Clerk',
         )
         self.assertEqual(customer_first_name(c), 'Jane')
+        self.assertEqual(
+            customer_greeting_name(
+                Customer(name='sunrise duka', owner_name='jane')
+            ),
+            'Sunrise Duka',
+        )
 
     def test_sale_and_settlement_templates(self):
         paid = render_sale_completed_sms(
-            first_name='Jane',
+            first_name='jane',
             sale_number='SALE-1',
             total='1000',
             paid='1000',
