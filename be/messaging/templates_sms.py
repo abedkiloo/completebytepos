@@ -114,7 +114,7 @@ def format_sale_items_summary(
     name_max: int = 18,
 ) -> str:
     """
-    Minified receipt lines for SMS, e.g. ``Soap 2 @each 300, Oil 1 @each 1100``.
+    Minified receipt lines for SMS, e.g. ``Soap 2 @ 300, Oil 1 @ 1100``.
 
     Caps length for single/multi-part SMS; leftover lines become ``+N more``.
     """
@@ -124,8 +124,8 @@ def format_sale_items_summary(
     parts: list[str] = []
     for item in rows[:max_items]:
         qty = int(getattr(item, 'quantity', 0) or 0)
-        each = _money(_item_unit_price(item))
-        parts.append(f'{_item_display_name(item, name_max=name_max)} {qty} @each {each}')
+        unit = _money(_item_unit_price(item))
+        parts.append(f'{_item_display_name(item, name_max=name_max)} {qty} @ {unit}')
     extra = len(rows) - max_items
     if extra > 0:
         parts.append(f'+{extra} more')

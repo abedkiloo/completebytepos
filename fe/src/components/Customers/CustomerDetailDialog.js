@@ -42,6 +42,7 @@ import SaleRollbackDialog from '../Sales/SaleRollbackDialog';
 import ReceiveWalletPaymentDialog from './ReceiveWalletPaymentDialog';
 import CustomerFormDialog from './CustomerFormDialog';
 import CommitConfirm from '../Shared/CommitConfirm';
+import CenterScreenLoader from '../Shared/CenterScreenLoader';
 
 export default function CustomerDetailDialog({
   customer,
@@ -373,6 +374,17 @@ export default function CustomerDetailDialog({
         }}
         onSubmit={handleRollbackSubmit}
         submitting={rollbackSubmitting}
+      />
+
+      <CenterScreenLoader
+        open={refundSubmitting || rollbackSubmitting}
+        label={
+          refundSubmitting
+            ? 'Submitting void…'
+            : rollbackSubmitting
+              ? 'Submitting rollback…'
+              : 'Loading…'
+        }
       />
 
       <ReceiveWalletPaymentDialog

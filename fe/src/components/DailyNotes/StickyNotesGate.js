@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, Loader2, NotebookPen } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Loader2, NotebookPen } from 'lucide-react';
 
 import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
 import { dailyNotesAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import { getStoredAuth } from '../../utils/roleAccess';
@@ -20,9 +21,10 @@ import {
 } from '../../utils/approvalReturn';
 import { formatDisplayDate, carriedOverLabel } from '../../utils/dailyNotesTasks';
 import { setStickyNotesOverlay } from '../../utils/loginOverlayQueue';
+import { cn } from '../../lib/cn';
 
 /**
- * On login, show notes assigned to the current user.
+ * On login, show notes assigned to the current user as compact expandable strips.
  * Must-tick notes must be ticked before the rest of the app can be used.
  * Returned-sale notes cannot be ticked — staff open the sale and send it back.
  */
@@ -34,6 +36,7 @@ export default function StickyNotesGate() {
   const [togglingId, setTogglingId] = useState(null);
   const [dismissedGeneral, setDismissedGeneral] = useState(false);
   const [releasedIds, setReleasedIds] = useState([]);
+  const [expandedIds, setExpandedIds] = useState([]);
 
   const loadBlocking = useCallback(async () => {
     setLoading(true);
@@ -43,6 +46,7 @@ export default function StickyNotesGate() {
       setNotes(rows.filter((n) => !n.is_done));
       setDismissedGeneral(false);
       setReleasedIds([]);
+      setExpandedIds([]);
     } catch {
       setNotes([]);
     } finally {
@@ -60,6 +64,7 @@ export default function StickyNotesGate() {
     try {
       const res = await dailyNotesAPI.toggleDone(note.id);
       setNotes((prev) => prev.map((n) => (n.id === note.id ? res.data : n)).filter((n) => !n.is_done));
+      setExpandedIds((prev) => prev.filter((id) => id !== note.id));
     } catch (error) {
       toast.error(error.response?.data?.error || 'Could not tick this note');
     } finally {
@@ -78,6 +83,12 @@ export default function StickyNotesGate() {
     }
     setReleasedIds((prev) => (prev.includes(note.id) ? prev : [...prev, note.id]));
     navigate(path);
+  };
+
+  const toggleExpanded = (noteId) => {
+    setExpandedIds((prev) =>
+      prev.includes(noteId) ? prev.filter((id) => id !== noteId) : [...prev, noteId]
+    );
   };
 
   const visibleNotes = notes.filter((n) => !releasedIds.includes(n.id));
@@ -120,54 +131,109 @@ export default function StickyNotesGate() {
           <p className="mt-1 text-sm text-muted-foreground">
             {stickyBlocking
               ? returnedSaleOpen
-                ? 'The manager left a comment. Open that sale, update it, then send it back for approval. Ticking this note is not enough.'
-                : 'Tick each must-tick note below before you continue. You cannot use the rest of the system until these are sorted.'
-              : 'These notes were assigned to you. Read them, tick them if you are done, or continue.'}
+                ? 'Open each sale below, fix it, then send it back.'
+                : 'Tap a note to open it, then mark it done.'
+              : 'Tap a note to read it. Mark done when finished, or continue.'}
           </p>
         </div>
         <ul className="min-h-0 flex-1 divide-y overflow-y-auto" data-testid="sticky-notes-gate-list">
           {visibleNotes.map((note) => {
             const saleFix = noticeRequiresSaleFix(note);
+            const expanded = expandedIds.includes(note.id);
+            const title = note.title || noteKindLabel(note);
+            const carried = carriedOverLabel(note);
             return (
-              <li key={note.id} className="flex items-start gap-3 px-4 py-3">
-                {saleFix ? null : (
-                  <input
-                    type="checkbox"
-                    className="mt-1 h-4 w-4 shrink-0"
-                    checked={Boolean(note.is_done)}
-                    disabled={togglingId === note.id}
-                    onChange={() => handleToggle(note)}
-                    aria-label={`Tick note ${note.title || note.id}`}
-                    data-testid={`sticky-note-tick-${note.id}`}
-                  />
-                )}
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium">
-                    {note.title || noteKindLabel(note)}
-                  </p>
-                  <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-muted-foreground">
-                    {note.content}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {formatDisplayDate(note.note_date)}
-                    {note.author_name ? ` · from ${note.author_name}` : ''}
-                    {saleFix ? ' · Fix sale' : isStickyNote(note) ? ' · Must tick' : ''}
-                    {carriedOverLabel(note) ? ` · ${carriedOverLabel(note)}` : ''}
-                  </p>
-                  {saleFix ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="mt-2"
-                      data-testid={`sticky-note-open-sale-${note.id}`}
-                      onClick={() => handleOpenSale(note)}
-                    >
-                      Open sale
-                    </Button>
+              <li key={note.id} className="px-3 py-2" data-testid={`sticky-note-strip-${note.id}`}>
+                <div className="flex items-start gap-2">
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 items-start gap-2 rounded-md px-1 py-1 text-left hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => toggleExpanded(note.id)}
+                    aria-expanded={expanded}
+                    data-testid={`sticky-note-expand-${note.id}`}
+                  >
+                    <ChevronDown
+                      className={cn(
+                        'mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform',
+                        expanded ? 'rotate-0' : '-rotate-90',
+                      )}
+                      aria-hidden
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium leading-snug">{title}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-1">
+                        {saleFix ? (
+                          <Badge variant="destructive" className="text-[10px]">
+                            Fix sale
+                          </Badge>
+                        ) : isStickyNote(note) ? (
+                          <Badge variant="destructive" className="text-[10px]">
+                            Must tick
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-[10px]">
+                            Note
+                          </Badge>
+                        )}
+                        {note.author_name ? (
+                          <span className="text-[11px] text-muted-foreground">
+                            from {note.author_name}
+                          </span>
+                        ) : null}
+                        {carried ? (
+                          <span className="text-[11px] text-muted-foreground">{carried}</span>
+                        ) : null}
+                      </div>
+                    </div>
+                  </button>
+                  {togglingId === note.id ? (
+                    <Loader2 className="mt-1 h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
                   ) : null}
                 </div>
-                {togglingId === note.id ? (
-                  <Loader2 className="mt-1 h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
+
+                {expanded ? (
+                  <div
+                    className="mt-2 space-y-2 rounded-md border bg-muted/20 px-3 py-2"
+                    data-testid={`sticky-note-body-${note.id}`}
+                  >
+                    <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">
+                      {note.content || 'No details on this note.'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatDisplayDate(note.note_date)}
+                      {note.author_name ? ` · from ${note.author_name}` : ''}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {saleFix ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          data-testid={`sticky-note-open-sale-${note.id}`}
+                          onClick={() => handleOpenSale(note)}
+                        >
+                          Open sale
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={togglingId === note.id}
+                          data-testid={`sticky-note-tick-${note.id}`}
+                          onClick={() => handleToggle(note)}
+                        >
+                          {togglingId === note.id ? 'Saving…' : 'Mark done'}
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => toggleExpanded(note.id)}
+                      >
+                        Collapse
+                      </Button>
+                    </div>
+                  </div>
                 ) : null}
               </li>
             );

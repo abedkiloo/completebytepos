@@ -27,6 +27,11 @@ jest.mock('../../utils/toast', () => ({
   toast: { error: jest.fn(), warning: jest.fn() },
 }));
 
+async function expandNote(id) {
+  fireEvent.click(await screen.findByTestId(`sticky-note-expand-${id}`));
+  expect(await screen.findByTestId(`sticky-note-body-${id}`)).toBeInTheDocument();
+}
+
 describe('StickyNotesGate', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -41,7 +46,7 @@ describe('StickyNotesGate', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  test('blocks until sticky notes are ticked', async () => {
+  test('shows compact strips and expands to mark sticky notes done', async () => {
     dailyNotesAPI.blocking.mockResolvedValue({
       data: [
         {
@@ -64,6 +69,11 @@ describe('StickyNotesGate', () => {
     expect(await screen.findByTestId('sticky-notes-gate')).toBeInTheDocument();
     expect(screen.getByText('Till variance')).toBeInTheDocument();
     expect(screen.getByText(/Carried over 3 days/)).toBeInTheDocument();
+    expect(screen.queryByText(/Explain the short/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('sticky-note-tick-5')).not.toBeInTheDocument();
+
+    await expandNote(5);
+    expect(screen.getByText(/Explain the short/)).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('sticky-note-tick-5'));
     await waitFor(() => expect(dailyNotesAPI.toggleDone).toHaveBeenCalledWith(5));
     await waitFor(() => expect(screen.queryByTestId('sticky-notes-gate')).not.toBeInTheDocument());
@@ -82,7 +92,8 @@ describe('StickyNotesGate', () => {
     });
     dailyNotesAPI.toggleDone.mockRejectedValue({});
     render(<StickyNotesGate />);
-    fireEvent.click(await screen.findByTestId('sticky-note-tick-9'));
+    await expandNote(9);
+    fireEvent.click(screen.getByTestId('sticky-note-tick-9'));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Could not tick this note'));
     fireEvent.click(screen.getByRole('button', { name: /Refresh/i }));
     await waitFor(() => expect(dailyNotesAPI.blocking).toHaveBeenCalledTimes(2));
@@ -106,6 +117,9 @@ describe('StickyNotesGate', () => {
     render(<StickyNotesGate />);
     expect(await screen.findByTestId('sticky-notes-gate')).toBeInTheDocument();
     expect(screen.getByText('Restock sugar')).toBeInTheDocument();
+    expect(screen.queryByText(/fill the shelf/i)).not.toBeInTheDocument();
+
+    await expandNote(11);
     expect(screen.getByText(/fill the shelf/i)).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('sticky-notes-continue'));
     expect(screen.queryByTestId('sticky-notes-gate')).not.toBeInTheDocument();
@@ -130,6 +144,9 @@ describe('StickyNotesGate', () => {
     render(<StickyNotesGate />);
     expect(await screen.findByText(/Returned sale — open and send back/i)).toBeInTheDocument();
     expect(screen.queryByTestId('sticky-note-tick-8')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('sticky-note-open-sale-8')).not.toBeInTheDocument();
+
+    await expandNote(8);
     fireEvent.click(screen.getByTestId('sticky-note-open-sale-8'));
     expect(mockNavigate).toHaveBeenCalledWith('/pos/billing?sale=99');
     expect(dailyNotesAPI.toggleDone).not.toHaveBeenCalled();
@@ -154,7 +171,8 @@ describe('StickyNotesGate', () => {
       data: { id: 12, is_sticky: false, is_done: true },
     });
     render(<StickyNotesGate />);
-    fireEvent.click(await screen.findByTestId('sticky-note-tick-12'));
+    await expandNote(12);
+    fireEvent.click(screen.getByTestId('sticky-note-tick-12'));
     await waitFor(() => expect(dailyNotesAPI.toggleDone).toHaveBeenCalledWith(12));
   });
 });

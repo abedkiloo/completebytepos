@@ -152,7 +152,7 @@ describe('DailyNotes', () => {
     });
   });
 
-  test('lists notes, completes them, and keeps long content scrollable', async () => {
+  test('lists notes as strips, expands for content, and marks done', async () => {
     render(<DailyNotes />);
     expect(await screen.findByText('Till')).toBeInTheDocument();
     expect(screen.getByTestId('note-carried-over-5')).toHaveTextContent(
@@ -161,9 +161,12 @@ describe('DailyNotes', () => {
     expect(screen.getByTestId('task-carried-over-3')).toHaveTextContent(
       'Carried over 1 day'
     );
-    const content = screen.getByTestId('daily-note-content-5');
+    expect(screen.queryByTestId('daily-note-content-5')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('daily-note-expand-5'));
+    const content = await screen.findByTestId('daily-note-content-5');
     expect(content.className).toMatch(/overflow-y-auto/);
-    expect(content.className).toMatch(/max-h-32/);
+    expect(content.className).toMatch(/max-h-48/);
     fireEvent.click(screen.getByLabelText(/Tick note Till/i));
     await waitFor(() => expect(dailyNotesAPI.toggleDone).toHaveBeenCalledWith(5));
   });
@@ -177,7 +180,8 @@ describe('DailyNotes', () => {
   test('author can open edit for their own note', async () => {
     render(<DailyNotes />);
     expect(await screen.findByText('Mine')).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('daily-note-edit-6'));
+    fireEvent.click(screen.getByTestId('daily-note-expand-6'));
+    fireEvent.click(await screen.findByTestId('daily-note-edit-6'));
     expect(await screen.findByTestId('daily-note-form-stub')).toHaveTextContent('edit');
     fireEvent.click(screen.getByTestId('daily-note-delete-6'));
   });
@@ -198,7 +202,8 @@ describe('DailyNotes', () => {
     render(<DailyNotes />);
     expect(await screen.findByTestId('daily-notes-board')).toBeInTheDocument();
     expect(screen.getByTestId('daily-notes-column-todo')).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('daily-note-move-5-doing'));
+    fireEvent.click(screen.getByTestId('daily-note-expand-5'));
+    fireEvent.click(await screen.findByTestId('daily-note-move-5-doing'));
     await waitFor(() =>
       expect(dailyNotesAPI.patch).toHaveBeenCalledWith(5, { board_column: 'doing' }),
     );
@@ -209,6 +214,7 @@ describe('DailyNotes', () => {
       response: { data: { error: 'Nope' } },
     });
     render(<DailyNotes />);
+    fireEvent.click(await screen.findByTestId('daily-note-expand-5'));
     fireEvent.click(await screen.findByTestId('daily-note-move-5-doing'));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Nope'));
   });
@@ -216,6 +222,7 @@ describe('DailyNotes', () => {
   test('resubmits an approval rejection from a note card', async () => {
     expensesAPI.resubmit.mockResolvedValue({});
     render(<DailyNotes />);
+    fireEvent.click(await screen.findByTestId('daily-note-expand-7'));
     const buttons = await screen.findAllByRole('button', { name: /Send back for approval/i });
     fireEvent.click(buttons[buttons.length - 1]);
     await waitFor(() => expect(expensesAPI.resubmit).toHaveBeenCalledWith(44));
@@ -226,6 +233,7 @@ describe('DailyNotes', () => {
 
   test('opens POS to fix a returned sale from a sticky note', async () => {
     render(<DailyNotes />);
+    fireEvent.click(await screen.findByTestId('daily-note-expand-8'));
     fireEvent.click(await screen.findByRole('button', { name: /Open sale/i }));
     expect(mockNavigate).toHaveBeenCalledWith('/pos/billing?sale=99');
     expect(screen.queryByLabelText(/Tick note Approval rejected: sale completion/i)).not.toBeInTheDocument();

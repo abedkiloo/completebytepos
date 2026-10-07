@@ -88,6 +88,45 @@ describe('SaleDetailDialog', () => {
     expect(screen.getByText(/Still refundable/)).toBeInTheDocument();
   });
 
+  it('shows accountability activity when the sale payload includes it', () => {
+    render(
+      <SaleDetailDialog
+        sale={{
+          ...sale,
+          activity: [
+            {
+              id: 'recorded-1',
+              kind: 'recorded',
+              label: 'Sale recorded',
+              actor: 'cashier1',
+              actor_role: 'Cashier',
+              at: '2026-06-24T10:00:00Z',
+              comment: '',
+              detail: '',
+            },
+            {
+              id: 'void-1',
+              kind: 'void',
+              label: 'Void / refund applied',
+              actor: 'manager1',
+              actor_role: 'Applied by',
+              at: '2026-06-24T12:00:00Z',
+              comment: 'Damaged item',
+              detail: '',
+            },
+          ],
+        }}
+        open
+        onOpenChange={() => {}}
+      />
+    );
+
+    expect(screen.getByTestId('sale-activity-trail')).toBeInTheDocument();
+    expect(screen.getByText(/Cashier: cashier1/)).toBeInTheDocument();
+    expect(screen.getByText(/Applied by: manager1/)).toBeInTheDocument();
+    expect(screen.getByText('Damaged item')).toBeInTheDocument();
+  });
+
   it('omits fully returned lines from the receipt', () => {
     render(
       <SaleDetailDialog

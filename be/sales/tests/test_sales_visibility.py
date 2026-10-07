@@ -78,7 +78,18 @@ class SalesVisibilityTest(TestCase):
     def test_user_sees_all_debt_flags(self):
         self.assertTrue(user_sees_all_debt(self.admin))
         self.assertTrue(user_sees_all_debt(self.manager))
-        self.assertFalse(user_sees_all_debt(self.sales_a))
+        # Default Sales role can collect debt, so they get the full debtors board.
+        self.assertTrue(user_sees_all_debt(self.sales_a))
+
+        view_only = Role.objects.create(name='Debt Viewer Only', is_active=True)
+        view_only.permissions.add(
+            Permission.objects.get(module='debt_management', action='view')
+        )
+        viewer = User.objects.create_user('vis_debt_viewer', password='x')
+        UserProfile.objects.create(
+            user=viewer, role='cashier', custom_role=view_only, is_active=True,
+        )
+        self.assertFalse(user_sees_all_debt(viewer))
 
     def test_view_all_permission_grants_storewide(self):
         perm = Permission.objects.get(module='sales', action='view_all')

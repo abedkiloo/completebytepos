@@ -4,24 +4,22 @@ import {
 } from './saleUnitPrice';
 
 describe('saleUnitPrice', () => {
-  it('allows sales staff to charge catalog price or higher', () => {
+  it('allows charging catalog price or higher', () => {
     expect(
       isSaleUnitPriceOverrideAllowed({
         catalogPrice: 20,
         requestedPrice: 20,
-        mayEditPricing: false,
       })
     ).toBe(true);
     expect(
       isSaleUnitPriceOverrideAllowed({
         catalogPrice: 20,
         requestedPrice: 50,
-        mayEditPricing: false,
       })
     ).toBe(true);
   });
 
-  it('blocks sales staff from undercutting catalog price', () => {
+  it('blocks undercutting catalog price for cashiers', () => {
     expect(
       isSaleUnitPriceOverrideAllowed({
         catalogPrice: 20,
@@ -38,14 +36,21 @@ describe('saleUnitPrice', () => {
     ).toMatch(/below the selling price/i);
   });
 
-  it('allows managers to set any non-negative price', () => {
+  it('blocks undercutting catalog price even for pricing editors', () => {
     expect(
       isSaleUnitPriceOverrideAllowed({
         catalogPrice: 20,
         requestedPrice: 5,
         mayEditPricing: true,
       })
-    ).toBe(true);
+    ).toBe(false);
+    expect(
+      saleUnitPriceOverrideError({
+        catalogPrice: 20,
+        requestedPrice: 5,
+        mayEditPricing: true,
+      })
+    ).toMatch(/below the selling price/i);
   });
 
   it('rejects negative prices', () => {

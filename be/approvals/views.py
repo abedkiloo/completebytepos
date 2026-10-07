@@ -1,4 +1,5 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db.models import Q
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -62,10 +63,12 @@ class PendingChangeViewSet(viewsets.ReadOnlyModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         if user_may_edit_financial_fields(request.user):
             return super().retrieve(request, *args, **kwargs)
-        change = PendingChange.objects.filter(
-            pk=kwargs.get('pk'),
-            made_by=request.user,
-        ).first()
+        # Maker or checker who decided the row may open it for the accountability trail.
+        change = (
+            PendingChange.objects.filter(pk=kwargs.get('pk'))
+            .filter(Q(made_by=request.user) | Q(checked_by=request.user))
+            .first()
+        )
         if not change:
             raise PermissionDenied('Submission not found.')
         return Response(PendingChangeSerializer(change).data)
@@ -84,6 +87,25 @@ class PendingChangeViewSet(viewsets.ReadOnlyModelViewSet):
         qs = self.get_queryset().filter(made_by=request.user)
         limit = min(int(request.query_params.get('limit', 20) or 20), 100)
         serializer = self.get_serializer(qs.order_by('-made_at')[:limit], many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='my-decisions')
+    def my_decisions(self, request):
+        """Rows this user approved or rejected — accountability trail."""
+        self._require_checker(request)
+        qs = (
+            PendingChange.objects.filter(checked_by=request.user)
+            .exclude(status=PendingChange.STATUS_PENDING)
+            .select_related('made_by', 'checked_by')
+        )
+        status_filter = self._status_param(request)
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        action_type = request.query_params.get('action_type')
+        if action_type:
+            qs = qs.filter(action_type=action_type)
+        limit = min(int(request.query_params.get('limit', 50) or 50), 200)
+        serializer = self.get_serializer(qs.order_by('-checked_at', '-id')[:limit], many=True)
         return Response(serializer.data)
 
     @action(detail=True, methods=['post'])

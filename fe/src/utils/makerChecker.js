@@ -52,7 +52,7 @@ const REASON_CONTEXT_COPY = {
     label: 'Reason for void / refund',
     placeholder: 'Why is this sale being voided or refunded?',
     summary:
-      'Use Void / refund for a customer return. You can reverse the whole sale or selected lines. The original receipt stays on record. Stock and books change only after approval.',
+      'Use Void / refund for a customer return. You can reverse the whole sale or selected lines. It always needs admin approval before stock and books change. The original receipt stays on record. Super Admin can apply it immediately.',
   },
   sale_rollback: {
     label: 'Reason for sale rollback',

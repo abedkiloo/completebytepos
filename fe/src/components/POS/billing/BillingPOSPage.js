@@ -62,6 +62,7 @@ import { canQuickAddCustomerAtPos, customersShowWalletBalance } from '../../../u
 import { CustomerWalletBalance } from '../../Customers/CustomerWalletBalance';
 import { AccountPaymentBlock } from '../AccountPaymentBlock';
 import BrandMark from '../../Shared/BrandMark';
+import CenterScreenLoader from '../../Shared/CenterScreenLoader';
 import { resolveStoreName } from '../../../utils/storeBranding';
 import {
   BILLING_AMOUNT_RECEIVED_CLASS,
@@ -345,12 +346,13 @@ export default function BillingPOSPage() {
                           <td className="px-2 py-3 text-right">
                             <Input
                               type="number"
-                              min={mayEditPricing ? 0 : item.catalog_price ?? item.price}
+                              min={item.catalog_price ?? item.selling_price ?? item.price}
                               step="0.01"
                               className="ml-auto h-8 w-24 px-2 text-right tabular-nums"
                               defaultValue={item.price}
                               key={`${key}-price-${item.price}`}
                               aria-label={`Unit price for ${item.name}`}
+                              title="Selling price or higher"
                               onBlur={(e) => {
                                 const catalog =
                                   item.catalog_price ?? item.selling_price ?? item.price;
@@ -798,6 +800,12 @@ export default function BillingPOSPage() {
           state.setPaymentReference(receipt);
           state.checkout({ paymentReference: receipt });
         }}
+      />
+
+      {/* Keep register load UI as-is; only overlay checkout submit (not STK wait). */}
+      <CenterScreenLoader
+        open={Boolean(state.submitting) && !stkOpen}
+        label="Processing sale…"
       />
     </>
   );

@@ -120,6 +120,31 @@ describe('StockAdjustmentModal', () => {
     expect(onSave).toHaveBeenCalled();
   });
 
+  test('shows center-screen loader while stock adjust is in flight', async () => {
+    let resolveAdjust;
+    inventoryAPI.adjust.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveAdjust = resolve;
+        })
+    );
+
+    render(<StockAdjustmentModal product={variantProduct} onClose={jest.fn()} onSave={jest.fn()} />);
+    await screen.findByText(/Large/);
+
+    fireEvent.change(screen.getAllByPlaceholderText('+5 or −2')[0], { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: /apply adjustment/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /confirm & adjust/i }));
+
+    expect(await screen.findByTestId('center-screen-loader')).toBeInTheDocument();
+    expect(screen.getByText('Saving stock adjustment…')).toBeInTheDocument();
+
+    resolveAdjust({ status: 200 });
+    await waitFor(() => {
+      expect(screen.queryByTestId('center-screen-loader')).not.toBeInTheDocument();
+    });
+  });
+
   test('shows pending approval toast on 202 response', async () => {
     inventoryAPI.adjust.mockResolvedValue({ status: 202 });
 

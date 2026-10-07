@@ -37,8 +37,10 @@ import {
   userCanOpenSaleApprovals,
 } from '../../utils/saleApprovalsQueue';
 import HelpHint from '../Shared/HelpHint';
+import CenterScreenLoader from '../Shared/CenterScreenLoader';
 import PastDatedNotice from '../Approvals/PastDatedNotice';
 import ApprovalDetails from '../Approvals/ApprovalDetails';
+import MyDecisionsTrail from '../Approvals/MyDecisionsTrail';
 import {
   isPastDated,
   pastDatedBlocksUser,
@@ -46,6 +48,9 @@ import {
   userMayApprovePastItems,
 } from '../../utils/pastDatedApproval';
 import { cn } from '../../lib/cn';
+
+const TAB_WAITING = 'waiting';
+const TAB_HISTORY = 'history';
 
 const KIND_SALE = 'sale';
 const KIND_COLLECTION = 'collection';
@@ -168,36 +173,41 @@ function SaleReviewActions({ sale, onResolved, onClose }) {
 
   if (returned || adminOnly) return null;
 
-  return showReject ? (
-    <div className="w-full space-y-2">
-      <Label htmlFor={`reject-${sale.id}`}>Reason</Label>
-      <Input
-        id={`reject-${sale.id}`}
-        value={rejectReason}
-        onChange={(event) => setRejectReason(event.target.value)}
-        placeholder="Why should this sale not complete?"
-      />
-      <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="destructive" onClick={reject} disabled={busy}>
-          Confirm reject
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => setShowReject(false)} disabled={busy}>
-          Cancel
-        </Button>
-      </div>
-    </div>
-  ) : (
-    <div className="flex flex-wrap items-center gap-2">
-      <Button size="sm" onClick={approve} disabled={busy}>
-        {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}
-        Approve
-      </Button>
-      <HelpHint actionKey="sale_complete" />
-      <Button size="sm" variant="outline" onClick={() => setShowReject(true)} disabled={busy}>
-        <X className="mr-1 h-4 w-4" />
-        Reject
-      </Button>
-    </div>
+  return (
+    <>
+      <CenterScreenLoader open={busy} label="Processing approval…" />
+      {showReject ? (
+        <div className="w-full space-y-2">
+          <Label htmlFor={`reject-${sale.id}`}>Reason</Label>
+          <Input
+            id={`reject-${sale.id}`}
+            value={rejectReason}
+            onChange={(event) => setRejectReason(event.target.value)}
+            placeholder="Why should this sale not complete?"
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="destructive" onClick={reject} disabled={busy}>
+              Confirm reject
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setShowReject(false)} disabled={busy}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" onClick={approve} disabled={busy}>
+            {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}
+            Approve
+          </Button>
+          <HelpHint actionKey="sale_complete" />
+          <Button size="sm" variant="outline" onClick={() => setShowReject(true)} disabled={busy}>
+            <X className="mr-1 h-4 w-4" />
+            Reject
+          </Button>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -268,36 +278,41 @@ function CollectionReviewActions({ change, onResolved, onClose }) {
 
   if (adminOnly) return null;
 
-  return showReject ? (
-    <div className="w-full space-y-2">
-      <Label htmlFor={`reject-collection-${change.id}`}>Reason</Label>
-      <Input
-        id={`reject-collection-${change.id}`}
-        value={rejectReason}
-        onChange={(event) => setRejectReason(event.target.value)}
-        placeholder="Why should this collection not apply?"
-      />
-      <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="destructive" onClick={reject} disabled={busy}>
-          Confirm reject
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => setShowReject(false)} disabled={busy}>
-          Cancel
-        </Button>
-      </div>
-    </div>
-  ) : (
-    <div className="flex flex-wrap items-center gap-2">
-      <Button size="sm" onClick={approve} disabled={busy}>
-        {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}
-        Approve
-      </Button>
-      <HelpHint actionKey="debt_collection" />
-      <Button size="sm" variant="outline" onClick={() => setShowReject(true)} disabled={busy}>
-        <X className="mr-1 h-4 w-4" />
-        Reject
-      </Button>
-    </div>
+  return (
+    <>
+      <CenterScreenLoader open={busy} label="Processing approval…" />
+      {showReject ? (
+        <div className="w-full space-y-2">
+          <Label htmlFor={`reject-collection-${change.id}`}>Reason</Label>
+          <Input
+            id={`reject-collection-${change.id}`}
+            value={rejectReason}
+            onChange={(event) => setRejectReason(event.target.value)}
+            placeholder="Why should this collection not apply?"
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="destructive" onClick={reject} disabled={busy}>
+              Confirm reject
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setShowReject(false)} disabled={busy}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" onClick={approve} disabled={busy}>
+            {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}
+            Approve
+          </Button>
+          <HelpHint actionKey="debt_collection" />
+          <Button size="sm" variant="outline" onClick={() => setShowReject(true)} disabled={busy}>
+            <X className="mr-1 h-4 w-4" />
+            Reject
+          </Button>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -318,10 +333,18 @@ export default function SaleApprovalsPage() {
   const allowed = userCanOpenSaleApprovals(permissions);
   const canSales = userCanApproveSales(permissions);
   const canCollections = userCanApproveDebtCollections(permissions);
+  const [tab, setTab] = useState(TAB_WAITING);
   const [sales, setSales] = useState([]);
   const [collections, setCollections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
+
+  const historyActionTypes = useMemo(() => {
+    const types = [];
+    if (canSales) types.push('sale_complete');
+    if (canCollections) types.push('debt_collection');
+    return types;
+  }, [canSales, canCollections]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -363,8 +386,8 @@ export default function SaleApprovalsPage() {
   }, [canSales, canCollections]);
 
   useEffect(() => {
-    if (allowed) load();
-  }, [allowed, load]);
+    if (allowed && tab === TAB_WAITING) load();
+  }, [allowed, load, tab]);
 
   const { waiting: waitingSales, returned: returnedSales } = useMemo(
     () => partitionSaleApprovalQueue(sales),
@@ -383,14 +406,44 @@ export default function SaleApprovalsPage() {
     <PageShell>
       <PageHeader
         title="Approve sales"
-        description="Tap a row to review the sale or collection, then approve or reject from the popup."
+        description="Review waiting sales and collections, or open My decisions for a trail of what you already approved or rejected."
         icon={CheckCircle2}
-      >
-        <Button type="button" variant="outline" onClick={load} disabled={loading}>
-          Refresh list
-        </Button>
-      </PageHeader>
-      {loading ? (
+      />
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-1" role="tablist" aria-label="Sale approvals views">
+          <Button
+            type="button"
+            size="sm"
+            variant={tab === TAB_WAITING ? 'default' : 'outline'}
+            role="tab"
+            aria-selected={tab === TAB_WAITING}
+            onClick={() => setTab(TAB_WAITING)}
+          >
+            Waiting
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={tab === TAB_HISTORY ? 'default' : 'outline'}
+            role="tab"
+            aria-selected={tab === TAB_HISTORY}
+            onClick={() => setTab(TAB_HISTORY)}
+          >
+            My decisions
+          </Button>
+        </div>
+        {tab === TAB_WAITING ? (
+          <Button type="button" variant="outline" onClick={load} disabled={loading}>
+            Refresh list
+          </Button>
+        ) : null}
+      </div>
+      {tab === TAB_HISTORY ? (
+        <MyDecisionsTrail
+          actionTypes={historyActionTypes}
+          emptyDescription="Sales and collections you approve or reject will appear here with the decision time and any comments."
+        />
+      ) : loading ? (
         <PageLoading />
       ) : empty ? (
         <EmptyState

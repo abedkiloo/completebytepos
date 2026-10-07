@@ -72,6 +72,65 @@ class ProductHistoryAdminAPITests(ManagerAPITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_variant_product_requires_variant_id_and_filters(self):
+        from products.models import ProductVariant
+
+        self.product.has_variants = True
+        self.product.stock_quantity = 0
+        self.product.save(update_fields=['has_variants', 'stock_quantity'])
+        variant_a = ProductVariant.objects.create(
+            product=self.product,
+            sku='HIST-API-001-A',
+            price=Decimal('100'),
+            cost=Decimal('50'),
+            stock_quantity=10,
+            is_active=True,
+        )
+        variant_b = ProductVariant.objects.create(
+            product=self.product,
+            sku='HIST-API-001-B',
+            price=Decimal('100'),
+            cost=Decimal('50'),
+            stock_quantity=5,
+            is_active=True,
+        )
+        self.client.post(
+            '/api/inventory/purchase/',
+            {
+                'product_id': self.product.id,
+                'variant_id': variant_a.id,
+                'quantity': 3,
+                'unit_cost': '50.00',
+            },
+            format='json',
+        )
+        self.client.post(
+            '/api/inventory/purchase/',
+            {
+                'product_id': self.product.id,
+                'variant_id': variant_b.id,
+                'quantity': 2,
+                'unit_cost': '50.00',
+            },
+            format='json',
+        )
+
+        missing = self.client.get(
+            '/api/inventory/product_history/',
+            {'product_id': self.product.id},
+        )
+        self.assertEqual(missing.status_code, status.HTTP_400_BAD_REQUEST, missing.data)
+        self.assertTrue(missing.data.get('requires_variant'))
+
+        filtered = self.client.get(
+            '/api/inventory/product_history/',
+            {'product_id': self.product.id, 'variant_id': variant_a.id},
+        )
+        self.assertEqual(filtered.status_code, status.HTTP_200_OK, filtered.data)
+        self.assertGreaterEqual(len(filtered.data), 1)
+        for row in filtered.data:
+            self.assertEqual(row.get('variant') or row.get('variant_id'), variant_a.id)
+
 
 class ProductHistorySalesDeniedTests(SalesAPITestCase):
     @classmethod

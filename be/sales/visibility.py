@@ -72,7 +72,20 @@ def user_sees_all_debt(user) -> bool:
     """
     Store-wide Debt Management (every customer still owing).
 
-    Same audience as store-wide sales. Sales staff see only customers whose
-    unpaid sale (or field order) they originated.
+    Managers / admins (store-wide sales) always see every debtor.
+
+    Anyone who can collect debt (``debt_management.update``) also sees the full
+    board — customer profiles already show wallet debt for every customer, and
+    hiding those rows from Debt Management blocked payment.
     """
-    return user_sees_all_sales(user)
+    if user_sees_all_sales(user):
+        return True
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+    profile = getattr(user, 'profile', None)
+    if profile is None:
+        return False
+    try:
+        return bool(profile.has_permission('debt_management', 'update'))
+    except Exception:
+        return False

@@ -16,10 +16,6 @@ jest.mock('../Approvals/ChangeReasonField', () => ({
   ),
 }));
 
-jest.mock('../../hooks/useStoreSettings', () => ({
-  useStoreSettings: jest.fn(() => ({ settings: { maker_checker_enabled: false } })),
-}));
-
 const baseSale = {
   id: 1,
   sale_number: 'S-001',
@@ -54,11 +50,6 @@ const baseSale = {
 };
 
 describe('RefundSaleDialog', () => {
-  beforeEach(() => {
-    const { useStoreSettings } = require('../../hooks/useStoreSettings');
-    useStoreSettings.mockReturnValue({ settings: { maker_checker_enabled: false } });
-  });
-
   it('blocks refund UI for non-refundable sales', () => {
     render(
       <RefundSaleDialog
@@ -76,7 +67,7 @@ describe('RefundSaleDialog', () => {
     );
 
     expect(screen.getByText(/cannot be voided/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Confirm void/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Submit for approval/i })).not.toBeInTheDocument();
   });
 
   it('submits full refund payload with reason', async () => {
@@ -94,8 +85,8 @@ describe('RefundSaleDialog', () => {
     fireEvent.change(screen.getByLabelText(/Reason for void/i), {
       target: { value: 'Customer return' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /Confirm void/i }));
-    fireEvent.click(await screen.findByRole('button', { name: /^Confirm void \/ refund$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Submit for approval/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Submit for approval$/i }));
 
     expect(onSubmit).toHaveBeenCalledWith({
       full: true,
@@ -183,8 +174,8 @@ describe('RefundSaleDialog', () => {
     fireEvent.change(screen.getByLabelText(/Reason for void/i), {
       target: { value: 'Duplicate invoice lines' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /Confirm void/i }));
-    fireEvent.click(await screen.findByRole('button', { name: /^Confirm void \/ refund$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Submit for approval/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Submit for approval$/i }));
 
     expect(onSubmit).toHaveBeenCalledWith({
       full: false,
@@ -193,10 +184,7 @@ describe('RefundSaleDialog', () => {
     });
   });
 
-  it('shows submit for approval when maker-checker is on', () => {
-    const { useStoreSettings } = require('../../hooks/useStoreSettings');
-    useStoreSettings.mockReturnValue({ settings: { maker_checker_enabled: true } });
-
+  it('always shows submit for admin approval', () => {
     render(
       <RefundSaleDialog
         sale={baseSale}
@@ -208,5 +196,6 @@ describe('RefundSaleDialog', () => {
     );
 
     expect(screen.getByRole('button', { name: /Submit for approval/i })).toBeInTheDocument();
+    expect(screen.getAllByText(/admin approval/i).length).toBeGreaterThan(0);
   });
 });

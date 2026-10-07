@@ -121,7 +121,16 @@ class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         query_params = self.request.query_params
         
         # Extract all filter parameters
-        for param in ['branch_id', 'show_all', 'category', 'status', 'date_from', 'date_to', 'payment_method']:
+        for param in [
+            'branch_id',
+            'show_all',
+            'category',
+            'status',
+            'date_from',
+            'date_to',
+            'payment_method',
+            'approved_by',
+        ]:
             if param in query_params:
                 filters[param] = query_params.get(param)
         

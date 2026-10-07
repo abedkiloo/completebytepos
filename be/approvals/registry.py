@@ -87,7 +87,7 @@ CHECKER_MODULE_BY_ACTION: dict[str, str] = {
     ACTION_RECEIPT_LEGAL: 'settings',
     ACTION_ROLE_PERMISSIONS: 'roles',
     ACTION_SALE_COMPLETED_EDIT: 'sales',
-    ACTION_SALE_REFUND: 'sales',
+    ACTION_SALE_REFUND: 'settings',
     ACTION_SALE_ROLLBACK: 'settings',
     ACTION_SALE_COMPLETE: 'sales',
     ACTION_SALE_BACKFILL: 'sales',

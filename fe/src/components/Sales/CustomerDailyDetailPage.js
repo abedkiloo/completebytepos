@@ -27,6 +27,7 @@ import { userCanRefundSales, userCanRollbackSales, handleSaleRefundResponse } fr
 import { userHasAdminSaleOverride } from '../../utils/saleCompletionApproval';
 import { saleFinalStatusLabel, saleStatusBadgeTone } from '../../utils/saleItemDisplay';
 import { pendingApprovalToastMessage } from '../../utils/makerChecker';
+import CenterScreenLoader from '../Shared/CenterScreenLoader';
 
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -136,10 +137,8 @@ export default function CustomerDailyDetailPage() {
     try {
       const res = await salesAPI.refund(refundSale.id, body);
       handleSaleRefundResponse(res, {
-        onRequiresApproval: (data) => {
-          toast.warning(pendingApprovalToastMessage('Sale refund', data.pending_approval_id));
-        },
-        onImmediate: () => toast.success('Sale refunded'),
+        onApplied: () => toast.success('Sale refunded'),
+        onPending: () => toast.success(pendingApprovalToastMessage()),
       });
       setRefundSale(null);
       load();
@@ -526,6 +525,16 @@ export default function CustomerDailyDetailPage() {
           load();
           dispatchNavBadgesRefresh();
         }}
+      />
+      <CenterScreenLoader
+        open={refundSubmitting || rollbackSubmitting}
+        label={
+          refundSubmitting
+            ? 'Submitting void…'
+            : rollbackSubmitting
+              ? 'Submitting rollback…'
+              : 'Loading…'
+        }
       />
     </PageShell>
   );

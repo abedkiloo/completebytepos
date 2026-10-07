@@ -8,10 +8,10 @@ export const ACTION_HELP = {
     shortLabel: 'Void / refund',
     title: 'Void or refund a sale',
     hover:
-      'Use this when a customer returns goods, or you need to reverse some or all of a real sale. You can refund the whole receipt or selected lines. The original sale stays on record.',
-    confirmTitle: 'Confirm void / refund?',
+      'Use this when a customer returns goods, or you need to reverse some or all of a real sale. You can refund the whole receipt or selected lines. It waits for admin approval before stock and books change. The original sale stays on record.',
+    confirmTitle: 'Submit void / refund?',
     confirmBody:
-      'This reverses stock, revenue, and customer balances for the quantities you chose. The original receipt is kept for audit — it is not deleted. Do not use this to undo a mistaken checkout; use Roll back instead.',
+      'This void/refund is queued for admin approval. Stock, revenue, and customer balances reverse only after an admin approves. Super Admin can apply it immediately. The original receipt is kept for audit — it is not deleted. Do not use this to undo a mistaken checkout; use Roll back instead.',
     contrast:
       'Not for a cashier mistake. Roll back is for duplicate or wrong-till sales.',
   },

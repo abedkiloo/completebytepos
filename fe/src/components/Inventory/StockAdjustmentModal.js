@@ -21,6 +21,7 @@ import {
 import { isValidStockAdjustmentQuantity } from '../../utils/variantPayload';
 import { STOCK_ADJUST_HINT } from '../../utils/productDisplay';
 import CommitConfirm from '../Shared/CommitConfirm';
+import CenterScreenLoader from '../Shared/CenterScreenLoader';
 import { formatSignedQty } from '../../utils/commitConfirm';
 
 const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
@@ -426,6 +427,10 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
       confirmText={makerCheckerOn ? 'Submit for approval' : 'Confirm & adjust'}
       onConfirm={confirmCommit}
       variant="warning"
+    />
+    <CenterScreenLoader
+      open={loading}
+      label={makerCheckerOn ? 'Submitting for approval…' : 'Saving stock adjustment…'}
     />
     </>
   );

@@ -20,6 +20,82 @@ def debt_amount_from_balance(balance) -> Decimal:
     return abs(bal) if bal < 0 else Decimal('0')
 
 
+def underpaid_pos_sales_qs():
+    return (
+        Sale.objects.filter(
+            status='completed',
+            amount_paid__lt=F('total'),
+            customer_id__isnull=False,
+        )
+        .exclude(refund_status='refunded')
+        .exclude(sale_type='normal')
+    )
+
+
+def underpaid_pos_sales_for_customer(customer_id: int):
+    return underpaid_pos_sales_qs().filter(customer_id=customer_id).select_related(
+        'customer'
+    ).order_by('id')
+
+
+def sale_needs_wallet_debt_heal(sale: Sale) -> bool:
+    """
+    True when an underpaid POS sale is missing from the customer wallet.
+
+    Do **not** heal when active debt rows still exist and match (or exceed) the
+    unpaid total after wallet settlements — settlements credit the wallet without
+    changing sale.amount_paid, and re-syncing would wipe paid-down balances.
+    """
+    from sales.sale_debt_sync import (
+        active_sale_debt_amount,
+        debt_already_cleared_from_wallet,
+        sale_unpaid_balance,
+    )
+
+    unpaid = sale_unpaid_balance(sale)
+    if unpaid <= 0:
+        return False
+    if debt_already_cleared_from_wallet(sale):
+        return True
+    active = active_sale_debt_amount(sale)
+    return active == 0
+
+
+def customer_ids_needing_wallet_debt_heal() -> set:
+    """Customers with underpaid POS sales that never posted (or stayed stale) on the wallet."""
+    ids = set()
+    for sale in underpaid_pos_sales_qs().only(
+        'id', 'total', 'amount_paid', 'customer_id', 'status', 'sale_type'
+    ):
+        if sale_needs_wallet_debt_heal(sale):
+            ids.add(sale.customer_id)
+    return ids
+
+
+def ensure_wallet_matches_unpaid_sales(customer: Customer, *, user=None) -> int:
+    """
+    Post missing wallet debt for underpaid POS sales stuck off the wallet.
+
+    Same repair as ``repair_sale_debt``, but only for the missing/stale cases so
+    partial collections are not undone. Returns how many sales were adjusted.
+    """
+    from sales.sale_debt_sync import sync_sale_customer_debt
+
+    fixed = 0
+    for sale in underpaid_pos_sales_for_customer(customer.pk):
+        if not sale_needs_wallet_debt_heal(sale):
+            continue
+        sync_sale_customer_debt(
+            sale,
+            user=user,
+            reason=f'Debt board sync for {sale.sale_number}',
+        )
+        fixed += 1
+    if fixed:
+        customer.refresh_from_db()
+    return fixed
+
+
 def aging_bucket_for_days(days: int) -> str:
     if days <= 7:
         return '0_7'
@@ -132,9 +208,18 @@ def _visible_debtor_customer_ids(user) -> Optional[set]:
 
 
 def _debtor_queryset(search: Optional[str] = None, is_active: bool = True, user=None):
-    qs = Customer.objects.filter(wallet_balance__lt=0)
-    if is_active:
-        qs = qs.filter(is_active=True)
+    """
+    Customers who still owe and can be collected on the debt board.
+
+    Includes negative wallet balances **and** customers with underpaid completed
+    POS sales (even if the wallet was never posted — those are healed when listed).
+    Inactive customers who still owe remain listed so collections can finish.
+    ``is_active`` is retained for callers but owing customers are never dropped
+    solely for being inactive.
+    """
+    del is_active  # owing customers stay visible regardless of active flag
+    heal_ids = customer_ids_needing_wallet_debt_heal()
+    qs = Customer.objects.filter(Q(wallet_balance__lt=0) | Q(pk__in=heal_ids))
     visible = _visible_debtor_customer_ids(user)
     if visible is not None:
         if not visible:
@@ -152,10 +237,28 @@ def _debtor_queryset(search: Optional[str] = None, is_active: bool = True, user=
     return qs
 
 
+def _heal_debtor_wallets(customers: List[Customer], *, user=None) -> List[Customer]:
+    """Sync wallet debt for listed debtors whose unpaid sales are missing from the wallet."""
+    heal_ids = customer_ids_needing_wallet_debt_heal()
+    out: List[Customer] = []
+    for customer in customers:
+        if customer.pk in heal_ids:
+            ensure_wallet_matches_unpaid_sales(customer, user=user)
+            customer.refresh_from_db()
+        if debt_amount_from_balance(customer.wallet_balance) > 0:
+            out.append(customer)
+    return out
+
+
 def build_debt_summary(user=None) -> Dict[str, Any]:
     """Aggregate cards + aging for the Debt Management dashboard."""
-    debtors = list(
-        _debtor_queryset(user=user).only('id', 'wallet_balance', 'created_at', 'updated_at')
+    debtors = _heal_debtor_wallets(
+        list(
+            _debtor_queryset(user=user).only(
+                'id', 'wallet_balance', 'created_at', 'updated_at'
+            )
+        ),
+        user=user,
     )
     customers_with_debt = len(debtors)
     total_debt = sum(
@@ -253,7 +356,7 @@ def list_debtors(
     page_size = min(100, max(1, int(page_size or 25)))
 
     qs = _debtor_queryset(search=search, user=user)
-    customers = list(qs)
+    customers = _heal_debtor_wallets(list(qs), user=user)
     if not customers:
         return [], 0
 

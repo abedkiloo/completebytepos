@@ -881,16 +881,17 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     @transaction.atomic
     def refund(self, request, pk=None):
-        """Refund a completed sale (full or partial). Original sale row stays for audit."""
+        """Void/refund a completed sale. Non-admins always queue for admin approval."""
+        from approvals.permissions import user_has_admin_checker_override
+        from approvals.refund_integration import queue_sale_refund
+        from approvals.serializers import PendingChangeSerializer
+
         sale = self.get_object()
         serializer = SaleRefundCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        from approvals.refund_integration import queue_sale_refund, sale_refund_maker_checker_active
-        from approvals.serializers import PendingChangeSerializer
-
-        if sale_refund_maker_checker_active():
+        if not user_has_admin_checker_override(request.user):
             try:
                 pending = queue_sale_refund(
                     request,
@@ -904,7 +905,10 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 return Response(payload, status=status.HTTP_400_BAD_REQUEST)
             return Response(
                 {
-                    'message': 'Refund submitted for approval — not active until a checker approves it.',
+                    'message': (
+                        'Void/refund submitted for admin approval — '
+                        'stock and accounts stay unchanged until it is approved.'
+                    ),
                     'pending_change': PendingChangeSerializer(pending).data,
                 },
                 status=status.HTTP_202_ACCEPTED,
@@ -1295,6 +1299,11 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         from approvals.registry import ACTION_DEBT_COLLECTION
         from approvals.serializers import PendingChangeSerializer
         from sales.debt_collection_approval import queue_debt_collection
+        from sales.debt_management import ensure_wallet_matches_unpaid_sales
+
+        # Underpaid POS sales must sit on the wallet before a settlement credit.
+        ensure_wallet_matches_unpaid_sales(customer, user=request.user)
+        customer.refresh_from_db()
 
         if not user_can_check(request.user, ACTION_DEBT_COLLECTION):
             try:

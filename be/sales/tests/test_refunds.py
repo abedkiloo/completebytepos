@@ -8,14 +8,20 @@ from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.models import AuditLog, Role, UserProfile
-from accounts.role_definitions import ROLE_MANAGER, ROLE_SALES, ensure_permissions, sync_default_roles
+from accounts.role_definitions import (
+    ROLE_MANAGER,
+    ROLE_SALES,
+    ROLE_SUPER_ADMIN,
+    ensure_permissions,
+    sync_default_roles,
+)
 from inventory.models import StockMovement
 from products.models import Category, Product
 from sales.models import Sale, SaleItem, SaleRefund
 from sales.refunds import SaleRefundService
 from sales.services import SaleService
 from settings.models import Branch, Tenant
-from settings.test_utils import disable_maker_checker, enable_maker_checker
+from settings.test_utils import disable_maker_checker
 from utils.tests.api_test_base import ManagerAPITestCase, SuperAdminAPITestCase
 
 
@@ -259,13 +265,35 @@ class SaleRefundAPITests(ManagerAPITestCase):
     def setUp(self):
         super().setUp()
         disable_maker_checker()
+        # Immediate apply is admin-only; managers always queue.
+        admin = User.objects.create_user('refund_api_admin', password='x', is_staff=True)
+        UserProfile.objects.create(
+            user=admin,
+            role='super_admin',
+            custom_role=Role.objects.get(name=ROLE_SUPER_ADMIN),
+            is_active=True,
+        )
+        self.admin_client = self.client.__class__()
+        token = RefreshToken.for_user(admin)
+        self.admin_client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
 
     def tearDown(self):
         disable_maker_checker()
         super().tearDown()
 
-    def test_refund_endpoint_creates_audit_log(self):
+    def test_manager_refund_queues_for_admin_approval(self):
         resp = self.client.post(
+            f'/api/sales/{self.sale.id}/refund/',
+            {'reason': 'Wrong item sold', 'full': True},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_202_ACCEPTED, resp.data)
+        self.assertIn('pending_change', resp.data)
+        self.sale.refresh_from_db()
+        self.assertEqual(self.sale.refund_status, 'none')
+
+    def test_refund_endpoint_creates_audit_log(self):
+        resp = self.admin_client.post(
             f'/api/sales/{self.sale.id}/refund/',
             {'reason': 'Wrong item sold', 'full': True},
             format='json',
@@ -280,7 +308,7 @@ class SaleRefundAPITests(ManagerAPITestCase):
 
     def test_get_sale_includes_refundable_quantity_on_items(self):
         line = self.sale.items.first()
-        partial = self.client.post(
+        partial = self.admin_client.post(
             f'/api/sales/{self.sale.id}/refund/',
             {
                 'reason': 'One damaged',
@@ -314,7 +342,7 @@ class SaleRefundAPITests(ManagerAPITestCase):
         self.sale.save(update_fields=['subtotal', 'total'])
         stock_before = self.product.stock_quantity
 
-        resp = self.client.post(
+        resp = self.admin_client.post(
             f'/api/sales/{self.sale.id}/refund/',
             {
                 'reason': 'Duplicate invoice line',

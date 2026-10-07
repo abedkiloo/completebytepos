@@ -295,6 +295,7 @@ class SaleSerializer(serializers.ModelSerializer):
     needs_salesperson_action = serializers.SerializerMethodField()
     rejection_reason = serializers.SerializerMethodField()
     approval_details = serializers.SerializerMethodField()
+    activity = serializers.SerializerMethodField()
     is_field_sale = serializers.BooleanField(read_only=True)
     sale_origin = serializers.CharField(read_only=True)
 
@@ -312,7 +313,7 @@ class SaleSerializer(serializers.ModelSerializer):
             'backfill_receipt_photo_url',
             'items', 'item_count', 'amount_refunded', 'refundable_remaining', 'can_refund',
             'can_rollback', 'can_correct_date', 'needs_salesperson_action', 'rejection_reason',
-            'approval_details',
+            'approval_details', 'activity',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
@@ -386,6 +387,17 @@ class SaleSerializer(serializers.ModelSerializer):
         change = pending_sale_complete_change(obj)
         payload = (change.apply_payload or {}) if change else {}
         return {'sections': sale_sections(obj, payment_payload=payload)}
+
+    def get_activity(self, obj):
+        """Who did what on this sale — skipped on list to keep payloads light."""
+        if self.context.get('include_activity') is False:
+            return None
+        view = self.context.get('view')
+        if getattr(view, 'action', None) == 'list':
+            return None
+        from sales.activity import build_sale_activity
+
+        return build_sale_activity(obj)
 
     def to_representation(self, instance):
         refunded_qty = self._refunded_qty_by_sale_item(instance)

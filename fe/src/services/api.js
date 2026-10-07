@@ -474,7 +474,10 @@ export const inventoryAPI = {
   needsReorder: () => api.get('/inventory/needs_reorder/'),
   report: () => api.get('/inventory/report/'),
   movementsByType: (params) => api.get('/inventory/movements_by_type/', { params }),
-  productHistory: (productId) => api.get('/inventory/product_history/', { params: { product_id: productId } }),
+  productHistory: (productId, params = {}) =>
+    api.get('/inventory/product_history/', {
+      params: { product_id: productId, ...params },
+    }),
 };
 
 export const authAPI = {
@@ -526,6 +529,7 @@ export const pendingChangesAPI = {
   list: (params) => api.get('/approvals/pending-changes/', { params }),
   pending: (params) => api.get('/approvals/pending-changes/pending/', { params }),
   mySubmissions: (params) => api.get('/approvals/pending-changes/my-submissions/', { params }),
+  myDecisions: (params) => api.get('/approvals/pending-changes/my-decisions/', { params }),
   get: (id) => api.get(`/approvals/pending-changes/${id}/`),
   approve: (id, data = {}) => api.post(`/approvals/pending-changes/${id}/approve/`, data),
   reject: (id, data) => api.post(`/approvals/pending-changes/${id}/reject/`, data),

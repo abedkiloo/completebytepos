@@ -85,12 +85,21 @@ class SensitiveEditsPolicyTests(TestCase):
             override=Decimal('100'),
         )
 
-    def test_manager_may_override_sale_unit_price(self):
+    def test_manager_cannot_undercut_sale_unit_price(self):
+        with self.assertRaises(ValidationError):
+            validate_sale_unit_price_override(
+                self.manager,
+                product=self.product,
+                variant=None,
+                override=Decimal('99'),
+            )
+
+    def test_manager_may_markup_sale_unit_price(self):
         validate_sale_unit_price_override(
             self.manager,
             product=self.product,
             variant=None,
-            override=Decimal('99'),
+            override=Decimal('150'),
         )
 
     def test_manager_update_strips_cost_but_keeps_pricing(self):

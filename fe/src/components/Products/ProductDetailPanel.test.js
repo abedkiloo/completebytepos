@@ -70,7 +70,7 @@ describe('ProductDetailPanel stock history tab', () => {
         screen.getByText(/Previous stock 400 · Sold 45 · New stock 355/)
       ).toBeInTheDocument()
     );
-    expect(inventoryAPI.productHistory).toHaveBeenCalledWith(7);
+    expect(inventoryAPI.productHistory).toHaveBeenCalledWith(7, {});
   });
 
   it('hides Stock history tab when not permitted', async () => {

@@ -11,8 +11,7 @@ import {
 } from '../ui/dialog';
 import ChangeReasonField from '../Approvals/ChangeReasonField';
 import { formatCurrency } from '../../utils/formatters';
-import { useStoreSettings } from '../../hooks/useStoreSettings';
-import { isMakerCheckerEnabled, makerCheckerReasonCopy } from '../../utils/makerChecker';
+import { makerCheckerReasonCopy } from '../../utils/makerChecker';
 import {
   buildFullRefundPayload,
   buildPartialRefundPayload,
@@ -39,8 +38,6 @@ export default function RefundSaleDialog({ sale, open, onOpenChange, onSubmit, s
   const [lineQty, setLineQty] = useState({});
   const [pendingPayload, setPendingPayload] = useState(null);
   const [showCommitConfirm, setShowCommitConfirm] = useState(false);
-  const { settings: storeSettings } = useStoreSettings();
-  const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
   const refundCopy = makerCheckerReasonCopy('sale_refund');
   const refundHelp = getActionHelp('sale_refund');
 
@@ -144,9 +141,7 @@ export default function RefundSaleDialog({ sale, open, onOpenChange, onSubmit, s
               {formatCurrency(sale.refundable_remaining ?? sale.total)}
             </p>
             <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
-              {makerCheckerOn
-                ? refundCopy.summary
-                : 'Stock is returned to inventory, revenue and cash books are reversed, and any customer account or wallet balance from this sale is adjusted. The original sale is kept for audit — it is not deleted.'}
+              {refundCopy.summary}
             </p>
 
             {showDuplicateHelper ? (
@@ -252,30 +247,17 @@ export default function RefundSaleDialog({ sale, open, onOpenChange, onSubmit, s
             <ChangeReasonField
               value={reason}
               onChange={setReason}
-              requiresApproval={makerCheckerOn}
-              context={makerCheckerOn ? 'sale_refund' : 'default'}
-              label={makerCheckerOn ? refundCopy.label : 'Reason for void / refund'}
-              placeholder={
-                makerCheckerOn
-                  ? refundCopy.placeholder
-                  : 'Why is this sale being voided or refunded?'
-              }
-              hint={
-                makerCheckerOn
-                  ? undefined
-                  : 'Required for audit — the original sale is kept on record.'
-              }
+              requiresApproval
+              context="sale_refund"
+              label={refundCopy.label}
+              placeholder={refundCopy.placeholder}
             />
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
               <Button type="submit" variant="destructive" disabled={submitting || !reason.trim()}>
-                {submitting
-                  ? 'Processing…'
-                  : makerCheckerOn
-                    ? 'Submit for approval'
-                    : 'Confirm void / refund'}
+                {submitting ? 'Processing…' : 'Submit for approval'}
               </Button>
             </DialogFooter>
           </form>
@@ -295,7 +277,7 @@ export default function RefundSaleDialog({ sale, open, onOpenChange, onSubmit, s
       helpKey="sale_refund"
       rows={commitRows}
       submitting={submitting}
-      confirmText={makerCheckerOn ? 'Submit for approval' : 'Confirm void / refund'}
+      confirmText="Submit for approval"
       onConfirm={confirmCommit}
       variant="danger"
     />

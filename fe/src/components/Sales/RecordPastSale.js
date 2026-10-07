@@ -729,11 +729,12 @@ function SinglePastSaleForm({
                     <Input
                       id={`price-${row.key}`}
                       type="number"
-                      min={0}
+                      min={row.catalog_price ?? row.unit_price}
                       step="0.01"
                       className="h-8 px-2 text-right tabular-nums"
                       defaultValue={row.unit_price}
                       key={`${row.key}-price-${row.unit_price}`}
+                      title="Selling price or higher"
                       onBlur={(e) => updateLinePrice(row.key, e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {

@@ -45,6 +45,7 @@ import {
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import CommitConfirm from '../Shared/CommitConfirm';
+import CenterScreenLoader from '../Shared/CenterScreenLoader';
 import CustomerFormDialog from './CustomerFormDialog';
 
 import { Button } from '../ui/button';
@@ -612,6 +613,17 @@ export default function CustomerDetailPage() {
         }}
         submitting={rollbackSubmitting}
         onSubmit={handleRollbackSubmit}
+      />
+
+      <CenterScreenLoader
+        open={refundSubmitting || rollbackSubmitting}
+        label={
+          refundSubmitting
+            ? 'Submitting void…'
+            : rollbackSubmitting
+              ? 'Submitting rollback…'
+              : 'Loading…'
+        }
       />
 
       <ReceiveWalletPaymentDialog

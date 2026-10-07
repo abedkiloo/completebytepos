@@ -148,6 +148,14 @@ class ExpenseService(BaseService):
         if status_filter:
             queryset = queryset.filter(status=status_filter)
 
+        # Accountability: expenses this user approved
+        approved_by = _clean_filter_value(filters.get('approved_by'))
+        if approved_by:
+            try:
+                queryset = queryset.filter(approved_by_id=int(approved_by))
+            except (TypeError, ValueError):
+                pass
+
         # Date filters
         date_from = _clean_filter_value(filters.get('date_from'))
         if date_from:

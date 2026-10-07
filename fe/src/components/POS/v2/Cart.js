@@ -174,11 +174,12 @@ function CartLine({ item, validateStock, onAdjust, onSetQuantity, onSetPrice, on
                 <span className="text-[10px] uppercase text-muted-foreground">@</span>
                 <Input
                   type="number"
-                  min={mayEditPricing ? 0 : catalog}
+                  min={catalog}
                   step="0.01"
                   className="h-8 w-24 px-2 text-right tabular-nums"
                   value={priceDraft}
                   aria-label={`Unit price for ${item.name}`}
+                  title={`Selling price or higher (min ${catalog})`}
                   onChange={(e) => setPriceDraft(e.target.value)}
                   onBlur={commitPrice}
                   onKeyDown={(e) => {

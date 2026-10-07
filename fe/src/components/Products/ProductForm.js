@@ -7,6 +7,7 @@ import { resolveMediaUrl } from '../../utils/mediaUrl';
 import { useProductVariantsEnabled } from '../../hooks/useProductVariantsEnabled';
 import SearchableSelect from '../Shared/SearchableSelect';
 import CommitConfirm from '../Shared/CommitConfirm';
+import CenterScreenLoader from '../Shared/CenterScreenLoader';
 import { productCommitRows } from '../../utils/formCommitSummary';
 import CategoryForm from './CategoryForm';
 import SupplierForm from '../Suppliers/SupplierForm';
@@ -1303,6 +1304,11 @@ const ProductForm = ({
         submitting={loading}
         confirmText={product ? 'Confirm & update' : 'Confirm & create'}
         onConfirm={confirmCommit}
+      />
+
+      <CenterScreenLoader
+        open={loading}
+        label={product ? 'Saving product…' : 'Creating product…'}
       />
 
       {/* Category Form - Nested Slide-in Panel */}

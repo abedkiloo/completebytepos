@@ -225,6 +225,44 @@ class DebtManagementAPITests(ManagerAPITestCase):
         self.assertIn(other_customer.id, ids)
         self.assertEqual(response.data['count'], 2)
 
+    def test_unpaid_sale_without_wallet_debt_appears_on_debtors_list(self):
+        """Profile order debt must surface on Debt Management so staff can collect."""
+        stuck = Customer.objects.create(
+            name='Stuck Unpaid Sale',
+            phone='0700444000',
+            wallet_balance=Decimal('0.00'),
+            is_active=True,
+        )
+        Sale.objects.create(
+            cashier=self.manager_user,
+            customer=stuck,
+            subtotal=Decimal('500.00'),
+            total=Decimal('500.00'),
+            amount_paid=Decimal('100.00'),
+            status='completed',
+            sale_type='pos',
+            payment_method='cash',
+        )
+
+        response = self.client.get('/api/sales/customers/debtors/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        ids = {row['id'] for row in response.data['results']}
+        self.assertIn(stuck.id, ids)
+        row = next(r for r in response.data['results'] if r['id'] == stuck.id)
+        self.assertEqual(Decimal(row['debt_amount']), Decimal('400.00'))
+
+        stuck.refresh_from_db()
+        self.assertEqual(stuck.wallet_balance, Decimal('-400.00'))
+
+    def test_inactive_customer_with_debt_still_listed(self):
+        self.debtor.is_active = False
+        self.debtor.save(update_fields=['is_active'])
+
+        response = self.client.get('/api/sales/customers/debtors/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        ids = {row['id'] for row in response.data['results']}
+        self.assertIn(self.debtor.id, ids)
+
 
 def _create_sale_debt(user, customer, amount, *, served_by=None, created_by=None):
     sale = Sale.objects.create(
@@ -275,21 +313,33 @@ class SalesDebtVisibilityAPITests(SalesAPITestCase):
         _create_sale_debt(self.sales_user, self.my_customer, Decimal('200.00'))
         _create_sale_debt(self.other_sales, self.other_customer, Decimal('90.00'))
 
-    def test_salesperson_sees_only_own_debt_customers(self):
+    def test_salesperson_who_can_collect_sees_all_debtors(self):
+        """Collectors need the full board — profiles already show every customer's debt."""
+        response = self.client.get('/api/sales/customers/debtors/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        ids = {row['id'] for row in response.data['results']}
+        self.assertEqual(ids, {self.my_customer.id, self.other_customer.id})
+        self.assertEqual(response.data['count'], 2)
+
+        summary = self.client.get('/api/sales/customers/debt-summary/')
+        self.assertEqual(summary.status_code, status.HTTP_200_OK, summary.data)
+        self.assertEqual(summary.data['customers_with_debt'], 2)
+        self.assertEqual(Decimal(summary.data['total_debt']), Decimal('290.00'))
+
+        count = self.client.get('/api/sales/customers/debtor-count/')
+        self.assertEqual(count.status_code, status.HTTP_200_OK)
+        self.assertEqual(count.data['count'], 2)
+
+    def test_salesperson_view_only_still_limited_to_own_debtors(self):
+        from accounts.models import Permission
+
+        self.sales_user.profile.custom_role.permissions.remove(
+            Permission.objects.get(module='debt_management', action='update')
+        )
         response = self.client.get('/api/sales/customers/debtors/')
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         ids = {row['id'] for row in response.data['results']}
         self.assertEqual(ids, {self.my_customer.id})
-        self.assertEqual(response.data['count'], 1)
-
-        summary = self.client.get('/api/sales/customers/debt-summary/')
-        self.assertEqual(summary.status_code, status.HTTP_200_OK, summary.data)
-        self.assertEqual(summary.data['customers_with_debt'], 1)
-        self.assertEqual(Decimal(summary.data['total_debt']), Decimal('200.00'))
-
-        count = self.client.get('/api/sales/customers/debtor-count/')
-        self.assertEqual(count.status_code, status.HTTP_200_OK)
-        self.assertEqual(count.data['count'], 1)
 
     def test_salesperson_still_sees_customer_after_someone_else_collects(self):
         CustomerWalletTransaction.objects.create(
@@ -303,7 +353,7 @@ class SalesDebtVisibilityAPITests(SalesAPITestCase):
         self.my_customer.wallet_balance = Decimal('-150.00')
         self.my_customer.save(update_fields=['wallet_balance'])
 
-        other_pay = CustomerWalletTransaction.objects.create(
+        CustomerWalletTransaction.objects.create(
             customer=self.other_customer,
             transaction_type='credit',
             source_type='debt_settlement',
@@ -311,21 +361,23 @@ class SalesDebtVisibilityAPITests(SalesAPITestCase):
             balance_after=Decimal('-70.00'),
             created_by=self.other_sales,
         )
+        self.other_customer.wallet_balance = Decimal('-70.00')
+        self.other_customer.save(update_fields=['wallet_balance'])
 
         response = self.client.get('/api/sales/customers/debtors/')
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-        self.assertEqual(response.data['count'], 1)
-        self.assertEqual(response.data['results'][0]['id'], self.my_customer.id)
-        self.assertEqual(Decimal(response.data['results'][0]['debt_amount']), Decimal('150.00'))
+        ids = {row['id'] for row in response.data['results']}
+        self.assertEqual(ids, {self.my_customer.id, self.other_customer.id})
+        mine = next(r for r in response.data['results'] if r['id'] == self.my_customer.id)
+        self.assertEqual(Decimal(mine['debt_amount']), Decimal('150.00'))
 
         collections = self.client.get('/api/sales/customers/debt-collections/')
         self.assertEqual(collections.status_code, status.HTTP_200_OK, collections.data)
-        self.assertEqual(collections.data['count'], 1)
-        self.assertEqual(collections.data['results'][0]['customer_id'], self.my_customer.id)
-        self.assertNotEqual(collections.data['results'][0]['id'], other_pay.id)
+        # Full board: both settlements today are visible to collectors.
+        self.assertEqual(collections.data['count'], 2)
 
         summary = self.client.get('/api/sales/customers/debt-summary/')
-        self.assertEqual(Decimal(summary.data['collected_today']), Decimal('50.00'))
+        self.assertEqual(Decimal(summary.data['collected_today']), Decimal('70.00'))
 
     def test_served_by_salesperson_sees_the_debt(self):
         served_customer = Customer.objects.create(
@@ -346,4 +398,4 @@ class SalesDebtVisibilityAPITests(SalesAPITestCase):
         ids = {row['id'] for row in response.data['results']}
         self.assertIn(self.my_customer.id, ids)
         self.assertIn(served_customer.id, ids)
-        self.assertNotIn(self.other_customer.id, ids)
+        self.assertIn(self.other_customer.id, ids)

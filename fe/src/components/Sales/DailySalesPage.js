@@ -30,6 +30,7 @@ import {
 import { userCanRefundSales, handleSaleRefundResponse, userCanRollbackSales } from '../../utils/saleRefund';
 import { userHasAdminSaleOverride } from '../../utils/saleCompletionApproval';
 import { pendingApprovalToastMessage } from '../../utils/makerChecker';
+import CenterScreenLoader from '../Shared/CenterScreenLoader';
 import SaleChannelIcon from './SaleChannelIcon';
 import SaleOriginBadge from './SaleOriginBadge';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
@@ -274,19 +275,13 @@ export default function DailySalesPage() {
     setRefundSubmitting(true);
     try {
       const res = await salesAPI.refund(refundSale.id, payload);
-      const outcome = handleSaleRefundResponse(res, {
-        onRequiresApproval: (data) => {
-          toast.warning(pendingApprovalToastMessage('Sale refund', data.pending_approval_id));
-        },
-        onImmediate: () => {
-          toast.success('Sale refunded successfully');
-        },
+      handleSaleRefundResponse(res, {
+        onApplied: () => toast.success('Sale refunded successfully'),
+        onPending: () => toast.success(pendingApprovalToastMessage()),
       });
-      if (outcome.handled) {
-        setRefundSale(null);
-        loadDailySales();
-        dispatchNavBadgesRefresh();
-      }
+      setRefundSale(null);
+      loadDailySales();
+      dispatchNavBadgesRefresh();
     } catch (err) {
       toast.error(err.response?.data?.error || err.message || 'Refund failed');
     } finally {
@@ -904,6 +899,17 @@ export default function DailySalesPage() {
           loadDailySales();
           dispatchNavBadgesRefresh();
         }}
+      />
+
+      <CenterScreenLoader
+        open={refundSubmitting || rollbackSubmitting}
+        label={
+          refundSubmitting
+            ? 'Submitting void…'
+            : rollbackSubmitting
+              ? 'Submitting rollback…'
+              : 'Loading…'
+        }
       />
     </PageShell>
   );

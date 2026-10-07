@@ -205,6 +205,12 @@ def get_customer_detail(
     except Customer.DoesNotExist as exc:
         raise LookupError('Customer not found.') from exc
 
+    # Align wallet with underpaid POS sales so profile debt matches Debt Management.
+    from sales.debt_management import ensure_wallet_matches_unpaid_sales
+
+    ensure_wallet_matches_unpaid_sales(customer)
+    customer.refresh_from_db()
+
     if base_sales_queryset is not None:
         sales_qs = base_sales_queryset.filter(customer_id=customer.id, status='completed')
     else:

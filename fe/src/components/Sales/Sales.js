@@ -30,6 +30,7 @@ import SaleDetailDialog from './SaleDetailDialog';
 import SaleChannelIcon from './SaleChannelIcon';
 import SaleOriginBadge from './SaleOriginBadge';
 import HelpHint from '../Shared/HelpHint';
+import CenterScreenLoader from '../Shared/CenterScreenLoader';
 import ReportExportButtons from '../Reports/ReportExportButtons';
 import { salesHistoryExportParams } from '../../utils/reportExport';
 import { Button } from '../ui/button';
@@ -380,7 +381,7 @@ const Sales = () => {
           title="Sales history"
           description={
             canRefund
-              ? 'Review transactions, reprint receipts, or void mistaken sales. Download PDF or Excel for the current filters. A full void refunds stock, reverses books, and clears customer account balances.'
+              ? 'Review transactions, reprint receipts, or void mistaken sales. Download PDF or Excel for the current filters. Voiding a sale needs admin approval before stock and books change.'
               : 'Review completed transactions, reprint receipts, and download PDF or Excel for the current filters.'
           }
         >
@@ -665,6 +666,17 @@ const Sales = () => {
           }}
           onSubmit={handleRollbackSubmit}
           submitting={rollbackSubmitting}
+        />
+
+        <CenterScreenLoader
+          open={refundSubmitting || rollbackSubmitting}
+          label={
+            refundSubmitting
+              ? 'Submitting void…'
+              : rollbackSubmitting
+                ? 'Submitting rollback…'
+                : 'Loading…'
+          }
         />
       </PageShell>
   );

@@ -44,6 +44,7 @@ import { hasDuplicateSaleLines } from '../../utils/detectDuplicateSaleLines';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import { resolveStoreName, resolveReceiptLogoUrl, DEFAULT_STORE_TAGLINE } from '../../utils/storeBranding';
 import StoreLogo from '../Shared/StoreLogo';
+import SaleActivityTrail from './SaleActivityTrail';
 
 export default function SaleDetailDialog({
   sale,
@@ -300,6 +301,8 @@ export default function SaleDetailDialog({
             </div>
           ) : null}
         </div>
+
+        <SaleActivityTrail activity={sale.activity} className="print:hidden" />
 
         {showAdminDetails ? (
           <div className="space-y-1 rounded-md border bg-muted/30 px-3 py-2 text-sm">

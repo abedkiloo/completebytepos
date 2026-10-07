@@ -616,8 +616,9 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def product_history(self, request):
-        """Get stock movement history for a specific product (admin ledger)."""
+        """Get stock movement history for a product (or one variant when applicable)."""
         from inventory.stock_history import product_stock_history_allowed
+        from products.models import Product
 
         if not product_stock_history_allowed(request.user):
             return Response(
@@ -630,20 +631,43 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
         product_id = request.query_params.get('product_id', None)
-        
+        variant_id = request.query_params.get('variant_id', None)
+
         if not product_id:
             return Response(
                 {'error': 'product_id parameter is required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
+        try:
+            product = Product.objects.only('id', 'has_variants').get(pk=product_id)
+        except Product.DoesNotExist:
+            return Response(
+                {'error': 'Product not found'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if product.has_variants and not variant_id:
+            return Response(
+                {
+                    'error': (
+                        'Select a variant to view stock history. '
+                        'variant_id is required for products with variants.'
+                    ),
+                    'requires_variant': True,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         try:
             movements = StockMovement.objects.filter(
                 product_id=product_id
             ).select_related(
                 'product', 'user', 'variant', 'variant__size', 'variant__color'
             ).order_by('-created_at')
-            
+            if variant_id:
+                movements = movements.filter(variant_id=variant_id)
+
             serializer = self.get_serializer(movements, many=True)
             return Response(serializer.data)
         except Exception as e:

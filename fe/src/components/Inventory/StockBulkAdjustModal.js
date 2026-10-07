@@ -19,6 +19,7 @@ import {
   toStockProductSelectOptions,
 } from '../../utils/stockProductOptions';
 import CommitConfirm from '../Shared/CommitConfirm';
+import CenterScreenLoader from '../Shared/CenterScreenLoader';
 import { formatSignedQty } from '../../utils/commitConfirm';
 
 const emptyLine = () => ({
@@ -336,6 +337,10 @@ const StockBulkAdjustModal = ({ onClose, onSave }) => {
       confirmText={makerCheckerOn ? 'Submit for approval' : 'Confirm & adjust'}
       onConfirm={confirmCommit}
       variant="warning"
+    />
+    <CenterScreenLoader
+      open={loading}
+      label={makerCheckerOn ? 'Submitting for approval…' : 'Saving stock adjustments…'}
     />
     </>
   );

@@ -40,6 +40,7 @@ import BranchSelector from '../../BranchSelector/BranchSelector';
 import { cn } from '../../../lib/cn';
 import { useStoreSettings } from '../../../hooks/useStoreSettings';
 import BrandMark from '../../Shared/BrandMark';
+import CenterScreenLoader from '../../Shared/CenterScreenLoader';
 import { resolveStoreName } from '../../../utils/storeBranding';
 import {
   salesShowDiscount,
@@ -541,6 +542,11 @@ export default function POSPage() {
       </Dialog>
 
       <KeyboardShortcutsDialog open={showShortcuts} onOpenChange={setShowShortcuts} />
+
+      <CenterScreenLoader
+        open={Boolean(state.submitting || state.recoveryBusy)}
+        label={state.recoveryBusy ? 'Restoring cart…' : 'Processing sale…'}
+      />
     </div>
   );
 }

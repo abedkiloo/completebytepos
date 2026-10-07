@@ -5,6 +5,7 @@ import { reportsAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import { EXPORT_FORMATS, reportExportPath } from '../../utils/reportExport';
 import { Button } from '../ui/button';
+import CenterScreenLoader from '../Shared/CenterScreenLoader';
 
 const ICONS = {
   pdf: FileText,
@@ -40,24 +41,27 @@ export default function ReportExportButtons({
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2 print:hidden">
-      {EXPORT_FORMATS.map((fmt) => {
-        const Icon = ICONS[fmt.id] || Download;
-        return (
-          <Button
-            key={fmt.id}
-            type="button"
-            variant={fmt.id === 'pdf' ? 'default' : 'outline'}
-            size={size}
-            disabled={disabled || Boolean(busy)}
-            onClick={() => download(fmt.id)}
-            aria-label={`Download ${fmt.label}`}
-          >
-            <Icon className="h-4 w-4" />
-            {busy === fmt.id ? 'Downloading…' : fmt.label}
-          </Button>
-        );
-      })}
-    </div>
+    <>
+      <CenterScreenLoader open={Boolean(busy)} label="Downloading report…" />
+      <div className="flex flex-wrap items-center gap-2 print:hidden">
+        {EXPORT_FORMATS.map((fmt) => {
+          const Icon = ICONS[fmt.id] || Download;
+          return (
+            <Button
+              key={fmt.id}
+              type="button"
+              variant={fmt.id === 'pdf' ? 'default' : 'outline'}
+              size={size}
+              disabled={disabled || Boolean(busy)}
+              onClick={() => download(fmt.id)}
+              aria-label={`Download ${fmt.label}`}
+            >
+              <Icon className="h-4 w-4" />
+              {busy === fmt.id ? 'Downloading…' : fmt.label}
+            </Button>
+          );
+        })}
+      </div>
+    </>
   );
 }

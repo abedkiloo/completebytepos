@@ -102,7 +102,8 @@ describe('login overlays', () => {
     expect(screen.queryByTestId('pending-tasks-on-login')).not.toBeInTheDocument();
     expect(screen.queryByText(/Welcome back/i)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByTestId('sticky-note-open-sale-8'));
+    fireEvent.click(screen.getByTestId('sticky-note-expand-8'));
+    fireEvent.click(await screen.findByTestId('sticky-note-open-sale-8'));
     expect(mockNavigate).toHaveBeenCalledWith('/pos/billing?sale=37');
 
     expect(await screen.findByTestId('pending-tasks-on-login')).toBeInTheDocument();

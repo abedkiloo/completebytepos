@@ -1,4 +1,4 @@
-"""Queue sale refunds for maker-checker approval."""
+"""Queue sale refunds / voids for admin approval before stock and books change."""
 
 from __future__ import annotations
 
@@ -8,15 +8,20 @@ from typing import Any, Dict, List, Optional
 from django.core.exceptions import ValidationError
 
 from approvals.models import PendingChange
-from approvals.permissions import is_maker_checker_enabled
 from approvals.registry import ACTION_SALE_REFUND
 from approvals.service import submit_change
 from sales.models import Sale
 from sales.refunds import SaleRefundService
 
 
+def sale_refund_requires_admin_approval() -> bool:
+    """Void / refund always goes through the approval queue for non-admins."""
+    return True
+
+
 def sale_refund_maker_checker_active() -> bool:
-    return is_maker_checker_enabled()
+    """Backward-compatible alias — void/refund always requires admin approval."""
+    return sale_refund_requires_admin_approval()
 
 
 def _summarize_refund_lines(sale: Sale, items: Optional[List[Dict[str, Any]]], *, full: bool) -> str:
@@ -55,8 +60,9 @@ def queue_sale_refund(
     items: Optional[List[Dict[str, Any]]],
     reason: str,
 ) -> PendingChange:
-    if not sale_refund_maker_checker_active():
-        raise ValidationError('Maker-checker is not enabled.')
+    reason = (reason or '').strip()
+    if not reason:
+        raise ValidationError({'reason': 'A reason is required to void or refund a sale.'})
 
     if sale.status != 'completed':
         raise ValidationError('Only completed sales can be refunded.')
@@ -71,7 +77,7 @@ def queue_sale_refund(
     ).exists()
     if pending_exists:
         raise ValidationError(
-            'A refund for this sale is already awaiting approval. '
+            'A void/refund for this sale is already awaiting admin approval. '
             'Approve or reject it before submitting another.'
         )
 
@@ -103,4 +109,6 @@ def queue_sale_refund(
             'full': bool(full),
             'items': items or [],
         },
+        # Always queue — independent of the global maker-checker store toggle.
+        require_maker_checker=False,
     )

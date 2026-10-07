@@ -33,6 +33,7 @@ import { otherPendingApprovalRows } from '../../utils/saleApprovalsQueue';
 import { backfillRejectionSuccessMessage } from '../../utils/recordPastSaleBackfill';
 import { getActionHelp } from '../../utils/actionHelp';
 import HelpHint from '../Shared/HelpHint';
+import CenterScreenLoader from '../Shared/CenterScreenLoader';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import ApprovalChangeTable from './ApprovalChangeTable';
 import ApprovalDetails from './ApprovalDetails';
@@ -46,9 +47,12 @@ import {
 import CommitConfirm from '../Shared/CommitConfirm';
 import { approvalCommitRows, approvalExpenseRows } from '../../utils/formCommitSummary';
 import { cn } from '../../lib/cn';
+import MyDecisionsTrail from './MyDecisionsTrail';
 
 const KIND_CHANGE = 'change';
 const KIND_EXPENSE = 'expense';
+const TAB_WAITING = 'waiting';
+const TAB_HISTORY = 'history';
 
 function ApprovalListRow({ title, subtitle, badge, amount, selected, onOpen }) {
   return (
@@ -263,6 +267,7 @@ function ChangeReviewActions({ row, onResolved, onClose }) {
         confirmText="Confirm & approve"
         onConfirm={approve}
       />
+      <CenterScreenLoader open={busy} label="Processing approval…" />
     </>
   );
 }
@@ -394,6 +399,7 @@ function ExpenseReviewActions({ expense, settings, onResolved, onClose }) {
         confirmText="Confirm & approve"
         onConfirm={approve}
       />
+      <CenterScreenLoader open={busy} label="Processing approval…" />
     </>
   );
 }
@@ -413,6 +419,7 @@ function moneyFromDetails(details) {
 
 export default function PendingApprovalsPage() {
   const allowed = userMayEditFinancialFieldsFromStorage();
+  const [tab, setTab] = useState(TAB_WAITING);
   const [rows, setRows] = useState([]);
   const [pendingExpenses, setPendingExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -452,8 +459,8 @@ export default function PendingApprovalsPage() {
   }, []);
 
   useEffect(() => {
-    if (allowed) load();
-  }, [allowed, load]);
+    if (allowed && tab === TAB_WAITING) load();
+  }, [allowed, load, tab]);
 
   const listItems = useMemo(() => {
     const expenses = pendingExpenses.map((expense) => ({
@@ -498,16 +505,44 @@ export default function PendingApprovalsPage() {
   return (
     <PageShell>
       <PageHeader
-        title="Approvals waiting for you"
-        description="Tap a row to review details, then approve or reject. Cashier sales and salesperson debt collections are under Approve sales."
+        title="Approvals"
+        description="Review waiting requests, or open My decisions for a trail of what you already approved or rejected — with time and comments."
         icon={ClipboardCheck}
       />
-      <div className="mb-4 flex justify-end">
-        <Button type="button" variant="outline" onClick={load} disabled={loading}>
-          Refresh list
-        </Button>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-1" role="tablist" aria-label="Approvals views">
+          <Button
+            type="button"
+            size="sm"
+            variant={tab === TAB_WAITING ? 'default' : 'outline'}
+            role="tab"
+            aria-selected={tab === TAB_WAITING}
+            onClick={() => setTab(TAB_WAITING)}
+          >
+            Waiting
+            {listItems.length > 0 ? ` (${listItems.length})` : ''}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={tab === TAB_HISTORY ? 'default' : 'outline'}
+            role="tab"
+            aria-selected={tab === TAB_HISTORY}
+            onClick={() => setTab(TAB_HISTORY)}
+          >
+            My decisions
+          </Button>
+        </div>
+        {tab === TAB_WAITING ? (
+          <Button type="button" variant="outline" onClick={load} disabled={loading}>
+            Refresh list
+          </Button>
+        ) : null}
       </div>
-      {loading ? (
+
+      {tab === TAB_HISTORY ? (
+        <MyDecisionsTrail includeExpenses />
+      ) : loading ? (
         <PageLoading />
       ) : listItems.length === 0 ? (
         <Card>

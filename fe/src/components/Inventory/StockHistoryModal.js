@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { inventoryAPI } from '../../services/api';
 import { formatCurrency, formatNumber, formatDateTime } from '../../utils/formatters';
 import { movementSignedQuantity } from '../../utils/inventoryDisplay';
@@ -6,18 +6,44 @@ import {
   formatStockTrail,
   stockHistoryMovementTone,
 } from '../../utils/stockHistory';
+import { variantDisplayLabel } from '../../utils/variantCombinations';
 import { PageLoading } from '../page';
 import { Badge } from '../ui/badge';
+import { Label } from '../ui/label';
 import { cn } from '../../lib/cn';
 
+function productHasVariants(product) {
+  return Boolean(product?.has_variants) && Array.isArray(product?.variants) && product.variants.length > 0;
+}
+
 const StockHistoryModal = ({ product, onClose, showCost = true, embedded = false }) => {
+  const variants = useMemo(
+    () => (Array.isArray(product?.variants) ? product.variants : []),
+    [product?.variants],
+  );
+  const needsVariant = productHasVariants(product);
+  const [variantId, setVariantId] = useState('');
   const [history, setHistory] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    loadHistory();
+    setVariantId('');
+    setHistory([]);
+    setError('');
   }, [product?.id]);
+
+  useEffect(() => {
+    if (!product?.id) return;
+    if (needsVariant && !variantId) {
+      setHistory([]);
+      setLoading(false);
+      setError('');
+      return;
+    }
+    loadHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when product or variant changes
+  }, [product?.id, needsVariant, variantId]);
 
   const loadHistory = async () => {
     if (!product?.id) return;
@@ -25,7 +51,11 @@ const StockHistoryModal = ({ product, onClose, showCost = true, embedded = false
     setLoading(true);
     setError('');
     try {
-      const response = await inventoryAPI.productHistory(product.id);
+      const params = {};
+      if (needsVariant && variantId) {
+        params.variant_id = variantId;
+      }
+      const response = await inventoryAPI.productHistory(product.id, params);
       setHistory(response.data || []);
     } catch (err) {
       const msg =
@@ -38,9 +68,39 @@ const StockHistoryModal = ({ product, onClose, showCost = true, embedded = false
     }
   };
 
+  const selectedVariant = variants.find((v) => String(v.id) === String(variantId));
+
   const body = (
     <>
-      {loading ? (
+      {needsVariant ? (
+        <div className="mb-4 space-y-1.5" data-testid="stock-history-variant-picker">
+          <Label htmlFor="stock-history-variant">Variant</Label>
+          <select
+            id="stock-history-variant"
+            className="h-10 w-full max-w-md rounded-md border bg-background px-3 text-sm"
+            value={variantId}
+            onChange={(e) => setVariantId(e.target.value)}
+          >
+            <option value="">Select a variant…</option>
+            {variants.map((variant) => (
+              <option key={variant.id} value={variant.id}>
+                {variantDisplayLabel(variant)}
+                {variant.sku ? ` · ${variant.sku}` : ''}
+                {variant.stock_quantity != null ? ` (${variant.stock_quantity} on hand)` : ''}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground">
+            Stock is tracked per variant — pick one to see its movement trail.
+          </p>
+        </div>
+      ) : null}
+
+      {needsVariant && !variantId ? (
+        <div className="rounded-lg border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
+          Choose a variant above to load its stock history.
+        </div>
+      ) : loading ? (
         <PageLoading rows={5} />
       ) : error ? (
         <div className="rounded-lg border border-dashed px-6 py-10 text-center text-sm text-destructive">
@@ -48,14 +108,16 @@ const StockHistoryModal = ({ product, onClose, showCost = true, embedded = false
         </div>
       ) : history.length === 0 ? (
         <div className="rounded-lg border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
-          No stock movements yet. Opening stock, sales, purchases, and adjustments
-          appear here — same idea as debt payments on a customer.
+          No stock movements yet
+          {selectedVariant ? ` for ${variantDisplayLabel(selectedVariant)}` : ''}.
+          Opening stock, sales, purchases, and adjustments appear here.
         </div>
       ) : (
         <div className="space-y-3">
           <p className="text-xs text-muted-foreground">
-            Full ledger since this product was added. Each row shows previous stock,
-            what changed, new stock, and who did it.
+            {selectedVariant
+              ? `Ledger for ${variantDisplayLabel(selectedVariant)}. Each row shows previous stock, what changed, new stock, and who did it.`
+              : 'Full ledger since this product was added. Each row shows previous stock, what changed, new stock, and who did it.'}
           </p>
           <div className="overflow-x-auto rounded-lg border">
             <table className="w-full text-sm" data-testid="stock-history-table">

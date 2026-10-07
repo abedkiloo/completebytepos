@@ -45,6 +45,24 @@ describe('ReportExportButtons', () => {
     expect(toast.success).toHaveBeenCalledWith('PDF downloaded');
   });
 
+  it('shows the center-screen loader while a download is in progress', async () => {
+    let resolveExport;
+    reportsAPI.exportFile.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveExport = resolve;
+        })
+    );
+    render(<ReportExportButtons slug="sales" />);
+    fireEvent.click(screen.getByRole('button', { name: /Download PDF/i }));
+    expect(await screen.findByTestId('center-screen-loader')).toBeInTheDocument();
+    expect(screen.getByText('Downloading report…')).toBeInTheDocument();
+    resolveExport('sales.pdf');
+    await waitFor(() => {
+      expect(screen.queryByTestId('center-screen-loader')).not.toBeInTheDocument();
+    });
+  });
+
   it('downloads Excel', async () => {
     render(<ReportExportButtons slug="expense" />);
     fireEvent.click(screen.getByRole('button', { name: /Download Excel/i }));

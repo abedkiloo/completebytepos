@@ -37,6 +37,7 @@ describe('Cart unit price editing', () => {
     );
 
     const priceInput = screen.getByLabelText(/Unit price for Zipper/i);
+    expect(priceInput).toHaveAttribute('min', '20');
     fireEvent.change(priceInput, { target: { value: '50' } });
     fireEvent.blur(priceInput);
 
@@ -46,5 +47,30 @@ describe('Cart unit price editing', () => {
       expect.any(Object)
     );
     expect(onSetPrice.mock.calls[0][2].mayEditPricing).toBeFalsy();
+  });
+
+  it('still commits below-catalog attempts so parent validation can reject', () => {
+    const onSetPrice = jest.fn(() => false);
+    render(
+      <Cart
+        items={[item]}
+        onAdjust={jest.fn()}
+        onSetQuantity={jest.fn()}
+        onSetPrice={onSetPrice}
+        onRemove={jest.fn()}
+        onClear={jest.fn()}
+        validateStock={false}
+      />
+    );
+
+    const priceInput = screen.getByLabelText(/Unit price for Zipper/i);
+    fireEvent.change(priceInput, { target: { value: '10' } });
+    fireEvent.blur(priceInput);
+
+    expect(onSetPrice).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 1 }),
+      '10',
+      expect.any(Object)
+    );
   });
 });
