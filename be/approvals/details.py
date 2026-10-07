@@ -216,16 +216,32 @@ def _backfill_sections(change: PendingChange) -> list[dict]:
     if payload.get('served_by_id'):
         served_by = User.objects.filter(pk=payload['served_by_id']).first()
 
+    item_rows = list(payload.get('items') or [])
+    product_ids = {
+        row.get('product_id')
+        for row in item_rows
+        if row.get('product_id') not in (None, '')
+    }
+    variant_ids = {
+        row.get('variant_id')
+        for row in item_rows
+        if row.get('variant_id') not in (None, '')
+    }
+    products_by_id = {
+        p.pk: p for p in Product.objects.filter(pk__in=product_ids)
+    } if product_ids else {}
+    variants_by_id = {
+        v.pk: v
+        for v in ProductVariant.objects.select_related('size', 'color').filter(
+            pk__in=variant_ids
+        )
+    } if variant_ids else {}
+
     lines = []
     total = Decimal('0')
-    for row in payload.get('items') or []:
-        product = Product.objects.filter(pk=row.get('product_id')).first()
-        variant = None
-        if row.get('variant_id'):
-            variant = (
-                ProductVariant.objects.select_related('size', 'color')
-                .filter(pk=row['variant_id']).first()
-            )
+    for row in item_rows:
+        product = products_by_id.get(row.get('product_id'))
+        variant = variants_by_id.get(row.get('variant_id')) if row.get('variant_id') else None
         try:
             price = (
                 row.get('unit_price')

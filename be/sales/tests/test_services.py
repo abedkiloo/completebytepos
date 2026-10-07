@@ -643,6 +643,7 @@ class SaleServiceTestCase(TestCase):
             'sale_type': 'pos',
             'use_wallet': True,
             'wallet_amount': Decimal('50.00'),
+            'allow_partial_payment': True,
             'customer_id': self.customer.id,
             'branch_id': self.branch.id,
         }

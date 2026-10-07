@@ -1079,8 +1079,15 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
     def get_queryset(self):
+        from django.db.models import Sum
+
         queryset = Customer.objects.all().select_related('branch')
-        
+        if getattr(self, 'action', None) == 'list':
+            # Avoid N+1 Customer.total_outstanding (per-row invoice aggregate).
+            queryset = queryset.annotate(
+                annotated_outstanding=Sum('invoices__balance'),
+            )
+
         # Filter by branch if specified (customers can be shared, so this is optional)
         branch_id = self.request.query_params.get('branch_id', None)
         if branch_id:

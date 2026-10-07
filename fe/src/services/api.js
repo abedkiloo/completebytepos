@@ -312,6 +312,7 @@ export const dailyTasksAPI = {
   delete: (id) => api.delete(`/daily-notes/tasks/${id}/`),
   toggleDone: (id) => api.post(`/daily-notes/tasks/${id}/toggle-done/`),
   pending: () => api.get('/daily-notes/tasks/pending/'),
+  pendingCount: () => api.get('/daily-notes/tasks/pending-count/'),
 };
 
 export const employeesAPI = {
@@ -409,8 +410,8 @@ export const customersAPI = {
     api.get(`/sales/customers/${id}/wallet-transactions/`, { params }),
   receiveWalletPayment: (id, data) =>
     api.post(`/sales/customers/${id}/receive-wallet-payment/`, data),
-  debtSummary: () => api.get('/sales/customers/debt-summary/'),
-  debtors: (params) => api.get('/sales/customers/debtors/', { params }),
+  debtSummary: () => api.get('/sales/customers/debt-summary/', { timeout: 30000 }),
+  debtors: (params) => api.get('/sales/customers/debtors/', { params, timeout: 30000 }),
   debtorCount: () => api.get('/sales/customers/debtor-count/'),
   debtCollections: (params) => api.get('/sales/customers/debt-collections/', { params }),
 };
@@ -528,6 +529,8 @@ export const auditLogAPI = {
 export const pendingChangesAPI = {
   list: (params) => api.get('/approvals/pending-changes/', { params }),
   pending: (params) => api.get('/approvals/pending-changes/pending/', { params }),
+  pendingCount: (params) =>
+    api.get('/approvals/pending-changes/pending-count/', { params }),
   mySubmissions: (params) => api.get('/approvals/pending-changes/my-submissions/', { params }),
   myDecisions: (params) => api.get('/approvals/pending-changes/my-decisions/', { params }),
   get: (id) => api.get(`/approvals/pending-changes/${id}/`),

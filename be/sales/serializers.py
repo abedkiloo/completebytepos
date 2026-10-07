@@ -120,7 +120,7 @@ class CustomerSerializer(serializers.ModelSerializer):
 
 class CustomerListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for customer lists"""
-    total_outstanding = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    total_outstanding = serializers.SerializerMethodField()
     wallet_balance = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
 
     class Meta:
@@ -130,6 +130,11 @@ class CustomerListSerializer(serializers.ModelSerializer):
             'email', 'phone', 'city', 'country',
             'is_active', 'total_outstanding', 'wallet_balance',
         ]
+
+    def get_total_outstanding(self, obj):
+        if hasattr(obj, 'annotated_outstanding'):
+            return obj.annotated_outstanding or 0
+        return obj.total_outstanding
 
     def to_representation(self, instance):
         from sales.customer_module_settings import apply_customer_representation_flags
@@ -322,6 +327,9 @@ class SaleSerializer(serializers.ModelSerializer):
         ]
 
     def get_item_count(self, obj):
+        cache = getattr(obj, '_prefetched_objects_cache', {})
+        if 'items' in cache:
+            return sum(int(item.quantity or 0) for item in obj.items.all())
         return obj.item_count
 
     def get_served_by_name(self, obj):
@@ -343,16 +351,21 @@ class SaleSerializer(serializers.ModelSerializer):
         return absolute_media_url(request, obj.backfill_receipt_photo.url)
 
     def get_amount_refunded(self, obj):
+        cache = getattr(obj, '_prefetched_objects_cache', {})
+        if 'refunds' in cache:
+            total = sum((r.amount or 0) for r in obj.refunds.all())
+            return total or Decimal('0')
         return obj.amount_refunded
 
     def get_refundable_remaining(self, obj):
-        return obj.refundable_remaining()
+        refunded = self.get_amount_refunded(obj)
+        return max(Decimal('0'), Decimal(str(obj.total or 0)) - Decimal(str(refunded or 0)))
 
     def get_can_refund(self, obj):
         return (
             obj.status == 'completed'
             and obj.refund_status != 'refunded'
-            and obj.refundable_remaining() > 0
+            and self.get_refundable_remaining(obj) > 0
         )
 
     def get_can_rollback(self, obj):
@@ -407,6 +420,15 @@ class SaleSerializer(serializers.ModelSerializer):
 
     @staticmethod
     def _refunded_qty_by_sale_item(sale):
+        # Prefer prefetched items__refund_lines (SaleService.build_queryset).
+        cache = getattr(sale, '_prefetched_objects_cache', {})
+        if 'items' in cache:
+            out = {}
+            for item in sale.items.all():
+                total = sum(int(rl.quantity or 0) for rl in item.refund_lines.all())
+                if total:
+                    out[item.id] = total
+            return out
         rows = (
             SaleRefundItem.objects.filter(sale_item__sale=sale)
             .values('sale_item_id')

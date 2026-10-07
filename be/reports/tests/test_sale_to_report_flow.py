@@ -189,7 +189,7 @@ class SaleToReportFlowTests(SalesAPITestCase):
         self._assert_stock_value(17, 7)
 
         salt_line = sale.items.get(product=self.salt)
-        refund = self._client(self.admin).post(f'/api/sales/{sale.id}/refund/', {
+        refund = self._client(self.manager).post(f'/api/sales/{sale.id}/refund/', {
             'items': [{'sale_item_id': salt_line.id, 'quantity': 1}],
             'reason': 'Damaged bag', 'refund_method': 'cash',
         }, format='json')
@@ -198,7 +198,7 @@ class SaleToReportFlowTests(SalesAPITestCase):
         self.assertEqual(self._report('dashboard/')['sales_returns'], {'total': 0.0, 'count': 0})
 
         change_id = refund.data['pending_change']['id']
-        checked = self._client(self.manager).post(
+        checked = self._client(self.admin).post(
             f'/api/approvals/pending-changes/{change_id}/approve/', {}, format='json',
         )
         self.assertEqual(checked.status_code, 200, checked.data)

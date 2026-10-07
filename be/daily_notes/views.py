@@ -218,3 +218,10 @@ class DailyTaskViewSet(DailyAuthorScopedViewSetMixin, viewsets.ModelViewSet):
             return self._access_denied()
         tasks = self.entry_service.pending_for_user(user=request.user)
         return Response(self.get_serializer(tasks, many=True).data)
+
+    @action(detail=False, methods=['get'], url_path='pending-count')
+    def pending_count(self, request):
+        """Nav badge count — no stale cleanup / no task payload."""
+        if not user_may_access_daily_notes(request.user):
+            return self._access_denied()
+        return Response({'count': self.entry_service.pending_count_for_user(user=request.user)})

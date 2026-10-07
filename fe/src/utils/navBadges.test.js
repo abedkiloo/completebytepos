@@ -9,9 +9,11 @@ import {
 jest.mock('../services/api', () => ({
   dailyTasksAPI: {
     pending: jest.fn(),
+    pendingCount: jest.fn(),
   },
   pendingChangesAPI: {
     pending: jest.fn(),
+    pendingCount: jest.fn(),
   },
   salesAPI: {
     list: jest.fn(),
@@ -53,17 +55,12 @@ describe('navBadges', () => {
   });
 
   test('fetchNavBadgeCounts loads all queues when allowed', async () => {
-    dailyTasksAPI.pending.mockResolvedValue({ data: [{ id: 1 }, { id: 2 }] });
-    pendingChangesAPI.pending.mockImplementation((params) => {
+    dailyTasksAPI.pendingCount.mockResolvedValue({ data: { count: 2 } });
+    pendingChangesAPI.pendingCount.mockImplementation((params) => {
       if (params?.action_type === 'debt_collection') {
-        return Promise.resolve({ data: [{ id: 11 }, { id: 12 }] });
+        return Promise.resolve({ data: { count: 2 } });
       }
-      return Promise.resolve({
-        data: [
-          { id: 9, action_type: 'product_price' },
-          { id: 10, action_type: 'debt_collection' },
-        ],
-      });
+      return Promise.resolve({ data: { count: 1 } });
     });
     expensesAPI.list.mockResolvedValue({ data: { count: 3, results: [] } });
     customersAPI.debtorCount.mockResolvedValue({ data: { count: 5 } });
@@ -81,6 +78,10 @@ describe('navBadges', () => {
       pendingApprovals: 4,
       debtors: 5,
       saleApprovals: 6,
+    });
+    expect(dailyTasksAPI.pendingCount).toHaveBeenCalled();
+    expect(pendingChangesAPI.pendingCount).toHaveBeenCalledWith({
+      exclude_action_type: 'sale_complete,debt_collection',
     });
     expect(expensesAPI.list).toHaveBeenCalledWith({
       status: 'pending',
@@ -107,8 +108,8 @@ describe('navBadges', () => {
       debtors: 0,
       saleApprovals: 0,
     });
-    expect(dailyTasksAPI.pending).not.toHaveBeenCalled();
-    expect(pendingChangesAPI.pending).not.toHaveBeenCalled();
+    expect(dailyTasksAPI.pendingCount).not.toHaveBeenCalled();
+    expect(pendingChangesAPI.pendingCount).not.toHaveBeenCalled();
     expect(expensesAPI.list).not.toHaveBeenCalled();
     expect(customersAPI.debtorCount).not.toHaveBeenCalled();
     expect(salesAPI.list).not.toHaveBeenCalled();

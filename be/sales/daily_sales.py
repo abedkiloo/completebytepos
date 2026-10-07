@@ -127,9 +127,7 @@ def get_daily_sales_report(
     if cashier_id:
         day_qs = day_qs.filter(Q(cashier_id=cashier_id) | Q(served_by_id=cashier_id))
 
-    base_qs = day_qs.filter(status='completed').prefetch_related(
-        'items__product', 'items__refund_lines',
-    )
+    base_qs = day_qs.filter(status='completed')
 
     # Sales sent by salespeople but not yet approved: money is already taken,
     # but stock, debt, and books post only after a manager approves.
@@ -144,9 +142,11 @@ def get_daily_sales_report(
         'pending_approval_paid': str(Decimal(str(pending['paid'] or 0)).quantize(Decimal('0.01'))),
     }
 
-    # Compute daily aggregates across all completed sales of that day
-    all_day_sales = list(base_qs)
-
+    # Summary from slim rows only (no item prefetch / full model hydrate).
+    summary_rows = base_qs.values(
+        'id', 'total', 'amount_paid', 'payment_method', 'entry_source'
+    )
+    orders_count = 0
     total_sales = Decimal('0.00')
     total_paid_upfront = Decimal('0.00')
     total_debt_incurred = Decimal('0.00')
@@ -157,15 +157,16 @@ def get_daily_sales_report(
     field_sales_total = Decimal('0.00')
     by_method_breakdown: Dict[str, Dict[str, Any]] = {}
 
-    for s in all_day_sales:
-        s_total = Decimal(str(s.total or 0))
-        s_paid = Decimal(str(s.amount_paid or 0))
+    for s in summary_rows.iterator(chunk_size=500):
+        orders_count += 1
+        s_total = Decimal(str(s['total'] or 0))
+        s_paid = Decimal(str(s['amount_paid'] or 0))
         p_amount, d_amount, p_status = classify_sale_payment(s_total, s_paid)
 
         total_sales += s_total
         total_paid_upfront += p_amount
         total_debt_incurred += d_amount
-        if s.is_field_sale:
+        if s.get('entry_source') == 'field':
             field_orders_count += 1
             field_sales_total += s_total
 
@@ -177,7 +178,7 @@ def get_daily_sales_report(
             partial_orders_count += 1
             debt_orders_count += 1  # Included in debt orders count (took on debt)
 
-        method = s.payment_method or 'other'
+        method = s['payment_method'] or 'other'
         if method not in by_method_breakdown:
             by_method_breakdown[method] = {'count': 0, 'total': Decimal('0.00')}
         by_method_breakdown[method]['count'] += 1
@@ -245,7 +246,11 @@ def get_daily_sales_report(
         },
         default='-occurred_at',
     )
-    orders_qs = orders_qs.order_by(*order_fields)
+    orders_qs = (
+        orders_qs.select_related('customer', 'cashier', 'served_by', 'branch')
+        .prefetch_related('items__product', 'items__refund_lines')
+        .order_by(*order_fields)
+    )
 
     # Pagination
     page_num = max(1, int(page or 1))
@@ -259,7 +264,7 @@ def get_daily_sales_report(
         'date': target_date.isoformat(),
         'summary': {
             'total_sales': str(total_sales.quantize(Decimal('0.01'))),
-            'orders_count': len(all_day_sales),
+            'orders_count': orders_count,
             'total_paid': str(total_paid_upfront.quantize(Decimal('0.01'))),
             'paid_orders_count': paid_orders_count,
             'total_debt_incurred': str(total_debt_incurred.quantize(Decimal('0.01'))),
@@ -267,7 +272,7 @@ def get_daily_sales_report(
             'partial_orders_count': partial_orders_count,
             'field_orders_count': field_orders_count,
             'field_sales_total': str(field_sales_total.quantize(Decimal('0.01'))),
-            'shop_orders_count': len(all_day_sales) - field_orders_count,
+            'shop_orders_count': orders_count - field_orders_count,
             'shop_sales_total': str((total_sales - field_sales_total).quantize(Decimal('0.01'))),
             'total_debt_collected': str(Decimal(str(total_debt_collected)).quantize(Decimal('0.01'))),
             'debt_settlement_count': debt_settlement_count,

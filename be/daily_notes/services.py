@@ -235,15 +235,20 @@ class DailyTaskService:
         qs = _apply_common_filters(qs, date_field='task_date', filters=filters, view_all=view_all)
         return qs.order_by('is_done', '-created_at')
 
-    def pending_for_user(self, *, user, limit: int = 50):
-        from daily_notes.approval_notice import complete_stale_sale_notice_tasks
+    def pending_for_user(self, *, user, limit: int = 50, cleanup_stale: bool = True):
+        if cleanup_stale:
+            from daily_notes.approval_notice import complete_stale_sale_notice_tasks
 
-        complete_stale_sale_notice_tasks(user=user)
+            complete_stale_sale_notice_tasks(user=user)
         return (
             DailyTask.objects.filter(assigned_to=user, is_done=False)
             .select_related('author', 'author__profile', 'assigned_to', 'assigned_to__profile')
             .order_by('task_date', '-created_at')[:limit]
         )
+
+    def pending_count_for_user(self, *, user) -> int:
+        """Badge count only — skips stale-notice cleanup (N+1) on every poll."""
+        return DailyTask.objects.filter(assigned_to=user, is_done=False).count()
 
     def recent_dates(self, *, user, view_all: bool, limit: int = 30):
         return recent_activity_dates(user=user, view_all=view_all, limit=limit)

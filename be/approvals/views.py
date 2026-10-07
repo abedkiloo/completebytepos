@@ -81,6 +81,28 @@ class PendingChangeViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=['get'], url_path='pending-count')
+    def pending_count(self, request):
+        """
+        Lightweight badge count — no per-row details serialization.
+
+        Optional ``exclude_action_type`` (repeatable / comma-separated) drops
+        sales-desk actions so Pending Approvals can exclude sale/debt queues.
+        """
+        self._require_checker(request)
+        qs = PendingChange.objects.filter(status=PendingChange.STATUS_PENDING)
+        action_type = request.query_params.get('action_type')
+        if action_type:
+            qs = qs.filter(action_type=action_type)
+        raw_exclude = request.query_params.getlist('exclude_action_type')
+        if not raw_exclude:
+            csv = (request.query_params.get('exclude_action_type') or '').strip()
+            if csv:
+                raw_exclude = [p.strip() for p in csv.split(',') if p.strip()]
+        if raw_exclude:
+            qs = qs.exclude(action_type__in=raw_exclude)
+        return Response({'count': qs.count()})
+
     @action(detail=False, methods=['get'], url_path='my-submissions')
     def my_submissions(self, request):
         """Submissions created by the current user (e.g. rejected past sales to fix)."""

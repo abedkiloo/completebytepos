@@ -10,6 +10,9 @@ from payments.config import PUBLIC_INVOICE_BASE_URL, get_brand_blurb
 from .models import SmsTemplate
 from .template_catalog import get_template_body
 
+# Backward-compatible alias used by older tests / callers.
+INVOICE_TEMPLATE = get_template_body(SmsTemplate.KEY_INVOICE)
+
 
 def _money(amount) -> str:
     try:

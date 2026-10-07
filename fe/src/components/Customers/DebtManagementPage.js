@@ -133,6 +133,10 @@ export default function DebtManagementPage() {
     } catch (err) {
       setDebtors([]);
       setCount(0);
+      // Axios cancel / timeout (ECONNABORTED) — avoid noisy toasts on remount.
+      if (err.code === 'ERR_CANCELED' || err.code === 'ECONNABORTED') {
+        return;
+      }
       const msg = err.response?.data?.error || 'Could not load debtors';
       toast.error(msg);
     } finally {

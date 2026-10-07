@@ -144,21 +144,24 @@ def _serialize_customer_profile(customer: Customer) -> Dict[str, Any]:
 
 
 def _standing_summary(customer: Customer) -> Dict[str, Any]:
-    profile = _serialize_customer_profile(customer)
-    lifetime_sales = Sale.objects.filter(customer_id=customer.id, status='completed')
-    lifetime_count = lifetime_sales.count()
-    lifetime_total = lifetime_sales.aggregate(t=Sum('total'))['t'] or Decimal('0.00')
+    from django.db.models import Count
 
-    debt_txns = CustomerWalletTransaction.objects.filter(
-        customer_id=customer.id,
-        source_type='debt',
+    profile = _serialize_customer_profile(customer)
+    lifetime = Sale.objects.filter(customer_id=customer.id, status='completed').aggregate(
+        count=Count('id'),
+        total=Sum('total'),
     )
-    settlements = CustomerWalletTransaction.objects.filter(
-        customer_id=customer.id,
-        source_type='debt_settlement',
-    )
-    total_debt_incurred = debt_txns.aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
-    total_debt_collected = settlements.aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+    wallet_sums = {
+        row['source_type']: row['total']
+        for row in CustomerWalletTransaction.objects.filter(
+            customer_id=customer.id,
+            source_type__in=('debt', 'debt_settlement'),
+        )
+        .values('source_type')
+        .annotate(total=Sum('amount'))
+    }
+    total_debt_incurred = wallet_sums.get('debt') or Decimal('0.00')
+    total_debt_collected = wallet_sums.get('debt_settlement') or Decimal('0.00')
 
     return {
         'standing': profile['standing'],
@@ -166,8 +169,8 @@ def _standing_summary(customer: Customer) -> Dict[str, Any]:
         'wallet_debt': profile['wallet_debt'],
         'wallet_credit': profile['wallet_credit'],
         'total_outstanding': profile['total_outstanding'],
-        'lifetime_orders': lifetime_count,
-        'lifetime_sales_total': str(_q(lifetime_total)),
+        'lifetime_orders': int(lifetime['count'] or 0),
+        'lifetime_sales_total': str(_q(lifetime['total'] or 0)),
         'total_debt_incurred': str(_q(total_debt_incurred)),
         'total_debt_collected': str(_q(total_debt_collected)),
     }

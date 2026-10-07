@@ -87,6 +87,7 @@ jest.mock('lucide-react', () => {
     ChevronLeft: Icon,
     ChevronRight: Icon,
     X: Icon,
+    MessageSquareText: Icon,
   };
 });
 

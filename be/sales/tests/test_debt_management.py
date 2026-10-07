@@ -250,9 +250,9 @@ class DebtManagementAPITests(ManagerAPITestCase):
         self.assertIn(stuck.id, ids)
         row = next(r for r in response.data['results'] if r['id'] == stuck.id)
         self.assertEqual(Decimal(row['debt_amount']), Decimal('400.00'))
-
+        # List GET stays read-only/fast; wallet is synced on profile or receive payment.
         stuck.refresh_from_db()
-        self.assertEqual(stuck.wallet_balance, Decimal('-400.00'))
+        self.assertEqual(stuck.wallet_balance, Decimal('0.00'))
 
     def test_inactive_customer_with_debt_still_listed(self):
         self.debtor.is_active = False
