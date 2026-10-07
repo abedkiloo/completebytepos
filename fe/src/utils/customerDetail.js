@@ -22,6 +22,21 @@ export function formatDebtTrail(entry) {
   return parts.join(' · ');
 }
 
+/** Extra settlement meta for debt payments: method, reference, who recorded. */
+export function formatSettlementMeta(entry) {
+  if (!entry || entry.source_type !== 'debt_settlement') return '';
+  const parts = [];
+  const method = entry.payment_method_label || '';
+  if (method) parts.push(method);
+  const ref = (entry.reference || '').trim();
+  if (ref) parts.push(`Ref ${ref}`);
+  const who = (entry.created_by_name || '').trim();
+  if (who) {
+    parts.push(method === 'Cash' || entry.payment_method === 'cash' ? `Collected by ${who}` : `Recorded by ${who}`);
+  }
+  return parts.join(' · ');
+}
+
 export function ledgerSourceLabel(sourceType) {
   const labels = {
     debt: 'Sale debt',

@@ -142,6 +142,8 @@ class DebtManagementAPITests(ManagerAPITestCase):
             source_type='debt_settlement',
             amount=Decimal('40.00'),
             balance_after=Decimal('-160.00'),
+            payment_method='cash',
+            reference='',
             notes='Cash at counter',
             created_by=self.manager_user,
         )
@@ -164,6 +166,27 @@ class DebtManagementAPITests(ManagerAPITestCase):
         self.assertEqual(row['customer_name'], 'Owed Customer')
         self.assertEqual(Decimal(row['amount']), Decimal('40.00'))
         self.assertEqual(row['received_by'], self.manager_user.username)
+        self.assertEqual(row['payment_method'], 'cash')
+        self.assertEqual(row['payment_method_label'], 'Cash')
+        self.assertEqual(row['reference'], '')
+
+    def test_list_debt_collections_infers_mpesa_from_legacy_notes(self):
+        from sales.debt_management import list_debt_collections
+
+        CustomerWalletTransaction.objects.create(
+            customer=self.debtor,
+            transaction_type='credit',
+            source_type='debt_settlement',
+            amount=Decimal('50.00'),
+            balance_after=Decimal('-150.00'),
+            reference='QHX7K2L9M1',
+            notes='Debt payment received via M-PESA (ref: QHX7K2L9M1)',
+            created_by=self.manager_user,
+        )
+        row = list_debt_collections()['results'][0]
+        self.assertEqual(row['payment_method'], 'mpesa')
+        self.assertEqual(row['payment_method_label'], 'M-PESA')
+        self.assertEqual(row['reference'], 'QHX7K2L9M1')
 
     def test_debt_collections_api(self):
         CustomerWalletTransaction.objects.create(
@@ -172,6 +195,8 @@ class DebtManagementAPITests(ManagerAPITestCase):
             source_type='debt_settlement',
             amount=Decimal('15.50'),
             balance_after=Decimal('-184.50'),
+            payment_method='mpesa',
+            reference='ABC12345',
             created_by=self.manager_user,
         )
         today = timezone.localdate().isoformat()

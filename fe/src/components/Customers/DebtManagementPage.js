@@ -33,6 +33,8 @@ import {
   getTodayDateString,
   shiftDate,
   formatDateLabel,
+  settlementMethodLabel,
+  settlementReferenceLabel,
 } from '../../utils/debtManagement';
 import { customerDetailPath } from '../../utils/customerDetail';
 import ReceiveWalletPaymentDialog from './ReceiveWalletPaymentDialog';
@@ -301,7 +303,8 @@ export default function DebtManagementPage() {
                 Collections
               </h2>
               <p className="text-sm text-muted-foreground">
-                Who paid and how much on {formatDateLabel(collectionDate)}.
+                How each debt was settled, by whom, and any reference on{' '}
+                {formatDateLabel(collectionDate)}.
               </p>
             </div>
             <Button
@@ -368,7 +371,7 @@ export default function DebtManagementPage() {
               <EmptyState
                 icon={Banknote}
                 title="No collections on this day"
-                description="Debt payments recorded here will list the customer and amount."
+                description="Debt payments recorded here will list method, collector, and reference."
               />
             </div>
           ) : (
@@ -378,14 +381,17 @@ export default function DebtManagementPage() {
                   <DataTableHead>Time</DataTableHead>
                   <DataTableHead>Customer</DataTableHead>
                   <DataTableHead align="right">Amount paid</DataTableHead>
+                  <DataTableHead>Method</DataTableHead>
+                  <DataTableHead>Reference</DataTableHead>
+                  <DataTableHead>Collected by</DataTableHead>
                   <DataTableHead align="right">Balance after</DataTableHead>
-                  <DataTableHead>Received by</DataTableHead>
                   <DataTableHead>Notes</DataTableHead>
                 </DataTableHeader>
                 <DataTableBody>
                   {collections.results.map((row) => {
                     const remaining = Number(row.balance_after);
                     const stillOwes = !Number.isNaN(remaining) && remaining < 0;
+                    const method = settlementMethodLabel(row);
                     return (
                       <DataTableRow key={row.id}>
                         <DataTableCell className="whitespace-nowrap text-sm text-muted-foreground">
@@ -406,6 +412,17 @@ export default function DebtManagementPage() {
                         <DataTableCell align="right" className="font-semibold text-success">
                           {formatCurrency(row.amount)}
                         </DataTableCell>
+                        <DataTableCell>
+                          <Badge variant="secondary" className="text-[10px]">
+                            {method}
+                          </Badge>
+                        </DataTableCell>
+                        <DataTableCell className="font-mono text-sm">
+                          {settlementReferenceLabel(row)}
+                        </DataTableCell>
+                        <DataTableCell className="text-sm">
+                          {row.received_by || '—'}
+                        </DataTableCell>
                         <DataTableCell
                           align="right"
                           className={
@@ -416,11 +433,8 @@ export default function DebtManagementPage() {
                         >
                           {stillOwes ? formatCurrency(Math.abs(remaining)) : 'Settled'}
                         </DataTableCell>
-                        <DataTableCell className="text-sm text-muted-foreground">
-                          {row.received_by || '—'}
-                        </DataTableCell>
-                        <DataTableCell className="max-w-[16rem] truncate text-sm text-muted-foreground">
-                          {[row.reference, row.notes].filter(Boolean).join(' · ') || '—'}
+                        <DataTableCell className="max-w-[12rem] truncate text-sm text-muted-foreground">
+                          {row.notes || '—'}
                         </DataTableCell>
                       </DataTableRow>
                     );

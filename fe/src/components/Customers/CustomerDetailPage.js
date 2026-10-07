@@ -23,6 +23,7 @@ import { userHasAdminSaleOverride } from '../../utils/saleCompletionApproval';
 import { pendingApprovalToastMessage } from '../../utils/makerChecker';
 import {
   formatDebtTrail,
+  formatSettlementMeta,
   ledgerSourceLabel,
   standingLabel,
 } from '../../utils/customerDetail';
@@ -462,6 +463,7 @@ export default function CustomerDetailPage() {
                     <DataTableHead sortKey="name" ordering={ledgerOrdering} onOrderingChange={setLedgerOrdering}>
                       Type
                     </DataTableHead>
+                    <DataTableHead>Settlement</DataTableHead>
                     <DataTableHead>Debt flow</DataTableHead>
                     <DataTableHead align="right">Amount</DataTableHead>
                     <DataTableHead align="right">Balance</DataTableHead>
@@ -481,6 +483,11 @@ export default function CustomerDetailPage() {
                               {entry.sale_number}
                             </div>
                           )}
+                        </DataTableCell>
+                        <DataTableCell className="text-sm text-muted-foreground max-w-xs">
+                          {entry.source_type === 'debt_settlement'
+                            ? formatSettlementMeta(entry) || '—'
+                            : '—'}
                         </DataTableCell>
                         <DataTableCell className="text-sm text-muted-foreground max-w-md">
                           {formatDebtTrail(entry)}

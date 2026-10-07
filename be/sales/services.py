@@ -1667,7 +1667,8 @@ class CustomerService(BaseService):
     def update_wallet_balance(self, customer: Customer, amount: Decimal,
                              transaction_type: str, source_type: str = 'other',
                              sale: Optional[Sale] = None, invoice: Optional[Invoice] = None,
-                             reference: str = '', notes: str = '', user=None) -> 'CustomerWalletTransaction':
+                             reference: str = '', notes: str = '', user=None,
+                             payment_method: str = '') -> 'CustomerWalletTransaction':
         """Update customer wallet balance and create transaction record"""
         from sales.models import CustomerWalletTransaction
         
@@ -1694,6 +1695,7 @@ class CustomerService(BaseService):
             sale=sale,
             invoice=invoice,
             reference=reference,
+            payment_method=(payment_method or '').strip().lower(),
             notes=notes,
             created_by=user
         )
@@ -1731,6 +1733,7 @@ class CustomerService(BaseService):
             transaction_type='credit',
             source_type='debt_settlement',
             reference=reference,
+            payment_method=payment_method,
             notes=notes.strip() or default_notes,
             user=user,
         )

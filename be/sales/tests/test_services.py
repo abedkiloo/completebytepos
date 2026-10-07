@@ -147,6 +147,8 @@ class CustomerServiceTestCase(TestCase):
         self.assertEqual(customer.wallet_balance, Decimal('-125.00'))
         self.assertEqual(txn.source_type, 'debt_settlement')
         self.assertEqual(txn.transaction_type, 'credit')
+        self.assertEqual(txn.payment_method, 'cash')
+        self.assertEqual(txn.reference, 'R-1')
 
     def test_record_wallet_payment_rejects_card(self):
         customer = Customer.objects.create(

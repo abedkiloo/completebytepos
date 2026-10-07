@@ -144,7 +144,8 @@ class CustomerListSerializer(serializers.ModelSerializer):
 
 class CustomerWalletTransactionSerializer(serializers.ModelSerializer):
     sale_number = serializers.CharField(source='sale.sale_number', read_only=True)
-    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    created_by_name = serializers.SerializerMethodField()
+    payment_method_label = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomerWalletTransaction
@@ -156,12 +157,24 @@ class CustomerWalletTransactionSerializer(serializers.ModelSerializer):
             'balance_after',
             'sale',
             'sale_number',
+            'payment_method',
+            'payment_method_label',
             'reference',
             'notes',
             'created_by_name',
             'created_at',
         ]
         read_only_fields = fields
+
+    def get_created_by_name(self, obj):
+        from sales.debt_management import user_display_name
+
+        return user_display_name(obj.created_by) if obj.created_by_id else ''
+
+    def get_payment_method_label(self, obj):
+        from sales.debt_management import payment_method_label, resolve_settlement_payment_method
+
+        return payment_method_label(resolve_settlement_payment_method(obj))
 
 
 class ReceiveWalletPaymentSerializer(serializers.Serializer):

@@ -16,6 +16,10 @@ import {
 
 import { salesAPI } from '../../services/api';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
+import {
+  settlementMethodLabel,
+  settlementReferenceLabel,
+} from '../../utils/debtManagement';
 import { toast } from '../../utils/toast';
 import {
   getStoredAuth,
@@ -620,8 +624,10 @@ export default function DailySalesPage() {
               <DataTableHead>Time</DataTableHead>
               <DataTableHead>Customer</DataTableHead>
               <DataTableHead align="right">Amount paid</DataTableHead>
+              <DataTableHead>Method</DataTableHead>
+              <DataTableHead>Reference</DataTableHead>
+              <DataTableHead>Collected by</DataTableHead>
               <DataTableHead align="right">Balance after</DataTableHead>
-              <DataTableHead>Received by</DataTableHead>
               <DataTableHead>Notes</DataTableHead>
             </DataTableHeader>
             <DataTableBody>
@@ -654,6 +660,15 @@ export default function DailySalesPage() {
                     <DataTableCell align="right" className="font-semibold text-success">
                       {formatCurrency(row.amount)}
                     </DataTableCell>
+                    <DataTableCell className="text-sm font-medium">
+                      {settlementMethodLabel(row)}
+                    </DataTableCell>
+                    <DataTableCell className="font-mono text-sm">
+                      {settlementReferenceLabel(row)}
+                    </DataTableCell>
+                    <DataTableCell className="text-sm text-muted-foreground">
+                      {row.received_by || '—'}
+                    </DataTableCell>
                     <DataTableCell
                       align="right"
                       className={
@@ -662,11 +677,8 @@ export default function DailySalesPage() {
                     >
                       {stillOwes ? formatCurrency(Math.abs(remaining)) : 'Settled'}
                     </DataTableCell>
-                    <DataTableCell className="text-sm text-muted-foreground">
-                      {row.received_by || '—'}
-                    </DataTableCell>
-                    <DataTableCell className="max-w-[16rem] truncate text-sm text-muted-foreground">
-                      {[row.reference, row.notes].filter(Boolean).join(' · ') || '—'}
+                    <DataTableCell className="max-w-[12rem] truncate text-sm text-muted-foreground">
+                      {row.notes || '—'}
                     </DataTableCell>
                   </DataTableRow>
                 );

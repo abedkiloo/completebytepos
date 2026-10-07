@@ -622,11 +622,39 @@ def debtor_count(user=None) -> int:
     return _debtor_queryset(user=user).count()
 
 
-def _user_label(user) -> str:
+def user_display_name(user) -> str:
     if not user:
         return ''
     full = (user.get_full_name() or '').strip()
     return full or user.get_username()
+
+
+def _user_label(user) -> str:
+    return user_display_name(user)
+
+
+_PAYMENT_METHOD_LABELS = {
+    'cash': 'Cash',
+    'mpesa': 'M-PESA',
+}
+
+
+def resolve_settlement_payment_method(txn) -> str:
+    """Stored method, or infer from legacy notes text."""
+    stored = (getattr(txn, 'payment_method', None) or '').strip().lower()
+    if stored in _PAYMENT_METHOD_LABELS:
+        return stored
+    notes = (getattr(txn, 'notes', None) or '').lower()
+    if 'via m-pesa' in notes or 'via mpesa' in notes:
+        return 'mpesa'
+    if 'via cash' in notes:
+        return 'cash'
+    return stored
+
+
+def payment_method_label(method: str) -> str:
+    key = (method or '').strip().lower()
+    return _PAYMENT_METHOD_LABELS.get(key, '')
 
 
 def list_debt_collections(
@@ -673,6 +701,7 @@ def list_debt_collections(
     results = []
     for txn in rows:
         customer = txn.customer
+        method = resolve_settlement_payment_method(txn)
         results.append(
             {
                 'id': txn.id,
@@ -682,6 +711,8 @@ def list_debt_collections(
                 'customer_code': (customer.customer_code or '') if customer else '',
                 'amount': str(Decimal(str(txn.amount)).quantize(Decimal('0.01'))),
                 'balance_after': str(Decimal(str(txn.balance_after)).quantize(Decimal('0.01'))),
+                'payment_method': method,
+                'payment_method_label': payment_method_label(method) or '—',
                 'reference': txn.reference or '',
                 'notes': txn.notes or '',
                 'sale_number': txn.sale.sale_number if txn.sale_id and txn.sale else None,

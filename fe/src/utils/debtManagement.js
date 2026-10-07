@@ -98,3 +98,24 @@ export function walletTxnLabel(sourceType) {
       return sourceType || 'Transaction';
   }
 }
+
+/** Cash / M-PESA label for a debt collection or ledger settlement row. */
+export function settlementMethodLabel(row) {
+  if (!row) return '—';
+  if (row.payment_method_label) return row.payment_method_label;
+  const method = String(row.payment_method || '').toLowerCase();
+  if (method === 'cash') return 'Cash';
+  if (method === 'mpesa') return 'M-PESA';
+  const notes = String(row.notes || '').toLowerCase();
+  if (notes.includes('via m-pesa') || notes.includes('via mpesa')) return 'M-PESA';
+  if (notes.includes('via cash')) return 'Cash';
+  return '—';
+}
+
+/** Reference line for settlements (M-PESA code or cash receipt). */
+export function settlementReferenceLabel(row) {
+  if (!row) return '—';
+  const ref = (row.reference || '').trim();
+  if (ref) return ref;
+  return '—';
+}

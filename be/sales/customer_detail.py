@@ -83,6 +83,12 @@ def debt_flow_for_txn(
 
 
 def serialize_ledger_entry(txn: CustomerWalletTransaction) -> Dict[str, Any]:
+    from sales.debt_management import (
+        payment_method_label,
+        resolve_settlement_payment_method,
+        user_display_name,
+    )
+
     flow = debt_flow_for_txn(
         transaction_type=txn.transaction_type,
         source_type=txn.source_type,
@@ -90,15 +96,20 @@ def serialize_ledger_entry(txn: CustomerWalletTransaction) -> Dict[str, Any]:
         balance_after=Decimal(str(txn.balance_after or 0)),
         sale=txn.sale,
     )
-    created_by_name = None
-    if txn.created_by_id:
-        created_by_name = txn.created_by.username
+    created_by_name = user_display_name(txn.created_by) if txn.created_by_id else ''
+    method = ''
+    method_label = ''
+    if txn.source_type == 'debt_settlement':
+        method = resolve_settlement_payment_method(txn)
+        method_label = payment_method_label(method)
 
     return {
         'id': txn.id,
         'transaction_type': txn.transaction_type,
         'source_type': txn.source_type,
         'amount': str(_q(txn.amount)),
+        'payment_method': method,
+        'payment_method_label': method_label,
         'reference': txn.reference or '',
         'notes': txn.notes or '',
         'sale': txn.sale_id,

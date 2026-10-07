@@ -1039,6 +1039,12 @@ class CustomerWalletTransaction(models.Model):
         help_text='Invoice related to this transaction (if applicable)'
     )
     reference = models.CharField(max_length=100, blank=True, help_text='Reference number or code')
+    payment_method = models.CharField(
+        max_length=20,
+        blank=True,
+        default='',
+        help_text='How a debt settlement was paid (cash / mpesa). Blank for non-settlement rows.',
+    )
     notes = models.TextField(blank=True, help_text='Transaction notes')
     created_by = models.ForeignKey(
         User,

@@ -269,7 +269,9 @@ describe('DebtManagementPage', () => {
             customer_code: 'C-12',
             amount: '40.00',
             balance_after: '-10.00',
-            reference: 'CASH',
+            payment_method: 'cash',
+            payment_method_label: 'Cash',
+            reference: 'CASH-1',
             notes: 'Partial',
             received_by: 'manager',
             created_at: '2026-09-18T10:15:00Z',
@@ -308,6 +310,10 @@ describe('DebtManagementPage', () => {
     });
     expect(await screen.findByText('Bob Payer')).toBeInTheDocument();
     expect(screen.getByText(/Amount paid/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Cash$/)).toBeInTheDocument();
+    expect(screen.getByText('CASH-1')).toBeInTheDocument();
+    expect(screen.getByText('manager')).toBeInTheDocument();
+    expect(screen.getByText(/Collected by/i)).toBeInTheDocument();
   });
 
   it('opens receive payment dialog from row action', async () => {
