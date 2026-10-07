@@ -11,7 +11,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../ui/dialog';
-import { PageLoading } from '../page';
+import { PageLoading, ListPaginationRail } from '../page';
+import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { toast } from '../../utils/toast';
 import { formatDateTime } from '../../utils/formatters';
 import { getStoredAuth } from '../../utils/roleAccess';
@@ -39,46 +40,57 @@ export default function MyDecisionsTrail({
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');
   const [selected, setSelected] = useState(null);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const pageSize = DEFAULT_PAGE_SIZE;
 
   const load = useCallback(async () => {
     setLoading(true);
-    const params = { limit: 50 };
+    const params = {
+      page,
+      page_size: pageSize,
+    };
     if (statusFilter === DECISION_STATUS_APPROVED || statusFilter === DECISION_STATUS_REJECTED) {
       params.status = statusFilter;
     }
-    if (Array.isArray(actionTypes) && actionTypes.length === 1) {
-      params.action_type = actionTypes[0];
+    if (Array.isArray(actionTypes) && actionTypes.length > 0) {
+      params.action_type = actionTypes.join(',');
     }
 
+    const loadExpenses =
+      includeExpenses && statusFilter !== DECISION_STATUS_REJECTED;
     const tasks = [pendingChangesAPI.myDecisions(params)];
     const { user } = getStoredAuth();
-    if (includeExpenses && user?.id && statusFilter !== DECISION_STATUS_REJECTED) {
+    if (loadExpenses && user?.id) {
       tasks.push(
         expensesAPI.list({
           status: 'approved',
           approved_by: user.id,
           show_all: 'true',
-          page_size: 50,
+          page,
+          page_size: pageSize,
         }),
       );
     }
 
     const results = await Promise.allSettled(tasks);
     const decisions = [];
+    let decisionCount = 0;
+    let expenseCount = 0;
 
     if (results[0]?.status === 'fulfilled') {
       let data = results[0].value.data;
-      data = Array.isArray(data) ? data : data?.results || [];
-      if (Array.isArray(actionTypes) && actionTypes.length > 1) {
-        const allowed = new Set(actionTypes);
-        data = data.filter((row) => allowed.has(row.action_type));
-      }
-      decisions.push(...data.map(formatMyDecisionRow));
+      const list = Array.isArray(data) ? data : data?.results || [];
+      decisionCount = Array.isArray(data)
+        ? list.length
+        : Number(data?.count ?? list.length) || 0;
+      decisions.push(...list.map(formatMyDecisionRow));
     }
 
     if (results[1]?.status === 'fulfilled') {
       const data = results[1].value.data;
-      const expenses = data?.results || data || [];
+      const expenses = data?.results || (Array.isArray(data) ? data : []);
+      expenseCount = Number(data?.count ?? expenses.length) || 0;
       if (Array.isArray(expenses)) {
         decisions.push(...expenses.map(formatExpenseDecisionRow));
       }
@@ -87,6 +99,7 @@ export default function MyDecisionsTrail({
     if (results.every((r) => r.status === 'rejected')) {
       toast.error('Could not load your approval history');
       setRows([]);
+      setTotalCount(0);
     } else {
       decisions.sort((a, b) => {
         const ta = a.decidedAt ? new Date(a.decidedAt).getTime() : 0;
@@ -94,9 +107,10 @@ export default function MyDecisionsTrail({
         return tb - ta;
       });
       setRows(decisions);
+      setTotalCount(decisionCount + (loadExpenses ? expenseCount : 0));
     }
     setLoading(false);
-  }, [actionTypes, includeExpenses, statusFilter]);
+  }, [actionTypes, includeExpenses, page, pageSize, statusFilter]);
 
   useEffect(() => {
     load();
@@ -121,7 +135,10 @@ export default function MyDecisionsTrail({
               type="button"
               size="sm"
               variant={statusFilter === f.id ? 'default' : 'outline'}
-              onClick={() => setStatusFilter(f.id)}
+              onClick={() => {
+                setStatusFilter(f.id);
+                setPage(1);
+              }}
               aria-pressed={statusFilter === f.id}
             >
               {f.label}
@@ -144,69 +161,77 @@ export default function MyDecisionsTrail({
           </CardContent>
         </Card>
       ) : (
-        <Card className="overflow-hidden">
-          <CardContent className="p-0">
-            <div className="border-b bg-muted/30 px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {rows.length} decision{rows.length === 1 ? '' : 's'}
-            </div>
-            <ul>
-              {rows.map((row) => {
-                const approved = row.status === DECISION_STATUS_APPROVED;
-                return (
-                  <li key={row.key}>
-                    <button
-                      type="button"
-                      onClick={() => setSelected(row)}
-                      className={cn(
-                        'flex w-full items-start gap-3 border-b border-border/60 px-3 py-3 text-left transition-colors',
-                        'hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                      )}
-                      data-testid="my-decision-row"
-                    >
-                      <span
+        <ListPaginationRail
+          page={page}
+          pageSize={pageSize}
+          totalCount={totalCount}
+          suffix={`${totalCount} decision${totalCount === 1 ? '' : 's'}`}
+          onPageChange={setPage}
+        >
+          <Card className="overflow-hidden">
+            <CardContent className="p-0">
+              <div className="border-b bg-muted/30 px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Showing {rows.length} on this page
+              </div>
+              <ul>
+                {rows.map((row) => {
+                  const approved = row.status === DECISION_STATUS_APPROVED;
+                  return (
+                    <li key={row.key}>
+                      <button
+                        type="button"
+                        onClick={() => setSelected(row)}
                         className={cn(
-                          'mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full',
-                          approved
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-rose-100 text-rose-800',
+                          'flex w-full items-start gap-3 border-b border-border/60 px-3 py-3 text-left transition-colors',
+                          'hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                         )}
-                        aria-hidden
+                        data-testid="my-decision-row"
                       >
-                        {approved ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge
-                            variant={approved ? 'default' : 'destructive'}
-                            className="shrink-0 text-[10px]"
-                          >
-                            {row.statusLabel}
-                          </Badge>
-                          <Badge variant="secondary" className="shrink-0 text-[10px]">
-                            {row.badge}
-                          </Badge>
-                          <span className="truncate text-sm font-medium">{row.title}</span>
-                        </div>
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          Requested by {row.requestedBy}
-                          {row.decidedAt
-                            ? ` · You decided ${formatDateTime(row.decidedAt)}`
-                            : null}
-                        </p>
-                        {row.comment ? (
-                          <p className="mt-1 line-clamp-2 text-xs text-foreground/80">
-                            <span className="font-medium">{row.commentLabel}: </span>
-                            {row.comment}
+                        <span
+                          className={cn(
+                            'mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full',
+                            approved
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-rose-100 text-rose-800',
+                          )}
+                          aria-hidden
+                        >
+                          {approved ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge
+                              variant={approved ? 'default' : 'destructive'}
+                              className="shrink-0 text-[10px]"
+                            >
+                              {row.statusLabel}
+                            </Badge>
+                            <Badge variant="secondary" className="shrink-0 text-[10px]">
+                              {row.badge}
+                            </Badge>
+                            <span className="truncate text-sm font-medium">{row.title}</span>
+                          </div>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            Requested by {row.requestedBy}
+                            {row.decidedAt
+                              ? ` · You decided ${formatDateTime(row.decidedAt)}`
+                              : null}
                           </p>
-                        ) : null}
-                      </div>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </CardContent>
-        </Card>
+                          {row.comment ? (
+                            <p className="mt-1 line-clamp-2 text-xs text-foreground/80">
+                              <span className="font-medium">{row.commentLabel}: </span>
+                              {row.comment}
+                            </p>
+                          ) : null}
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </CardContent>
+          </Card>
+        </ListPaginationRail>
       )}
 
       <Dialog

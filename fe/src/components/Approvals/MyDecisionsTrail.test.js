@@ -22,42 +22,50 @@ jest.mock('../../utils/roleAccess', () => ({
 
 jest.mock('../page', () => ({
   PageLoading: () => <div>Loading…</div>,
+  ListPaginationRail: ({ children, totalCount, suffix }) => (
+    <div data-testid="decisions-pagination" data-count={totalCount} data-suffix={suffix}>
+      {children}
+    </div>
+  ),
 }));
 
 describe('MyDecisionsTrail', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     pendingChangesAPI.myDecisions.mockResolvedValue({
-      data: [
-        {
-          id: 1,
-          action_type: 'product_price',
-          entity_type: 'products.Product',
-          entity_repr: 'Zipper',
-          status: 'approved',
-          reason: 'Seasonal price',
-          rejection_reason: '',
-          made_by_username: 'cashier1',
-          checked_at: '2026-10-07T09:00:00Z',
-          original_values: { price: '20' },
-          proposed_values: { price: '25' },
-        },
-        {
-          id: 2,
-          action_type: 'sale_refund',
-          entity_type: 'sales.Sale',
-          entity_repr: 'S-22',
-          status: 'rejected',
-          reason: 'Customer return',
-          rejection_reason: 'Missing receipt',
-          made_by_username: 'cashier2',
-          checked_at: '2026-10-07T08:00:00Z',
-          original_values: {},
-          proposed_values: {},
-        },
-      ],
+      data: {
+        count: 2,
+        results: [
+          {
+            id: 1,
+            action_type: 'product_price',
+            entity_type: 'products.Product',
+            entity_repr: 'Zipper',
+            status: 'approved',
+            reason: 'Seasonal price',
+            rejection_reason: '',
+            made_by_username: 'cashier1',
+            checked_at: '2026-10-07T09:00:00Z',
+            original_values: { price: '20' },
+            proposed_values: { price: '25' },
+          },
+          {
+            id: 2,
+            action_type: 'sale_refund',
+            entity_type: 'sales.Sale',
+            entity_repr: 'S-22',
+            status: 'rejected',
+            reason: 'Customer return',
+            rejection_reason: 'Missing receipt',
+            made_by_username: 'cashier2',
+            checked_at: '2026-10-07T08:00:00Z',
+            original_values: {},
+            proposed_values: {},
+          },
+        ],
+      },
     });
-    expensesAPI.list.mockResolvedValue({ data: { results: [] } });
+    expensesAPI.list.mockResolvedValue({ data: { count: 0, results: [] } });
   });
 
   it('shows decisions with time and comments', async () => {
@@ -69,6 +77,10 @@ describe('MyDecisionsTrail', () => {
     expect(screen.getByText(/Missing receipt/)).toBeInTheDocument();
     expect(screen.getAllByText(/You decided/).length).toBeGreaterThan(0);
     expect(screen.getByTestId('my-decisions-trail')).toBeInTheDocument();
+    expect(screen.getByTestId('decisions-pagination')).toHaveAttribute('data-count', '2');
+    expect(pendingChangesAPI.myDecisions).toHaveBeenCalledWith(
+      expect.objectContaining({ page: 1, page_size: expect.any(Number) })
+    );
   });
 
   it('opens detail dialog with requester reason and reject comment', async () => {
@@ -87,27 +99,30 @@ describe('MyDecisionsTrail', () => {
     await screen.findByText('Zipper');
 
     pendingChangesAPI.myDecisions.mockResolvedValueOnce({
-      data: [
-        {
-          id: 1,
-          action_type: 'product_price',
-          entity_type: 'products.Product',
-          entity_repr: 'Zipper',
-          status: 'approved',
-          reason: 'Seasonal price',
-          made_by_username: 'cashier1',
-          checked_at: '2026-10-07T09:00:00Z',
-          original_values: {},
-          proposed_values: {},
-        },
-      ],
+      data: {
+        count: 1,
+        results: [
+          {
+            id: 1,
+            action_type: 'product_price',
+            entity_type: 'products.Product',
+            entity_repr: 'Zipper',
+            status: 'approved',
+            reason: 'Seasonal price',
+            made_by_username: 'cashier1',
+            checked_at: '2026-10-07T09:00:00Z',
+            original_values: {},
+            proposed_values: {},
+          },
+        ],
+      },
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Approved' }));
 
     await waitFor(() => {
       expect(pendingChangesAPI.myDecisions).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'approved' })
+        expect.objectContaining({ status: 'approved', page: 1 })
       );
     });
     expect(await screen.findByText('Zipper')).toBeInTheDocument();

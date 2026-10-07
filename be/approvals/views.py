@@ -119,15 +119,28 @@ class PendingChangeViewSet(viewsets.ReadOnlyModelViewSet):
             PendingChange.objects.filter(checked_by=request.user)
             .exclude(status=PendingChange.STATUS_PENDING)
             .select_related('made_by', 'checked_by')
+            .order_by('-checked_at', '-id')
         )
         status_filter = self._status_param(request)
         if status_filter:
             qs = qs.filter(status=status_filter)
-        action_type = request.query_params.get('action_type')
-        if action_type:
-            qs = qs.filter(action_type=action_type)
-        limit = min(int(request.query_params.get('limit', 50) or 50), 200)
-        serializer = self.get_serializer(qs.order_by('-checked_at', '-id')[:limit], many=True)
+        action_types = []
+        for value in request.query_params.getlist('action_type'):
+            if not value:
+                continue
+            action_types.extend(
+                part.strip() for part in str(value).split(',') if part.strip()
+            )
+        if len(action_types) == 1:
+            qs = qs.filter(action_type=action_types[0])
+        elif len(action_types) > 1:
+            qs = qs.filter(action_type__in=action_types)
+
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
 
     @action(detail=True, methods=['post'])

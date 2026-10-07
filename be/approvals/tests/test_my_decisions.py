@@ -73,18 +73,20 @@ class MyDecisionsAPITests(ManagerAPITestCase):
 
         resp = self.client.get('/api/approvals/pending-changes/my-decisions/')
         self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
-        ids = [row['id'] for row in resp.data]
+        rows = resp.data['results']
+        ids = [row['id'] for row in rows]
         self.assertIn(approved.id, ids)
         self.assertIn(rejected.id, ids)
+        self.assertEqual(resp.data['count'], 2)
         self.assertEqual(len(ids), 2)
 
-        approved_row = next(row for row in resp.data if row['id'] == approved.id)
+        approved_row = next(row for row in rows if row['id'] == approved.id)
         self.assertEqual(approved_row['status'], PendingChange.STATUS_APPROVED)
         self.assertEqual(approved_row['checked_by'], self.manager_user.id)
         self.assertIsNotNone(approved_row['checked_at'])
         self.assertEqual(approved_row['reason'], 'Supplier list update')
 
-        rejected_row = next(row for row in resp.data if row['id'] == rejected.id)
+        rejected_row = next(row for row in rows if row['id'] == rejected.id)
         self.assertEqual(rejected_row['status'], PendingChange.STATUS_REJECTED)
         self.assertEqual(rejected_row['rejection_reason'], 'Price too high')
 
@@ -109,15 +111,49 @@ class MyDecisionsAPITests(ManagerAPITestCase):
             {'status': 'approved'},
         )
         self.assertEqual(only_approved.status_code, status.HTTP_200_OK)
-        self.assertTrue(all(r['status'] == 'approved' for r in only_approved.data))
-        self.assertIn(approved.id, [r['id'] for r in only_approved.data])
+        approved_rows = only_approved.data['results']
+        self.assertTrue(all(r['status'] == 'approved' for r in approved_rows))
+        self.assertIn(approved.id, [r['id'] for r in approved_rows])
 
         only_sales = self.client.get(
             '/api/approvals/pending-changes/my-decisions/',
             {'action_type': ACTION_SALE_COMPLETE},
         )
         self.assertEqual(only_sales.status_code, status.HTTP_200_OK)
-        self.assertEqual([r['id'] for r in only_sales.data], [sale.id])
+        self.assertEqual([r['id'] for r in only_sales.data['results']], [sale.id])
+
+        multi = self.client.get(
+            '/api/approvals/pending-changes/my-decisions/',
+            {'action_type': f'{ACTION_PRODUCT_PRICE},{ACTION_SALE_COMPLETE}'},
+        )
+        self.assertEqual(multi.status_code, status.HTTP_200_OK)
+        multi_ids = {r['id'] for r in multi.data['results']}
+        self.assertIn(approved.id, multi_ids)
+        self.assertIn(sale.id, multi_ids)
+
+    def test_my_decisions_paginates(self):
+        for _ in range(12):
+            self._make_decision(
+                checker=self.manager_user,
+                status_value=PendingChange.STATUS_APPROVED,
+            )
+        page1 = self.client.get(
+            '/api/approvals/pending-changes/my-decisions/',
+            {'page': 1, 'page_size': 5},
+        )
+        self.assertEqual(page1.status_code, status.HTTP_200_OK, page1.data)
+        self.assertEqual(page1.data['count'], 12)
+        self.assertEqual(len(page1.data['results']), 5)
+
+        page2 = self.client.get(
+            '/api/approvals/pending-changes/my-decisions/',
+            {'page': 2, 'page_size': 5},
+        )
+        self.assertEqual(page2.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(page2.data['results']), 5)
+        page1_ids = {r['id'] for r in page1.data['results']}
+        page2_ids = {r['id'] for r in page2.data['results']}
+        self.assertFalse(page1_ids & page2_ids)
 
     def test_my_decisions_excludes_other_checkers_work(self):
         mine = self._make_decision(
@@ -131,7 +167,7 @@ class MyDecisionsAPITests(ManagerAPITestCase):
 
         resp = self.client.get('/api/approvals/pending-changes/my-decisions/')
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        ids = [r['id'] for r in resp.data]
+        ids = [r['id'] for r in resp.data['results']]
         self.assertIn(mine.id, ids)
         self.assertNotIn(theirs.id, ids)
 
