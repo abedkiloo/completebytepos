@@ -35,6 +35,7 @@ function DetailRow({ label, children }) {
 
 export default function ProductDetailPanel({
   productId,
+  variantId = null,
   onClose,
   onEdit,
   onSetStock,
@@ -48,6 +49,7 @@ export default function ProductDetailPanel({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [tab, setTab] = useState('details');
+  const [focusedVariantId, setFocusedVariantId] = useState(variantId);
 
   const visibility = useMemo(
     () => resolveProductDetailVisibility(fieldAccess, productModuleSettings, storeSettings),
@@ -74,12 +76,21 @@ export default function ProductDetailPanel({
   }, [load]);
 
   useEffect(() => {
+    setFocusedVariantId(variantId);
+  }, [variantId, productId]);
+
+  useEffect(() => {
     if (!canViewStockHistory && tab === 'history') {
       setTab('details');
     }
   }, [canViewStockHistory, tab]);
 
   const variants = product?.variants || [];
+  const focusedVariant = useMemo(() => {
+    if (!focusedVariantId) return null;
+    return variants.find((v) => String(v.id) === String(focusedVariantId)) || null;
+  }, [variants, focusedVariantId]);
+
   const imageSrc = product ? resolveMediaUrl(product.image_url || product.image) : null;
   const sellingPrice = parseFloat(product?.selling_price ?? product?.price ?? 0);
   const pricePending = visibility.catalogOnly && sellingPrice <= 0;
@@ -89,6 +100,7 @@ export default function ProductDetailPanel({
     visibility.showPricing || visibility.showCost || visibility.showStock;
 
   const panelWide = canViewStockHistory && tab === 'history';
+  const viewingVariant = Boolean(focusedVariant);
 
   return (
     <div className="slide-in-overlay" onClick={onClose}>
@@ -98,7 +110,7 @@ export default function ProductDetailPanel({
         data-testid="product-detail-panel"
       >
         <div className="slide-in-panel-header">
-          <h2>Product details</h2>
+          <h2>{viewingVariant ? 'Variant details' : 'Product details'}</h2>
           <button type="button" onClick={onClose} className="slide-in-panel-close">
             ×
           </button>
@@ -192,6 +204,83 @@ export default function ProductDetailPanel({
                   </div>
                 </div>
               </div>
+
+              {focusedVariant ? (
+                <div
+                  className="space-y-3 rounded-md border border-primary/30 bg-primary/5 p-3"
+                  data-testid="focused-variant-detail"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Selected variant
+                      </p>
+                      <h4 className="text-base font-semibold">
+                        {variantDisplayLabel(focusedVariant)}
+                      </h4>
+                      {focusedVariant.sku ? (
+                        <p className="font-mono text-xs text-muted-foreground">
+                          {focusedVariant.sku}
+                        </p>
+                      ) : null}
+                    </div>
+                    {visibility.showStatus ? (
+                      <Badge variant={focusedVariant.is_active ? 'success' : 'outline'}>
+                        {focusedVariant.is_active ? 'Active' : 'Inactive'}
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <dl className="grid gap-2 sm:grid-cols-2">
+                    {visibility.showStock ? (
+                      <DetailRow label={STOCK_ON_HAND_LABEL}>
+                        <span className="tabular-nums font-semibold">
+                          {focusedVariant.stock_quantity ?? 0}
+                        </span>
+                        {focusedVariant.is_low_stock ? (
+                          <Badge variant="warning" className="ml-1 px-1 py-0 text-[10px]">
+                            Low
+                          </Badge>
+                        ) : null}
+                      </DetailRow>
+                    ) : null}
+                    {visibility.showMrp ? (
+                      <DetailRow label="MRP">
+                        {formatCurrency(focusedVariant.mrp ?? focusedVariant.price)}
+                      </DetailRow>
+                    ) : null}
+                    {visibility.showPricing ? (
+                      <DetailRow label="Selling">
+                        <span className={SELLING_PRICE_CLASS}>
+                          {formatCurrency(
+                            focusedVariant.price ?? focusedVariant.selling_price
+                          )}
+                        </span>
+                      </DetailRow>
+                    ) : null}
+                    {visibility.showCost ? (
+                      <DetailRow label="Cost">
+                        {formatCurrency(
+                          focusedVariant.cost ??
+                            focusedVariant.effective_cost ??
+                            product.cost
+                        )}
+                      </DetailRow>
+                    ) : null}
+                    {focusedVariant.barcode ? (
+                      <DetailRow label="Barcode">{focusedVariant.barcode}</DetailRow>
+                    ) : null}
+                  </dl>
+                  {variants.length > 1 ? (
+                    <button
+                      type="button"
+                      className="text-xs text-primary underline-offset-2 hover:underline"
+                      onClick={() => setFocusedVariantId(null)}
+                    >
+                      Show all variants
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
 
               <dl className="space-y-3 rounded-md border border-border/60 bg-muted/20 p-3">
                 <DetailRow label="Category">
@@ -321,13 +410,24 @@ export default function ProductDetailPanel({
                   <h4 className="text-sm font-medium">Variants</h4>
                   <ul className="space-y-1 rounded-md border px-3 py-2 text-sm">
                     {variants.map((variant) => (
-                      <li key={variant.id} className="flex flex-wrap items-center gap-2">
-                        <span>{variantDisplayLabel(variant)}</span>
-                        {variant.sku ? (
-                          <span className="font-mono text-[11px] text-muted-foreground">
-                            {variant.sku}
-                          </span>
-                        ) : null}
+                      <li key={variant.id}>
+                        <button
+                          type="button"
+                          className="flex w-full flex-wrap items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-muted/60"
+                          onClick={() => setFocusedVariantId(variant.id)}
+                        >
+                          <span>{variantDisplayLabel(variant)}</span>
+                          {variant.sku ? (
+                            <span className="font-mono text-[11px] text-muted-foreground">
+                              {variant.sku}
+                            </span>
+                          ) : null}
+                          {visibility.showStock ? (
+                            <span className="ml-auto tabular-nums text-xs text-muted-foreground">
+                              Stock {variant.stock_quantity ?? 0}
+                            </span>
+                          ) : null}
+                        </button>
                       </li>
                     ))}
                   </ul>
@@ -360,10 +460,24 @@ export default function ProductDetailPanel({
                         </tr>
                       </thead>
                       <tbody className="divide-y">
-                        {variants.map((variant) => (
-                          <tr key={variant.id}>
+                        {variants.map((variant) => {
+                          const isFocused =
+                            focusedVariantId != null &&
+                            String(variant.id) === String(focusedVariantId);
+                          return (
+                          <tr
+                            key={variant.id}
+                            className={cn(
+                              'cursor-pointer transition-colors hover:bg-muted/50',
+                              isFocused && 'bg-primary/10'
+                            )}
+                            onClick={() => setFocusedVariantId(variant.id)}
+                            data-testid={
+                              isFocused ? 'variant-row-focused' : `variant-row-${variant.id}`
+                            }
+                          >
                             <td className="px-3 py-2">
-                              <div>{variantDisplayLabel(variant)}</div>
+                              <div className="font-medium">{variantDisplayLabel(variant)}</div>
                               {variant.sku ? (
                                 <div className="font-mono text-[11px] text-muted-foreground">
                                   {variant.sku}
@@ -399,7 +513,7 @@ export default function ProductDetailPanel({
                               </td>
                             ) : null}
                             {visibility.showStock ? (
-                              <td className="px-3 py-2 text-right tabular-nums">
+                              <td className="px-3 py-2 text-right tabular-nums font-semibold">
                                 {variant.stock_quantity ?? 0}
                                 {variant.is_low_stock ? (
                                   <Badge variant="warning" className="ml-1 px-1 py-0 text-[10px]">
@@ -416,7 +530,8 @@ export default function ProductDetailPanel({
                               </td>
                             ) : null}
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -447,9 +562,14 @@ export default function ProductDetailPanel({
               Close
             </Button>
             {onSetStock && visibility.showStock && product.track_stock ? (
-              <Button type="button" variant="outline" onClick={() => onSetStock(product)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onSetStock(product, focusedVariant || null)}
+              >
                 <ClipboardList className="mr-2 h-4 w-4" />
                 Set {STOCK_ON_HAND_LABEL.toLowerCase()}
+                {focusedVariant ? ` · ${variantDisplayLabel(focusedVariant)}` : ''}
               </Button>
             ) : null}
             {onEdit && visibility.canEdit ? (

@@ -72,6 +72,101 @@ def debt_already_cleared_from_wallet(sale: Sale) -> bool:
     return latest_reverse is not None
 
 
+def _underpaid_sales_with_live_debt(customer_id: int) -> list[Sale]:
+    """
+    Underpaid POS sales with a live wallet debt debit (settlement targets).
+
+    Skips sales whose debt row is only a stale post-correction leftover — those
+    still need heal/sync, not an amount_paid bump.
+    """
+    from sales.debt_management import underpaid_pos_sales_for_customer
+
+    sales = list(underpaid_pos_sales_for_customer(customer_id))
+    if not sales:
+        return []
+    linked = set(
+        CustomerWalletTransaction.objects.filter(
+            sale_id__in=[s.pk for s in sales],
+            source_type='debt',
+            transaction_type='debit',
+        ).values_list('sale_id', flat=True)
+    )
+    targets = []
+    for sale in sales:
+        if sale.pk not in linked:
+            continue
+        if debt_already_cleared_from_wallet(sale):
+            continue
+        targets.append(sale)
+    return targets
+
+
+@transaction.atomic
+def apply_settlement_to_underpaid_sales(customer, amount) -> Decimal:
+    """
+    FIFO-bump sale.amount_paid when a wallet debt settlement is recorded.
+
+    Settlements credit the wallet without touching sales; Orders still classified
+    from amount_paid, so without this the profile shows stale 'debt' rows while
+    Debt Management correctly shows the customer as clear.
+    """
+    remaining = Decimal(str(amount or 0)).quantize(Decimal('0.01'))
+    if remaining <= 0:
+        return Decimal('0.00')
+
+    applied = Decimal('0.00')
+    for sale in _underpaid_sales_with_live_debt(customer.pk):
+        unpaid = sale_unpaid_balance(sale)
+        if unpaid <= 0:
+            continue
+        chunk = min(remaining, unpaid)
+        sale.amount_paid = (Decimal(str(sale.amount_paid or 0)) + chunk).quantize(
+            Decimal('0.01')
+        )
+        sale.save(update_fields=['amount_paid', 'updated_at'])
+        applied += chunk
+        remaining -= chunk
+        if remaining <= 0:
+            break
+    return applied
+
+
+@transaction.atomic
+def reconcile_sale_payments_with_wallet(customer) -> int:
+    """
+    Repair stale amount_paid after historical settlements (wallet already clear).
+
+    Gap = sum(unpaid on sales with live debt) − current wallet debt.
+    Allocate that gap FIFO onto amount_paid so Orders match Debt Management.
+
+    Only runs when debt_settlement credits exist — otherwise a zero wallet with
+    unpaid sales means debt is missing and heal should post it.
+    """
+    from sales.debt_management import debt_amount_from_balance
+
+    customer.refresh_from_db()
+    has_settlement = CustomerWalletTransaction.objects.filter(
+        customer_id=customer.pk,
+        source_type='debt_settlement',
+        transaction_type='credit',
+    ).exists()
+    if not has_settlement:
+        return 0
+
+    wallet_debt = debt_amount_from_balance(customer.wallet_balance)
+    sales = _underpaid_sales_with_live_debt(customer.pk)
+    if not sales:
+        return 0
+
+    sale_unpaid_total = sum((sale_unpaid_balance(s) for s in sales), Decimal('0'))
+    gap = (sale_unpaid_total - wallet_debt).quantize(Decimal('0.01'))
+    if gap <= 0:
+        return 0
+
+    applied = apply_settlement_to_underpaid_sales(customer, gap)
+    return 1 if applied > 0 else 0
+
+
 @transaction.atomic
 def sync_sale_customer_debt(
     sale: Sale,

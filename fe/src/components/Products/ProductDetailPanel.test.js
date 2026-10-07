@@ -86,3 +86,65 @@ describe('ProductDetailPanel stock history tab', () => {
     expect(screen.queryByTestId('product-stock-history-tab')).not.toBeInTheDocument();
   });
 });
+
+describe('ProductDetailPanel variant focus', () => {
+  beforeEach(() => {
+    productsAPI.get.mockResolvedValue({
+      data: {
+        id: 12,
+        name: 'CUP HOLDER',
+        track_stock: true,
+        has_variants: true,
+        is_active: true,
+        variants: [
+          {
+            id: 101,
+            sku: 'SKU-BLACK',
+            color_name: 'BLACK',
+            stock_quantity: 3,
+            price: 80,
+            is_active: true,
+            is_low_stock: true,
+          },
+          {
+            id: 102,
+            sku: 'SKU-GOLD',
+            color_name: 'GOLD',
+            stock_quantity: 1332,
+            price: 100,
+            is_active: true,
+          },
+        ],
+      },
+    });
+  });
+
+  it('opens focused variant detail with stock when variantId is set', async () => {
+    render(
+      <ProductDetailPanel
+        productId={12}
+        variantId={101}
+        fieldAccess={fieldAccess}
+        onClose={() => {}}
+      />
+    );
+
+    await waitFor(() => expect(screen.getByText('CUP HOLDER')).toBeInTheDocument());
+    expect(screen.getByText('Variant details')).toBeInTheDocument();
+    expect(screen.getByTestId('focused-variant-detail')).toBeInTheDocument();
+    expect(screen.getByTestId('focused-variant-detail')).toHaveTextContent('BLACK');
+    expect(screen.getByTestId('focused-variant-detail')).toHaveTextContent('3');
+    expect(screen.getByTestId('variant-row-focused')).toBeInTheDocument();
+  });
+
+  it('focuses a variant when its row is clicked', async () => {
+    render(
+      <ProductDetailPanel productId={12} fieldAccess={fieldAccess} onClose={() => {}} />
+    );
+
+    await waitFor(() => expect(screen.getByText('CUP HOLDER')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('variant-row-102'));
+    expect(screen.getByTestId('focused-variant-detail')).toHaveTextContent('GOLD');
+    expect(screen.getByTestId('focused-variant-detail')).toHaveTextContent('1332');
+  });
+});

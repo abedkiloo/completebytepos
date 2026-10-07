@@ -106,14 +106,22 @@ def ensure_wallet_matches_unpaid_sales(customer: Customer, *, user=None) -> int:
     """
     Post missing wallet debt for underpaid POS sales stuck off the wallet.
 
-    Batches active-debt lookups (no per-sale N+1). Intended for single-customer
-    paths (profile / receive payment), not the debtors list.
+    Also repairs stale sale.amount_paid after wallet settlements so Orders match
+    the debt board. Batches active-debt lookups (no per-sale N+1). Intended for
+    single-customer paths (profile / receive payment), not the debtors list.
     """
-    from sales.sale_debt_sync import debt_already_cleared_from_wallet, sync_sale_customer_debt
+    from sales.sale_debt_sync import (
+        debt_already_cleared_from_wallet,
+        reconcile_sale_payments_with_wallet,
+        sync_sale_customer_debt,
+    )
+
+    # Historical settlements left amount_paid at 0 — align Orders with wallet first.
+    fixed = reconcile_sale_payments_with_wallet(customer)
 
     sales = list(underpaid_pos_sales_for_customer(customer.pk))
     if not sales:
-        return 0
+        return fixed
 
     sale_ids = [s.pk for s in sales]
     active_by_sale = {
@@ -127,7 +135,6 @@ def ensure_wallet_matches_unpaid_sales(customer: Customer, *, user=None) -> int:
         .annotate(total=Sum('amount'))
     }
 
-    fixed = 0
     for sale in sales:
         active = active_by_sale.get(sale.pk, Decimal('0'))
         stale = False

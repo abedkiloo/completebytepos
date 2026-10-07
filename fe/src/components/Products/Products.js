@@ -17,6 +17,7 @@ import {
   MoreHorizontal,
   ChevronDown,
   ClipboardList,
+  Eye,
 } from 'lucide-react';
 
 import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
@@ -37,6 +38,7 @@ import {
   variantIsOutOfStock,
   variantStockTone,
 } from '../../utils/variantStockAlerts';
+import { variantDisplayLabel } from '../../utils/variantCombinations';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
 import ProductForm from './ProductForm';
 import ProductDetailPanel from './ProductDetailPanel';
@@ -168,7 +170,7 @@ const Products = () => {
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [busy, setBusy] = useState(false);
   const [stockCountContext, setStockCountContext] = useState(null);
-  const [viewProductId, setViewProductId] = useState(null);
+  const [viewTarget, setViewTarget] = useState(null); // { productId, variantId? }
 
   // --- CSV import file input ---
   const fileInputRef = useRef(null);
@@ -298,8 +300,11 @@ const Products = () => {
     setShowForm(true);
   };
 
-  const openView = (product) => {
-    setViewProductId(product.id);
+  const openView = (product, variant = null) => {
+    setViewTarget({
+      productId: product.id,
+      variantId: variant?.id ?? null,
+    });
   };
 
   const openEdit = async (product) => {
@@ -307,7 +312,7 @@ const Products = () => {
       const full = await productsAPI.get(product.id);
       setEditingProduct(full.data);
       setShowForm(true);
-      setViewProductId(null);
+      setViewTarget(null);
     } catch (error) {
       toast.error('Failed to load product details');
     }
@@ -786,11 +791,14 @@ const Products = () => {
                           showCost={showCost && fieldAccess.cost}
                           showSku={showSku}
                           showLowStock={showLowStock}
+                          showProductStatus={showStatus}
+                          bulkEnabled={bulkEnabled}
                           catalogOnly={catalogOnly}
                           stockAlertFilter={{
                             outOfStock: filters.out_of_stock,
                             lowStock: filters.low_stock,
                           }}
+                          onView={(variantRow) => openView(product, variantRow)}
                           onEdit={() => openEdit(product)}
                           onSetStock={
                             canSetStock && product.track_stock
@@ -822,25 +830,29 @@ const Products = () => {
         />
       )}
 
-      {viewProductId ? (
+      {viewTarget ? (
         <ProductDetailPanel
-          productId={viewProductId}
+          productId={viewTarget.productId}
+          variantId={viewTarget.variantId}
           fieldAccess={fieldAccess}
           productModuleSettings={productModuleSettings}
           storeSettings={storeSettings}
           canViewStockHistory={canViewStockHistory}
           showMovementCost={showMovementCost}
-          onClose={() => setViewProductId(null)}
+          onClose={() => setViewTarget(null)}
           onSetStock={
             canSetStock
-              ? (fullProduct) => {
-                  setViewProductId(null);
-                  setStockCountContext({ product: fullProduct, variant: null });
+              ? (fullProduct, variantRow = null) => {
+                  setViewTarget(null);
+                  setStockCountContext({
+                    product: fullProduct,
+                    variant: variantRow || null,
+                  });
                 }
               : undefined
           }
           onEdit={(fullProduct) => {
-            setViewProductId(null);
+            setViewTarget(null);
             openEdit(fullProduct);
           }}
         />
@@ -1412,13 +1424,17 @@ function VariantRows({
   showCost = true,
   showSku = false,
   showLowStock = true,
+  showProductStatus: showStatus = true,
+  bulkEnabled = true,
   catalogOnly = false,
   stockAlertFilter = { outOfStock: false, lowStock: false },
+  onView,
   onEdit,
   onSetStock,
 }) {
   const [variants, setVariants] = useState([]);
   const [loading, setLoading] = useState(false);
+  const showBulkCol = bulkEnabled && !catalogOnly;
 
   const variantListKey = useMemo(() => {
     const sizeIds = (product.available_sizes_detail || []).map((s) => s.id).join(',');
@@ -1477,19 +1493,34 @@ function VariantRows({
 
   return visibleVariants.map((v) => {
     const stockTone = variantStockTone(v, product);
+    const qty = parseInt(v.stock_quantity, 10) || 0;
     const qtyClass =
       stockTone === 'destructive'
         ? 'text-destructive'
         : stockTone === 'warning'
         ? 'text-warning'
         : 'text-foreground';
+    const label = variantDisplayLabel(v);
     return (
-    <tr key={v.id} className="bg-muted/20">
-      <td className="px-4 py-2" />
+    <tr key={v.id} className="bg-muted/20 hover:bg-muted/35">
+      {showBulkCol ? <td className="px-4 py-2" /> : null}
       <td className="px-4 py-2">
         <div className="ml-8 text-sm">
-          <div className="font-medium">{v.sku || `${product.name} variant`}</div>
-          <div className="text-xs text-muted-foreground">{v.size_name || ''} {v.color_name ? `• ${v.color_name}` : ''}</div>
+          {onView ? (
+            <button
+              type="button"
+              onClick={() => onView(v)}
+              className="text-left font-medium text-foreground underline-offset-2 hover:text-primary hover:underline"
+              title="View variant details"
+            >
+              {label}
+            </button>
+          ) : (
+            <div className="font-medium">{label}</div>
+          )}
+          {v.sku ? (
+            <div className="font-mono text-xs text-muted-foreground">{v.sku}</div>
+          ) : null}
           {showLowStock && variantIsOutOfStock(v) ? (
             <Badge variant="destructive" className="mt-1 px-1.5 py-0 text-[10px]">
               Out of stock
@@ -1518,20 +1549,39 @@ function VariantRows({
           <button
             type="button"
             onClick={() => onSetStock(v)}
-            className={cn('rounded px-1 py-0.5 font-semibold tabular-nums hover:bg-muted/80', qtyClass)}
+            className="group inline-flex flex-col items-end rounded-md px-1 py-0.5 text-right hover:bg-muted/80"
             title={`Set ${STOCK_ON_HAND_LABEL.toLowerCase()}`}
           >
-            {v.stock_quantity}
+            <span className={cn('font-semibold tabular-nums', qtyClass)}>{qty}</span>
+            <span className="text-[10px] font-normal text-muted-foreground">
+              {STOCK_ON_HAND_LABEL}
+            </span>
           </button>
         ) : (
-          <span className={cn('font-semibold tabular-nums', qtyClass)}>{v.stock_quantity}</span>
+          <div className="inline-flex flex-col items-end">
+            <span className={cn('font-semibold tabular-nums', qtyClass)}>{qty}</span>
+            <span className="text-[10px] text-muted-foreground">{STOCK_ON_HAND_LABEL}</span>
+          </div>
         )}
       </td>
-      <td className="px-4 py-2">
-        <Badge variant={v.is_active ? 'success' : 'outline'}>{v.is_active ? 'Active' : 'Inactive'}</Badge>
-      </td>
+      {showStatus ? (
+        <td className="px-4 py-2">
+          <Badge variant={v.is_active ? 'success' : 'outline'}>{v.is_active ? 'Active' : 'Inactive'}</Badge>
+        </td>
+      ) : null}
       <td className="px-4 py-2">
         <div className="flex items-center justify-end gap-1">
+          {onView ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onView(v)}
+              aria-label="View variant details"
+              title="View variant details"
+            >
+              <Eye className="h-3.5 w-3.5" />
+            </Button>
+          ) : null}
           {onEdit ? (
             <Button
               variant="ghost"

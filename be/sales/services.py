@@ -1734,6 +1734,9 @@ class CustomerService(BaseService):
             notes=notes.strip() or default_notes,
             user=user,
         )
+        from sales.sale_debt_sync import apply_settlement_to_underpaid_sales
+
+        apply_settlement_to_underpaid_sales(customer, amount)
         try:
             from messaging.customer_notify import notify_customer_debt_settlement
 
