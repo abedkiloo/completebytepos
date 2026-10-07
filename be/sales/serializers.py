@@ -201,6 +201,49 @@ class ReceiveWalletPaymentSerializer(serializers.Serializer):
         return attrs
 
 
+class SaleListItemSerializer(serializers.ModelSerializer):
+    """Slim line for sales history — no nested ProductSerializer / variants."""
+
+    product_name = serializers.CharField(source='product.name', read_only=True)
+    product_sku = serializers.CharField(source='product.sku', read_only=True)
+    size_name = serializers.CharField(source='size.name', read_only=True)
+    color_name = serializers.CharField(source='color.name', read_only=True)
+    variant_sku = serializers.CharField(source='variant.sku', read_only=True)
+    quantity_refunded = serializers.SerializerMethodField()
+    refundable_quantity = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SaleItem
+        fields = [
+            'id',
+            'product_id',
+            'product_name',
+            'product_sku',
+            'variant_id',
+            'variant_sku',
+            'size',
+            'size_name',
+            'color',
+            'color_name',
+            'quantity',
+            'quantity_refunded',
+            'refundable_quantity',
+            'unit_price',
+            'subtotal',
+        ]
+        read_only_fields = fields
+
+    def get_quantity_refunded(self, obj):
+        cache = self.context.get('refunded_qty_by_item')
+        if cache is not None:
+            return cache.get(obj.id, 0)
+        agg = obj.refund_lines.aggregate(total=Sum('quantity'))
+        return agg['total'] or 0
+
+    def get_refundable_quantity(self, obj):
+        return max(0, obj.quantity - self.get_quantity_refunded(obj))
+
+
 class SaleItemSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source='product.name', read_only=True)
     product_sku = serializers.CharField(source='product.sku', read_only=True)
@@ -448,6 +491,22 @@ class SaleSerializer(serializers.ModelSerializer):
             .annotate(total=Sum('quantity'))
         )
         return {row['sale_item_id']: row['total'] or 0 for row in rows}
+
+
+class SaleListSerializer(SaleSerializer):
+    """
+    History list payload — keeps item counts / refund flags without embedding
+    full product catalog graphs (variants, M2M, costs) on every row.
+    """
+
+    items = SaleListItemSerializer(many=True, read_only=True)
+
+    def get_approval_details(self, obj):
+        # Approvals UI loads detail separately; list only needs status flags.
+        return None
+
+    def get_activity(self, obj):
+        return None
 
 
 class HoldingSaleSerializer(serializers.Serializer):

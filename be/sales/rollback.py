@@ -14,6 +14,9 @@ def sale_is_rollbackable(sale: Sale) -> bool:
 
 
 def sale_has_pending_rollback(sale: Sale) -> bool:
+    annotated = getattr(sale, '_has_pending_rollback', None)
+    if annotated is not None:
+        return bool(annotated)
     from approvals.models import PendingChange
     from approvals.registry import ACTION_SALE_ROLLBACK
 
@@ -23,6 +26,23 @@ def sale_has_pending_rollback(sale: Sale) -> bool:
         entity_id=str(sale.pk),
         status=PendingChange.STATUS_PENDING,
     ).exists()
+
+
+def annotate_sale_rollback_pending(queryset):
+    """Batch pending rollback flags for list views (avoids per-row Exists)."""
+    from django.db.models import CharField, Exists, OuterRef
+    from django.db.models.functions import Cast
+
+    from approvals.models import PendingChange
+    from approvals.registry import ACTION_SALE_ROLLBACK
+
+    pending = PendingChange.objects.filter(
+        action_type=ACTION_SALE_ROLLBACK,
+        entity_type='sales.Sale',
+        status=PendingChange.STATUS_PENDING,
+        entity_id=Cast(OuterRef('pk'), output_field=CharField()),
+    )
+    return queryset.annotate(_has_pending_rollback=Exists(pending))
 
 
 def rollback_sale(*, sale: Sale, reason: str, user) -> SaleRefund:

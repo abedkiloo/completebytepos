@@ -17,6 +17,7 @@ const CATEGORY_LABELS = {
   sales: 'Sales',
   debt: 'Debt & collections',
   payments: 'Payments',
+  promo: 'Promotions',
 };
 
 function saleNumberToken(saleNumber) {
@@ -139,8 +140,9 @@ export default function SmsTemplatesPage() {
       debt_bit: balanceNote,
       amount: '200',
       balance: '300',
-      name: 'Mama Mboga',
+      name: 'Mwangi',
       store_name: 'Omuwenga Suppliers',
+      offer: 'Special prices on fast movers. ',
       customer_name: 'Jane',
       brand_blurb: 'Thank you for shopping with us.',
       invoice_no: 'INV-100',

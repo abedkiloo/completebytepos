@@ -5,6 +5,7 @@ import { salesAPI } from '../../services/api';
 import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import SearchableSelect from '../Shared/SearchableSelect';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { toast } from '../../utils/toast';
 import {
   getStoredAuth,
@@ -80,6 +81,8 @@ const Sales = () => {
     search: '',
     cashier_id: '',
   });
+  const [searchInput, setSearchInput] = useState('');
+  const debouncedSearch = useDebouncedValue(searchInput, 300);
   const [pagination, setPagination] = useState({
     page: 1,
     page_size: DEFAULT_PAGE_SIZE,
@@ -87,6 +90,17 @@ const Sales = () => {
   });
   const { ordering, setOrdering } = useListOrdering();
   const [historyTab, setHistoryTab] = useState('completed');
+
+  useEffect(() => {
+    setFilters((prev) => {
+      if (prev.search === debouncedSearch) return prev;
+      return { ...prev, search: debouncedSearch };
+    });
+  }, [debouncedSearch]);
+
+  useEffect(() => {
+    setPagination((p) => (p.page === 1 ? p : { ...p, page: 1 }));
+  }, [filters.search]);
 
   const loadSales = useCallback(async () => {
     setLoading(true);
@@ -479,8 +493,8 @@ const Sales = () => {
               type="search"
               name="search"
               placeholder="Sale number, customer…"
-              value={filters.search}
-              onChange={handleFilterChange}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value || '')}
             />
           </FilterField>
         </FilterBar>

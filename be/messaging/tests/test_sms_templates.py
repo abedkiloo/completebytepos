@@ -9,7 +9,7 @@ from accounts.models import Role, UserProfile
 from accounts.role_definitions import ROLE_SALES, ensure_permissions, sync_default_roles
 from messaging.models import SmsTemplate
 from messaging.services import save_sms_template
-from messaging.templates_sms import render_sale_completed_sms
+from messaging.templates_sms import render_customer_week_sms, render_sale_completed_sms
 
 
 class SmsTemplatesAPITests(APITestCase):
@@ -37,6 +37,24 @@ class SmsTemplatesAPITests(APITestCase):
         self.assertIn('debt_settlement', keys)
         self.assertIn('debt_reminder', keys)
         self.assertIn('invoice_receipt', keys)
+        self.assertIn('promo_customer_week', keys)
+        promo = next(r for r in res.data['results'] if r['key'] == 'promo_customer_week')
+        self.assertEqual(promo['category'], 'promo')
+        self.assertIn('{name}', promo['placeholders'])
+        self.assertIn('{store_name}', promo['placeholders'])
+        self.assertIn('{offer}', promo['placeholders'])
+
+    def test_customer_week_render_cleans_name(self):
+        text = render_customer_week_sms(
+            name='mwangi wa jogoo rd [west]',
+            store_name='omuwenga suppliers',
+            offer='Special prices on soap.',
+        )
+        self.assertIn('Hi Mwangi,', text)
+        self.assertIn('Customer Week at Omuwenga Suppliers!', text)
+        self.assertIn('Special prices on soap.', text)
+        self.assertNotIn('[west]', text)
+        self.assertNotIn('jogoo', text)
 
     def test_save_sale_template_and_render(self):
         body = 'Hi {first_name}! Sale {sale_number} done. Paid {paid}.{balance_note}'

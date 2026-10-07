@@ -80,16 +80,17 @@ class SaleNumberFormatUnitTests(SimpleTestCase):
 
 
 class TemplateSmsTests(TestCase):
-    def test_sms_cap_name_capitalizes_people_and_shops(self):
+    def test_sms_cap_name_uses_first_word_only(self):
         self.assertEqual(sms_cap_name('jane'), 'Jane')
-        self.assertEqual(sms_cap_name('sunrise duka'), 'Sunrise Duka')
-        self.assertEqual(sms_cap_name('MPESA shop'), 'MPESA Shop')
+        self.assertEqual(sms_cap_name('mwangi wa jogoo rd zip'), 'Mwangi')
+        self.assertEqual(sms_cap_name('sunrise duka'), 'Sunrise')
+        self.assertEqual(sms_cap_name('MPESA shop'), 'MPESA')
         self.assertEqual(sms_cap_name(''), '')
         self.assertEqual(sms_cap_name(None, fallback='Customer'), 'Customer')
 
     def test_sms_cap_name_strips_from_first_bracket(self):
-        self.assertEqual(sms_cap_name('Sunrise Duka [Route 3]'), 'Sunrise Duka')
-        self.assertEqual(sms_cap_name('Mama Njeri [Kibera] Shop'), 'Mama Njeri')
+        self.assertEqual(sms_cap_name('Sunrise Duka [Route 3]'), 'Sunrise')
+        self.assertEqual(sms_cap_name('Mama Njeri [Kibera] Shop'), 'Mama')
         self.assertEqual(sms_cap_name('Shop [A] [B]'), 'Shop')
         self.assertEqual(sms_cap_name('jane [vip]'), 'Jane')
         self.assertEqual(sms_cap_name('[internal only]', fallback='Customer'), 'Customer')
@@ -97,7 +98,7 @@ class TemplateSmsTests(TestCase):
             customer_greeting_name(
                 Customer(name='sunrise duka [west]', owner_name='jane')
             ),
-            'Sunrise Duka',
+            'Sunrise',
         )
 
     def test_first_name_prefers_owner(self):
@@ -111,7 +112,7 @@ class TemplateSmsTests(TestCase):
             customer_greeting_name(
                 Customer(name='sunrise duka', owner_name='jane')
             ),
-            'Sunrise Duka',
+            'Sunrise',
         )
 
     def test_sale_and_settlement_templates(self):

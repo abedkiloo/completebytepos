@@ -20,7 +20,7 @@ class SmsTemplateSpec:
     default_body: str
     placeholders: tuple[str, ...]
     sample: dict[str, str]
-    category: str  # sales | debt | payments
+    category: str  # sales | debt | payments | promo
 
 
 # Keep bodies short (ideally ≤160 chars when rendered) and collections-friendly.
@@ -135,6 +135,29 @@ SMS_TEMPLATE_SPECS: dict[str, SmsTemplateSpec] = {
             'link': 'https://example.com/i/abc',
         },
         category='payments',
+    ),
+    SmsTemplate.KEY_CUSTOMER_WEEK: SmsTemplateSpec(
+        key=SmsTemplate.KEY_CUSTOMER_WEEK,
+        label='Customer Week promo',
+        description=(
+            'Promotional blast for Customer Week. '
+            '{name} is the short greeting name (first word, tags in [brackets] removed). '
+            '{offer} is optional promo detail — leave blank or edit before sending. '
+            'More promo templates (seasonal, flash sale) can follow this pattern.'
+        ),
+        default_body=(
+            'Hi {name}, it is Customer Week at {store_name}! '
+            '{offer}'
+            'Visit us or order as usual for exclusive deals this week. '
+            'Asante — karibu tena.'
+        ),
+        placeholders=('name', 'store_name', 'offer'),
+        sample={
+            'name': 'Mwangi',
+            'store_name': 'Omuwenga Suppliers',
+            'offer': 'Special prices on fast movers. ',
+        },
+        category='promo',
     ),
 }
 

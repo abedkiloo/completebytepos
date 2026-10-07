@@ -20,7 +20,7 @@ from sales.models import Customer
 class GreetingNameTests(APITestCase):
     def test_prefers_duka_name(self):
         c = Customer(name='Sunrise Duka', owner_name='Jane Wambui')
-        self.assertEqual(customer_greeting_name(c), 'Sunrise Duka')
+        self.assertEqual(customer_greeting_name(c), 'Sunrise')
 
     def test_falls_back_to_first_name(self):
         c = Customer(name='', owner_name='Jane Wambui')
@@ -72,10 +72,10 @@ class DebtReminderBulkAPITests(APITestCase):
         self.assertEqual(res.data['count'], 2)
         self.assertEqual(res.data['skipped_no_phone'], 1)
         names = {r['greeting_name'] for r in res.data['recipients']}
-        self.assertIn('Mama Mboga', names)
+        self.assertIn('Mama', names)
         self.assertIn('Peter', names)
         mama = next(r for r in res.data['recipients'] if r['customer_id'] == self.duka.pk)
-        self.assertIn('Mama Mboga', mama['message'])
+        self.assertIn('Mama', mama['message'])
         self.assertIn('500', mama['message'])
 
     def test_save_template_and_send_bulk(self):
@@ -125,8 +125,9 @@ class DebtReminderBulkAPITests(APITestCase):
             customer_ids=[self.duka.pk],
         )
         self.assertEqual(preview['count'], 1)
-        self.assertIn('Mama Mboga', preview['recipients'][0]['message'])
+        self.assertIn('Mama', preview['recipients'][0]['message'])
         self.assertIn('500', preview['recipients'][0]['message'])
+        self.assertNotIn('Mboga', preview['recipients'][0]['message'])
 
 
 class MobileSasaBulkProviderTests(APITestCase):

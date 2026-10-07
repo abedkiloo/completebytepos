@@ -143,3 +143,25 @@ class SaleActivityTests(ManagerAPITestCase):
         results = resp.data.get('results') or resp.data
         if results:
             self.assertIsNone(results[0].get('activity'))
+
+    def test_sale_list_uses_slim_items_without_nested_product(self):
+        resp = self.client.get('/api/sales/')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        results = resp.data.get('results') or resp.data
+        self.assertTrue(results)
+        row = results[0]
+        self.assertIn('items', row)
+        self.assertIsNone(row.get('approval_details'))
+        self.assertIsNone(row.get('activity'))
+        if row['items']:
+            line = row['items'][0]
+            self.assertIn('product_name', line)
+            self.assertIn('quantity', line)
+            self.assertNotIn('product', line)
+            self.assertNotIn('variants', line)
+
+        detail = self.client.get(f'/api/sales/{self.sale.id}/')
+        self.assertEqual(detail.status_code, status.HTTP_200_OK)
+        detail_items = detail.data.get('items') or []
+        self.assertTrue(detail_items)
+        self.assertIn('product', detail_items[0])

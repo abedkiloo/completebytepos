@@ -11,7 +11,7 @@ from decimal import Decimal
 from django.http import HttpResponse
 from .models import Sale, SaleItem, Invoice, InvoiceItem, Payment, Customer, PaymentPlan, PaymentReminder, CustomerWalletTransaction
 from .serializers import (
-    SaleSerializer, SaleCreateSerializer, SaleBackfillCreateSerializer,
+    SaleSerializer, SaleListSerializer, SaleCreateSerializer, SaleBackfillCreateSerializer,
     HoldingSaleSerializer, CheckoutHoldingSerializer,
     SaleRefundCreateSerializer, SaleRefundSerializer,
     InvoiceSerializer, InvoiceCreateSerializer,
@@ -187,6 +187,11 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         self.sale_service = SaleService()
         self.invoice_service = InvoiceService()
         self.refund_service = SaleRefundService()
+
+    def get_serializer_class(self):
+        if getattr(self, 'action', None) == 'list':
+            return SaleListSerializer
+        return SaleSerializer
 
     def get_queryset(self):
         """Get queryset using service layer - all query logic moved to service"""
@@ -480,20 +485,19 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     def sellers(self, request):
         """Staff who sold (cashier or served_by) — options for the "Sold by" filter."""
         from django.contrib.auth.models import User
+        from django.db.models import Exists, OuterRef, Q
         from sales.visibility import user_sees_all_sales
 
         if user_sees_all_sales(request.user):
-            sold = Sale.objects.order_by()
-            seller_ids = set(
-                sold.exclude(cashier_id=None).values_list('cashier_id', flat=True).distinct()
-            ) | set(
-                sold.exclude(served_by_id=None).values_list('served_by_id', flat=True).distinct()
+            # Semi-join on users (typically small) instead of DISTINCT over all sales.
+            sold_as = Sale.objects.filter(
+                Q(cashier_id=OuterRef('pk')) | Q(served_by_id=OuterRef('pk'))
+            )
+            users = User.objects.filter(Exists(sold_as)).order_by(
+                'first_name', 'last_name', 'username',
             )
         else:
-            seller_ids = {request.user.id}
-        users = User.objects.filter(id__in=seller_ids).order_by(
-            'first_name', 'last_name', 'username',
-        )
+            users = User.objects.filter(id=request.user.id)
         return Response([
             {
                 'id': u.id,

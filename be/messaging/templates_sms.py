@@ -25,16 +25,21 @@ def _money(amount) -> str:
     return text.rstrip('0').rstrip('.') if '.' in text else text
 
 
-def sms_cap_name(value: str | None, *, fallback: str = '') -> str:
+def sms_cap_name(
+    value: str | None,
+    *,
+    fallback: str = '',
+    first_word_only: bool = True,
+) -> str:
     """
     Clean a person or shop name for SMS.
 
-    - Drop everything from the first ``[`` onward (internal tags), e.g.
-      ``Sunrise Duka [Route 3]`` → ``Sunrise Duka``,
-      ``Mama Njeri [Kibera] Shop`` → ``Mama Njeri``.
-    - Capitalize the first letter of each remaining word:
-      ``jane`` → ``Jane``, ``sunrise duka`` → ``Sunrise Duka``.
-    - Leaves the rest of each word unchanged (``MPESA`` stays ``MPESA``).
+    - Drop everything from the first ``[`` onward (internal tags).
+    - For greetings (``first_word_only=True``): keep only the first word, e.g.
+      ``mwangi wa jogoo rd zip`` → ``Mwangi``,
+      ``Sunrise Duka [Route 3]`` → ``Sunrise``.
+    - For store names (``first_word_only=False``): keep all remaining words and
+      capitalize each first letter.
     """
     text = str(value or '').strip()
     if not text:
@@ -44,12 +49,12 @@ def sms_cap_name(value: str | None, *, fallback: str = '') -> str:
         text = text[:bracket].strip()
     if not text:
         return fallback
-    parts: list[str] = []
-    for word in text.split():
-        if not word:
-            continue
-        parts.append(word[:1].upper() + word[1:])
-    return ' '.join(parts) if parts else fallback
+    words = [w for w in text.split() if w]
+    if not words:
+        return fallback
+    if first_word_only:
+        words = words[:1]
+    return ' '.join(w[:1].upper() + w[1:] for w in words)
 
 
 def apply_sms_placeholders(template: str, **values) -> str:
@@ -254,7 +259,7 @@ def render_debt_collection_reminder(
         body,
         name=sms_cap_name(name, fallback='Customer'),
         amount=_money(amount),
-        store_name=sms_cap_name(store_name, fallback='us'),
+        store_name=sms_cap_name(store_name, fallback='us', first_word_only=False),
     )
 
 
@@ -344,6 +349,26 @@ def render_debt_settlement_sms(
         balance=_money(balance_owed),
         payment_ref=payment_ref,
         balance_note=balance_note,
+    )
+
+
+def render_customer_week_sms(
+    *,
+    name: str,
+    store_name: str,
+    offer: str | None = None,
+    template: str | None = None,
+) -> str:
+    """Customer Week promo SMS — first of the promo template family."""
+    offer_text = str(offer or '').strip()
+    if offer_text and not offer_text.endswith((' ', '\n')):
+        offer_text = f'{offer_text} '
+    body = (template or '').strip() or get_template_body(SmsTemplate.KEY_CUSTOMER_WEEK)
+    return apply_sms_placeholders(
+        body,
+        name=sms_cap_name(name, fallback='Customer'),
+        store_name=sms_cap_name(store_name, fallback='us', first_word_only=False),
+        offer=offer_text,
     )
 
 

@@ -66,29 +66,29 @@ class SaleService(BaseService):
             'items__refund_lines',
             'refunds',
         )
-        
+
         if not filters:
             filters = {}
-        
+
         # Handle branch filtering
         if is_branch_support_enabled():
             show_all = filters.get('show_all', 'false')
             if isinstance(show_all, str):
                 show_all = show_all.lower() == 'true'
-            
+
             if not show_all:
                 branch_id = filters.get('branch_id')
                 if not branch_id and request:
                     current_branch = get_current_branch(request)
                     if current_branch:
                         branch_id = current_branch.id
-                
+
                 if branch_id:
                     try:
                         queryset = queryset.filter(branch_id=int(branch_id))
                     except (ValueError, TypeError):
                         queryset = queryset.none()
-        
+
         # Date filters — business date (when the sale happened)
         date_from = inclusive_start_datetime(filters.get('date_from'))
         if date_from:
@@ -97,12 +97,12 @@ class SaleService(BaseService):
         date_to = inclusive_end_datetime(filters.get('date_to'))
         if date_to:
             queryset = queryset.filter(occurred_at__lte=date_to)
-        
+
         # Payment method filter
         payment_method = filters.get('payment_method')
         if payment_method:
             queryset = queryset.filter(payment_method=payment_method)
-        
+
         # Search filter
         search = filters.get('search')
         if search:
@@ -132,8 +132,10 @@ class SaleService(BaseService):
             annotate_sale_approval_state,
             awaiting_approval_queue_q,
         )
+        from sales.rollback import annotate_sale_rollback_pending
 
         queryset = annotate_sale_approval_state(queryset)
+        queryset = annotate_sale_rollback_pending(queryset)
         status = filters.get('status')
         if status == 'pending_approval':
             queryset = queryset.filter(awaiting_approval_queue_q())
