@@ -357,6 +357,60 @@ export default function ProductDetailPanel({
                           : product.stock_quantity ?? 0
                         : 'Not tracked'}
                     </DetailRow>
+                    {product.track_stock && Array.isArray(product.stock_layers) && product.stock_layers.length > 0 ? (
+                      <div className="space-y-2 pt-1" data-testid="product-stock-layers">
+                        <p className="text-xs font-medium text-foreground">Layers on hand</p>
+                        <div className="overflow-x-auto rounded border border-border/50">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="border-b border-border/40 text-left text-muted-foreground">
+                                <th className="px-2 py-1.5 font-medium">Received</th>
+                                {product.has_variants ? (
+                                  <th className="px-2 py-1.5 font-medium">Variant</th>
+                                ) : null}
+                                <th className="px-2 py-1.5 font-medium text-right">Qty</th>
+                                {visibility.showCost ? (
+                                  <th className="px-2 py-1.5 font-medium text-right">Cost</th>
+                                ) : null}
+                                {visibility.showPricing ? (
+                                  <th className="px-2 py-1.5 font-medium text-right">Sell</th>
+                                ) : null}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {product.stock_layers.map((layer) => (
+                                <tr key={layer.id} className="border-b border-border/30 last:border-0">
+                                  <td className="px-2 py-1.5 whitespace-nowrap">
+                                    {layer.received_at
+                                      ? new Date(layer.received_at).toLocaleDateString()
+                                      : '—'}
+                                  </td>
+                                  {product.has_variants ? (
+                                    <td className="px-2 py-1.5">{layer.variant || '—'}</td>
+                                  ) : null}
+                                  <td className="px-2 py-1.5 text-right tabular-nums">
+                                    {layer.qty_remaining}
+                                    <span className="text-muted-foreground">
+                                      /{layer.qty_received}
+                                    </span>
+                                  </td>
+                                  {visibility.showCost ? (
+                                    <td className="px-2 py-1.5 text-right tabular-nums">
+                                      {formatCurrency(layer.unit_cost)}
+                                    </td>
+                                  ) : null}
+                                  {visibility.showPricing ? (
+                                    <td className="px-2 py-1.5 text-right tabular-nums">
+                                      {formatCurrency(layer.unit_sell_price)}
+                                    </td>
+                                  ) : null}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ) : null}
                     {product.track_stock ? (
                       <p className="text-xs text-muted-foreground">
                         {STOCK_COUNT_HINT}

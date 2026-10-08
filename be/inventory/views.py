@@ -195,6 +195,7 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         variant_id = serializer.validated_data.get('variant_id')
         quantity = serializer.validated_data['quantity']
         unit_cost = serializer.validated_data.get('unit_cost')
+        unit_sell_price = serializer.validated_data.get('unit_sell_price')
         reference = serializer.validated_data.get('reference', '')
         notes = serializer.validated_data.get('notes', '')
         
@@ -213,6 +214,9 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 'quantity': quantity,
                 'notes': notes,
                 'unit_cost': str(unit_cost) if unit_cost is not None else None,
+                'unit_sell_price': (
+                    str(unit_sell_price) if unit_sell_price is not None else None
+                ),
                 'branch_id': current_branch.id if current_branch else None,
                 'reference': reference,
             },
@@ -230,7 +234,8 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 notes=notes,
                 user=request.user,
                 branch=current_branch,
-                reference=reference
+                reference=reference,
+                unit_sell_price=unit_sell_price,
             )
             from utils.audit_events import log_stock_movement_event
 
@@ -242,6 +247,9 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                     'product_id': product_id,
                     'variant_id': variant_id,
                     'unit_cost': str(unit_cost) if unit_cost is not None else None,
+                    'unit_sell_price': (
+                        str(unit_sell_price) if unit_sell_price is not None else None
+                    ),
                     'reference': reference,
                 },
             )

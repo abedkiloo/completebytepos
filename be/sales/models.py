@@ -395,6 +395,14 @@ class SaleItem(models.Model):
         decimal_places=2,
         validators=[MinValueValidator(0)]
     )
+    unit_cost = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+        help_text='Layer COGS for this line (FIFO stock layer at sale time).',
+    )
     subtotal = models.DecimalField(
         max_digits=10, 
         decimal_places=2,
@@ -427,6 +435,44 @@ class SaleItem(models.Model):
             self.color = self.variant.color
         
         super().save(*args, **kwargs)
+
+
+class SaleItemLayerAllocation(models.Model):
+    """FIFO layer slice consumed by a sale line (supports cross-layer lines)."""
+
+    sale_item = models.ForeignKey(
+        SaleItem,
+        on_delete=models.CASCADE,
+        related_name='layer_allocations',
+    )
+    stock_layer = models.ForeignKey(
+        'inventory.StockLayer',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='sale_allocations',
+    )
+    quantity = models.PositiveIntegerField()
+    qty_returned = models.PositiveIntegerField(
+        default=0,
+        help_text='Units already restored to the layer via refunds.',
+    )
+    unit_cost = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+    )
+    unit_sell_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+    )
+
+    class Meta:
+        ordering = ['id']
+
+    def __str__(self):
+        return f'SaleItem {self.sale_item_id} × {self.quantity} @ cost {self.unit_cost}'
 
 
 class SaleRefund(models.Model):

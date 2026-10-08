@@ -75,7 +75,12 @@ def sellable_stock_quantity(product, variant=None) -> int:
 
 
 def sellable_unit_price(product, variant=None, override=None) -> Decimal:
-    """Selling price only — never MRP. Used for sale lines and revenue."""
+    """Selling price only — never MRP. Used for sale lines and revenue.
+
+    Uses catalog fields (kept in sync with the oldest open stock layer on
+    purchase/sale). Sale checkout plans FIFO via ``plan_fifo_allocations`` —
+    do not query layers here or POS/list paths become N+1.
+    """
     if override is not None:
         return Decimal(str(override))
     if variant is not None and variant.price is not None:
@@ -92,6 +97,7 @@ def sellable_unit_price(product, variant=None, override=None) -> Decimal:
 
 
 def sellable_unit_cost(product, variant=None) -> Decimal:
+    """Catalog unit cost (synced from oldest open layer). No per-call layer query."""
     if variant is not None and variant.cost is not None:
         return variant.cost
     return product.cost

@@ -284,15 +284,24 @@ class ReportViewSet(viewsets.ViewSet):
             total_items=Sum('quantity'),
         )
         
-        purchases = queryset.select_related('product').order_by('-created_at')[:100]
+        purchases = queryset.select_related('product').prefetch_related(
+            'created_layers'
+        ).order_by('-created_at')[:100]
         purchases_data = []
         for purchase in purchases:
+            layer = next(iter(purchase.created_layers.all()), None)
             purchases_data.append({
                 'date': purchase.created_at.isoformat(),
                 'product_name': purchase.product.name,
                 'quantity': purchase.quantity,
                 'unit_cost': float(purchase.unit_cost or 0),
                 'total_cost': float(purchase.total_cost or 0),
+                'unit_sell_price': (
+                    float(layer.unit_sell_price)
+                    if layer is not None
+                    else None
+                ),
+                'stock_layer_id': layer.id if layer is not None else None,
             })
         
         return Response({
@@ -556,7 +565,7 @@ class ReportViewSet(viewsets.ViewSet):
 
         total_expenses = expenses_queryset.aggregate(total=Sum('amount'))['total'] or 0
 
-        # Purchases (cost of goods)
+        # Inventory purchases (cash outlay) — kept for visibility, not used as product COGS.
         purchases_queryset = StockMovement.objects.filter(movement_type='purchase')
         if date_from:
             purchases_queryset = purchases_queryset.filter(created_at__gte=date_from)
@@ -564,14 +573,40 @@ class ReportViewSet(viewsets.ViewSet):
             purchases_queryset = purchases_queryset.filter(created_at__lte=date_to)
 
         total_purchases = purchases_queryset.aggregate(total=Sum('total_cost'))['total'] or 0
-        
-        net_profit = float(total_revenue) - float(total_expenses) - float(total_purchases)
+
+        # Product COGS: prefer FIFO layer cost stamped on sale lines; fall back
+        # to sale stock movements for legacy lines without unit_cost.
+        from django.db.models import ExpressionWrapper, fields as dj_fields
+        from sales.models import SaleItem
+
+        sale_items = SaleItem.objects.filter(sale__in=sales_queryset)
+        with_cost = sale_items.filter(unit_cost__isnull=False).aggregate(
+            total=Sum(
+                ExpressionWrapper(
+                    F('quantity') * F('unit_cost'),
+                    output_field=dj_fields.DecimalField(max_digits=14, decimal_places=2),
+                )
+            )
+        )['total'] or 0
+        legacy_ids = sale_items.filter(unit_cost__isnull=True).values_list(
+            'sale__sale_number', flat=True
+        )
+        sale_movements = StockMovement.objects.filter(
+            movement_type='sale',
+            reference__in=list(legacy_ids),
+        )
+        legacy_cogs = sale_movements.aggregate(total=Sum('total_cost'))['total'] or 0
+        total_cogs = Decimal(str(with_cost)) + Decimal(str(legacy_cogs or 0))
+
+        net_profit = float(total_revenue) - float(total_expenses) - float(total_cogs)
         profit_margin = (net_profit / float(total_revenue) * 100) if total_revenue > 0 else 0
         
         summary = {
             'total_revenue': float(total_revenue),
             'total_expenses': float(total_expenses),
             'total_purchases': float(total_purchases),
+            'total_cogs': float(total_cogs),
+            'cogs_basis': 'sale_layers',
             'net_profit': float(net_profit),
             'profit_margin': round(profit_margin, 2),
         }

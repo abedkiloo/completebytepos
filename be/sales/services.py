@@ -10,7 +10,17 @@ from django.db import transaction
 from django.db.models import Q, Sum, Count, Avg, F, QuerySet
 from django.core.exceptions import ValidationError
 from django.utils import timezone
-from .models import Sale, SaleItem, Invoice, InvoiceItem, Payment, Customer, PaymentPlan, CustomerWalletTransaction
+from .models import (
+    Sale,
+    SaleItem,
+    SaleItemLayerAllocation,
+    Invoice,
+    InvoiceItem,
+    Payment,
+    Customer,
+    PaymentPlan,
+    CustomerWalletTransaction,
+)
 from products.models import Product, ProductVariant
 from products.status_rules import get_operational_product, get_operational_variant
 from approvals.effective import approved_sellable_stock_quantity
@@ -20,6 +30,7 @@ from products.stock_utils import (
     sellable_unit_cost,
 )
 from inventory.models import StockMovement
+from inventory.stock_layers import apply_fifo_sale_drain, layers_enabled, plan_fifo_allocations
 from settings.models import Branch
 from settings.utils import get_current_branch, get_current_tenant, is_branch_support_enabled
 from settings.feature_flags import is_product_variants_enabled
@@ -64,6 +75,7 @@ class SaleService(BaseService):
             'items__size',
             'items__color',
             'items__refund_lines',
+            'items__layer_allocations',
             'refunds',
         )
 
@@ -232,28 +244,68 @@ class SaleService(BaseService):
             
             from accounts.sensitive_edits import validate_sale_unit_price_override
 
+            override = item_data.get('unit_price')
             validate_sale_unit_price_override(
                 user,
                 product=product,
                 variant=variant,
-                override=item_data.get('unit_price'),
+                override=override,
             )
-            unit_price = sellable_unit_price(
-                product,
-                variant,
-                override=item_data.get('unit_price'),
+
+            variant_id = variant.id if variant is not None else None
+            plan = plan_fifo_allocations(
+                product_id=product.id,
+                variant_id=variant_id,
+                quantity=int(quantity),
             )
-            
-            # Get unit cost
-            unit_cost = sellable_unit_cost(product, variant)
-            
+
+            # Cross-layer cart qty → split sale lines (clear receipts) unless
+            # the cashier overrode unit price (keep one line, stamp allocations).
+            if (
+                layers_enabled()
+                and override is None
+                and len(plan) > 1
+            ):
+                for chunk in plan:
+                    qty = int(chunk['quantity'])
+                    unit_price = Decimal(str(chunk['unit_sell_price']))
+                    unit_cost = Decimal(str(chunk['unit_cost']))
+                    validated_items.append({
+                        'product': product,
+                        'variant': variant,
+                        'quantity': qty,
+                        'unit_price': unit_price,
+                        'unit_cost': unit_cost,
+                        'subtotal': Decimal(str(qty)) * unit_price,
+                        'layer_plan': [chunk],
+                    })
+                continue
+
+            if override is not None:
+                unit_price = sellable_unit_price(product, variant, override=override)
+            elif plan:
+                unit_price = Decimal(str(plan[0]['unit_sell_price']))
+            else:
+                unit_price = sellable_unit_price(product, variant)
+
+            if plan:
+                total_cost = sum(
+                    Decimal(str(c['unit_cost'])) * int(c['quantity']) for c in plan
+                )
+                unit_cost = (total_cost / Decimal(str(quantity))).quantize(
+                    Decimal('0.01')
+                )
+            else:
+                unit_cost = sellable_unit_cost(product, variant)
+
             validated_items.append({
                 'product': product,
                 'variant': variant,
                 'quantity': quantity,
                 'unit_price': Decimal(str(unit_price)),
                 'unit_cost': unit_cost,
-                'subtotal': Decimal(str(quantity)) * Decimal(str(unit_price))
+                'subtotal': Decimal(str(quantity)) * Decimal(str(unit_price)),
+                'layer_plan': plan,
             })
         
         return validated_items
@@ -269,12 +321,14 @@ class SaleService(BaseService):
         variant,
         quantity: int,
         unit_cost,
+        sale_item: Optional[SaleItem] = None,
     ):
         """
         Reduce stock for one sale line (FIFO across variants when no size was picked).
 
         With stock validation on, an oversell raises. With it off the sale still
         reduces stock, but only down to zero (stock may never be negative).
+        When layers are enabled, drains StockLayer FIFO and stamps allocations.
         """
         from sales.module_settings import sales_validate_stock_before_sale
 
@@ -283,9 +337,11 @@ class SaleService(BaseService):
         strict = sales_validate_stock_before_sale()
         requested = int(quantity)
 
-        def record(target_variant, qty, *, short=0):
+        def record(target_variant, qty, *, short=0, line_unit_cost=None):
             if qty <= 0:
                 return
+            cost = line_unit_cost if line_unit_cost is not None else unit_cost
+            cost = Decimal(str(cost or 0))
             line_notes = notes
             if short > 0:
                 line_notes = f'{notes} (oversold by {short}; stock was already used up)'
@@ -295,8 +351,8 @@ class SaleService(BaseService):
                 variant=target_variant,
                 movement_type='sale',
                 quantity=qty,
-                unit_cost=unit_cost,
-                total_cost=qty * unit_cost,
+                unit_cost=cost,
+                total_cost=qty * cost,
                 reference=reference,
                 user=user,
                 notes=line_notes,
@@ -308,6 +364,38 @@ class SaleService(BaseService):
             take = min(requested, max(0, int(available or 0)))
             return take, requested - take
 
+        def drain_and_record(target_variant, qty, *, short=0):
+            if qty <= 0:
+                return
+            if layers_enabled():
+                applied = apply_fifo_sale_drain(
+                    product_id=product.id,
+                    variant_id=target_variant.id if target_variant is not None else None,
+                    quantity=qty,
+                )
+                if sale_item is not None and applied:
+                    SaleItemLayerAllocation.objects.bulk_create(
+                        [
+                            SaleItemLayerAllocation(
+                                sale_item=sale_item,
+                                stock_layer=chunk.get('layer'),
+                                quantity=int(chunk['quantity']),
+                                unit_cost=Decimal(str(chunk['unit_cost'])),
+                                unit_sell_price=Decimal(str(chunk['unit_sell_price'])),
+                            )
+                            for chunk in applied
+                        ]
+                    )
+                for chunk in applied:
+                    record(
+                        target_variant,
+                        int(chunk['quantity']),
+                        short=short if chunk is applied[-1] else 0,
+                        line_unit_cost=chunk['unit_cost'],
+                    )
+                return
+            record(target_variant, qty, short=short)
+
         active_variants = product.variants.filter(is_active=True).order_by('id')
         # Parent stock of a variant product is re-synced from its variants, so a
         # parent-only movement would be wiped out — always draw from variants.
@@ -318,10 +406,10 @@ class SaleService(BaseService):
                     break
                 take = min(remaining, v.stock_quantity)
                 remaining -= take
-                record(v, take)
+                drain_and_record(v, take)
             if remaining > 0:
                 if strict:
-                    record(active_variants.first(), remaining)
+                    drain_and_record(active_variants.first(), remaining)
                 else:
                     logger.warning(
                         'Sale %s oversold %s by %s; stock already at zero',
@@ -335,7 +423,7 @@ class SaleService(BaseService):
                 .values_list('stock_quantity', flat=True).first()
             )
             take, short = capped(available)
-            record(variant, take, short=short)
+            drain_and_record(variant, take, short=short)
             return
 
         available = (
@@ -343,7 +431,7 @@ class SaleService(BaseService):
             .values_list('stock_quantity', flat=True).first()
         )
         take, short = capped(available)
-        record(None, take, short=short)
+        drain_and_record(None, take, short=short)
 
     def get_active_holding(self, user, branch: Optional[Branch] = None) -> Optional[Sale]:
         """Return the cashier's open holding invoice for this branch, if any."""
@@ -469,6 +557,7 @@ class SaleService(BaseService):
                 variant=item_data['variant'],
                 quantity=item_data['quantity'],
                 unit_price=item_data['unit_price'],
+                unit_cost=item_data.get('unit_cost'),
                 subtotal=item_data['subtotal'],
             )
 
@@ -551,12 +640,13 @@ class SaleService(BaseService):
 
         holding.items.all().delete()
         for item_data in validated_items:
-            SaleItem.objects.create(
+            sale_item = SaleItem.objects.create(
                 sale=holding,
                 product=item_data['product'],
                 variant=item_data['variant'],
                 quantity=item_data['quantity'],
                 unit_price=item_data['unit_price'],
+                unit_cost=item_data.get('unit_cost'),
                 subtotal=item_data['subtotal'],
             )
             if not defer_complete and item_data['product'].track_stock:
@@ -569,6 +659,7 @@ class SaleService(BaseService):
                     variant=item_data['variant'],
                     quantity=item_data['quantity'],
                     unit_cost=item_data['unit_cost'],
+                    sale_item=sale_item,
                 )
 
         holding.subtotal = subtotal
@@ -697,13 +788,14 @@ class SaleService(BaseService):
         # Create sale items. Stock is mutated exclusively by StockMovement.save()
         # below — see inventory/models.py. Doing both here would double-decrement.
         for item_data in validated_items:
-            SaleItem.objects.create(
+            sale_item = SaleItem.objects.create(
                 sale=sale,
                 product=item_data['product'],
                 variant=item_data['variant'],
                 quantity=item_data['quantity'],
                 unit_price=item_data['unit_price'],
-                subtotal=item_data['subtotal']
+                unit_cost=item_data.get('unit_cost'),
+                subtotal=item_data['subtotal'],
             )
 
             if complete and item_data['product'].track_stock:
@@ -716,6 +808,7 @@ class SaleService(BaseService):
                     variant=item_data['variant'],
                     quantity=item_data['quantity'],
                     unit_cost=item_data['unit_cost'],
+                    sale_item=sale_item,
                 )
         
         if complete:

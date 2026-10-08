@@ -148,6 +148,14 @@ class AppraisalTeamAPITests(ManagerAPITestCase):
         self.assertEqual(me.data['today']['label'], 'TARGET MET')
         self.assertEqual(me.data['policy']['daily_target'], 20000)
         self.assertEqual(me.data['policy']['manager_daily_target'], 35000)
+        applied = me.data['applied_policy']
+        self.assertEqual(applied['role'], 'Manager')
+        self.assertEqual(applied['daily_target'], 35000)
+        bonus_four = next(
+            b for b in applied['monthly_bonus_bands'] if abs(float(b['stars']) - 4) < 0.01
+        )
+        self.assertEqual(bonus_four['min'], 1750000)
+        self.assertEqual(bonus_four['bonus'], 2000)
         team = self.client.get('/api/appraisals/team/')
         self.assertEqual(team.status_code, status.HTTP_200_OK)
         names = {row['staff']['id'] for row in team.data['results']}

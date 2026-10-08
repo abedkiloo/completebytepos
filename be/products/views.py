@@ -427,7 +427,13 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 if value and value.lower() not in ['undefined', 'null', '']:
                     filters[param] = value
         
-        return self.product_service.build_queryset(filters)
+        qs = self.product_service.build_queryset(filters)
+        # Detail only: prefetch open layers so stock_layers is not an N+1.
+        if getattr(self, 'action', None) in ('retrieve', 'partial_update', 'update'):
+            from inventory.stock_layers import open_layers_prefetch
+
+            qs = qs.prefetch_related(open_layers_prefetch())
+        return qs
     
     def perform_create(self, serializer):
         """Create product + variants in one transaction so a mid-create failure leaves no orphan."""

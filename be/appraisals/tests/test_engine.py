@@ -287,6 +287,52 @@ class AppraisalEngineTests(SimpleTestCase):
         self.assertEqual(daily_star(35000, manager)['stars'], 4)
         self.assertEqual(daily_star(20000, manager)['stars'], 2)
 
+    def test_monthly_bonus_ladder_scales_with_role_daily_target(self):
+        template = normalize_template({
+            'role_daily_targets': {
+                'Manager': 35000,
+                'Sales Personnel': 20000,
+                'Field Sales': 25000,
+            },
+        })
+        sales = template_for_role(template, 'Sales Personnel')
+        self.assertEqual(monthly_bonus(1000000, sales)['bonus'], 2000)
+        self.assertEqual(monthly_bonus(999999, sales)['bonus'], 0)
+
+        # Manager target is 1.75× Sales → 4★ bonus threshold becomes 1,750,000.
+        manager = template_for_role(template, 'Manager')
+        four = next(b for b in manager['monthly_bonus_bands'] if abs(b['stars'] - 4) < 0.01)
+        self.assertEqual(four['min'], 1750000)
+        self.assertEqual(four['bonus'], 2000)  # cash award unchanged
+        self.assertEqual(monthly_bonus(1000000, manager)['bonus'], 0)
+        self.assertEqual(monthly_bonus(1750000, manager)['bonus'], 2000)
+        self.assertEqual(monthly_bonus(2625000, manager)['bonus'], 10000)
+
+        # Field Sales 1.25× → 4★ at 1,250,000.
+        field = template_for_role(template, 'Field Sales')
+        field_four = next(b for b in field['monthly_bonus_bands'] if abs(b['stars'] - 4) < 0.01)
+        self.assertEqual(field_four['min'], 1250000)
+        self.assertEqual(monthly_bonus(1250000, field)['bonus'], 2000)
+
+    def test_framework_own_bands_still_scale_so_four_star_equals_target(self):
+        """Preview/runtime: own bands copied from Sales (4★=20k) still scale to role target."""
+        template = normalize_template({
+            'role_frameworks': {
+                'Field Sales': {
+                    'daily_target': 25000,
+                    'daily_star_bands': default_template()['daily_star_bands'],
+                    'monthly_bonus_bands': default_template()['monthly_bonus_bands'],
+                },
+            },
+        })
+        field = template_for_role(template, 'Field Sales')
+        self.assertEqual(field['daily_target'], 25000)
+        four = next(b for b in field['daily_star_bands'] if abs(b['stars'] - 4) < 0.01)
+        self.assertEqual(four['min'], 25000)
+        self.assertEqual(daily_star(25000, field)['stars'], 4)
+        bonus_four = next(b for b in field['monthly_bonus_bands'] if abs(b['stars'] - 4) < 0.01)
+        self.assertEqual(bonus_four['min'], 1250000)
+
     def test_admin_roles_are_not_given_a_daily_target(self):
         template = normalize_template({
             'role_daily_targets': {

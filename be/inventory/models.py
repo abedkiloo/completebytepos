@@ -174,7 +174,12 @@ class StockMovement(models.Model):
                 if not self._allow_negative_stock_for_sale():
                     self._guard_negative(before, delta, str(locked))
                 update_kwargs = {'stock_quantity': F('stock_quantity') + delta}
-                if self.movement_type == 'purchase' and self.unit_cost and delta > 0:
+                if (
+                    self.movement_type == 'purchase'
+                    and self.unit_cost
+                    and delta > 0
+                    and not self._layers_enabled()
+                ):
                     update_kwargs['cost'] = self._weighted_average_cost(
                         old_qty=before,
                         old_cost=locked.cost if locked.cost is not None else locked.product.cost,
@@ -197,7 +202,12 @@ class StockMovement(models.Model):
                 if not self._allow_negative_stock_for_sale():
                     self._guard_negative(before, delta, locked.name)
                 update_kwargs = {'stock_quantity': F('stock_quantity') + delta}
-                if self.movement_type == 'purchase' and self.unit_cost and delta > 0:
+                if (
+                    self.movement_type == 'purchase'
+                    and self.unit_cost
+                    and delta > 0
+                    and not self._layers_enabled()
+                ):
                     update_kwargs['cost'] = self._weighted_average_cost(
                         old_qty=before,
                         old_cost=locked.cost,
@@ -227,6 +237,12 @@ class StockMovement(models.Model):
             )
 
     @staticmethod
+    def _layers_enabled() -> bool:
+        from inventory.module_settings import inventory_enable_stock_layers
+
+        return inventory_enable_stock_layers()
+
+    @staticmethod
     def _weighted_average_cost(*, old_qty, old_cost, added_qty, added_unit_cost):
         """Compute a weighted-average cost basis after adding stock at a new unit cost."""
         old_cost = Decimal(str(old_cost or 0))
@@ -237,3 +253,59 @@ class StockMovement(models.Model):
         if total_qty == 0:
             return unit_cost
         return ((old_qty * old_cost) + (added_qty * unit_cost)) / total_qty
+
+
+class StockLayer(models.Model):
+    """
+    One intake of stock with its own cost and selling price.
+
+    Sales drain layers FIFO by ``received_at``. Catalog product/variant
+    price and cost mirror the oldest open layer.
+    """
+
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='stock_layers',
+    )
+    variant = models.ForeignKey(
+        ProductVariant,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='stock_layers',
+    )
+    qty_received = models.PositiveIntegerField()
+    qty_remaining = models.PositiveIntegerField()
+    unit_cost = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+    )
+    unit_sell_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+    )
+    received_at = models.DateTimeField(db_index=True)
+    source_movement = models.ForeignKey(
+        StockMovement,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_layers',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['received_at', 'id']
+        indexes = [
+            models.Index(fields=['product', 'variant', 'received_at']),
+            models.Index(fields=['product', 'qty_remaining']),
+        ]
+
+    def __str__(self):
+        label = self.product.name
+        if self.variant_id:
+            label = f'{label} / {self.variant_id}'
+        return f'{label}: {self.qty_remaining}/{self.qty_received} @ {self.unit_cost}'

@@ -465,6 +465,7 @@ class ProductSerializer(serializers.ModelSerializer):
         error_messages=money_error_messages(allow_zero=True),
     )
     variant_combinations = serializers.JSONField(required=False, write_only=True)
+    stock_layers = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -479,6 +480,7 @@ class ProductSerializer(serializers.ModelSerializer):
             'supplier', 'supplier_name', 'supplier_name_display', 'supplier_detail', 'supplier_contact',
             'tax_rate', 'is_taxable', 'track_stock', 'is_low_stock', 'needs_reorder',
             'profit_margin', 'profit_amount', 'total_value', 'is_active',
+            'stock_layers',
             'created_at', 'updated_at'
         ]
         # NOTE: ``sku`` is intentionally writable - see ProductVariantSerializer
@@ -642,6 +644,51 @@ class ProductSerializer(serializers.ModelSerializer):
             from config.media_urls import absolute_media_url
             return absolute_media_url(self.context.get('request'), obj.image.url)
         return None
+
+    def get_stock_layers(self, obj):
+        """Open FIFO layers on hand (remaining qty, cost, sell, received).
+
+        Prefer prefetched ``open_stock_layers`` from product retrieve.
+        """
+        try:
+            from inventory.stock_layers import layers_enabled
+        except Exception:
+            return []
+        if not layers_enabled():
+            return []
+
+        layers = getattr(obj, 'open_stock_layers', None)
+        if layers is None:
+            from inventory.models import StockLayer
+
+            layers = (
+                StockLayer.objects.filter(product_id=obj.id, qty_remaining__gt=0)
+                .select_related('variant', 'variant__size', 'variant__color')
+                .order_by('received_at', 'id')
+            )
+
+        rows = []
+        for layer in layers:
+            variant_label = ''
+            if layer.variant_id:
+                parts = []
+                if layer.variant.size_id and getattr(layer.variant, 'size', None):
+                    parts.append(layer.variant.size.name)
+                if layer.variant.color_id and getattr(layer.variant, 'color', None):
+                    parts.append(layer.variant.color.name)
+                variant_label = ' / '.join(parts)
+            rows.append({
+                'id': layer.id,
+                'variant_id': layer.variant_id,
+                'variant': variant_label,
+                'qty_received': layer.qty_received,
+                'qty_remaining': layer.qty_remaining,
+                'unit_cost': str(layer.unit_cost),
+                'unit_sell_price': str(layer.unit_sell_price),
+                'received_at': layer.received_at.isoformat() if layer.received_at else None,
+                'source_movement_id': layer.source_movement_id,
+            })
+        return rows
     
     def validate_name(self, value):
         from products.duplicates import (

@@ -50,6 +50,11 @@ def inventory_allow_movement_undo() -> bool:
     return _enabled('allow_movement_undo', True)
 
 
+def inventory_enable_stock_layers() -> bool:
+    """FIFO cost + sell-price layers per purchase (default on)."""
+    return _enabled('enable_stock_layers', True)
+
+
 def apply_stock_movement_representation_flags(data: dict) -> dict:
     """Strip cost fields from movement payloads when hidden."""
     if not inventory_show_movement_cost():
