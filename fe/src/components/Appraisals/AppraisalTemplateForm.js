@@ -113,22 +113,27 @@ function frameworkFromPolicy(policy, role) {
   };
 }
 
+/** Match backend apply_daily_target: always scale band mins so 4★ = role daily target. */
 function rolePreview(form, role) {
   const fw = form.role_frameworks?.[role] || {};
   const target = num(fw.daily_target, num(form.role_daily_targets?.[role], form.daily_target));
   const bands = Array.isArray(fw.daily_star_bands) && fw.daily_star_bands.length
     ? fw.daily_star_bands
     : (form.daily_star_bands || []);
+  const bonusBands = Array.isArray(fw.monthly_bonus_bands) && fw.monthly_bonus_bands.length
+    ? fw.monthly_bonus_bands
+    : (form.monthly_bonus_bands || []);
   const four = bands.find((band) => Math.abs(Number(band.stars) - 4) < 0.01);
   const five = bands.find((band) => Math.abs(Number(band.stars) - 5) < 0.01);
+  const bonusFour = bonusBands.find((band) => Math.abs(Number(band.stars) - 4) < 0.01);
   const baseline = num(four?.min, form.daily_target);
-  const scaled = baseline > 0 ? target / baseline : 1;
-  const usesOwnBands = Array.isArray(fw.daily_star_bands) && fw.daily_star_bands.length;
+  const ratio = baseline > 0 && target > 0 ? target / baseline : 1;
   return {
     role,
     daily_target: target,
-    four_star_target: usesOwnBands ? num(four?.min, target) : Math.round(num(four?.min, target) * scaled),
-    five_star_target: usesOwnBands ? num(five?.min, 0) : Math.round(num(five?.min, 0) * scaled),
+    four_star_target: Math.round(num(four?.min, target) * ratio),
+    five_star_target: five ? Math.round(num(five?.min, 0) * ratio) : null,
+    four_star_bonus_min: bonusFour ? Math.round(num(bonusFour?.min, 0) * ratio) : null,
     year_end_increment: num(fw.year_end_increment, form.year_end_increment),
     four_star_month_min_avg: num(fw.four_star_month_min_avg, form.four_star_month_min_avg),
     four_star_months_required: num(fw.four_star_months_required, form.four_star_months_required),
@@ -386,6 +391,7 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
                   <p>Daily target <span className="font-semibold">{kes(preview.daily_target)}</span></p>
                   <p>4★ target <span className="font-semibold">{kes(preview.four_star_target)}</span></p>
                   <p>5★ target <span className="font-semibold">{preview.five_star_target ? `${kes(preview.five_star_target)}+` : '—'}</span></p>
+                  <p>4★ bonus from <span className="font-semibold">{preview.four_star_bonus_min != null ? kes(preview.four_star_bonus_min) : '—'}</span></p>
                   <p>Basic <span className="font-semibold">{kes(preview.basic_pay)}</span></p>
                 </div>
               ) : null}

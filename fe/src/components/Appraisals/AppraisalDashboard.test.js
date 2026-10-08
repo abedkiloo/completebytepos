@@ -69,14 +69,29 @@ const snapshot = {
     months: [],
   },
   policy: {
-    show_year_end_increment: true,
+    show_year_end_increment: false,
     year_end_increment: 3000,
     annual_avg_required: 4,
     four_star_month_min_avg: 4,
     monthly_bonus_bands: [
       { min: 0, stars: 1, bonus: 0 },
-      { min: 800000, stars: 3, bonus: 4000 },
-      { min: 1000000, stars: 4, bonus: 7000 },
+      { min: 800000, stars: 3, bonus: 0 },
+      { min: 1000000, stars: 4, bonus: 2000 },
+    ],
+  },
+  // Role-scoped rules must win over global policy for ladders and salary hints.
+  applied_policy: {
+    role: 'Manager',
+    show_year_end_increment: true,
+    year_end_increment: 5000,
+    annual_avg_required: 4,
+    four_star_month_min_avg: 4,
+    bonus_min_stars: 4,
+    monthly_bonus_bands: [
+      { min: 0, stars: 1, bonus: 0 },
+      { min: 1400000, stars: 3, bonus: 0 },
+      { min: 1750000, stars: 4, bonus: 4000 },
+      { min: 2187500, stars: 5, bonus: 7000 },
     ],
   },
   today_tips: {
@@ -95,6 +110,8 @@ describe('AppraisalDashboard', () => {
     expect(screen.getByTestId('appraisal-month')).toHaveTextContent(/4.12/);
     expect(screen.getByTestId('appraisal-bonus')).toHaveTextContent(/KES 4,000/);
     expect(screen.getByTestId('appraisal-bonus')).toHaveTextContent(/125,000 more to unlock/);
+    // Applied Manager ladder (1.75M), not global Sales ladder (1M).
+    expect(screen.getByTestId('appraisal-bonus')).toHaveTextContent(/1,750,000/);
     expect(screen.getByTestId('appraisal-salary')).toHaveTextContent(/One more 4-Star month/);
     expect(screen.getByTestId('appraisal-calendar')).toHaveTextContent(/MON|TUE|WED|THU|FRI|SAT|SUN/);
     expect(screen.queryByRole('link', { name: /Open sales for/ })).not.toBeInTheDocument();

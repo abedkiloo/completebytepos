@@ -24,7 +24,8 @@ CONTRACT_LINE = (
 
 BONUS_POLICY_LINE = (
     'Monthly bonus starts only at 4 Stars (KES 2,000 base). '
-    'Higher sales unlock more for each role, up to KES 10,000 at 5 Stars.'
+    'Sales thresholds scale with each role’s daily target; cash awards stay the same, '
+    'up to KES 10,000 at 5 Stars.'
 )
 
 DEFAULT_DAILY_BANDS = [
@@ -239,7 +240,11 @@ def resolve_role_daily_target(template: dict[str, Any], role_name: str) -> float
 
 
 def apply_daily_target(template: dict[str, Any], target: float) -> dict[str, Any]:
-    """Copy template with daily_target set and star bands scaled so 4★ is target met."""
+    """Copy template with daily_target set; scale daily star and monthly bonus mins to that target.
+
+    4★ daily band becomes ``target``. Monthly bonus thresholds scale by the same ratio so each
+    role’s ladder matches its daily target; cash bonus amounts are left unchanged.
+    """
     data = copy.deepcopy(template)
     amount = max(0.0, _float(target, 0))
     bands = list(data.get('daily_star_bands') or [])
@@ -252,14 +257,23 @@ def apply_daily_target(template: dict[str, Any], target: float) -> dict[str, Any
         0,
     )
     data['daily_target'] = amount
-    if amount > 0 and baseline > 0 and bands:
+    if amount > 0 and baseline > 0:
         ratio = amount / baseline
-        scaled = []
-        for band in bands:
-            row = dict(band)
-            row['min'] = round(max(0.0, _float(band.get('min'), 0) * ratio), 2)
-            scaled.append(row)
-        data['daily_star_bands'] = scaled
+        if bands:
+            scaled = []
+            for band in bands:
+                row = dict(band)
+                row['min'] = round(max(0.0, _float(band.get('min'), 0) * ratio), 2)
+                scaled.append(row)
+            data['daily_star_bands'] = scaled
+        bonus_bands = list(data.get('monthly_bonus_bands') or [])
+        if bonus_bands:
+            scaled_bonus = []
+            for band in bonus_bands:
+                row = dict(band)
+                row['min'] = round(max(0.0, _float(band.get('min'), 0) * ratio), 2)
+                scaled_bonus.append(row)
+            data['monthly_bonus_bands'] = scaled_bonus
     return data
 
 
@@ -419,6 +433,11 @@ def preview_for_role(template: dict[str, Any], role_name: str) -> dict[str, Any]
     bands = applied.get('daily_star_bands') or []
     four = next((b for b in bands if abs(_float(b.get('stars'), 0) - 4) < 0.01), None)
     five = next((b for b in bands if abs(_float(b.get('stars'), 0) - 5) < 0.01), None)
+    bonus_bands = applied.get('monthly_bonus_bands') or []
+    bonus_four = next(
+        (b for b in bonus_bands if abs(_float(b.get('stars'), 0) - 4) < 0.01),
+        None,
+    )
     return {
         'role': role_name,
         'daily_target': applied.get('daily_target'),
@@ -431,6 +450,9 @@ def preview_for_role(template: dict[str, Any], role_name: str) -> dict[str, Any]
         'four_star_months_required': applied.get('four_star_months_required'),
         'annual_avg_required': applied.get('annual_avg_required'),
         'sales_basis': applied.get('sales_basis') or 'posted_net',
+        'monthly_bonus_bands': copy.deepcopy(bonus_bands),
+        'four_star_bonus_min': _float((bonus_four or {}).get('min'), 0) or None,
+        'daily_star_bands': copy.deepcopy(bands),
     }
 
 

@@ -108,6 +108,34 @@ def template_for_user(user: User | None, template: dict[str, Any] | None = None)
     return template_for_role(base, staff_role_name(user))
 
 
+def applied_policy_payload(
+    applied: dict[str, Any],
+    *,
+    role_name: str,
+    base: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Role-scoped rules used for this user’s stars — not the global admin template."""
+    base = base or {}
+    return {
+        'role': role_name,
+        'daily_target': applied.get('daily_target'),
+        'basic_pay': applied.get('basic_pay'),
+        'year_end_increment': applied.get('year_end_increment'),
+        'working_days': applied.get('working_days'),
+        'four_star_month_min_avg': applied.get('four_star_month_min_avg'),
+        'four_star_months_required': applied.get('four_star_months_required'),
+        'annual_avg_required': applied.get('annual_avg_required'),
+        'bonus_min_stars': applied.get('bonus_min_stars'),
+        'bonus_cap': applied.get('bonus_cap'),
+        'daily_star_bands': list(applied.get('daily_star_bands') or []),
+        'monthly_bonus_bands': list(applied.get('monthly_bonus_bands') or []),
+        'show_year_end_increment': bool(
+            applied.get('show_year_end_increment', base.get('show_year_end_increment'))
+        ),
+        'sales_basis': applied.get('sales_basis') or 'posted_net',
+    }
+
+
 def _net_sales_by_day(user_id: int, start: datetime, end: datetime) -> dict:
     sales_qs = (
         posted_sales()
@@ -402,8 +430,10 @@ def staff_snapshot(user: User, *, year: int | None = None, today=None, template=
                 'id': user.id,
                 'username': user.username,
                 'name': _display_name(user),
+                'role': staff_role_name(user),
             },
             'policy': public_policy(base),
+            'applied_policy': None,
             'has_personal_target': False,
             'today': None,
             'month': None,
@@ -473,6 +503,9 @@ def staff_snapshot(user: User, *, year: int | None = None, today=None, template=
             'join_date': hire_date.isoformat() if hire_date else None,
         },
         'policy': public_policy(base),
+        'applied_policy': applied_policy_payload(
+            today_applied, role_name=role_name, base=base
+        ),
         'sales_basis': applied.get('sales_basis') or 'posted_net',
         'today': {'date': today.isoformat(), **today_rating},
         'month': month,

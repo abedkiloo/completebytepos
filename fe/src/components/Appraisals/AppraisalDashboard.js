@@ -298,7 +298,10 @@ function TrendChart({ days, target }) {
 
 export default function AppraisalDashboard({ snapshot, dayHref }) {
   if (!snapshot || snapshot.has_personal_target === false) return null;
-  const { today, month, year, greeting, policy, today_tips: todayTips } = snapshot;
+  const { today, month, year, greeting, policy, applied_policy: appliedPolicy, today_tips: todayTips } =
+    snapshot;
+  // Role-scoped rules for ladders/hints; fall back to global policy for older payloads.
+  const rules = appliedPolicy || policy;
   return (
     <div className="space-y-4" data-testid="appraisal-dashboard">
       {greeting?.headline ? (
@@ -310,16 +313,16 @@ export default function AppraisalDashboard({ snapshot, dayHref }) {
         </div>
       ) : null}
       <TodayCard today={today} />
-      <MonthCard month={month} policy={policy} />
+      <MonthCard month={month} policy={rules} />
       <BonusLadder
         month={month}
-        bands={policy?.monthly_bonus_bands}
-        bonusMinStars={policy?.bonus_min_stars}
+        bands={rules?.monthly_bonus_bands}
+        bonusMinStars={rules?.bonus_min_stars}
       />
-      <SalaryCard year={year} policy={policy} />
+      <SalaryCard year={year} policy={rules} />
       <DayStrip days={month?.days} dayHref={dayHref} />
       <TrendChart days={month?.days} target={today?.target} />
-      {policy?.show_year_end_increment && Array.isArray(year?.months) ? (
+      {rules?.show_year_end_increment && Array.isArray(year?.months) ? (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">This year</CardTitle>
