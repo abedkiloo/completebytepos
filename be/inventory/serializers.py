@@ -67,6 +67,12 @@ class StockPurchaseSerializer(serializers.Serializer):
     variant_id = serializers.IntegerField(required=False, allow_null=True)
     quantity = serializers.IntegerField(min_value=1)
     unit_cost = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    unit_sell_price = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+        help_text='Selling price for this delivery (FIFO stock layer).',
+    )
     reference = serializers.CharField(required=False, allow_blank=True)
     notes = serializers.CharField(required=False, allow_blank=True)
 

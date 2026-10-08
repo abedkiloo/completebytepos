@@ -170,7 +170,36 @@ class SaleRefundService:
         product = sale_item.product
         if not product.track_stock:
             return
-        unit_cost = product.cost or Decimal('0')
+
+        from inventory.stock_layers import layers_enabled, restore_layer_qty
+
+        unit_cost = (
+            sale_item.unit_cost
+            if sale_item.unit_cost is not None
+            else (product.cost or Decimal('0'))
+        )
+        remaining = int(quantity)
+
+        if layers_enabled():
+            allocations = list(
+                sale_item.layer_allocations.order_by('-id').select_for_update()
+            )
+            for alloc in allocations:
+                if remaining <= 0:
+                    break
+                available = max(0, int(alloc.quantity) - int(alloc.qty_returned or 0))
+                if available <= 0:
+                    continue
+                take = min(remaining, available)
+                if alloc.stock_layer_id:
+                    restore_layer_qty(layer_id=alloc.stock_layer_id, quantity=take)
+                type(alloc).objects.filter(pk=alloc.pk).update(
+                    qty_returned=int(alloc.qty_returned or 0) + take
+                )
+                remaining -= take
+            # Any leftover (no allocations / legacy lines) still returns stock
+            # via the movement below; catalog sync happens on restore when layers exist.
+
         StockMovement.objects.create(
             branch=branch,
             product=product,

@@ -149,6 +149,7 @@ def _apply_stock_movement(change: PendingChange) -> None:
     quantity = payload.get('quantity')
     notes = payload.get('notes', '')
     unit_cost = payload.get('unit_cost')
+    unit_sell_price = payload.get('unit_sell_price')
     branch = payload.get('branch_id')
 
     from settings.models import Branch
@@ -156,6 +157,10 @@ def _apply_stock_movement(change: PendingChange) -> None:
     branch_obj = Branch.objects.filter(pk=branch).first() if branch else None
     if unit_cost is not None and unit_cost != '':
         unit_cost = Decimal(str(unit_cost))
+    if unit_sell_price is not None and unit_sell_price != '':
+        unit_sell_price = Decimal(str(unit_sell_price))
+    else:
+        unit_sell_price = None
 
     if change.action_type == ACTION_STOCK_ADJUST:
         service.adjust_stock(
@@ -177,6 +182,7 @@ def _apply_stock_movement(change: PendingChange) -> None:
             user=user,
             branch=branch_obj,
             reference=payload.get('reference', ''),
+            unit_sell_price=unit_sell_price,
         )
     elif change.action_type == ACTION_STOCK_TRANSFER:
         from settings.models import Branch as BranchModel

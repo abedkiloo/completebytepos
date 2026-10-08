@@ -145,10 +145,14 @@ class StockMovementService(BaseService):
     def purchase_stock(self, product_id: int, variant_id: Optional[int],
                       quantity: int, unit_cost: Decimal, notes: str = '',
                       user=None, branch: Optional[Branch] = None,
-                      reference: str = '') -> StockMovement:
+                      reference: str = '',
+                      unit_sell_price: Optional[Decimal] = None) -> StockMovement:
         """
         Record a stock purchase (add stock).
-        Creates stock movement and updates product/variant stock quantity.
+
+        When stock layers are enabled, creates a FIFO layer with this intake's
+        cost + selling price and syncs catalog price/cost from the oldest open
+        layer (WAC blending is skipped).
         """
         if quantity <= 0:
             raise ValidationError('Purchase quantity must be positive')
@@ -169,12 +173,28 @@ class StockMovementService(BaseService):
         if not variant and not product.track_stock:
             raise ValidationError('Product does not track stock')
 
+        if unit_cost is None:
+            unit_cost = variant.cost if variant and variant.cost is not None else product.cost
+        unit_cost = Decimal(str(unit_cost or 0))
         total_cost = unit_cost * quantity
 
+        from inventory.stock_layers import (
+            create_layer_for_purchase,
+            ensure_opening_layer_if_needed,
+            layers_enabled,
+        )
+
+        # Capture any pre-layer on-hand as an opening layer before the purchase
+        # movement increases quantity (so FIFO drains old stock first).
+        if layers_enabled():
+            ensure_opening_layer_if_needed(
+                product_id=product.id,
+                variant_id=variant.id if variant else None,
+            )
+
         # Create stock movement. StockMovement.save() atomically increments
-        # stock_quantity AND recomputes a weighted-average `cost` for the
-        # product/variant, replacing the older "overwrite last cost" behaviour
-        # with a more accurate running cost basis.
+        # stock_quantity. With layers enabled, catalog cost is set from the
+        # oldest open layer after the layer is created (not WAC-blended).
         movement = StockMovement.objects.create(
             branch=branch,
             product=product,
@@ -187,6 +207,17 @@ class StockMovementService(BaseService):
             notes=notes or f'Stock purchase: {quantity} units',
             user=user
         )
+
+        if layers_enabled():
+            if unit_sell_price is None or unit_sell_price == '':
+                if variant is not None and variant.price is not None:
+                    unit_sell_price = variant.price
+                else:
+                    unit_sell_price = product.price
+            create_layer_for_purchase(
+                movement=movement,
+                unit_sell_price=Decimal(str(unit_sell_price or 0)),
+            )
 
         return movement
     

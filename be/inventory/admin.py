@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import StockMovement
+from .models import StockLayer, StockMovement
 
 
 @admin.register(StockMovement)
@@ -22,3 +22,14 @@ class StockMovementAdmin(admin.ModelAdmin):
             'fields': ('reference', 'notes', 'user', 'created_at')
         }),
     )
+
+
+@admin.register(StockLayer)
+class StockLayerAdmin(admin.ModelAdmin):
+    list_display = [
+        'product', 'variant', 'qty_remaining', 'qty_received',
+        'unit_cost', 'unit_sell_price', 'received_at',
+    ]
+    list_filter = ['received_at']
+    search_fields = ['product__name', 'product__sku']
+    readonly_fields = ['created_at']

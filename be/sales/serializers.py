@@ -229,6 +229,7 @@ class SaleListItemSerializer(serializers.ModelSerializer):
             'quantity_refunded',
             'refundable_quantity',
             'unit_price',
+            'unit_cost',
             'subtotal',
         ]
         read_only_fields = fields
@@ -255,6 +256,7 @@ class SaleItemSerializer(serializers.ModelSerializer):
     variant_sku = serializers.CharField(source='variant.sku', read_only=True)
     quantity_refunded = serializers.SerializerMethodField()
     refundable_quantity = serializers.SerializerMethodField()
+    layer_allocations = serializers.SerializerMethodField()
 
     class Meta:
         model = SaleItem
@@ -263,9 +265,9 @@ class SaleItemSerializer(serializers.ModelSerializer):
             'variant', 'variant_id', 'variant_sku',
             'size', 'size_name', 'color', 'color_name',
             'quantity', 'quantity_refunded', 'refundable_quantity',
-            'unit_price', 'subtotal', 'created_at'
+            'unit_price', 'unit_cost', 'layer_allocations', 'subtotal', 'created_at'
         ]
-        read_only_fields = ['subtotal', 'created_at']
+        read_only_fields = ['subtotal', 'created_at', 'unit_cost', 'layer_allocations']
 
     def get_quantity_refunded(self, obj):
         cache = self.context.get('refunded_qty_by_item')
@@ -277,6 +279,18 @@ class SaleItemSerializer(serializers.ModelSerializer):
     def get_refundable_quantity(self, obj):
         refunded = self.get_quantity_refunded(obj)
         return max(0, obj.quantity - refunded)
+
+    def get_layer_allocations(self, obj):
+        rows = []
+        for alloc in obj.layer_allocations.all():
+            rows.append({
+                'id': alloc.id,
+                'stock_layer_id': alloc.stock_layer_id,
+                'quantity': alloc.quantity,
+                'unit_cost': str(alloc.unit_cost),
+                'unit_sell_price': str(alloc.unit_sell_price),
+            })
+        return rows
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

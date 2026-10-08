@@ -21,6 +21,7 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
     product_id: product?.id || '',
     quantity: defaultQuantity,
     unit_cost: product?.cost || '',
+    unit_sell_price: product?.selling_price ?? product?.price ?? '',
     reference: '',
     notes: '',
   });
@@ -45,6 +46,7 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
         product_id: product.id,
         quantity: qty,
         unit_cost: product.cost || '',
+        unit_sell_price: product.selling_price ?? product.price ?? '',
       }));
     }
   }, [product]);
@@ -86,7 +88,7 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
         ? (value === '' ? '' : (parseInt(value, 10) || 0))
         : name === 'product_id'
         ? (value ? parseInt(value, 10) : '')
-        : name === 'unit_cost'
+        : name === 'unit_cost' || name === 'unit_sell_price'
         ? (parseFloat(value) || 0)
         : value
     }));
@@ -149,6 +151,9 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
         { label: 'Quantity', value: `+${pendingPayload.quantity}`, tone: 'success', emphasis: true },
         pendingPayload.unit_cost
           ? { label: 'Unit cost', value: formatCurrency(pendingPayload.unit_cost) }
+          : null,
+        pendingPayload.unit_sell_price
+          ? { label: 'Selling price (this batch)', value: formatCurrency(pendingPayload.unit_sell_price) }
           : null,
         totalCost > 0 ? { label: 'Total cost', value: formatCurrency(totalCost), emphasis: true } : null,
         pendingPayload.reference ? { label: 'Reference', value: pendingPayload.reference } : null,
@@ -215,6 +220,22 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
                 placeholder="Auto from product cost"
               />
             </div>
+          </div>
+
+          <div className="form-group">
+            <label>Selling price for this batch (KES)</label>
+            <input
+              type="number"
+              name="unit_sell_price"
+              value={formData.unit_sell_price}
+              onChange={handleChange}
+              step="0.01"
+              min="0"
+              placeholder="Price while this stock remains"
+            />
+            <small>
+              Old units keep their price until sold. New price applies after this batch is next in line.
+            </small>
           </div>
 
           {totalCost > 0 && (

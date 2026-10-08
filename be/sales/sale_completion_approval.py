@@ -12,7 +12,8 @@ from django.utils import timezone
 from approvals.models import PendingChange
 from approvals.registry import ACTION_SALE_COMPLETE
 from approvals.service import submit_change
-from sales.models import Sale
+from products.stock_utils import sellable_unit_cost
+from sales.models import Sale, SaleItem
 
 WAITING_MESSAGE = (
     'A manager will approve this sale. Stock, books, and the receipt update after they approve.'
@@ -678,18 +679,43 @@ def complete_queued_sale(sale: Sale, user, payload: dict | None = None) -> Sale:
         wallet_amount_requested=wallet_requested,
     )
 
-    for item_data in validated_items:
-        if item_data['product'].track_stock:
-            service._create_sale_stock_movements(
-                branch=sale.branch,
-                user=user,
-                reference=sale.sale_number,
-                notes=f'Sale {sale.sale_number}',
-                product=item_data['product'],
-                variant=item_data['variant'],
-                quantity=item_data['quantity'],
-                unit_cost=item_data['unit_cost'],
+    # Drain stock against existing sale lines (prices already locked at checkout).
+    for sale_item in sale.items.select_related('product', 'variant'):
+        if not sale_item.product.track_stock:
+            continue
+        unit_cost = sale_item.unit_cost
+        if unit_cost is None:
+            matched = next(
+                (
+                    row for row in validated_items
+                    if row['product'].id == sale_item.product_id
+                    and (
+                        (row['variant'].id if row['variant'] else None)
+                        == sale_item.variant_id
+                    )
+                    and int(row['quantity']) == int(sale_item.quantity)
+                    and row['unit_price'] == sale_item.unit_price
+                ),
+                None,
             )
+            unit_cost = (
+                matched['unit_cost']
+                if matched
+                else sellable_unit_cost(sale_item.product, sale_item.variant)
+            )
+            SaleItem.objects.filter(pk=sale_item.pk).update(unit_cost=unit_cost)
+            sale_item.unit_cost = unit_cost
+        service._create_sale_stock_movements(
+            branch=sale.branch,
+            user=user,
+            reference=sale.sale_number,
+            notes=f'Sale {sale.sale_number}',
+            product=sale_item.product,
+            variant=sale_item.variant,
+            quantity=sale_item.quantity,
+            unit_cost=unit_cost,
+            sale_item=sale_item,
+        )
 
     payment_method = payload.get('payment_method') or sale.payment_method
     payment_reference = payload.get('payment_reference')

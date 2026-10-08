@@ -172,7 +172,7 @@ PAYMENTS_PERMS = RequirePermPerAction('invoicing', {
 
 class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = Sale.objects.all().select_related('cashier', 'served_by').prefetch_related(
-        'items__product', 'items__refund_lines'
+        'items__product', 'items__refund_lines', 'items__layer_allocations'
     )
     serializer_class = SaleSerializer
     permission_classes = [IsAuthenticated, SALES_PERMS]

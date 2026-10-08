@@ -112,6 +112,8 @@ def _strip_summary(summary: dict) -> dict:
             'profit_margin',
             'total_purchase',
             'total_purchases',
+            'total_cogs',
+            'cogs_basis',
             'inventory_value',
             'total_inventory_value',
             'cost_value',
@@ -140,6 +142,8 @@ def apply_report_response_flags(data: dict) -> dict:
         data.pop('profit_margin', None)
         data.pop('total_purchase', None)
         data.pop('total_purchases', None)
+        data.pop('total_cogs', None)
+        data.pop('cogs_basis', None)
         data.pop('total_expenses', None)
         if isinstance(data.get('growth'), dict):
             growth = dict(data['growth'])
