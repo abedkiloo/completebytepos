@@ -431,6 +431,14 @@ export const messagingAPI = {
       ? api.post('/messaging/reminders/debt/preview/', data)
       : api.get('/messaging/reminders/debt/preview/'),
   debtReminderSend: (data) => api.post('/messaging/reminders/debt/send/', data),
+  customerWeekPreview: (data) =>
+    data
+      ? api.post('/messaging/promos/customer-week/preview/', data)
+      : api.get('/messaging/promos/customer-week/preview/'),
+  customerWeekSend: (data) =>
+    api.post('/messaging/promos/customer-week/send/', data),
+  blastPreview: (data) => api.post('/messaging/blast/preview/', data),
+  blastSend: (data) => api.post('/messaging/blast/send/', data),
 };
 
 export const invoicesAPI = {

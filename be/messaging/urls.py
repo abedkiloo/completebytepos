@@ -25,4 +25,24 @@ urlpatterns = [
         views.debt_reminder_send,
         name='messaging-debt-reminder-send',
     ),
+    path(
+        'promos/customer-week/preview/',
+        views.customer_week_preview,
+        name='messaging-customer-week-preview',
+    ),
+    path(
+        'promos/customer-week/send/',
+        views.customer_week_send,
+        name='messaging-customer-week-send',
+    ),
+    path(
+        'blast/preview/',
+        views.customer_blast_preview,
+        name='messaging-customer-blast-preview',
+    ),
+    path(
+        'blast/send/',
+        views.customer_blast_send,
+        name='messaging-customer-blast-send',
+    ),
 ]

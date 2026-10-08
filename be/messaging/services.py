@@ -265,3 +265,19 @@ def queue_debt_reminders(*, created_by=None, limit: int = 50) -> list[MessageOut
 def owed_amount(customer: Customer) -> Decimal:
     bal = customer.wallet_balance or Decimal('0')
     return abs(bal) if bal < 0 else Decimal('0')
+
+
+def get_customer_week_template_body() -> str:
+    return get_template_body(SmsTemplate.KEY_CUSTOMER_WEEK)
+
+
+def build_customer_week_preview(**kwargs):
+    from messaging.customer_blast import build_customer_week_preview as _build
+
+    return _build(**kwargs)
+
+
+def send_customer_week_promos(**kwargs):
+    from messaging.customer_blast import send_customer_week_promos as _send
+
+    return _send(**kwargs)

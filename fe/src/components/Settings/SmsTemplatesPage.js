@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { MessageSquareText, RotateCcw, Save } from 'lucide-react';
+import { MessageSquareText, RotateCcw, Save, Send } from 'lucide-react';
 
 import { messagingAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
@@ -12,6 +12,7 @@ import { Badge } from '../ui/badge';
 import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
 import { Input } from '../ui/input';
+import CustomerSmsBlastDialog from './CustomerSmsBlastDialog';
 
 const CATEGORY_LABELS = {
   sales: 'Sales',
@@ -62,6 +63,9 @@ export default function SmsTemplatesPage() {
     hasPermission(permissions, 'messaging', 'create') ||
     hasPermission(permissions, 'debt_management', 'update') ||
     hasPermission(permissions, 'settings', 'manage');
+  const canSendPromo =
+    hasPermission(permissions, 'messaging', 'create') ||
+    hasPermission(permissions, 'customers', 'update');
 
   const { settings: salesSettings, patch: patchSalesSettings } = useModuleSettings('sales');
 
@@ -73,6 +77,7 @@ export default function SmsTemplatesPage() {
   const [prefixDraft, setPrefixDraft] = useState('S-');
   const [savingSaleRef, setSavingSaleRef] = useState(false);
   const [savingSmsOpts, setSavingSmsOpts] = useState(false);
+  const [blastOpen, setBlastOpen] = useState(false);
 
   const shortSaleNumber = salesSettings?.sms_short_sale_number !== false;
   const includePaymentRef = salesSettings?.sms_include_payment_ref !== false;
@@ -248,8 +253,14 @@ export default function SmsTemplatesPage() {
     <PageShell>
       <PageHeader
         title="SMS templates"
-        description="Edit the default messages customers receive for sales, debt, and invoices. Changes apply to the next send."
+        description="Edit the default messages customers receive for sales, debt, invoices, and promotions. Changes apply to the next send."
       >
+        {canSendPromo ? (
+          <Button type="button" variant="outline" onClick={() => setBlastOpen(true)}>
+            <Send className="mr-1.5 h-4 w-4" />
+            Send SMS
+          </Button>
+        ) : null}
         <Button type="button" variant="outline" asChild>
           <Link to="/customers/debt">Debt reminders</Link>
         </Button>
@@ -447,6 +458,12 @@ export default function SmsTemplatesPage() {
                   <RotateCcw className="mr-1.5 h-4 w-4" />
                   Restore default
                 </Button>
+                {canSendPromo ? (
+                  <Button type="button" variant="secondary" onClick={() => setBlastOpen(true)}>
+                    <Send className="mr-1.5 h-4 w-4" />
+                    Preview & send
+                  </Button>
+                ) : null}
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">You can view templates but not edit them.</p>
@@ -460,6 +477,15 @@ export default function SmsTemplatesPage() {
           />
         )}
       </div>
+
+      {canSendPromo ? (
+        <CustomerSmsBlastDialog
+          open={blastOpen}
+          onOpenChange={setBlastOpen}
+          templates={templates}
+          initialTemplateKey={selectedKey}
+        />
+      ) : null}
     </PageShell>
   );
 }
