@@ -1,5 +1,7 @@
 """Customer SMS blast: all valid phones or one, any template."""
 
+from decimal import Decimal
+
 from django.contrib.auth.models import User
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -30,12 +32,14 @@ class CustomerBlastAPITests(APITestCase):
             owner_name='Grace Achieng',
             phone='0700111222',
             is_active=True,
+            wallet_balance=Decimal('-500.00'),
         )
         cls.person = Customer.objects.create(
             name='mwangi wa jogoo',
             owner_name='Mwangi',
             phone='0700333444',
             is_active=True,
+            wallet_balance=Decimal('0.00'),
         )
         Customer.objects.create(
             name='No Phone Duka',
@@ -106,14 +110,28 @@ class CustomerBlastAPITests(APITestCase):
         self.assertEqual(len(self.sms.sent), 1)
         self.assertIn('Mwangi', self.sms.sent[0]['body'])
 
-    def test_blast_any_template_to_all(self):
+    def test_debt_collection_only_includes_debtors(self):
+        preview = self.client.post(
+            '/api/messaging/blast/preview/',
+            {
+                'template_key': SmsTemplate.KEY_DEBT_REMINDER,
+                'scope': 'all',
+            },
+            format='json',
+        )
+        self.assertEqual(preview.status_code, status.HTTP_200_OK, preview.data)
+        self.assertTrue(preview.data['debt_only'])
+        ids = {r['customer_id'] for r in preview.data['recipients']}
+        self.assertIn(self.duka.pk, ids)
+        self.assertNotIn(self.person.pk, ids)
+
         res = self.client.post(
             '/api/messaging/blast/send/',
             {
                 'template_key': SmsTemplate.KEY_DEBT_REMINDER,
                 'scope': 'all',
                 'template': 'Hi {name}, balance KES {amount} at {store_name}.',
-                'customer_ids': [self.duka.pk],
+                'customer_ids': [self.duka.pk, self.person.pk],
             },
             format='json',
         )

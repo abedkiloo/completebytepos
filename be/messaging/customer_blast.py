@@ -116,11 +116,15 @@ def render_blast_sms(
 
 def _blast_queryset(
     *,
+    template_key: str,
     scope: str,
     customer_id: int | None = None,
     customer_ids: list[int] | None = None,
 ):
     qs = Customer.objects.filter(is_active=True).order_by('name')
+    # Debt collection SMS only targets customers who currently owe.
+    if template_key == SmsTemplate.KEY_DEBT_REMINDER:
+        qs = qs.filter(wallet_balance__lt=0)
     scope = (scope or 'all').strip().lower()
     if scope == 'one':
         if not customer_id:
@@ -148,8 +152,12 @@ def build_customer_blast_preview(
     offer_text = '' if offer is None else str(offer)
     store_name = resolved_store_name()
     qs, scope_norm = _blast_queryset(
-        scope=scope, customer_id=customer_id, customer_ids=customer_ids
+        template_key=template_key,
+        scope=scope,
+        customer_id=customer_id,
+        customer_ids=customer_ids,
     )
+    debt_only = template_key == SmsTemplate.KEY_DEBT_REMINDER
 
     recipients = []
     skipped_no_phone = 0
@@ -179,7 +187,21 @@ def build_customer_blast_preview(
             'phone_raw': raw,
             'message': message,
             'message_chars': len(message),
+            'amount': str(_owed_amount(customer)),
         })
+
+    if debt_only:
+        hint = (
+            'Debt collection only includes customers who currently owe. '
+            'Send to all debtors with a valid phone, or pick one. '
+            '{name} uses the short greeting name; {amount} is their balance.'
+        )
+    else:
+        hint = (
+            'Send to all registered customers with a valid phone, or pick one. '
+            'Only correct Kenyan mobiles are included. '
+            '{name} / {first_name} use the short greeting name.'
+        )
 
     return {
         'template_key': template_key,
@@ -189,12 +211,9 @@ def build_customer_blast_preview(
         'offer': offer_text,
         'store_name': store_name,
         'scope': scope_norm,
+        'debt_only': debt_only,
         'placeholders': [f'{{{p}}}' for p in spec.placeholders],
-        'hint': (
-            'Send to all registered customers with a valid phone, or pick one. '
-            'Only correct Kenyan mobiles are included. '
-            '{name} / {first_name} use the short greeting name.'
-        ),
+        'hint': hint,
         'count': len(recipients),
         'skipped_no_phone': skipped_no_phone,
         'skipped_invalid_phone': skipped_invalid_phone,

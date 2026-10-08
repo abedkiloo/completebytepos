@@ -255,7 +255,8 @@ export default function CustomerSmsBlastDialog({
           </DialogTitle>
           <DialogDescription>
             Choose a message, send to everyone with a correct phone number, or pick one
-            customer. Invalid or missing numbers are skipped.
+            customer. Invalid or missing numbers are skipped. Debt collection only lists
+            customers who currently owe.
           </DialogDescription>
         </DialogHeader>
 
@@ -286,7 +287,9 @@ export default function CustomerSmsBlastDialog({
                   variant={scope === 'all' ? 'default' : 'outline'}
                   onClick={() => setScope('all')}
                 >
-                  All with valid phone
+                  {templateKey === 'debt_reminder'
+                    ? 'All debtors with valid phone'
+                    : 'All with valid phone'}
                 </Button>
                 <Button
                   type="button"
