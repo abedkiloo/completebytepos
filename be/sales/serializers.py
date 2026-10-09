@@ -38,7 +38,8 @@ class CustomerSerializer(serializers.ModelSerializer):
         model = Customer
         fields = [
             'id', 'customer_code', 'name', 'customer_type',
-            'email', 'phone', 'address', 'city', 'country',
+            'email', 'phone', 'latitude', 'longitude', 'location_accuracy',
+            'address', 'city', 'country',
             'tax_id', 'notes', 'owner_name', 'contact_person', 'typical_goods', 'is_active',
             'total_invoices', 'total_outstanding', 'wallet_balance',
             'created_by', 'created_by_name',
@@ -66,6 +67,36 @@ class CustomerSerializer(serializers.ModelSerializer):
         from utils.phone import validate_optional_phone
 
         return validate_optional_phone(value)
+
+    def validate_latitude(self, value):
+        if value is None or value == '':
+            return None
+        try:
+            lat = Decimal(str(value))
+        except Exception:
+            raise serializers.ValidationError('Enter a valid latitude.')
+        if lat < Decimal('-90') or lat > Decimal('90'):
+            raise serializers.ValidationError('Latitude must be between -90 and 90.')
+        return lat
+
+    def validate_longitude(self, value):
+        if value is None or value == '':
+            return None
+        try:
+            lng = Decimal(str(value))
+        except Exception:
+            raise serializers.ValidationError('Enter a valid longitude.')
+        if lng < Decimal('-180') or lng > Decimal('180'):
+            raise serializers.ValidationError('Longitude must be between -180 and 180.')
+        return lng
+
+    def validate_location_accuracy(self, value):
+        if value is None or value == '':
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError('Location accuracy must be a number.')
 
     def validate_owner_name(self, value):
         if value is None:
@@ -127,7 +158,7 @@ class CustomerListSerializer(serializers.ModelSerializer):
         model = Customer
         fields = [
             'id', 'customer_code', 'name', 'customer_type',
-            'email', 'phone', 'city', 'country',
+            'email', 'phone', 'latitude', 'longitude', 'city', 'country',
             'is_active', 'total_outstanding', 'wallet_balance',
         ]
 

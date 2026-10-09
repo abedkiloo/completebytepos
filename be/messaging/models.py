@@ -18,6 +18,7 @@ class MessageOutbox(models.Model):
     TEMPLATE_DEBT_INCREASE = 'debt_increase'
     TEMPLATE_DEBT_SETTLEMENT = 'debt_settlement'
     TEMPLATE_CUSTOMER_WEEK = 'promo_customer_week'
+    TEMPLATE_CUSTOMER_WELCOME = 'customer_welcome'
 
     to_phone = models.CharField(max_length=20)
     body = models.TextField()
@@ -69,6 +70,7 @@ class SmsTemplate(models.Model):
     KEY_DEBT_REMINDER = 'debt_reminder'
     KEY_INVOICE = 'invoice_receipt'
     KEY_CUSTOMER_WEEK = 'promo_customer_week'
+    KEY_CUSTOMER_WELCOME = 'customer_welcome'
 
     KEY_CHOICES = [
         (KEY_SALE_COMPLETED, 'Sale completed'),
@@ -77,6 +79,7 @@ class SmsTemplate(models.Model):
         (KEY_DEBT_REMINDER, 'Debt collection reminder'),
         (KEY_INVOICE, 'Invoice / payment link'),
         (KEY_CUSTOMER_WEEK, 'Customer Week promo'),
+        (KEY_CUSTOMER_WELCOME, 'Customer welcome'),
     ]
 
     key = models.CharField(max_length=64, unique=True, choices=KEY_CHOICES)

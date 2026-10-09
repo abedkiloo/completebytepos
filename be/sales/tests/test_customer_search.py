@@ -29,7 +29,6 @@ class CustomerSearchTests(SuperAdminAPITestCase):
             phone='0700555002',
             is_active=True,
         )
-
     def test_search_by_name_finds_customer(self):
         response = self.client.get('/api/sales/customers/', {'search': 'Hardware', 'is_active': 'true'})
         self.assertEqual(response.status_code, status.HTTP_200_OK)

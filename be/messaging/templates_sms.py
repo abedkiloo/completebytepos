@@ -372,6 +372,27 @@ def render_customer_week_sms(
     )
 
 
+CUSTOMER_WELCOME_SMS_MAX_CHARS = 300
+
+
+def render_customer_welcome_sms(
+    *,
+    name: str,
+    store_name: str,
+    template: str | None = None,
+) -> str:
+    """Welcome SMS when a duka is registered — hard-capped at 300 characters."""
+    body = (template or '').strip() or get_template_body(SmsTemplate.KEY_CUSTOMER_WELCOME)
+    text = apply_sms_placeholders(
+        body,
+        name=sms_cap_name(name, fallback='Customer'),
+        store_name=sms_cap_name(store_name, fallback='Omuwenga', first_word_only=False),
+    ).strip()
+    if len(text) > CUSTOMER_WELCOME_SMS_MAX_CHARS:
+        text = text[: CUSTOMER_WELCOME_SMS_MAX_CHARS - 1].rstrip() + '…'
+    return text
+
+
 # Re-export for callers that imported the constant name.
 DEFAULT_DEBT_COLLECTION_TEMPLATE = (
     'Hi {name}, hope you are well. Your balance with {store_name} is KES {amount}. '

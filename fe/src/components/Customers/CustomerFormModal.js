@@ -4,33 +4,21 @@ import { toast } from '../../utils/toast';
 import CommitConfirm from '../Shared/CommitConfirm';
 import { customerCommitRows } from '../../utils/formCommitSummary';
 import { emailMessage, personNameMessage, phoneMessage } from '../../utils/formValidation';
-import TypicalGoodsFields, { typicalGoodsPayload } from './TypicalGoodsFields';
-
-const EMPTY_DUKA_FORM = {
-  name: '',
-  owner_name: '',
-  customer_type: 'business',
-  email: '',
-  phone: '',
-  address: '',
-  city: '',
-  country: 'Kenya',
-  tax_id: '',
-  notes: '',
-  contact_person: '',
-  typical_goods: [''],
-  is_active: true,
-};
+import {
+  EMPTY_CUSTOMER_FORM,
+  customerSavePayload,
+} from '../../utils/customerFormState';
+import TypicalGoodsFields from './TypicalGoodsFields';
 
 const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
-  const [formData, setFormData] = useState(EMPTY_DUKA_FORM);
+  const [formData, setFormData] = useState({ ...EMPTY_CUSTOMER_FORM });
   const [formErrors, setFormErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [showCommitConfirm, setShowCommitConfirm] = useState(false);
 
   const handleClose = () => {
     // Reset form when closing
-    setFormData({ ...EMPTY_DUKA_FORM });
+    setFormData({ ...EMPTY_CUSTOMER_FORM });
     setFormErrors({});
     setShowCommitConfirm(false);
     onClose();
@@ -70,22 +58,7 @@ const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
     if (loading) return;
     setLoading(true);
     
-    // Prepare clean data
-    const cleanData = {
-      name: formData.name.trim(),
-      customer_type: formData.customer_type,
-      email: formData.email.trim() || '',
-      phone: formData.phone.trim() || '',
-      owner_name: formData.owner_name.trim() || '',
-      address: formData.address.trim() || '',
-      city: formData.city.trim() || '',
-      country: formData.country.trim() || 'Kenya',
-      tax_id: formData.tax_id.trim() || '',
-      notes: formData.notes.trim() || '',
-      contact_person: formData.contact_person.trim() || '',
-      typical_goods: typicalGoodsPayload(formData.typical_goods),
-      is_active: formData.is_active,
-    };
+    const cleanData = customerSavePayload(formData);
     
     try {
       const response = await customersAPI.create(cleanData);
@@ -193,7 +166,6 @@ const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
               />
               {formErrors.phone && <span className="error-text">{formErrors.phone}</span>}
             </div>
-
             <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Other details
               <span className="ml-1 font-normal normal-case">(optional)</span>

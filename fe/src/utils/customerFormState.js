@@ -70,6 +70,7 @@ export function validateCustomerForm(formData) {
 
   const phoneErr = phoneMessage(formData.phone);
   if (phoneErr) errors.phone = phoneErr;
+
   return errors;
 }
 

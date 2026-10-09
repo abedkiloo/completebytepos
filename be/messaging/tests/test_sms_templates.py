@@ -38,6 +38,7 @@ class SmsTemplatesAPITests(APITestCase):
         self.assertIn('debt_reminder', keys)
         self.assertIn('invoice_receipt', keys)
         self.assertIn('promo_customer_week', keys)
+        self.assertIn('customer_welcome', keys)
         promo = next(r for r in res.data['results'] if r['key'] == 'promo_customer_week')
         self.assertEqual(promo['category'], 'promo')
         self.assertIn('{name}', promo['placeholders'])

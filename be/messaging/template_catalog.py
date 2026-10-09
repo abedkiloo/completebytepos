@@ -159,6 +159,24 @@ SMS_TEMPLATE_SPECS: dict[str, SmsTemplateSpec] = {
         },
         category='promo',
     ),
+    SmsTemplate.KEY_CUSTOMER_WELCOME: SmsTemplateSpec(
+        key=SmsTemplate.KEY_CUSTOMER_WELCOME,
+        label='Customer welcome',
+        description=(
+            'Sent once when a duka is registered. Keep the rendered body ≤300 characters. '
+            '{name} is the short greeting name; {store_name} is the shop name.'
+        ),
+        default_body=(
+            'Hi {name}, karibu to {store_name}. You are part of our larger network. '
+            'We will send updates on items we have, new price alerts, and other news. Asante.'
+        ),
+        placeholders=('name', 'store_name'),
+        sample={
+            'name': 'Jane',
+            'store_name': 'Omuwenga',
+        },
+        category='promo',
+    ),
 }
 
 

@@ -15,6 +15,9 @@ class CustomerAdmin(admin.ModelAdmin):
         ('Contact Information', {
             'fields': ('email', 'phone', 'address', 'city', 'country')
         }),
+        ('Location ping', {
+            'fields': ('latitude', 'longitude', 'location_accuracy')
+        }),
         ('Additional Information', {
             'fields': ('tax_id', 'notes', 'created_by')
         }),

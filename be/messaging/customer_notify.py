@@ -12,6 +12,8 @@ from .models import MessageOutbox
 from .providers import get_sms_provider
 from .templates_sms import (
     customer_first_name,
+    customer_greeting_name,
+    render_customer_welcome_sms,
     render_debt_increase_sms,
     render_debt_settlement_sms,
     render_sale_completed_sms,
@@ -153,6 +155,35 @@ def notify_customer_debt_settlement(
     except Exception:
         logger.exception(
             'notify_customer_debt_settlement failed for customer %s',
+            getattr(customer, 'pk', None),
+        )
+        return None
+
+
+def notify_customer_welcome(customer, *, user=None) -> MessageOutbox | None:
+    """Welcome SMS when a duka is first registered (skipped if no phone)."""
+    try:
+        if customer is None:
+            return None
+        customer.refresh_from_db(fields=['phone', 'name', 'owner_name', 'contact_person'])
+        phone = (getattr(customer, 'phone', None) or '').strip()
+        if not phone:
+            return None
+        from settings.store_settings_helpers import resolved_store_name
+
+        body = render_customer_welcome_sms(
+            name=customer_greeting_name(customer),
+            store_name=resolved_store_name() or 'Omuwenga',
+        )
+        return _queue_customer_sms(
+            customer=customer,
+            body=body,
+            template_key=MessageOutbox.TEMPLATE_CUSTOMER_WELCOME,
+            created_by=user,
+        )
+    except Exception:
+        logger.exception(
+            'notify_customer_welcome failed for customer %s',
             getattr(customer, 'pk', None),
         )
         return None

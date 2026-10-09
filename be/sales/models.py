@@ -26,6 +26,25 @@ class Customer(models.Model):
     customer_type = models.CharField(max_length=20, choices=CUSTOMER_TYPE_CHOICES, default='individual')
     email = models.EmailField(blank=True, validators=[EmailValidator()])
     phone = models.CharField(max_length=20, blank=True, db_index=True)
+    latitude = models.DecimalField(
+        max_digits=10,
+        decimal_places=7,
+        null=True,
+        blank=True,
+        help_text='Map pin latitude snapped when registering this duka.',
+    )
+    longitude = models.DecimalField(
+        max_digits=10,
+        decimal_places=7,
+        null=True,
+        blank=True,
+        help_text='Map pin longitude snapped when registering this duka.',
+    )
+    location_accuracy = models.FloatField(
+        null=True,
+        blank=True,
+        help_text='GPS accuracy in metres when the location was snapped.',
+    )
     address = models.TextField(blank=True)
     city = models.CharField(max_length=100, blank=True)
     country = models.CharField(max_length=100, default='Kenya')

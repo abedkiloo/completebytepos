@@ -1021,12 +1021,32 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         return CustomerSerializer
 
     def perform_create(self, serializer):
+        from agents.models import CustomerSite
+        from messaging.customer_notify import notify_customer_welcome
         from utils.audit_helpers import audited_perform_create
 
         customer = audited_perform_create(self, serializer)
+        update_fields = []
         if self.request.user and self.request.user.is_authenticated:
             customer.created_by = self.request.user
-            customer.save(update_fields=['created_by'])
+            update_fields.append('created_by')
+        if update_fields:
+            customer.save(update_fields=update_fields)
+
+        # Keep delivery / field sales in sync with the registration map pin.
+        if customer.latitude is not None and customer.longitude is not None:
+            CustomerSite.objects.create(
+                customer=customer,
+                label=customer.name or 'Duka',
+                latitude=customer.latitude,
+                longitude=customer.longitude,
+                accuracy=customer.location_accuracy,
+                is_default=True,
+                status=CustomerSite.STATUS_FINALIZED,
+                created_by=customer.created_by,
+            )
+
+        notify_customer_welcome(customer, user=self.request.user)
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
