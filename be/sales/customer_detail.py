@@ -8,7 +8,11 @@ from typing import Any, Dict, List, Optional, Tuple
 from django.core.paginator import Paginator
 from django.db.models import Sum
 
-from sales.daily_sales import classify_sale_payment, serialize_daily_order
+from sales.daily_sales import (
+    DAILY_ORDER_PREFETCH,
+    classify_sale_payment,
+    serialize_daily_order,
+)
 from sales.debt_management import debt_amount_from_balance
 from sales.models import Customer, CustomerWalletTransaction, Sale
 from utils.list_ordering import mapped_ordering
@@ -238,7 +242,7 @@ def get_customer_detail(
     )
     sales_qs = (
         sales_qs.select_related('customer', 'cashier', 'served_by')
-        .prefetch_related('items__product', 'items__refund_lines')
+        .prefetch_related(*DAILY_ORDER_PREFETCH)
         .order_by(*order_fields)
     )
     order_rows, orders_pagination = _paginate(sales_qs, orders_page, orders_page_size)

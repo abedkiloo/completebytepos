@@ -48,11 +48,31 @@ def classify_sale_payment(total: Decimal, amount_paid: Decimal) -> Tuple[Decimal
     return paid_amount, debt_amount, status
 
 
+def _prefetched(sale: Sale, related: str) -> bool:
+    return related in getattr(sale, '_prefetched_objects_cache', {})
+
+
+def _daily_item_count(sale: Sale) -> int:
+    """Prefer prefetched items — avoid per-row SUM(quantity) on list paths."""
+    if _prefetched(sale, 'items'):
+        return sum(int(item.quantity or 0) for item in sale.items.all())
+    return int(sale.item_count or 0)
+
+
+def _daily_amount_refunded(sale: Sale) -> Decimal:
+    """Prefer prefetched refunds — avoid per-row SUM(amount) on list paths."""
+    if _prefetched(sale, 'refunds'):
+        total = sum((r.amount or Decimal('0')) for r in sale.refunds.all())
+        return Decimal(str(total or 0))
+    return Decimal(str(sale.amount_refunded or 0))
+
+
 def serialize_daily_order(sale: Sale) -> Dict[str, Any]:
     """Serialize a single sale for the daily orders list."""
     total = Decimal(str(sale.total or 0))
     amount_paid = Decimal(str(sale.amount_paid or 0))
     paid_amount, debt_amount, payment_status = classify_sale_payment(total, amount_paid)
+    amount_refunded = _daily_amount_refunded(sale)
 
     customer_data = None
     if sale.customer:
@@ -87,9 +107,9 @@ def serialize_daily_order(sale: Sale) -> Dict[str, Any]:
         'payment_status': payment_status,
         'payment_method': sale.payment_method,
         'payment_reference': sale.payment_reference or '',
-        'item_count': sale.item_count,
+        'item_count': _daily_item_count(sale),
         'refund_status': sale.refund_status,
-        'amount_refunded': str(sale.amount_refunded.quantize(Decimal('0.01'))),
+        'amount_refunded': str(amount_refunded.quantize(Decimal('0.01'))),
         'is_late_entry': sale.is_late_entry,
         'client_channel': sale.client_channel or 'unknown',
         'entry_source': sale.entry_source,
@@ -97,6 +117,9 @@ def serialize_daily_order(sale: Sale) -> Dict[str, Any]:
         'sale_origin': sale.sale_origin,
         'notes': sale.notes or '',
     }
+
+
+DAILY_ORDER_PREFETCH = ('items__product', 'items__refund_lines', 'refunds')
 
 
 def get_daily_sales_report(
@@ -248,7 +271,7 @@ def get_daily_sales_report(
     )
     orders_qs = (
         orders_qs.select_related('customer', 'cashier', 'served_by', 'branch')
-        .prefetch_related('items__product', 'items__refund_lines')
+        .prefetch_related(*DAILY_ORDER_PREFETCH)
         .order_by(*order_fields)
     )
 
@@ -368,7 +391,7 @@ def get_customer_day_detail(
             occurred_at__gte=start_of_day,
             occurred_at__lte=end_of_day,
         )
-        .prefetch_related('items__product', 'items__refund_lines')
+        .prefetch_related(*DAILY_ORDER_PREFETCH)
         .order_by('-occurred_at')
     )
 
