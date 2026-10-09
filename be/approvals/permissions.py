@@ -134,26 +134,35 @@ def is_past_dated(*values) -> bool:
     return bool(day and day < timezone.localdate())
 
 
-def change_business_dates(change) -> list:
+def change_business_dates(change, *, sales_by_id: dict | None = None) -> list:
     """Dates that place a pending change on a business day (request day + item day)."""
     dates = [change.made_at]
     payload = change.apply_payload or {}
     if change.action_type == ACTION_SALE_BACKFILL:
         dates.append(payload.get('occurred_at'))
     elif change.action_type == ACTION_SALE_COMPLETE:
-        from sales.models import Sale
+        occurred = None
+        try:
+            sale_id = int(change.entity_id)
+        except (TypeError, ValueError):
+            sale_id = None
+        if sales_by_id is not None and sale_id is not None:
+            sale = sales_by_id.get(sale_id)
+            occurred = getattr(sale, 'occurred_at', None) if sale is not None else None
+        elif sale_id is not None:
+            from sales.models import Sale
 
-        occurred = (
-            Sale.objects.filter(pk=change.entity_id)
-            .values_list('occurred_at', flat=True)
-            .first()
-        )
+            occurred = (
+                Sale.objects.filter(pk=sale_id)
+                .values_list('occurred_at', flat=True)
+                .first()
+            )
         dates.append(occurred)
     return dates
 
 
-def change_is_past_dated(change) -> bool:
-    return is_past_dated(*change_business_dates(change))
+def change_is_past_dated(change, *, sales_by_id: dict | None = None) -> bool:
+    return is_past_dated(*change_business_dates(change, sales_by_id=sales_by_id))
 
 
 def user_may_approve_dated_item(user, *dates) -> bool:

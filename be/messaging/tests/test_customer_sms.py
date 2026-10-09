@@ -50,54 +50,36 @@ class SaleNumberFormatUnitTests(SimpleTestCase):
             'REF-9',
         )
 
-    def test_items_summary_is_minified_receipt(self):
-        class _P:
-            name = 'Bar soap deluxe long name'
-
+    def test_items_summary_is_goods_count_only(self):
         class _I:
-            product = _P()
+            product = type('P', (), {'name': 'Bar soap'})()
             quantity = 2
             unit_price = Decimal('200')
             subtotal = Decimal('400')
-            size = None
-            color = None
-            variant = None
 
         class _I2:
             product = type('P', (), {'name': 'Oil'})()
             quantity = 1
             unit_price = Decimal('1100')
             subtotal = Decimal('1100')
-            size = None
-            color = None
-            variant = None
 
         summary = format_sale_items_summary([_I(), _I2()])
-        self.assertIn('2 @ 200', summary)
-        self.assertIn('Oil 1 @ 1100', summary)
-        self.assertIn('…', summary)  # long name truncated
-        self.assertIn(', ', summary)
+        self.assertEqual(summary, '3 goods')
+        self.assertNotIn('@', summary)
+        self.assertNotIn('200', summary)
+        self.assertNotIn('1100', summary)
 
-    def test_items_summary_uses_cart_unit_price_not_catalog(self):
-        """Till can override catalog price — SMS must show the cart line price."""
-
-        class _P:
-            name = 'Cement 50kg'
-            price = Decimal('750')  # catalogue — must not appear in SMS
-
+    def test_items_summary_does_not_leak_line_prices(self):
         class _Line:
-            product = _P()
+            product = type('P', (), {'name': 'Cement 50kg', 'price': Decimal('750')})()
             quantity = 3
-            unit_price = Decimal('680')  # cart override
+            unit_price = Decimal('680')
             subtotal = Decimal('2040')
-            size = None
-            color = None
-            variant = None
 
         summary = format_sale_items_summary([_Line()])
-        self.assertIn('3 @ 680', summary)
+        self.assertEqual(summary, '3 goods')
+        self.assertNotIn('680', summary)
         self.assertNotIn('750', summary)
-        self.assertNotIn('@ 750', summary)
 
 
 class TemplateSmsTests(TestCase):
@@ -143,10 +125,10 @@ class TemplateSmsTests(TestCase):
             total='1000',
             paid='1000',
             balance_owed=None,
-            items_summary='Soap 2 @ 500',
+            items_summary='2 goods',
         )
         self.assertIn('Hi Jane, your order S-1.', paid)
-        self.assertIn('Soap 2 @ 500', paid)
+        self.assertIn('2 goods', paid)
         self.assertIn('Total KES 1000', paid)
         self.assertNotIn('SALE-1', paid)
         self.assertNotIn('Balance now', paid)
@@ -158,12 +140,12 @@ class TemplateSmsTests(TestCase):
             total='1000',
             paid='400',
             balance_owed='600',
-            items_summary='Oil 1 @ 1000',
+            items_summary='1 good',
             payment_reference='QHX1ABC2DE',
         )
         self.assertIn('your order S-2.', debt)
         self.assertIn('Balance now KES 600', debt)
-        self.assertIn('Oil 1 @ 1000', debt)
+        self.assertIn('1 good', debt)
         self.assertIn('Ref QHX1ABC2DE', debt)
 
         settled = render_debt_settlement_sms(
@@ -303,7 +285,8 @@ class CustomerNotifyTests(TestCase):
         self.assertIn('S-1', body)
         self.assertNotIn('SALE-SMS-1', body)
         self.assertIn('your order S-1.', body)
-        self.assertIn('Soap 2 @ 220', body)
+        self.assertIn('2 goods', body)
+        self.assertNotIn('@ 220', body)
         self.assertNotIn('@ 250', body)
         self.assertIn('Total KES 440', body)
         self.assertIn('Ref QHX1ABC2DE', body)

@@ -72,12 +72,25 @@ class CustomerBlastAPITests(APITestCase):
         self.assertEqual(res.data['count'], 2)
         self.assertEqual(res.data['skipped_no_phone'], 1)
         self.assertEqual(res.data['skipped_invalid_phone'], 1)
+        self.assertEqual(res.data.get('skipped_duplicate_phone', 0), 0)
         names = {r['greeting_name'] for r in res.data['recipients']}
         self.assertIn('Mama', names)
         self.assertIn('Mwangi', names)
         mama = next(r for r in res.data['recipients'] if r['customer_id'] == self.duka.pk)
         self.assertIn('Customer Week', mama['message'])
         self.assertNotIn('[west]', mama['message'])
+
+    def test_preview_dedupes_same_phone_across_customer_rows(self):
+        Customer.objects.create(
+            name='Mama Clone',
+            phone='254700111222',  # same handset as Mama Mboga (0700111222)
+            is_active=True,
+        )
+        preview = build_customer_week_preview()
+        self.assertEqual(preview['count'], 2)
+        self.assertEqual(preview['skipped_duplicate_phone'], 1)
+        phones = [r['phone'] for r in preview['recipients']]
+        self.assertEqual(len(phones), len(set(phones)))
 
     def test_blast_one_customer(self):
         res = self.client.post(

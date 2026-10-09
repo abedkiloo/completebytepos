@@ -394,6 +394,38 @@ export default function SaleApprovalsPage() {
     [sales],
   );
 
+  const openSale = useCallback(async (sale) => {
+    const key = `sale-${sale.id}`;
+    setSelected({ key, kind: KIND_SALE, data: sale });
+    const hasDetails = Boolean(sale.approval_details?.sections?.length);
+    if (hasDetails) return;
+    try {
+      const response = await salesAPI.get(sale.id);
+      const detail = response.data || {};
+      setSelected((current) => {
+        if (!current || current.key !== key) return current;
+        return {
+          ...current,
+          data: {
+            ...sale,
+            ...detail,
+            approval_details: detail.approval_details || sale.approval_details,
+          },
+        };
+      });
+    } catch {
+      /* list row still shows; checker can decide from summary */
+    }
+  }, []);
+
+  const openCollection = useCallback((change) => {
+    setSelected({
+      key: `collection-${change.id}`,
+      kind: KIND_COLLECTION,
+      data: change,
+    });
+  }, []);
+
   if (!allowed) {
     return <Navigate to="/" replace />;
   }
@@ -462,9 +494,7 @@ export default function SaleApprovalsPage() {
                   badge="Sale"
                   amount={Number(sale.total) || 0}
                   selected={selected?.key === `sale-${sale.id}`}
-                  onOpen={() =>
-                    setSelected({ key: `sale-${sale.id}`, kind: KIND_SALE, data: sale })
-                  }
+                  onOpen={() => openSale(sale)}
                 />
               ))}
             </ListSection>
@@ -480,9 +510,7 @@ export default function SaleApprovalsPage() {
                   meta="Returned"
                   amount={Number(sale.total) || 0}
                   selected={selected?.key === `sale-${sale.id}`}
-                  onOpen={() =>
-                    setSelected({ key: `sale-${sale.id}`, kind: KIND_SALE, data: sale })
-                  }
+                  onOpen={() => openSale(sale)}
                 />
               ))}
             </ListSection>
@@ -498,13 +526,7 @@ export default function SaleApprovalsPage() {
                   meta={collectionMethod(change)}
                   amount={collectionAmount(change)}
                   selected={selected?.key === `collection-${change.id}`}
-                  onOpen={() =>
-                    setSelected({
-                      key: `collection-${change.id}`,
-                      kind: KIND_COLLECTION,
-                      data: change,
-                    })
-                  }
+                  onOpen={() => openCollection(change)}
                 />
               ))}
             </ListSection>

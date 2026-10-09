@@ -47,6 +47,7 @@ jest.mock('../ui/dialog', () => {
 jest.mock('../../services/api', () => ({
   salesAPI: {
     list: jest.fn(),
+    get: jest.fn(),
     complete: jest.fn(),
     rejectComplete: jest.fn(),
   },
@@ -90,6 +91,21 @@ describe('SaleApprovalsPage', () => {
     salesAPI.list.mockResolvedValue({
       data: { results: [waitingSale(new Date().toISOString())] },
     });
+    salesAPI.get.mockImplementation(async (id) => ({
+      data: {
+        id,
+        sale_number: 'S-2300',
+        status: 'pending_approval',
+        approval_details: {
+          sections: [
+            {
+              title: 'Money',
+              facts: [{ label: 'Total', value: '2300', kind: 'money' }],
+            },
+          ],
+        },
+      },
+    }));
     pendingChangesAPI.pending.mockResolvedValue({ data: [] });
     salesAPI.complete.mockResolvedValue({
       data: { id: 42, status: 'completed' },
@@ -137,6 +153,15 @@ describe('SaleApprovalsPage', () => {
     expect(await screen.findByText('Red Shuka')).toBeInTheDocument();
     expect(screen.getByText('M-PESA')).toBeInTheDocument();
     expect(screen.getByTestId('approval-details')).toBeInTheDocument();
+    expect(salesAPI.get).not.toHaveBeenCalled();
+  });
+
+  test('loads sale detail when the list row has no approval breakdown', async () => {
+    render(<SaleApprovalsPage />);
+    await openSaleRow();
+    await waitFor(() => expect(salesAPI.get).toHaveBeenCalledWith(42));
+    expect(await screen.findByTestId('approval-details')).toBeInTheDocument();
+    expect(screen.getByText('Total')).toBeInTheDocument();
   });
 
   test('shows the API error when approve fails', async () => {

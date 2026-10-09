@@ -155,23 +155,24 @@ def format_sale_items_summary(
     name_max: int = 18,
 ) -> str:
     """
-    Minified receipt lines for SMS, e.g. ``Soap 2 @ 300, Oil 1 @ 1100``.
+    Short goods count for sale SMS — no per-line prices.
 
-    Prices come from each sale line (cart), not from the product catalog.
-    Caps length for single/multi-part SMS; leftover lines become ``+N more``.
+    Example: ``3 goods`` (total units in the cart). Empty when there are no lines.
     """
+    _ = (max_items, name_max)  # kept for call-site compatibility
     rows = list(items or [])
     if not rows:
         return ''
-    parts: list[str] = []
-    for item in rows[:max_items]:
-        qty = int(getattr(item, 'quantity', 0) or 0)
-        unit = _money(_item_unit_price(item))
-        parts.append(f'{_item_display_name(item, name_max=name_max)} {qty} @ {unit}')
-    extra = len(rows) - max_items
-    if extra > 0:
-        parts.append(f'+{extra} more')
-    return ', '.join(parts)
+    total_qty = 0
+    for item in rows:
+        try:
+            total_qty += max(0, int(getattr(item, 'quantity', 0) or 0))
+        except (TypeError, ValueError):
+            continue
+    if total_qty <= 0:
+        total_qty = len(rows)
+    label = 'good' if total_qty == 1 else 'goods'
+    return f'{total_qty} {label}'
 
 
 def format_balance_note(

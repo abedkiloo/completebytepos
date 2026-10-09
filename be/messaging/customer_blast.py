@@ -162,6 +162,9 @@ def build_customer_blast_preview(
     recipients = []
     skipped_no_phone = 0
     skipped_invalid_phone = 0
+    skipped_duplicate_phone = 0
+    # One SMS per phone — duplicate customer rows must not double-text the same handset.
+    seen_phones: set[str] = set()
 
     for customer in qs:
         raw = (customer.phone or '').strip()
@@ -172,6 +175,10 @@ def build_customer_blast_preview(
         if not phone:
             skipped_invalid_phone += 1
             continue
+        if phone in seen_phones:
+            skipped_duplicate_phone += 1
+            continue
+        seen_phones.add(phone)
         message = render_blast_sms(
             template_key=template_key,
             customer=customer,
@@ -217,6 +224,7 @@ def build_customer_blast_preview(
         'count': len(recipients),
         'skipped_no_phone': skipped_no_phone,
         'skipped_invalid_phone': skipped_invalid_phone,
+        'skipped_duplicate_phone': skipped_duplicate_phone,
         'recipients': recipients,
     }
 

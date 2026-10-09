@@ -3,6 +3,17 @@ from rest_framework import serializers
 from approvals.models import PendingChange
 
 
+class PendingChangeListSerializer(serializers.ListSerializer):
+    """Batch-hydrate approval details once for the whole page (no N+1)."""
+
+    def to_representation(self, data):
+        from approvals.details_cache import build_details_cache
+
+        changes = list(data)
+        self.child.context['details_cache'] = build_details_cache(changes)
+        return super().to_representation(changes)
+
+
 class PendingChangeSerializer(serializers.ModelSerializer):
     made_by_username = serializers.CharField(source='made_by.username', read_only=True)
     checked_by_username = serializers.CharField(
@@ -14,15 +25,20 @@ class PendingChangeSerializer(serializers.ModelSerializer):
     past_dated = serializers.SerializerMethodField()
     details = serializers.SerializerMethodField()
 
+    def _details_cache(self):
+        return self.context.get('details_cache')
+
+    def _sales_by_id(self):
+        cache = self._details_cache()
+        return cache.sales if cache is not None else None
+
     def get_details(self, obj):
-        if obj.status != PendingChange.STATUS_PENDING:
-            return None
         import logging
 
         from approvals.details import pending_change_details
 
         try:
-            return pending_change_details(obj)
+            return pending_change_details(obj, cache=self._details_cache())
         except Exception:
             logging.getLogger(__name__).exception(
                 'Could not build approval details for change %s', obj.pk,
@@ -32,16 +48,21 @@ class PendingChangeSerializer(serializers.ModelSerializer):
     def get_business_date(self, obj):
         from approvals.permissions import change_business_dates, earliest_business_day
 
-        day = earliest_business_day(*change_business_dates(obj))
+        day = earliest_business_day(
+            *change_business_dates(obj, sales_by_id=self._sales_by_id())
+        )
         return day.isoformat() if day else None
 
     def get_past_dated(self, obj):
         from approvals.permissions import change_is_past_dated
 
-        return obj.status == PendingChange.STATUS_PENDING and change_is_past_dated(obj)
+        return obj.status == PendingChange.STATUS_PENDING and change_is_past_dated(
+            obj, sales_by_id=self._sales_by_id(),
+        )
 
     class Meta:
         model = PendingChange
+        list_serializer_class = PendingChangeListSerializer
         fields = [
             'id',
             'action_type',

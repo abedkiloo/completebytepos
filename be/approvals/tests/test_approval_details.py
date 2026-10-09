@@ -9,6 +9,8 @@ from approvals.registry import (
     ACTION_PRODUCT_PRICE,
     ACTION_SALE_BACKFILL,
     ACTION_SALE_REFUND,
+    ACTION_STOCK_PURCHASE,
+    ACTION_STORE_SETTINGS,
 )
 from products.models import Category, Product
 from sales.models import Customer, Sale, SaleItem
@@ -125,10 +127,35 @@ class ApprovalDetailsTests(TestCase):
         self.assertEqual(Decimal(facts['Selling price']), Decimal('250.00'))
         self.assertEqual(facts['Stock on hand'], '10')
 
-    def test_unknown_entity_has_no_details(self):
+    def test_stock_purchase_shows_product_and_quantity(self):
         change = self._change(
-            action_type='store_settings',
+            action_type=ACTION_STOCK_PURCHASE,
+            entity_type='inventory.StockMovement',
+            entity_id='new',
+            entity_repr='Blue Kitenge',
+            apply_payload={
+                'product_id': self.product.pk,
+                'quantity': 5,
+                'unit_cost': '80.00',
+                'notes': 'Restock',
+                'reference': 'PO-9',
+            },
+        )
+        facts = _facts(_sections(pending_change_details(change))['Stock movement'])
+        self.assertEqual(facts['Product'], 'Blue Kitenge')
+        self.assertEqual(facts['Quantity'], '5')
+        self.assertEqual(Decimal(facts['Unit cost']), Decimal('80.00'))
+        self.assertEqual(facts['Reference'], 'PO-9')
+        self.assertEqual(facts['Type'], 'Stock purchase')
+
+    def test_store_settings_lists_requested_fields(self):
+        change = self._change(
+            action_type=ACTION_STORE_SETTINGS,
             entity_type='settings.StoreSettings',
             entity_id='1',
+            original_values={'maker_checker_enabled': False},
+            proposed_values={'maker_checker_enabled': True},
         )
-        self.assertIsNone(pending_change_details(change))
+        facts = _facts(_sections(pending_change_details(change))['Settings change'])
+        self.assertEqual(facts['Maker Checker Enabled (now)'], 'No')
+        self.assertEqual(facts['Maker Checker Enabled (requested)'], 'Yes')

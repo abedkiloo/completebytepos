@@ -381,10 +381,13 @@ export default function MyDecisionsTrail({
                 {selected.kind === 'expense' ? (
                   <ApprovalDetails details={expenseApprovalDetails(selected.data)} />
                 ) : (
-                  <ApprovalChangeTable
-                    originalValues={selected.data?.original_values}
-                    proposedValues={selected.data?.proposed_values}
-                  />
+                  <>
+                    <ApprovalDetails details={selected.data?.details} />
+                    <ApprovalChangeTable
+                      originalValues={selected.data?.original_values}
+                      proposedValues={selected.data?.proposed_values}
+                    />
+                  </>
                 )}
               </div>
             </>

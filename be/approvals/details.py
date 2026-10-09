@@ -20,9 +20,18 @@ from typing import Any, Iterable
 
 from approvals.models import PendingChange
 from approvals.registry import (
+    ACTION_CATEGORY_DEACTIVATE,
+    ACTION_CATEGORY_DELETE,
     ACTION_DEBT_COLLECTION,
+    ACTION_PAYMENT_METHODS,
+    ACTION_RECEIPT_LEGAL,
+    ACTION_ROLE_PERMISSIONS,
     ACTION_SALE_BACKFILL,
     ACTION_SALE_REFUND,
+    ACTION_STOCK_ADJUST,
+    ACTION_STOCK_PURCHASE,
+    ACTION_STOCK_TRANSFER,
+    ACTION_STORE_SETTINGS,
 )
 
 PAYMENT_LABELS = {'cash': 'Cash', 'mpesa': 'M-PESA', 'card': 'Card', 'other': 'Other'}
@@ -110,6 +119,14 @@ def _customer_facts(customer) -> list[dict | None]:
     ]
 
 
+def _iter_sale_items(sale):
+    """Prefer prefetched items; only hit the DB when the cache is cold."""
+    cache = getattr(sale, '_prefetched_objects_cache', {})
+    if 'items' in cache:
+        return sale.items.all()
+    return sale.items.select_related('product', 'variant', 'size', 'color').all()
+
+
 def sale_sections(sale, *, payment_payload: dict | None = None) -> list[dict]:
     """Header, items, and money for one sale."""
     payload = payment_payload or {}
@@ -140,7 +157,7 @@ def sale_sections(sale, *, payment_payload: dict | None = None) -> list[dict]:
             item.unit_price,
             item.subtotal,
         )
-        for item in sale.items.select_related('product', 'variant', 'size', 'color').all()
+        for item in _iter_sale_items(sale)
     ]
     items = _section('Items', lines=lines)
 
@@ -165,17 +182,23 @@ def sale_sections(sale, *, payment_payload: dict | None = None) -> list[dict]:
     return [s for s in (header, items, money) if s]
 
 
-def _sale_for(change: PendingChange):
+def _sale_for(change: PendingChange, cache=None):
     from sales.models import Sale
 
     try:
-        return (
-            Sale.objects.select_related('customer', 'cashier', 'served_by')
-            .filter(pk=int(change.entity_id))
-            .first()
-        )
+        pk = int(change.entity_id)
     except (TypeError, ValueError):
         return None
+    if cache is not None and pk in cache.sales:
+        return cache.sales[pk]
+    return (
+        Sale.objects.select_related('customer', 'cashier', 'served_by')
+        .prefetch_related(
+            'items__product', 'items__variant', 'items__size', 'items__color',
+        )
+        .filter(pk=pk)
+        .first()
+    )
 
 
 def _refund_sections(change: PendingChange, sale) -> list[dict]:
@@ -202,7 +225,7 @@ def _refund_sections(change: PendingChange, sale) -> list[dict]:
     return [section] if section else []
 
 
-def _backfill_sections(change: PendingChange) -> list[dict]:
+def _backfill_sections(change: PendingChange, cache=None) -> list[dict]:
     from django.contrib.auth.models import User
     from products.models import Product, ProductVariant
     from products.stock_utils import sellable_unit_price
@@ -211,7 +234,8 @@ def _backfill_sections(change: PendingChange) -> list[dict]:
     payload = change.apply_payload or {}
     customer = None
     if payload.get('customer_id'):
-        customer = Customer.objects.filter(pk=payload['customer_id']).first()
+        cid = int(payload['customer_id'])
+        customer = (cache.customers.get(cid) if cache else None) or Customer.objects.filter(pk=cid).first()
     served_by = None
     if payload.get('served_by_id'):
         served_by = User.objects.filter(pk=payload['served_by_id']).first()
@@ -227,15 +251,27 @@ def _backfill_sections(change: PendingChange) -> list[dict]:
         for row in item_rows
         if row.get('variant_id') not in (None, '')
     }
-    products_by_id = {
-        p.pk: p for p in Product.objects.filter(pk__in=product_ids)
-    } if product_ids else {}
-    variants_by_id = {
-        v.pk: v
-        for v in ProductVariant.objects.select_related('size', 'color').filter(
-            pk__in=variant_ids
-        )
-    } if variant_ids else {}
+    if cache is not None:
+        products_by_id = {pid: cache.products[pid] for pid in product_ids if pid in cache.products}
+        variants_by_id = {vid: cache.variants[vid] for vid in variant_ids if vid in cache.variants}
+        missing_products = product_ids - set(products_by_id)
+        missing_variants = variant_ids - set(variants_by_id)
+    else:
+        products_by_id = {}
+        variants_by_id = {}
+        missing_products = product_ids
+        missing_variants = variant_ids
+    if missing_products:
+        products_by_id.update({
+            p.pk: p for p in Product.objects.filter(pk__in=missing_products)
+        })
+    if missing_variants:
+        variants_by_id.update({
+            v.pk: v
+            for v in ProductVariant.objects.select_related('size', 'color').filter(
+                pk__in=missing_variants
+            )
+        })
 
     lines = []
     total = Decimal('0')
@@ -290,13 +326,14 @@ def _backfill_sections(change: PendingChange) -> list[dict]:
     return [s for s in (header, _section('Items', lines=lines), money) if s]
 
 
-def _debt_collection_sections(change: PendingChange) -> list[dict]:
+def _debt_collection_sections(change: PendingChange, cache=None) -> list[dict]:
     from sales.models import Customer
 
     payload = change.apply_payload or {}
     customer = None
     try:
-        customer = Customer.objects.filter(pk=int(change.entity_id)).first()
+        pk = int(change.entity_id)
+        customer = (cache.customers.get(pk) if cache else None) or Customer.objects.filter(pk=pk).first()
     except (TypeError, ValueError):
         pass
     amount = _dec(payload.get('amount'))
@@ -325,7 +362,7 @@ def _debt_collection_sections(change: PendingChange) -> list[dict]:
     ) if s]
 
 
-def _product_sections(change: PendingChange) -> list[dict]:
+def _product_sections(change: PendingChange, cache=None) -> list[dict]:
     from products.models import Product, ProductVariant
 
     try:
@@ -333,7 +370,7 @@ def _product_sections(change: PendingChange) -> list[dict]:
     except (TypeError, ValueError):
         return []
     if change.entity_type == 'products.ProductVariant':
-        variant = (
+        variant = (cache.variants.get(pk) if cache else None) or (
             ProductVariant.objects.select_related('product', 'size', 'color')
             .filter(pk=pk).first()
         )
@@ -348,7 +385,9 @@ def _product_sections(change: PendingChange) -> list[dict]:
             _fact('Stock on hand', variant.stock_quantity),
         ))
         return [section] if section else []
-    product = Product.objects.select_related('category').filter(pk=pk).first()
+    product = (cache.products.get(pk) if cache else None) or (
+        Product.objects.select_related('category').filter(pk=pk).first()
+    )
     if not product:
         return []
     section = _section('Product now', facts=_facts(
@@ -362,19 +401,214 @@ def _product_sections(change: PendingChange) -> list[dict]:
     return [section] if section else []
 
 
-def pending_change_details(change: PendingChange) -> dict | None:
+def _category_sections(change: PendingChange, cache=None) -> list[dict]:
+    from products.models import Category
+
+    try:
+        pk = int(change.entity_id)
+    except (TypeError, ValueError):
+        return []
+    category = (cache.categories.get(pk) if cache else None) or Category.objects.filter(pk=pk).first()
+    name = getattr(category, 'name', None) or change.entity_repr
+    proposed = change.proposed_values or {}
+    original = change.original_values or {}
+    section = _section('Category', facts=_facts(
+        _fact('Category', name),
+        _fact('Active now', 'Yes' if getattr(category, 'is_active', None) else 'No')
+        if category is not None else None,
+        _fact('Requested active', 'Yes' if proposed.get('is_active') else 'No')
+        if 'is_active' in proposed else None,
+        _fact('Was active', 'Yes' if original.get('is_active') else 'No')
+        if 'is_active' in original else None,
+        _fact('Action', 'Delete category')
+        if change.action_type == ACTION_CATEGORY_DELETE else (
+            _fact('Action', 'Deactivate category')
+            if change.action_type == ACTION_CATEGORY_DEACTIVATE else None
+        ),
+    ))
+    return [section] if section else []
+
+
+def _stock_sections(change: PendingChange, cache=None) -> list[dict]:
+    from products.models import Product, ProductVariant
+    from settings.models import Branch
+
+    payload = change.apply_payload or {}
+    product = None
+    variant = None
+    if payload.get('product_id'):
+        pid = int(payload['product_id'])
+        product = (cache.products.get(pid) if cache else None) or (
+            Product.objects.select_related('category').filter(pk=pid).first()
+        )
+    if payload.get('variant_id'):
+        vid = int(payload['variant_id'])
+        variant = (cache.variants.get(vid) if cache else None) or (
+            ProductVariant.objects.select_related('product', 'size', 'color')
+            .filter(pk=vid).first()
+        )
+        if variant and not product:
+            product = variant.product
+
+    branch = None
+    if payload.get('branch_id'):
+        bid = int(payload['branch_id'])
+        branch = (cache.branches.get(bid) if cache else None) or Branch.objects.filter(pk=bid).first()
+    to_branch = None
+    if payload.get('to_branch_id'):
+        tid = int(payload['to_branch_id'])
+        to_branch = (cache.branches.get(tid) if cache else None) or Branch.objects.filter(pk=tid).first()
+
+    action_labels = {
+        ACTION_STOCK_ADJUST: 'Stock adjustment',
+        ACTION_STOCK_PURCHASE: 'Stock purchase',
+        ACTION_STOCK_TRANSFER: 'Stock transfer',
+    }
+    qty = payload.get('quantity')
+    stock_now = None
+    if variant is not None:
+        stock_now = variant.stock_quantity
+    elif product is not None:
+        stock_now = product.stock_quantity
+
+    section = _section('Stock movement', facts=_facts(
+        _fact('Type', action_labels.get(change.action_type, change.action_type)),
+        _fact('Product', product.name if product else change.entity_repr),
+        _fact(
+            'Variant',
+            _variant_label(
+                getattr(variant, 'size', None),
+                getattr(variant, 'color', None),
+                getattr(variant, 'sku', ''),
+            ),
+        ) if variant else None,
+        _fact('SKU', getattr(product, 'sku', '') if product else ''),
+        _fact('Quantity', _format_qty(_dec(qty)) if qty not in (None, '') else None),
+        _fact('Unit cost', payload.get('unit_cost'), 'money')
+        if payload.get('unit_cost') not in (None, '') else None,
+        _fact('Unit sell price', payload.get('unit_sell_price'), 'money')
+        if payload.get('unit_sell_price') not in (None, '') else None,
+        _fact('Stock on hand now', stock_now),
+        _fact('Branch', getattr(branch, 'name', '') if branch else ''),
+        _fact('From branch', getattr(branch, 'name', '') if branch else '')
+        if change.action_type == ACTION_STOCK_TRANSFER else None,
+        _fact('To branch', getattr(to_branch, 'name', '') if to_branch else '')
+        if change.action_type == ACTION_STOCK_TRANSFER else None,
+        _fact('Reference', payload.get('reference')),
+        _fact('Notes', payload.get('notes')),
+        _fact('Requested by', _user_label(change.made_by)),
+        _fact('Requested at', change.made_at, 'datetime'),
+    ))
+    return [section] if section else []
+
+
+def _display_value(value: Any) -> str:
+    if isinstance(value, list):
+        return ', '.join(str(x) for x in value)
+    if isinstance(value, dict):
+        return str(value)
+    if isinstance(value, bool):
+        return 'Yes' if value else 'No'
+    return str(value)
+
+
+def _settings_sections(change: PendingChange) -> list[dict]:
+    proposed = change.proposed_values or {}
+    original = change.original_values or {}
+    keys = sorted(set(proposed) | set(original))
+    facts = []
+    for key in keys:
+        label = key.replace('_', ' ').strip().title()
+        before = original.get(key)
+        after = proposed.get(key)
+        if before is not None and before != '':
+            facts.append(_fact(f'{label} (now)', _display_value(before)))
+        if after is not None and after != '':
+            facts.append(_fact(f'{label} (requested)', _display_value(after)))
+    payload = change.apply_payload or {}
+    if payload.get('module'):
+        facts.insert(0, _fact('Module', payload.get('module')))
+    section = _section('Settings change', facts=_facts(*facts))
+    return [section] if section else []
+
+
+def _role_sections(change: PendingChange, cache=None) -> list[dict]:
+    from accounts.models import Permission, Role
+
+    try:
+        role_pk = int(change.entity_id)
+        role = (cache.roles.get(role_pk) if cache else None) or Role.objects.filter(pk=role_pk).first()
+    except (TypeError, ValueError):
+        role = None
+    proposed_ids = [
+        int(x) for x in (
+            (change.proposed_values or {}).get('permission_ids')
+            or (change.apply_payload or {}).get('permission_ids')
+            or []
+        )
+        if str(x).strip() != ''
+    ]
+    original_ids = [
+        int(x) for x in ((change.original_values or {}).get('permission_ids') or [])
+        if str(x).strip() != ''
+    ]
+
+    def _perms_for(ids):
+        if not ids:
+            return []
+        if cache is not None:
+            found = [cache.permissions[i] for i in ids if i in cache.permissions]
+            if len(found) == len(set(ids)):
+                return sorted(found, key=lambda p: (p.module, p.action))
+        return list(
+            Permission.objects.filter(id__in=ids).order_by('module', 'action')
+        )
+
+    proposed = _perms_for(proposed_ids)
+    original = _perms_for(original_ids)
+
+    def _perm_label(perm) -> str:
+        return f'{perm.module}:{perm.action}'
+
+    added = sorted({_perm_label(p) for p in proposed} - {_perm_label(p) for p in original})
+    removed = sorted({_perm_label(p) for p in original} - {_perm_label(p) for p in proposed})
+    section = _section('Role permissions', facts=_facts(
+        _fact('Role', getattr(role, 'name', None) or change.entity_repr),
+        _fact('Permissions now', len(original)),
+        _fact('Permissions requested', len(proposed)),
+        _fact('Added', ', '.join(added)) if added else None,
+        _fact('Removed', ', '.join(removed)) if removed else None,
+    ))
+    return [section] if section else []
+
+
+def pending_change_details(change: PendingChange, cache=None) -> dict | None:
     sections: list[dict] = []
     if change.action_type == ACTION_DEBT_COLLECTION:
-        sections = _debt_collection_sections(change)
+        sections = _debt_collection_sections(change, cache=cache)
     elif change.action_type == ACTION_SALE_BACKFILL:
-        sections = _backfill_sections(change)
+        sections = _backfill_sections(change, cache=cache)
+    elif change.action_type in (
+        ACTION_STOCK_ADJUST, ACTION_STOCK_PURCHASE, ACTION_STOCK_TRANSFER,
+    ):
+        sections = _stock_sections(change, cache=cache)
+    elif change.action_type in (ACTION_CATEGORY_DEACTIVATE, ACTION_CATEGORY_DELETE):
+        sections = _category_sections(change, cache=cache)
+    elif change.action_type == ACTION_ROLE_PERMISSIONS:
+        sections = _role_sections(change, cache=cache)
+    elif change.action_type in (
+        ACTION_STORE_SETTINGS, ACTION_PAYMENT_METHODS, ACTION_RECEIPT_LEGAL,
+    ) or change.entity_type in (
+        'settings.StoreSettings', 'settings.ModuleSetting',
+    ):
+        sections = _settings_sections(change)
     elif change.entity_type == 'sales.Sale':
-        sale = _sale_for(change)
+        sale = _sale_for(change, cache=cache)
         if sale:
             payload = change.apply_payload if change.action_type == 'sale_complete' else None
             sections = sale_sections(sale, payment_payload=payload)
             if change.action_type == ACTION_SALE_REFUND:
                 sections += _refund_sections(change, sale)
     elif change.entity_type in ('products.Product', 'products.ProductVariant'):
-        sections = _product_sections(change)
+        sections = _product_sections(change, cache=cache)
     return {'sections': sections} if sections else None

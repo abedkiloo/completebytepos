@@ -68,6 +68,31 @@ class CustomerSerializer(serializers.ModelSerializer):
 
         return validate_optional_phone(value)
 
+    def validate(self, attrs):
+        """Additional validation"""
+        from sales.customer_module_settings import validate_customer_write
+        from sales.customer_phones import duplicate_phone_error
+
+        # Ensure name is provided
+        name_error = required_text_error(
+            attrs.get('name'), label='customer name', example=NAME_EXAMPLE, min_length=2
+        )
+        if name_error:
+            raise serializers.ValidationError({'name': name_error})
+
+        phone = attrs.get('phone', serializers.empty)
+        if phone is serializers.empty and self.instance is not None:
+            phone = self.instance.phone
+        if phone is not serializers.empty and phone is not None and str(phone).strip():
+            dup = duplicate_phone_error(
+                phone,
+                exclude_id=self.instance.pk if self.instance is not None else None,
+            )
+            if dup:
+                raise serializers.ValidationError({'phone': dup})
+
+        return validate_customer_write(attrs)
+
     def validate_latitude(self, value):
         if value is None or value == '':
             return None
@@ -129,19 +154,6 @@ class CustomerSerializer(serializers.ModelSerializer):
             if len(cleaned) > 20:
                 raise serializers.ValidationError('You can list up to 20 goods.')
         return cleaned
-
-    def validate(self, attrs):
-        """Additional validation"""
-        from sales.customer_module_settings import validate_customer_write
-
-        # Ensure name is provided
-        name_error = required_text_error(
-            attrs.get('name'), label='customer name', example=NAME_EXAMPLE, min_length=2
-        )
-        if name_error:
-            raise serializers.ValidationError({'name': name_error})
-
-        return validate_customer_write(attrs)
 
     def to_representation(self, instance):
         from sales.customer_module_settings import apply_customer_representation_flags
@@ -498,7 +510,12 @@ class SaleSerializer(serializers.ModelSerializer):
         from approvals.details import sale_sections
         from sales.sale_completion_approval import pending_sale_complete_change
 
-        change = pending_sale_complete_change(obj)
+        cache = self.context.get('sale_approval_cache')
+        change = None
+        if cache is not None:
+            change = cache.pending_complete_by_sale_id.get(obj.pk)
+        else:
+            change = pending_sale_complete_change(obj)
         payload = (change.apply_payload or {}) if change else {}
         return {'sections': sale_sections(obj, payment_payload=payload)}
 
@@ -538,6 +555,18 @@ class SaleSerializer(serializers.ModelSerializer):
         return {row['sale_item_id']: row['total'] or 0 for row in rows}
 
 
+class SaleApprovalListSerializer(serializers.ListSerializer):
+    """Batch pending sale_complete payloads once for the till approval queue."""
+
+    def to_representation(self, data):
+        from approvals.details_cache import build_sale_approval_cache
+
+        sales = list(data)
+        if any(getattr(s, 'status', None) == 'pending_approval' for s in sales):
+            self.child.context['sale_approval_cache'] = build_sale_approval_cache(sales)
+        return super().to_representation(sales)
+
+
 class SaleListSerializer(SaleSerializer):
     """
     History list payload — keeps item counts / refund flags without embedding
@@ -546,9 +575,15 @@ class SaleListSerializer(SaleSerializer):
 
     items = SaleListItemSerializer(many=True, read_only=True)
 
+    class Meta(SaleSerializer.Meta):
+        list_serializer_class = SaleApprovalListSerializer
+
     def get_approval_details(self, obj):
-        # Approvals UI loads detail separately; list only needs status flags.
-        return None
+        # Pending queue needs the full breakdown on list so checkers can decide
+        # without a second round-trip. Completed history stays lightweight.
+        if getattr(obj, 'status', None) != 'pending_approval':
+            return None
+        return super().get_approval_details(obj)
 
     def get_activity(self, obj):
         return None

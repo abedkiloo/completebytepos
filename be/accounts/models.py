@@ -97,13 +97,21 @@ class Role(models.Model):
     def __str__(self):
         return self.name
 
+    def _permission_pairs(self):
+        """Load role permissions once per instance (avoids N+1 on list serializers)."""
+        cached = getattr(self, '_permission_pairs_cache', None)
+        if cached is None:
+            cached = {(p.module, p.action) for p in self.permissions.all()}
+            self._permission_pairs_cache = cached
+        return cached
+
     def has_permission(self, module, action):
         """Check if role has a specific permission"""
-        return self.permissions.filter(module=module, action=action).exists()
+        return (module, action) in self._permission_pairs()
 
     def has_module_access(self, module):
         """Check if role has any access to a module"""
-        return self.permissions.filter(module=module).exists()
+        return any(mod == module for mod, _action in self._permission_pairs())
 
 
 class UserProfile(models.Model):

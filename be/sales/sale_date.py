@@ -22,9 +22,10 @@ def user_can_correct_sale_date(user) -> bool:
 
 
 def sale_date_can_be_corrected(sale, user) -> bool:
-    if not user_can_correct_sale_date(user):
+    # Status first — cheap, and skips permission lookups on blocked rows in lists.
+    if getattr(sale, 'status', None) in BLOCKED_STATUSES:
         return False
-    return getattr(sale, 'status', None) not in BLOCKED_STATUSES
+    return user_can_correct_sale_date(user)
 
 
 def parse_sale_date_payload(data, *, current) -> datetime:

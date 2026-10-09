@@ -30,13 +30,13 @@ SMS_TEMPLATE_SPECS: dict[str, SmsTemplateSpec] = {
         label='Sale completed',
         description=(
             'Minified receipt SMS when a sale is finalized. '
-            '{items} is the goods summary using cart/till line prices '
-            '(e.g. Soap 2 @ 300), not catalogue product prices. '
+            '{items} is the goods count only (e.g. "3 goods"), with no per-line prices. '
+            'Total/paid amounts are in {total} / {paid}. '
             '{payment_ref} is the receipt/M-PESA reference when present (configurable). '
             '{balance_note} is empty when balance is zero unless configured to show it.'
         ),
         default_body=(
-            'Hi {first_name}, your order {sale_number}.\n{items}'
+            'Hi {first_name}, your order {sale_number}. {items}'
             'Total KES {total}. Paid KES {paid}.{payment_ref}{balance_note} Karibu.'
         ),
         placeholders=(
@@ -51,7 +51,7 @@ SMS_TEMPLATE_SPECS: dict[str, SmsTemplateSpec] = {
         sample={
             'first_name': 'Jane',
             'sale_number': 'S-0001',
-            'items': 'Soap 2 @ 300, Cooking oil 1 @ 1100. ',
+            'items': '3 goods. ',
             'total': '1500',
             'paid': '1000',
             'payment_ref': ' Ref QHX1ABC2DE.',
