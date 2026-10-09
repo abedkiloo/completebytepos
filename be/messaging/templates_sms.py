@@ -132,13 +132,19 @@ def _item_display_name(item, *, name_max: int = 18) -> str:
 
 
 def _item_unit_price(item) -> Decimal:
+    """
+    Unit price as charged on the sale line (cart / till), never catalog product.price.
+
+    Cashiers may change the price in the cart; SMS must show that charged price.
+    """
     raw = getattr(item, 'unit_price', None)
-    if raw is not None and str(raw) != '':
+    if raw is not None and str(raw).strip() != '':
         return Decimal(str(raw))
     qty = int(getattr(item, 'quantity', 0) or 0)
     sub = Decimal(str(getattr(item, 'subtotal', 0) or 0))
-    if qty > 0:
-        return (sub / qty).quantize(Decimal('0.01'))
+    if qty > 0 and sub:
+        return (sub / Decimal(qty)).quantize(Decimal('0.01'))
+    # Never fall back to product.price / variant.price — those are catalogue, not cart.
     return Decimal('0')
 
 
@@ -151,6 +157,7 @@ def format_sale_items_summary(
     """
     Minified receipt lines for SMS, e.g. ``Soap 2 @ 300, Oil 1 @ 1100``.
 
+    Prices come from each sale line (cart), not from the product catalog.
     Caps length for single/multi-part SMS; leftover lines become ``+N more``.
     """
     rows = list(items or [])

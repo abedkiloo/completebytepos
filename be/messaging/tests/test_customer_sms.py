@@ -78,6 +78,27 @@ class SaleNumberFormatUnitTests(SimpleTestCase):
         self.assertIn('…', summary)  # long name truncated
         self.assertIn(', ', summary)
 
+    def test_items_summary_uses_cart_unit_price_not_catalog(self):
+        """Till can override catalog price — SMS must show the cart line price."""
+
+        class _P:
+            name = 'Cement 50kg'
+            price = Decimal('750')  # catalogue — must not appear in SMS
+
+        class _Line:
+            product = _P()
+            quantity = 3
+            unit_price = Decimal('680')  # cart override
+            subtotal = Decimal('2040')
+            size = None
+            color = None
+            variant = None
+
+        summary = format_sale_items_summary([_Line()])
+        self.assertIn('3 @ 680', summary)
+        self.assertNotIn('750', summary)
+        self.assertNotIn('@ 750', summary)
+
 
 class TemplateSmsTests(TestCase):
     def test_sms_cap_name_uses_first_word_only(self):
@@ -264,9 +285,14 @@ class CustomerNotifyTests(TestCase):
             sale=sale,
             product=product,
             quantity=2,
-            unit_price=Decimal('250'),
-            subtotal=Decimal('500'),
+            # Cart override below catalog product.price (250)
+            unit_price=Decimal('220'),
+            subtotal=Decimal('440'),
         )
+        sale.subtotal = Decimal('440.00')
+        sale.total = Decimal('440.00')
+        sale.amount_paid = Decimal('440.00')
+        sale.save(update_fields=['subtotal', 'total', 'amount_paid'])
         with self.captureOnCommitCallbacks(execute=True):
             msg = notify_customer_sale_completed(sale)
         self.assertIsNotNone(msg)
@@ -277,8 +303,9 @@ class CustomerNotifyTests(TestCase):
         self.assertIn('S-1', body)
         self.assertNotIn('SALE-SMS-1', body)
         self.assertIn('your order S-1.', body)
-        self.assertIn('Soap 2 @ 250', body)
-        self.assertIn('Total KES 500', body)
+        self.assertIn('Soap 2 @ 220', body)
+        self.assertNotIn('@ 250', body)
+        self.assertIn('Total KES 440', body)
         self.assertIn('Ref QHX1ABC2DE', body)
         self.assertNotIn('Balance now', body)
 
