@@ -263,6 +263,10 @@ _provider: SmsProvider | None = None
 
 def build_sms_provider_from_settings() -> SmsProvider:
     """Pick provider from Django settings (used when no test override is set)."""
+    if getattr(settings, 'SMS_LIVE_DISABLED', False):
+        logger.info('SMS live disabled (UAT) — using FakeSmsProvider')
+        return FakeSmsProvider()
+
     choice = (getattr(settings, 'SMS_PROVIDER', '') or '').strip().lower()
     mobilesasa_token = (getattr(settings, 'MOBILESASA_API_TOKEN', '') or '').strip()
     mobilesasa_sender = (getattr(settings, 'MOBILESASA_SENDER_ID', '') or '').strip()

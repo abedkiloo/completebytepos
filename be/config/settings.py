@@ -465,11 +465,16 @@ SMS_BRAND_BLURB = env_str(
 PUBLIC_INVOICE_BASE_URL = env_str('PUBLIC_INVOICE_BASE_URL', 'https://example.com/i')
 # SMS: Mobile Sasa (preferred) — https://docs.mobilesasa.com/sms/send
 # Set SMS_PROVIDER=mobilesasa (or leave blank when token+sender are set).
-SMS_PROVIDER = env_str('SMS_PROVIDER', '')
-MOBILESASA_API_TOKEN = env_str('MOBILESASA_API_TOKEN', '')
-MOBILESASA_SENDER_ID = env_str('MOBILESASA_SENDER_ID', '')
-AFRICASTALKING_API_KEY = env_str('AFRICASTALKING_API_KEY', '')
-AFRICASTALKING_USERNAME = env_str('AFRICASTALKING_USERNAME', '')
+# UAT never sends live SMS (STACK_NAME / PUBLIC_HOST contain "uat").
+STACK_NAME = env_str('STACK_NAME', '')
+_SMS_UAT_HOST = bool(PUBLIC_HOST and 'uat.' in PUBLIC_HOST.lower())
+_SMS_UAT_STACK = 'uat' in STACK_NAME.lower()
+SMS_LIVE_DISABLED = _SMS_UAT_HOST or _SMS_UAT_STACK
+SMS_PROVIDER = 'fake' if SMS_LIVE_DISABLED else env_str('SMS_PROVIDER', '')
+MOBILESASA_API_TOKEN = '' if SMS_LIVE_DISABLED else env_str('MOBILESASA_API_TOKEN', '')
+MOBILESASA_SENDER_ID = '' if SMS_LIVE_DISABLED else env_str('MOBILESASA_SENDER_ID', '')
+AFRICASTALKING_API_KEY = '' if SMS_LIVE_DISABLED else env_str('AFRICASTALKING_API_KEY', '')
+AFRICASTALKING_USERNAME = '' if SMS_LIVE_DISABLED else env_str('AFRICASTALKING_USERNAME', '')
 
 # Google Maps Platform — Routes API only. Browser and app keys never live here.
 # See docs/MAPS.md. Leave the placeholder until billing keys are issued.

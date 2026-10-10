@@ -215,12 +215,24 @@ class MobileSasaProviderTests(SimpleTestCase):
         SMS_PROVIDER='mobilesasa',
         MOBILESASA_API_TOKEN='mbs_t',
         MOBILESASA_SENDER_ID='SHOP',
+        SMS_LIVE_DISABLED=False,
     )
     def test_settings_pick_mobilesasa(self):
         set_sms_provider(None)
         provider = build_sms_provider_from_settings()
         self.assertIsInstance(provider, MobileSasaSmsProvider)
         self.assertEqual(provider.name, 'mobilesasa')
+
+    @override_settings(
+        SMS_PROVIDER='mobilesasa',
+        MOBILESASA_API_TOKEN='mbs_t',
+        MOBILESASA_SENDER_ID='SHOP',
+        SMS_LIVE_DISABLED=True,
+    )
+    def test_uat_forces_fake_even_when_mobilesasa_configured(self):
+        set_sms_provider(None)
+        provider = build_sms_provider_from_settings()
+        self.assertIsInstance(provider, FakeSmsProvider)
 
 
 class CustomerNotifyTests(TestCase):

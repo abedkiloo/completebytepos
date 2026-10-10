@@ -1,7 +1,10 @@
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from django.db.models import Sum
 from rest_framework import serializers
+
+# GPS doubles often exceed DecimalField(max_digits=10, decimal_places=7).
+_COORD_QUANT = Decimal('0.0000001')
 from .models import (
     Sale,
     SaleItem,
@@ -33,7 +36,10 @@ class CustomerSerializer(serializers.ModelSerializer):
     total_outstanding = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     wallet_balance = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     created_by_name = serializers.CharField(source='created_by.username', read_only=True)
-    
+    # Accept full GPS doubles; quantize in validate_* to model Decimal(10,7).
+    latitude = serializers.FloatField(required=False, allow_null=True)
+    longitude = serializers.FloatField(required=False, allow_null=True)
+
     class Meta:
         model = Customer
         fields = [
@@ -132,27 +138,28 @@ class CustomerSerializer(serializers.ModelSerializer):
 
         return validate_customer_write(attrs)
 
-    def validate_latitude(self, value):
+    def _quantize_coord(self, value, *, label: str, lo: Decimal, hi: Decimal):
         if value is None or value == '':
             return None
         try:
-            lat = Decimal(str(value))
+            coord = Decimal(str(value)).quantize(_COORD_QUANT, rounding=ROUND_HALF_UP)
         except Exception:
-            raise serializers.ValidationError('Enter a valid latitude.')
-        if lat < Decimal('-90') or lat > Decimal('90'):
-            raise serializers.ValidationError('Latitude must be between -90 and 90.')
-        return lat
+            raise serializers.ValidationError(f'Enter a valid {label}.')
+        if coord < lo or coord > hi:
+            raise serializers.ValidationError(
+                f'{label.capitalize()} must be between {lo} and {hi}.'
+            )
+        return coord
+
+    def validate_latitude(self, value):
+        return self._quantize_coord(
+            value, label='latitude', lo=Decimal('-90'), hi=Decimal('90'),
+        )
 
     def validate_longitude(self, value):
-        if value is None or value == '':
-            return None
-        try:
-            lng = Decimal(str(value))
-        except Exception:
-            raise serializers.ValidationError('Enter a valid longitude.')
-        if lng < Decimal('-180') or lng > Decimal('180'):
-            raise serializers.ValidationError('Longitude must be between -180 and 180.')
-        return lng
+        return self._quantize_coord(
+            value, label='longitude', lo=Decimal('-180'), hi=Decimal('180'),
+        )
 
     def validate_location_accuracy(self, value):
         if value is None or value == '':

@@ -46,6 +46,31 @@ class CustomerLocationPingTests(SuperAdminAPITestCase):
         self.assertEqual(site.status, CustomerSite.STATUS_FINALIZED)
 
     @patch('messaging.customer_notify.dispatch_outbox')
+    def test_create_accepts_high_precision_gps_doubles(self, _dispatch):
+        """Phone GPS often sends >7 decimal places; must not 400 on max_digits."""
+        response = self.client.post(
+            '/api/sales/customers/',
+            {
+                'name': 'Precise GPS Duka',
+                'customer_type': 'business',
+                'phone': '0722200022',
+                'latitude': -1.262148765432109,
+                'longitude': 36.65973456789012,
+                'location_accuracy': 14.0,
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(
+            Decimal(str(response.data['latitude'])),
+            Decimal('-1.2621488'),
+        )
+        self.assertEqual(
+            Decimal(str(response.data['longitude'])),
+            Decimal('36.6597346'),
+        )
+
+    @patch('messaging.customer_notify.dispatch_outbox')
     def test_create_queues_welcome_sms_when_phone_set(self, _dispatch):
         response = self.client.post(
             '/api/sales/customers/',
