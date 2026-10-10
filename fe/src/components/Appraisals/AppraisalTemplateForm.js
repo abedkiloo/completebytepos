@@ -290,6 +290,27 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
         Object.entries(form.role_daily_targets || {}).map(([role, target]) => [role, num(target)]),
       ),
     );
+    const roleFrameworks = form.role_frameworks || {};
+    const salesBands = roleFrameworks['Sales Personnel']?.monthly_bonus_bands;
+    // Keep the shared ladder in sync with Sales Personnel so stale global bands
+    // don't fail validation while editing a role ladder.
+    const monthlyBonusBands = Array.isArray(salesBands) && salesBands.length
+      ? salesBands
+      : form.monthly_bonus_bands;
+
+    let bonusMinStars = num(form.bonus_min_stars, 4);
+    const paidStars = [];
+    const collectPaid = (bands) => {
+      for (const band of bands || []) {
+        if (num(band.bonus, 0) > 0) paidStars.push(num(band.stars, 0));
+      }
+    };
+    collectPaid(monthlyBonusBands);
+    Object.values(roleFrameworks).forEach((fw) => collectPaid(fw?.monthly_bonus_bands));
+    if (paidStars.length) {
+      bonusMinStars = Math.min(bonusMinStars, Math.min(...paidStars));
+    }
+
     onSave({
       ...form,
       basic_pay: num(form.basic_pay),
@@ -301,13 +322,14 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
       four_star_month_min_avg: num(form.four_star_month_min_avg, 4),
       four_star_months_required: num(form.four_star_months_required, 8),
       annual_avg_required: num(form.annual_avg_required, 4),
-      bonus_min_stars: num(form.bonus_min_stars, 4),
+      bonus_min_stars: bonusMinStars,
       bonus_cap: num(form.bonus_cap, 10000),
+      monthly_bonus_bands: monthlyBonusBands,
       show_year_end_increment: Boolean(form.show_year_end_increment),
       staff_facing: form.staff_facing !== false,
       change_reason: String(form.change_reason || '').trim(),
       effective_from: String(form.effective_from || '').trim(),
-      role_frameworks: form.role_frameworks || {},
+      role_frameworks: roleFrameworks,
       daily_tip_packs: (form.daily_tip_packs || []).map((pack) => ({
         ...pack,
         title: String(pack.title || '').trim(),

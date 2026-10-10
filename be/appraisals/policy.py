@@ -600,6 +600,37 @@ def _validate_star_bands(bands: list[dict[str, Any]], *, label: str = 'Daily sta
             )
 
 
+def _lowest_paid_bonus_stars(bands: list[dict[str, Any]] | None) -> float | None:
+    lowest = None
+    for band in bands or []:
+        if _float(band.get('bonus'), 0) <= 0:
+            continue
+        stars = _float(band.get('stars'), 0)
+        if lowest is None or stars < lowest:
+            lowest = stars
+    return lowest
+
+
+def _align_bonus_min_stars(data: dict[str, Any]) -> float:
+    """
+    If any ladder pays cash below bonus_min_stars, lower the threshold to match.
+
+    Keeps save usable when admins build a full cash ladder (1★–4★) without first
+    remembering to change "Bonus starts at".
+    """
+    min_stars = _float(data.get('bonus_min_stars'), 4)
+    candidates = [_lowest_paid_bonus_stars(data.get('monthly_bonus_bands'))]
+    for framework in (data.get('role_frameworks') or {}).values():
+        if isinstance(framework, dict):
+            candidates.append(_lowest_paid_bonus_stars(framework.get('monthly_bonus_bands')))
+    paid = [value for value in candidates if value is not None]
+    if paid:
+        aligned = min(min_stars, min(paid))
+        data['bonus_min_stars'] = aligned
+        return aligned
+    return min_stars
+
+
 def _validate_bonus_bands(
     bands: list[dict[str, Any]],
     *,
@@ -620,7 +651,8 @@ def _validate_bonus_bands(
         if stars < min_stars and bonus > 0:
             raise PolicyError(
                 f'{label}: cash bonus starts at {min_stars:g}★. '
-                f'Set bonus to 0 for bands below that (got {stars:g}★ → KES {bonus:g}).'
+                f'Lower “Bonus starts at” to {stars:g}, or set bonus to 0 for '
+                f'bands below that (got {stars:g}★ → KES {bonus:g}).'
             )
         if cap > 0 and bonus > cap:
             raise PolicyError(
@@ -631,7 +663,7 @@ def _validate_bonus_bands(
 def validate_template(template: dict[str, Any]) -> dict[str, Any]:
     data = normalize_template(template)
     _validate_star_bands(data['daily_star_bands'])
-    min_stars = _float(data.get('bonus_min_stars'), 4)
+    min_stars = _align_bonus_min_stars(data)
     cap = _float(data.get('bonus_cap'), 10000)
     _validate_bonus_bands(
         data['monthly_bonus_bands'],

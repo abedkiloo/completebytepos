@@ -86,6 +86,21 @@ class AppraisalEngineTests(SimpleTestCase):
         self.assertEqual(monthly_bonus(500000, custom)['bonus'], 0)
         self.assertEqual(monthly_bonus(1000000, custom)['bonus'], 2000)
 
+    def test_validate_aligns_bonus_min_stars_to_paid_ladder(self):
+        """Admins can save a cash ladder from 1★ without manually lowering starts-at."""
+        saved = validate_template({
+            **self.template,
+            'bonus_min_stars': 4,
+            'monthly_bonus_bands': [
+                {'min': 520000, 'stars': 1, 'bonus': 2000, 'label': 'BASE'},
+                {'min': 850000, 'stars': 2, 'bonus': 5000, 'label': 'BUILDER'},
+                {'min': 1175000, 'stars': 3, 'bonus': 7500, 'label': 'PRO'},
+                {'min': 1500000, 'stars': 4, 'bonus': 10000, 'label': 'CHAMPION'},
+            ],
+        })
+        self.assertEqual(saved['bonus_min_stars'], 1)
+        self.assertEqual(monthly_bonus(520000, saved)['bonus'], 2000)
+
     def test_monthly_average_and_four_star_month(self):
         avg = monthly_average(104, 26)
         self.assertEqual(avg, 4.0)
