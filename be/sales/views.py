@@ -148,6 +148,7 @@ CUSTOMERS_PERMS = RequirePermPerAction('customers', {
     'destroy': 'delete',
     'wallet_transactions': 'view',
     'lifetime_detail': 'view',
+    'kenya_locations': 'view',
 })
 
 INVOICES_PERMS = RequirePermPerAction('invoicing', {
@@ -1101,6 +1102,13 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         if not customers_enable_delete():
             return self._feature_disabled_response('Deleting customers')
         return super().destroy(request, *args, **kwargs)
+
+    @action(detail=False, methods=['get'], url_path='kenya-locations')
+    def kenya_locations(self, request):
+        """County → sub-county → ward tree for customer registration forms."""
+        from sales.kenya_admin import admin_units_payload
+
+        return Response(admin_units_payload())
 
     def get_queryset(self):
         from django.db.models import Sum

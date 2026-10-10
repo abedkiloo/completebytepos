@@ -1,6 +1,12 @@
 import { typicalGoodsPayload } from '../components/Customers/TypicalGoodsFields';
 import { emailMessage, personNameMessage, phoneMessage } from './formValidation';
 
+export const KENYA_LOCATION_DEFAULTS = {
+  county: 'Nairobi',
+  sub_county: 'Starehe',
+  ward: 'Landimawe',
+};
+
 export const EMPTY_CUSTOMER_FORM = {
   name: '',
   owner_name: '',
@@ -8,7 +14,10 @@ export const EMPTY_CUSTOMER_FORM = {
   email: '',
   phone: '',
   address: '',
-  city: '',
+  city: KENYA_LOCATION_DEFAULTS.county,
+  county: KENYA_LOCATION_DEFAULTS.county,
+  sub_county: KENYA_LOCATION_DEFAULTS.sub_county,
+  ward: KENYA_LOCATION_DEFAULTS.ward,
   country: 'Kenya',
   tax_id: '',
   notes: '',
@@ -26,7 +35,10 @@ export function customerFormFromRecord(customer) {
     email: customer.email || '',
     phone: customer.phone || '',
     address: customer.address || '',
-    city: customer.city || '',
+    city: customer.city || customer.county || '',
+    county: customer.county || customer.city || KENYA_LOCATION_DEFAULTS.county,
+    sub_county: customer.sub_county || KENYA_LOCATION_DEFAULTS.sub_county,
+    ward: customer.ward || KENYA_LOCATION_DEFAULTS.ward,
     country: customer.country || 'Kenya',
     tax_id: customer.tax_id || '',
     notes: customer.notes || '',
@@ -47,7 +59,10 @@ export function customerSavePayload(formData) {
     phone: String(formData.phone || '').trim(),
     owner_name: String(formData.owner_name || '').trim(),
     address: String(formData.address || '').trim(),
-    city: String(formData.city || '').trim(),
+    city: String(formData.county || formData.city || '').trim(),
+    county: String(formData.county || '').trim(),
+    sub_county: String(formData.sub_county || '').trim(),
+    ward: String(formData.ward || '').trim(),
     country: String(formData.country || '').trim() || 'Kenya',
     tax_id: String(formData.tax_id || '').trim(),
     notes: String(formData.notes || '').trim(),

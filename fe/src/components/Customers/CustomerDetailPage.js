@@ -548,15 +548,25 @@ export default function CustomerDetailPage() {
                 </div>
               </div>
             )}
-            {(customer.address || customer.city) && (
+            {(customer.address ||
+              customer.ward ||
+              customer.sub_county ||
+              customer.county ||
+              customer.city) && (
               <div className="flex gap-2">
                 <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                 <div>
                   <dt className="text-muted-foreground">Address</dt>
                   <dd>
-                    {[customer.address, customer.city, customer.country]
+                    {[
+                      customer.address,
+                      [customer.ward, customer.sub_county, customer.county || customer.city]
+                        .filter(Boolean)
+                        .join(', '),
+                      customer.country,
+                    ]
                       .filter(Boolean)
-                      .join(', ')}
+                      .join(' · ')}
                   </dd>
                 </div>
               </div>

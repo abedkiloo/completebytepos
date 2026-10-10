@@ -292,10 +292,17 @@ export default function CustomerDetailDialog({
                     {customer.phone}
                   </p>
                 ) : null}
-                {customer.city ? (
+                {customer.ward || customer.sub_county || customer.county || customer.city ? (
                   <p className="inline-flex items-center gap-1.5 text-muted-foreground">
                     <MapPin className="h-3.5 w-3.5" />
-                    {[customer.city, customer.country].filter(Boolean).join(', ')}
+                    {[
+                      [customer.ward, customer.sub_county, customer.county || customer.city]
+                        .filter(Boolean)
+                        .join(', '),
+                      customer.country,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
                   </p>
                 ) : null}
               </div>

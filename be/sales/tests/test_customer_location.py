@@ -21,6 +21,7 @@ class CustomerLocationPingTests(SuperAdminAPITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
         self.assertIsNone(response.data.get('latitude'))
+        self.assertEqual(response.data.get('county'), 'Nairobi')
 
     @patch('messaging.customer_notify.dispatch_outbox')
     def test_create_with_location_saves_default_site(self, _dispatch):

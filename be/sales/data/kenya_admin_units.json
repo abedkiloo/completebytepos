@@ -1,0 +1,2123 @@
+{
+  "Baringo": {
+    "Baringo Central": [
+      "Ewalel/Chapchap",
+      "Kabarnet",
+      "Kapropita",
+      "Sacho",
+      "Tenges"
+    ],
+    "Baringo North": [
+      "Bartabwa",
+      "Barwessa",
+      "Kabartonjo",
+      "Saimo/Soi",
+      "Saimoi/Kipsaraman"
+    ],
+    "Baringo South": [
+      "Iichamus",
+      "Marigat",
+      "Mochongoi",
+      "Mukutani"
+    ],
+    "Eldama Ravine": [
+      "Koibatek",
+      "Lembus",
+      "Lembus kwen",
+      "Lembus/Perkerra",
+      "Mumberes/Maji Mazuri",
+      "Ravine"
+    ],
+    "Mogotio": [
+      "Emining",
+      "Kisanana",
+      "Mogotio"
+    ],
+    "Tiaty": [
+      "Churo/Amaya",
+      "Kolowa",
+      "Loiyamorok",
+      "Ribkwo",
+      "Silale",
+      "Tangulbei/Korossi",
+      "Tirioko"
+    ]
+  },
+  "Bomet": {
+    "Bomet Central": [
+      "Chesoen",
+      "Mutarakwa",
+      "Ndaraweta",
+      "Silibwet Township",
+      "Singorwet"
+    ],
+    "Bomet East": [
+      "Chemaner",
+      "Kembu",
+      "Kipreres",
+      "Longisa",
+      "Merigi"
+    ],
+    "Chepalungu": [
+      "Chebunyo",
+      "Kong'asis",
+      "Nyangores",
+      "Sigor",
+      "Siongiroi"
+    ],
+    "Konoin": [
+      "Boito",
+      "Chepchabas",
+      "Embomos",
+      "Kimulot",
+      "Mogogosiek"
+    ],
+    "Sotik": [
+      "Chemagel",
+      "Kapletundo",
+      "Kipsonoi",
+      "Ndanai/Abosi",
+      "Rongena/Manaret"
+    ]
+  },
+  "Bungoma": {
+    "Bumula": [
+      "Bumula",
+      "Kabula",
+      "Khasoko",
+      "Kimaeti",
+      "Siboti",
+      "South Bukusu",
+      "West Bukusu"
+    ],
+    "Kabuchai": [
+      "Bwake/Luuya",
+      "Kabuchai/Chwele",
+      "Mukuyuni",
+      "West Nalondo"
+    ],
+    "Kanduyi": [
+      "Bukembe East",
+      "Bukembe West",
+      "East Sang'alo",
+      "Khalaba",
+      "Marakaru/Tuuti",
+      "Musikoma",
+      "Township",
+      "West Sang'alo"
+    ],
+    "Kimilili": [
+      "Kamukuywa",
+      "Kibingei",
+      "Kimilili",
+      "Maeni"
+    ],
+    "Mt. Elgon": [
+      "Cheptais",
+      "Chepyuk",
+      "Chesikaki",
+      "Elgon",
+      "Kakateny",
+      "Kaptama"
+    ],
+    "Sirisia": [
+      "Lwandanyi",
+      "Malakisi/south Kulisiru",
+      "Namwela"
+    ],
+    "Tongaren": [
+      "Mbakalo",
+      "Milima",
+      "Naitiri/Kabuyefwe",
+      "Ndalu/ Tabani",
+      "Soysambu/ Mitua",
+      "Tongaren"
+    ],
+    "Webuye East": [
+      "Maraka",
+      "Mihuu",
+      "Ndivisi"
+    ],
+    "Webuye West": [
+      "Bokoli",
+      "Matulo",
+      "Misikhu",
+      "Sitikho"
+    ]
+  },
+  "Busia": {
+    "Budalangi": [
+      "Bunyala Central",
+      "Bunyala North",
+      "Bunyala South",
+      "Bunyala West"
+    ],
+    "Butula": [
+      "Elugulu",
+      "Kingandole",
+      "Marachi Central",
+      "Marachi East",
+      "Marachi North",
+      "Marachi West"
+    ],
+    "Funyula": [
+      "Ageng'a Nanguba",
+      "Bwiri",
+      "Namboboto Nambuku",
+      "Nangina"
+    ],
+    "Matayos": [
+      "Bukhayo West",
+      "Burumba",
+      "Busibwabo",
+      "Matayos South",
+      "Mayenje"
+    ],
+    "Nambale": [
+      "Bukhayo Central",
+      "Bukhayo East",
+      "Bukhayo North Walatsi",
+      "Nambale Township"
+    ],
+    "Teso North": [
+      "Ang'urai East",
+      "Ang'urai North",
+      "Ang'urai South",
+      "Malaba Central",
+      "Malaba North",
+      "Malaba South"
+    ],
+    "Teso South": [
+      "Amukura Central",
+      "Amukura East",
+      "Amukura West",
+      "Ang'orom",
+      "Chakol North",
+      "Chakol South"
+    ]
+  },
+  "Elgeyo-Marakwet": {
+    "Keiyo North": [
+      "Emsoo",
+      "Kamariny",
+      "Kapchemutwa",
+      "Tambach"
+    ],
+    "Keiyo South": [
+      "Chepkorio",
+      "Kabiemit",
+      "Kaptarakwa",
+      "Metkei",
+      "Soy North",
+      "Soy South"
+    ],
+    "Marakwet East": [
+      "Embobut/Embulot",
+      "Endo",
+      "Kapyego",
+      "Sambirir"
+    ],
+    "Marakwet West": [
+      "Arror",
+      "Cherangany",
+      "Kapsowar",
+      "Lelan",
+      "Moiben Kuserwo",
+      "Sengwer"
+    ]
+  },
+  "Embu": {
+    "Gachoka": [
+      "Kiambere",
+      "Makima",
+      "Mavuria",
+      "Mbeti south",
+      "Mwea"
+    ],
+    "Manyatta": [
+      "Gaturi north",
+      "Gaturi south",
+      "Kirimari",
+      "Kithimu",
+      "Mbeti north",
+      "Nginda",
+      "Ruguru-Ngandori"
+    ],
+    "Runyenjes": [
+      "Central ward",
+      "Kaagari North",
+      "Kaagari South",
+      "Kyeni north",
+      "Kyeni south"
+    ],
+    "Siakago": [
+      "Evurore",
+      "Muminji",
+      "Nthawa"
+    ]
+  },
+  "Garissa": {
+    "Balambala": [
+      "Balambala",
+      "Danyere",
+      "Jarajara",
+      "Saka"
+    ],
+    "Dadaab": [
+      "Abakaile",
+      "Dadaab",
+      "Damajale",
+      "Dertu",
+      "Labisgale",
+      "Liboi"
+    ],
+    "Dujis": [
+      "Galbet",
+      "Iftin",
+      "Sankuri",
+      "Township",
+      "Waberi"
+    ],
+    "Fafi": [
+      "Bura",
+      "Dekaharia",
+      "Fafi",
+      "Jarajila",
+      "Nanighi"
+    ],
+    "Ijara": [
+      "Hulugho",
+      "Ijara",
+      "Masalani",
+      "Sangailu"
+    ],
+    "Lagdera": [
+      "Baraki",
+      "Benane",
+      "Goreale",
+      "Maalimin",
+      "Modogashe",
+      "Sabena"
+    ]
+  },
+  "Homa Bay": {
+    "Homa Bay": [
+      "Homa Bay Arujo",
+      "Homa Bay Central",
+      "Homa Bay East",
+      "Homa Bay West"
+    ],
+    "Kabondo Kasipul": [
+      "Kabondo East",
+      "Kabondo West",
+      "Kojwach",
+      "Kokwanyo/Kakelo"
+    ],
+    "Karachuonyo": [
+      "Central",
+      "Kanyaluo",
+      "Kendu Bay Town",
+      "Kibiri",
+      "North Karachuonyo",
+      "Wang'chieng",
+      "West Karachuonyo"
+    ],
+    "Kasipul": [
+      "Central Kasipul",
+      "East Kamagak",
+      "South Kasipul",
+      "West Kamagak",
+      "West Kasipul"
+    ],
+    "Ndhiwa": [
+      "Kabouch North",
+      "Kabuoch South/Pala",
+      "Kanyadoto",
+      "Kanyamwa Kologi",
+      "Kanyamwa Kosewe",
+      "Kanyikela",
+      "Kwabwai"
+    ],
+    "Rangwe": [
+      "East Gem",
+      "Kagan",
+      "Kochia",
+      "West Gem"
+    ],
+    "Suba North": [
+      "Gembe",
+      "Kasgunga",
+      "Lambwe",
+      "Mfangano Island",
+      "Rusinga Island"
+    ],
+    "Suba South": [
+      "Gwassi North",
+      "Gwassi South",
+      "Kaksingiri West",
+      "Ruma-kaksingiri East"
+    ]
+  },
+  "Isiolo": {
+    "Isiolo North": [
+      "Bula Pesa",
+      "Burat",
+      "Chari",
+      "Cherab",
+      "Ngare Mara",
+      "Oldonyiro",
+      "Wabera"
+    ],
+    "Isiolo South": [
+      "Garbatulla",
+      "Kinna",
+      "Sericho"
+    ]
+  },
+  "Kajiado": {
+    "Kajiado Central": [
+      "Dalalekutuk",
+      "Ildamat",
+      "Matapato north",
+      "Matapato south",
+      "Purko"
+    ],
+    "Kajiado East": [
+      "Imaroro",
+      "Kaputiei north",
+      "Kenyawa-poka",
+      "Kitengela",
+      "Oloosirkon/Sholinke"
+    ],
+    "Kajiado North": [
+      "Ngong",
+      "Nkaimurunya",
+      "Olkeri",
+      "Oloolua",
+      "Ongata rongai"
+    ],
+    "Kajiado South": [
+      "Entonet/Lenkism",
+      "Imbrikani/Eselelnkei",
+      "Kimana",
+      "Kuku",
+      "Rombo"
+    ],
+    "Kajiado West": [
+      "Ewuaso oonkidong'i",
+      "Iloodokilani",
+      "Keekonyokie",
+      "Magadi",
+      "Mosiro"
+    ]
+  },
+  "Kakamega": {
+    "Butere": [
+      "Marama Central",
+      "Marama North",
+      "Marama South",
+      "Marama West",
+      "Marenyo-shianda"
+    ],
+    "Ikolomani": [
+      "Idakho Central",
+      "Idakho East",
+      "Idakho North",
+      "Idakho South"
+    ],
+    "Khwisero": [
+      "Kisa Central",
+      "Kisa East",
+      "Kisa North",
+      "Kisa West"
+    ],
+    "Likuyani": [
+      "Kongoni",
+      "Likuyani",
+      "Nzoia",
+      "Sango",
+      "Sinoko"
+    ],
+    "Lugari": [
+      "Chekalini",
+      "Chevaywa",
+      "Lugari",
+      "Lumakanda",
+      "Lwandeti",
+      "Mautuma"
+    ],
+    "Lurambi": [
+      "Butsotso Central",
+      "Butsotso East",
+      "Butsotso South",
+      "Mahiakalo",
+      "Sheywe",
+      "Shirere"
+    ],
+    "Malava": [
+      "Butali Chegulo",
+      "Chemuche",
+      "East Kabras",
+      "Manda-shivanga",
+      "Shirungu-mugai",
+      "South Kabras",
+      "West Kabras"
+    ],
+    "Matungu": [
+      "Khalaba",
+      "Kholera",
+      "Koyonzo",
+      "Mayoni",
+      "Namamali"
+    ],
+    "Mumias East": [
+      "East Wanga",
+      "Lusheya Lubinu",
+      "Malaha Isongo Makunga"
+    ],
+    "Mumias West": [
+      "Etenje",
+      "Mumias Central",
+      "Mumias North",
+      "Musanda"
+    ],
+    "Navakholo": [
+      "Bunyala Central",
+      "Bunyala East",
+      "Bunyala West",
+      "Ingoste-matiha",
+      "Shinoyi-shikomari-esumeiya"
+    ],
+    "Shinyalu": [
+      "Isukha Central",
+      "Isukha East",
+      "Isukha North",
+      "Isukha South",
+      "Isukha West",
+      "Murhanda"
+    ]
+  },
+  "Kericho": {
+    "Ainamoi": [
+      "Ainamoi",
+      "Belgut",
+      "Kapkugerwet",
+      "Kapsaos",
+      "Kapsoit",
+      "Kipchebor",
+      "Kipchimchim"
+    ],
+    "Belgut": [
+      "Chaik",
+      "Cheptororiet/Seretut",
+      "Kabianga",
+      "Waldai"
+    ],
+    "Buret": [
+      "Cheboin",
+      "Chemosot",
+      "Cheplanget",
+      "Kapkatet",
+      "Kisiara",
+      "Litein",
+      "Tebesonik"
+    ],
+    "Kipkelion East": [
+      "Chepseon",
+      "Kedowa/Kimugul",
+      "Londiani",
+      "Tendeno/Sorget"
+    ],
+    "Kipkelion West": [
+      "Chilchila",
+      "Kamasian",
+      "Kipkelion",
+      "Kunyak"
+    ],
+    "Sigowet/Soin": [
+      "Kaplelartet",
+      "Sigowet",
+      "Soin",
+      "Soliat"
+    ]
+  },
+  "Kiambu": {
+    "Gatundu North": [
+      "Chania",
+      "Githobokoni",
+      "Gituamba",
+      "Mang'u"
+    ],
+    "Gatundu South": [
+      "Kiamwangi",
+      "Kiganjo",
+      "Ndarugu",
+      "Ngenda"
+    ],
+    "Githunguri": [
+      "Githiga",
+      "Githunguri",
+      "Ikinu",
+      "Komothai",
+      "Ngewa"
+    ],
+    "Juja": [
+      "Juja",
+      "Kalimoni",
+      "Murera",
+      "Theta",
+      "Witeithie"
+    ],
+    "Kabete": [
+      "Gitaru",
+      "Kabete",
+      "Muguga",
+      "Nyadhuna",
+      "Uthiru"
+    ],
+    "Kiambaa": [
+      "Cianda",
+      "Karuri",
+      "Kihara",
+      "Muchatha",
+      "Ndenderu"
+    ],
+    "Kiambu": [
+      "Kiambu Township",
+      "Ndumberi",
+      "Riabai",
+      "Ting'ang'a"
+    ],
+    "Kikuyu": [
+      "Karai",
+      "Kikuyu",
+      "Kinoo",
+      "Nachu",
+      "Sigona"
+    ],
+    "Lari": [
+      "Kamburu",
+      "Kijabe",
+      "Kinale",
+      "Lari/Kirenga",
+      "Nyanduma"
+    ],
+    "Limuru": [
+      "Bibirioni",
+      "Limuru Central",
+      "Limuru East",
+      "Ndeiya",
+      "Ngecha Tigoni"
+    ],
+    "Ruiru": [
+      "Biashara",
+      "Gatongora",
+      "Gitothua",
+      "Kahawa Wendani",
+      "Kahawa/Sukari",
+      "Kiuu",
+      "Mwihoko",
+      "Mwiki"
+    ],
+    "Thika Town": [
+      "Gatuanyaga",
+      "Hospital",
+      "Kamenu",
+      "Ngoliba",
+      "Thika Township"
+    ]
+  },
+  "Kilifi": {
+    "Ganze": [
+      "Bamba",
+      "Ganze",
+      "Jaribuni",
+      "Sokoke"
+    ],
+    "Kaloleni": [
+      "Kaloleni",
+      "Kayafungo",
+      "Mariakani",
+      "Mwanamwinga"
+    ],
+    "Kilifi North": [
+      "Dabaso",
+      "Kibarani",
+      "Matsangoni",
+      "Mnarani",
+      "Sokoni",
+      "Tezo",
+      "Watamu"
+    ],
+    "Kilifi South": [
+      "Chasimba",
+      "Junju",
+      "Mtepeni",
+      "Mwarakaya",
+      "Shimo La Tewa"
+    ],
+    "Magarini": [
+      "Adu",
+      "Garashi",
+      "Gongoni",
+      "Magarini",
+      "Marafa",
+      "Sabaki"
+    ],
+    "Malindi": [
+      "Ganda",
+      "Jilore",
+      "Kakuyuni",
+      "Malindi Town",
+      "Shella"
+    ],
+    "Rabai": [
+      "Kambe/Ribe",
+      "Mwawesa",
+      "Rabai/Kisurutini",
+      "Rurumaward"
+    ]
+  },
+  "Kirinyaga": {
+    "Gichugu": [
+      "Baragwi",
+      "Kabare",
+      "Karumandi",
+      "Ngariama",
+      "Njukiine"
+    ],
+    "Kirinyaga Central": [
+      "Inoi",
+      "Kanyekini",
+      "Kariti",
+      "Kerugoya",
+      "Kiine",
+      "Mukure",
+      "Mutira"
+    ],
+    "Mwea": [
+      "Kangai",
+      "Mutithi",
+      "Thiba",
+      "Wamumu"
+    ],
+    "Ndia": [
+      "Gathigiriri",
+      "Murinduko",
+      "Nyangati",
+      "Tebere"
+    ]
+  },
+  "Kisii": {
+    "Bobasi": [
+      "Basi Central",
+      "Bassi Bogetaorio",
+      "Bobasi Boitangare",
+      "Bobasi Chache",
+      "Masige East",
+      "Masige West",
+      "Nyacheki",
+      "Sameta Mokwerero"
+    ],
+    "Bomachoge Borabu": [
+      "Bokimonge",
+      "Bombaba Borabu",
+      "Boochi Borabu",
+      "Magenche"
+    ],
+    "Bomachoge Chache": [
+      "Boochi Tendere",
+      "Bosoti Sengera",
+      "Majoge Basi"
+    ],
+    "Bonchari": [
+      "Bogiakumu",
+      "Bomariba",
+      "Bomorenda",
+      "Riana"
+    ],
+    "Kitutu Chache North": [
+      "Kegogi",
+      "Marani",
+      "Monyerero",
+      "Sensi"
+    ],
+    "Kitutu Chache South": [
+      "Bogeka",
+      "Bogusero",
+      "Kisii Central",
+      "Nyakoe",
+      "Nyatieko"
+    ],
+    "Nyaribari Chache": [
+      "Birongo",
+      "Bobaracho",
+      "Ibeno",
+      "Keumbu",
+      "Kiogoro",
+      "Kisii Central"
+    ],
+    "Nyaribari Masaba": [
+      "Gesusu",
+      "Ichuni",
+      "Kiamokama",
+      "Masimba",
+      "Nyamasibi"
+    ],
+    "South Mugirango": [
+      "Bogetenga",
+      "Boikanga",
+      "Borabu Chitago",
+      "Getenga",
+      "Moticho",
+      "Tabaka"
+    ]
+  },
+  "Kisumu": {
+    "Kisumu Central": [
+      "Kondele",
+      "Market Milimani",
+      "Migosi",
+      "Nyalenda B",
+      "Railways",
+      "Shauri Moyo Kaloleni"
+    ],
+    "Kisumu East": [
+      "Kajulu",
+      "Kolwa Central",
+      "Kolwa East",
+      "Manyatta B",
+      "Nyalenda A"
+    ],
+    "Kisumu West": [
+      "Central Kisumu",
+      "North Kisumu",
+      "North West Kisumu",
+      "South West Kisumu",
+      "West Kisumu"
+    ],
+    "Muhoroni": [
+      "Chemelil",
+      "Masogo/Nyang'Oma",
+      "Miwani",
+      "Muhoroni Koru",
+      "Ombeyi"
+    ],
+    "Nyakach": [
+      "Central Nyakach",
+      "North Nyakach",
+      "South East Nyakach",
+      "South West Nyakach",
+      "West Nyakach"
+    ],
+    "Nyando": [
+      "Ahero",
+      "Awasi/Onjiko",
+      "East Kano/Wawidhi",
+      "Kabonyo Kanyagwal",
+      "Kobura"
+    ],
+    "Seme": [
+      "Central Seme",
+      "East Seme",
+      "North Seme",
+      "West Seme"
+    ]
+  },
+  "Kitui": {
+    "Kitui Central": [
+      "Kyangwithya east",
+      "Kyangwithya west",
+      "Miambani",
+      "Mulango",
+      "Township"
+    ],
+    "Kitui East": [
+      "Chuluni",
+      "Endau/Malalani",
+      "Mutitu/Kaliku",
+      "Nzambani",
+      "Voo/Kyamatu",
+      "Zombe/Mwitika"
+    ],
+    "Kitui Rural": [
+      "Kanyangi",
+      "Kisasi",
+      "Kwavonza/Yatta",
+      "Mbitini"
+    ],
+    "Kitui South": [
+      "Athi",
+      "Ikanga/Kyatune",
+      "Ikutha",
+      "Kanziko",
+      "Mutha",
+      "Mutomo"
+    ],
+    "Kitui West": [
+      "Kauwi",
+      "Kwamutonga/Kithumula",
+      "Matinyani",
+      "Mutongoni"
+    ],
+    "Mwingi East": [
+      "Central",
+      "Kivou",
+      "Mui",
+      "Nguni",
+      "Nuu",
+      "Waita"
+    ],
+    "Mwingi North": [
+      "Kyuso",
+      "Mumoni",
+      "Ngomeni",
+      "Tharaka",
+      "Tseikuru"
+    ],
+    "Mwingi West": [
+      "Kiomo/Kyethani",
+      "Kyome/Thaana",
+      "Migwani",
+      "Nguutani"
+    ]
+  },
+  "Kwale": {
+    "Kinango": [
+      "Chengoni/Samburu",
+      "Kasemeni",
+      "Kinango",
+      "Mackinon Road",
+      "Mwavumbo",
+      "Ndavaya",
+      "Puma"
+    ],
+    "Lunga Lunga": [
+      "Dzombo",
+      "Mwereni",
+      "Pongwe Kikoneni",
+      "Vanga"
+    ],
+    "Matuga": [
+      "Kubo South",
+      "Mkongani",
+      "Tiwi",
+      "Tsimba Golini",
+      "Waa Ngombeni"
+    ],
+    "Msambweni": [
+      "Gombato Bongwe",
+      "Kinondo",
+      "Ramisi",
+      "Ukunda"
+    ]
+  },
+  "Laikipia": {
+    "Laikipia East": [
+      "Nanyuki",
+      "Ngobit",
+      "Thingithu",
+      "Tigithi",
+      "Umande"
+    ],
+    "Laikipia North": [
+      "Mugogodo East",
+      "Mugogodo West",
+      "Segera",
+      "Sosian"
+    ],
+    "Laikipia West": [
+      "Githiga",
+      "Igwamiti",
+      "Marmanet",
+      "Ol-Moran",
+      "Rumuruti Township",
+      "Salama"
+    ]
+  },
+  "Lamu": {
+    "Lamu East": [
+      "Basuba",
+      "Faza",
+      "Kiunga"
+    ],
+    "Lamu West": [
+      "Bahari",
+      "Hindi",
+      "Hongwe",
+      "Mkomami",
+      "Mkunumbi",
+      "Shella",
+      "Witu"
+    ]
+  },
+  "Machakos": {
+    "Kangundo": [
+      "Kangundo Central",
+      "Kangundo East",
+      "Kangundo North",
+      "Kangundo West"
+    ],
+    "Kathiani": [
+      "Kathiani Central",
+      "Lower Kaewa-kaani",
+      "Mitamboni",
+      "Upper Kaewa-iveti"
+    ],
+    "Machakos Town": [
+      "Kalama",
+      "Kola",
+      "Mua",
+      "Mumbuni North",
+      "Mutituni",
+      "Muvuti-kiima-kimwe",
+      "Township"
+    ],
+    "Masinga": [
+      "Ekalakala",
+      "Kivaa",
+      "Mananja",
+      "Masinga Central",
+      "Muthesya"
+    ],
+    "Matungulu": [
+      "Kyeleni",
+      "Matungulu East",
+      "Matungulu North",
+      "Matungulu West",
+      "Tala"
+    ],
+    "Mavoko": [
+      "Athi River",
+      "Kinanie",
+      "Mathatani",
+      "Syokimau-mulolongo"
+    ],
+    "Mwala": [
+      "Kibauni",
+      "Makutano-mwala",
+      "Masii",
+      "Mbiuni",
+      "Muthetheni",
+      "Wamunyu"
+    ],
+    "Yatta": [
+      "Ikombe",
+      "Katangi",
+      "Kithimani",
+      "Matuu",
+      "Ndalani"
+    ]
+  },
+  "Makueni": {
+    "Kaiti": [
+      "Ilima ward",
+      "Kee ward",
+      "Kilungu ward",
+      "Ukia ward"
+    ],
+    "Kibwezi East": [
+      "Ivingoni/Nzambani",
+      "Masongaleni",
+      "Mtito Andei",
+      "Thange"
+    ],
+    "Kibwezi West": [
+      "Emali/Mulala",
+      "Kikumbulyu North",
+      "Kikumbulyu South",
+      "Makindu",
+      "Nguu/Masumba",
+      "Nguumo"
+    ],
+    "Kilome": [
+      "Kasikeu",
+      "Kiima Kiu/Kalanzoni",
+      "Mukaa"
+    ],
+    "Makueni": [
+      "Kathonzweni",
+      "Kitise/Kithuki",
+      "Mavindini",
+      "Mbitini",
+      "Muvau/Kikumini",
+      "Nzaui/Kilili/Kalamba",
+      "Wote"
+    ],
+    "Mbooni": [
+      "Kalawa/ Kathulumbi",
+      "Kiteta-Kisau",
+      "Kithungo/Kitundu",
+      "Mbooni",
+      "Tulimani",
+      "Waia/Kako"
+    ]
+  },
+  "Mandera": {
+    "Banissa": [
+      "Banissa",
+      "Derkhale",
+      "Guba",
+      "Kiliwaheri",
+      "Malkamari"
+    ],
+    "Lafey": [
+      "Alango Gof",
+      "Fino",
+      "Lafey",
+      "Libehia",
+      "Warankara"
+    ],
+    "Mandera East": [
+      "Arabia",
+      "Bulla Mpya",
+      "Khalalio",
+      "Neboi",
+      "Township"
+    ],
+    "Mandera North": [
+      "Ashabito",
+      "Guticha",
+      "Marothile",
+      "Rhamu",
+      "Rhamu Dimtu"
+    ],
+    "Mandera South": [
+      "Elwak North",
+      "Elwak South",
+      "Kotulo",
+      "Shambir Fatuma",
+      "Wargadud"
+    ],
+    "Mandera West": [
+      "Dandu",
+      "Gither",
+      "Laghsure",
+      "Takaba",
+      "Takaba South"
+    ]
+  },
+  "Marsabit": {
+    "Laisamis": [
+      "Kargi/South Horr",
+      "Korr/Ngurunit",
+      "Laisamis",
+      "Logologo",
+      "Loiyangalani"
+    ],
+    "Moyale": [
+      "Butiye",
+      "Golbo",
+      "Heillu/Manyatta",
+      "Moyale Township",
+      "Obbu",
+      "Sololo",
+      "Uran"
+    ],
+    "North Horr": [
+      "Dukana",
+      "Illeret",
+      "Maikona",
+      "North Horr",
+      "Turbi"
+    ],
+    "Saku": [
+      "Karare",
+      "Marsabit Central",
+      "Sagante/Jaldesa"
+    ]
+  },
+  "Meru": {
+    "Buuri": [
+      "Kibirichia",
+      "Kiirua Naari",
+      "Kisima",
+      "Ruiru Rwawera",
+      "Timau"
+    ],
+    "Cental Imenti": [
+      "Abothuguchi central",
+      "Abothuguchi west",
+      "Kiagu",
+      "Mwangathia"
+    ],
+    "Igembe Central": [
+      "Akirang'ondu",
+      "Athiru ruujine",
+      "Kangeta",
+      "Kiengu/Igembe East ward",
+      "Njia"
+    ],
+    "Igembe North": [
+      "Amwathi",
+      "Antuambui",
+      "Antubetwe kiongo",
+      "Naathu",
+      "Ntunene"
+    ],
+    "Igembe South": [
+      "Akachiu",
+      "Athiru gaiti",
+      "Kanuni",
+      "Kiegoi/Antubochiu",
+      "Maua"
+    ],
+    "North Imenti": [
+      "Municipality",
+      "Ntima east",
+      "Ntima west",
+      "Nyaki east",
+      "Nyaki west"
+    ],
+    "South Imenti": [
+      "Abogeta east",
+      "Abogeta west",
+      "Igoji east",
+      "Igoji west",
+      "Mitunguu",
+      "Nkuene"
+    ],
+    "Tigania East": [
+      "Karama",
+      "Kiguchwa",
+      "Mikinduri",
+      "Muthara",
+      "Thangatha"
+    ],
+    "Tigania West": [
+      "Akithii",
+      "Athwana",
+      "Kianjai",
+      "Mbeu",
+      "Nkomo"
+    ]
+  },
+  "Migori": {
+    "Awendo": [
+      "Central Sakwa",
+      "North Sakwa",
+      "South Sakwa",
+      "West Sakwa"
+    ],
+    "Kuria East": [
+      "Gokeharaka/Getambwega",
+      "Ntimaru East",
+      "Ntimaru West",
+      "Nyabasi East",
+      "Nyabasi West"
+    ],
+    "Kuria West": [
+      "Bukira Central/Ikerege",
+      "Bukira East",
+      "Isibania",
+      "Masaba",
+      "Mokerero",
+      "Nyamosense/Komosoko",
+      "Tagare"
+    ],
+    "Nyatike": [
+      "Got Kachola",
+      "Kachieng'",
+      "Kaler",
+      "Kanyasa",
+      "Macalder/Kanyarwanda",
+      "Muhuru",
+      "North Kadem"
+    ],
+    "Rongo": [
+      "Central Kamagambo",
+      "East Kamagambo",
+      "North Kamagambo",
+      "South Kamagambo"
+    ],
+    "Suna East": [
+      "God Jope",
+      "Kakrao",
+      "Kwa",
+      "Suna Central"
+    ],
+    "Suna West": [
+      "Ragana-oruba",
+      "Waseweta Ii",
+      "Wasimbete",
+      "Wiga"
+    ],
+    "Uriri": [
+      "Central Kanyamkago",
+      "East Kanyamkago",
+      "North  Kanyamkago",
+      "South Kanyamkago",
+      "West Kanyamkago"
+    ]
+  },
+  "Mombasa": {
+    "Changamwe": [
+      "Airport",
+      "Chaani",
+      "Changamwe",
+      "Kipevu",
+      "Port Reitz"
+    ],
+    "Jomvu": [
+      "Jomvu Kuu",
+      "Mikindani",
+      "Miritini"
+    ],
+    "Kisauni": [
+      "Bamburi",
+      "Junda",
+      "Magogoni",
+      "Mjambere",
+      "Mtopanga",
+      "Mwakirunge",
+      "Shanzu"
+    ],
+    "Likoni": [
+      "Bofu",
+      "Likoni",
+      "Mtongwe",
+      "Shika Adabu",
+      "Timbwani"
+    ],
+    "Mvita": [
+      "Ganjoni Ward-shimanzi",
+      "Majengo",
+      "Makadara Ward-mji Wa Kale",
+      "Tononoka",
+      "Tudor"
+    ],
+    "Nyali": [
+      "Frere Town",
+      "Kadzandani",
+      "Kongowea",
+      "Mkomani",
+      "Ziwa La Ng'ombe"
+    ]
+  },
+  "Murang'a": {
+    "Gatanga": [
+      "Gatanga",
+      "Ithanga",
+      "Kakuzi/Mitubiri",
+      "Kariara",
+      "Kihumbu-ini",
+      "Mugumo-ini"
+    ],
+    "Kandara": [
+      "Gaichanjiru",
+      "Ichagaki",
+      "Ithiru",
+      "Kagundu-ini",
+      "Kamahuhu",
+      "Kambiti",
+      "Kimorori/Wempa",
+      "Makuyu",
+      "Muruka",
+      "Ng'araria",
+      "Nginda",
+      "Ruchu"
+    ],
+    "Kangema": [
+      "Kanyenya-ini",
+      "Muguru",
+      "Rwathia"
+    ],
+    "Kigumo": [
+      "Kahumbu",
+      "Kangari",
+      "Kigumo",
+      "Kinyona",
+      "Muthithi"
+    ],
+    "Kiharu": [
+      "Gaturi",
+      "Mbiri",
+      "Mugoiri",
+      "Murarandia",
+      "Township",
+      "Wangu"
+    ],
+    "Maragwa": [],
+    "Mathioya": [
+      "Gitugi",
+      "Kamacharia",
+      "Kiru"
+    ]
+  },
+  "Nairobi": {
+    "Dagoretti": [
+      "Gatina",
+      "Kabiro",
+      "Kawangware",
+      "Kileleshwa",
+      "Kilimani",
+      "Mutu-ini",
+      "Ngando",
+      "Riruta",
+      "Uthiru/Ruthimitu",
+      "Waithaka"
+    ],
+    "Embakasi Central": [
+      "Kayole Central",
+      "Kayole North",
+      "Kayole South",
+      "Komarock",
+      "Matopeni/spring Valley"
+    ],
+    "Embakasi East": [
+      "Embakasi",
+      "Lower Savanna",
+      "Mihango",
+      "Upper Savanna",
+      "Utawala"
+    ],
+    "Embakasi North": [
+      "Dandora Area I",
+      "Dandora Area Ii",
+      "Dandora Area Iii",
+      "Dandora Area Iv",
+      "Kariobangi North"
+    ],
+    "Embakasi South": [
+      "Imara Daima",
+      "Kwa Njenga",
+      "Kwa Reuben",
+      "Kware",
+      "Pipeline"
+    ],
+    "Embakasi West": [
+      "Kariobangi South",
+      "Mowlem",
+      "Umoja I",
+      "Umoja Ii"
+    ],
+    "Kamukunji": [
+      "Airbase",
+      "California",
+      "Eastleigh North",
+      "Eastleigh South",
+      "Pumwani"
+    ],
+    "Kasarani": [
+      "Clay City",
+      "Kasarani",
+      "Mwiki",
+      "Njiru",
+      "Ruai"
+    ],
+    "Kibra": [
+      "Laini Saba",
+      "Lindi",
+      "Makina",
+      "Sarang'ombe",
+      "Woodley/kenyatta Golf Course"
+    ],
+    "Kilimani": [],
+    "Langata": [
+      "Karen",
+      "Mugumo-ini",
+      "Nairobi West",
+      "Nyayo Highrise",
+      "South C"
+    ],
+    "Makadara": [
+      "Harambee",
+      "Makongeni",
+      "Maringo/Hamza",
+      "Viwandani"
+    ],
+    "Mathare": [
+      "Hospital",
+      "Huruma",
+      "Kiamaiko",
+      "Mabatini",
+      "Mlango Kubwa",
+      "Ngei"
+    ],
+    "Roysambu": [
+      "Githurai",
+      "Kahawa",
+      "Kahawa West",
+      "Roysambu",
+      "Zimmerman"
+    ],
+    "Ruaraka": [
+      "Babandogo",
+      "Korogocho",
+      "Lucky Summer",
+      "Mathare North",
+      "Utalii"
+    ],
+    "Starehe": [
+      "Landimawe",
+      "Nairobi Central",
+      "Nairobi South",
+      "Ngara Ward",
+      "Pangani",
+      "Ziwani/Kariokor"
+    ],
+    "Westlands": [
+      "Kangemi",
+      "Karura",
+      "Kitisuru",
+      "Mountain View",
+      "Parklands/Highridge"
+    ]
+  },
+  "Nakuru": {
+    "Bahati": [
+      "Bahati",
+      "Dundori",
+      "Kabatini",
+      "Kiamaina",
+      "Lanet/Umoja"
+    ],
+    "Gilgil": [
+      "Elementaita",
+      "Gilgil",
+      "Malewa West",
+      "Mbaruk/Eburu",
+      "Murindat"
+    ],
+    "Kuresoi North": [
+      "Kamara",
+      "Kiptororo",
+      "Nyota",
+      "Sirikwa"
+    ],
+    "Kuresoi South": [
+      "Amalo",
+      "Keringet",
+      "Kiptagich",
+      "Tinet"
+    ],
+    "Molo": [
+      "Elburgon",
+      "Mariashoni",
+      "Molo",
+      "Turi"
+    ],
+    "Naivasha": [
+      "Biashara",
+      "Hells Gate",
+      "Lake View",
+      "Maeilla",
+      "Mai Mahiu",
+      "Naivasha East",
+      "Olkaria",
+      "Viwandani"
+    ],
+    "Nakuru Town East": [
+      "Biashara",
+      "Flamingo",
+      "Kivumbini",
+      "Menengai",
+      "Nakuru East"
+    ],
+    "Nakuru Town West": [
+      "Barut",
+      "Kapkures",
+      "Kaptembwo",
+      "London",
+      "Rhoda",
+      "Shaabab"
+    ],
+    "Njoro": [
+      "Kihingo",
+      "Lare",
+      "Mau Narok",
+      "Mauche",
+      "Nessuit",
+      "Njoro"
+    ],
+    "Rongai": [
+      "Menengai West",
+      "Mosop",
+      "Soin",
+      "Solai",
+      "Visoi"
+    ],
+    "Subukia": [
+      "Kabazi",
+      "Subukia",
+      "Waseges"
+    ]
+  },
+  "Nandi": {
+    "Aldai": [
+      "Kabwareng",
+      "Kaptumo/Kaboi",
+      "Kemeloi-maraba",
+      "Kobujoi",
+      "Koyo/Ndurio",
+      "Terik"
+    ],
+    "Chesumei": [
+      "Chemundu/Kapng'Etunyi",
+      "Chepkunyuk",
+      "Kapchorua",
+      "Kapsimotwo",
+      "Kaptel/Kamoiywo",
+      "Kiptuiya",
+      "Kosirai",
+      "Lelmoko/Ngechek",
+      "Nandi hills",
+      "Ol'lessos"
+    ],
+    "Emgwen": [
+      "Chepkumia",
+      "Kapkangani",
+      "Kapsabet",
+      "Kilibwoni"
+    ],
+    "Mosop": [
+      "Chepterwai",
+      "Kabisaga",
+      "Kabiyet",
+      "Kipkaren",
+      "Kurgung/Surungai",
+      "Ndalat",
+      "Sangalo/Kebulonik"
+    ],
+    "Nandi Hills": [],
+    "Tinderet": [
+      "Chemelil/Chemase",
+      "Songhor/Soba",
+      "Tinderet"
+    ]
+  },
+  "Narok": {
+    "Emurua Dikirr": [
+      "Iikerin",
+      "Kapsasian",
+      "Mogondo",
+      "Ololmasani"
+    ],
+    "Kilgoris": [
+      "Angata Barikoi",
+      "Keyian",
+      "Kilgoris Central",
+      "Kimintet",
+      "Lolgorian",
+      "Shankoe"
+    ],
+    "Narok East": [
+      "Ildamat",
+      "Keekonyokie",
+      "Mosiro",
+      "Suswa"
+    ],
+    "Narok North": [
+      "Melili",
+      "Narok Town",
+      "Nkareta",
+      "Olokurto",
+      "Olorropil",
+      "Olposimoru"
+    ],
+    "Narok South": [
+      "Loita",
+      "Maji Moto/Naroosura",
+      "Melelo",
+      "Ololulung'a",
+      "Sagamian",
+      "Sogoo"
+    ],
+    "Narok West": [
+      "Ilmotiook",
+      "Mara",
+      "Naikarra",
+      "Siana"
+    ]
+  },
+  "Nyamira": {
+    "Borabu": [
+      "Bogichora",
+      "Bonyamatuta",
+      "Bosamaro",
+      "Esise",
+      "Kiabonyoru",
+      "Mekenene",
+      "Nyamaiya",
+      "Nyansiongo",
+      "Township"
+    ],
+    "Kitutu Masaba": [
+      "Kamera",
+      "Magombo",
+      "Manga"
+    ],
+    "North Mugirango": [
+      "Gachuba",
+      "Gesima",
+      "Rigoma"
+    ],
+    "West Mugirango": [
+      "Bokeira",
+      "Bomwagamo",
+      "Ekerenyo",
+      "Itibo",
+      "Magwagwa"
+    ]
+  },
+  "Nyandarua": {
+    "Kinangop": [
+      "Engineer",
+      "Gathara",
+      "Githabai",
+      "Magumu",
+      "Murungaru",
+      "Njabani/Kiburu",
+      "North kinangop",
+      "Nyakio"
+    ],
+    "Kipipiri": [
+      "Geta",
+      "Githioro",
+      "Kipipiri",
+      "Wanjohi"
+    ],
+    "Ndaragwa": [
+      "Central",
+      "Kiritta",
+      "Leshau/Pondo",
+      "Shamata"
+    ],
+    "Ol Jorok": [
+      "Charagita",
+      "Gathanji",
+      "Gatimu",
+      "Weru"
+    ],
+    "Ol Kalou": [
+      "Kaimbaga",
+      "Kanjuiri range",
+      "Karau",
+      "Mirangine",
+      "Rurii"
+    ]
+  },
+  "Nyeri": {
+    "Kieni": [
+      "Gakawa",
+      "Gatarakwa",
+      "Kabaru",
+      "Mugunda",
+      "Mweiga",
+      "Mwiyogo/Endarasha",
+      "Naromoru/Kiamathaga",
+      "Thegu river"
+    ],
+    "Mathira": [
+      "Iriaini",
+      "Karatina town",
+      "Kirimukuyu",
+      "Konyu",
+      "Magutu",
+      "Ruguru"
+    ],
+    "Mukurweni": [
+      "Gikondi",
+      "Mukurwe-ini central",
+      "Mukurwe-ini west",
+      "Rugi"
+    ],
+    "Nyeri Town": [
+      "Gatitu/Muruguru",
+      "Kamakwa/Mukaro",
+      "Kiganjo/Mathari",
+      "Ruring'U/ Karia",
+      "Rware"
+    ],
+    "Othaya": [
+      "Chinga",
+      "Iria-ini",
+      "Karima",
+      "Mahiga"
+    ],
+    "Tetu": [
+      "Aguthi-gaaki",
+      "Dedan kimathi",
+      "Wamagana"
+    ]
+  },
+  "Samburu": {
+    "Samburu East": [
+      "Wamba east",
+      "Wamba north",
+      "Wamba west",
+      "Waso"
+    ],
+    "Samburu North": [
+      "El-barta",
+      "Nachola",
+      "Ndoto",
+      "Nyiro"
+    ],
+    "Samburu West": [
+      "Angata nayokie",
+      "Baawa",
+      "Lodokejek",
+      "Loosuk",
+      "Maralal",
+      "Porro",
+      "Suguta Marmar"
+    ]
+  },
+  "Siaya": {
+    "Alego Usonga": [
+      "Central Alego",
+      "North Alego",
+      "Siaya Township",
+      "South East Alego",
+      "Usonga",
+      "West Alego"
+    ],
+    "Bondo": [
+      "Central Sakwa",
+      "North Sakwa",
+      "South Sakwa",
+      "West Sakwa",
+      "West Yimbo",
+      "Yimbo East"
+    ],
+    "Gem": [
+      "Central Gem",
+      "East Gem",
+      "North Gem",
+      "South Gem",
+      "West Gem",
+      "Yala Township"
+    ],
+    "Rarieda": [
+      "East Asembo",
+      "North Uyoma",
+      "South Uyoma",
+      "West Asembo",
+      "West Uyoma"
+    ],
+    "Ugenya": [
+      "East Ugenya",
+      "North Ugenya",
+      "Ukwala",
+      "West Ugenya"
+    ],
+    "Ugunja": [
+      "Sidindi",
+      "Sigomere",
+      "Ugunja"
+    ]
+  },
+  "Taita Taveta": {
+    "Mwatate": [
+      "Bura",
+      "Chawia",
+      "Mwatate",
+      "Ronge",
+      "Wusi/Kishamba"
+    ],
+    "Taveta": [
+      "Bomani",
+      "Chala",
+      "Mahoo",
+      "Mata",
+      "Mboghoni"
+    ],
+    "Voi": [
+      "Kaloleni",
+      "Kasigau",
+      "Marungu",
+      "Mbololo",
+      "Ngolia",
+      "Sagala"
+    ],
+    "Wundanyi": [
+      "Mwanda/Mgange",
+      "Werugha",
+      "Wumingu/Kishushe",
+      "Wundanyi/Mbale"
+    ]
+  },
+  "Tana River": {
+    "Bura": [
+      "Bangale",
+      "Chewele",
+      "Hirimani",
+      "Madogo",
+      "Sala"
+    ],
+    "Galole": [
+      "Chewani",
+      "Kinakomba",
+      "Mikinduni",
+      "Wayu"
+    ],
+    "Garsen": [
+      "Garsen central",
+      "Garsen north",
+      "Garsen south",
+      "Garsen west",
+      "Kipini east",
+      "Kipini west"
+    ]
+  },
+  "Tharaka-Nithi": {
+    "Maara": [
+      "Karingani",
+      "Magumoni",
+      "Mitheru",
+      "Mugwe",
+      "Muthambi"
+    ],
+    "Nithi": [
+      "Chogoria",
+      "Ganga",
+      "Igambang`ombe",
+      "Mariani",
+      "Mwimbi"
+    ],
+    "Tharaka": [
+      "Chiakagira",
+      "Gatunga",
+      "Marimanti",
+      "Mukothima",
+      "Nkondi"
+    ]
+  },
+  "Trans Nzoia": {
+    "Cherangany": [
+      "Chepsiro/Kiptoror",
+      "Cherangany/Suwerwa",
+      "Kaplamai",
+      "Makutano",
+      "Motosiet",
+      "Sinyerere",
+      "Sitatunga"
+    ],
+    "Endebess": [
+      "Chepchoina",
+      "Endebess",
+      "Matumbei"
+    ],
+    "Kiminini": [
+      "Hospital",
+      "Kiminini",
+      "Nabiswa",
+      "Sikhendu",
+      "Sirende",
+      "Waitaluk"
+    ],
+    "Kwanza": [
+      "Bidii",
+      "Kapomboi",
+      "Keiyo",
+      "Kwanza"
+    ],
+    "Saboti": [
+      "Kinyoro",
+      "Machewa",
+      "Matisi",
+      "Saboti",
+      "Tuwani"
+    ]
+  },
+  "Turkana": {
+    "Loima": [
+      "Kotaruk/Lobei",
+      "Loima",
+      "Lokiriama/Lorengippi",
+      "Turkwel"
+    ],
+    "Turkana Central": [
+      "Kalokol",
+      "Kanamkemer",
+      "Kang'Atotha",
+      "Kerio Delta",
+      "Lodwar Township"
+    ],
+    "Turkana East": [
+      "Kapedo/Napeitom",
+      "Katilia",
+      "Lokori/Kochodin"
+    ],
+    "Turkana North": [
+      "Kaaleng/Kaikor",
+      "Kaeris",
+      "Kibish",
+      "Lakezone",
+      "Lapur"
+    ],
+    "Turkana South": [
+      "Kalapata",
+      "Kaputir",
+      "Katilu",
+      "Lobokat",
+      "Lokichar"
+    ],
+    "Turkana West": [
+      "Kakuma",
+      "Kalobeyei",
+      "Letea",
+      "Lokichoggio",
+      "Lopur",
+      "Nakalale",
+      "Nanaam",
+      "Songot"
+    ]
+  },
+  "Uasin Gishu": {
+    "Ainabkoi": [
+      "Ainabkoi/Olare",
+      "Kapsoya",
+      "Kaptagat"
+    ],
+    "Kapseret": [
+      "Kipkenyo",
+      "Langas",
+      "Megun",
+      "Ngeria",
+      "Simat/ Kapseret"
+    ],
+    "Kesses": [
+      "Cheptiret/Kipchamo",
+      "Racecourse",
+      "Tarakwa",
+      "Tulwet/Chiyat"
+    ],
+    "Moiben": [
+      "Karuna/Meibeki",
+      "Kimumu",
+      "Moiben",
+      "Sergoit",
+      "Tembelio"
+    ],
+    "Soy": [
+      "Kapkures",
+      "Kipsomba",
+      "Kuinet/Kapsuswa",
+      "Moi's Bridge",
+      "Segeroi/Barsombe",
+      "Soy",
+      "Ziwa"
+    ],
+    "Turbo": [
+      "Huruma",
+      "Kamagut",
+      "Kapsaos",
+      "Kiplombe",
+      "Ngenyilel",
+      "Tapsagoi"
+    ]
+  },
+  "Vihiga": {
+    "Emuhaya": [
+      "Central Bunyore",
+      "North East Bunyore",
+      "West Bunyore"
+    ],
+    "Hamisi": [
+      "Banja",
+      "Gisambai",
+      "Jepkoyai",
+      "Muhudu",
+      "Shamakhokho",
+      "Shiru",
+      "Tambua"
+    ],
+    "Luanda": [
+      "Emabungo",
+      "Luanda South",
+      "Luanda Township",
+      "Mwibona",
+      "Wemilabi"
+    ],
+    "Sabatia": [
+      "Busali",
+      "Chavakali",
+      "Lyaduywa/Izava",
+      "North Maragoli",
+      "West Sabatia",
+      "Wodanga"
+    ],
+    "Vihiga": [
+      "Central Maragoli",
+      "Lugaga-wamuluma",
+      "Mungoma",
+      "South Maragoli"
+    ]
+  },
+  "Wajir": {
+    "Eldas": [
+      "Della",
+      "Eldas",
+      "Elnur/Tula Tula",
+      "Lakoley south/Basir"
+    ],
+    "Tarbaj": [
+      "Elben",
+      "Sarman",
+      "Tarbaj",
+      "Wargadud"
+    ],
+    "Wajir East": [
+      "Barwaqo",
+      "Khorof/Harar",
+      "Township",
+      "Wagberi"
+    ],
+    "Wajir North": [
+      "Batalu",
+      "Bute",
+      "Danaba",
+      "Godoma",
+      "Gurar",
+      "Korondile",
+      "Malkagufu"
+    ],
+    "Wajir South": [
+      "Benane",
+      "Burder",
+      "Dadaja bulla",
+      "Diif",
+      "Habasswein",
+      "Ibrahim ure",
+      "Lagboghoi south"
+    ],
+    "Wajir West": [
+      "Ademasajide",
+      "Arbajahan",
+      "Ganyure Wagalla",
+      "Hadado Athibohol"
+    ]
+  },
+  "West Pokot": {
+    "Kacheliba": [
+      "Alale",
+      "Kapchok",
+      "Kasei",
+      "Kiwawa",
+      "Kodich",
+      "Suam"
+    ],
+    "Kapenguria": [
+      "Endugh",
+      "Kapenguria",
+      "Mnagei",
+      "Riwo",
+      "Siyoi",
+      "Sook"
+    ],
+    "Pokot South": [
+      "Batei",
+      "Chepareria",
+      "Lelan",
+      "Tapach"
+    ],
+    "Sigor": [
+      "Lomut",
+      "Masool",
+      "Sekerr",
+      "Wei wei"
+    ]
+  }
+}

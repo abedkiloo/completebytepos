@@ -403,6 +403,7 @@ export const customersAPI = {
   get: (id) => api.get(`/sales/customers/${id}/`),
   /** Lifetime profile: standing, orders, debt/payment trail. */
   detail: (id, params) => api.get(`/sales/customers/${id}/detail/`, { params }),
+  kenyaLocations: () => api.get('/sales/customers/kenya-locations/'),
   create: (data) => api.post('/sales/customers/', data),
   update: (id, data) => api.put(`/sales/customers/${id}/`, data),
   delete: (id) => api.delete(`/sales/customers/${id}/`),

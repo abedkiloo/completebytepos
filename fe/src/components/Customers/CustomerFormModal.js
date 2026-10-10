@@ -9,6 +9,7 @@ import {
   customerSavePayload,
 } from '../../utils/customerFormState';
 import TypicalGoodsFields from './TypicalGoodsFields';
+import KenyaLocationFields from './KenyaLocationFields';
 
 const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
   const [formData, setFormData] = useState({ ...EMPTY_CUSTOMER_FORM });
@@ -183,14 +184,16 @@ const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
               />
               {formErrors.email && <span className="error-text">{formErrors.email}</span>}
             </div>
-            <div className="form-group">
-              <label>City</label>
-              <input
-                type="text"
-                value={formData.city}
-                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-              />
-            </div>
+            <KenyaLocationFields
+              formData={formData}
+              formErrors={formErrors}
+              onChange={(field, value) => {
+                setFormData({ ...formData, [field]: value });
+                if (formErrors[field]) {
+                  setFormErrors({ ...formErrors, [field]: '' });
+                }
+              }}
+            />
 
             <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Notes

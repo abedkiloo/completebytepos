@@ -2,6 +2,7 @@ import React from 'react';
 import { Loader2 } from 'lucide-react';
 
 import TypicalGoodsFields from './TypicalGoodsFields';
+import KenyaLocationFields from './KenyaLocationFields';
 import {
   Dialog,
   DialogContent,
@@ -111,21 +112,11 @@ export default function CustomerFormDialog({
                 />
               </Field>
 
-              <Field label="City" htmlFor="cust-city">
-                <Input
-                  id="cust-city"
-                  value={formData.city}
-                  onChange={(e) => onChange('city', e.target.value)}
-                />
-              </Field>
-
-              <Field label="Country" htmlFor="cust-country">
-                <Input
-                  id="cust-country"
-                  value={formData.country}
-                  onChange={(e) => onChange('country', e.target.value)}
-                />
-              </Field>
+              <KenyaLocationFields
+                formData={formData}
+                formErrors={formErrors}
+                onChange={onChange}
+              />
 
               {showTaxId && (
                 <Field

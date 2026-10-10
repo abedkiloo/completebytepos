@@ -39,7 +39,7 @@ class CustomerSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'customer_code', 'name', 'customer_type',
             'email', 'phone', 'latitude', 'longitude', 'location_accuracy',
-            'address', 'city', 'country',
+            'address', 'city', 'county', 'sub_county', 'ward', 'country',
             'tax_id', 'notes', 'owner_name', 'contact_person', 'typical_goods', 'is_active',
             'total_invoices', 'total_outstanding', 'wallet_balance',
             'created_by', 'created_by_name',
@@ -90,6 +90,45 @@ class CustomerSerializer(serializers.ModelSerializer):
             )
             if dup:
                 raise serializers.ValidationError({'phone': dup})
+
+        from sales.kenya_admin import validate_admin_location
+
+        def _pick(field: str) -> str:
+            if field in attrs:
+                return attrs.get(field) or ''
+            if self.instance is not None:
+                return getattr(self.instance, field, '') or ''
+            return ''
+
+        county_val = _pick('county')
+        sub_val = _pick('sub_county')
+        ward_val = _pick('ward')
+        if not str(county_val).strip():
+            city_hint = attrs.get('city') if 'city' in attrs else (_pick('city'))
+            if city_hint and str(city_hint).strip():
+                county_val = str(city_hint).strip()
+
+        is_create = self.instance is None
+        has_location = any(str(x).strip() for x in (county_val, sub_val, ward_val))
+        location_touched = any(k in attrs for k in ('county', 'sub_county', 'ward', 'city'))
+
+        # Create always gets a valid Kenya location (defaults if omitted / incomplete).
+        # Updates only re-validate when location fields are present or changed.
+        if is_create or has_location or location_touched:
+            location = validate_admin_location(
+                county_val,
+                sub_val,
+                ward_val,
+                apply_defaults=is_create,
+            )
+            if isinstance(location, dict):
+                # Never block create on location — fall back to Nairobi defaults.
+                if is_create:
+                    location = validate_admin_location('', '', '', apply_defaults=True)
+                else:
+                    raise serializers.ValidationError(location)
+            attrs['county'], attrs['sub_county'], attrs['ward'] = location
+            attrs['city'] = location[0]
 
         return validate_customer_write(attrs)
 
@@ -170,7 +209,8 @@ class CustomerListSerializer(serializers.ModelSerializer):
         model = Customer
         fields = [
             'id', 'customer_code', 'name', 'customer_type',
-            'email', 'phone', 'latitude', 'longitude', 'city', 'country',
+            'email', 'phone', 'latitude', 'longitude',
+            'city', 'county', 'sub_county', 'ward', 'country',
             'is_active', 'total_outstanding', 'wallet_balance',
         ]
 

@@ -47,6 +47,24 @@ class Customer(models.Model):
     )
     address = models.TextField(blank=True)
     city = models.CharField(max_length=100, blank=True)
+    county = models.CharField(
+        max_length=100,
+        blank=True,
+        default='',
+        help_text='Kenya county (official name).',
+    )
+    sub_county = models.CharField(
+        max_length=100,
+        blank=True,
+        default='',
+        help_text='Kenya sub-county within the county.',
+    )
+    ward = models.CharField(
+        max_length=100,
+        blank=True,
+        default='',
+        help_text='Kenya ward within the sub-county.',
+    )
     country = models.CharField(max_length=100, default='Kenya')
     tax_id = models.CharField(max_length=50, blank=True, help_text='Tax ID or VAT number')
     notes = models.TextField(blank=True)
@@ -95,6 +113,8 @@ class Customer(models.Model):
         ]
     
     def save(self, *args, **kwargs):
+        if self.county and str(self.county).strip():
+            self.city = str(self.county).strip()
         if not self.customer_code:
             # Generate unique customer code
             prefix = 'CUST'
