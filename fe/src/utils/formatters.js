@@ -45,46 +45,42 @@ export const formatNumber = (number) => {
 };
 
 /**
- * Format number in compact notation (e.g., 6K, 1.5M)
+ * Format number in compact notation for tight chart axes.
+ * Values under 1M use full grouped digits (e.g. 1,500).
  */
 export const formatCompactNumber = (number) => {
   if (number === null || number === undefined || isNaN(number)) return '0';
-  
+
   const num = typeof number === 'string' ? parseFloat(number) : number;
-  
+  if (Number.isNaN(num)) return '0';
   if (num === 0) return '0';
-  
+
   const absNum = Math.abs(num);
   const sign = num < 0 ? '-' : '';
-  
+
   if (absNum >= 1000000) {
     return `${sign}${(absNum / 1000000).toFixed(1)}M`;
-  } else if (absNum >= 1000) {
-    return `${sign}${(absNum / 1000).toFixed(1)}K`;
   }
-  
-  return `${sign}${Math.round(absNum)}`;
+
+  return formatNumber(Math.round(num));
 };
 
 /**
- * Format currency in compact notation (e.g., KSh 6K, KSh 1.5M)
+ * Format currency in compact notation for tight chart axes.
+ * Values under 1M use full grouped currency (e.g. Ksh 1,000.00).
  */
 export const formatCompactCurrency = (amount) => {
-  if (amount === null || amount === undefined || isNaN(amount)) return 'KSh 0';
-  
+  if (amount === null || amount === undefined || isNaN(amount)) return formatCurrency(0);
+
   const num = typeof amount === 'string' ? parseFloat(amount) : amount;
-  
-  if (num === 0) return 'KSh 0';
-  
+  if (Number.isNaN(num)) return formatCurrency(0);
+
   const absNum = Math.abs(num);
-  const sign = num < 0 ? '-' : '';
-  
   if (absNum >= 1000000) {
+    const sign = num < 0 ? '-' : '';
     return `${sign}KSh ${(absNum / 1000000).toFixed(1)}M`;
-  } else if (absNum >= 1000) {
-    return `${sign}KSh ${(absNum / 1000).toFixed(1)}K`;
   }
-  
-  return `${sign}KSh ${Math.round(absNum)}`;
+
+  return formatCurrency(num);
 };
 

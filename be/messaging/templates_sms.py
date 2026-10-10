@@ -15,14 +15,9 @@ INVOICE_TEMPLATE = get_template_body(SmsTemplate.KEY_INVOICE)
 
 
 def _money(amount) -> str:
-    try:
-        value = Decimal(str(amount or 0)).quantize(Decimal('0.01'))
-    except Exception:
-        value = Decimal('0.00')
-    text = f'{value:f}'
-    if text.endswith('.00'):
-        return text[:-3]
-    return text.rstrip('0').rstrip('.') if '.' in text else text
+    from utils.money_format import format_grouped_number
+
+    return format_grouped_number(amount, decimals=None)
 
 
 def sms_cap_name(

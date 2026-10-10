@@ -30,20 +30,20 @@ describe('formatters', () => {
     expect(formatNumber(1000)).toBe('1,000');
   });
 
-  it('formatCompactNumber scales K and M', () => {
+  it('formatCompactNumber groups below 1M and scales M', () => {
     expect(formatCompactNumber(500)).toBe('500');
-    expect(formatCompactNumber(1500)).toBe('1.5K');
+    expect(formatCompactNumber(1500)).toBe('1,500');
     expect(formatCompactNumber(2_000_000)).toBe('2.0M');
     expect(formatCompactNumber(0)).toBe('0');
-    expect(formatCompactNumber(-2500)).toBe('-2.5K');
+    expect(formatCompactNumber(-2500)).toBe('-2,500');
   });
 
-  it('formatCompactCurrency prefixes KSh', () => {
-    expect(formatCompactCurrency(5000)).toBe('KSh 5.0K');
-    expect(formatCompactCurrency(0)).toBe('KSh 0');
+  it('formatCompactCurrency groups below 1M and scales M', () => {
+    expect(formatCompactCurrency(5000)).toMatch(/5,000/);
+    expect(formatCompactCurrency(0)).toMatch(/0\.00/);
     expect(formatCompactCurrency(2_000_000)).toBe('KSh 2.0M');
-    expect(formatCompactCurrency(500)).toBe('KSh 500');
-    expect(formatCompactCurrency(null)).toBe('KSh 0');
+    expect(formatCompactCurrency(500)).toMatch(/500/);
+    expect(formatCompactCurrency(null)).toMatch(/0\.00/);
   });
 
   it('formatCompactNumber handles invalid input', () => {

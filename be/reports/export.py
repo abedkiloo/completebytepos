@@ -65,12 +65,18 @@ def is_scalar(value: Any) -> bool:
 
 
 def scalarize(value: Any) -> Any:
+    from utils.money_format import format_grouped_number
+
     if value is None:
         return ''
     if isinstance(value, bool):
         return 'Yes' if value else 'No'
     if isinstance(value, Decimal):
-        return float(value)
+        return format_grouped_number(value, decimals=None)
+    if isinstance(value, float):
+        return format_grouped_number(value, decimals=None)
+    if isinstance(value, int):
+        return format_grouped_number(value, decimals=0)
     if isinstance(value, datetime):
         if timezone.is_aware(value):
             value = timezone.localtime(value)

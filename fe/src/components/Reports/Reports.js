@@ -232,7 +232,7 @@ const Reports = () => {
         <div className={R.summaryGrid}>
           <div className={R.summaryCard}>
             <h3>Total Sales</h3>
-            <p className={R.summaryValue}>{summary?.total_sales || 0}</p>
+            <p className={R.summaryValue}>{formatNumber(summary?.total_sales || 0)}</p>
           </div>
           <div className={R.summaryCard}>
             <h3>Total Revenue</h3>
@@ -272,7 +272,7 @@ const Reports = () => {
                   {by_payment_method.map((item, idx) => (
                     <tr key={idx}>
                       <td className="capitalize">{item.payment_method}</td>
-                      <td>{item.count}</td>
+                      <td>{formatNumber(item.count)}</td>
                       <td>{formatCurrency(item.total)}</td>
                     </tr>
                   ))}
@@ -298,7 +298,7 @@ const Reports = () => {
                   {daily_breakdown.map((item, idx) => (
                     <tr key={idx}>
                       <td>{new Date(item.day).toLocaleDateString()}</td>
-                      <td>{item.count}</td>
+                      <td>{formatNumber(item.count)}</td>
                       <td>{formatCurrency(item.total)}</td>
                     </tr>
                   ))}
@@ -318,7 +318,7 @@ const Reports = () => {
         <div className={R.summaryGrid}>
           <div className={R.summaryCard}>
             <h3>Total Purchases</h3>
-            <p className={R.summaryValue}>{summary?.total_purchases || 0}</p>
+            <p className={R.summaryValue}>{formatNumber(summary?.total_purchases || 0)}</p>
           </div>
           <div className={R.summaryCard}>
             <h3>Total Amount</h3>
@@ -370,11 +370,11 @@ const Reports = () => {
         <div className={R.summaryGrid}>
           <div className={R.summaryCard}>
             <h3>Low Stock Items</h3>
-            <p className={R.summaryValue}>{low_stock_count || 0}</p>
+            <p className={R.summaryValue}>{formatNumber(low_stock_count || 0)}</p>
           </div>
           <div className={R.summaryCard}>
             <h3>Out of Stock Items</h3>
-            <p className={R.summaryValue}>{out_of_stock_count || 0}</p>
+            <p className={R.summaryValue}>{formatNumber(out_of_stock_count || 0)}</p>
           </div>
           {showCostProfit ? (
           <div className={R.summaryCard}>
@@ -440,7 +440,7 @@ const Reports = () => {
         <div className={R.summaryGrid}>
           <div className={R.summaryCard}>
             <h3>Total Invoices</h3>
-            <p className={R.summaryValue}>{summary?.total_invoices || 0}</p>
+            <p className={R.summaryValue}>{formatNumber(summary?.total_invoices || 0)}</p>
           </div>
           <div className={R.summaryCard}>
             <h3>Total Amount</h3>
@@ -496,7 +496,7 @@ const Reports = () => {
         <div className={R.summaryGrid}>
           <div className={R.summaryCard}>
             <h3>Total Suppliers</h3>
-            <p className={R.summaryValue}>{summary?.total_suppliers || 0}</p>
+            <p className={R.summaryValue}>{formatNumber(summary?.total_suppliers || 0)}</p>
           </div>
           <div className={R.summaryCard}>
             <h3>Total Purchases</h3>
@@ -542,7 +542,7 @@ const Reports = () => {
         <div className={R.summaryGrid}>
           <div className={R.summaryCard}>
             <h3>Total Customers</h3>
-            <p className={R.summaryValue}>{summary?.total_customers || 0}</p>
+            <p className={R.summaryValue}>{formatNumber(summary?.total_customers || 0)}</p>
           </div>
           <div className={R.summaryCard}>
             <h3>Total Sales</h3>
@@ -639,11 +639,11 @@ const Reports = () => {
           </div>
           <div className={R.summaryCard}>
             <h3>Expense Count</h3>
-            <p className={R.summaryValue}>{summary?.expense_count || 0}</p>
+            <p className={R.summaryValue}>{formatNumber(summary?.expense_count || 0)}</p>
           </div>
           <div className={R.summaryCard}>
             <h3>By Category</h3>
-            <p className={R.summaryValue}>{summary?.category_count || 0}</p>
+            <p className={R.summaryValue}>{formatNumber(summary?.category_count || 0)}</p>
           </div>
         </div>
 
@@ -691,7 +691,7 @@ const Reports = () => {
           </div>
           <div className={R.summaryCard}>
             <h3>Income Count</h3>
-            <p className={R.summaryValue}>{summary?.income_count || 0}</p>
+            <p className={R.summaryValue}>{formatNumber(summary?.income_count || 0)}</p>
           </div>
         </div>
 

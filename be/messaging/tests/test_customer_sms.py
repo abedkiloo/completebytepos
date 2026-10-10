@@ -129,7 +129,7 @@ class TemplateSmsTests(TestCase):
         )
         self.assertIn('Hi Jane, your order S-1.', paid)
         self.assertIn('2 goods', paid)
-        self.assertIn('Total KES 1000', paid)
+        self.assertIn('Total KES 1,000', paid)
         self.assertNotIn('SALE-1', paid)
         self.assertNotIn('Balance now', paid)
         self.assertNotIn(' Ref ', paid)
