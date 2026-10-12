@@ -32,6 +32,7 @@ jest.mock('../../utils/moduleFeatures', () => ({
   getDefaultPosRoute: jest.fn(),
   isBillingPosEnabled: jest.fn(),
   isRetailPosEnabled: jest.fn(),
+  isModuleFeatureEnabled: jest.fn(() => true),
 }));
 
 jest.mock('../../services/api', () => ({
@@ -43,22 +44,31 @@ jest.mock('../../services/api', () => ({
 }));
 
 const weekDays = [
-  { date: '2026-08-12', label: 'Wed', sales_count: 0, total: 0 },
-  { date: '2026-08-13', label: 'Thu', sales_count: 0, total: 0 },
-  { date: '2026-08-14', label: 'Fri', sales_count: 1, total: 50 },
-  { date: '2026-08-15', label: 'Sat', sales_count: 0, total: 0 },
-  { date: '2026-08-16', label: 'Sun', sales_count: 0, total: 0 },
   { date: '2026-08-17', label: 'Mon', sales_count: 0, total: 0 },
   { date: '2026-08-18', label: 'Tue', sales_count: 2, total: 150 },
+  { date: '2026-08-19', label: 'Wed', sales_count: 0, total: 0 },
+  { date: '2026-08-20', label: 'Thu', sales_count: 0, total: 0 },
+  { date: '2026-08-21', label: 'Fri', sales_count: 1, total: 50 },
+  { date: '2026-08-22', label: 'Sat', sales_count: 0, total: 0 },
+  { date: '2026-08-23', label: 'Sun', sales_count: 0, total: 0 },
 ];
 
 describe('Dashboard', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     getStoredAuth.mockReturnValue({
-      permissions: [{ module: 'reports', action: 'view' }],
+      user: { username: 'Ada' },
+      profile: { role: 'manager', role_display: 'Manager' },
+      permissions: [
+        { module: 'reports', action: 'view' },
+        { module: 'sales', action: 'daily_sales' },
+      ],
     });
-    hasPermission.mockReturnValue(true);
+    hasPermission.mockImplementation((_perms, mod, action) => {
+      if (mod === 'sales' && action === 'daily_sales') return true;
+      if (mod === 'reports') return true;
+      return true;
+    });
     resolvePersona.mockReturnValue('manager');
     userSeesAllSalesFromStorage.mockReturnValue(true);
     getDefaultPosRoute.mockReturnValue('/pos');
@@ -120,6 +130,11 @@ describe('Dashboard', () => {
   });
 
   it('keeps weekly days as plain rows without sales access', async () => {
+    getStoredAuth.mockReturnValue({
+      user: { username: 'Ada' },
+      profile: { role: 'manager' },
+      permissions: [{ module: 'reports', action: 'view' }],
+    });
     hasPermission.mockImplementation((_perms, mod) => mod !== 'sales');
     render(<Dashboard />);
     await waitFor(() => {

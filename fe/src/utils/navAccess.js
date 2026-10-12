@@ -19,6 +19,7 @@ import { readCachedModuleSettings, isModuleFlagEnabled } from './moduleSettingsC
 import { readCachedStoreSettings } from './storeSettingsCache';
 import { salesCatalogAccessEnabled } from './productAccess';
 import { userMayOpenDailyNotes } from './dailyNotesAccess';
+import { canViewDailySalesFromStorage } from './dailySalesAccess';
 import { NAV_SECTION_MODULES, navSectionGrantedByPermissions } from './permissionRoutes';
 
 /** Section ids visible per persona (`null` = all sections). */
@@ -171,6 +172,11 @@ export function canSeeNavItem(item, sectionId, ctx) {
     if (!offered && !hasPermission(permissions, 'appraisals', 'manage') && !isSuperAdmin) {
       return false;
     }
+  }
+
+  // Daily Sales: Module Settings flag + managers need sales.daily_sales (not sales.view alone).
+  if (item.dailySalesAccess) {
+    return canViewDailySalesFromStorage();
   }
 
   if (item.anyPermission?.length) {

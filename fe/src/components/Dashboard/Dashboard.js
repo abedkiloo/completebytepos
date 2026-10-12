@@ -148,7 +148,7 @@ const Dashboard = () => {
       {
         label: ownOnly ? 'Your week' : 'This week',
         value: formatCurrency(data.week?.total || 0),
-        hint: `${data.week?.sales_count || 0} order${data.week?.sales_count === 1 ? '' : 's'} in the last 7 days`,
+        hint: `${data.week?.sales_count || 0} order${data.week?.sales_count === 1 ? '' : 's'} Mon–Sun this week`,
       },
     ];
 
@@ -282,7 +282,7 @@ const Dashboard = () => {
                 <CardTitle className="text-base">Weekly sales</CardTitle>
                 <CardDescription>
                   {data.week.sales_count || 0} order{(data.week.sales_count || 0) === 1 ? '' : 's'} ·{' '}
-                  {formatCurrency(data.week.total || 0)} in the last 7 days
+                  {formatCurrency(data.week.total || 0)} Mon–Sun this week
                 </CardDescription>
               </div>
             </CardHeader>

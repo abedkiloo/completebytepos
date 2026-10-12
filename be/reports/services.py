@@ -1,7 +1,7 @@
 """
 Reports service layer — aggregations and period parsing (no ORM in views).
 """
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from django.db.models import F, Sum
 from django.utils import timezone
@@ -12,13 +12,15 @@ from products.models import Product
 from reports.sale_scope import posted_sale_items, posted_sales
 from sales.models import SaleRefund
 
-from .week_summary import week_sales_summary
+from .week_summary import monday_of_week, week_sales_summary
 
 
 def resolve_period(request):
     """
     Parse ``?period=today|week|month|year`` into a (start, end, label) tuple.
   Falls back to explicit ``date_from`` / ``date_to`` query params.
+
+    ``week`` is the current calendar week starting Monday (not a rolling 7 days).
     """
     now = timezone.now()
     today = now.date()
@@ -29,7 +31,8 @@ def resolve_period(request):
         start = timezone.make_aware(datetime.combine(today, datetime.min.time()))
         return start, now, 'today'
     if period == 'week':
-        start = timezone.make_aware(datetime.combine(today - timedelta(days=6), datetime.min.time()))
+        monday = monday_of_week(today)
+        start = timezone.make_aware(datetime.combine(monday, datetime.min.time()))
         return start, now, 'week'
     if period == 'month':
         start = timezone.make_aware(datetime.combine(today.replace(day=1), datetime.min.time()))

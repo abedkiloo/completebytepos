@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Check, Pencil, Plus, RefreshCw, Trash2, TrendingDown, X } from 'lucide-react';
+import { Check, NotebookText, Pencil, Plus, RefreshCw, Trash2, TrendingDown, X } from 'lucide-react';
 import { expensesAPI } from '../../services/api';
 import { CATALOG_FETCH_PAGE_SIZE, DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
@@ -23,6 +23,14 @@ import { rejectionReturnedMessage } from '../../utils/approvalReturn';
 import HelpHint from '../Shared/HelpHint';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
 import {
   PageShell,
   PageHeader,
@@ -48,6 +56,7 @@ const Expenses = () => {
   const [showForm, setShowForm] = useState(false);
   const [editingExpense, setEditingExpense] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [notesExpense, setNotesExpense] = useState(null);
   const [filters, setFilters] = useState({
     category: '',
     status: '',
@@ -355,10 +364,13 @@ const Expenses = () => {
                 </DataTableHead>
                 <DataTableHead align="right">Amount</DataTableHead>
                 <DataTableHead>Status</DataTableHead>
+                <DataTableHead>Notes</DataTableHead>
                 <DataTableHead align="right">Actions</DataTableHead>
               </DataTableHeader>
               <DataTableBody>
-                {expenses.map((expense) => (
+                {expenses.map((expense) => {
+                  const hasNotes = Boolean(String(expense.notes || '').trim());
+                  return (
                   <DataTableRow key={expense.id}>
                     <DataTableCell className="font-medium">
                       {expense.expense_number}
@@ -375,6 +387,24 @@ const Expenses = () => {
                     </DataTableCell>
                     <DataTableCell>
                       <StatusBadge status={expense.status} />
+                    </DataTableCell>
+                    <DataTableCell>
+                      {hasNotes ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="max-w-[160px] gap-1.5"
+                          onClick={() => setNotesExpense(expense)}
+                          title="View notes"
+                          aria-label={`View notes for ${expense.expense_number || 'expense'}`}
+                        >
+                          <NotebookText className="h-4 w-4 shrink-0 text-primary" />
+                          <span className="truncate text-xs">View notes</span>
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
                     </DataTableCell>
                     <DataTableCell align="right">
                       <div className="flex justify-end gap-1">
@@ -428,7 +458,8 @@ const Expenses = () => {
                       </div>
                     </DataTableCell>
                   </DataTableRow>
-                ))}
+                  );
+                })}
               </DataTableBody>
             </DataTable>
           </ListPaginationRail>
@@ -454,6 +485,32 @@ const Expenses = () => {
         cancelText="Cancel"
         type="danger"
       />
+
+      <Dialog
+        open={!!notesExpense}
+        onOpenChange={(open) => {
+          if (!open) setNotesExpense(null);
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Expense notes</DialogTitle>
+            <DialogDescription>
+              {notesExpense
+                ? `${notesExpense.expense_number || 'Expense'} · ${notesExpense.description || ''}`
+                : 'Full notes for this expense.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="reminder-banner max-h-[50vh] overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed">
+            {String(notesExpense?.notes || '').trim() || 'No notes.'}
+          </div>
+          <DialogFooter>
+            <Button type="button" onClick={() => setNotesExpense(null)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       </PageShell>
   );
 };

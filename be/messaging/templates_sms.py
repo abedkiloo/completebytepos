@@ -143,6 +143,18 @@ def _item_unit_price(item) -> Decimal:
     return Decimal('0')
 
 
+def _item_line_total(item) -> Decimal:
+    """Line total charged on the sale (qty × unit), never catalogue list price."""
+    raw = getattr(item, 'subtotal', None)
+    if raw is not None and str(raw).strip() != '':
+        return Decimal(str(raw))
+    try:
+        qty = max(0, int(getattr(item, 'quantity', 0) or 0))
+    except (TypeError, ValueError):
+        qty = 0
+    return (_item_unit_price(item) * Decimal(qty)).quantize(Decimal('0.01'))
+
+
 def format_sale_items_summary(
     items,
     *,
@@ -150,24 +162,32 @@ def format_sale_items_summary(
     name_max: int = 18,
 ) -> str:
     """
-    Short goods count for sale SMS — no per-line prices.
+    Per-line receipt fragment for sale SMS.
 
-    Example: ``3 goods`` (total units in the cart). Empty when there are no lines.
+    Example::
+
+        Table stand 2 1,400
+        root 3 5,000
+
+    Each line is ``{name} {qty} {line_total}``. Empty when there are no lines.
     """
-    _ = (max_items, name_max)  # kept for call-site compatibility
     rows = list(items or [])
     if not rows:
         return ''
-    total_qty = 0
-    for item in rows:
+    lines: list[str] = []
+    for item in rows[: max(1, max_items)]:
         try:
-            total_qty += max(0, int(getattr(item, 'quantity', 0) or 0))
+            qty = max(0, int(getattr(item, 'quantity', 0) or 0))
         except (TypeError, ValueError):
-            continue
-    if total_qty <= 0:
-        total_qty = len(rows)
-    label = 'good' if total_qty == 1 else 'goods'
-    return f'{total_qty} {label}'
+            qty = 0
+        if qty <= 0:
+            qty = 1
+        name = _item_display_name(item, name_max=name_max)
+        lines.append(f'{name} {qty} {_money(_item_line_total(item))}')
+    leftover = len(rows) - len(lines)
+    if leftover > 0:
+        lines.append(f'+{leftover} more')
+    return '\n'.join(lines)
 
 
 def format_balance_note(
@@ -299,8 +319,13 @@ def render_sale_completed_sms(
     balance_note = format_balance_note(balance_owed)
     payment_ref = format_payment_ref_note(payment_reference)
     summary = (items_summary if items_summary is not None else format_sale_items_summary(items)).strip()
-    # Trailing ". " so the default template reads cleanly when items are present or absent.
-    items_clause = f'{summary}. ' if summary else ''
+    # Multiline item list ends with a newline; single-line fragments keep ". ".
+    if not summary:
+        items_clause = ''
+    elif '\n' in summary:
+        items_clause = f'{summary}\n'
+    else:
+        items_clause = f'{summary}. '
     body = (template or '').strip() or get_template_body(SmsTemplate.KEY_SALE_COMPLETED)
     return apply_sms_placeholders(
         body,

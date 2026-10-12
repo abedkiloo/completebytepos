@@ -514,8 +514,16 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         Daily sales for one business day (``?date=YYYY-MM-DD``).
 
         Anyone with sales.view sees their own sales; admins / sales.view_all see the store.
+        Managers need sales.daily_sales. Disabled when Module Settings → Daily sales tracker is off.
         """
+        from settings.module_features import is_module_feature_enabled
         from .daily_sales import get_daily_sales_report
+
+        if not is_module_feature_enabled('sales', 'daily_sales'):
+            return Response(
+                {'error': 'Daily sales tracker is turned off for this store.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         date_str = request.query_params.get('date')
         payment_status = request.query_params.get('payment_status')
@@ -570,7 +578,14 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     )
     def daily_customer(self, request, customer_id=None):
         """Customer day drill-down from Daily Sales Tracker."""
+        from settings.module_features import is_module_feature_enabled
         from .daily_sales import get_customer_day_detail
+
+        if not is_module_feature_enabled('sales', 'daily_sales'):
+            return Response(
+                {'error': 'Daily sales tracker is turned off for this store.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         date_str = request.query_params.get('date')
         base_qs = self.sale_service.build_queryset({}, request=request)

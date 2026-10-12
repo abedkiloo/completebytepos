@@ -10,6 +10,7 @@ import {
   userMayEditAnyProductFinancialFieldFromStorage,
 } from './productAccess';
 import { salesDailyNotesAccessEnabled, userMayOpenDailyNotes } from './dailyNotesAccess';
+import { canViewDailySalesFromStorage } from './dailySalesAccess';
 import {
   ROUTE_MODULE_MAP,
   PERMISSION_MODULE_ROUTES,
@@ -231,6 +232,9 @@ export function canAccessRoute(persona, pathname, options = {}) {
   if (!routeAllowed) return false;
 
   const { permissions } = getStoredAuth();
+  if (pathname === '/sales/daily' || pathname.startsWith('/sales/daily/')) {
+    return canViewDailySalesFromStorage();
+  }
   const gate = routePermissionGateForPath(pathname);
   if (gate) {
     const options = gate.anyOf?.length

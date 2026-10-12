@@ -6,9 +6,16 @@ import {
   dayStandingLabel,
 } from './dailySalesAccess';
 
+jest.mock('./moduleFeatures', () => ({
+  isModuleFeatureEnabled: jest.fn(() => true),
+}));
+
+import { isModuleFeatureEnabled } from './moduleFeatures';
+
 describe('dailySalesAccess', () => {
   beforeEach(() => {
     localStorage.clear();
+    isModuleFeatureEnabled.mockReturnValue(true);
   });
 
   it('allows super admin regardless of permission list', () => {
@@ -19,16 +26,36 @@ describe('dailySalesAccess', () => {
     expect(
       canViewDailySales([{ module: 'sales', action: 'daily_sales' }], {
         isSuperAdmin: false,
+        profile: { role: 'manager' },
       })
     ).toBe(true);
   });
 
-  it('allows anyone who can view sales (they see their own day)', () => {
+  it('allows cashiers who can view sales (their own day)', () => {
     expect(
       canViewDailySales([{ module: 'sales', action: 'view' }], {
         isSuperAdmin: false,
+        profile: { role: 'cashier' },
       })
     ).toBe(true);
+  });
+
+  it('denies managers who only have sales.view', () => {
+    expect(
+      canViewDailySales([{ module: 'sales', action: 'view' }], {
+        isSuperAdmin: false,
+        profile: { role: 'manager' },
+      })
+    ).toBe(false);
+  });
+
+  it('denies when the module feature is off', () => {
+    expect(
+      canViewDailySales([{ module: 'sales', action: 'daily_sales' }], {
+        isSuperAdmin: true,
+        featureEnabled: false,
+      })
+    ).toBe(false);
   });
 
   it('denies users without sales access', () => {
@@ -39,7 +66,7 @@ describe('dailySalesAccess', () => {
     ).toBe(false);
   });
 
-  it('reads access from storage', () => {
+  it('reads access from storage for manager with daily_sales grant', () => {
     localStorage.setItem(
       'permissions',
       JSON.stringify([{ module: 'sales', action: 'daily_sales', name: 'sales.daily_sales' }])
@@ -49,11 +76,32 @@ describe('dailySalesAccess', () => {
     expect(canViewDailySalesFromStorage()).toBe(true);
   });
 
+  it('hides daily sales for manager with only sales.view', () => {
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([{ module: 'sales', action: 'view' }])
+    );
+    localStorage.setItem('user', JSON.stringify({ username: 'mgr' }));
+    localStorage.setItem('profile', JSON.stringify({ role: 'manager' }));
+    expect(canViewDailySalesFromStorage()).toBe(false);
+  });
+
   it('allows super admin from storage without explicit permission', () => {
     localStorage.setItem('permissions', JSON.stringify([]));
     localStorage.setItem('user', JSON.stringify({ username: 'admin', is_superuser: true }));
     localStorage.setItem('profile', JSON.stringify({ role: 'super_admin' }));
     expect(canViewDailySalesFromStorage()).toBe(true);
+  });
+
+  it('hides when Module Settings feature is off', () => {
+    isModuleFeatureEnabled.mockReturnValue(false);
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([{ module: 'sales', action: 'daily_sales' }])
+    );
+    localStorage.setItem('user', JSON.stringify({ username: 'admin', is_superuser: true }));
+    localStorage.setItem('profile', JSON.stringify({ role: 'super_admin' }));
+    expect(canViewDailySalesFromStorage()).toBe(false);
   });
 
   it('builds customer path without date', () => {

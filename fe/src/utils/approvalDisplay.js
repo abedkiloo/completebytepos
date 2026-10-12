@@ -199,7 +199,7 @@ export function expenseApprovalDetails(expense = {}) {
     },
     { label: 'Vendor', value: expense.vendor },
     { label: 'Receipt number', value: expense.receipt_number },
-    { label: 'Notes', value: expense.notes },
+    { label: 'Notes', value: expense.notes, kind: 'notes' },
   ].filter((fact) => fact.value !== undefined && fact.value !== null && fact.value !== '');
   return { sections: [{ title: 'Expense', facts }] };
 }

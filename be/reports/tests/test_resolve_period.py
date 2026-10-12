@@ -1,6 +1,6 @@
 """Unit tests for reports.views.resolve_period."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from django.test import TestCase
 from django.utils import timezone
@@ -8,6 +8,7 @@ from rest_framework.request import Request
 from rest_framework.test import APIRequestFactory
 
 from reports.services import resolve_period
+from reports.week_summary import monday_of_week
 
 
 class ResolvePeriodTestCase(TestCase):
@@ -25,10 +26,16 @@ class ResolvePeriodTestCase(TestCase):
         self.assertIsNotNone(end)
         self.assertLess(start, end)
 
-    def test_week_period(self):
+    def test_week_period_starts_on_monday(self):
         start, end, label = self._get({'period': 'week'})
         self.assertEqual(label, 'week')
         self.assertIsNotNone(start)
+        self.assertEqual(start.weekday(), 0)
+        self.assertEqual(start.date(), monday_of_week(timezone.localdate()))
+        self.assertEqual(
+            start.date(),
+            timezone.localdate() - timedelta(days=timezone.localdate().weekday()),
+        )
 
     def test_month_period(self):
         start, end, label = self._get({'period': 'month'})

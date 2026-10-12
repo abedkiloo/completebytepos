@@ -50,26 +50,24 @@ class SaleNumberFormatUnitTests(SimpleTestCase):
             'REF-9',
         )
 
-    def test_items_summary_is_goods_count_only(self):
+    def test_items_summary_lists_name_qty_and_line_total(self):
         class _I:
-            product = type('P', (), {'name': 'Bar soap'})()
+            product = type('P', (), {'name': 'Table stand'})()
             quantity = 2
-            unit_price = Decimal('200')
-            subtotal = Decimal('400')
+            unit_price = Decimal('700')
+            subtotal = Decimal('1400')
 
         class _I2:
-            product = type('P', (), {'name': 'Oil'})()
-            quantity = 1
-            unit_price = Decimal('1100')
-            subtotal = Decimal('1100')
+            product = type('P', (), {'name': 'root'})()
+            quantity = 3
+            unit_price = Decimal('1666.67')
+            subtotal = Decimal('5000')
 
         summary = format_sale_items_summary([_I(), _I2()])
-        self.assertEqual(summary, '3 goods')
+        self.assertEqual(summary, 'Table stand 2 1,400\nroot 3 5,000')
         self.assertNotIn('@', summary)
-        self.assertNotIn('200', summary)
-        self.assertNotIn('1100', summary)
 
-    def test_items_summary_does_not_leak_line_prices(self):
+    def test_items_summary_uses_cart_line_total_not_catalog_price(self):
         class _Line:
             product = type('P', (), {'name': 'Cement 50kg', 'price': Decimal('750')})()
             quantity = 3
@@ -77,9 +75,9 @@ class SaleNumberFormatUnitTests(SimpleTestCase):
             subtotal = Decimal('2040')
 
         summary = format_sale_items_summary([_Line()])
-        self.assertEqual(summary, '3 goods')
-        self.assertNotIn('680', summary)
+        self.assertEqual(summary, 'Cement 50kg 3 2,040')
         self.assertNotIn('750', summary)
+        self.assertNotIn('680', summary)
 
 
 class TemplateSmsTests(TestCase):
@@ -125,10 +123,11 @@ class TemplateSmsTests(TestCase):
             total='1000',
             paid='1000',
             balance_owed=None,
-            items_summary='2 goods',
+            items_summary='Table stand 2 1,400\nroot 3 5,000',
         )
         self.assertIn('Hi Jane, your order S-1.', paid)
-        self.assertIn('2 goods', paid)
+        self.assertIn('Table stand 2 1,400', paid)
+        self.assertIn('root 3 5,000', paid)
         self.assertIn('Total KES 1,000', paid)
         self.assertNotIn('SALE-1', paid)
         self.assertNotIn('Balance now', paid)
@@ -140,12 +139,12 @@ class TemplateSmsTests(TestCase):
             total='1000',
             paid='400',
             balance_owed='600',
-            items_summary='1 good',
+            items_summary='Soap 1 400',
             payment_reference='QHX1ABC2DE',
         )
         self.assertIn('your order S-2.', debt)
         self.assertIn('Balance now KES 600', debt)
-        self.assertIn('1 good', debt)
+        self.assertIn('Soap 1 400', debt)
         self.assertIn('Ref QHX1ABC2DE', debt)
 
         settled = render_debt_settlement_sms(
@@ -297,7 +296,7 @@ class CustomerNotifyTests(TestCase):
         self.assertIn('S-1', body)
         self.assertNotIn('SALE-SMS-1', body)
         self.assertIn('your order S-1.', body)
-        self.assertIn('2 goods', body)
+        self.assertIn('Soap 2 440', body)
         self.assertNotIn('@ 220', body)
         self.assertNotIn('@ 250', body)
         self.assertIn('Total KES 440', body)

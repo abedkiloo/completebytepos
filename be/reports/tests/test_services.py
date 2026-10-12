@@ -87,10 +87,19 @@ class ReportServicesTestCase(TestCase):
         self.assertEqual(before['month']['total'], after['month']['total'])
         self.assertEqual(before['growth']['returns'], after['growth']['returns'])
 
-    def test_week_sales_summary_groups_last_seven_days(self):
-        from datetime import timedelta
+    def test_week_sales_summary_groups_monday_through_sunday(self):
+        from datetime import datetime, timedelta
+
+        from reports.week_summary import monday_of_week
 
         user = User.objects.create_user(username='week_svc', password='x')
+        monday = monday_of_week(timezone.localdate())
+        in_week = timezone.make_aware(datetime.combine(monday, datetime.min.time())) + timedelta(
+            hours=10
+        )
+        prior_sunday = timezone.make_aware(
+            datetime.combine(monday - timedelta(days=1), datetime.min.time())
+        ) + timedelta(hours=10)
         Sale.objects.create(
             status='completed',
             payment_method='cash',
@@ -98,7 +107,7 @@ class ReportServicesTestCase(TestCase):
             total=Decimal('20'),
             amount_paid=Decimal('20'),
             cashier=user,
-            occurred_at=timezone.now() - timedelta(days=2),
+            occurred_at=in_week,
         )
         Sale.objects.create(
             status='completed',
@@ -107,10 +116,11 @@ class ReportServicesTestCase(TestCase):
             total=Decimal('99'),
             amount_paid=Decimal('99'),
             cashier=user,
-            occurred_at=timezone.now() - timedelta(days=10),
+            occurred_at=prior_sunday,
         )
         data = ReportDashboardService.get_dashboard_summary()
         self.assertEqual(len(data['week']['days']), 7)
+        self.assertEqual(data['week']['days'][0]['label'], 'Mon')
         self.assertEqual(data['week']['sales_count'], 1)
         self.assertEqual(data['week']['total'], 20.0)
         self.assertAlmostEqual(sum(day['total'] for day in data['week']['days']), 20.0)

@@ -129,12 +129,8 @@ export const NAV_SECTIONS = [
         to: '/sales/daily',
         label: 'Daily Sales',
         icon: Calendar,
-        feature: ['sales', 'sales_history'],
-        permission: ['sales', 'view'],
-        anyPermission: [
-          ['sales', 'view'],
-          ['sales', 'daily_sales'],
-        ],
+        feature: ['sales', 'daily_sales'],
+        dailySalesAccess: true,
       },
       { to: '/sales', label: 'Sales History', icon: DollarSign, feature: ['sales', 'sales_history'], permission: ['sales', 'view'] },
       {
@@ -234,11 +230,8 @@ export const NAV_SECTIONS = [
         to: '/sales/daily',
         label: 'Daily Sales',
         icon: Calendar,
-        permission: ['sales', 'view'],
-        anyPermission: [
-          ['sales', 'view'],
-          ['sales', 'daily_sales'],
-        ],
+        feature: ['sales', 'daily_sales'],
+        dailySalesAccess: true,
       },
       { to: '/reports?report=products', label: 'Product Performance', icon: Boxes, match: 'report=products', permission: ['reports', 'view'] },
       { to: '/reports?report=inventory', label: 'Inventory Overview', icon: PieChart, match: 'report=inventory', permission: ['reports', 'view'] },

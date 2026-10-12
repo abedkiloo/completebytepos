@@ -102,6 +102,12 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
             _f('normal_sale', 'Normal sale', 'Full sale with delivery fields.', 3, enabled=False),
             _f('sales_history', 'Sales history', 'Search past transactions.', 4),
             _f('receipt_printing', 'Receipt printing', 'Print or reprint receipts.', 5),
+            _f(
+                'daily_sales',
+                'Daily sales tracker',
+                'Day-by-day paid vs debt tracker. Toggle off in Module Settings without rebuilding apps.',
+                6,
+            ),
         ],
     },
     {
@@ -408,7 +414,7 @@ PRESETS: dict[str, dict[str, Any]] = {
         },
         'features': {
             # No retail POS, normal sale, or barcode module in the starter pack.
-            'sales': ['billing_pos', 'receipt_printing', 'sales_history'],
+            'sales': ['billing_pos', 'receipt_printing', 'sales_history', 'daily_sales'],
             'products': ['bulk_operations', 'csv_import_export'],
             'customers': ['customer_management', 'customer_history'],
             'invoicing': ['invoice_creation', 'invoice_tracking', 'payment_tracking'],
