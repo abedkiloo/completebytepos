@@ -3,56 +3,54 @@
 @tailwind utilities;
 
 /*
- * Design tokens.
+ * Omuwenga design cue — trust navy, calm wash, chunked white cards.
  *
- * Values are HSL triplets (no `hsl(...)` wrapper) so Tailwind colours can
- * compose them as `hsl(var(--token) / <alpha>)`. Keep this list small and
- * vocabulary-driven; do not introduce one-off hex codes inside components.
+ * Psychology: navy = competence without alarm; soft blue reminders nudge
+ * without stress; large radius + label/value hierarchy cut cognitive load.
  *
- * The palette targets a retail POS:
- *  - background: a near-white neutral that doesn't fatigue cashiers over an 8h shift
- *  - primary: confident green action colour for retail POS
- *  - destructive: unambiguous red for void/refund/remove
- *  - success: green for "paid" / receipts / in-stock chips
- *  - warning: amber for low-stock / pending payment plans
+ * HSL triplets (no hsl() wrapper) for Tailwind alpha composition.
+ * Success stays green for paid/in-stock; destructive red only for void/fail.
  */
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
+    --background: 210 33% 96%;         /* #F0F4F8 wash */
+    --foreground: 214 54% 13%;         /* navy ink */
 
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 214 54% 13%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover-foreground: 214 54% 13%;
 
-    --primary: 142 71% 40%;            /* green-600 */
+    --primary: 214 73% 19%;            /* #0D2C54 navy */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 222 47% 11%;
+    --secondary: 214 33% 94%;          /* soft blue fill */
+    --secondary-foreground: 214 73% 19%;
 
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%;
+    --muted: 214 33% 94%;
+    --muted-foreground: 210 14% 42%;
 
-    --accent: 220 14% 96%;
-    --accent-foreground: 222 47% 11%;
+    --accent: 209 29% 55%;             /* #6B8EAD steel */
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 84% 60%;
+    --reminder: 210 35% 90%;
+    --reminder-foreground: 214 73% 19%;
+
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
 
-    --success: 142 71% 45%;
+    --success: 142 68% 37%;            /* brand green — confirmations only */
     --success-foreground: 0 0% 100%;
 
-    --warning: 38 92% 50%;
+    --warning: 32 95% 44%;
     --warning-foreground: 0 0% 100%;
 
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 142 71% 40%;
+    --border: 214 24% 88%;
+    --input: 214 24% 88%;
+    --ring: 214 73% 19%;
 
-    --radius: 0.5rem;
+    --radius: 1.25rem;                 /* ~20px — cue large cards */
   }
 
   /* Reset + base typography. Replaces the manual * reset in App.css. */
@@ -66,8 +64,7 @@
   body {
     @apply bg-background text-foreground antialiased;
     margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-      'Helvetica Neue', Arial, sans-serif;
+    font-family: 'Plus Jakarta Sans', ui-sans-serif, sans-serif;
     font-feature-settings: 'rlig' 1, 'calt' 1;
   }
 
@@ -84,9 +81,65 @@
     min-height: 0;
   }
 
-  /* Subtle depth on scrollable app pages (matches Dashboard) */
+  /* Soft blue wash + dot grid — design cue atmosphere */
   .app-surface {
-    @apply min-h-full bg-gradient-to-b from-background via-background to-secondary/40;
+    position: relative;
+    min-height: 100%;
+    background:
+      radial-gradient(ellipse 60% 40% at 92% 8%, hsl(var(--primary) / 0.06), transparent 55%),
+      linear-gradient(
+        180deg,
+        hsl(210 40% 98%) 0%,
+        hsl(var(--background)) 45%,
+        hsl(var(--secondary)) 100%
+      );
+  }
+
+  .app-surface::before {
+    content: '';
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(
+      hsl(var(--accent) / 0.14) 1px,
+      transparent 1px
+    );
+    background-size: 18px 18px;
+    opacity: 0.55;
+    z-index: 0;
+  }
+
+  .app-surface > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .brand-wordmark {
+    font-family: 'Plus Jakarta Sans', ui-sans-serif, sans-serif;
+    font-weight: 800;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: hsl(var(--primary));
+    line-height: 1.1;
+  }
+
+  .info-chunk {
+    @apply rounded-lg border border-border bg-card p-3 shadow-sm;
+  }
+
+  .info-chunk-label {
+    @apply text-xs font-medium;
+    color: hsl(var(--accent));
+  }
+
+  .info-chunk-value {
+    @apply mt-0.5 text-base font-bold text-primary;
+  }
+
+  .reminder-banner {
+    @apply flex items-start gap-2.5 rounded-lg px-3.5 py-3 text-sm font-medium;
+    background: hsl(var(--reminder));
+    color: hsl(var(--reminder-foreground));
   }
 
   code {

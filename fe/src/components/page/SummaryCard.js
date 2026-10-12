@@ -32,10 +32,10 @@ export function SummaryCard({
         </div>
       )}
       <div className="min-w-0">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <p className="info-chunk-label uppercase tracking-wide">
           {label}
         </p>
-        <p className="truncate text-lg font-bold tabular-nums text-foreground">{value}</p>
+        <p className="truncate text-lg font-bold tabular-nums text-primary">{value}</p>
         {subtext ? (
           <p className="mt-0.5 truncate text-xs text-muted-foreground">{subtext}</p>
         ) : null}

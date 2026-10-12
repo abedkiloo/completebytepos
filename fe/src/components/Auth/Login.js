@@ -14,7 +14,11 @@ import { sessionIdleExpiredMessage } from '../../config/sessionConfig';
 import { markSessionActivity } from '../../utils/sessionIdle';
 import { clearSessionTeardownFlag } from '../../utils/authSession';
 import { fetchSetupStatus } from '../../utils/setupStatus';
-import { DEFAULT_STORE_NAME, DEFAULT_STORE_TAGLINE } from '../../utils/storeBranding';
+import {
+  DEFAULT_STORE_NAME,
+  DEFAULT_STORE_TAGLINE,
+  DEFAULT_STORE_WORDMARK,
+} from '../../utils/storeBranding';
 import BrandMark from '../Shared/BrandMark';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -83,10 +87,10 @@ function LandingPanel({ className }) {
         <div className="flex items-center gap-3">
           <BrandMark className="h-14 w-14" />
           <div>
-            <span className="block text-sm font-medium tracking-wide text-background/70">
-              {DEFAULT_STORE_NAME}
+            <span className="brand-wordmark block text-lg text-background">
+              {DEFAULT_STORE_WORDMARK}
             </span>
-            <span className="block text-xs text-background/50">{DEFAULT_STORE_TAGLINE}</span>
+            <span className="mt-1 block text-xs text-background/55">{DEFAULT_STORE_TAGLINE}</span>
           </div>
         </div>
 

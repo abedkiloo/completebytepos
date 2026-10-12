@@ -1,6 +1,7 @@
 /** Admin-editable storefront name shown in the header, receipts, and login. */
 
 export const DEFAULT_STORE_NAME = 'Omuwenga Suppliers';
+export const DEFAULT_STORE_WORDMARK = 'OMUWENGA';
 export const DEFAULT_STORE_TAGLINE = 'Think Furniture, Think Omuwenga';
 export const DEFAULT_CONTACT_PHONE = '0718515142';
 export const DEFAULT_BRAND_LOGO = '/logo.jpg';

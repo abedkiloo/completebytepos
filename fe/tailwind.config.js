@@ -8,7 +8,7 @@
  * Colour vocabulary mirrors the shadcn/ui convention to keep us close to
  * upstream component recipes; tones are tuned for a retail POS:
  *  - background / foreground: neutrals
- *  - primary: action accent (default: indigo) — used for "Pay" / "Complete sale"
+ *  - primary: Omuwenga navy — trust CTAs ("Pay" / "Complete sale")
  *  - destructive: void/refund/remove — red
  *  - success: paid / in-stock — green
  *  - warning: low-stock / pending — amber
@@ -72,16 +72,25 @@ module.exports = {
           DEFAULT: 'hsl(var(--warning))',
           foreground: 'hsl(var(--warning-foreground))',
         },
+        reminder: {
+          DEFAULT: 'hsl(var(--reminder))',
+          foreground: 'hsl(var(--reminder-foreground))',
+        },
       },
       borderRadius: {
         lg: 'var(--radius)',
-        md: 'calc(var(--radius) - 2px)',
-        sm: 'calc(var(--radius) - 4px)',
+        md: 'calc(var(--radius) - 6px)',
+        sm: 'calc(var(--radius) - 10px)',
+      },
+      boxShadow: {
+        card: '0 6px 18px hsl(214 73% 19% / 0.08)',
       },
       fontFamily: {
         sans: [
-          '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto',
-          '"Helvetica Neue"', 'Arial', 'sans-serif',
+          '"Plus Jakarta Sans"',
+          'ui-sans-serif',
+          'system-ui',
+          'sans-serif',
         ],
         mono: ['"SF Mono"', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
       },

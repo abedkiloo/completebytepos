@@ -502,8 +502,11 @@ const Layout = ({ children }) => {
 
         <Link to="/" className="flex min-w-0 shrink items-center gap-2">
           <BrandMark className="h-9 w-9" name={storeName} />
-          <span className="hidden truncate text-sm font-semibold text-foreground sm:inline">
-            {storeName}
+          <span className="hidden min-w-0 sm:flex sm:flex-col">
+            <span className="brand-wordmark text-[11px] leading-none">OMUWENGA</span>
+            <span className="mt-0.5 truncate text-xs font-medium text-muted-foreground">
+              {storeName}
+            </span>
           </span>
         </Link>
 
