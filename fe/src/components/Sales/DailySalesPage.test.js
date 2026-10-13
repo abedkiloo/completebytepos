@@ -408,10 +408,36 @@ describe('DailySalesPage', () => {
     render(<DailySalesPage />);
     await screen.findByText('SALE-PAID-01');
 
-    fireEvent.click(screen.getByRole('button', { name: /Taken as Debt/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Taken as Debt \(\d+\)/i }));
 
     await waitFor(() => {
       expect(salesAPI.daily).toHaveBeenCalledWith(
+        expect.objectContaining({ payment_status: 'debt' })
+      );
+    });
+  });
+
+  it('summary cards open the matching list filter', async () => {
+    render(<DailySalesPage />);
+    await screen.findByText('SALE-PAID-01');
+
+    fireEvent.click(screen.getByRole('button', { name: /Paid at Checkout/i }));
+    await waitFor(() => {
+      expect(salesAPI.daily).toHaveBeenLastCalledWith(
+        expect.objectContaining({ payment_status: 'paid' })
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Total Sales/i }));
+    await waitFor(() => {
+      const last = salesAPI.daily.mock.calls.at(-1)[0];
+      expect(last.payment_status).toBeUndefined();
+    });
+
+    // Card comes before the "Taken as Debt (N)" tab button.
+    fireEvent.click(screen.getAllByRole('button', { name: /Taken as Debt/i })[0]);
+    await waitFor(() => {
+      expect(salesAPI.daily).toHaveBeenLastCalledWith(
         expect.objectContaining({ payment_status: 'debt' })
       );
     });
@@ -482,7 +508,7 @@ describe('DailySalesPage', () => {
   it('filters by Fully Paid tab', async () => {
     render(<DailySalesPage />);
     await screen.findByText('SALE-PAID-01');
-    fireEvent.click(screen.getByRole('button', { name: /Fully Paid/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Fully Paid \(\d+\)/i }));
     await waitFor(() => {
       expect(salesAPI.daily).toHaveBeenCalledWith(
         expect.objectContaining({ payment_status: 'paid' })
@@ -549,7 +575,7 @@ describe('DailySalesPage', () => {
 
     expect(await screen.findByText('Eve Payer')).toBeInTheDocument();
     expect(screen.getByText(/Amount paid/i)).toBeInTheDocument();
-    expect(screen.getByText(/Received by/i)).toBeInTheDocument();
+    expect(screen.getByText(/Collected by/i)).toBeInTheDocument();
     expect(screen.queryByText('SALE-PAID-01')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Eve Payer' })).toHaveAttribute(
       'href',

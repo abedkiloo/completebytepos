@@ -8,6 +8,7 @@ import {
   EMPTY_CUSTOMER_FORM,
   customerSavePayload,
 } from '../../utils/customerFormState';
+import { applyCustomerFormFieldUpdate } from '../../utils/customerFormFieldUpdate';
 import TypicalGoodsFields from './TypicalGoodsFields';
 import KenyaLocationFields from './KenyaLocationFields';
 
@@ -16,6 +17,30 @@ const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
   const [formErrors, setFormErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [showCommitConfirm, setShowCommitConfirm] = useState(false);
+
+  const updateField = (keyOrPatch, value) => {
+    setFormData((prev) => applyCustomerFormFieldUpdate(prev, keyOrPatch, value));
+    if (typeof keyOrPatch === 'object' && keyOrPatch !== null) {
+      const cleared = Object.keys(keyOrPatch).filter((k) => formErrors[k]);
+      if (cleared.length) {
+        setFormErrors((prev) => {
+          const next = { ...prev };
+          cleared.forEach((k) => {
+            delete next[k];
+          });
+          return next;
+        });
+      }
+      return;
+    }
+    if (formErrors[keyOrPatch]) {
+      setFormErrors((prev) => {
+        const next = { ...prev };
+        delete next[keyOrPatch];
+        return next;
+      });
+    }
+  };
 
   const handleClose = () => {
     // Reset form when closing
@@ -187,25 +212,8 @@ const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
             <KenyaLocationFields
               formData={formData}
               formErrors={formErrors}
-              onChange={(field, value) => {
-                setFormData({ ...formData, [field]: value });
-                if (formErrors[field]) {
-                  setFormErrors({ ...formErrors, [field]: '' });
-                }
-              }}
+              onChange={updateField}
             />
-            <div className="form-group">
-              <label>Location name</label>
-              <input
-                type="text"
-                value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                placeholder="e.g. Gikomba, Pipeline, opposite the bus stage…"
-              />
-              <span className="text-xs text-muted-foreground">
-                Estate, market, or area. County / sub-county / ward selection stays above.
-              </span>
-            </div>
 
             <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Notes

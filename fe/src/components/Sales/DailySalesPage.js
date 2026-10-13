@@ -454,7 +454,7 @@ export default function DailySalesPage() {
         </div>
       ) : null}
 
-      {/* Daily Summary Cards */}
+      {/* Daily Summary Cards — each opens the matching list below */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard
           icon={Receipt}
@@ -462,23 +462,26 @@ export default function DailySalesPage() {
           value={formatCurrency(summary.total_sales)}
           subtext={
             Number(summary.field_orders_count) > 0
-              ? `${summary.orders_count} completed · ${summary.shop_orders_count} shop, ${summary.field_orders_count} field (${formatCurrency(summary.field_sales_total)})`
-              : `${summary.orders_count} completed orders`
+              ? `${summary.orders_count} completed · ${summary.shop_orders_count} shop, ${summary.field_orders_count} field (${formatCurrency(summary.field_sales_total)}) · tap to view`
+              : `${summary.orders_count} completed orders · tap to view`
           }
+          onClick={() => handleTabChange('all')}
         />
         <SummaryCard
           icon={CheckCircle2}
           label="Paid at Checkout"
           value={formatCurrency(summary.total_paid)}
-          subtext={`${summary.paid_orders_count} fully paid orders`}
+          subtext={`${summary.paid_orders_count} fully paid orders · tap to view`}
           tone="success"
+          onClick={() => handleTabChange('paid')}
         />
         <SummaryCard
           icon={TrendingDown}
           label="Taken as Debt"
           value={formatCurrency(summary.total_debt_incurred)}
-          subtext={`${summary.debt_orders_count} debt orders (${summary.partial_orders_count} partial)`}
+          subtext={`${summary.debt_orders_count} debt orders (${summary.partial_orders_count} partial) · tap to view`}
           tone={Number(summary.total_debt_incurred) > 0 ? 'destructive' : 'default'}
+          onClick={() => handleTabChange('debt')}
         />
         <SummaryCard
           icon={Wallet}

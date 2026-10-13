@@ -17,6 +17,7 @@ import {
   customerSavePayload,
   validateCustomerForm,
 } from '../../utils/customerFormState';
+import { applyCustomerFormFieldUpdate } from '../../utils/customerFormFieldUpdate';
 import {
   customersEnableEdit,
   customersShowCustomerType,
@@ -195,10 +196,20 @@ export default function CustomerDetailDialog({
     }
   };
 
-  const updateField = (key, value) => {
-    setFormData((prev) => ({ ...prev, [key]: value }));
-    if (formErrors[key]) {
-      setFormErrors((prev) => ({ ...prev, [key]: '' }));
+  const updateField = (keyOrPatch, value) => {
+    setFormData((prev) => applyCustomerFormFieldUpdate(prev, keyOrPatch, value));
+    const keys =
+      keyOrPatch != null && typeof keyOrPatch === 'object' && !Array.isArray(keyOrPatch)
+        ? Object.keys(keyOrPatch)
+        : [keyOrPatch];
+    if (keys.some((k) => formErrors[k])) {
+      setFormErrors((prev) => {
+        const next = { ...prev };
+        keys.forEach((k) => {
+          delete next[k];
+        });
+        return next;
+      });
     }
   };
 
