@@ -25,8 +25,10 @@ A comprehensive, production-ready Point of Sale (POS) system designed for Kenyan
 ```bash
 cp .env.example .env
 ./run_docker.sh              # development
-# ./run_docker.sh --prod     # production VPS (shop.omuwenga.com)
-# ./run_production.sh        # same as --prod, always rebuilds
+# ./run_docker.sh --prod     # production VPS (shop.omuwenga.com), cached build
+# ./run_production.sh        # same stack; use --be / --fe for selective release
+# ./run_production.sh --be   # backend only (frontend left running)
+# ./run_production.sh --fe   # frontend only (backend left running)
 # ./run_uat.sh               # UAT on the same VPS (uat.omuwenga.com + api.uat.omuwenga.com)
 
 docker exec completebytepos_backend python manage.py setup_new_organization

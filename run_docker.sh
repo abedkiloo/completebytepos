@@ -90,35 +90,86 @@ stop_existing() {
 }
 
 # Production: static React build + nginx (see fe/Dockerfile, docs/DEPLOYMENT.md)
+# $1 = rebuild mode (optional --rebuild), $2 = target (all|be|fe)
 start_containers_prod() {
-    print_info "Building and starting Docker containers ($STACK)..."
+    local rebuild_flag="${1:-}"
+    local target="${2:-all}"
+    local build_extra=()
+    if [ "$rebuild_flag" == "--rebuild" ]; then
+        build_extra+=(--no-cache)
+    fi
+
+    print_info "Building and starting Docker containers ($STACK, target=$target)..."
     print_info "Frontend: npm run build → nginx (static files, NOT react-scripts start)"
     cd "$PROJECT_ROOT"
 
     COMPOSE_FILE="docker-compose.yml"
 
-    if [ "$1" == "--rebuild" ]; then
-        print_info "Rebuilding production images from scratch (backend, then frontend)..."
-        compose -f $COMPOSE_FILE build --no-cache backend
-        compose -f $COMPOSE_FILE build --no-cache frontend
-    else
-        print_info "Building images (backend, then frontend — avoids npm OOM on small VPS)..."
-        compose -f $COMPOSE_FILE build backend
-        compose -f $COMPOSE_FILE build frontend
-    fi
+    build_one() {
+        local service="$1"
+        if [ ${#build_extra[@]} -gt 0 ]; then
+            print_info "Building $service (no cache)..."
+        else
+            print_info "Building $service (cached layers when possible)..."
+        fi
+        compose -f $COMPOSE_FILE build "${build_extra[@]}" "$service"
+    }
 
-    compose -f $COMPOSE_FILE up -d
+    case "$target" in
+        be)
+            build_one backend
+            compose -f $COMPOSE_FILE up -d db backend
+            ;;
+        fe)
+            if ! build_one frontend; then
+                print_error "Frontend build failed. Backend was not touched."
+                exit 1
+            fi
+            compose -f $COMPOSE_FILE up -d --no-deps frontend
+            ;;
+        all|*)
+            build_one backend
+            if ! build_one frontend; then
+                print_error "Frontend build failed after backend image was built."
+                print_info "Starting/keeping backend so the API stays available..."
+                compose -f $COMPOSE_FILE up -d db backend
+                run_migrations || true
+                print_warning "Backend is up. Fix FE, then: ./run_docker.sh --${STACK} --fe"
+                exit 1
+            fi
+            compose -f $COMPOSE_FILE up -d
+            ;;
+    esac
 
     print_info "Waiting for services to be ready..."
     sleep 8
 
-    if docker ps | grep -q "$BACKEND_CONTAINER" && docker ps | grep -q "$FRONTEND_CONTAINER"; then
-        print_success "$STACK containers are running"
-        run_migrations
+    if [ "$target" = "fe" ]; then
+        if docker ps | grep -q "$FRONTEND_CONTAINER"; then
+            print_success "$STACK frontend is running"
+        else
+            print_error "Frontend container failed to start!"
+            compose -f $COMPOSE_FILE logs frontend
+            exit 1
+        fi
+    elif [ "$target" = "be" ]; then
+        if docker ps | grep -q "$BACKEND_CONTAINER"; then
+            print_success "$STACK backend is running"
+            run_migrations
+        else
+            print_error "Backend container failed to start!"
+            compose -f $COMPOSE_FILE logs backend
+            exit 1
+        fi
     else
-        print_error "Some containers failed to start!"
-        compose -f $COMPOSE_FILE logs
-        exit 1
+        if docker ps | grep -q "$BACKEND_CONTAINER" && docker ps | grep -q "$FRONTEND_CONTAINER"; then
+            print_success "$STACK containers are running"
+            run_migrations
+        else
+            print_error "Some containers failed to start!"
+            compose -f $COMPOSE_FILE logs
+            exit 1
+        fi
     fi
 }
 
@@ -342,27 +393,62 @@ configure_stack() {
 main() {
     PROD_MODE=false
     REBUILD=false
+    TARGET="all"
+    local saw_be=false
+    local saw_fe=false
     for arg in "$@"; do
         case "$arg" in
             --prod|--production) PROD_MODE=true; STACK="prod" ;;
             --uat) STACK="uat"; PROD_MODE=true ;;
             --rebuild) REBUILD=true ;;
+            --be) saw_be=true ;;
+            --fe) saw_fe=true ;;
+            --help|-h)
+                echo "Usage: ./run_docker.sh [--prod|--uat] [--be|--fe] [--rebuild]"
+                echo ""
+                echo "  --prod / --uat   Production-style stack (React build + nginx)"
+                echo "  --be             Rebuild/restart backend only (prod/uat)"
+                echo "  --fe             Rebuild/restart frontend only (prod/uat)"
+                echo "  --rebuild        Build without Docker layer cache"
+                echo ""
+                echo "Examples:"
+                echo "  ./run_docker.sh --prod"
+                echo "  ./run_docker.sh --prod --be"
+                echo "  ./run_docker.sh --prod --fe --rebuild"
+                exit 0
+                ;;
         esac
     done
+    if [ "$saw_be" = true ] && [ "$saw_fe" = true ]; then
+        TARGET="all"
+    elif [ "$saw_be" = true ]; then
+        TARGET="be"
+    elif [ "$saw_fe" = true ]; then
+        TARGET="fe"
+    fi
 
     configure_stack
     check_docker
     ensure_env_file
-    stop_existing
+
+    # Selective releases must not tear down the other side (or the whole stack).
+    if [ "$PROD_MODE" = true ] && { [ "$TARGET" = "be" ] || [ "$TARGET" = "fe" ]; }; then
+        print_info "Selective $TARGET release — skipping full stack stop"
+    else
+        stop_existing
+    fi
 
     if [ "$PROD_MODE" = true ]; then
         if [ "$REBUILD" = true ]; then
-            start_containers_prod --rebuild
+            start_containers_prod --rebuild "$TARGET"
         else
-            start_containers_prod
+            start_containers_prod "" "$TARGET"
         fi
         show_status_prod
     else
+        if [ "$saw_be" = true ] || [ "$saw_fe" = true ]; then
+            print_warning "--be / --fe only apply to --prod or --uat (ignored in dev mode)"
+        fi
         if [ "$REBUILD" = true ]; then
             start_containers --rebuild
         else
