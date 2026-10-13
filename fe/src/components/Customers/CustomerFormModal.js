@@ -194,19 +194,22 @@ const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
                 }
               }}
             />
-
-            <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Notes
-            </p>
             <div className="form-group">
-              <label>Landmark</label>
+              <label>Location name</label>
               <input
                 type="text"
                 value={formData.address}
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                placeholder="Next to the market, opposite the bus stage…"
+                placeholder="e.g. Gikomba, Pipeline, opposite the bus stage…"
               />
+              <span className="text-xs text-muted-foreground">
+                Estate, market, or area. County / sub-county / ward selection stays above.
+              </span>
             </div>
+
+            <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Notes
+            </p>
             <div className="form-group">
               <label>Contact person</label>
               <input

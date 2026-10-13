@@ -118,6 +118,21 @@ export default function CustomerFormDialog({
                 onChange={onChange}
               />
 
+              <Field
+                label="Location name"
+                htmlFor="cust-address"
+                hint="Estate, market, or area. County / sub-county / ward selection stays above."
+              >
+                <textarea
+                  id="cust-address"
+                  value={formData.address}
+                  onChange={(e) => onChange('address', e.target.value)}
+                  rows={2}
+                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  placeholder="e.g. Gikomba, Pipeline, opposite the bus stage…"
+                />
+              </Field>
+
               {showTaxId && (
                 <Field
                   label="Tax ID / VAT number"
@@ -135,16 +150,6 @@ export default function CustomerFormDialog({
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Notes
               </p>
-              <Field label="Landmark" htmlFor="cust-address">
-                <textarea
-                  id="cust-address"
-                  value={formData.address}
-                  onChange={(e) => onChange('address', e.target.value)}
-                  rows={2}
-                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                  placeholder="Next to the market, opposite the bus stage…"
-                />
-              </Field>
 
               <Field label="Contact person" htmlFor="cust-contact">
                 <Input
