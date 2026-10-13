@@ -23,11 +23,11 @@ const policy = {
   ],
   monthly_bonus_bands: [
     { min: 0, stars: 1, bonus: 0, label: '' },
-    { min: 600000, stars: 2, bonus: 0, label: '' },
-    { min: 800000, stars: 3, bonus: 0, label: '' },
-    { min: 1000000, stars: 4, bonus: 2000, label: 'BASE' },
-    { min: 1250000, stars: 4.5, bonus: 6000, label: '' },
-    { min: 1500000, stars: 5, bonus: 10000, label: 'MAX' },
+    { min: 312000, stars: 2, bonus: 0, label: '' },
+    { min: 416000, stars: 3, bonus: 0, label: '' },
+    { min: 520000, stars: 4, bonus: 2000, label: 'BASE' },
+    { min: 650000, stars: 4.5, bonus: 6000, label: '' },
+    { min: 780000, stars: 5, bonus: 10000, label: 'MAX' },
   ],
   daily_tip_packs: [],
   role_daily_targets: {
@@ -57,18 +57,18 @@ describe('AppraisalTemplateForm', () => {
     expect(screen.getByTestId('appraisal-rules-preview')).toHaveTextContent(/Daily target/i);
   });
 
-  it('preview scales 4★ daily and bonus mins to the selected role target', () => {
+  it('preview scales 4★ daily and month expected to the selected role target', () => {
     render(
       <AppraisalTemplateForm saving={false} onSave={jest.fn()} policy={policy} />
     );
 
     fireEvent.change(screen.getByLabelText('Editing role'), { target: { value: 'Manager' } });
     const preview = screen.getByTestId('appraisal-rules-preview');
-    expect(preview).toHaveTextContent(/Daily target/);
+    expect(preview).toHaveTextContent(/Daily target \(4★ day\)/);
     expect(preview).toHaveTextContent('35,000');
-    expect(preview).toHaveTextContent(/4★ target/);
-    // 4★ bonus threshold scales 1M × 35/20 = 1.75M
-    expect(preview).toHaveTextContent(/4★ bonus from/);
-    expect(preview).toHaveTextContent('1,750,000');
+    expect(preview).toHaveTextContent(/Daily 4★ at/);
+    // Month 4★ / expected = 35,000 × 26 working days = 910,000
+    expect(preview).toHaveTextContent(/Month 4★ \/ expected/);
+    expect(preview).toHaveTextContent('910,000');
   });
 });

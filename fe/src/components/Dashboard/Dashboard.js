@@ -338,8 +338,8 @@ const Dashboard = () => {
               <Link key={to} to={to} className="group block">
                 <Card className="h-full transition-colors hover:border-primary/40 hover:bg-muted/30">
                   <CardContent className="flex items-center gap-4 p-4">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                      <Icon className="h-5 w-5" />
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
+                      <Icon className="h-5 w-5" strokeWidth={2.25} aria-hidden />
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="font-medium group-hover:text-primary">{label}</p>

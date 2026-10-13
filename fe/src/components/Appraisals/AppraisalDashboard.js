@@ -149,7 +149,8 @@ function BonusLadder({ month, bands, bonusMinStars = 4 }) {
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-xs text-muted-foreground">
-          Cash starts at {Number(bonusMinStars || 4)}★ (KES 2,000 base). Higher sales unlock more, up to the role cap.
+          Cash starts at {Number(bonusMinStars || 4)}★ when month sales hit daily target × working days
+          (KES 2,000 base), then steps up to the role cap.
         </p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Metric label="Current sales" value={kes(sales)} tone={month?.tone} />

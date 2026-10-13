@@ -56,22 +56,22 @@ class AppraisalEngineTests(SimpleTestCase):
     def test_monthly_bonus_bands(self):
         cases = [
             (0, 1, 0),
-            (599999, 1, 0),
-            (600000, 2, 0),  # stars below 4★ → no cash
-            (800000, 3, 0),
-            (1000000, 4, 2000),  # base bonus at 4★
-            (1250000, 4.5, 6000),
-            (1500000, 5, 10000),
+            (311999, 1, 0),
+            (312000, 2, 0),  # stars below 4★ → no cash
+            (416000, 3, 0),
+            (520000, 4, 2000),  # base bonus at 4★ = daily × 26
+            (650000, 4.5, 6000),
+            (780000, 5, 10000),
             (2000000, 5, 10000),
         ]
         for amount, stars, bonus in cases:
             rating = monthly_bonus(amount, self.template)
             self.assertEqual(rating['stars'], stars, msg=amount)
             self.assertEqual(rating['bonus'], bonus, msg=amount)
-        almost = monthly_bonus(1100000, self.template)
+        almost = monthly_bonus(580000, self.template)
         self.assertEqual(almost['bonus'], 2000)
         self.assertEqual(almost['next_bonus'], 6000)
-        self.assertEqual(almost['amount_to_next'], 150000)
+        self.assertEqual(almost['amount_to_next'], 70000)
 
     def test_bonus_gated_below_four_stars_even_if_band_misconfigured(self):
         custom = normalize_template({
@@ -92,14 +92,16 @@ class AppraisalEngineTests(SimpleTestCase):
             **self.template,
             'bonus_min_stars': 4,
             'monthly_bonus_bands': [
-                {'min': 520000, 'stars': 1, 'bonus': 2000, 'label': 'BASE'},
-                {'min': 850000, 'stars': 2, 'bonus': 5000, 'label': 'BUILDER'},
-                {'min': 1175000, 'stars': 3, 'bonus': 7500, 'label': 'PRO'},
-                {'min': 1500000, 'stars': 4, 'bonus': 10000, 'label': 'CHAMPION'},
+                {'min': 0, 'stars': 1, 'bonus': 2000, 'label': 'BASE'},
+                {'min': 200000, 'stars': 2, 'bonus': 5000, 'label': 'BUILDER'},
+                {'min': 350000, 'stars': 3, 'bonus': 7500, 'label': 'PRO'},
+                # 4★ stays at daily × working days (520k); cash still starts from 1★.
+                {'min': 520000, 'stars': 4, 'bonus': 10000, 'label': 'CHAMPION'},
             ],
         })
         self.assertEqual(saved['bonus_min_stars'], 1)
-        self.assertEqual(monthly_bonus(520000, saved)['bonus'], 2000)
+        self.assertEqual(monthly_bonus(0, saved)['bonus'], 2000)
+        self.assertEqual(monthly_bonus(520000, saved)['bonus'], 10000)
 
     def test_monthly_average_and_four_star_month(self):
         avg = monthly_average(104, 26)
@@ -311,23 +313,26 @@ class AppraisalEngineTests(SimpleTestCase):
             },
         })
         sales = template_for_role(template, 'Sales Personnel')
-        self.assertEqual(monthly_bonus(1000000, sales)['bonus'], 2000)
-        self.assertEqual(monthly_bonus(999999, sales)['bonus'], 0)
+        # Sales 4★ cash = 20,000 × 26 working days = 520,000.
+        self.assertEqual(monthly_bonus(520000, sales)['bonus'], 2000)
+        self.assertEqual(monthly_bonus(519999, sales)['bonus'], 0)
+        sales_four = next(b for b in sales['monthly_bonus_bands'] if abs(b['stars'] - 4) < 0.01)
+        self.assertEqual(sales_four['min'], 520000)
 
-        # Manager target is 1.75× Sales → 4★ bonus threshold becomes 1,750,000.
+        # Manager 35,000 × 26 = 910,000 for monthly 4★.
         manager = template_for_role(template, 'Manager')
         four = next(b for b in manager['monthly_bonus_bands'] if abs(b['stars'] - 4) < 0.01)
-        self.assertEqual(four['min'], 1750000)
+        self.assertEqual(four['min'], 910000)
         self.assertEqual(four['bonus'], 2000)  # cash award unchanged
-        self.assertEqual(monthly_bonus(1000000, manager)['bonus'], 0)
-        self.assertEqual(monthly_bonus(1750000, manager)['bonus'], 2000)
-        self.assertEqual(monthly_bonus(2625000, manager)['bonus'], 10000)
+        self.assertEqual(monthly_bonus(520000, manager)['bonus'], 0)
+        self.assertEqual(monthly_bonus(910000, manager)['bonus'], 2000)
+        self.assertEqual(monthly_bonus(1365000, manager)['bonus'], 10000)
 
-        # Field Sales 1.25× → 4★ at 1,250,000.
+        # Field Sales 25,000 × 26 = 650,000.
         field = template_for_role(template, 'Field Sales')
         field_four = next(b for b in field['monthly_bonus_bands'] if abs(b['stars'] - 4) < 0.01)
-        self.assertEqual(field_four['min'], 1250000)
-        self.assertEqual(monthly_bonus(1250000, field)['bonus'], 2000)
+        self.assertEqual(field_four['min'], 650000)
+        self.assertEqual(monthly_bonus(650000, field)['bonus'], 2000)
 
     def test_framework_own_bands_still_scale_so_four_star_equals_target(self):
         """Preview/runtime: own bands copied from Sales (4★=20k) still scale to role target."""
@@ -346,7 +351,7 @@ class AppraisalEngineTests(SimpleTestCase):
         self.assertEqual(four['min'], 25000)
         self.assertEqual(daily_star(25000, field)['stars'], 4)
         bonus_four = next(b for b in field['monthly_bonus_bands'] if abs(b['stars'] - 4) < 0.01)
-        self.assertEqual(bonus_four['min'], 1250000)
+        self.assertEqual(bonus_four['min'], 650000)
 
     def test_admin_roles_are_not_given_a_daily_target(self):
         template = normalize_template({

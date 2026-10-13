@@ -24,8 +24,8 @@ CONTRACT_LINE = (
 
 BONUS_POLICY_LINE = (
     'Monthly bonus starts only at 4 Stars (KES 2,000 base). '
-    'Sales thresholds scale with each role’s daily target; cash awards stay the same, '
-    'up to KES 10,000 at 5 Stars.'
+    '4★ sales = that role’s daily target × working days (e.g. 20,000 × 26 = 520,000). '
+    'Cash awards stay the same across roles, up to KES 10,000 at 5 Stars.'
 )
 
 DEFAULT_DAILY_BANDS = [
@@ -36,14 +36,15 @@ DEFAULT_DAILY_BANDS = [
     {'min': 24000, 'stars': 5, 'label': 'OVER TARGET'},
 ]
 
-# Cash bonus begins at 4★ (KES 2,000). Segments below that keep star labels but pay 0.
+# Cash bonus begins at 4★ (KES 2,000). 4★ min = sales daily × 26 working days (520,000).
+# apply_daily_target re-anchors this to each role’s daily × working_days.
 DEFAULT_BONUS_BANDS = [
     {'min': 0, 'stars': 1, 'bonus': 0, 'label': ''},
-    {'min': 600000, 'stars': 2, 'bonus': 0, 'label': ''},
-    {'min': 800000, 'stars': 3, 'bonus': 0, 'label': ''},
-    {'min': 1000000, 'stars': 4, 'bonus': 2000, 'label': 'BASE'},
-    {'min': 1250000, 'stars': 4.5, 'bonus': 6000, 'label': ''},
-    {'min': 1500000, 'stars': 5, 'bonus': 10000, 'label': 'MAX'},
+    {'min': 312000, 'stars': 2, 'bonus': 0, 'label': ''},
+    {'min': 416000, 'stars': 3, 'bonus': 0, 'label': ''},
+    {'min': 520000, 'stars': 4, 'bonus': 2000, 'label': 'BASE'},
+    {'min': 650000, 'stars': 4.5, 'bonus': 6000, 'label': ''},
+    {'min': 780000, 'stars': 5, 'bonus': 10000, 'label': 'MAX'},
 ]
 
 DEFAULT_TEMPLATE: dict[str, Any] = {
@@ -239,11 +240,38 @@ def resolve_role_daily_target(template: dict[str, Any], role_name: str) -> float
     return _float(template.get('daily_target'), 20000)
 
 
-def apply_daily_target(template: dict[str, Any], target: float) -> dict[str, Any]:
-    """Copy template with daily_target set; scale daily star and monthly bonus mins to that target.
+def _anchor_monthly_four_star_to_expected(data: dict[str, Any]) -> None:
+    """Ensure monthly 4★ cash threshold equals daily_target × working_days (mutates ``data``)."""
+    amount = max(0.0, _float(data.get('daily_target'), 0))
+    working_days = max(1, _int(data.get('working_days'), 26))
+    month_four = amount * working_days
+    bonus_bands = list(data.get('monthly_bonus_bands') or [])
+    if amount <= 0 or not bonus_bands:
+        return
+    four_bonus = next(
+        (band for band in bonus_bands if abs(_float(band.get('stars'), 0) - 4) < 0.01),
+        None,
+    )
+    if four_bonus is None:
+        return
+    old_four = _float(four_bonus.get('min'), 0)
+    if old_four <= 0 or abs(old_four - month_four) <= 0.01:
+        return
+    fix = month_four / old_four
+    scaled = []
+    for band in bonus_bands:
+        row = dict(band)
+        row['min'] = round(max(0.0, _float(band.get('min'), 0) * fix), 2)
+        scaled.append(row)
+    data['monthly_bonus_bands'] = scaled
 
-    4★ daily band becomes ``target``. Monthly bonus thresholds scale by the same ratio so each
-    role’s ladder matches its daily target; cash bonus amounts are left unchanged.
+
+def apply_daily_target(template: dict[str, Any], target: float) -> dict[str, Any]:
+    """Copy template with daily_target set; scale ladders so 4★ matches that role.
+
+    - Daily 4★ band min becomes ``target``.
+    - Monthly 4★ (cash BASE) min becomes ``target × working_days`` (e.g. 20k × 26 = 520k).
+    - Cash bonus amounts are left unchanged.
     """
     data = copy.deepcopy(template)
     amount = max(0.0, _float(target, 0))
@@ -266,14 +294,31 @@ def apply_daily_target(template: dict[str, Any], target: float) -> dict[str, Any
                 row['min'] = round(max(0.0, _float(band.get('min'), 0) * ratio), 2)
                 scaled.append(row)
             data['daily_star_bands'] = scaled
-        bonus_bands = list(data.get('monthly_bonus_bands') or [])
+        bonus_bands = [dict(band) for band in (data.get('monthly_bonus_bands') or [])]
         if bonus_bands:
-            scaled_bonus = []
             for band in bonus_bands:
-                row = dict(band)
-                row['min'] = round(max(0.0, _float(band.get('min'), 0) * ratio), 2)
-                scaled_bonus.append(row)
-            data['monthly_bonus_bands'] = scaled_bonus
+                band['min'] = round(max(0.0, _float(band.get('min'), 0) * ratio), 2)
+            # Re-anchor so monthly 4★ always equals daily × working days for this role.
+            working_days = max(1, _int(data.get('working_days'), 26))
+            month_four = amount * working_days
+            four_bonus = next(
+                (
+                    band
+                    for band in bonus_bands
+                    if abs(_float(band.get('stars'), 0) - 4) < 0.01
+                ),
+                None,
+            )
+            if four_bonus is not None:
+                old_four = _float(four_bonus.get('min'), 0)
+                if old_four > 0 and abs(old_four - month_four) > 0.01:
+                    fix = month_four / old_four
+                    for band in bonus_bands:
+                        band['min'] = round(
+                            max(0.0, _float(band.get('min'), 0) * fix),
+                            2,
+                        )
+            data['monthly_bonus_bands'] = bonus_bands
     return data
 
 
@@ -296,7 +341,7 @@ def _normalize_one_framework(raw: dict[str, Any], base: dict[str, Any]) -> dict[
         raw.get('four_star_months_required'),
         _int(base.get('four_star_months_required'), 8),
     )
-    return {
+    framework = {
         'basic_pay': max(0.0, _float(raw.get('basic_pay'), base.get('basic_pay') or 0)),
         'daily_target': daily,
         'year_end_increment': max(
@@ -315,6 +360,10 @@ def _normalize_one_framework(raw: dict[str, Any], base: dict[str, Any]) -> dict[
         'daily_star_bands': daily_bands,
         'monthly_bonus_bands': bonus_bands,
     }
+    # Keep each role’s 4★ cash start at daily_target × working_days (Sales 520k, Manager 910k).
+    if framework['monthly_bonus_bands']:
+        _anchor_monthly_four_star_to_expected(framework)
+    return framework
 
 
 def _normalize_role_frameworks(raw: Any, base: dict[str, Any]) -> dict[str, Any]:
@@ -567,6 +616,8 @@ def normalize_template(raw: Any) -> dict[str, Any]:
         data['role_daily_targets'].get('Manager', data['manager_daily_target']),
         data['manager_daily_target'],
     )
+    # Keep global Sales ladder 4★ cash = daily_target × working_days (legacy 1M → 520k).
+    _anchor_monthly_four_star_to_expected(data)
     data['role_frameworks'] = _normalize_role_frameworks(raw, data)
     for name, framework in data['role_frameworks'].items():
         data['role_daily_targets'][name] = _float(

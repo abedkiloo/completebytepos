@@ -55,8 +55,20 @@ class AppraisalMeAPITests(SalesAPITestCase):
         today = response.data['today']
         self.assertEqual(today['stars'], 3)
         self.assertEqual(today['amount_to_target'], 1500)
+        self.assertEqual(today['target'], 20000)
         self.assertEqual(today['tone'], 'amber')
         self.assertTrue(response.data['has_personal_target'])
+        self.assertEqual(response.data['staff']['role'], 'Sales Personnel')
+        # Monthly expected / 4★ cash = 20,000 × 26 — never the manager 910k ladder.
+        self.assertEqual(response.data['month']['expected_sales'], 520000.0)
+        applied = response.data['applied_policy']
+        self.assertEqual(applied['role'], 'Sales Personnel')
+        self.assertEqual(applied['daily_target'], 20000)
+        bonus_four = next(
+            b for b in applied['monthly_bonus_bands'] if abs(float(b['stars']) - 4) < 0.01
+        )
+        self.assertEqual(bonus_four['min'], 520000)
+        self.assertEqual(bonus_four['bonus'], 2000)
         self.assertIn('headline', response.data['greeting'])
         self.assertNotIn('Bonus', response.data['greeting']['detail'])
         self.assertEqual(len(response.data['today_tips']['tips']), 5)
@@ -154,7 +166,7 @@ class AppraisalTeamAPITests(ManagerAPITestCase):
         bonus_four = next(
             b for b in applied['monthly_bonus_bands'] if abs(float(b['stars']) - 4) < 0.01
         )
-        self.assertEqual(bonus_four['min'], 1750000)
+        self.assertEqual(bonus_four['min'], 910000)  # 35,000 × 26 working days
         self.assertEqual(bonus_four['bonus'], 2000)
         team = self.client.get('/api/appraisals/team/')
         self.assertEqual(team.status_code, status.HTTP_200_OK)
