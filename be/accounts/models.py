@@ -49,6 +49,9 @@ class Permission(models.Model):
         ('export', 'Export'),
         ('import', 'Import'),
         ('manage', 'Manage'),  # Full management access
+        ('payments_trail', 'Payments trail'),
+        ('daily_sales', 'Daily sales'),
+        ('view_all', 'View all'),
     ]
 
     module = models.CharField(max_length=50, choices=MODULE_CHOICES)

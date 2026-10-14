@@ -1277,7 +1277,7 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         detail=False,
         methods=['get'],
         url_path='payments-trail',
-        permission_classes=[IsAuthenticated, RequirePerm('debt_management', 'view')],
+        permission_classes=[IsAuthenticated, RequirePerm('debt_management', 'payments_trail')],
     )
     def payments_trail(self, request):
         """Store-wide money-in trail with paid-towards targets and debt balancing."""

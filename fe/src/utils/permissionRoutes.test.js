@@ -64,6 +64,7 @@ describe('permissionRoutes registry', () => {
     expect(moduleForPath('/pos/billing')).toBe('pos');
     expect(moduleForPath('/invoices/123')).toBe('invoicing');
     expect(moduleForPath('/customers/debt')).toBe('debt_management');
+    expect(moduleForPath('/customers/payments')).toBe('debt_management');
     expect(moduleForPath('/unknown')).toBeNull();
   });
 
@@ -89,6 +90,12 @@ describe('permissionRoutes registry', () => {
     const { routePermissionGateForPath } = require('./permissionRoutes');
     expect(routePermissionGateForPath('/customers/debt')).toEqual(
       expect.objectContaining({ module: 'debt_management', action: 'view' })
+    );
+    expect(routePermissionGateForPath('/customers/payments')).toEqual(
+      expect.objectContaining({
+        module: 'debt_management',
+        action: 'payments_trail',
+      })
     );
     const dailyAnyOf = [
       { module: 'sales', action: 'view' },

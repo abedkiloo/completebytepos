@@ -162,7 +162,7 @@ export const NAV_SECTIONS = [
         to: '/customers/payments',
         label: 'Payments trail',
         icon: Banknote,
-        permission: ['debt_management', 'view'],
+        permission: ['debt_management', 'payments_trail'],
       },
       {
         to: '/sms-templates',

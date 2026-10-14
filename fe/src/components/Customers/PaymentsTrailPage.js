@@ -5,6 +5,7 @@ import { Banknote, Search } from 'lucide-react';
 import { customersAPI } from '../../services/api';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { toast } from '../../utils/toast';
+import { getStoredAuth, hasPermission } from '../../utils/roleAccess';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { customerDetailPath, formatDebtTrail } from '../../utils/customerDetail';
 import {
@@ -52,6 +53,8 @@ function defaultDateFrom() {
 }
 
 export default function PaymentsTrailPage() {
+  const { permissions } = getStoredAuth();
+  const allowed = hasPermission(permissions, 'debt_management', 'payments_trail');
   const [kind, setKind] = useState('all');
   const [dateFrom, setDateFrom] = useState(defaultDateFrom);
   const [dateTo, setDateTo] = useState(getTodayDateString);
@@ -64,6 +67,12 @@ export default function PaymentsTrailPage() {
   const [count, setCount] = useState(0);
 
   const load = useCallback(async () => {
+    if (!allowed) {
+      setLoading(false);
+      setRows([]);
+      setCount(0);
+      return;
+    }
     setLoading(true);
     try {
       const params = {
@@ -84,7 +93,7 @@ export default function PaymentsTrailPage() {
     } finally {
       setLoading(false);
     }
-  }, [kind, dateFrom, dateTo, debouncedSearch, page, pageSize]);
+  }, [allowed, kind, dateFrom, dateTo, debouncedSearch, page, pageSize]);
 
   useEffect(() => {
     load();
@@ -93,6 +102,22 @@ export default function PaymentsTrailPage() {
   useEffect(() => {
     setPage(1);
   }, [kind, dateFrom, dateTo, debouncedSearch]);
+
+  if (!allowed) {
+    return (
+      <PageShell>
+        <PageHeader
+          title="Payments trail"
+          description="Every payment in, what it settled, and the debt balance after — for audit and balancing."
+        />
+        <EmptyState
+          icon={Banknote}
+          title="Payments trail is restricted"
+          description="Only managers (or roles with Payments trail permission) can open this page. Ask an admin if you need access."
+        />
+      </PageShell>
+    );
+  }
 
   return (
     <PageShell>

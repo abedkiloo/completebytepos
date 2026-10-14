@@ -26,6 +26,7 @@ export const ROUTE_MODULE_MAP = {
   '/sales/daily': 'sales',
   '/sales/field': 'sales',
   '/sales': 'sales',
+  '/customers/payments': 'debt_management',
   '/customers/debt': 'debt_management',
   '/customers': 'customers',
   '/invoices': 'invoicing',
@@ -84,6 +85,7 @@ export const NAV_SECTION_MODULES = {
 
 /** Path prefixes that need a specific permission action (beyond module enablement). */
 export const ROUTE_PERMISSION_GATES = [
+  { prefix: '/customers/payments', module: 'debt_management', action: 'payments_trail' },
   { prefix: '/customers/debt', module: 'debt_management', action: 'view' },
   { prefix: '/normal-sale', module: 'sales', action: 'create' },
   {

@@ -115,6 +115,30 @@ describe('roleAccess', () => {
     expect(canAccessRoute(PERSONA.MANAGER, '/sales/approvals')).toBe(true);
   });
 
+  test('payments trail requires debt_management.payments_trail (not sales debt view)', () => {
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([
+        { module: 'debt_management', action: 'view', name: 'debt_management.view' },
+        { module: 'customers', action: 'view', name: 'customers.view' },
+      ])
+    );
+    expect(canAccessRoute(PERSONA.MANAGER, '/customers/payments')).toBe(false);
+    expect(canAccessRoute(PERSONA.SALES, '/customers/payments')).toBe(false);
+
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([
+        {
+          module: 'debt_management',
+          action: 'payments_trail',
+          name: 'debt_management.payments_trail',
+        },
+      ])
+    );
+    expect(canAccessRoute(PERSONA.MANAGER, '/customers/payments')).toBe(true);
+  });
+
   test('super admin can access all app modules', () => {
     const paths = [
       '/categories',

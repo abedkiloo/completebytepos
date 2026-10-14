@@ -46,9 +46,11 @@ class DefaultRolePermissionTests(TestCase):
         self.assertTrue(self._has(self.manager_role, 'debt_management', 'view'))
         self.assertTrue(self._has(self.manager_role, 'debt_management', 'update'))
         self.assertTrue(self._has(self.manager_role, 'debt_management', 'approve'))
+        self.assertTrue(self._has(self.manager_role, 'debt_management', 'payments_trail'))
         self.assertTrue(self._has(self.sales_role, 'debt_management', 'view'))
         self.assertTrue(self._has(self.sales_role, 'debt_management', 'update'))
         self.assertFalse(self._has(self.sales_role, 'debt_management', 'approve'))
+        self.assertFalse(self._has(self.sales_role, 'debt_management', 'payments_trail'))
 
     def test_super_admin_has_all_permissions(self):
         total = Permission.objects.count()

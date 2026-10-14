@@ -80,6 +80,11 @@ export default function DebtManagementPage() {
   const canCollect =
     hasPermission(permissions, 'debt_management', 'update') &&
     customersEnableWalletPayment(customerSettings);
+  const canViewPaymentsTrail = hasPermission(
+    permissions,
+    'debt_management',
+    'payments_trail'
+  );
   const canSendReminders =
     hasPermission(permissions, 'messaging', 'create') ||
     hasPermission(permissions, 'debt_management', 'update');
@@ -224,12 +229,14 @@ export default function DebtManagementPage() {
         title="Debt Management"
         description="See who owes money, how old the debt is, and collect payments."
       >
-        <Button type="button" variant="outline" asChild>
-          <Link to="/customers/payments">
-            <Banknote className="mr-1.5 h-4 w-4" />
-            Payments trail
-          </Link>
-        </Button>
+        {canViewPaymentsTrail ? (
+          <Button type="button" variant="outline" asChild>
+            <Link to="/customers/payments">
+              <Banknote className="mr-1.5 h-4 w-4" />
+              Payments trail
+            </Link>
+          </Button>
+        ) : null}
         {canSendReminders ? (
           <>
             <Button type="button" variant="outline" onClick={() => setReminderOpen(true)}>

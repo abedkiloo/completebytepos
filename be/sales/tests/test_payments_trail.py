@@ -13,6 +13,11 @@ from sales.models import (
     Sale,
     SaleItem,
 )
+from django.contrib.auth.models import User
+from rest_framework_simplejwt.tokens import RefreshToken
+
+from accounts.models import Role, UserProfile
+from accounts.role_definitions import ROLE_SALES
 from sales.payments_trail import list_payments_trail
 from sales.services import CustomerService
 from utils.tests.api_test_base import ManagerAPITestCase
@@ -125,3 +130,20 @@ class PaymentsTrailTests(ManagerAPITestCase):
         self.assertEqual(row['kind'], 'debt_settlement')
         self.assertIn('paid_towards', row)
         self.assertIn('previous_debt', row)
+
+    def test_sales_person_cannot_open_payments_trail(self):
+        sales_user = User.objects.create_user(username='trail_sales', password='sales123')
+        UserProfile.objects.create(
+            user=sales_user,
+            role='cashier',
+            custom_role=Role.objects.get(name=ROLE_SALES),
+            is_active=True,
+        )
+        token = RefreshToken.for_user(sales_user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+        today = timezone.localdate().isoformat()
+        response = self.client.get(
+            '/api/sales/customers/payments-trail/',
+            {'date_from': today, 'date_to': today},
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
