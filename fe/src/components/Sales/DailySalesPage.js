@@ -52,6 +52,7 @@ import SaleDetailDialog from './SaleDetailDialog';
 import RefundSaleDialog from './RefundSaleDialog';
 import SaleRollbackDialog from './SaleRollbackDialog';
 import ReceiveWalletPaymentDialog from '../Customers/ReceiveWalletPaymentDialog';
+import CheckpointMarkersStrip from '../Inventory/CheckpointMarkersStrip';
 
 import {
   PageShell,
@@ -365,6 +366,7 @@ export default function DailySalesPage() {
 
   return (
     <PageShell>
+      <CheckpointMarkersStrip className="mb-1" />
       <PageHeader
         title="Daily Sales Tracker"
         description={

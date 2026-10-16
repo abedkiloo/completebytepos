@@ -48,6 +48,12 @@ class Command(BaseCommand):
             {'code': '6100', 'name': 'Rent Expense', 'type': 'expense', 'description': 'Rent payments'},
             {'code': '6200', 'name': 'Utilities Expense', 'type': 'expense', 'description': 'Utility bills'},
             {'code': '6300', 'name': 'Salaries Expense', 'type': 'expense', 'description': 'Employee salaries'},
+            {
+                'code': '6400',
+                'name': 'Inventory count variance',
+                'type': 'expense',
+                'description': 'Stock checkpoint count variance',
+            },
         ]
         
         for acc_data in accounts:

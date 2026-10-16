@@ -15,31 +15,74 @@ from sales.models import SaleRefund
 from .week_summary import monday_of_week, week_sales_summary
 
 
+def _checkpoint_baseline_start(params):
+    """
+    Optional stock-checkpoint reporting baseline.
+    ``since_checkpoint_id`` or ``use_checkpoint_baseline=1`` (latest closed).
+    """
+    from inventory.checkpoint_services import latest_closed_checkpoint
+    from inventory.models import StockCheckpoint
+
+    raw_id = params.get('since_checkpoint_id')
+    if raw_id:
+        try:
+            cp = StockCheckpoint.objects.filter(
+                pk=int(raw_id),
+                status=StockCheckpoint.STATUS_CLOSED,
+                closed_at__isnull=False,
+            ).first()
+            if cp:
+                return cp.closed_at, f'checkpoint:{cp.id}'
+        except (TypeError, ValueError):
+            pass
+
+    flag = str(params.get('use_checkpoint_baseline') or '').lower().strip()
+    if flag in ('1', 'true', 'yes'):
+        latest = latest_closed_checkpoint()
+        if latest and latest.closed_at:
+            return latest.closed_at, f'checkpoint:{latest.id}'
+    return None, None
+
+
 def resolve_period(request):
     """
     Parse ``?period=today|week|month|year`` into a (start, end, label) tuple.
   Falls back to explicit ``date_from`` / ``date_to`` query params.
 
     ``week`` is the current calendar week starting Monday (not a rolling 7 days).
+
+    Optional stock checkpoint baseline:
+    ``since_checkpoint_id`` or ``use_checkpoint_baseline=1`` raises the floor
+    of ``start`` to the checkpoint ``closed_at`` (new sales journey).
     """
     now = timezone.now()
     today = now.date()
     params = getattr(request, 'query_params', request.GET)
     period = (params.get('period') or '').lower().strip()
+    baseline_start, baseline_label = _checkpoint_baseline_start(params)
+
+    def _apply_baseline(start, label):
+        if baseline_start and (start is None or baseline_start > start):
+            return baseline_start, baseline_label or label
+        return start, label
 
     if period == 'today':
         start = timezone.make_aware(datetime.combine(today, datetime.min.time()))
-        return start, now, 'today'
+        start, label = _apply_baseline(start, 'today')
+        return start, now, label
     if period == 'week':
         monday = monday_of_week(today)
         start = timezone.make_aware(datetime.combine(monday, datetime.min.time()))
-        return start, now, 'week'
+        start, label = _apply_baseline(start, 'week')
+        return start, now, label
     if period == 'month':
         start = timezone.make_aware(datetime.combine(today.replace(day=1), datetime.min.time()))
-        return start, now, 'month'
+        start, label = _apply_baseline(start, 'month')
+        return start, now, label
     if period == 'year':
         start = timezone.make_aware(datetime(today.year, 1, 1))
-        return start, now, 'year'
+        start, label = _apply_baseline(start, 'year')
+        return start, now, label
 
     date_from = params.get('date_from')
     date_to = params.get('date_to')
@@ -57,7 +100,8 @@ def resolve_period(request):
             )
         except (TypeError, ValueError):
             end = None
-    return start, end, 'custom'
+    start, label = _apply_baseline(start, 'custom')
+    return start, end, label
 
 
 class ReportDashboardService:

@@ -65,6 +65,7 @@ describe('permissionRoutes registry', () => {
     expect(moduleForPath('/invoices/123')).toBe('invoicing');
     expect(moduleForPath('/customers/debt')).toBe('debt_management');
     expect(moduleForPath('/customers/payments')).toBe('debt_management');
+    expect(moduleForPath('/inventory/checkpoints')).toBe('inventory');
     expect(moduleForPath('/unknown')).toBeNull();
   });
 
@@ -96,6 +97,9 @@ describe('permissionRoutes registry', () => {
         module: 'debt_management',
         action: 'payments_trail',
       })
+    );
+    expect(routePermissionGateForPath('/inventory/checkpoints')).toEqual(
+      expect.objectContaining({ module: 'inventory', action: 'manage' })
     );
     const dailyAnyOf = [
       { module: 'sales', action: 'view' },

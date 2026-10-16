@@ -235,6 +235,9 @@ class SaleService(BaseService):
             
             # Stock is enforced at checkout, not while saving holding drafts.
             if check_stock and product.track_stock:
+                from inventory.checkpoint_services import assert_product_sellable
+
+                assert_product_sellable(product, variant)
                 stock_quantity = approved_sellable_stock_quantity(product, variant)
                 if stock_quantity < quantity:
                     stock_info = variant.sku if variant else product.name

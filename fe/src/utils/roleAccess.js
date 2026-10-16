@@ -37,6 +37,7 @@ export const APP_ROUTE_PREFIXES = [
   '/sales',
   '/sales/approvals',
   '/inventory',
+  '/inventory/checkpoints',
   '/barcodes',
   '/reports',
   '/audit-log',

@@ -490,6 +490,15 @@ export const inventoryAPI = {
     api.get('/inventory/product_history/', {
       params: { product_id: productId, ...params },
     }),
+  checkpoints: (params) => api.get('/inventory/checkpoints/', { params }),
+  checkpoint: (id) => api.get(`/inventory/checkpoints/${id}/`),
+  openCheckpoint: (data) => api.post('/inventory/checkpoints/open/', data),
+  countCheckpointLine: (checkpointId, lineId, data) =>
+    api.post(`/inventory/checkpoints/${checkpointId}/lines/${lineId}/count/`, data),
+  closeCheckpoint: (id) => api.post(`/inventory/checkpoints/${id}/close/`),
+  cancelCheckpoint: (id) => api.post(`/inventory/checkpoints/${id}/cancel/`),
+  checkpointBaselines: () => api.get('/inventory/checkpoints/baselines/'),
+  blockedCheckpointProducts: () => api.get('/inventory/checkpoints/blocked-products/'),
 };
 
 export const authAPI = {

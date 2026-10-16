@@ -71,3 +71,25 @@ class ResolvePeriodTestCase(TestCase):
         self.assertEqual(label, 'custom')
         self.assertIsNone(start)
         self.assertIsNone(end)
+
+    def test_use_checkpoint_baseline_raises_floor(self):
+        from django.contrib.auth.models import User
+
+        from inventory.models import StockCheckpoint
+
+        user = User.objects.create_user(username='cp_baseline', password='x')
+        closed_at = timezone.now() - timedelta(days=2)
+        cp = StockCheckpoint.objects.create(
+            title='Baseline',
+            status=StockCheckpoint.STATUS_CLOSED,
+            opened_by=user,
+            closed_by=user,
+            closed_at=closed_at,
+        )
+        # Force opened_at earlier (auto_now_add)
+        StockCheckpoint.objects.filter(pk=cp.pk).update(closed_at=closed_at)
+        start, end, label = self._get(
+            {'period': 'year', 'use_checkpoint_baseline': '1'}
+        )
+        self.assertTrue(label.startswith('checkpoint:'))
+        self.assertEqual(start, closed_at)

@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models, transaction
-from django.db.models import F
+from django.db.models import F, Q
 
 from products.models import Product, ProductVariant
 
@@ -309,3 +309,134 @@ class StockLayer(models.Model):
         if self.variant_id:
             label = f'{label} / {self.variant_id}'
         return f'{label}: {self.qty_remaining}/{self.qty_received} @ {self.unit_cost}'
+
+
+class StockCheckpoint(models.Model):
+    """
+    Repeating stock-at-hand freeze: included SKUs cannot be sold until counted.
+    Closing the checkpoint marks a reporting baseline.
+    """
+
+    STATUS_OPEN = 'open'
+    STATUS_CLOSED = 'closed'
+    STATUS_CANCELLED = 'cancelled'
+    STATUS_CHOICES = [
+        (STATUS_OPEN, 'Open'),
+        (STATUS_CLOSED, 'Closed'),
+        (STATUS_CANCELLED, 'Cancelled'),
+    ]
+
+    title = models.CharField(max_length=200)
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_OPEN,
+        db_index=True,
+    )
+    notes = models.TextField(blank=True)
+    opened_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    opened_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='stock_checkpoints_opened',
+    )
+    closed_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    closed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='stock_checkpoints_closed',
+    )
+
+    class Meta:
+        ordering = ['-opened_at']
+        indexes = [
+            models.Index(fields=['status', 'opened_at']),
+            models.Index(fields=['status', 'closed_at']),
+        ]
+
+    def __str__(self):
+        return f'{self.title} ({self.status})'
+
+
+class StockCheckpointLine(models.Model):
+    STATUS_PENDING = 'pending'
+    STATUS_COUNTED = 'counted'
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_COUNTED, 'Counted'),
+    ]
+
+    checkpoint = models.ForeignKey(
+        StockCheckpoint,
+        on_delete=models.CASCADE,
+        related_name='lines',
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='stock_checkpoint_lines',
+    )
+    variant = models.ForeignKey(
+        ProductVariant,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='stock_checkpoint_lines',
+    )
+    system_qty_at_open = models.IntegerField(default=0)
+    counted_qty = models.IntegerField(null=True, blank=True)
+    unit_cost_snapshot = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+        db_index=True,
+    )
+    counted_at = models.DateTimeField(null=True, blank=True)
+    counted_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='stock_checkpoint_lines_counted',
+    )
+    movement = models.ForeignKey(
+        StockMovement,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='checkpoint_lines',
+    )
+
+    class Meta:
+        ordering = ['product__name', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['checkpoint', 'product', 'variant'],
+                condition=Q(variant__isnull=False),
+                name='uniq_checkpoint_product_variant',
+            ),
+            models.UniqueConstraint(
+                fields=['checkpoint', 'product'],
+                condition=Q(variant__isnull=True),
+                name='uniq_checkpoint_product_no_variant',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['status', 'product']),
+            models.Index(fields=['checkpoint', 'status']),
+        ]
+
+    def __str__(self):
+        label = self.product.name
+        if self.variant_id:
+            label = f'{label} / {self.variant_id}'
+        return f'{label} @ {self.checkpoint_id} ({self.status})'

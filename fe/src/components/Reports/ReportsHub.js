@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 
 import { reportsAPI } from '../../services/api';
+import CheckpointMarkersStrip from '../Inventory/CheckpointMarkersStrip';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import {
   reportsEnableSalesReports,
@@ -153,7 +154,7 @@ function useReport(fetcher, period) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetcher({ period });
+      const res = await fetcher({ period, use_checkpoint_baseline: 1 });
       setData(res.data);
     } catch (err) {
       setError(err?.response?.data?.detail || err.message || 'Failed to load report');
@@ -613,6 +614,7 @@ export default function ReportsHub() {
 
   return (
     <div className="space-y-6">
+      <CheckpointMarkersStrip />
       <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Reports</h1>

@@ -14,6 +14,7 @@ export const ROUTE_MODULE_MAP = {
   '/categories': 'categories',
   '/product-attributes': 'products',
   '/barcodes': 'barcodes',
+  '/inventory/checkpoints': 'inventory',
   '/inventory': 'inventory',
   '/suppliers': 'suppliers',
   '/employees': 'employees',
@@ -85,6 +86,7 @@ export const NAV_SECTION_MODULES = {
 
 /** Path prefixes that need a specific permission action (beyond module enablement). */
 export const ROUTE_PERMISSION_GATES = [
+  { prefix: '/inventory/checkpoints', module: 'inventory', action: 'manage' },
   { prefix: '/customers/payments', module: 'debt_management', action: 'payments_trail' },
   { prefix: '/customers/debt', module: 'debt_management', action: 'view' },
   { prefix: '/normal-sale', module: 'sales', action: 'create' },

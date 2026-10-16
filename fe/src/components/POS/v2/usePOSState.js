@@ -6,6 +6,7 @@ import {
   customersAPI,
   salesAPI,
   authAPI,
+  inventoryAPI,
 } from '../../../services/api';
 import { toast } from '../../../utils/toast';
 import { saleCheckoutSuccessToast } from '../../../utils/saleCompletionApproval';
@@ -107,6 +108,10 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
   const [customers, setCustomers] = useState([]);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  /** Product ids blocked by an open stock checkpoint (must count stock at hand first). */
+  const [blockedCheckpointProductIds, setBlockedCheckpointProductIds] = useState(
+    () => new Set()
+  );
 
   // --- Filter / search ---
   const [searchQuery, setSearchQuery] = useState('');
@@ -280,11 +285,22 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
     }
   }, []);
 
+  const loadBlockedCheckpointProducts = useCallback(async () => {
+    try {
+      const res = await inventoryAPI.blockedCheckpointProducts();
+      const ids = Array.isArray(res.data?.product_ids) ? res.data.product_ids : [];
+      setBlockedCheckpointProductIds(new Set(ids.map((id) => Number(id))));
+    } catch {
+      setBlockedCheckpointProductIds(new Set());
+    }
+  }, []);
+
   useEffect(() => {
     loadCategories();
     loadCustomers();
     loadUser();
-  }, [loadCategories, loadCustomers, loadUser]);
+    loadBlockedCheckpointProducts();
+  }, [loadCategories, loadCustomers, loadUser, loadBlockedCheckpointProducts]);
 
   const cartDraftKey = useMemo(() => {
     if (!user?.id) return null;
@@ -580,6 +596,12 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
 
   const tryAddToCart = useCallback(
     (product) => {
+      if (blockedCheckpointProductIds.has(Number(product.id))) {
+        toast.warning(
+          `Stock checkpoint open — count stock at hand before selling ${product.name}.`
+        );
+        return;
+      }
       if (validateStock && isProductOutOfStock(product)) {
         toast.warning(`${product.name} is out of stock`);
         return;
@@ -595,7 +617,7 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
       }
       addProductToCart(normalizeProductForSale(product));
     },
-    [addProductToCart, validateStock]
+    [addProductToCart, blockedCheckpointProductIds, validateStock]
   );
 
   const setItemQuantity = useCallback((item, newQty) => {
@@ -1134,5 +1156,7 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
     // reloads
     reloadProducts: loadProducts,
     reloadCustomers: loadCustomers,
+    blockedCheckpointProductIds,
+    reloadBlockedCheckpointProducts: loadBlockedCheckpointProducts,
   };
 }

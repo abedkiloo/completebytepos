@@ -200,6 +200,12 @@ export const NAV_SECTIONS = [
       { to: '/inventory?view=movements', label: 'Manage Stock', icon: BarChart3, feature: ['stock', 'manage_stock'], permission: ['inventory', 'view'] },
       { to: '/inventory?action=adjust', label: 'Stock adjustment', icon: Scale, feature: ['stock', 'stock_adjustments'], permission: ['inventory', 'update'] },
       { to: '/inventory?action=transfer', label: 'Stock Transfer', icon: ArrowLeftRight, feature: ['stock', 'stock_transfers'], permission: ['inventory', 'update'] },
+      {
+        to: '/inventory/checkpoints',
+        label: 'Stock checkpoints',
+        icon: ClipboardCheck,
+        permission: ['inventory', 'manage'],
+      },
     ],
   },
   {
