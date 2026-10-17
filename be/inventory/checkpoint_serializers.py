@@ -67,6 +67,7 @@ class StockCheckpointSerializer(serializers.ModelSerializer):
             'id',
             'title',
             'status',
+            'block_sales',
             'notes',
             'opened_at',
             'opened_by',
@@ -83,6 +84,7 @@ class StockCheckpointSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id',
             'status',
+            'block_sales',
             'opened_at',
             'opened_by',
             'opened_by_name',
@@ -146,6 +148,12 @@ class OpenCheckpointSerializer(serializers.Serializer):
     title = serializers.CharField(max_length=200)
     notes = serializers.CharField(required=False, allow_blank=True, default='')
     include_all_tracked = serializers.BooleanField(required=False, default=False)
+    block_sales = serializers.BooleanField(
+        required=False,
+        allow_null=True,
+        default=None,
+        help_text='When omitted, uses inventory module setting block_sales_during_checkpoint.',
+    )
     product_ids = serializers.ListField(
         child=serializers.IntegerField(min_value=1),
         required=False,

@@ -50,6 +50,11 @@ def inventory_allow_movement_undo() -> bool:
     return _enabled('allow_movement_undo', True)
 
 
+def inventory_block_sales_during_checkpoint() -> bool:
+    """Default for new checkpoints: freeze sales on pending lines until counted."""
+    return _enabled('block_sales_during_checkpoint', True)
+
+
 def inventory_enable_stock_layers() -> bool:
     """FIFO cost + sell-price layers per purchase (default on)."""
     return _enabled('enable_stock_layers', True)

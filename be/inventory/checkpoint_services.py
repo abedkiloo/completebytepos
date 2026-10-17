@@ -12,6 +12,7 @@ from django.utils import timezone
 
 from accounting.models import Account, AccountType, JournalEntry, Transaction
 from inventory.models import StockCheckpoint, StockCheckpointLine, StockMovement
+from inventory.module_settings import inventory_block_sales_during_checkpoint
 from inventory.services import StockMovementService
 from products.models import Product, ProductVariant
 
@@ -23,12 +24,14 @@ VARIANCE_ACCOUNT_CODE = '6400'
 def product_blocked_by_open_checkpoint(product_id: int, variant_id: Optional[int] = None):
     """
     Return the open pending checkpoint line blocking this SKU, or None.
+    Only checkpoints with block_sales=True enforce a sell freeze.
     Variant lines block that variant; product-level pending lines block the product
     when no variant is specified (and also block all variants of that product).
     """
     qs = StockCheckpointLine.objects.filter(
         status=StockCheckpointLine.STATUS_PENDING,
         checkpoint__status=StockCheckpoint.STATUS_OPEN,
+        checkpoint__block_sales=True,
         product_id=product_id,
     ).select_related('checkpoint', 'product', 'variant')
 
@@ -61,11 +64,12 @@ def assert_product_sellable(product, variant=None):
 
 
 def blocked_product_ids() -> set[int]:
-    """Product ids with at least one pending line on an open checkpoint."""
+    """Product ids blocked from sale (pending lines on open block_sales checkpoints)."""
     return set(
         StockCheckpointLine.objects.filter(
             status=StockCheckpointLine.STATUS_PENDING,
             checkpoint__status=StockCheckpoint.STATUS_OPEN,
+            checkpoint__block_sales=True,
         ).values_list('product_id', flat=True)
     )
 
@@ -197,6 +201,7 @@ def open_checkpoint(
     product_ids: Optional[Iterable[int]] = None,
     include_all_tracked: bool = False,
     notes: str = '',
+    block_sales: Optional[bool] = None,
 ) -> StockCheckpoint:
     title = (title or '').strip()
     if not title:
@@ -218,9 +223,13 @@ def open_checkpoint(
         if not products:
             raise ValidationError('No tracked products found for the given ids.')
 
+    if block_sales is None:
+        block_sales = inventory_block_sales_during_checkpoint()
+
     checkpoint = StockCheckpoint.objects.create(
         title=title,
         status=StockCheckpoint.STATUS_OPEN,
+        block_sales=bool(block_sales),
         notes=(notes or '').strip(),
         opened_by=user,
     )

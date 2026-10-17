@@ -313,8 +313,8 @@ class StockLayer(models.Model):
 
 class StockCheckpoint(models.Model):
     """
-    Repeating stock-at-hand freeze: included SKUs cannot be sold until counted.
-    Closing the checkpoint marks a reporting baseline.
+    Repeating stock-at-hand count. When block_sales is True, included SKUs
+    cannot be sold until counted. Closing marks a reporting baseline.
     """
 
     STATUS_OPEN = 'open'
@@ -332,6 +332,10 @@ class StockCheckpoint(models.Model):
         choices=STATUS_CHOICES,
         default=STATUS_OPEN,
         db_index=True,
+    )
+    block_sales = models.BooleanField(
+        default=True,
+        help_text='When True, pending lines cannot be sold until counted.',
     )
     notes = models.TextField(blank=True)
     opened_at = models.DateTimeField(auto_now_add=True, db_index=True)

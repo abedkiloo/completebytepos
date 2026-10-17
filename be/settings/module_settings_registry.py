@@ -301,6 +301,15 @@ MODULE_SETTING_DEFINITIONS: dict[str, list[dict[str, Any]]] = {
             True,
             10,
         ),
+        _setting(
+            'block_sales_during_checkpoint',
+            'Block sales during stock take (default)',
+            'Default when opening a stock checkpoint: stop selling included products until stock at hand is counted. '
+            'Admins can still override this for each individual stock take.',
+            True,
+            20,
+            impact='high',
+        ),
     ],
     'customers': [
         _setting(

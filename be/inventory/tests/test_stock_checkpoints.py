@@ -132,6 +132,43 @@ class StockCheckpointServiceTests(ManagerAPITestCase):
             )
         self.assertIn('Stock checkpoint open', str(ctx.exception))
 
+    def test_open_without_block_sales_allows_selling(self):
+        cp = open_checkpoint(
+            title='Soft count',
+            user=self.manager_user,
+            product_ids=[self.product.id],
+            block_sales=False,
+        )
+        self.assertFalse(cp.block_sales)
+        assert_product_sellable(self.product)
+        SaleService().validate_sale_items(
+            [{'product_id': self.product.id, 'quantity': 1}],
+            check_stock=True,
+            user=self.manager_user,
+        )
+
+    def test_module_setting_default_controls_block_sales(self):
+        from settings.settings_service import SettingsService
+
+        SettingsService.set('inventory', 'block_sales_during_checkpoint', False)
+        cp = open_checkpoint(
+            title='Default soft',
+            user=self.manager_user,
+            product_ids=[self.product.id],
+        )
+        self.assertFalse(cp.block_sales)
+        assert_product_sellable(self.product)
+
+        SettingsService.set('inventory', 'block_sales_during_checkpoint', True)
+        cp2 = open_checkpoint(
+            title='Default hard',
+            user=self.manager_user,
+            product_ids=[self.product.id],
+        )
+        self.assertTrue(cp2.block_sales)
+        with self.assertRaises(ValidationError):
+            assert_product_sellable(self.product)
+
 
 class StockCheckpointAPITests(ManagerAPITestCase):
     def setUp(self):

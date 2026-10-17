@@ -101,6 +101,7 @@ class StockCheckpointViewSet(AuditedModelViewSetMixin, viewsets.ReadOnlyModelVie
                 product_ids=data.get('product_ids') or [],
                 include_all_tracked=bool(data.get('include_all_tracked')),
                 notes=data.get('notes') or '',
+                block_sales=data.get('block_sales'),
             )
         except ValidationError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -195,5 +196,5 @@ class StockCheckpointViewSet(AuditedModelViewSetMixin, viewsets.ReadOnlyModelVie
         permission_classes=[IsAuthenticated],
     )
     def blocked_products(self, request):
-        """Product ids currently blocked from sale (pending open-checkpoint lines)."""
+        """Product ids currently blocked from sale (pending open block_sales checkpoints)."""
         return Response({'product_ids': sorted(blocked_product_ids())})

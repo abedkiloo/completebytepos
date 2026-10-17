@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ClipboardCheck, Lock, Plus, Search } from 'lucide-react';
 
 import { inventoryAPI, productsAPI } from '../../services/api';
+import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { toast } from '../../utils/toast';
 import { getStoredAuth, hasPermission } from '../../utils/roleAccess';
@@ -37,6 +38,8 @@ function statusBadge(status) {
 export default function StockCheckpointsPage() {
   const { permissions } = getStoredAuth();
   const allowed = hasPermission(permissions, 'inventory', 'manage');
+  const { settings: inventorySettings } = useModuleSettings('inventory');
+  const defaultBlockSales = inventorySettings?.block_sales_during_checkpoint !== false;
 
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
@@ -50,9 +53,16 @@ export default function StockCheckpointsPage() {
   const [openTitle, setOpenTitle] = useState('');
   const [openNotes, setOpenNotes] = useState('');
   const [includeAll, setIncludeAll] = useState(true);
+  const [blockSales, setBlockSales] = useState(true);
   const [productQuery, setProductQuery] = useState('');
   const [productHits, setProductHits] = useState([]);
   const [pickedIds, setPickedIds] = useState([]);
+
+  useEffect(() => {
+    if (showOpen) {
+      setBlockSales(defaultBlockSales);
+    }
+  }, [showOpen, defaultBlockSales]);
 
   const loadList = useCallback(async () => {
     if (!allowed) {
@@ -134,9 +144,14 @@ export default function StockCheckpointsPage() {
         notes: openNotes.trim(),
         include_all_tracked: includeAll,
         product_ids: includeAll ? [] : pickedIds,
+        block_sales: blockSales,
       };
       const res = await inventoryAPI.openCheckpoint(payload);
-      toast.success('Checkpoint opened — count stock at hand before selling those products');
+      toast.success(
+        blockSales
+          ? 'Checkpoint opened — count stock at hand before selling those products'
+          : 'Checkpoint opened — sales continue while you count'
+      );
       setShowOpen(false);
       setOpenTitle('');
       setOpenNotes('');
@@ -223,13 +238,20 @@ export default function StockCheckpointsPage() {
     <PageShell>
       <PageHeader
         title="Stock checkpoints"
-        description="Open a count, block sales until stock at hand is set, then close to start a new reporting journey."
+        description="Open a count, optionally stop sales until stock at hand is set, then close to start a new reporting journey."
       >
         <Button type="button" onClick={() => setShowOpen(true)}>
           <Plus className="mr-1.5 h-4 w-4" />
           Open checkpoint
         </Button>
       </PageHeader>
+      <p className="mb-3 text-xs text-muted-foreground">
+        Default for new stock takes:{' '}
+        <span className="font-medium text-foreground">
+          {defaultBlockSales ? 'stop sales until counted' : 'allow sales while counting'}
+        </span>
+        . Change under Module Settings → Inventory → “Block sales during stock take”.
+      </p>
 
       {loading ? (
         <PageLoading rows={6} />
@@ -260,7 +282,15 @@ export default function StockCheckpointsPage() {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-semibold">{row.title}</span>
-                      {statusBadge(row.status)}
+                      <span className="flex items-center gap-1.5">
+                        {row.status === 'open' && row.block_sales === false ? (
+                          <Badge variant="secondary">Sales open</Badge>
+                        ) : null}
+                        {row.status === 'open' && row.block_sales !== false ? (
+                          <Badge variant="warning">Sales blocked</Badge>
+                        ) : null}
+                        {statusBadge(row.status)}
+                      </span>
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground">
                       Opened {formatDateTime(row.opened_at)}
@@ -287,9 +317,16 @@ export default function StockCheckpointsPage() {
               <>
                 <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <h2 className="text-lg font-bold">{detail.title}</h2>
                       {statusBadge(detail.status)}
+                      {detail.status === 'open' ? (
+                        detail.block_sales !== false ? (
+                          <Badge variant="warning">Sales blocked until counted</Badge>
+                        ) : (
+                          <Badge variant="secondary">Sales continue while counting</Badge>
+                        )
+                      ) : null}
                     </div>
                     {detail.notes ? (
                       <p className="mt-1 text-sm text-muted-foreground">{detail.notes}</p>
@@ -416,6 +453,20 @@ export default function StockCheckpointsPage() {
               />
               Include all tracked products
             </label>
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={blockSales}
+                onChange={(e) => setBlockSales(e.target.checked)}
+              />
+              <span>
+                Stop sales on included products until counted
+                <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                  Uncheck to count stock while POS keeps selling. Default comes from Module Settings.
+                </span>
+              </span>
+            </label>
             {!includeAll ? (
               <div>
                 <div className="relative">
@@ -460,7 +511,7 @@ export default function StockCheckpointsPage() {
               Cancel
             </Button>
             <Button type="button" disabled={busy} onClick={handleOpen}>
-              Open &amp; block sales
+              {blockSales ? 'Open & block sales' : 'Open (sales continue)'}
             </Button>
           </DialogFooter>
         </DialogContent>
