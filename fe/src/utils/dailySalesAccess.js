@@ -3,9 +3,8 @@
  *
  * - Module Settings → Sales → Daily sales tracker must be on (no app rebuild).
  * - Super Admin always allowed when the feature is on.
- * - Explicit `sales.daily_sales` grants access (including managers).
- * - Managers do **not** get the screen from `sales.view` alone.
- * - Cashiers / sales staff open their own day with `sales.view`.
+ * - Everyone else needs the explicit checkable permission `sales.daily_sales`
+ *   (managers and sales staff do not get it from sales.view alone).
  */
 import { isModuleFeatureEnabled } from './moduleFeatures';
 import { getStoredAuth, hasPermission } from './roleAccess';
@@ -19,34 +18,22 @@ function isSuperAdminFromAuth(user, profile) {
   );
 }
 
-function isStoreManagerProfile(profile) {
-  if (!profile) return false;
-  if (profile.is_super_admin || profile.is_admin) return false;
-  if (profile.role === 'manager') return true;
-  const name = (profile.custom_role?.name || profile.role_display || '').trim();
-  return name === 'Manager';
-}
-
 export function canViewDailySales(
   permissions,
   {
     isSuperAdmin = false,
-    profile = null,
     featureEnabled = true,
   } = {}
 ) {
   if (!featureEnabled) return false;
   if (isSuperAdmin) return true;
-  if (hasPermission(permissions, 'sales', 'daily_sales')) return true;
-  if (isStoreManagerProfile(profile)) return false;
-  return hasPermission(permissions, 'sales', 'view');
+  return hasPermission(permissions, 'sales', 'daily_sales');
 }
 
 export function canViewDailySalesFromStorage() {
   const { permissions, user, profile } = getStoredAuth();
   return canViewDailySales(permissions, {
     isSuperAdmin: isSuperAdminFromAuth(user, profile),
-    profile,
     featureEnabled: isModuleFeatureEnabled('sales', 'daily_sales'),
   });
 }

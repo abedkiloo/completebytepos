@@ -20,7 +20,11 @@ from sales.daily_sales import (
     get_daily_sales_report,
     parse_target_date,
 )
-from utils.tests.api_test_base import ManagerAPITestCase, SuperAdminAPITestCase
+from utils.tests.api_test_base import (
+    ManagerAPITestCase,
+    SalesAPITestCase,
+    SuperAdminAPITestCase,
+)
 
 
 class DailySalesUnitTests(SuperAdminAPITestCase):
@@ -82,6 +86,18 @@ class DailySalesPermissionPackTests(SuperAdminAPITestCase):
         manager.permissions.set(_manager_queryset())
         self.assertFalse(
             manager.permissions.filter(module='sales', action='daily_sales').exists()
+        )
+
+    def test_default_sales_role_excludes_daily_sales(self):
+        ensure_permissions()
+        sync_default_roles()
+        from accounts.role_definitions import ROLE_SALES, _sales_queryset
+        from accounts.models import Role
+
+        sales = Role.objects.get(name=ROLE_SALES)
+        sales.permissions.set(_sales_queryset())
+        self.assertFalse(
+            sales.permissions.filter(module='sales', action='daily_sales').exists()
         )
 
 
@@ -338,6 +354,10 @@ class DailySalesOwnValuesTests(ManagerAPITestCase):
         from django.contrib.auth.models import User
         from accounts.models import Role
 
+        # Daily Sales requires explicit sales.daily_sales (not sales.view alone).
+        daily_perm = Permission.objects.get(module='sales', action='daily_sales')
+        self.manager_role.permissions.add(daily_perm)
+
         # Manager permissions without the Manager name, which sees the whole store.
         restricted = Role.objects.create(name='Shift Supervisor', is_active=True)
         restricted.permissions.set(self.manager_role.permissions.all())
@@ -470,3 +490,29 @@ class DailySalesOwnValuesTests(ManagerAPITestCase):
         collections = response.data['collections']
         self.assertEqual(collections['count'], 1)
         self.assertEqual(collections['results'][0]['customer_name'], 'Shared Customer')
+
+
+class DailySalesExplicitPermissionTests(SalesAPITestCase):
+    """sales.daily_sales must be checked on the role — sales.view alone is not enough."""
+
+    def test_sales_without_daily_sales_cannot_open_tracker(self):
+        self.assertFalse(
+            self.sales_role.permissions.filter(module='sales', action='daily_sales').exists()
+        )
+        response = self.client.get('/api/sales/daily/', {'date': '2026-09-20'})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_sales_with_daily_sales_can_open_tracker(self):
+        daily_perm = Permission.objects.get(module='sales', action='daily_sales')
+        self.sales_role.permissions.add(daily_perm)
+        response = self.client.get('/api/sales/daily/', {'date': '2026-09-20'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['date'], '2026-09-20')
+
+    def test_sales_without_daily_sales_cannot_open_customer_day(self):
+        customer = Customer.objects.create(name='No Access', phone='0700111222')
+        response = self.client.get(
+            f'/api/sales/daily/customer/{customer.id}/',
+            {'date': '2026-09-20'},
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

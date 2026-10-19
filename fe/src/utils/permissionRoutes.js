@@ -102,11 +102,7 @@ export const ROUTE_PERMISSION_GATES = [
   {
     prefix: '/sales/daily',
     module: 'sales',
-    action: 'view',
-    anyOf: [
-      { module: 'sales', action: 'view' },
-      { module: 'sales', action: 'daily_sales' },
-    ],
+    action: 'daily_sales',
   },
   { prefix: '/sales/field', module: 'dispatch', action: 'view' },
 ];

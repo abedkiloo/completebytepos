@@ -63,7 +63,7 @@ describe('roleAccess', () => {
     expect(canAccessRoute(PERSONA.MANAGER, '/reports')).toBe(true);
   });
 
-  test('daily sales: managers need sales.daily_sales; cashiers use sales.view', () => {
+  test('daily sales: managers and sales need sales.daily_sales explicitly checked', () => {
     localStorage.setItem('permissions', JSON.stringify([]));
     localStorage.setItem('profile', JSON.stringify({ role: 'manager' }));
     expect(canAccessRoute(PERSONA.MANAGER, '/sales/daily')).toBe(false);
@@ -75,16 +75,19 @@ describe('roleAccess', () => {
     expect(canAccessRoute(PERSONA.MANAGER, '/sales/daily')).toBe(false);
 
     localStorage.setItem('profile', JSON.stringify({ role: 'cashier' }));
-    expect(canAccessRoute(PERSONA.SALES, '/sales/daily')).toBe(true);
-    expect(canAccessRoute(PERSONA.SALES, '/sales/daily/customers/1')).toBe(true);
+    expect(canAccessRoute(PERSONA.SALES, '/sales/daily')).toBe(false);
+    expect(canAccessRoute(PERSONA.SALES, '/sales/daily/customers/1')).toBe(false);
 
-    localStorage.setItem('profile', JSON.stringify({ role: 'manager' }));
     localStorage.setItem(
       'permissions',
       JSON.stringify([
         { module: 'sales', action: 'daily_sales', name: 'sales.daily_sales' },
       ])
     );
+    expect(canAccessRoute(PERSONA.SALES, '/sales/daily')).toBe(true);
+    expect(canAccessRoute(PERSONA.SALES, '/sales/daily/customers/1')).toBe(true);
+
+    localStorage.setItem('profile', JSON.stringify({ role: 'manager' }));
     expect(canAccessRoute(PERSONA.MANAGER, '/sales/daily')).toBe(true);
   });
 

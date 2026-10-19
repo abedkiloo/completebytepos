@@ -281,7 +281,7 @@ def _manager_queryset():
             action='approve',
             module__in=_MANAGER_NO_APPROVE_MODULES,
         )
-        # Daily Sales Tracker + store-wide sales totals are admin-grantable.
+        # Daily Sales Tracker + store-wide sales totals are opt-in checkboxes.
         .exclude(module='sales', action='daily_sales')
         .exclude(module='sales', action='view_all')
         # Sale rollback and journal correction stay admin unless explicitly checked.

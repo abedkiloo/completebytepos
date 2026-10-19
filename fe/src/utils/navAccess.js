@@ -174,7 +174,7 @@ export function canSeeNavItem(item, sectionId, ctx) {
     }
   }
 
-  // Daily Sales: Module Settings flag + managers need sales.daily_sales (not sales.view alone).
+  // Daily Sales: Module Settings flag + explicit sales.daily_sales (not sales.view alone).
   if (item.dailySalesAccess) {
     return canViewDailySalesFromStorage();
   }

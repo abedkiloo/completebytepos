@@ -26,25 +26,22 @@ describe('dailySalesAccess', () => {
     expect(
       canViewDailySales([{ module: 'sales', action: 'daily_sales' }], {
         isSuperAdmin: false,
-        profile: { role: 'manager' },
       })
     ).toBe(true);
   });
 
-  it('allows cashiers who can view sales (their own day)', () => {
+  it('denies cashiers who only have sales.view (must be checked explicitly)', () => {
     expect(
       canViewDailySales([{ module: 'sales', action: 'view' }], {
         isSuperAdmin: false,
-        profile: { role: 'cashier' },
       })
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('denies managers who only have sales.view', () => {
     expect(
       canViewDailySales([{ module: 'sales', action: 'view' }], {
         isSuperAdmin: false,
-        profile: { role: 'manager' },
       })
     ).toBe(false);
   });
@@ -58,7 +55,7 @@ describe('dailySalesAccess', () => {
     ).toBe(false);
   });
 
-  it('denies users without sales access', () => {
+  it('denies users without sales.daily_sales', () => {
     expect(
       canViewDailySales([{ module: 'pos', action: 'create' }], {
         isSuperAdmin: false,
@@ -83,6 +80,16 @@ describe('dailySalesAccess', () => {
     );
     localStorage.setItem('user', JSON.stringify({ username: 'mgr' }));
     localStorage.setItem('profile', JSON.stringify({ role: 'manager' }));
+    expect(canViewDailySalesFromStorage()).toBe(false);
+  });
+
+  it('hides daily sales for cashier with only sales.view', () => {
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([{ module: 'sales', action: 'view' }])
+    );
+    localStorage.setItem('user', JSON.stringify({ username: 'cash' }));
+    localStorage.setItem('profile', JSON.stringify({ role: 'cashier' }));
     expect(canViewDailySalesFromStorage()).toBe(false);
   });
 

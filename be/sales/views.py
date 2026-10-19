@@ -131,8 +131,8 @@ SALES_PERMS = RequirePermPerAction('sales', {
     'backfill_import_csv': 'create',
     'backfill_import_template': 'view',
     'export': 'view',
-    'daily': 'view',
-    'daily_customer': 'view',
+    'daily': 'daily_sales',
+    'daily_customer': 'daily_sales',
     'sellers': 'view',
     'complete': 'approve',
     'reject_complete': 'approve',
@@ -513,8 +513,9 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         """
         Daily sales for one business day (``?date=YYYY-MM-DD``).
 
-        Anyone with sales.view sees their own sales; admins / sales.view_all see the store.
-        Managers need sales.daily_sales. Disabled when Module Settings → Daily sales tracker is off.
+        Requires sales.daily_sales (explicit role checkbox). Admins / sales.view_all
+        still see the store; others see their own sales. Disabled when Module
+        Settings → Daily sales tracker is off.
         """
         from settings.module_features import is_module_feature_enabled
         from .daily_sales import get_daily_sales_report
