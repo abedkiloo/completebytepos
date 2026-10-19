@@ -592,6 +592,8 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
       }
       return [...prev, newItem];
     });
+    // Drop search hits so the cart line (qty steppers) is what the cashier sees next.
+    setSearchQuery('');
   }, []);
 
   const tryAddToCart = useCallback(
