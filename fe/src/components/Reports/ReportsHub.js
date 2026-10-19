@@ -33,10 +33,12 @@ import {
   reportsEnableInventoryReports,
   reportsEnableInvoiceReports,
   reportsEnableCashReports,
+  reportsEnableFinancialReports,
   reportsShowDiscount,
   reportsShowTax,
   reportsShowLegacyCatalog,
 } from '../../utils/reportDisplay';
+import { getStoredAuth, hasPermission } from '../../utils/roleAccess';
 import {
   formatCompactCurrency,
   formatCurrency,
@@ -609,8 +611,19 @@ export default function ReportsHub() {
   const showDiscount = reportsShowDiscount(reportSettings);
   const showTax = reportsShowTax(reportSettings);
   const showLegacy = reportsShowLegacyCatalog(reportSettings);
+  const showFinancial = reportsEnableFinancialReports(reportSettings);
+  const { permissions } = getStoredAuth();
+  const showTradingProfit =
+    showFinancial && hasPermission(permissions, 'reports', 'profit');
 
-  const visibleCount = [showSales, showProducts, showCash, showInventory, showInvoice].filter(Boolean).length;
+  const visibleCount = [
+    showSales,
+    showProducts,
+    showCash,
+    showInventory,
+    showInvoice,
+    showTradingProfit,
+  ].filter(Boolean).length;
 
   return (
     <div className="space-y-6">
@@ -705,6 +718,33 @@ export default function ReportsHub() {
           </>
         ) : null}
         {showInvoice ? <CustomerOutstandingTile period={period} onOpen={goLegacy('invoice')} /> : null}
+        {showTradingProfit ? (
+          <Card className="flex flex-col border-dashed">
+            <CardHeader className="pb-3">
+              <div className="flex items-start gap-3">
+                <div className="rounded-md bg-primary/10 p-2 text-primary">
+                  <TrendingUp className="h-5 w-5" />
+                </div>
+                <div>
+                  <CardTitle className="text-base">Trading profit</CardTitle>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Week, month, or year — net sales minus COGS and expenses.
+                  </p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="mt-auto pt-0">
+              <button
+                type="button"
+                onClick={() => navigate('/reports?report=trading-profit')}
+                className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+              >
+                Open trading profit
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </CardContent>
+          </Card>
+        ) : null}
       </div>
       )}
     </div>

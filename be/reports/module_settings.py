@@ -20,6 +20,7 @@ REPORT_ACTION_GATES: dict[str, tuple[str, str]] = {
     'income': ('enable_financial_reports', 'Financial reports'),
     'tax': ('enable_financial_reports', 'Financial reports'),
     'profit_loss': ('enable_financial_reports', 'Financial reports'),
+    'trading_profit': ('enable_financial_reports', 'Financial reports'),
     'annual': ('enable_financial_reports', 'Financial reports'),
     'invoice': ('enable_invoice_reports', 'Invoice reports'),
     'customer_outstanding': ('enable_invoice_reports', 'Invoice reports'),
@@ -131,7 +132,9 @@ def apply_report_response_flags(data: dict) -> dict:
     data = dict(data)
 
     if isinstance(data.get('summary'), dict):
-        data['summary'] = _strip_summary(data['summary'])
+        # Trading profit is gated by reports.profit — keep the full breakdown.
+        if data['summary'].get('basis') != 'trading':
+            data['summary'] = _strip_summary(data['summary'])
 
     if not reports_show_tax():
         data.pop('tax_breakdown', None)

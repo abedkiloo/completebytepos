@@ -81,6 +81,11 @@ PERMISSIONS_DATA = [
     ('barcodes', 'create', 'Generate barcodes'),
     ('barcodes', 'export', 'Export barcodes'),
     ('reports', 'view', 'View reports'),
+    (
+        'reports',
+        'profit',
+        'View trading profit (week / month / year) — net sales, COGS, expenses',
+    ),
     ('reports', 'export', 'Export reports'),
     ('customers', 'view', 'View customers'),
     ('customers', 'create', 'Create customers'),
@@ -287,6 +292,8 @@ def _manager_queryset():
         # Sale rollback and journal correction stay admin unless explicitly checked.
         .exclude(module='sales', action='rollback')
         .exclude(module='accounting', action='correct')
+        # Trading profit report stays admin unless explicitly checked on the role.
+        .exclude(module='reports', action='profit')
     ) | Permission.objects.filter(
         module='appraisals',
         action__in=['view', 'view_all'],

@@ -2,7 +2,13 @@ import React from 'react';
 import { cn } from '../../lib/cn';
 import { REPORT_PERIODS } from '../../utils/reportPeriods';
 
-export default function PeriodPills({ value, onChange, className, size = 'sm' }) {
+export default function PeriodPills({
+  value,
+  onChange,
+  className,
+  size = 'sm',
+  periods = REPORT_PERIODS,
+}) {
   return (
     <div
       className={cn(
@@ -13,7 +19,7 @@ export default function PeriodPills({ value, onChange, className, size = 'sm' })
       role="tablist"
       aria-label="Report period"
     >
-      {REPORT_PERIODS.map((period) => (
+      {periods.map((period) => (
         <button
           key={period.id}
           type="button"

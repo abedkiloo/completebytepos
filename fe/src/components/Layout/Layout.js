@@ -244,6 +244,13 @@ export const NAV_SECTIONS = [
       { to: '/reports?report=products', label: 'Product Performance', icon: Boxes, match: 'report=products', permission: ['reports', 'view'] },
       { to: '/reports?report=inventory', label: 'Inventory Overview', icon: PieChart, match: 'report=inventory', permission: ['reports', 'view'] },
       { to: '/reports?report=stock-valuation', label: 'Stock valuation', icon: Package, match: 'report=stock-valuation', permission: ['reports', 'view'] },
+      {
+        to: '/reports?report=trading-profit',
+        label: 'Trading profit',
+        icon: TrendingUp,
+        match: 'report=trading-profit',
+        permission: ['reports', 'profit'],
+      },
       { to: '/audit-log', label: 'Audit log', icon: ScrollText, managerOnly: true, permission: ['reports', 'view'] },
       { to: '/pending-approvals', label: 'Pending approvals', icon: ClipboardCheck, managerOnly: true, permission: ['reports', 'view'] },
     ],

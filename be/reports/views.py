@@ -84,6 +84,7 @@ REPORTS_PERMS = RequirePermPerAction('reports', {
     'customer_outstanding': 'view',
     'sales_by_person': 'view',
     'stock_valuation': 'view',
+    'trading_profit': 'profit',
 })
 
 
@@ -1037,4 +1038,17 @@ class ReportViewSet(viewsets.ViewSet):
         """
         payload = StockValuationReportService.build(request)
         return Response(payload)
+
+    @action(detail=False, methods=['get'], url_path='trading_profit')
+    @gated_report_action('trading_profit')
+    def trading_profit(self, request):
+        """
+        Trading profit: net sales − COGS − expenses + other income.
+
+        Requires ``reports.profit``. Query: ``period=week|month|year``
+        (or ``date_from`` / ``date_to``).
+        """
+        from reports.trading_profit import trading_profit_for_request
+
+        return Response(trading_profit_for_request(request))
 

@@ -13,6 +13,7 @@ import ReportsList from './ReportsList';
 import ReportsHub from './ReportsHub';
 import SalesPersonReportView from './SalesPersonReportView';
 import StockValuationReportView from './StockValuationReportView';
+import TradingProfitReportView from './TradingProfitReportView';
 import PeriodPills from './PeriodPills';
 import {
   DEFAULT_REPORT_PERIOD,
@@ -112,7 +113,8 @@ const Reports = () => {
     } else if (
       reportParam &&
       reportParam !== 'sales-by-person' &&
-      reportParam !== 'stock-valuation'
+      reportParam !== 'stock-valuation' &&
+      reportParam !== 'trading-profit'
     ) {
       loadReport();
     }
@@ -140,6 +142,10 @@ const Reports = () => {
     return (
       <ReportsList />
     );
+  }
+
+  if (reportParam === 'trading-profit') {
+    return <TradingProfitReportView />;
   }
 
   if (reportParam && reportParam !== '__legacy__' && !reportsLegacyReportEnabled(reportSettings, reportParam)) {

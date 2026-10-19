@@ -86,6 +86,7 @@ export function reportsLegacyReportEnabled(settings, reportId) {
     case 'income':
     case 'tax':
     case 'profit-loss':
+    case 'trading-profit':
     case 'annual':
       return reportsEnableFinancialReports(settings);
     default:

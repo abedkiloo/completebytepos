@@ -134,6 +134,11 @@ class DefaultRolePermissionTests(TestCase):
         self.assertTrue(self._has(self.super_role, 'sales', 'rollback'))
         self.assertTrue(self._has(self.super_role, 'accounting', 'correct'))
 
+    def test_only_super_admin_has_reports_profit_by_default(self):
+        self.assertTrue(self._has(self.super_role, 'reports', 'profit'))
+        self.assertFalse(self._has(self.manager_role, 'reports', 'profit'))
+        self.assertFalse(self._has(self.sales_role, 'reports', 'profit'))
+
     def test_ensure_permissions_creates_settings_approve_row(self):
         ensure_permissions()
         self.assertTrue(
