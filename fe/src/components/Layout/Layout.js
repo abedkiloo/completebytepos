@@ -123,7 +123,7 @@ export const NAV_SECTIONS = [
       { to: '/pos/billing', label: 'Terminal POS', icon: Receipt, feature: ['sales', 'billing_pos'], permission: ['pos', 'view'] },
       { to: '/products', label: 'Products', icon: Package, salesCatalogItem: true, module: 'products', permission: ['products', 'view'] },
       { to: '/categories', label: 'Categories', icon: FolderTree, salesCatalogItem: true, module: 'products', permission: ['categories', 'view'] },
-      { to: '/product-attributes', label: 'Sizes & colors', icon: Palette, salesCatalogItem: true, module: 'products', feature: ['products', 'product_variants'], permission: ['products', 'view'] },
+      { to: '/product-attributes', label: 'Sizes, colors & units', icon: Palette, salesCatalogItem: true, module: 'products', permission: ['products', 'view'] },
       { to: '/normal-sale', label: 'Normal Sale', icon: Briefcase, feature: ['sales', 'normal_sale'], permission: ['sales', 'create'] },
       {
         to: '/sales/daily',
@@ -188,7 +188,7 @@ export const NAV_SECTIONS = [
     items: [
       { to: '/products', label: 'Products', icon: Package, permission: ['products', 'view'] },
       { to: '/categories', label: 'Categories', icon: FolderTree, permission: ['categories', 'view'] },
-      { to: '/product-attributes', label: 'Sizes & colors', icon: Palette, feature: ['products', 'product_variants'], permission: ['products', 'view'] },
+      { to: '/product-attributes', label: 'Sizes, colors & units', icon: Palette, permission: ['products', 'view'] },
       { to: '/barcodes', label: 'Print Barcode', icon: Barcode, module: 'barcodes', permission: ['barcodes', 'view'] },
       { to: '/barcodes', label: 'Print QR Code', icon: QrCode, module: 'barcodes', permission: ['barcodes', 'view'] },
     ],

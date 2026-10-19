@@ -291,6 +291,21 @@ class IsAdmin(permissions.BasePermission):
         return bool(profile and profile.is_admin)
 
 
+class IsManager(permissions.BasePermission):
+    """Super admin, admin, or manager (``profile.is_manager``)."""
+
+    message = 'Manager or admin access required.'
+
+    def has_permission(self, request, view):
+        user = getattr(request, 'user', None)
+        if not user or not user.is_authenticated:
+            return False
+        if user.is_superuser:
+            return True
+        profile = getattr(user, 'profile', None)
+        return bool(profile and profile.is_manager)
+
+
 # ---------------------------------------------------------------------------
 # Legacy parametrized classes — kept for back-compat with the few callsites in
 # employees/views.py and suppliers/views.py that invoke them from

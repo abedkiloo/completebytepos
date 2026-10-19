@@ -7,7 +7,7 @@ from rest_framework import status
 
 from products.models import Category, Product, UnitOfMeasure
 from products.units import create_unit, ensure_builtin_units, validate_unit_code
-from utils.tests.api_test_base import ManagerAPITestCase, SuperAdminAPITestCase
+from utils.tests.api_test_base import ManagerAPITestCase, SalesAPITestCase, SuperAdminAPITestCase
 
 
 class UnitHelpersTests(ManagerAPITestCase):
@@ -36,15 +36,24 @@ class UnitAPIOptionsTests(ManagerAPITestCase):
         self.assertIn('roll', codes)
 
 
-class UnitAPICreateTests(SuperAdminAPITestCase):
-    def test_super_admin_can_add_unit(self):
-        response = self.client.post(
+class UnitAPIWriteTests(ManagerAPITestCase):
+    def test_manager_can_add_and_update_unit(self):
+        create_res = self.client.post(
             '/api/products/units/',
             {'code': 'spool', 'label': 'Spool'},
             format='json',
         )
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(create_res.status_code, status.HTTP_201_CREATED, create_res.data)
+        unit_id = create_res.data['id']
         self.assertTrue(UnitOfMeasure.objects.filter(code='spool').exists())
+
+        update_res = self.client.patch(
+            f'/api/products/units/{unit_id}/',
+            {'label': 'Spool (thread)', 'is_active': True},
+            format='json',
+        )
+        self.assertEqual(update_res.status_code, status.HTTP_200_OK, update_res.data)
+        self.assertEqual(UnitOfMeasure.objects.get(pk=unit_id).label, 'Spool (thread)')
 
     def test_product_save_uses_new_unit(self):
         self.client.post(
@@ -65,3 +74,24 @@ class UnitAPICreateTests(SuperAdminAPITestCase):
         product.full_clean()
         product.save()
         self.assertEqual(product.unit, 'spool')
+
+
+class UnitAPISuperAdminWriteTests(SuperAdminAPITestCase):
+    def test_super_admin_can_add_unit(self):
+        response = self.client.post(
+            '/api/products/units/',
+            {'code': 'crate', 'label': 'Crate'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(UnitOfMeasure.objects.filter(code='crate').exists())
+
+
+class UnitAPISalesForbiddenTests(SalesAPITestCase):
+    def test_sales_cannot_create_unit(self):
+        response = self.client.post(
+            '/api/products/units/',
+            {'code': 'bag', 'label': 'Bag'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

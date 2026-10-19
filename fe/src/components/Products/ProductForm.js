@@ -979,9 +979,9 @@ const ProductForm = ({
                     : 'No colors defined yet. '}
                 Add them under{' '}
                 <Link to="/product-attributes" className="font-medium underline">
-                  Sizes &amp; colors
+                  Sizes, colors &amp; units
                 </Link>
-                {' '}(or Sales → Sizes &amp; colors), then return here and select from the lists below.
+                , then return here and select from the lists below.
               </div>
             )}
             <div className="mt-2">

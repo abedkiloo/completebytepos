@@ -244,6 +244,9 @@ export const productsAPI = {
     list: (params) => api.get('/products/units/', { params }),
     options: () => api.get('/products/units/', { params: { format: 'options', is_active: 'true' } }),
     create: (data) => api.post('/products/units/', data),
+    update: (id, data) => api.put(`/products/units/${id}/`, data),
+    patch: (id, data) => api.patch(`/products/units/${id}/`, data),
+    delete: (id) => api.delete(`/products/units/${id}/`),
   },
 };
 

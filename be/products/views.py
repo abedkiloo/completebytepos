@@ -93,19 +93,20 @@ class SizeViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
 
 class UnitOfMeasureViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
-    """Units of measure — list for all users; create for super admins."""
+    """Units of measure — list for all users; create/update for managers and admins."""
 
     queryset = UnitOfMeasure.objects.all()
     serializer_class = UnitOfMeasureSerializer
     permission_classes = [IsAuthenticated, PRODUCTS_PERMS]
     audit_module = 'product_units'
     ordering = ['display_order', 'label']
+    pagination_class = None
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
             return [IsAuthenticated()]
-        from accounts.permissions import IsSuperAdmin
-        return [IsAuthenticated(), IsSuperAdmin()]
+        from accounts.permissions import IsManager
+        return [IsAuthenticated(), IsManager()]
 
     def get_queryset(self):
         qs = super().get_queryset()
