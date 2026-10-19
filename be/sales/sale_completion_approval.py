@@ -136,6 +136,16 @@ def sale_needs_salesperson_action(sale: Sale) -> bool:
     return latest_rejected_sale_complete_change(sale) is not None
 
 
+def sale_must_requeue_after_correction(sale: Sale) -> bool:
+    """
+    True when checkout must go back to manager approval.
+
+    Covers sales returned from pending_approval, awaiting_payment, or completed
+    (already approved/posted). Managers/admins cannot skip the queue for these.
+    """
+    return sale_needs_salesperson_action(sale)
+
+
 def sale_rejection_reason(sale: Sale) -> str:
     if not sale_needs_salesperson_action(sale):
         return ''

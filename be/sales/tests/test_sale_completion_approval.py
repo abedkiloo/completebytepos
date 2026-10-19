@@ -1153,6 +1153,48 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
         self.assertEqual(len(opened.data['items']), 1)
         self.assertEqual(opened.data['items'][0]['product_id'], self.product.id)
 
+        # Salesperson must see the returned completed sale and, after fixing,
+        # send it back for approval again (not complete immediately).
+        awaiting = self.client.get('/api/sales/?status=pending_approval')
+        awaiting_ids = [
+            row['id'] for row in awaiting.data.get('results', awaiting.data)
+        ]
+        self.assertIn(sale_id, awaiting_ids)
+        active = self.client.get('/api/sales/active-holding/')
+        self.assertEqual(active.status_code, status.HTTP_200_OK, active.data)
+        self.assertEqual(active.data.get('holding', {}).get('id'), sale_id)
+        self.assertTrue(active.data['holding'].get('needs_salesperson_action'))
+
+        re_edited = self.client.post(
+            '/api/sales/holding/',
+            {
+                'holding_id': sale_id,
+                'items': [
+                    {
+                        'product_id': self.product.id,
+                        'quantity': '1',
+                        'unit_price': '100.00',
+                    }
+                ],
+                'client_channel': 'web',
+            },
+            format='json',
+        )
+        self.assertEqual(re_edited.status_code, status.HTTP_200_OK, re_edited.data)
+        requeued = self.client.post(
+            f'/api/sales/{sale_id}/checkout/',
+            {
+                'payment_method': 'cash',
+                'amount_paid': '100.00',
+                'allow_partial_payment': False,
+            },
+            format='json',
+        )
+        self.assertEqual(requeued.status_code, status.HTTP_201_CREATED, requeued.data)
+        self.assertEqual(requeued.data['status'], 'pending_approval')
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 20)
+
     def test_admin_correction_resyncs_customer_debt_to_new_unpaid(self):
         """Return-for-correction must re-post debt for the edited unpaid total."""
         from sales.models import Customer, CustomerWalletTransaction

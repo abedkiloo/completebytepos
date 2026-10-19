@@ -436,11 +436,19 @@ class SaleService(BaseService):
         take, short = capped(available)
         drain_and_record(None, take, short=short)
 
+    def _user_holdings_q(self, user):
+        """Holdings the user may resume — cashier or served_by (returned corrections)."""
+        return Q(cashier=user) | Q(served_by=user)
+
     def get_active_holding(self, user, branch: Optional[Branch] = None) -> Optional[Sale]:
-        """Return the cashier's open holding invoice for this branch, if any."""
+        """Return the user's open holding invoice for this branch, if any.
+
+        Returned-for-correction holdings (including previously completed sales)
+        are preferred over ordinary drafts so the salesperson sees the fix first.
+        """
         self.purge_stale_holdings(user, branch=branch)
         qs = self.model.objects.filter(
-            cashier=user,
+            self._user_holdings_q(user),
             status='holding',
         ).prefetch_related('items__product', 'items__variant')
         if branch:
@@ -465,7 +473,7 @@ class SaleService(BaseService):
         max_age = max_age or HOLDING_MAX_AGE
         cutoff = timezone.now() - max_age
         qs = self.model.objects.filter(
-            cashier=user,
+            self._user_holdings_q(user),
             status='holding',
             updated_at__lt=cutoff,
         )
@@ -516,7 +524,9 @@ class SaleService(BaseService):
         holding = None
         if holding_id:
             holding = self.model.objects.filter(
-                id=holding_id, cashier=user, status='holding'
+                self._user_holdings_q(user),
+                id=holding_id,
+                status='holding',
             ).first()
         if not holding:
             holding = self.get_active_holding(user, branch)
@@ -605,7 +615,7 @@ class SaleService(BaseService):
             payment_payload_from_inputs,
             queue_sale_complete,
             sale_completion_should_wait,
-            sale_needs_salesperson_action,
+            sale_must_requeue_after_correction,
         )
 
         assert_returned_sale_was_edited(holding)
@@ -623,9 +633,11 @@ class SaleService(BaseService):
         total = subtotal + tax_amount - discount_amount + delivery_cost
         customer = holding.customer
 
+        # Returned-for-correction carts (including previously completed/approved
+        # sales) always re-enter the approval queue — even for managers/admins.
         defer_complete = (
             sale_completion_should_wait(user)
-            or sale_needs_salesperson_action(holding)
+            or sale_must_requeue_after_correction(holding)
         )
         self._validate_checkout_payment(
             payment_method, amount_paid, total, customer, allow_partial

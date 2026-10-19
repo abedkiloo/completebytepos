@@ -138,6 +138,44 @@ class ActiveHoldingRecoveryAPITestCase(APITestCase):
         holding.refresh_from_db()
         self.assertEqual(holding.status, 'holding')
 
+    def test_active_holding_prefers_returned_for_correction(self):
+        from approvals.models import PendingChange
+        from approvals.registry import ACTION_SALE_COMPLETE
+        from sales.sale_completion_approval import QUEUE_REASON
+
+        ordinary = self.service.save_holding_sale(
+            self.user,
+            [{'product_id': self.product.id, 'quantity': 1, 'unit_price': '100'}],
+        )
+        returned = Sale.objects.create(
+            sale_number='S-RET-HOLD',
+            status='holding',
+            cashier=self.user,
+            subtotal=Decimal('200'),
+            total=Decimal('200'),
+            payment_method='cash',
+            amount_paid=Decimal('0'),
+        )
+        PendingChange.objects.create(
+            action_type=ACTION_SALE_COMPLETE,
+            entity_type='sales.Sale',
+            entity_id=str(returned.pk),
+            entity_repr=returned.sale_number,
+            reason=QUEUE_REASON,
+            status=PendingChange.STATUS_REJECTED,
+            rejection_reason='Fix qty',
+            original_values={'returned_from_status': 'completed'},
+        )
+        Sale.objects.filter(pk=ordinary.pk).update(
+            updated_at=timezone.now() + timedelta(minutes=5)
+        )
+        response = self.client.get('/api/sales/active-holding/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.data['holding']
+        self.assertIsNotNone(data)
+        self.assertEqual(data['id'], returned.id)
+        self.assertTrue(data.get('needs_salesperson_action'))
+
     def test_login_purges_stale_holdings_for_user(self):
         holding = self.service.save_holding_sale(
             self.user,
