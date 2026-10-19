@@ -138,7 +138,7 @@ export function makerCheckerPromptMessage(
   return lines.join('\n');
 }
 
-/** Price, cost, stock, and status — not catalog metadata like unit or track_stock. */
+/** Align with be/approvals.registry.PRODUCT_SENSITIVE_FIELDS (minus track_stock). */
 const SENSITIVE_PRODUCT_KEYS = new Set([
   'price',
   'selling_price',
@@ -146,6 +146,8 @@ const SENSITIVE_PRODUCT_KEYS = new Set([
   'cost',
   'stock_quantity',
   'is_active',
+  'unit',
+  'tax_rate',
 ]);
 
 export function isMakerCheckerEnabled(settings) {
@@ -366,16 +368,23 @@ export function rolePermissionsChanged(nextIds, role) {
 
 /** Sensitive keys the current user may edit (mirrors catalog field access). */
 export function productEditableSensitiveKeys(fieldAccess, variantProduct = false) {
+  // Unit lives on the product row for both simple and variant products.
+  const keys = ['unit'];
   if (variantProduct) {
-    // Per-variant cost is edited in ProductVariantsPanel, not on the product row.
-    return [];
+    // Price/cost/stock are edited per variant; tax + status stay on the product.
+    if (!fieldAccess || fieldAccess.pricing) {
+      keys.push('tax_rate');
+    }
+    if (!fieldAccess || fieldAccess.pricing || fieldAccess.stock) {
+      keys.push('is_active');
+    }
+    return keys;
   }
   if (!fieldAccess) {
     return [...SENSITIVE_PRODUCT_KEYS];
   }
-  const keys = [];
   if (fieldAccess.pricing) {
-    keys.push('selling_price', 'mrp');
+    keys.push('selling_price', 'mrp', 'tax_rate');
   }
   if (fieldAccess.cost) keys.push('cost');
   if (fieldAccess.stock) keys.push('stock_quantity');

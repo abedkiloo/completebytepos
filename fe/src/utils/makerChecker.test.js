@@ -173,6 +173,19 @@ describe('makerChecker', () => {
     ).toBe(false);
     expect(
       productEditNeedsReason({ unit: 'kg' }, { unit: 'piece' })
+    ).toBe(true);
+    expect(
+      productEditNeedsReason(
+        { unit: 'kg' },
+        { unit: 'piece' },
+        { variantProduct: true }
+      )
+    ).toBe(true);
+    expect(
+      productEditNeedsReason({ tax_rate: '8' }, { tax_rate: '16' })
+    ).toBe(true);
+    expect(
+      productEditNeedsReason({ unit: 'piece' }, { unit: 'piece' })
     ).toBe(false);
     expect(
       productEditNeedsReason({ selling_price: '30.00' }, { price: '30' })
@@ -473,10 +486,16 @@ describe('makerChecker', () => {
 
   it('productEditableSensitiveKeys follows catalog field access', () => {
     expect(productEditableSensitiveKeys({ cost: true })).toContain('cost');
+    expect(productEditableSensitiveKeys({ cost: true })).toContain('unit');
     expect(productEditableSensitiveKeys({ pricing: true })).toEqual(
-      expect.arrayContaining(['selling_price', 'mrp', 'is_active'])
+      expect.arrayContaining(['selling_price', 'mrp', 'is_active', 'unit', 'tax_rate'])
     );
-    expect(productEditableSensitiveKeys({ pricing: true }, true)).toEqual([]);
+    expect(productEditableSensitiveKeys({ pricing: true }, true)).toEqual(
+      expect.arrayContaining(['unit', 'tax_rate', 'is_active'])
+    );
+    expect(productEditableSensitiveKeys({ pricing: true }, true)).not.toContain(
+      'selling_price'
+    );
   });
 
   it('getPermissionsFromStorage returns empty on invalid JSON', () => {

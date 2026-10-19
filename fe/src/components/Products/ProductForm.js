@@ -137,6 +137,7 @@ const ProductForm = ({
   const [loading, setLoading] = useState(false);
   const [showCommitConfirm, setShowCommitConfirm] = useState(false);
   const [errors, setErrors] = useState({});
+  const [forceShowChangeReason, setForceShowChangeReason] = useState(false);
   const [subcategories, setSubcategories] = useState([]);
   const [subcategorySearchTerm, setSubcategorySearchTerm] = useState('');
   const debouncedSubcategorySearch = useDebouncedValue(subcategorySearchTerm);
@@ -561,7 +562,8 @@ const ProductForm = ({
     colors,
   ]);
 
-  const showCatalogChangeReason = sensitiveProductEdit || sensitiveVariantDraftApplies;
+  const showCatalogChangeReason =
+    sensitiveProductEdit || sensitiveVariantDraftApplies || forceShowChangeReason;
 
   const pendingCost = proposedPendingCost(pendingApproval);
 
@@ -614,18 +616,19 @@ const ProductForm = ({
     const needsReason =
       makerCheckerOn &&
       product &&
-      (productEditNeedsReason(payloadForReason, product, {
-        financialFieldsLocked: makerCheckerFinancialLocked,
-        variantProduct: payloadForReason.has_variants,
-        fieldAccess,
-      }) ||
+      (forceShowChangeReason ||
+        productEditNeedsReason(payloadForReason, product, {
+          financialFieldsLocked: makerCheckerFinancialLocked,
+          variantProduct: payloadForReason.has_variants,
+          fieldAccess,
+        }) ||
         sensitiveVariantDraftApplies);
     if (needsReason) {
       const reasonError = stockReasonValidationMessage(changeReason);
       if (reasonError) {
         toast.warning(
           reasonError === 'A reason is required for stock changes.'
-            ? 'Enter a reason below — price, cost, or stock changes need manager approval.'
+            ? 'Enter a reason below — unit, price, cost, or stock changes need manager approval.'
             : reasonError
         );
         return;
@@ -724,18 +727,19 @@ const ProductForm = ({
       const needsReason =
         makerCheckerOn &&
         product &&
-        (productEditNeedsReason(payload, product, {
-          financialFieldsLocked: makerCheckerFinancialLocked,
-          variantProduct: payload.has_variants,
-          fieldAccess,
-        }) ||
+        (forceShowChangeReason ||
+          productEditNeedsReason(payload, product, {
+            financialFieldsLocked: makerCheckerFinancialLocked,
+            variantProduct: payload.has_variants,
+            fieldAccess,
+          }) ||
           sensitiveVariantDraftApplies);
       if (needsReason) {
         const reasonError = stockReasonValidationMessage(changeReason);
         if (reasonError) {
           toast.warning(
             reasonError === 'A reason is required for stock changes.'
-              ? 'Enter a reason below — price, cost, or stock changes need manager approval.'
+              ? 'Enter a reason below — unit, price, cost, or stock changes need manager approval.'
               : reasonError
           );
           setLoading(false);
@@ -825,8 +829,12 @@ const ProductForm = ({
             mapped[key] = msg;
           }
         });
+        const reasonFromApi = extractApiReasonError(raw);
+        if (reasonFromApi) {
+          setForceShowChangeReason(true);
+        }
         const errorMessage =
-          extractApiReasonError(raw) ||
+          reasonFromApi ||
           raw.error ||
           mapped.cost ||
           mapped.selling_price ||
