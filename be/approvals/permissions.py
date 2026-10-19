@@ -37,11 +37,9 @@ def user_can_check(user, action_type: str) -> bool:
     if not user or not getattr(user, 'is_authenticated', False):
         return False
     if action_type in (ACTION_SALE_ROLLBACK, ACTION_SALE_REFUND):
-        # Void/refund and rollback are admin-gated even when a manager is staff.
-        return user_has_admin_checker_override(user) or (
-            getattr(user, 'profile', None)
-            and user.profile.has_permission('settings', 'approve')
-        )
+        # Void/refund and rollback: managers may only request; only Admin/Super Admin
+        # may approve (and only Admin/Super Admin may apply immediately).
+        return user_has_admin_checker_override(user)
     if action_type == ACTION_DEBT_COLLECTION:
         # Staff managers still need the Roles checkbox to approve collections.
         return user_has_admin_checker_override(user) or (

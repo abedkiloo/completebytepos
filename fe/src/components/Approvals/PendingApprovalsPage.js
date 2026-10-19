@@ -40,9 +40,11 @@ import ApprovalDetails from './ApprovalDetails';
 import PastDatedNotice from './PastDatedNotice';
 import {
   isPastDated,
+  isSaleCancellationAction,
   pastDatedBlocksUser,
   pendingChangeDates,
   userMayApprovePastItems,
+  userMayApproveSaleCancellation,
 } from '../../utils/pastDatedApproval';
 import CommitConfirm from '../Shared/CommitConfirm';
 import { approvalCommitRows, approvalExpenseRows } from '../../utils/formCommitSummary';
@@ -140,7 +142,10 @@ function ChangeReviewActions({ row, onResolved, onClose }) {
   const extremeRequired = needsExtremePriceConfirm(row);
   const dates = pendingChangeDates(row);
   const pastDated = Boolean(row.past_dated) || isPastDated(...dates);
-  const adminOnly = pastDated && !userMayApprovePastItems();
+  const saleCancelAdminOnly =
+    isSaleCancellationAction(row.action_type) && !userMayApproveSaleCancellation();
+  const adminOnly =
+    saleCancelAdminOnly || (pastDated && !userMayApprovePastItems());
 
   const requestApprove = () => {
     if (extremeRequired && !extremeConfirm) {
@@ -196,7 +201,16 @@ function ChangeReviewActions({ row, onResolved, onClose }) {
     }
   };
 
-  if (adminOnly) return null;
+  if (adminOnly) {
+    if (saleCancelAdminOnly) {
+      return (
+        <p className="text-sm text-muted-foreground">
+          Only an Admin or Super Admin can approve or return sale voids and rollbacks.
+        </p>
+      );
+    }
+    return null;
+  }
 
   return (
     <>

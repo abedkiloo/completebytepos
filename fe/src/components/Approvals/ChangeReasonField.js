@@ -36,7 +36,7 @@ export default function ChangeReasonField({
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
           <div className="space-y-1.5">
             <p>
-              <span className="font-medium">Manager approval required.</span>{' '}
+              <span className="font-medium">{copy.approvalTitle || 'Manager approval required.'}</span>{' '}
               {resolvedHint}
             </p>
             {copy.approverHint ? (

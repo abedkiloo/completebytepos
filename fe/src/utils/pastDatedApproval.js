@@ -19,6 +19,19 @@ export function userMayApprovePastItems(auth = getStoredAuth()) {
   return PAST_APPROVER_ROLE_NAMES.includes(roleName);
 }
 
+/** Mirrors be/approvals.permissions.user_has_admin_checker_override for void/rollback. */
+export function userMayApproveSaleCancellation(auth = getStoredAuth()) {
+  const { user, profile } = auth || {};
+  if (user?.is_superuser) return true;
+  if (profile?.is_super_admin) return true;
+  const legacy = String(profile?.role || '');
+  return legacy === 'admin' || legacy === 'super_admin';
+}
+
+export function isSaleCancellationAction(actionType) {
+  return actionType === 'sale_refund' || actionType === 'sale_rollback';
+}
+
 function pad(n) {
   return String(n).padStart(2, '0');
 }

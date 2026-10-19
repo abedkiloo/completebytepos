@@ -100,19 +100,27 @@ export function userMayReviewPendingApprovals(permissions = getPermissionsFromSt
  * Friendly copy for maker-checker reason fields and prompts.
  * @param {'default'|'role_permissions'|'catalog'|'stock'|'settings'|'financial'} context
  */
+const ADMIN_ONLY_REASON_CONTEXTS = new Set(['sale_refund', 'sale_rollback']);
+
 export function makerCheckerReasonCopy(
   context = 'default',
   permissions = getPermissionsFromStorage()
 ) {
   const base = REASON_CONTEXT_COPY[context] || REASON_CONTEXT_COPY.default;
-  const approverHint = userMayReviewPendingApprovals(permissions)
-    ? `You can review and approve this request under ${PENDING_APPROVALS_NAV} in the sidebar.`
-    : null;
+  const adminOnly = ADMIN_ONLY_REASON_CONTEXTS.has(context);
+  let approverHint = null;
+  if (adminOnly) {
+    approverHint =
+      'An Admin or Super Admin must approve this under Reports → Pending approvals before stock and books change.';
+  } else if (userMayReviewPendingApprovals(permissions)) {
+    approverHint = `You can review and approve this request under ${PENDING_APPROVALS_NAV} in the sidebar.`;
+  }
   return {
     label: base.label,
     placeholder: base.placeholder,
     summary: base.summary,
     approverHint,
+    approvalTitle: adminOnly ? 'Admin approval required.' : 'Manager approval required.',
   };
 }
 
@@ -122,6 +130,11 @@ export function pendingApprovalToastMessage(permissions = getPermissionsFromStor
     return `Submitted for approval — not active yet. Open ${PENDING_APPROVALS_NAV} to approve it.`;
   }
   return PENDING_APPROVAL_MESSAGE;
+}
+
+/** Toast after void/rollback is queued — managers cannot self-approve these. */
+export function saleCancellationPendingToastMessage() {
+  return `${PENDING_APPROVAL_MESSAGE} An Admin or Super Admin must approve it under ${PENDING_APPROVALS_NAV}.`;
 }
 
 /** Text for window.prompt when a reason is required (module settings toggles). */

@@ -92,6 +92,31 @@ class SaleRefundAdminApprovalAPITests(ManagerAPITestCase):
         deny = self.client.post(f'/api/approvals/pending-changes/{change.id}/approve/')
         self.assertEqual(deny.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_manager_cannot_approve_refund_even_with_settings_approve(self):
+        from accounts.models import Permission
+        from accounts.role_definitions import ROLE_MANAGER, ensure_permissions
+
+        ensure_permissions()
+        Role.objects.get(name=ROLE_MANAGER).permissions.add(
+            Permission.objects.get(module='settings', action='approve')
+        )
+        from approvals.permissions import user_can_check
+
+        self.assertFalse(user_can_check(self.manager_user, ACTION_SALE_REFUND))
+
+        self.client.post(
+            f'/api/sales/{self.sale.id}/refund/',
+            {'reason': 'Manager request', 'full': True},
+            format='json',
+        )
+        change = PendingChange.objects.get(action_type=ACTION_SALE_REFUND)
+        deny = self.client.post(f'/api/approvals/pending-changes/{change.id}/approve/')
+        self.assertIn(deny.status_code, (status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN))
+        self.sale.refresh_from_db()
+        self.assertEqual(self.sale.refund_status, 'none')
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, self.stock_before)
+
     def test_admin_approval_applies_refund(self):
         queued = self.client.post(
             f'/api/sales/{self.sale.id}/refund/',

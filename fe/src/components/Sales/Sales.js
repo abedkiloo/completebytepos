@@ -15,7 +15,7 @@ import {
 import { useSellerOptions } from '../../hooks/useSellerOptions';
 import { canViewDailySalesFromStorage } from '../../utils/dailySalesAccess';
 import { userCanRefundSales, saleIsRefundable, handleSaleRefundResponse, userCanRollbackSales, saleIsRollbackable } from '../../utils/saleRefund';
-import { pendingApprovalToastMessage } from '../../utils/makerChecker';
+import { saleCancellationPendingToastMessage } from '../../utils/makerChecker';
 import { DEFAULT_BRAND_LOGO } from '../../utils/storeBranding';
 import {
   SALE_AWAITING_APPROVAL_MESSAGE,
@@ -174,7 +174,7 @@ const Sales = () => {
       const res = await salesAPI.refund(refundSale.id, payload);
       const outcome = handleSaleRefundResponse(res, {
         onApplied: (data) => toast.success(`Void recorded as ${data.refund_number}`),
-        onPending: () => toast.success(pendingApprovalToastMessage()),
+        onPending: () => toast.success(saleCancellationPendingToastMessage()),
       });
       setRefundSale(null);
       if (outcome === 'applied' && selectedSale?.id === refundSale.id) {
@@ -212,7 +212,7 @@ const Sales = () => {
       const res = await salesAPI.rollback(rollbackSale.id, payload);
       handleSaleRefundResponse(res, {
         onApplied: (data) => toast.success(`Sale rolled back as ${data.refund_number}`),
-        onPending: () => toast.success(pendingApprovalToastMessage()),
+        onPending: () => toast.success(saleCancellationPendingToastMessage()),
       });
       setRollbackSale(null);
       if (selectedSale?.id === rollbackSale.id) {
@@ -686,9 +686,9 @@ const Sales = () => {
           open={refundSubmitting || rollbackSubmitting}
           label={
             refundSubmitting
-              ? 'Submitting void…'
+              ? 'Submitting void for approval…'
               : rollbackSubmitting
-                ? 'Submitting rollback…'
+                ? 'Submitting rollback for approval…'
                 : 'Loading…'
           }
         />

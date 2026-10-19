@@ -20,7 +20,7 @@ import { getStoredAuth, hasPermission, isManagerOrAdminFromStorage } from '../..
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 import { userCanRefundSales, userCanRollbackSales, handleSaleRefundResponse } from '../../utils/saleRefund';
 import { userHasAdminSaleOverride } from '../../utils/saleCompletionApproval';
-import { pendingApprovalToastMessage } from '../../utils/makerChecker';
+import { saleCancellationPendingToastMessage } from '../../utils/makerChecker';
 import {
   formatDebtTrail,
   formatSettlementMeta,
@@ -183,9 +183,9 @@ export default function CustomerDetailPage() {
       const res = await salesAPI.refund(refundSale.id, body);
       handleSaleRefundResponse(res, {
         onApplied: () => toast.success('Sale refunded'),
-        onPending: () => toast.success(pendingApprovalToastMessage()),
-        onRequiresApproval: (data) => {
-          toast.warning(pendingApprovalToastMessage('Sale refund', data.pending_approval_id));
+        onPending: () => toast.success(saleCancellationPendingToastMessage()),
+        onRequiresApproval: () => {
+          toast.warning(saleCancellationPendingToastMessage());
         },
         onImmediate: () => toast.success('Sale refunded'),
       });
@@ -205,7 +205,7 @@ export default function CustomerDetailPage() {
       const res = await salesAPI.rollback(rollbackSale.id, payload);
       handleSaleRefundResponse(res, {
         onApplied: (data) => toast.success(`Sale rolled back as ${data.refund_number}`),
-        onPending: () => toast.success(pendingApprovalToastMessage()),
+        onPending: () => toast.success(saleCancellationPendingToastMessage()),
       });
       setRollbackSale(null);
       load();
@@ -650,9 +650,9 @@ export default function CustomerDetailPage() {
         open={refundSubmitting || rollbackSubmitting}
         label={
           refundSubmitting
-            ? 'Submitting void…'
+            ? 'Submitting void for approval…'
             : rollbackSubmitting
-              ? 'Submitting rollback…'
+              ? 'Submitting rollback for approval…'
               : 'Loading…'
         }
       />

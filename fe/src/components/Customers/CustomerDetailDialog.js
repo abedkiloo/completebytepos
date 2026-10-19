@@ -6,7 +6,7 @@ import { toast } from '../../utils/toast';
 import { getStoredAuth, isManagerOrAdminFromStorage } from '../../utils/roleAccess';
 import { userCanRefundSales, userCanRollbackSales, handleSaleRefundResponse } from '../../utils/saleRefund';
 import { userHasAdminSaleOverride } from '../../utils/saleCompletionApproval';
-import { pendingApprovalToastMessage } from '../../utils/makerChecker';
+import { saleCancellationPendingToastMessage } from '../../utils/makerChecker';
 import { getWalletDebtAmount } from '../../utils/walletDisplay';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 import { customerCommitRows } from '../../utils/formCommitSummary';
@@ -130,7 +130,7 @@ export default function CustomerDetailDialog({
             setSelectedSale(refreshed.data);
           }
         },
-        onPending: () => toast.success(pendingApprovalToastMessage()),
+        onPending: () => toast.success(saleCancellationPendingToastMessage()),
       });
       setRefundSale(null);
       onCustomerUpdated?.();
@@ -161,7 +161,7 @@ export default function CustomerDetailDialog({
             setSelectedSale(refreshed.data);
           }
         },
-        onPending: () => toast.success(pendingApprovalToastMessage()),
+        onPending: () => toast.success(saleCancellationPendingToastMessage()),
       });
       setRollbackSale(null);
       onCustomerUpdated?.();
@@ -401,9 +401,9 @@ export default function CustomerDetailDialog({
         open={refundSubmitting || rollbackSubmitting}
         label={
           refundSubmitting
-            ? 'Submitting void…'
+            ? 'Submitting void for approval…'
             : rollbackSubmitting
-              ? 'Submitting rollback…'
+              ? 'Submitting rollback for approval…'
               : 'Loading…'
         }
       />

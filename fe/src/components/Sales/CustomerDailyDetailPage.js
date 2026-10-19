@@ -26,7 +26,7 @@ import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 import { userCanRefundSales, userCanRollbackSales, handleSaleRefundResponse } from '../../utils/saleRefund';
 import { userHasAdminSaleOverride } from '../../utils/saleCompletionApproval';
 import { saleFinalStatusLabel, saleStatusBadgeTone } from '../../utils/saleItemDisplay';
-import { pendingApprovalToastMessage } from '../../utils/makerChecker';
+import { saleCancellationPendingToastMessage } from '../../utils/makerChecker';
 import CenterScreenLoader from '../Shared/CenterScreenLoader';
 
 import { Button } from '../ui/button';
@@ -138,7 +138,7 @@ export default function CustomerDailyDetailPage() {
       const res = await salesAPI.refund(refundSale.id, body);
       handleSaleRefundResponse(res, {
         onApplied: () => toast.success('Sale refunded'),
-        onPending: () => toast.success(pendingApprovalToastMessage()),
+        onPending: () => toast.success(saleCancellationPendingToastMessage()),
       });
       setRefundSale(null);
       load();
@@ -156,7 +156,7 @@ export default function CustomerDailyDetailPage() {
       const res = await salesAPI.rollback(rollbackSale.id, payload);
       handleSaleRefundResponse(res, {
         onApplied: (data) => toast.success(`Sale rolled back as ${data.refund_number}`),
-        onPending: () => toast.success(pendingApprovalToastMessage()),
+        onPending: () => toast.success(saleCancellationPendingToastMessage()),
       });
       setRollbackSale(null);
       load();
@@ -530,9 +530,9 @@ export default function CustomerDailyDetailPage() {
         open={refundSubmitting || rollbackSubmitting}
         label={
           refundSubmitting
-            ? 'Submitting void…'
+            ? 'Submitting void for approval…'
             : rollbackSubmitting
-              ? 'Submitting rollback…'
+              ? 'Submitting rollback for approval…'
               : 'Loading…'
         }
       />

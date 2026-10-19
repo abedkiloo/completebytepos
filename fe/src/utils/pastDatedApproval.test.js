@@ -2,8 +2,10 @@ import {
   businessDayKey,
   earliestBusinessDay,
   isPastDated,
+  isSaleCancellationAction,
   pastDatedBlocksUser,
   userMayApprovePastItems,
+  userMayApproveSaleCancellation,
 } from './pastDatedApproval';
 
 function dayOffset(days) {
@@ -20,6 +22,20 @@ describe('pastDatedApproval', () => {
     expect(userMayApprovePastItems(admin)).toBe(true);
     expect(userMayApprovePastItems({ user: { is_superuser: true }, profile: {} })).toBe(true);
     expect(userMayApprovePastItems(manager)).toBe(false);
+  });
+
+  it('only admins may approve sale voids and rollbacks', () => {
+    expect(isSaleCancellationAction('sale_refund')).toBe(true);
+    expect(isSaleCancellationAction('sale_rollback')).toBe(true);
+    expect(isSaleCancellationAction('product_price')).toBe(false);
+    expect(userMayApproveSaleCancellation(admin)).toBe(true);
+    expect(userMayApproveSaleCancellation(manager)).toBe(false);
+    expect(
+      userMayApproveSaleCancellation({
+        user: {},
+        profile: { role: 'manager', custom_role: { name: 'Admin' } },
+      })
+    ).toBe(false);
   });
 
   it('keeps date-only strings as the business day', () => {
