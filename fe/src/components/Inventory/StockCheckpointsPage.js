@@ -1,10 +1,17 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ClipboardCheck, Lock, Plus, Search } from 'lucide-react';
 
 import { inventoryAPI, productsAPI } from '../../services/api';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { clearFormBanner, reportFormError } from '../../utils/formFeedback';
+import {
+  buildChangedCountPayload,
+  hasAnyChangedPendingDraft,
+  isCountDraftChanged,
+  parseCountDraft,
+  sortCheckpointLines,
+} from '../../utils/checkpointCountDrafts';
 import { toast } from '../../utils/toast';
 import { getStoredAuth, hasPermission } from '../../utils/roleAccess';
 import FormBanner from '../form/FormBanner';
@@ -52,6 +59,7 @@ export default function StockCheckpointsPage() {
   const [busy, setBusy] = useState(false);
   const [formBanner, setFormBanner] = useState(null);
   const [openFormBanner, setOpenFormBanner] = useState(null);
+  const linesTopRef = useRef(null);
 
   const [showOpen, setShowOpen] = useState(false);
   const [openTitle, setOpenTitle] = useState('');
@@ -172,10 +180,30 @@ export default function StockCheckpointsPage() {
     }
   };
 
+  const pendingLines = (detail?.lines || []).filter((line) => line.status !== 'counted');
+  const sortedLines = sortCheckpointLines(detail?.lines || []);
+  const canSaveAnyChanged = hasAnyChangedPendingDraft(pendingLines, countDrafts);
+
+  const scrollLinesToTop = () => {
+    try {
+      linesTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch {
+      /* ignore */
+    }
+  };
+
   const handleCount = async (line) => {
     const raw = countDrafts[line.id];
-    const qty = parseInt(String(raw).trim(), 10);
-    if (Number.isNaN(qty) || qty < 0) {
+    // TODO(checkpoint-confirm-unchanged): allow save when qty matches system.
+    if (!isCountDraftChanged(line, raw)) {
+      reportFormError(
+        setFormBanner,
+        'Change the stock at hand before saving (confirming unchanged stock comes later).'
+      );
+      return;
+    }
+    const qty = parseCountDraft(raw);
+    if (qty === null) {
       reportFormError(setFormBanner, 'Enter a valid stock-at-hand quantity');
       return;
     }
@@ -186,6 +214,8 @@ export default function StockCheckpointsPage() {
       toast.success(`Counted ${line.product_name}`);
       await loadDetail(selectedId);
       await loadList();
+      // Keep remaining work at the top after the saved row drops below.
+      requestAnimationFrame(scrollLinesToTop);
     } catch (err) {
       reportFormError(setFormBanner, err.response?.data?.error || 'Could not save count');
     } finally {
@@ -193,25 +223,20 @@ export default function StockCheckpointsPage() {
     }
   };
 
-  const pendingLines = (detail?.lines || []).filter((line) => line.status !== 'counted');
-
   const handleCountAll = async () => {
     if (!selectedId || !detail || detail.status !== 'open') return;
     if (pendingLines.length === 0) {
       reportFormError(setFormBanner, 'All lines are already counted');
       return;
     }
-    const payload = [];
-    for (const line of pendingLines) {
-      const qty = parseInt(String(countDrafts[line.id] ?? '').trim(), 10);
-      if (Number.isNaN(qty) || qty < 0) {
-        reportFormError(
-          setFormBanner,
-          `Enter a valid stock-at-hand for ${line.product_name}`
-        );
-        return;
-      }
-      payload.push({ line_id: line.id, counted_qty: qty });
+    // TODO(checkpoint-confirm-unchanged): include unchanged lines as confirmed.
+    const { payload } = buildChangedCountPayload(pendingLines, countDrafts);
+    if (payload.length === 0) {
+      reportFormError(
+        setFormBanner,
+        'Change at least one stock-at-hand quantity before saving.'
+      );
+      return;
     }
     setBusy(true);
     try {
@@ -392,8 +417,13 @@ export default function StockCheckpointsPage() {
                     <div className="flex flex-wrap gap-2">
                       <Button
                         type="button"
-                        disabled={busy || pendingLines.length === 0}
+                        disabled={busy || !canSaveAnyChanged}
                         onClick={handleCountAll}
+                        title={
+                          canSaveAnyChanged
+                            ? undefined
+                            : 'Change at least one quantity to enable save'
+                        }
                       >
                         Save all counts
                       </Button>
@@ -418,11 +448,12 @@ export default function StockCheckpointsPage() {
                 </div>
                 {detail.status === 'open' && pendingLines.length > 0 ? (
                   <p className="mb-3 text-xs text-muted-foreground">
-                    Enter stock at hand for each product, then save one row at a time or use{' '}
-                    <span className="font-medium text-foreground">Save all counts</span>.
+                    Still to count stays on top. Save stays off until you change a quantity
+                    (confirming “same as system” comes later). After save, that row moves below.
                   </p>
                 ) : null}
 
+                <div ref={linesTopRef} />
                 <DataTable>
                   <DataTableHeader>
                     <DataTableHead>Product</DataTableHead>
@@ -431,7 +462,7 @@ export default function StockCheckpointsPage() {
                     <DataTableHead align="right">Action</DataTableHead>
                   </DataTableHeader>
                   <DataTableBody>
-                    {(detail.lines || []).map((line) => (
+                    {sortedLines.map((line) => (
                       <DataTableRow key={line.id}>
                         <DataTableCell>
                           <div className="font-medium">{line.product_name}</div>
@@ -466,7 +497,14 @@ export default function StockCheckpointsPage() {
                             <Button
                               type="button"
                               size="sm"
-                              disabled={busy}
+                              disabled={
+                                busy || !isCountDraftChanged(line, countDrafts[line.id])
+                              }
+                              title={
+                                isCountDraftChanged(line, countDrafts[line.id])
+                                  ? undefined
+                                  : 'Change the quantity to enable save'
+                              }
                               onClick={() => handleCount(line)}
                             >
                               Save count
