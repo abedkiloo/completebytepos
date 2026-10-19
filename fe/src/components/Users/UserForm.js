@@ -3,6 +3,8 @@ import { usersAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import SearchableSelect from '../Shared/SearchableSelect';
 import FormField from '../form/FormField';
+import FormBanner from '../form/FormBanner';
+import { formBannerMessage } from '../../utils/formFeedback';
 import { PasswordInput } from '../ui/password-input';
 import {
   normalizeApiErrors,
@@ -160,17 +162,12 @@ const UserForm = ({
 
         <div className="slide-in-panel-body">
           <form onSubmit={handleSubmit} className="user-form" noValidate>
-            {errors._form && (
-              <div className="form-banner-error" role="alert">
-                {errors._form}
-              </div>
-            )}
-
-            {formInvalid && (
-              <div className="form-banner-error" role="status">
-                Please fix the highlighted fields before saving.
-              </div>
-            )}
+            <FormBanner
+              message={
+                formBannerMessage(errors) ||
+                (formInvalid ? 'Please fix the highlighted fields before saving.' : null)
+              }
+            />
 
             <div className="form-row">
               <FormField

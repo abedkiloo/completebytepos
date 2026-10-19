@@ -18,6 +18,8 @@ import {
   postToForm,
   validatePostForm,
 } from './blogPostHelpers';
+import FormBanner from '../form/FormBanner';
+import { formBannerMessage, reportFormError } from '../../utils/formFeedback';
 
 const textareaClass =
   'w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm ' +
@@ -53,7 +55,10 @@ const BlogPostForm = ({ post, onClose, onSaved }) => {
     e.preventDefault();
     const found = validatePostForm(form);
     setErrors(found);
-    if (Object.keys(found).length) return;
+    if (Object.keys(found).length) {
+      reportFormError(null, formBannerMessage(found));
+      return;
+    }
     setSaving(true);
     try {
       const data = buildPostFormData(form, { coverFile, removeCover });
@@ -63,7 +68,9 @@ const BlogPostForm = ({ post, onClose, onSaved }) => {
       toast.success(form.status === 'published' ? 'Post published' : 'Draft saved');
       onSaved(res.data);
     } catch (error) {
-      toast.error(apiErrorMessage(error));
+      const msg = apiErrorMessage(error);
+      setErrors({ _form: msg });
+      reportFormError(null, msg);
     } finally {
       setSaving(false);
     }
@@ -76,6 +83,7 @@ const BlogPostForm = ({ post, onClose, onSaved }) => {
           <DialogTitle>{post?.id ? 'Edit post' : 'New blog post'}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="grid gap-4" noValidate>
+          <FormBanner message={formBannerMessage(errors)} />
           <Field id="post-title" label="Title" error={errors.title}>
             <Input id="post-title" value={form.title} onChange={set('title')} placeholder="How to choose the right sofa stand" />
           </Field>

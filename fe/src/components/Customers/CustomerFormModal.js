@@ -11,6 +11,8 @@ import {
 import { applyCustomerFormFieldUpdate } from '../../utils/customerFormFieldUpdate';
 import TypicalGoodsFields from './TypicalGoodsFields';
 import KenyaLocationFields from './KenyaLocationFields';
+import FormBanner from '../form/FormBanner';
+import { formBannerMessage, reportFormError } from '../../utils/formFeedback';
 
 const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
   const [formData, setFormData] = useState({ ...EMPTY_CUSTOMER_FORM });
@@ -73,7 +75,7 @@ const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
     // If there are client-side errors, show them and return
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
-      toast.error(Object.values(errors)[0], 5000);
+      reportFormError(null, Object.values(errors)[0], 5000);
       return;
     }
 
@@ -118,7 +120,7 @@ const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
           if (Object.keys(backendErrors).length > 0) {
             setFormErrors(backendErrors);
             errorMessage = Object.values(backendErrors)[0];
-            toast.error(errorMessage, 8000);
+            reportFormError(null, errorMessage, 8000);
             setLoading(false);
             return; // Don't close modal on validation error
           }
@@ -132,8 +134,9 @@ const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
       } else if (error.message) {
         errorMessage = error.message;
       }
-      
-      toast.error(errorMessage, 8000);
+
+      setFormErrors({ _form: errorMessage });
+      reportFormError(null, errorMessage, 8000);
       setLoading(false);
     }
   };
@@ -150,6 +153,7 @@ const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
         
         <div className="slide-in-panel-body">
           <form onSubmit={handleSubmit}>
+            <FormBanner message={formBannerMessage(formErrors)} />
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Basics
             </p>

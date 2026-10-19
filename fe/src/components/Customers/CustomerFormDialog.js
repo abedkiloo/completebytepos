@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react';
 
 import TypicalGoodsFields from './TypicalGoodsFields';
 import KenyaLocationFields from './KenyaLocationFields';
+import FormBanner from '../form/FormBanner';
 import {
   Dialog,
   DialogContent,
@@ -14,6 +15,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { cn } from '../../lib/cn';
+import { formBannerMessage } from '../../utils/formFeedback';
 
 export default function CustomerFormDialog({
   open,
@@ -53,6 +55,7 @@ export default function CustomerFormDialog({
             aria-label="Duka details"
           >
             <div className="flex flex-col gap-4 pb-2">
+              <FormBanner message={formBannerMessage(formErrors)} />
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Basics
               </p>

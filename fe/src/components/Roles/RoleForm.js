@@ -15,6 +15,8 @@ import { roleCommitRows } from '../../utils/formCommitSummary';
 import { cn } from '../../lib/cn';
 import { DOMAIN_ORDER, DOMAIN_LABELS } from '../../utils/moduleDomains';
 import { Button } from '../ui/button';
+import FormBanner from '../form/FormBanner';
+import { formBannerMessage } from '../../utils/formFeedback';
 
 function normalizeDomainCatalog(catalog) {
   if (!Array.isArray(catalog)) return [];
@@ -228,16 +230,17 @@ const RoleForm = ({ role, permissions, permissionCatalog, showPermissionCatalog 
     } catch (error) {
       setShowCommitConfirm(false);
       if (error.response?.data) {
-        setErrors(error.response.data);
         const errorMessage =
           error.response.data.error ||
           Object.values(error.response.data).flat().join(', ') ||
           'Failed to save role';
+        setErrors({ ...error.response.data, _form: error.response.data.error || errorMessage });
         toast.error(errorMessage);
       } else {
-        toast.error(
-          'Failed to save role: ' + (error.response?.data?.error || error.message)
-        );
+        const msg =
+          'Failed to save role: ' + (error.response?.data?.error || error.message);
+        setErrors({ _form: msg });
+        toast.error(msg);
       }
     } finally {
       setLoading(false);
@@ -256,6 +259,7 @@ const RoleForm = ({ role, permissions, permissionCatalog, showPermissionCatalog 
 
         <div className="slide-in-panel-body">
           <form onSubmit={handleSubmit} className="role-form">
+            <FormBanner message={formBannerMessage(errors)} />
             <div className="form-group">
               <label htmlFor="name">Role Name *</label>
               <input

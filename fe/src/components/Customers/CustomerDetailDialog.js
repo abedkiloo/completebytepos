@@ -240,7 +240,10 @@ export default function CustomerDetailDialog({
         setFormErrors(backendErrors);
         toast.error(Object.values(backendErrors)[0] || 'Failed to save customer');
       } else {
-        toast.error(data?.error || data?.detail || error.message || 'Failed to save customer');
+        const msg =
+          data?.error || data?.detail || error.message || 'Failed to save customer';
+        setFormErrors({ _form: msg });
+        toast.error(msg);
       }
     } finally {
       setSaving(false);

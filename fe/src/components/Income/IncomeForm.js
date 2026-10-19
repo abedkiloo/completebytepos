@@ -16,6 +16,8 @@ import {
   moneyMessage,
   required,
 } from '../../utils/formValidation';
+import { formBannerMessage } from '../../utils/formFeedback';
+import FormBanner from '../form/FormBanner';
 
 const IncomeForm = ({ income, categories, onClose, onSave }) => {
   const [formData, setFormData] = useState({
@@ -117,11 +119,14 @@ const IncomeForm = ({ income, categories, onClose, onSave }) => {
       onSave();
     } catch (error) {
       const errorData = error.response?.data;
+      const msg = formatApiError(error, 'Failed to save income. Check the form fields.');
       if (errorData && typeof errorData === 'object' && !Array.isArray(errorData)) {
-        setErrors(errorData);
+        setErrors({ ...errorData, _form: errorData._form || errorData.error || msg });
         if (errorData.proposal_reason) refreshStoreSettings().catch(() => {});
+      } else {
+        setErrors({ _form: msg });
       }
-      toast.error(formatApiError(error, 'Failed to save income. Check the form fields.'));
+      toast.error(msg);
       setShowCommitConfirm(false);
     } finally {
       setLoading(false);
@@ -158,6 +163,7 @@ const IncomeForm = ({ income, categories, onClose, onSave }) => {
         
         <div className="slide-in-panel-body">
           <form onSubmit={handleSubmit}>
+          <FormBanner message={formBannerMessage(errors)} />
           <div className="form-grid">
             <div className="form-group">
               <label>Category *</label>

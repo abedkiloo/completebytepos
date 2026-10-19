@@ -18,6 +18,8 @@ import {
 } from '../../utils/productDisplay';
 import { CATALOG_FETCH_PAGE_SIZE } from '../../config/pagination';
 import { moneyMessage, required } from '../../utils/formValidation';
+import { formBannerMessage } from '../../utils/formFeedback';
+import FormBanner from '../form/FormBanner';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import { useProductUnits } from '../../hooks/useProductUnits';
 import ChangeReasonField from '../Approvals/ChangeReasonField';
@@ -823,7 +825,6 @@ const ProductForm = ({
             mapped[key] = msg;
           }
         });
-        setErrors(mapped);
         const errorMessage =
           extractApiReasonError(raw) ||
           raw.error ||
@@ -832,9 +833,12 @@ const ProductForm = ({
           mapped.price ||
           Object.values(mapped).join(', ') ||
           'Failed to save product';
+        setErrors({ ...mapped, _form: mapped._form || raw.error || errorMessage });
         toast.error(errorMessage);
       } else {
-        toast.error('Failed to save product: ' + (error.message || 'Unknown error'));
+        const msg = 'Failed to save product: ' + (error.message || 'Unknown error');
+        setErrors({ _form: msg });
+        toast.error(msg);
       }
     } finally {
       setLoading(false);
@@ -858,6 +862,7 @@ const ProductForm = ({
 
         <div className="slide-in-panel-body">
           <form onSubmit={handleSubmit} className="product-form">
+          <FormBanner message={formBannerMessage(errors)} />
           <div className="form-row">
             <div className="form-group">
               <label>Product Name *</label>

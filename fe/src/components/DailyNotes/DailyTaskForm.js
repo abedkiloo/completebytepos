@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { dailyTasksAPI, usersAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import { dateMessage, required } from '../../utils/formValidation';
+import { clearFormBanner, reportFormError } from '../../utils/formFeedback';
+import FormBanner from '../form/FormBanner';
 
 const DailyTaskForm = ({ task, defaultDate, canAssignToOthers = false, onClose, onSave }) => {
   const [formData, setFormData] = useState({
@@ -14,6 +16,7 @@ const DailyTaskForm = ({ task, defaultDate, canAssignToOthers = false, onClose, 
   const [users, setUsers] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [formBanner, setFormBanner] = useState(null);
 
   useEffect(() => {
     if (task) {
@@ -68,10 +71,11 @@ const DailyTaskForm = ({ task, defaultDate, canAssignToOthers = false, onClose, 
     }
     const titleErr = required(formData.title, 'Enter a task title, e.g. Restock sugar 2kg');
     if (titleErr) {
-      toast.warning(titleErr);
+      reportFormError(setFormBanner, titleErr);
       return;
     }
     setLoading(true);
+    clearFormBanner(setFormBanner);
     try {
       const payload = {
         task_date: formData.task_date,
@@ -95,7 +99,7 @@ const DailyTaskForm = ({ task, defaultDate, canAssignToOthers = false, onClose, 
         error.response?.data?.error ||
         Object.values(error.response?.data || {}).flat().join(', ') ||
         'Failed to save task';
-      toast.error(msg);
+      reportFormError(setFormBanner, msg);
     } finally {
       setLoading(false);
     }
@@ -117,6 +121,11 @@ const DailyTaskForm = ({ task, defaultDate, canAssignToOthers = false, onClose, 
         </div>
         <form onSubmit={handleSubmit}>
           <div className="slide-in-panel-body">
+            <FormBanner
+              message={formBanner?.message}
+              type={formBanner?.type || 'error'}
+              onDismiss={() => clearFormBanner(setFormBanner)}
+            />
             <div className="form-group">
               <label>Date *</label>
               <input

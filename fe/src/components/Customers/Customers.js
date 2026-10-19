@@ -214,7 +214,8 @@ const Customers = () => {
     const errors = validateCustomerForm(formData);
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) {
-      toast.error(Object.values(errors)[0]);
+      const msg = Object.values(errors)[0];
+      toast.error(msg);
       return;
     }
 
@@ -247,6 +248,7 @@ const Customers = () => {
       } else {
         const msg =
           data?.error || data?.detail || error.message || 'Failed to save customer';
+        setFormErrors({ _form: msg });
         toast.error(msg);
       }
     } finally {

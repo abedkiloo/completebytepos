@@ -5,6 +5,8 @@ import { toast } from '../../utils/toast';
 import SearchableSelect from '../Shared/SearchableSelect';
 import CommitConfirm from '../Shared/CommitConfirm';
 import { categoryCommitRows } from '../../utils/formCommitSummary';
+import { formBannerMessage } from '../../utils/formFeedback';
+import FormBanner from '../form/FormBanner';
 
 const CategoryForm = ({
   isOpen,
@@ -118,7 +120,6 @@ const CategoryForm = ({
     } catch (error) {
       setShowCommitConfirm(false);
       if (error.response?.data) {
-        setErrors(error.response.data);
         const nameErrors = error.response.data.name;
         const nameMsg = Array.isArray(nameErrors) ? nameErrors[0] : nameErrors;
         const errorMessage =
@@ -141,9 +142,15 @@ const CategoryForm = ({
           }
         }
 
+        setErrors({
+          ...error.response.data,
+          _form: error.response.data.error || errorMessage,
+        });
         toast.error(errorMessage);
       } else {
-        toast.error('Failed to create category: ' + (error.message || 'Unknown error'));
+        const msg = 'Failed to create category: ' + (error.message || 'Unknown error');
+        setErrors({ _form: msg });
+        toast.error(msg);
       }
     } finally {
       setLoading(false);
@@ -174,6 +181,7 @@ const CategoryForm = ({
 
         <div className="slide-in-panel-body">
           <form onSubmit={handleSubmit} className="category-form">
+            <FormBanner message={formBannerMessage(errors)} />
             {isSubcategory && (
               <div className="form-group">
                 <label>Parent category</label>

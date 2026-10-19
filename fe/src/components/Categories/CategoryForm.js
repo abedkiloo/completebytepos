@@ -11,6 +11,7 @@ import {
   PENDING_APPROVAL_MESSAGE,
 } from '../../utils/makerChecker';
 import { toast } from '../../utils/toast';
+import FormBanner from '../form/FormBanner';
 
 const CategoryForm = ({
   category,
@@ -171,6 +172,7 @@ const CategoryForm = ({
 
         <div className="slide-in-panel-body">
           <form onSubmit={handleSubmit} className="category-form">
+            <FormBanner message={error} />
             {lockedParentId && !canMoveParent && (
               <div className="form-group">
                 <label>Parent category</label>

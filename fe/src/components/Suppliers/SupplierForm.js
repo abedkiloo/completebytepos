@@ -5,6 +5,8 @@ import SearchableSelect from '../Shared/SearchableSelect';
 import CommitConfirm from '../Shared/CommitConfirm';
 import { supplierCommitRows } from '../../utils/formCommitSummary';
 import { emailMessage, moneyMessage, phoneMessage, required } from '../../utils/formValidation';
+import { formBannerMessage } from '../../utils/formFeedback';
+import FormBanner from '../form/FormBanner';
 
 const SupplierForm = ({
   supplier,
@@ -152,13 +154,16 @@ const SupplierForm = ({
     } catch (error) {
       setShowCommitConfirm(false);
       if (error.response?.data) {
-        setErrors(error.response.data);
-        const errorMessage = error.response.data.error || 
-          Object.values(error.response.data).flat().join(', ') || 
+        const errorMessage =
+          error.response.data.error ||
+          Object.values(error.response.data).flat().join(', ') ||
           'Failed to save supplier';
+        setErrors({ ...error.response.data, _form: error.response.data.error || errorMessage });
         toast.error(errorMessage);
       } else {
-        toast.error('Failed to save supplier: ' + (error.message || 'Unknown error'));
+        const msg = 'Failed to save supplier: ' + (error.message || 'Unknown error');
+        setErrors({ _form: msg });
+        toast.error(msg);
       }
     } finally {
       setLoading(false);
@@ -175,6 +180,7 @@ const SupplierForm = ({
 
         <div className="slide-in-panel-body">
           <form onSubmit={handleSubmit} className="supplier-form">
+            <FormBanner message={formBannerMessage(errors)} />
             <div className="form-section">
               <h3>Basic Information</h3>
               <div className="form-row">

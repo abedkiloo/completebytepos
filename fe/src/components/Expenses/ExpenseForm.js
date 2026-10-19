@@ -22,6 +22,8 @@ import {
   required,
   requiredChoiceMessage,
 } from '../../utils/formValidation';
+import { formBannerMessage } from '../../utils/formFeedback';
+import FormBanner from '../form/FormBanner';
 
 const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }) => {
   const [formData, setFormData] = useState({
@@ -191,11 +193,14 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
       onSave();
     } catch (error) {
       const errorData = error.response?.data;
+      const msg = formatApiError(error, 'Failed to save expense. Check the form fields.');
       if (errorData && typeof errorData === 'object' && !Array.isArray(errorData)) {
-        setErrors(errorData);
+        setErrors({ ...errorData, _form: errorData._form || errorData.error || msg });
         if (errorData.proposal_reason) refreshStoreSettings().catch(() => {});
+      } else {
+        setErrors({ _form: msg });
       }
-      toast.error(formatApiError(error, 'Failed to save expense. Check the form fields.'));
+      toast.error(msg);
       setShowCommitConfirm(false);
     } finally {
       setLoading(false);
@@ -234,6 +239,7 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
 
         <div className="slide-in-panel-body">
           <form onSubmit={handleSubmit}>
+          <FormBanner message={formBannerMessage(errors)} />
           <div className="form-grid">
             <div className="form-group full-width">
               <label htmlFor="expense_date">When did this expense happen? *</label>

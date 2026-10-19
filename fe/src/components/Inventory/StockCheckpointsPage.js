@@ -4,8 +4,10 @@ import { ClipboardCheck, Lock, Plus, Search } from 'lucide-react';
 import { inventoryAPI, productsAPI } from '../../services/api';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
+import { clearFormBanner, reportFormError } from '../../utils/formFeedback';
 import { toast } from '../../utils/toast';
 import { getStoredAuth, hasPermission } from '../../utils/roleAccess';
+import FormBanner from '../form/FormBanner';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
@@ -48,6 +50,8 @@ export default function StockCheckpointsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [countDrafts, setCountDrafts] = useState({});
   const [busy, setBusy] = useState(false);
+  const [formBanner, setFormBanner] = useState(null);
+  const [openFormBanner, setOpenFormBanner] = useState(null);
 
   const [showOpen, setShowOpen] = useState(false);
   const [openTitle, setOpenTitle] = useState('');
@@ -74,7 +78,7 @@ export default function StockCheckpointsPage() {
       const res = await inventoryAPI.checkpoints();
       setRows(res.data?.results || res.data || []);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Could not load checkpoints');
+      reportFormError(setFormBanner, err.response?.data?.error || 'Could not load checkpoints');
       setRows([]);
     } finally {
       setLoading(false);
@@ -90,6 +94,7 @@ export default function StockCheckpointsPage() {
     try {
       const res = await inventoryAPI.checkpoint(id);
       setDetail(res.data);
+      clearFormBanner(setFormBanner);
       const drafts = {};
       for (const line of res.data?.lines || []) {
         drafts[line.id] =
@@ -97,7 +102,7 @@ export default function StockCheckpointsPage() {
       }
       setCountDrafts(drafts);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Could not load checkpoint');
+      reportFormError(setFormBanner, err.response?.data?.error || 'Could not load checkpoint');
       setDetail(null);
     } finally {
       setDetailLoading(false);
@@ -134,10 +139,11 @@ export default function StockCheckpointsPage() {
 
   const handleOpen = async () => {
     if (!openTitle.trim()) {
-      toast.error('Enter a checkpoint title');
+      reportFormError(setOpenFormBanner, 'Enter a checkpoint title');
       return;
     }
     setBusy(true);
+    clearFormBanner(setOpenFormBanner);
     try {
       const payload = {
         title: openTitle.trim(),
@@ -156,10 +162,11 @@ export default function StockCheckpointsPage() {
       setOpenTitle('');
       setOpenNotes('');
       setPickedIds([]);
+      clearFormBanner(setOpenFormBanner);
       await loadList();
       setSelectedId(res.data?.id);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Could not open checkpoint');
+      reportFormError(setOpenFormBanner, err.response?.data?.error || 'Could not open checkpoint');
     } finally {
       setBusy(false);
     }
@@ -169,17 +176,18 @@ export default function StockCheckpointsPage() {
     const raw = countDrafts[line.id];
     const qty = parseInt(String(raw).trim(), 10);
     if (Number.isNaN(qty) || qty < 0) {
-      toast.error('Enter a valid stock-at-hand quantity');
+      reportFormError(setFormBanner, 'Enter a valid stock-at-hand quantity');
       return;
     }
     setBusy(true);
     try {
       await inventoryAPI.countCheckpointLine(selectedId, line.id, { counted_qty: qty });
+      clearFormBanner(setFormBanner);
       toast.success(`Counted ${line.product_name}`);
       await loadDetail(selectedId);
       await loadList();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Could not save count');
+      reportFormError(setFormBanner, err.response?.data?.error || 'Could not save count');
     } finally {
       setBusy(false);
     }
@@ -190,14 +198,17 @@ export default function StockCheckpointsPage() {
   const handleCountAll = async () => {
     if (!selectedId || !detail || detail.status !== 'open') return;
     if (pendingLines.length === 0) {
-      toast.error('All lines are already counted');
+      reportFormError(setFormBanner, 'All lines are already counted');
       return;
     }
     const payload = [];
     for (const line of pendingLines) {
       const qty = parseInt(String(countDrafts[line.id] ?? '').trim(), 10);
       if (Number.isNaN(qty) || qty < 0) {
-        toast.error(`Enter a valid stock-at-hand for ${line.product_name}`);
+        reportFormError(
+          setFormBanner,
+          `Enter a valid stock-at-hand for ${line.product_name}`
+        );
         return;
       }
       payload.push({ line_id: line.id, counted_qty: qty });
@@ -206,11 +217,12 @@ export default function StockCheckpointsPage() {
     try {
       const res = await inventoryAPI.countCheckpointAll(selectedId, { lines: payload });
       const n = res.data?.counted ?? payload.length;
+      clearFormBanner(setFormBanner);
       toast.success(`Saved ${n} count${n === 1 ? '' : 's'}`);
       await loadDetail(selectedId);
       await loadList();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Could not save counts');
+      reportFormError(setFormBanner, err.response?.data?.error || 'Could not save counts');
     } finally {
       setBusy(false);
     }
@@ -221,11 +233,12 @@ export default function StockCheckpointsPage() {
     setBusy(true);
     try {
       await inventoryAPI.closeCheckpoint(selectedId);
+      clearFormBanner(setFormBanner);
       toast.success('Checkpoint closed — reporting baseline set');
       await loadList();
       await loadDetail(selectedId);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Could not close checkpoint');
+      reportFormError(setFormBanner, err.response?.data?.error || 'Could not close checkpoint');
     } finally {
       setBusy(false);
     }
@@ -239,11 +252,12 @@ export default function StockCheckpointsPage() {
     setBusy(true);
     try {
       await inventoryAPI.cancelCheckpoint(selectedId);
+      clearFormBanner(setFormBanner);
       toast.success('Checkpoint cancelled');
       await loadList();
       await loadDetail(selectedId);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Could not cancel checkpoint');
+      reportFormError(setFormBanner, err.response?.data?.error || 'Could not cancel checkpoint');
     } finally {
       setBusy(false);
     }
@@ -283,6 +297,11 @@ export default function StockCheckpointsPage() {
         </span>
         . Change under Module Settings → Inventory → “Block sales during stock take”.
       </p>
+      <FormBanner
+        message={formBanner?.message}
+        type={formBanner?.type || 'error'}
+        onDismiss={() => clearFormBanner(setFormBanner)}
+      />
 
       {loading ? (
         <PageLoading rows={6} />
@@ -466,12 +485,23 @@ export default function StockCheckpointsPage() {
         </div>
       )}
 
-      <Dialog open={showOpen} onOpenChange={setShowOpen}>
+      <Dialog
+        open={showOpen}
+        onOpenChange={(open) => {
+          setShowOpen(open);
+          if (!open) clearFormBanner(setOpenFormBanner);
+        }}
+      >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Open stock checkpoint</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col gap-3 py-2">
+            <FormBanner
+              message={openFormBanner?.message}
+              type={openFormBanner?.type || 'error'}
+              onDismiss={() => clearFormBanner(setOpenFormBanner)}
+            />
             <label className="text-sm font-medium">
               Title
               <Input

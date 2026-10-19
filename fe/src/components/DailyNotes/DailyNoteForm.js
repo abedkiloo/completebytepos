@@ -2,6 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { dailyNotesAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import { dateMessage, required } from '../../utils/formValidation';
+import {
+  clearFormBanner,
+  reportFormError,
+  reportFormWarning,
+} from '../../utils/formFeedback';
+import FormBanner from '../form/FormBanner';
 
 const DailyNoteForm = ({
   note,
@@ -24,6 +30,7 @@ const DailyNoteForm = ({
   const [assignMode, setAssignMode] = useState(defaultAssignMode || 'person');
   const [loadingStaff, setLoadingStaff] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [formBanner, setFormBanner] = useState(null);
 
   useEffect(() => {
     if (note) {
@@ -96,7 +103,7 @@ const DailyNoteForm = ({
     e.preventDefault();
     const dateErr = dateMessage(formData.note_date, { label: 'note date' });
     if (dateErr) {
-      toast.warning(dateErr);
+      reportFormWarning(setFormBanner, dateErr);
       return;
     }
     const contentErr = required(
@@ -104,7 +111,7 @@ const DailyNoteForm = ({
       'Write the note, e.g. Stock count completed at close of day'
     );
     if (contentErr) {
-      toast.warning(contentErr);
+      reportFormWarning(setFormBanner, contentErr);
       return;
     }
     if (formData.is_sticky && canAssignToOthers) {
@@ -112,7 +119,10 @@ const DailyNoteForm = ({
       const hasRole = assignMode === 'role' && formData.assigned_role;
       const hasEveryone = assignMode === 'everyone' && !note;
       if (!hasPerson && !hasRole && !hasEveryone) {
-        toast.warning('Assign this note to a person, a role, or everyone.');
+        reportFormWarning(
+          setFormBanner,
+          'Assign this note to a person, a role, or everyone.'
+        );
         return;
       }
     }
@@ -153,7 +163,7 @@ const DailyNoteForm = ({
         error.response?.data?.error ||
         Object.values(error.response?.data || {}).flat().join(', ') ||
         'Failed to save note';
-      toast.error(msg);
+      reportFormError(setFormBanner, msg);
     } finally {
       setLoading(false);
     }
@@ -172,11 +182,19 @@ const DailyNoteForm = ({
           </button>
         </div>
         <form
-          onSubmit={handleSubmit}
+          onSubmit={(e) => {
+            clearFormBanner(setFormBanner);
+            handleSubmit(e);
+          }}
           className="flex min-h-0 flex-1 flex-col overflow-hidden"
           data-testid="daily-note-form"
         >
           <div className="slide-in-panel-body">
+            <FormBanner
+              message={formBanner?.message}
+              type={formBanner?.type || 'error'}
+              onDismiss={() => clearFormBanner(setFormBanner)}
+            />
             <div className="form-group">
               <label>Date *</label>
               <input
