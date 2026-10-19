@@ -7,6 +7,7 @@ from rest_framework.response import Response
 
 from accounts.permissions import RequirePermPerAction
 from inventory.checkpoint_serializers import (
+    CountCheckpointBulkSerializer,
     CountCheckpointLineSerializer,
     OpenCheckpointSerializer,
     StockCheckpointLineSerializer,
@@ -18,6 +19,7 @@ from inventory.checkpoint_services import (
     cancel_checkpoint,
     close_checkpoint,
     count_checkpoint_line,
+    count_checkpoint_lines,
     latest_closed_checkpoint,
     open_checkpoint,
 )
@@ -33,6 +35,7 @@ CHECKPOINT_PERMS = RequirePermPerAction(
         'create': 'manage',
         'open': 'manage',
         'count_line': 'manage',
+        'count_all': 'manage',
         'close': 'manage',
         'cancel': 'manage',
         'baselines': 'view',
@@ -139,6 +142,27 @@ class StockCheckpointViewSet(AuditedModelViewSetMixin, viewsets.ReadOnlyModelVie
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return Response(StockCheckpointLineSerializer(line).data)
+
+    @action(detail=True, methods=['post'], url_path='count-all')
+    def count_all(self, request, pk=None):
+        """Save counts for many pending lines at once (all-or-nothing)."""
+        ser = CountCheckpointBulkSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        try:
+            lines = count_checkpoint_lines(
+                checkpoint_id=int(pk),
+                counts=ser.validated_data['lines'],
+                user=request.user,
+                branch=get_current_branch(request),
+            )
+        except ValidationError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                'counted': len(lines),
+                'lines': StockCheckpointLineSerializer(lines, many=True).data,
+            }
+        )
 
     @action(detail=True, methods=['post'], url_path='close')
     def close(self, request, pk=None):

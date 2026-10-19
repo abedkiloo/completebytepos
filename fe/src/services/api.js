@@ -495,6 +495,8 @@ export const inventoryAPI = {
   openCheckpoint: (data) => api.post('/inventory/checkpoints/open/', data),
   countCheckpointLine: (checkpointId, lineId, data) =>
     api.post(`/inventory/checkpoints/${checkpointId}/lines/${lineId}/count/`, data),
+  countCheckpointAll: (checkpointId, data) =>
+    api.post(`/inventory/checkpoints/${checkpointId}/count-all/`, data),
   closeCheckpoint: (id) => api.post(`/inventory/checkpoints/${id}/close/`),
   cancelCheckpoint: (id) => api.post(`/inventory/checkpoints/${id}/cancel/`),
   checkpointBaselines: () => api.get('/inventory/checkpoints/baselines/'),

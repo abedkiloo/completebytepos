@@ -185,6 +185,37 @@ export default function StockCheckpointsPage() {
     }
   };
 
+  const pendingLines = (detail?.lines || []).filter((line) => line.status !== 'counted');
+
+  const handleCountAll = async () => {
+    if (!selectedId || !detail || detail.status !== 'open') return;
+    if (pendingLines.length === 0) {
+      toast.error('All lines are already counted');
+      return;
+    }
+    const payload = [];
+    for (const line of pendingLines) {
+      const qty = parseInt(String(countDrafts[line.id] ?? '').trim(), 10);
+      if (Number.isNaN(qty) || qty < 0) {
+        toast.error(`Enter a valid stock-at-hand for ${line.product_name}`);
+        return;
+      }
+      payload.push({ line_id: line.id, counted_qty: qty });
+    }
+    setBusy(true);
+    try {
+      const res = await inventoryAPI.countCheckpointAll(selectedId, { lines: payload });
+      const n = res.data?.counted ?? payload.length;
+      toast.success(`Saved ${n} count${n === 1 ? '' : 's'}`);
+      await loadDetail(selectedId);
+      await loadList();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not save counts');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleClose = async () => {
     if (!selectedId) return;
     setBusy(true);
@@ -342,6 +373,13 @@ export default function StockCheckpointsPage() {
                     <div className="flex flex-wrap gap-2">
                       <Button
                         type="button"
+                        disabled={busy || pendingLines.length === 0}
+                        onClick={handleCountAll}
+                      >
+                        Save all counts
+                      </Button>
+                      <Button
+                        type="button"
                         variant="outline"
                         disabled={busy || (detail.pending_line_count || 0) > 0}
                         onClick={handleClose}
@@ -359,6 +397,12 @@ export default function StockCheckpointsPage() {
                     </div>
                   ) : null}
                 </div>
+                {detail.status === 'open' && pendingLines.length > 0 ? (
+                  <p className="mb-3 text-xs text-muted-foreground">
+                    Enter stock at hand for each product, then save one row at a time or use{' '}
+                    <span className="font-medium text-foreground">Save all counts</span>.
+                  </p>
+                ) : null}
 
                 <DataTable>
                   <DataTableHeader>

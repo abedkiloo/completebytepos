@@ -274,8 +274,10 @@ def count_checkpoint_line(
     branch=None,
 ) -> StockCheckpointLine:
     try:
+        # of=('self',): Postgres forbids FOR UPDATE on nullable OUTER JOINs
+        # (variant is null for product-level lines).
         line = (
-            StockCheckpointLine.objects.select_for_update()
+            StockCheckpointLine.objects.select_for_update(of=('self',))
             .select_related('checkpoint', 'product', 'variant')
             .get(pk=line_id)
         )
@@ -335,6 +337,51 @@ def count_checkpoint_line(
     )
     post_inventory_count_journal(line=line, delta=delta, amount=amount, user=user)
     return line
+
+
+@transaction.atomic
+def count_checkpoint_lines(
+    *,
+    checkpoint_id: int,
+    counts: Iterable[dict],
+    user,
+    branch=None,
+) -> list[StockCheckpointLine]:
+    """
+    Count many pending lines in one request (all-or-nothing).
+    Each item: ``{'line_id': int, 'counted_qty': int}``.
+    """
+    items = list(counts or [])
+    if not items:
+        raise ValidationError('Provide at least one line to count.')
+
+    try:
+        checkpoint = StockCheckpoint.objects.select_for_update().get(pk=checkpoint_id)
+    except StockCheckpoint.DoesNotExist:
+        raise ValidationError('Checkpoint not found.')
+
+    if checkpoint.status != StockCheckpoint.STATUS_OPEN:
+        raise ValidationError('Only open checkpoints can be counted.')
+
+    seen = set()
+    results: list[StockCheckpointLine] = []
+    for item in items:
+        line_id = int(item['line_id'])
+        if line_id in seen:
+            raise ValidationError(f'Duplicate line id in batch: {line_id}.')
+        seen.add(line_id)
+        line = count_checkpoint_line(
+            line_id=line_id,
+            counted_qty=item['counted_qty'],
+            user=user,
+            branch=branch,
+        )
+        if line.checkpoint_id != checkpoint.id:
+            raise ValidationError(
+                f'Line {line_id} does not belong to this checkpoint.'
+            )
+        results.append(line)
+    return results
 
 
 @transaction.atomic

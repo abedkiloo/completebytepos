@@ -219,6 +219,45 @@ class StockCheckpointAPITests(ManagerAPITestCase):
         self.assertEqual(baselines.status_code, status.HTTP_200_OK)
         self.assertEqual(baselines.data['latest_closed_id'], cp_id)
 
+    def test_count_all_api(self):
+        other = Product.objects.create(
+            name='API Widget 2',
+            sku='API-W2',
+            category=self.product.category,
+            price=Decimal('40'),
+            cost=Decimal('15'),
+            stock_quantity=8,
+            track_stock=True,
+            is_active=True,
+        )
+        open_res = self.client.post(
+            '/api/inventory/checkpoints/open/',
+            {'title': 'Bulk count', 'product_ids': [self.product.id, other.id]},
+            format='json',
+        )
+        self.assertEqual(open_res.status_code, status.HTTP_201_CREATED, open_res.data)
+        cp_id = open_res.data['id']
+        lines = open_res.data['lines']
+        self.assertEqual(len(lines), 2)
+
+        bulk = self.client.post(
+            f'/api/inventory/checkpoints/{cp_id}/count-all/',
+            {
+                'lines': [
+                    {'line_id': lines[0]['id'], 'counted_qty': 4},
+                    {'line_id': lines[1]['id'], 'counted_qty': 7},
+                ]
+            },
+            format='json',
+        )
+        self.assertEqual(bulk.status_code, status.HTTP_200_OK, bulk.data)
+        self.assertEqual(bulk.data['counted'], 2)
+
+        detail = self.client.get(f'/api/inventory/checkpoints/{cp_id}/')
+        self.assertEqual(detail.status_code, status.HTTP_200_OK)
+        self.assertEqual(detail.data['pending_line_count'], 0)
+        self.assertEqual(detail.data['counted_line_count'], 2)
+
     def test_sales_person_cannot_open_checkpoint(self):
         sales_user = User.objects.create_user(username='cp_sales', password='sales123')
         UserProfile.objects.create(

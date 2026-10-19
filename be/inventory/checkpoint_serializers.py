@@ -164,3 +164,12 @@ class OpenCheckpointSerializer(serializers.Serializer):
 
 class CountCheckpointLineSerializer(serializers.Serializer):
     counted_qty = serializers.IntegerField(min_value=0)
+
+
+class CountCheckpointLineItemSerializer(serializers.Serializer):
+    line_id = serializers.IntegerField(min_value=1)
+    counted_qty = serializers.IntegerField(min_value=0)
+
+
+class CountCheckpointBulkSerializer(serializers.Serializer):
+    lines = CountCheckpointLineItemSerializer(many=True, allow_empty=False)
