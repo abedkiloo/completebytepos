@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, TrendingUp } from 'lucide-react';
+import { ArrowLeft, TrendingDown, TrendingUp } from 'lucide-react';
+import { cn } from '../../lib/cn';
 import { reportsAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
 import {
@@ -140,6 +141,8 @@ export default function TradingProfitReportView() {
   };
 
   const summary = data?.summary;
+  const isLoss = summary != null && Number(summary.net_profit) < 0;
+  const TrendIcon = isLoss ? TrendingDown : TrendingUp;
   const rangeLabel =
     period === 'custom'
       ? `${dateFrom || '…'} → ${dateTo || '…'}`
@@ -204,25 +207,53 @@ export default function TradingProfitReportView() {
       ) : null}
       {!loading && !error && summary ? (
         <div className="grid gap-4 lg:grid-cols-2">
-          <Card>
+          <Card
+            className={cn(
+              isLoss && 'border-destructive/25 bg-destructive/[0.04] text-destructive'
+            )}
+          >
             <CardHeader className="pb-2">
               <div className="flex items-center gap-2">
-                <div className="rounded-md bg-primary/10 p-2 text-primary">
-                  <TrendingUp className="h-5 w-5" />
+                <div
+                  className={cn(
+                    'rounded-md p-2',
+                    isLoss ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary'
+                  )}
+                >
+                  <TrendIcon className="h-5 w-5" />
                 </div>
                 <div>
-                  <CardTitle className="text-base">Net profit</CardTitle>
-                  <p className="text-xs text-muted-foreground capitalize">
+                  <CardTitle
+                    className={cn('text-base', isLoss && 'text-destructive')}
+                  >
+                    {isLoss ? 'Net loss' : 'Net profit'}
+                  </CardTitle>
+                  <p
+                    className={cn(
+                      'text-xs capitalize',
+                      isLoss ? 'text-destructive/70' : 'text-muted-foreground'
+                    )}
+                  >
                     {rangeLabel} · trading basis
                   </p>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-semibold tabular-nums tracking-tight">
+              <p
+                className={cn(
+                  'text-3xl font-semibold tabular-nums tracking-tight',
+                  isLoss && 'text-destructive'
+                )}
+              >
                 {formatCurrency(summary.net_profit)}
               </p>
-              <p className="mt-1 text-xs text-muted-foreground">
+              <p
+                className={cn(
+                  'mt-1 text-xs',
+                  isLoss ? 'text-destructive/70' : 'text-muted-foreground'
+                )}
+              >
                 Margin {summary.profit_margin}% of net sales
               </p>
             </CardContent>
