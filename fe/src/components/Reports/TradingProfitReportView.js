@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, TrendingDown, TrendingUp } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { reportsAPI } from '../../services/api';
@@ -30,19 +30,46 @@ function isoDateOnly(value) {
   return formatDateForApi(d);
 }
 
-function Row({ label, value, emphasize = false, muted = false }) {
+function expensesHrefForRange(dateFrom, dateTo) {
+  const from = isoDateOnly(dateFrom);
+  const to = isoDateOnly(dateTo);
+  if (!from || !to) return null;
+  const params = new URLSearchParams({
+    date_from: from,
+    date_to: to,
+    status: 'approved',
+  });
+  return `/expenses?${params.toString()}`;
+}
+
+function Row({ label, value, emphasize = false, muted = false, to = null }) {
+  const valueClass = emphasize
+    ? 'text-base font-semibold tabular-nums'
+    : 'text-sm font-medium tabular-nums';
+  const labelNode = to ? (
+    <Link
+      to={to}
+      className={cn(
+        'text-sm font-medium text-primary underline-offset-2 hover:underline',
+        muted && 'text-primary/80'
+      )}
+    >
+      {label}
+    </Link>
+  ) : (
+    <span className={muted ? 'text-sm text-muted-foreground' : 'text-sm'}>{label}</span>
+  );
+
   return (
     <div className="flex items-baseline justify-between gap-4 border-b border-border/60 py-2 last:border-0">
-      <span className={muted ? 'text-sm text-muted-foreground' : 'text-sm'}>{label}</span>
-      <span
-        className={
-          emphasize
-            ? 'text-base font-semibold tabular-nums'
-            : 'text-sm font-medium tabular-nums'
-        }
-      >
-        {formatCurrency(value)}
-      </span>
+      {labelNode}
+      {to ? (
+        <Link to={to} className={cn(valueClass, 'text-primary hover:underline')}>
+          {formatCurrency(value)}
+        </Link>
+      ) : (
+        <span className={valueClass}>{formatCurrency(value)}</span>
+      )}
     </div>
   );
 }
@@ -147,6 +174,14 @@ export default function TradingProfitReportView() {
     period === 'custom'
       ? `${dateFrom || '…'} → ${dateTo || '…'}`
       : `${data?.period || period}${dateFrom && dateTo ? ` · ${dateFrom} → ${dateTo}` : ''}`;
+  const expensesHref = useMemo(
+    () =>
+      expensesHrefForRange(
+        dateFrom || data?.date_from,
+        dateTo || data?.date_to
+      ),
+    [dateFrom, dateTo, data?.date_from, data?.date_to]
+  );
 
   return (
     <PageShell>
@@ -272,7 +307,11 @@ export default function TradingProfitReportView() {
               <Row label="Net sales" value={summary.net_sales} emphasize />
               <Row label="COGS (cost of goods sold)" value={summary.cogs} />
               <Row label="Gross profit" value={summary.gross_profit} emphasize />
-              <Row label="Expenses (approved)" value={summary.expenses} />
+              <Row
+                label="Expenses (approved)"
+                value={summary.expenses}
+                to={expensesHref}
+              />
               <Row label="Other income" value={summary.other_income} muted />
               <Row label="Net profit" value={summary.net_profit} emphasize />
             </CardContent>

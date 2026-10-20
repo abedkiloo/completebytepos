@@ -25,6 +25,7 @@ const DailyNoteForm = ({
     assigned_to: '',
     assigned_role: '',
   });
+  const [checklist, setChecklist] = useState([]);
   const [staff, setStaff] = useState([]);
   const [roles, setRoles] = useState([]);
   const [assignMode, setAssignMode] = useState(defaultAssignMode || 'person');
@@ -42,6 +43,16 @@ const DailyNoteForm = ({
         assigned_to: note.assigned_to ? String(note.assigned_to) : '',
         assigned_role: note.assigned_role ? String(note.assigned_role) : '',
       });
+      setChecklist(
+        Array.isArray(note.checklist_items)
+          ? note.checklist_items.map((item, index) => ({
+              key: String(item.id || `row-${index}`),
+              id: item.id || null,
+              label: item.label || '',
+              is_done: Boolean(item.is_done),
+            }))
+          : []
+      );
       if (note.assigned_role && !note.assigned_to) {
         setAssignMode('role');
       } else {
@@ -49,6 +60,7 @@ const DailyNoteForm = ({
       }
     } else if (defaultDate) {
       setFormData((prev) => ({ ...prev, note_date: defaultDate }));
+      setChecklist([]);
     }
   }, [note, defaultDate]);
 
@@ -126,6 +138,14 @@ const DailyNoteForm = ({
         return;
       }
     }
+    const checklistItems = checklist
+      .map((row, index) => ({
+        label: String(row.label || '').trim(),
+        is_done: Boolean(row.is_done),
+        sort_order: index,
+      }))
+      .filter((row) => row.label);
+
     setLoading(true);
     try {
       const payload = {
@@ -133,6 +153,7 @@ const DailyNoteForm = ({
         title: formData.title.trim(),
         content: formData.content.trim(),
         is_sticky: Boolean(formData.is_sticky),
+        checklist_items: checklistItems,
       };
       if (canAssignToOthers && assignMode === 'person' && formData.assigned_to) {
         payload.assigned_to = parseInt(formData.assigned_to, 10);
@@ -223,10 +244,87 @@ const DailyNoteForm = ({
                 name="content"
                 value={formData.content}
                 onChange={handleChange}
-                rows={8}
+                rows={6}
                 required
                 placeholder="What happened today? Handover, incidents, follow-ups…"
+                data-testid="note-content"
               />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Required. You can also add an optional checklist below.
+              </p>
+            </div>
+            <div className="form-group" data-testid="note-checklist">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <label className="mb-0">Checklist (optional)</label>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  data-testid="note-checklist-add"
+                  onClick={() =>
+                    setChecklist((prev) => [
+                      ...prev,
+                      {
+                        key: `new-${Date.now()}-${prev.length}`,
+                        id: null,
+                        label: '',
+                        is_done: false,
+                      },
+                    ])
+                  }
+                >
+                  Add item
+                </button>
+              </div>
+              {checklist.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No checklist items. Add ones for things to tick off with this note.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {checklist.map((row, index) => (
+                    <li key={row.key} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 shrink-0"
+                        checked={Boolean(row.is_done)}
+                        onChange={(e) =>
+                          setChecklist((prev) =>
+                            prev.map((item, i) =>
+                              i === index ? { ...item, is_done: e.target.checked } : item
+                            )
+                          )
+                        }
+                        aria-label={`Checklist item ${index + 1} done`}
+                      />
+                      <input
+                        type="text"
+                        className="min-w-0 flex-1"
+                        value={row.label}
+                        maxLength={200}
+                        placeholder="e.g. Count till, lock store"
+                        data-testid={`note-checklist-label-${index}`}
+                        onChange={(e) =>
+                          setChecklist((prev) =>
+                            prev.map((item, i) =>
+                              i === index ? { ...item, label: e.target.value } : item
+                            )
+                          )
+                        }
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        data-testid={`note-checklist-remove-${index}`}
+                        onClick={() =>
+                          setChecklist((prev) => prev.filter((_, i) => i !== index))
+                        }
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
             <div className="form-checkboxes">
               <label>

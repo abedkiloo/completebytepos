@@ -11,8 +11,12 @@ from .access import (
     user_may_view_all_daily_notes,
 )
 from .approval_notice import SALE_RETURN_TICK_ERROR, is_sale_return_notice_text
-from .models import DailyNote, DailyTask
-from .serializers import DailyNoteSerializer, DailyTaskSerializer
+from .models import DailyNote, DailyNoteChecklistItem, DailyTask
+from .serializers import (
+    DailyNoteChecklistItemSerializer,
+    DailyNoteSerializer,
+    DailyTaskSerializer,
+)
 from .services import DailyNoteService, DailyTaskService, recent_activity_dates
 from .view_mixins import DailyAuthorScopedViewSetMixin
 
@@ -28,6 +32,7 @@ DAILY_NOTES_PERMS = RequireAny(
             'destroy': 'update',
             'recent_dates': 'view',
             'toggle_done': 'update',
+            'toggle_checklist_item': 'update',
             'pending': 'view',
             'blocking': 'view',
             'staff': 'view',
@@ -49,7 +54,11 @@ class DailyNoteViewSet(DailyAuthorScopedViewSetMixin, viewsets.ModelViewSet):
         self.entry_service = DailyNoteService()
 
     def get_permissions(self):
-        if getattr(self, 'action', None) in ('blocking', 'toggle_done'):
+        if getattr(self, 'action', None) in (
+            'blocking',
+            'toggle_done',
+            'toggle_checklist_item',
+        ):
             return [IsAuthenticated(), RequireModuleEnabled('daily_notes')()]
         return super().get_permissions()
 
@@ -104,6 +113,37 @@ class DailyNoteViewSet(DailyAuthorScopedViewSetMixin, viewsets.ModelViewSet):
         note.mark_done(done=note.is_done)
         note.save(update_fields=['is_done', 'completed_at', 'updated_at'])
         return Response(self.get_serializer(note).data)
+
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path=r'checklist-items/(?P<item_id>[^/.]+)/toggle-done',
+    )
+    def toggle_checklist_item(self, request, pk=None, item_id=None):
+        try:
+            note = DailyNote.objects.select_related(
+                'author',
+                'assigned_to',
+            ).get(pk=pk)
+        except DailyNote.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if not self._may_toggle_note(note):
+            return Response(
+                {
+                    'error': (
+                        'You can only tick checklist items on notes assigned to you, '
+                        'notes you wrote, or as an admin.'
+                    )
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            item = note.checklist_items.get(pk=item_id)
+        except DailyNoteChecklistItem.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        item.mark_done(done=not item.is_done)
+        item.save(update_fields=['is_done', 'completed_at', 'updated_at'])
+        return Response(DailyNoteChecklistItemSerializer(item).data)
 
     @action(detail=False, methods=['get'], url_path='staff')
     def staff(self, request):

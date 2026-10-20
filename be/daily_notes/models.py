@@ -93,8 +93,41 @@ class DailyNote(models.Model):
         return 'todo'
 
 
+class DailyNoteChecklistItem(models.Model):
+    """Optional checkable row attached to a daily note (note text stays required)."""
+
+    daily_note = models.ForeignKey(
+        DailyNote,
+        on_delete=models.CASCADE,
+        related_name='checklist_items',
+    )
+    label = models.CharField(max_length=200)
+    is_done = models.BooleanField(default=False)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['sort_order', 'id']
+        indexes = [
+            models.Index(
+                fields=['daily_note', 'is_done'],
+                name='daily_notes_note_check_idx',
+            ),
+        ]
+
+    def __str__(self):
+        status = 'done' if self.is_done else 'open'
+        return f'{self.label} ({status})'
+
+    def mark_done(self, *, done: bool, at=None):
+        self.is_done = done
+        self.completed_at = (at or timezone.now()) if done else None
+
+
 class DailyTask(models.Model):
-    """Checklist item for a specific calendar day."""
+    """Standalone checklist item for a specific calendar day."""
 
     task_date = models.DateField(db_index=True)
     title = models.CharField(max_length=200)

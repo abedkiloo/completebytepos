@@ -42,6 +42,8 @@ class DailyAuthorScopedViewSetMixin(AuditedModelViewSetMixin):
             filters['author'] = params.get('author')
         if 'assigned_to' in params:
             filters['assigned_to'] = params.get('assigned_to')
+        if 'person' in params:
+            filters['person'] = params.get('person')
         if 'search' in params:
             filters['search'] = params.get('search')
         if 'status' in params:

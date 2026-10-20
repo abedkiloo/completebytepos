@@ -4,7 +4,7 @@ from rest_framework import serializers
 
 from accounts.models import Role
 from .access import user_may_view_all_daily_notes
-from .models import DailyNote, DailyTask
+from .models import DailyNote, DailyNoteChecklistItem, DailyTask
 from .services import (
     active_staff_users,
     carried_over_days,
@@ -21,6 +21,60 @@ def _author_display(user) -> str:
     last = user.last_name or ''
     name = f'{first} {last}'.strip()
     return name or user.username
+
+
+def replace_note_checklist(note: DailyNote, items: list | None) -> None:
+    """Replace checklist rows for a note. Empty/None clears optional checklist."""
+    note.checklist_items.all().delete()
+    if not items:
+        return
+    rows = []
+    for index, raw in enumerate(items):
+        if isinstance(raw, DailyNoteChecklistItem):
+            label = (raw.label or '').strip()
+            is_done = bool(raw.is_done)
+            sort_order = raw.sort_order if raw.sort_order is not None else index
+        else:
+            label = (raw.get('label') or '').strip()
+            is_done = bool(raw.get('is_done'))
+            sort_order = raw.get('sort_order')
+            if sort_order is None:
+                sort_order = index
+        if not label:
+            continue
+        item = DailyNoteChecklistItem(
+            daily_note=note,
+            label=label[:200],
+            sort_order=int(sort_order),
+        )
+        if is_done:
+            item.mark_done(done=True, at=timezone.now())
+        rows.append(item)
+    if rows:
+        DailyNoteChecklistItem.objects.bulk_create(rows)
+
+
+class DailyNoteChecklistItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DailyNoteChecklistItem
+        fields = [
+            'id',
+            'label',
+            'is_done',
+            'completed_at',
+            'sort_order',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['completed_at', 'created_at', 'updated_at']
+
+    def validate_label(self, value):
+        raise_field_error(
+            required_text_error(
+                value, label='checklist item', example='Count till at close', min_length=1
+            )
+        )
+        return value.strip()
 
 
 class DailyNoteSerializer(serializers.ModelSerializer):
@@ -47,6 +101,7 @@ class DailyNoteSerializer(serializers.ModelSerializer):
         required=False,
         write_only=True,
     )
+    checklist_items = DailyNoteChecklistItemSerializer(many=True, required=False)
 
     class Meta:
         model = DailyNote
@@ -72,6 +127,7 @@ class DailyNoteSerializer(serializers.ModelSerializer):
             'assignment_group',
             'created_count',
             'days_carried_over',
+            'checklist_items',
             'created_at',
             'updated_at',
         ]
@@ -231,6 +287,7 @@ class DailyNoteSerializer(serializers.ModelSerializer):
         assigned_to = validated_data.pop('assigned_to', None)
         assigned_role = validated_data.pop('assigned_role', None)
         assign_to_all = validated_data.pop('assign_to_all', False)
+        checklist_items = validated_data.pop('checklist_items', None)
         notes = create_notes_for_assignees(
             author=validated_data['author'],
             note_date=validated_data['note_date'],
@@ -258,6 +315,9 @@ class DailyNoteSerializer(serializers.ModelSerializer):
         if board_column:
             note.move_to_board(board_column)
             note.save()
+        if checklist_items is not None:
+            for created_note in notes:
+                replace_note_checklist(created_note, checklist_items)
         return note
 
     def to_representation(self, instance):
@@ -273,6 +333,7 @@ class DailyNoteSerializer(serializers.ModelSerializer):
         board_column = validated_data.pop('board_column', None)
         is_done = validated_data.pop('is_done', None)
         assigned_to = validated_data.pop('assigned_to', serializers.empty)
+        checklist_items = validated_data.pop('checklist_items', serializers.empty)
         for key, value in validated_data.items():
             setattr(instance, key, value)
         if assigned_to is not serializers.empty:
@@ -287,6 +348,8 @@ class DailyNoteSerializer(serializers.ModelSerializer):
         elif is_done is not None:
             self._apply_completion(instance, is_done)
         instance.save()
+        if checklist_items is not serializers.empty:
+            replace_note_checklist(instance, checklist_items)
         return instance
 
 

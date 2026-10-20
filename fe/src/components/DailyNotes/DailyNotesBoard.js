@@ -24,8 +24,10 @@ export default function DailyNotesBoard({
   viewAll,
   currentUserId,
   togglingNoteId,
+  togglingChecklistKey,
   resubmittingKey,
   onToggle,
+  onToggleChecklistItem,
   onMove,
   onEdit,
   onDelete,
@@ -122,6 +124,19 @@ export default function DailyNotesBoard({
                                 {carried}
                               </Badge>
                             ) : null}
+                            {Array.isArray(note.checklist_items) &&
+                            note.checklist_items.length > 0 ? (
+                              <Badge
+                                variant="outline"
+                                data-testid={`note-checklist-count-${note.id}`}
+                              >
+                                {
+                                  note.checklist_items.filter((item) => item.is_done)
+                                    .length
+                                }
+                                /{note.checklist_items.length} checks
+                              </Badge>
+                            ) : null}
                           </div>
                         </div>
                       </button>
@@ -137,6 +152,47 @@ export default function DailyNotesBoard({
                           >
                             {note.content || 'No details on this note.'}
                           </p>
+
+                          {Array.isArray(note.checklist_items) &&
+                          note.checklist_items.length > 0 ? (
+                            <ul
+                              className="space-y-1.5 rounded-md border bg-muted/30 px-2.5 py-2"
+                              data-testid={`daily-note-checklist-${note.id}`}
+                            >
+                              {note.checklist_items.map((item) => {
+                                const itemKey = `${note.id}:${item.id}`;
+                                const canTick =
+                                  canToggleDailyNote(note, currentUserId, viewAll) &&
+                                  Boolean(item.id);
+                                return (
+                                  <li
+                                    key={item.id || item.label}
+                                    className="flex items-start gap-2 text-sm"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      className="mt-0.5 h-4 w-4 shrink-0"
+                                      checked={Boolean(item.is_done)}
+                                      disabled={
+                                        !canTick || togglingChecklistKey === itemKey
+                                      }
+                                      onChange={() => onToggleChecklistItem?.(note, item)}
+                                      aria-label={`Checklist: ${item.label}`}
+                                      data-testid={`daily-note-checklist-item-${item.id}`}
+                                    />
+                                    <span
+                                      className={cn(
+                                        item.is_done &&
+                                          'text-muted-foreground line-through'
+                                      )}
+                                    >
+                                      {item.label}
+                                    </span>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          ) : null}
 
                           <div className="flex flex-wrap items-center gap-2">
                             {noticeRequiresSaleFix(note) ? null : (

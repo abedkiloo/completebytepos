@@ -1,6 +1,11 @@
 from django.contrib import admin
 
-from .models import DailyNote, DailyTask
+from .models import DailyNote, DailyNoteChecklistItem, DailyTask
+
+
+class DailyNoteChecklistItemInline(admin.TabularInline):
+    model = DailyNoteChecklistItem
+    extra = 0
 
 
 @admin.register(DailyNote)
@@ -9,6 +14,7 @@ class DailyNoteAdmin(admin.ModelAdmin):
     list_filter = ('note_date',)
     search_fields = ('title', 'content', 'author__username')
     raw_id_fields = ('author',)
+    inlines = [DailyNoteChecklistItemInline]
 
 
 @admin.register(DailyTask)

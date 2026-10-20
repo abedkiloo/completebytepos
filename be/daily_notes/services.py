@@ -113,7 +113,7 @@ def _scoped_queryset(model, *, user, view_all: bool):
     if 'assigned_to' in related:
         qs = qs.select_related('assigned_to', 'assigned_to__profile')
     if model is DailyNote:
-        qs = qs.select_related('assigned_role')
+        qs = qs.select_related('assigned_role').prefetch_related('checklist_items')
     if not view_all:
         if model is DailyNote:
             qs = qs.filter(Q(author=user) | Q(assigned_to=user))
@@ -166,6 +166,14 @@ def _apply_common_filters(qs, *, date_field: str, filters: dict | None, view_all
     assignee_id = filters.get('assigned_to')
     if assignee_id and view_all:
         qs = qs.filter(assigned_to_id=assignee_id)
+
+    # Desk “Person” filter: notes authored by or assigned to them; tasks assigned to them.
+    person_id = filters.get('person')
+    if person_id and view_all:
+        if getattr(qs.model, '__name__', '') == 'DailyNote':
+            qs = qs.filter(Q(assigned_to_id=person_id) | Q(author_id=person_id))
+        else:
+            qs = qs.filter(assigned_to_id=person_id)
 
     search = (filters.get('search') or '').strip()
     if search:

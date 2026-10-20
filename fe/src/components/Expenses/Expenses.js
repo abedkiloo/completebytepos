@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Check, NotebookText, Pencil, Plus, RefreshCw, Trash2, TrendingDown, X } from 'lucide-react';
 import { expensesAPI } from '../../services/api';
 import { CATALOG_FETCH_PAGE_SIZE, DEFAULT_PAGE_SIZE } from '../../config/pagination';
@@ -58,9 +58,22 @@ import {
 } from '../page';
 import { useListOrdering } from '../../hooks/useListOrdering';
 
-const initialMonthDates = periodToDateFilters(DEFAULT_REPORT_PERIOD);
+function filtersFromSearchParams(searchParams) {
+  const defaults = periodToDateFilters(DEFAULT_REPORT_PERIOD);
+  const date_from = searchParams.get('date_from') || defaults.date_from;
+  const date_to = searchParams.get('date_to') || defaults.date_to;
+  return {
+    category: searchParams.get('category') || '',
+    status: searchParams.get('status') || '',
+    date_from,
+    date_to,
+    payment_method: searchParams.get('payment_method') || '',
+    search: searchParams.get('search') || '',
+  };
+}
 
 const Expenses = () => {
+  const [searchParams] = useSearchParams();
   const [expenses, setExpenses] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -68,19 +81,16 @@ const Expenses = () => {
   const [editingExpense, setEditingExpense] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [notesExpense, setNotesExpense] = useState(null);
-  const [period, setPeriod] = useState(DEFAULT_REPORT_PERIOD);
   const [totals, setTotals] = useState({
     total_amount: 0,
     expense_count: 0,
     posted_total: 0,
   });
-  const [filters, setFilters] = useState({
-    category: '',
-    status: '',
-    date_from: initialMonthDates.date_from,
-    date_to: initialMonthDates.date_to,
-    payment_method: '',
-    search: '',
+  const [totalsError, setTotalsError] = useState('');
+  const [filters, setFilters] = useState(() => filtersFromSearchParams(searchParams));
+  const [period, setPeriod] = useState(() => {
+    const initial = filtersFromSearchParams(searchParams);
+    return detectPeriodFromDates(initial.date_from, initial.date_to);
   });
   const [pagination, setPagination] = useState({
     page: 1,
@@ -94,6 +104,31 @@ const Expenses = () => {
   useEffect(() => {
     loadCategories();
   }, []);
+
+  // Deep-link from trading profit (or bookmarks): apply date/status from the URL.
+  useEffect(() => {
+    const hasDeepLink =
+      searchParams.has('date_from') ||
+      searchParams.has('date_to') ||
+      searchParams.has('status');
+    if (!hasDeepLink) return;
+    const next = filtersFromSearchParams(searchParams);
+    setFilters((prev) => {
+      if (
+        prev.date_from === next.date_from &&
+        prev.date_to === next.date_to &&
+        prev.status === next.status &&
+        prev.category === next.category &&
+        prev.payment_method === next.payment_method &&
+        prev.search === next.search
+      ) {
+        return prev;
+      }
+      return next;
+    });
+    setPeriod(detectPeriodFromDates(next.date_from, next.date_to));
+    setPagination((prev) => ({ ...prev, page: 1 }));
+  }, [searchParams]);
 
   const loadCategories = async () => {
     try {
@@ -111,6 +146,7 @@ const Expenses = () => {
 
   const loadExpenses = useCallback(async () => {
     setLoading(true);
+    setTotalsError('');
     try {
       const params = buildExpenseListParams({
         filters,
@@ -120,9 +156,12 @@ const Expenses = () => {
       });
       const statsParams = buildExpenseFilterParams(filters);
 
-      const [listRes, statsRes] = await Promise.all([
+      const [listRes, statsOutcome] = await Promise.all([
         expensesAPI.list(params),
-        expensesAPI.statistics(statsParams).catch(() => null),
+        expensesAPI.statistics(statsParams).then(
+          (res) => ({ ok: true, res }),
+          (err) => ({ ok: false, err })
+        ),
       ]);
       const data = listRes.data;
 
@@ -136,12 +175,14 @@ const Expenses = () => {
         setExpenses(Array.isArray(data) ? data : []);
       }
 
-      if (statsRes?.data) {
+      if (statsOutcome.ok && statsOutcome.res?.data) {
         setTotals({
-          total_amount: Number(statsRes.data.total_amount) || 0,
-          expense_count: Number(statsRes.data.expense_count) || 0,
-          posted_total: Number(statsRes.data.posted_total) || 0,
+          total_amount: Number(statsOutcome.res.data.total_amount) || 0,
+          expense_count: Number(statsOutcome.res.data.expense_count) || 0,
+          posted_total: Number(statsOutcome.res.data.posted_total) || 0,
         });
+      } else {
+        setTotalsError('Could not load expense totals for this filter.');
       }
     } catch (error) {
       setExpenses([]);
@@ -263,11 +304,10 @@ const Expenses = () => {
     }
   };
 
-  if (loading && expenses.length === 0) {
-    return (
-      <PageLoading rows={8} />
-    );
-  }
+  const rangeLabel =
+    filters.date_from && filters.date_to
+      ? `${filters.date_from} → ${filters.date_to}`
+      : 'selected dates';
 
   return (
     <PageShell>
@@ -315,20 +355,36 @@ const Expenses = () => {
           />
         </div>
 
-        <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <SummaryCard
-            icon={TrendingDown}
-            label="Total expenses"
-            value={formatCurrency(totals.total_amount)}
-            subtext={`${totals.expense_count.toLocaleString()} in selected dates`}
-            tone="destructive"
-          />
-          <SummaryCard
-            icon={Check}
-            label="Approved / paid"
-            value={formatCurrency(totals.posted_total)}
-            subtext="Counts toward reports"
-          />
+        <div
+          className="mb-4 flex flex-col gap-3 rounded-lg border border-destructive/20 bg-destructive/[0.04] p-4 sm:flex-row sm:items-center sm:justify-between"
+          data-testid="expenses-total-banner"
+        >
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-destructive/80">
+              Total expenses · {rangeLabel}
+            </p>
+            <p className="text-2xl font-semibold tabular-nums tracking-tight text-destructive">
+              {loading && expenses.length === 0 ? '…' : formatCurrency(totals.total_amount)}
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {totals.expense_count.toLocaleString()} expense
+              {totals.expense_count === 1 ? '' : 's'}
+              {' · '}
+              Approved / paid {formatCurrency(totals.posted_total)}
+            </p>
+            {totalsError ? (
+              <p className="mt-1 text-xs text-destructive">{totalsError}</p>
+            ) : null}
+          </div>
+          <div className="grid w-full gap-2 sm:w-auto sm:min-w-[16rem] sm:grid-cols-1">
+            <SummaryCard
+              icon={TrendingDown}
+              label="All statuses"
+              value={formatCurrency(totals.total_amount)}
+              subtext="Matches your filters"
+              tone="destructive"
+            />
+          </div>
         </div>
 
         <FilterBar>
@@ -402,11 +458,13 @@ const Expenses = () => {
           </FilterField>
         </FilterBar>
 
-        {expenses.length === 0 ? (
+        {loading && expenses.length === 0 ? (
+          <PageLoading rows={6} />
+        ) : expenses.length === 0 ? (
           <EmptyState
             icon={TrendingDown}
             title="No expenses found"
-            description="Adjust filters or record your first expense, including the date it occurred."
+            description="Adjust filters or record your first expense, including the date it occurred. The total above still reflects this date range."
             actionLabel="Add expense"
             onAction={handleAdd}
           />

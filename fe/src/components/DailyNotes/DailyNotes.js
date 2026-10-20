@@ -67,10 +67,13 @@ const DailyNotes = () => {
   const canToggleNote = (note) => canToggleDailyNote(note, currentUserId, viewAll);
 
   const [selectedDate, setSelectedDate] = useState(() => searchParams.get('date') || todayIso());
+  const [personId, setPersonId] = useState(() => searchParams.get('person') || '');
+  const [staffOptions, setStaffOptions] = useState([]);
   const [recentDates, setRecentDates] = useState([]);
   const [notes, setNotes] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [togglingChecklistKey, setTogglingChecklistKey] = useState(null);
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [editingNote, setEditingNote] = useState(null);
@@ -108,6 +111,10 @@ const DailyNotes = () => {
       const params = withListOrdering({ page_size: DEFAULT_PAGE_SIZE }, ordering);
       const noteParams = { ...params, note_date: selectedDate };
       const taskParams = { ...params, task_date: selectedDate };
+      if (viewAll && personId) {
+        noteParams.person = personId;
+        taskParams.person = personId;
+      }
       const [notesRes, tasksRes] = await Promise.all([
         dailyNotesAPI.list(noteParams),
         dailyTasksAPI.list(taskParams),
@@ -123,12 +130,16 @@ const DailyNotes = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedDate, ordering]);
+  }, [selectedDate, ordering, viewAll, personId]);
 
   useEffect(() => {
     const fromUrl = searchParams.get('date');
     if (fromUrl) {
       setSelectedDate(fromUrl);
+    }
+    const personFromUrl = searchParams.get('person');
+    if (personFromUrl != null) {
+      setPersonId(personFromUrl);
     }
   }, [searchParams]);
 
@@ -139,6 +150,27 @@ const DailyNotes = () => {
   useEffect(() => {
     loadDay();
   }, [loadDay]);
+
+  useEffect(() => {
+    if (!viewAll) {
+      setStaffOptions([]);
+      return undefined;
+    }
+    let cancelled = false;
+    dailyNotesAPI
+      .staff()
+      .then((res) => {
+        if (!cancelled) {
+          setStaffOptions(Array.isArray(res.data) ? res.data : []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setStaffOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [viewAll]);
 
   const dateOptions = useMemo(() => {
     const set = new Set([selectedDate, todayIso(), ...recentDates]);
@@ -174,6 +206,31 @@ const DailyNotes = () => {
       toast.error(error.response?.data?.error || 'Could not update note');
     } finally {
       setTogglingNoteId(null);
+    }
+  };
+
+  const handleToggleChecklistItem = async (note, item) => {
+    if (!canToggleNote(note) || !item?.id) return;
+    const key = `${note.id}:${item.id}`;
+    setTogglingChecklistKey(key);
+    try {
+      const res = await dailyNotesAPI.toggleChecklistItem(note.id, item.id);
+      setNotes((prev) =>
+        prev.map((n) => {
+          if (n.id !== note.id) return n;
+          const items = Array.isArray(n.checklist_items) ? n.checklist_items : [];
+          return {
+            ...n,
+            checklist_items: items.map((row) =>
+              row.id === item.id ? { ...row, ...res.data } : row
+            ),
+          };
+        })
+      );
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Could not update checklist item');
+    } finally {
+      setTogglingChecklistKey(null);
     }
   };
 
@@ -298,7 +355,7 @@ const DailyNotes = () => {
         </div>
       </PageHeader>
 
-      <div className="mb-4 flex flex-col gap-3 rounded-lg border bg-card p-4 sm:flex-row sm:items-end">
+      <div className="mb-4 flex flex-col gap-3 rounded-lg border bg-card p-4 sm:flex-row sm:flex-wrap sm:items-end">
         <div className="form-group flex-1">
           <label className="mb-1 flex items-center gap-2 text-sm font-medium">
             <Calendar className="h-4 w-4" />
@@ -309,8 +366,27 @@ const DailyNotes = () => {
             className="w-full max-w-xs"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
+            data-testid="daily-notes-date"
           />
         </div>
+        {viewAll ? (
+          <div className="form-group flex-1">
+            <label className="mb-1 block text-sm font-medium">Person</label>
+            <select
+              className="w-full max-w-xs"
+              value={personId}
+              onChange={(e) => setPersonId(e.target.value)}
+              data-testid="daily-notes-person"
+            >
+              <option value="">Everyone</option>
+              {staffOptions.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.display_name || u.username}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         <ListSortBar value={ordering} onChange={setOrdering} />
         <div className="form-group flex-1">
           <label className="mb-1 block text-sm font-medium">Recent days with activity</label>
@@ -506,8 +582,10 @@ const DailyNotes = () => {
                 viewAll={viewAll}
                 currentUserId={currentUserId}
                 togglingNoteId={togglingNoteId}
+                togglingChecklistKey={togglingChecklistKey}
                 resubmittingKey={resubmittingKey}
                 onToggle={handleToggleNote}
+                onToggleChecklistItem={handleToggleChecklistItem}
                 onMove={handleMoveNote}
                 onEdit={(note) => {
                   setEditingNote(note);

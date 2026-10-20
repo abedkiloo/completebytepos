@@ -295,6 +295,8 @@ export const dailyNotesAPI = {
   recentDates: () => api.get('/daily-notes/notes/recent-dates/'),
   blocking: () => api.get('/daily-notes/notes/blocking/'),
   toggleDone: (id) => api.post(`/daily-notes/notes/${id}/toggle-done/`),
+  toggleChecklistItem: (noteId, itemId) =>
+    api.post(`/daily-notes/notes/${noteId}/checklist-items/${itemId}/toggle-done/`),
   staff: () => api.get('/daily-notes/notes/staff/'),
   roles: () => api.get('/daily-notes/notes/roles/'),
 };
