@@ -9,16 +9,9 @@ export function isUsableFilterValue(value) {
   return s !== '' && s !== 'undefined' && s !== 'null';
 }
 
-export function buildExpenseListParams({
-  filters = {},
-  page = 1,
-  pageSize = 20,
-  ordering = '',
-} = {}) {
-  const params = {
-    page,
-    page_size: pageSize,
-  };
+/** Filter query params shared by list + statistics (no pagination). */
+export function buildExpenseFilterParams(filters = {}) {
+  const params = {};
   if (isUsableFilterValue(filters.category)) params.category = filters.category;
   if (isUsableFilterValue(filters.status)) params.status = filters.status;
   if (isUsableFilterValue(filters.date_from)) params.date_from = filters.date_from;
@@ -27,6 +20,20 @@ export function buildExpenseListParams({
     params.payment_method = filters.payment_method;
   }
   if (isUsableFilterValue(filters.search)) params.search = filters.search;
+  return params;
+}
+
+export function buildExpenseListParams({
+  filters = {},
+  page = 1,
+  pageSize = 20,
+  ordering = '',
+} = {}) {
+  const params = {
+    ...buildExpenseFilterParams(filters),
+    page,
+    page_size: pageSize,
+  };
   if (isUsableFilterValue(ordering)) params.ordering = ordering;
   return params;
 }

@@ -212,7 +212,37 @@ class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def statistics(self, request):
-        """Get expense statistics - thin view, business logic in service"""
+        """
+        Expense totals for the current filters (same queryset as the list).
+
+        Query params: date_from, date_to, category, status, payment_method, search, …
+        Returns total_amount / expense_count for that set, plus approved-only
+        total_expenses for the same date/branch window.
+        """
+        qs = self.filter_queryset(self.get_queryset())
+        agg = qs.aggregate(total=Sum('amount'), count=Count('id'))
+        approved_total = (
+            qs.filter(status__in=('approved', 'paid')).aggregate(total=Sum('amount'))['total']
+            or 0
+        )
+
         current_branch = get_current_branch(request)
-        stats = self.expense_service.get_expense_statistics(branch=current_branch)
-        return Response(stats)
+        date_from = request.query_params.get('date_from') or None
+        date_to = request.query_params.get('date_to') or None
+        legacy = self.expense_service.get_expense_statistics(
+            branch=current_branch,
+            date_from=date_from,
+            date_to=date_to,
+        )
+
+        return Response(
+            {
+                **legacy,
+                'total_amount': float(agg['total'] or 0),
+                'expense_count': int(agg['count'] or 0),
+                # Posted spend in the filtered set (approved + paid)
+                'posted_total': float(approved_total),
+                'date_from': date_from,
+                'date_to': date_to,
+            }
+        )

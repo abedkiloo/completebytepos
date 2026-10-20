@@ -1,4 +1,5 @@
 import {
+  buildExpenseFilterParams,
   buildExpenseListParams,
   findCategoryByName,
   isUsableFilterValue,
@@ -31,6 +32,21 @@ describe('expenseFilters', () => {
       page_size: 25,
       payment_method: 'cash',
       search: 'rent',
+    });
+  });
+
+  it('builds filter params for statistics without pagination', () => {
+    expect(
+      buildExpenseFilterParams({
+        date_from: '2026-01-01',
+        date_to: '2026-01-31',
+        status: 'approved',
+        category: '',
+      })
+    ).toEqual({
+      date_from: '2026-01-01',
+      date_to: '2026-01-31',
+      status: 'approved',
     });
   });
 

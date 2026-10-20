@@ -6,6 +6,7 @@ import { CATALOG_FETCH_PAGE_SIZE, DEFAULT_PAGE_SIZE } from '../../config/paginat
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import SearchableSelect from '../Shared/SearchableSelect';
 import ExpenseForm from './ExpenseForm';
+import PeriodPills from '../Reports/PeriodPills';
 import { toast } from '../../utils/toast';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { formatOccurredDate } from '../../utils/localDate';
@@ -16,9 +17,16 @@ import {
   isMakerCheckerEnabled,
 } from '../../utils/makerChecker';
 import {
+  buildExpenseFilterParams,
   buildExpenseListParams,
   normalizeFilterChangeValue,
 } from '../../utils/expenseFilters';
+import {
+  DEFAULT_REPORT_PERIOD,
+  REPORT_PERIODS,
+  detectPeriodFromDates,
+  periodToDateFilters,
+} from '../../utils/reportPeriods';
 import { rejectionReturnedMessage } from '../../utils/approvalReturn';
 import HelpHint from '../Shared/HelpHint';
 import { Button } from '../ui/button';
@@ -38,6 +46,7 @@ import {
   EmptyState,
   FilterBar,
   FilterField,
+  SummaryCard,
   DataTable,
   DataTableHeader,
   DataTableHead,
@@ -49,6 +58,8 @@ import {
 } from '../page';
 import { useListOrdering } from '../../hooks/useListOrdering';
 
+const initialMonthDates = periodToDateFilters(DEFAULT_REPORT_PERIOD);
+
 const Expenses = () => {
   const [expenses, setExpenses] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -57,11 +68,17 @@ const Expenses = () => {
   const [editingExpense, setEditingExpense] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [notesExpense, setNotesExpense] = useState(null);
+  const [period, setPeriod] = useState(DEFAULT_REPORT_PERIOD);
+  const [totals, setTotals] = useState({
+    total_amount: 0,
+    expense_count: 0,
+    posted_total: 0,
+  });
   const [filters, setFilters] = useState({
     category: '',
     status: '',
-    date_from: '',
-    date_to: '',
+    date_from: initialMonthDates.date_from,
+    date_to: initialMonthDates.date_to,
     payment_method: '',
     search: '',
   });
@@ -101,9 +118,13 @@ const Expenses = () => {
         pageSize: pagination.page_size,
         ordering,
       });
+      const statsParams = buildExpenseFilterParams(filters);
 
-      const response = await expensesAPI.list(params);
-      const data = response.data;
+      const [listRes, statsRes] = await Promise.all([
+        expensesAPI.list(params),
+        expensesAPI.statistics(statsParams).catch(() => null),
+      ]);
+      const data = listRes.data;
 
       if (data.results) {
         setExpenses(data.results);
@@ -113,6 +134,14 @@ const Expenses = () => {
         }));
       } else {
         setExpenses(Array.isArray(data) ? data : []);
+      }
+
+      if (statsRes?.data) {
+        setTotals({
+          total_amount: Number(statsRes.data.total_amount) || 0,
+          expense_count: Number(statsRes.data.expense_count) || 0,
+          posted_total: Number(statsRes.data.posted_total) || 0,
+        });
       }
     } catch (error) {
       setExpenses([]);
@@ -128,9 +157,24 @@ const Expenses = () => {
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
+    const next = normalizeFilterChangeValue(value);
+    setFilters((prev) => {
+      const updated = { ...prev, [name]: next };
+      if (name === 'date_from' || name === 'date_to') {
+        setPeriod(detectPeriodFromDates(updated.date_from, updated.date_to));
+      }
+      return updated;
+    });
+    setPagination((prev) => ({ ...prev, page: 1 }));
+  };
+
+  const handlePeriodChange = (nextPeriod) => {
+    const dates = periodToDateFilters(nextPeriod);
+    setPeriod(nextPeriod);
     setFilters((prev) => ({
       ...prev,
-      [name]: normalizeFilterChangeValue(value),
+      date_from: dates.date_from,
+      date_to: dates.date_to,
     }));
     setPagination((prev) => ({ ...prev, page: 1 }));
   };
@@ -261,6 +305,31 @@ const Expenses = () => {
             </p>
           </div>
         )}
+
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <PeriodPills
+            value={period === 'custom' ? null : period}
+            onChange={handlePeriodChange}
+            size="default"
+            periods={REPORT_PERIODS}
+          />
+        </div>
+
+        <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <SummaryCard
+            icon={TrendingDown}
+            label="Total expenses"
+            value={formatCurrency(totals.total_amount)}
+            subtext={`${totals.expense_count.toLocaleString()} in selected dates`}
+            tone="destructive"
+          />
+          <SummaryCard
+            icon={Check}
+            label="Approved / paid"
+            value={formatCurrency(totals.posted_total)}
+            subtext="Counts toward reports"
+          />
+        </div>
 
         <FilterBar>
           <FilterField label="Category">

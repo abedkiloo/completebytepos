@@ -240,6 +240,38 @@ class ExpenseApproveSuperAdminTests(SuperAdminAPITestCase):
         response = self.client.get('/api/expenses/statistics/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('total_expenses', response.data)
+        self.assertEqual(response.data['total_amount'], 100.0)
+        self.assertEqual(response.data['expense_count'], 1)
+
+    def test_statistics_respects_date_range(self):
+        from datetime import timedelta
+
+        today = timezone.localdate()
+        past = today - timedelta(days=40)
+        Expense.objects.create(
+            category=self.cat,
+            description='Old',
+            amount=Decimal('50.00'),
+            expense_date=past,
+            status='approved',
+            created_by=self.admin,
+        )
+        Expense.objects.create(
+            category=self.cat,
+            description='New',
+            amount=Decimal('200.00'),
+            expense_date=today,
+            status='pending',
+            created_by=self.admin,
+        )
+        response = self.client.get(
+            '/api/expenses/statistics/',
+            {'date_from': today.isoformat(), 'date_to': today.isoformat()},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['total_amount'], 200.0)
+        self.assertEqual(response.data['expense_count'], 1)
+        self.assertEqual(response.data['posted_total'], 0.0)
 
 
 class ExpenseCategoryAdminDeleteTests(SuperAdminAPITestCase):

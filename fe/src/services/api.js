@@ -585,7 +585,7 @@ export const expensesAPI = {
   approve: (id) => api.post(`/expenses/${id}/approve/`),
   reject: (id, data) => api.post(`/expenses/${id}/reject/`, data),
   resubmit: (id) => api.post(`/expenses/${id}/resubmit/`),
-  statistics: () => api.get('/expenses/statistics/'),
+  statistics: (params) => api.get('/expenses/statistics/', { params }),
   categories: {
     list: (params) => api.get('/expenses/categories/', { params }),
     get: (id) => api.get(`/expenses/categories/${id}/`),
