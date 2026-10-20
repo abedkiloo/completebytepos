@@ -396,8 +396,9 @@ export default function TradingProfitReportView() {
               <p>
                 Sales use business date; refunds use when the void was applied; expenses use
                 expense date. Pending voids do not change these numbers until approved.
-                Admins can turn off “Include in trading profit” on an expense so it stays in
-                Expenses but does not reduce trading profit.
+                Admins can turn off “Include in trading profit” on an expense category
+                (Expenses → Manage categories) so that category’s spend does not reduce
+                trading profit.
               </p>
               <p>
                 Purchases this period ({formatCurrency(summary.purchases)}) are shown for

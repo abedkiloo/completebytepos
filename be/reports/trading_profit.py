@@ -88,12 +88,21 @@ def _period_sales_and_refunds(*, start, end):
     return sales_qs, refund_qs
 
 
-def _trading_expenses_qs(*, start, end):
-    """Approved expenses that admins have marked to count toward trading profit."""
-    expenses_qs = Expense.objects.filter(
-        status='approved',
-        include_in_trading_profit=True,
-    )
+def _trading_expenses_qs(*, start, end, included: bool = True):
+    """
+    Approved expenses filtered by category.include_in_trading_profit.
+
+    Uncategorised expenses are treated as included (default contribute).
+    """
+    from django.db.models import Q
+
+    expenses_qs = Expense.objects.filter(status='approved').select_related('category')
+    if included:
+        expenses_qs = expenses_qs.filter(
+            Q(category__isnull=True) | Q(category__include_in_trading_profit=True)
+        )
+    else:
+        expenses_qs = expenses_qs.filter(category__include_in_trading_profit=False)
     start_d = _as_date(start)
     end_d = _as_date(end)
     if start_d is not None:
@@ -108,7 +117,7 @@ def compute_trading_profit(*, start, end) -> dict[str, Any]:
     Net profit = (gross sales − refunds) − (COGS − refund COGS) − expenses + other income.
 
     Revenue uses Sale.total (tax-inclusive). ``tax_amount`` is returned for visibility only.
-    Expenses: approved + include_in_trading_profit (default on for all expenses).
+    Expenses: approved + category.include_in_trading_profit (default on per category).
     """
     sales_qs, refund_qs = _period_sales_and_refunds(start=start, end=end)
 
@@ -132,24 +141,16 @@ def compute_trading_profit(*, start, end) -> dict[str, Any]:
     if cogs < 0:
         cogs = Decimal('0')
 
-    expenses_qs = _trading_expenses_qs(start=start, end=end)
+    expenses_qs = _trading_expenses_qs(start=start, end=end, included=True)
     expenses_total = _d(expenses_qs.aggregate(total=Sum('amount'))['total'])
     expenses_count = expenses_qs.count()
 
-    # Approved but excluded from trading profit (admin turned the flag off).
-    start_d = _as_date(start)
-    end_d = _as_date(end)
-    excluded_qs = Expense.objects.filter(
-        status='approved',
-        include_in_trading_profit=False,
-    )
-    if start_d is not None:
-        excluded_qs = excluded_qs.filter(expense_date__gte=start_d)
-    if end_d is not None:
-        excluded_qs = excluded_qs.filter(expense_date__lte=end_d)
+    excluded_qs = _trading_expenses_qs(start=start, end=end, included=False)
     expenses_excluded_total = _d(excluded_qs.aggregate(total=Sum('amount'))['total'])
     expenses_excluded_count = excluded_qs.count()
 
+    start_d = _as_date(start)
+    end_d = _as_date(end)
     income_qs = Income.objects.filter(status='approved')
     if start_d is not None:
         income_qs = income_qs.filter(income_date__gte=start_d)

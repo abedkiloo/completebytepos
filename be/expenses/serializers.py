@@ -19,6 +19,7 @@ class ExpenseCategorySerializer(serializers.ModelSerializer):
         model = ExpenseCategory
         fields = [
             'id', 'name', 'description', 'is_active',
+            'include_in_trading_profit',
             'expense_count', 'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at']
@@ -26,6 +27,7 @@ class ExpenseCategorySerializer(serializers.ModelSerializer):
 
 class ExpenseSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
+    category_include_in_trading_profit = serializers.SerializerMethodField()
     created_by_name = serializers.CharField(source='created_by.username', read_only=True)
     approved_by_name = serializers.CharField(source='approved_by.username', read_only=True)
     amount = serializers.DecimalField(
@@ -44,14 +46,20 @@ class ExpenseSerializer(serializers.ModelSerializer):
         model = Expense
         fields = [
             'id', 'expense_number', 'category', 'category_name',
+            'category_include_in_trading_profit',
             'amount', 'description', 'payment_method', 'status',
             'vendor', 'receipt_number', 'expense_date',
             'created_by', 'created_by_name', 'approved_by', 'approved_by_name',
-            'notes', 'include_in_trading_profit', 'created_at', 'updated_at'
+            'notes', 'created_at', 'updated_at'
         ]
         read_only_fields = [
             'expense_number', 'status', 'approved_by', 'created_at', 'updated_at',
         ]
+
+    def get_category_include_in_trading_profit(self, obj):
+        if not obj.category_id:
+            return True
+        return bool(obj.category.include_in_trading_profit)
 
     def validate_description(self, value):
         raise_field_error(
@@ -71,14 +79,21 @@ class ExpenseSerializer(serializers.ModelSerializer):
 class ExpenseListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for expense lists"""
     category_name = serializers.CharField(source='category.name', read_only=True)
+    category_include_in_trading_profit = serializers.SerializerMethodField()
     created_by_name = serializers.CharField(source='created_by.username', read_only=True)
     
     class Meta:
         model = Expense
         fields = [
             'id', 'expense_number', 'category_name',
+            'category_include_in_trading_profit',
             'amount', 'description', 'payment_method', 'status',
-            'vendor', 'expense_date', 'include_in_trading_profit',
+            'vendor', 'expense_date',
             'created_by', 'created_by_name', 'created_at'
         ]
+
+    def get_category_include_in_trading_profit(self, obj):
+        if not obj.category_id:
+            return True
+        return bool(obj.category.include_in_trading_profit)
 

@@ -214,21 +214,26 @@ class ExpenseApproveSuperAdminTests(SuperAdminAPITestCase):
             expense_date=timezone.localdate(),
             status='approved',
             created_by=self.admin,
-            include_in_trading_profit=True,
         )
         response = self.client.patch(
             f'/api/expenses/{expense.id}/',
-            {
-                'include_in_trading_profit': False,
-                'description': 'Shop rent — owner drawing',
-            },
+            {'description': 'Shop rent — corrected label'},
             format='json',
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         expense.refresh_from_db()
-        self.assertFalse(expense.include_in_trading_profit)
         self.assertEqual(expense.status, 'approved')
-        self.assertEqual(expense.description, 'Shop rent — owner drawing')
+        self.assertEqual(expense.description, 'Shop rent — corrected label')
+
+    def test_admin_can_exclude_category_from_trading_profit(self):
+        response = self.client.patch(
+            f'/api/expenses/categories/{self.cat.id}/',
+            {'include_in_trading_profit': False},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.cat.refresh_from_db()
+        self.assertFalse(self.cat.include_in_trading_profit)
 
     def test_super_admin_can_approve_expense(self):
         create = self.client.post(

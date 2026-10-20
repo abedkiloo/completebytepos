@@ -90,7 +90,7 @@ describe('formCommitSummary', () => {
     expect(installCommitRows()[2].value).toBe('Not included');
     expect(installCommitRows({ preset: 'retail', includeTestData: true })[2].value).toBe('Included');
     expect(expenseCategoryCommitRows()[0].value).toBe('—');
-    expect(expenseCategoryCommitRows({ name: 'Rent', description: 'Shop' }, { isEdit: true })[2].value)
+    expect(expenseCategoryCommitRows({ name: 'Rent', description: 'Shop' }, { isEdit: true })[3].value)
       .toBe('Update category');
     expect(attributeSaveRows()[0].label).toBe('Size');
     expect(attributeSaveRows({ name: 'XL' }, { kind: 'sizes' })[0].label).toBe('Size');

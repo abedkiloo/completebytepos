@@ -535,7 +535,9 @@ const Expenses = () => {
                       <StatusBadge status={expense.status} />
                     </DataTableCell>
                     <DataTableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                      {expense.include_in_trading_profit === false ? 'Excluded' : 'Included'}
+                      {expense.category_include_in_trading_profit === false
+                        ? 'Excluded'
+                        : 'Included'}
                     </DataTableCell>
                     <DataTableCell>
                       {hasNotes ? (

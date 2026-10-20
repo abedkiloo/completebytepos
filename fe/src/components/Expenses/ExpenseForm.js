@@ -46,7 +46,6 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
     receipt_number: '',
     expense_date: toLocalISODate(),
     notes: '',
-    include_in_trading_profit: true,
   });
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
@@ -71,7 +70,6 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
         receipt_number: expense.receipt_number || '',
         expense_date: toDateInputValue(expense.expense_date),
         notes: expense.notes || '',
-        include_in_trading_profit: expense.include_in_trading_profit !== false,
       });
     }
   }, [expense]);
@@ -423,22 +421,6 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
                 rows="2"
                 placeholder="Additional notes..."
               />
-            </div>
-            <div className="form-checkboxes full-width">
-              <label>
-                <input
-                  type="checkbox"
-                  name="include_in_trading_profit"
-                  checked={Boolean(formData.include_in_trading_profit)}
-                  onChange={handleChange}
-                  data-testid="expense-include-trading-profit"
-                />
-                Include in trading profit
-              </label>
-              <p className="mt-1 text-xs text-muted-foreground">
-                On by default. Turn off for approved spend that should not reduce trading
-                profit (e.g. owner drawings or one-off capital).
-              </p>
             </div>
           </div>
           <div className="slide-in-panel-footer">

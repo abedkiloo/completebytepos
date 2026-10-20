@@ -196,22 +196,26 @@ class TradingProfitAPITests(ManagerAPITestCase):
         self.assertTrue(sale['lines'])
         self.assertEqual(sale['lines'][0]['line_cogs'], 80.0)
 
-    def test_excluded_expense_not_in_trading_profit(self):
+    def test_excluded_category_expense_not_in_trading_profit(self):
         self._seed_period_data()
+        drawings = ExpenseCategory.objects.create(
+            name='Owner drawings',
+            is_active=True,
+            include_in_trading_profit=False,
+        )
         Expense.objects.create(
-            category=self.expense_cat,
+            category=drawings,
             amount=Decimal('100'),
             expense_date=timezone.localdate(),
             status='approved',
             description='Owner drawing — not trading',
             created_by=self.manager_user,
-            include_in_trading_profit=False,
         )
         admin = self._admin_client()
         resp = admin.get('/api/reports/trading_profit/', {'period': 'month'})
         self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
         summary = resp.data['summary']
-        # Seed expense 30 still counts; excluded 100 does not
+        # Seed expense 30 still counts; excluded category 100 does not
         self.assertEqual(summary['expenses'], 30.0)
         self.assertEqual(summary['expenses_excluded'], 100.0)
         self.assertEqual(summary['net_profit'], 80.0)

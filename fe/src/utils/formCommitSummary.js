@@ -175,6 +175,10 @@ export function expenseCategoryCommitRows(form = {}, { isEdit = false } = {}) {
   return compactCommitRows([
     { label: 'Category', value: form.name || '—', emphasis: true },
     form.description ? { label: 'Description', value: form.description } : null,
+    {
+      label: 'Trading profit',
+      value: form.include_in_trading_profit === false ? 'Excluded' : 'Included',
+    },
     { label: 'Action', value: isEdit ? 'Update category' : 'Create category' },
   ]);
 }

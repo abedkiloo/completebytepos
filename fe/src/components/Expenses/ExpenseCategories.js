@@ -32,7 +32,12 @@ import { ListSortBar } from '../page/ListSortBar';
 import { useListOrdering } from '../../hooks/useListOrdering';
 import { withListOrdering } from '../../utils/listOrdering';
 
-const EMPTY_FORM = { name: '', description: '', is_active: true };
+const EMPTY_FORM = {
+  name: '',
+  description: '',
+  is_active: true,
+  include_in_trading_profit: true,
+};
 
 export default function ExpenseCategories() {
   const canDelete = isSuperAdminFromStorage();
@@ -83,6 +88,7 @@ export default function ExpenseCategories() {
       name: category.name || '',
       description: category.description || '',
       is_active: category.is_active !== false,
+      include_in_trading_profit: category.include_in_trading_profit !== false,
     });
     setShowForm(true);
   };
@@ -104,6 +110,7 @@ export default function ExpenseCategories() {
         name: form.name.trim(),
         description: form.description.trim(),
         is_active: Boolean(form.is_active),
+        include_in_trading_profit: Boolean(form.include_in_trading_profit),
       };
       if (editing) {
         await expensesAPI.categories.update(editing.id, payload);
@@ -148,7 +155,7 @@ export default function ExpenseCategories() {
     <PageShell>
       <PageHeader
         title="Expense categories"
-        description="Organize expenses by category. Unused categories can be deleted by an admin."
+        description="Organize expenses by category. Choose which categories count toward trading profit. Unused categories can be deleted by an admin."
       >
         <Link to="/expenses">
           <Button type="button" variant="outline">
@@ -200,6 +207,7 @@ export default function ExpenseCategories() {
             </DataTableHead>
             <DataTableHead>Description</DataTableHead>
             <DataTableHead align="right">Expenses</DataTableHead>
+            <DataTableHead>Trading profit</DataTableHead>
             <DataTableHead>Status</DataTableHead>
             <DataTableHead align="right">Actions</DataTableHead>
           </DataTableHeader>
@@ -217,6 +225,9 @@ export default function ExpenseCategories() {
                   </DataTableCell>
                   <DataTableCell align="right" className="tabular-nums">
                     {category.expense_count ?? 0}
+                  </DataTableCell>
+                  <DataTableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                    {category.include_in_trading_profit === false ? 'Excluded' : 'Included'}
                   </DataTableCell>
                   <DataTableCell>
                     <ActiveStatusBadge active={category.is_active !== false} />
@@ -301,6 +312,26 @@ export default function ExpenseCategories() {
                 />
                 Active
               </label>
+              <div className="space-y-1">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(form.include_in_trading_profit)}
+                    onChange={(e) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        include_in_trading_profit: e.target.checked,
+                      }))
+                    }
+                    data-testid="category-include-trading-profit"
+                  />
+                  Include in trading profit
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  On by default. Turn off so approved expenses in this category do not reduce
+                  trading profit (e.g. owner drawings).
+                </p>
+              </div>
               <div className="slide-in-panel-footer">
                 <Button type="button" variant="secondary" onClick={() => setShowForm(false)}>
                   Cancel
