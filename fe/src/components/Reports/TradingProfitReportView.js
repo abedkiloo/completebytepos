@@ -3,9 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, TrendingUp } from 'lucide-react';
 import { reportsAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
-import { DEFAULT_REPORT_PERIOD } from '../../utils/reportPeriods';
-import { PageShell, PageHeader, PageLoading, EmptyState } from '../page';
+import {
+  DEFAULT_REPORT_PERIOD,
+  formatDateForApi,
+  periodToDateFilters,
+} from '../../utils/reportPeriods';
+import { PageShell, PageHeader, PageLoading, EmptyState, FilterBar, FilterField } from '../page';
 import { Button } from '../ui/button';
+import { Input } from '../ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import PeriodPills from './PeriodPills';
 
@@ -14,6 +19,15 @@ const PROFIT_PERIODS = [
   { id: 'month', label: 'This month' },
   { id: 'year', label: 'This year' },
 ];
+
+function isoDateOnly(value) {
+  if (!value) return '';
+  const s = String(value);
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return '';
+  return formatDateForApi(d);
+}
 
 function Row({ label, value, emphasize = false, muted = false }) {
   return (
@@ -34,11 +48,14 @@ function Row({ label, value, emphasize = false, muted = false }) {
 
 export default function TradingProfitReportView() {
   const navigate = useNavigate();
-  const [period, setPeriod] = useState(
-    PROFIT_PERIODS.some((p) => p.id === DEFAULT_REPORT_PERIOD)
-      ? DEFAULT_REPORT_PERIOD
-      : 'month'
+  const initialPeriod = PROFIT_PERIODS.some((p) => p.id === DEFAULT_REPORT_PERIOD)
+    ? DEFAULT_REPORT_PERIOD
+    : 'month';
+  const [period, setPeriod] = useState(initialPeriod);
+  const [dateFrom, setDateFrom] = useState(
+    () => periodToDateFilters(initialPeriod).date_from
   );
+  const [dateTo, setDateTo] = useState(() => periodToDateFilters(initialPeriod).date_to);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [data, setData] = useState(null);
@@ -47,8 +64,17 @@ export default function TradingProfitReportView() {
     setLoading(true);
     setError('');
     try {
-      const res = await reportsAPI.tradingProfit({ period });
+      const params =
+        period === 'custom'
+          ? { date_from: dateFrom, date_to: dateTo }
+          : { period };
+      const res = await reportsAPI.tradingProfit(params);
       setData(res.data);
+      // Keep date inputs in sync with the range the server actually used.
+      const from = isoDateOnly(res.data?.date_from);
+      const to = isoDateOnly(res.data?.date_to);
+      if (from) setDateFrom(from);
+      if (to) setDateTo(to);
     } catch (err) {
       setData(null);
       const status = err?.response?.status;
@@ -60,19 +86,70 @@ export default function TradingProfitReportView() {
     } finally {
       setLoading(false);
     }
-  }, [period]);
+  }, [period, dateFrom, dateTo]);
 
   useEffect(() => {
+    // Preset pills load immediately; custom ranges load via Apply.
+    if (period === 'custom') return;
     load();
-  }, [load]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period]);
+
+  const applyCustomRange = () => {
+    if (!dateFrom || !dateTo) {
+      setError('Pick both From and To dates.');
+      return;
+    }
+    if (dateFrom > dateTo) {
+      setError('“From” must be on or before “To”.');
+      return;
+    }
+    if (period !== 'custom') {
+      setPeriod('custom');
+    }
+    // Always fetch with the dates currently in the inputs (custom params).
+    setLoading(true);
+    setError('');
+    reportsAPI
+      .tradingProfit({ date_from: dateFrom, date_to: dateTo })
+      .then((res) => {
+        setData(res.data);
+        setPeriod('custom');
+        const from = isoDateOnly(res.data?.date_from);
+        const to = isoDateOnly(res.data?.date_to);
+        if (from) setDateFrom(from);
+        if (to) setDateTo(to);
+      })
+      .catch((err) => {
+        setData(null);
+        const status = err?.response?.status;
+        setError(
+          status === 403
+            ? 'You do not have permission to view trading profit. Ask an admin to grant Reports → Profit on your role.'
+            : err?.response?.data?.error || 'Could not load trading profit.'
+        );
+      })
+      .finally(() => setLoading(false));
+  };
+
+  const onPresetChange = (next) => {
+    const filters = periodToDateFilters(next);
+    setDateFrom(filters.date_from);
+    setDateTo(filters.date_to);
+    setPeriod(next);
+  };
 
   const summary = data?.summary;
+  const rangeLabel =
+    period === 'custom'
+      ? `${dateFrom || '…'} → ${dateTo || '…'}`
+      : `${data?.period || period}${dateFrom && dateTo ? ` · ${dateFrom} → ${dateTo}` : ''}`;
 
   return (
     <PageShell>
       <PageHeader
         title="Trading profit"
-        description="Net sales minus cost of goods sold and expenses, for this week, month, or year."
+        description="Net sales minus cost of goods sold and expenses — this week, month, year, or any past date range."
       >
         <Button variant="outline" size="sm" onClick={() => navigate('/reports')}>
           <ArrowLeft className="mr-2 h-4 w-4" />
@@ -80,13 +157,45 @@ export default function TradingProfitReportView() {
         </Button>
       </PageHeader>
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div className="mb-4 space-y-3">
         <PeriodPills
-          value={period}
-          onChange={setPeriod}
+          value={period === 'custom' ? null : period}
+          onChange={onPresetChange}
           size="default"
           periods={PROFIT_PERIODS}
         />
+        <FilterBar>
+          <FilterField label="From">
+            <Input
+              type="date"
+              value={dateFrom}
+              max={dateTo || undefined}
+              onChange={(e) => setDateFrom(e.target.value)}
+            />
+          </FilterField>
+          <FilterField label="To">
+            <Input
+              type="date"
+              value={dateTo}
+              min={dateFrom || undefined}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
+          </FilterField>
+          <FilterField label=" ">
+            <Button
+              type="button"
+              size="sm"
+              onClick={applyCustomRange}
+              disabled={loading || !dateFrom || !dateTo}
+            >
+              Apply dates
+            </Button>
+          </FilterField>
+        </FilterBar>
+        <p className="text-xs text-muted-foreground">
+          Use the pills for the current week/month/year, or set From / To to backdate (e.g. last
+          month or a past week).
+        </p>
       </div>
 
       {loading ? <PageLoading rows={4} /> : null}
@@ -104,7 +213,7 @@ export default function TradingProfitReportView() {
                 <div>
                   <CardTitle className="text-base">Net profit</CardTitle>
                   <p className="text-xs text-muted-foreground capitalize">
-                    {data.period} · trading basis
+                    {rangeLabel} · trading basis
                   </p>
                 </div>
               </div>

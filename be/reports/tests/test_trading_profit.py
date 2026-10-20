@@ -138,3 +138,46 @@ class TradingProfitAPITests(ManagerAPITestCase):
         resp = self.client.get('/api/reports/trading_profit/', {'period': 'week'})
         self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
         self.assertEqual(resp.data['summary']['basis'], 'trading')
+
+    def test_custom_past_date_range(self):
+        """Backdated From/To includes sales in that window and excludes today."""
+        from datetime import datetime, time, timedelta
+
+        past_day = timezone.localdate() - timedelta(days=45)
+        past_dt = timezone.make_aware(datetime.combine(past_day, time.min))
+        Sale.objects.create(
+            sale_number='S-TP-PAST',
+            status='completed',
+            subtotal=Decimal('100'),
+            total=Decimal('100'),
+            tax_amount=Decimal('0'),
+            payment_method='cash',
+            amount_paid=Decimal('100'),
+            cashier=self.manager_user,
+            occurred_at=past_dt,
+        )
+        SaleItem.objects.create(
+            sale=Sale.objects.get(sale_number='S-TP-PAST'),
+            product=self.product,
+            quantity=1,
+            unit_price=Decimal('100'),
+            unit_cost=Decimal('40'),
+            subtotal=Decimal('100'),
+        )
+        # Today sale must not appear in the past window
+        self._seed_period_data()
+
+        admin = self._admin_client()
+        day = past_day.isoformat()
+        resp = admin.get(
+            '/api/reports/trading_profit/',
+            {'date_from': day, 'date_to': day},
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
+        summary = resp.data['summary']
+        self.assertEqual(summary['gross_sales'], 100.0)
+        self.assertEqual(summary['cogs'], 40.0)
+        self.assertEqual(summary['net_profit'], 60.0)
+        self.assertEqual(summary['sale_count'], 1)
+        self.assertTrue(str(resp.data['date_from']).startswith(day))
+        self.assertTrue(str(resp.data['date_to']).startswith(day))
