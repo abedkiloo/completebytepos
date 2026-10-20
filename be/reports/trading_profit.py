@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
-from django.db.models import ExpressionWrapper, F, Sum, fields as dj_fields
+from django.db.models import Count, ExpressionWrapper, F, Sum, fields as dj_fields
 from django.utils import timezone
 from expenses.models import Expense
 from income.models import Income
@@ -14,6 +14,15 @@ from reports.sale_scope import posted_sales
 from sales.models import SaleItem, SaleRefund, SaleRefundItem
 
 COGS_BREAKDOWN_SALE_LIMIT = 200
+
+_LINE_COST = ExpressionWrapper(
+    F('quantity') * F('unit_cost'),
+    output_field=dj_fields.DecimalField(max_digits=14, decimal_places=2),
+)
+_REFUND_LINE_COST = ExpressionWrapper(
+    F('quantity') * F('sale_item__unit_cost'),
+    output_field=dj_fields.DecimalField(max_digits=14, decimal_places=2),
+)
 
 
 def _d(value) -> Decimal:
@@ -33,44 +42,31 @@ def _as_date(value):
 
 
 def _cogs_for_sales(sales_qs) -> Decimal:
-    """FIFO-stamped line cost, with legacy sale-movement fallback."""
+    """FIFO-stamped line cost, with legacy sale-movement fallback (SQL only)."""
     sale_items = SaleItem.objects.filter(sale__in=sales_qs)
-    with_cost = sale_items.filter(unit_cost__isnull=False).aggregate(
-        total=Sum(
-            ExpressionWrapper(
-                F('quantity') * F('unit_cost'),
-                output_field=dj_fields.DecimalField(max_digits=14, decimal_places=2),
-            )
-        )
-    )['total']
-    legacy_numbers = list(
-        sale_items.filter(unit_cost__isnull=True).values_list('sale__sale_number', flat=True)
+    with_cost = sale_items.filter(unit_cost__isnull=False).aggregate(total=Sum(_LINE_COST))['total']
+    # Subquery — never materialise sale numbers into Python (scale-safe).
+    legacy_refs = sale_items.filter(unit_cost__isnull=True).values_list(
+        'sale__sale_number', flat=True
     )
-    legacy = Decimal('0')
-    if legacy_numbers:
-        legacy = _d(
-            StockMovement.objects.filter(
-                movement_type='sale',
-                reference__in=legacy_numbers,
-            ).aggregate(total=Sum('total_cost'))['total']
-        )
+    legacy = _d(
+        StockMovement.objects.filter(
+            movement_type='sale',
+            reference__in=legacy_refs,
+        ).aggregate(total=Sum('total_cost'))['total']
+    )
     return _d(with_cost) + legacy
 
 
 def _refund_cogs(refund_qs) -> Decimal:
-    """Cost restored when items are voided/refunded (sale_item.unit_cost × qty)."""
-    rows = (
-        SaleRefundItem.objects.filter(refund__in=refund_qs)
-        .select_related('sale_item')
-        .only('quantity', 'sale_item__unit_cost')
+    """Cost restored on refunds/voids — one SQL aggregate, not per-row Python."""
+    total = (
+        SaleRefundItem.objects.filter(
+            refund__in=refund_qs,
+            sale_item__unit_cost__isnull=False,
+        ).aggregate(total=Sum(_REFUND_LINE_COST))['total']
     )
-    total = Decimal('0')
-    for row in rows:
-        cost = getattr(row.sale_item, 'unit_cost', None)
-        if cost is None:
-            continue
-        total += _d(cost) * _d(row.quantity)
-    return total
+    return _d(total)
 
 
 def _period_sales_and_refunds(*, start, end):
@@ -96,7 +92,8 @@ def _trading_expenses_qs(*, start, end, included: bool = True):
     """
     from django.db.models import Q
 
-    expenses_qs = Expense.objects.filter(status='approved').select_related('category')
+    # Aggregate-only path — no select_related (avoids useless JOINs at scale).
+    expenses_qs = Expense.objects.filter(status='approved')
     if included:
         expenses_qs = expenses_qs.filter(
             Q(category__isnull=True) | Q(category__include_in_trading_profit=True)
@@ -125,14 +122,16 @@ def compute_trading_profit(*, start, end) -> dict[str, Any]:
         gross_sales=Sum('total'),
         tax_amount=Sum('tax_amount'),
         discount_amount=Sum('discount_amount'),
+        sale_count=Count('id'),
     )
-    sale_count = sales_qs.count()
+    sale_count = int(sales_agg['sale_count'] or 0)
     gross_sales = _d(sales_agg['gross_sales'])
     tax_amount = _d(sales_agg['tax_amount'])
     discount_amount = _d(sales_agg['discount_amount'])
 
-    refunds_total = _d(refund_qs.aggregate(total=Sum('amount'))['total'])
-    refund_count = refund_qs.count()
+    refund_agg = refund_qs.aggregate(total=Sum('amount'), refund_count=Count('id'))
+    refunds_total = _d(refund_agg['total'])
+    refund_count = int(refund_agg['refund_count'] or 0)
 
     net_sales = gross_sales - refunds_total
     cogs_sold = _cogs_for_sales(sales_qs)
@@ -142,12 +141,14 @@ def compute_trading_profit(*, start, end) -> dict[str, Any]:
         cogs = Decimal('0')
 
     expenses_qs = _trading_expenses_qs(start=start, end=end, included=True)
-    expenses_total = _d(expenses_qs.aggregate(total=Sum('amount'))['total'])
-    expenses_count = expenses_qs.count()
+    exp_agg = expenses_qs.aggregate(total=Sum('amount'), expenses_count=Count('id'))
+    expenses_total = _d(exp_agg['total'])
+    expenses_count = int(exp_agg['expenses_count'] or 0)
 
     excluded_qs = _trading_expenses_qs(start=start, end=end, included=False)
-    expenses_excluded_total = _d(excluded_qs.aggregate(total=Sum('amount'))['total'])
-    expenses_excluded_count = excluded_qs.count()
+    excl_agg = excluded_qs.aggregate(total=Sum('amount'), expenses_count=Count('id'))
+    expenses_excluded_total = _d(excl_agg['total'])
+    expenses_excluded_count = int(excl_agg['expenses_count'] or 0)
 
     start_d = _as_date(start)
     end_d = _as_date(end)

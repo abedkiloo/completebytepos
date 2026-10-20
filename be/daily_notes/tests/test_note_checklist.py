@@ -77,6 +77,40 @@ class DailyNoteChecklistTests(ManagerAPITestCase):
         self.assertTrue(item.is_done)
         self.assertIsNotNone(item.completed_at)
 
+    def test_toggle_checklist_item_404s(self):
+        note = DailyNote.objects.create(
+            note_date=timezone.localdate(),
+            content='Shift note',
+            author=self.manager_user,
+            assigned_to=self.manager_user,
+        )
+        missing_note = self.client.post(
+            '/api/daily-notes/notes/999999/checklist-items/1/toggle-done/'
+        )
+        self.assertEqual(missing_note.status_code, status.HTTP_404_NOT_FOUND)
+        missing_item = self.client.post(
+            f'/api/daily-notes/notes/{note.id}/checklist-items/999999/toggle-done/'
+        )
+        self.assertEqual(missing_item.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_update_clears_checklist_when_empty_list(self):
+        note = DailyNote.objects.create(
+            note_date=timezone.localdate(),
+            content='Has checklist',
+            author=self.manager_user,
+            assigned_to=self.manager_user,
+        )
+        DailyNoteChecklistItem.objects.create(
+            daily_note=note, label='Temp', sort_order=0
+        )
+        response = self.client.patch(
+            f'/api/daily-notes/notes/{note.id}/',
+            {'checklist_items': []},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(note.checklist_items.count(), 0)
+
     def test_person_filter_matches_author_or_assignee(self):
         from django.contrib.auth.models import User
 

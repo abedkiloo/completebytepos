@@ -88,7 +88,8 @@ class DefaultRolePermissionTests(TestCase):
         """Daily Sales Tracker is checkable — not on default Manager or Sales packs."""
         self.assertFalse(self._has(self.manager_role, 'sales', 'daily_sales'))
         self.assertFalse(self._has(self.sales_role, 'sales', 'daily_sales'))
-        self.assertFalse(self._has(self.field_role, 'sales', 'daily_sales'))
+        # Field Sales includes daily_sales so agents can see own field + shop sales.
+        self.assertTrue(self._has(self.field_role, 'sales', 'daily_sales'))
         self.assertTrue(self._has(self.super_role, 'sales', 'daily_sales'))
 
     def test_sales_role_has_catalog_create_import_only(self):

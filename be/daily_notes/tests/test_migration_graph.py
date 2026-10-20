@@ -13,9 +13,9 @@ class MigrationGraphTests(TestCase):
         sales = [node for node in leaves if node[0] == 'sales']
         self.assertEqual(
             daily,
-            [('daily_notes', '0007_merge_in_progress_and_index_rename')],
+            [('daily_notes', '0008_dailynotechecklistitem')],
         )
         self.assertEqual(
             sales,
-            [('sales', '0018_merge_alter_sale_status_and_field_sales')],
+            [('sales', '0024_customer_kenya_admin_location')],
         )

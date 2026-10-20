@@ -163,4 +163,4 @@ class MobileSasaBulkProviderTests(APITestCase):
             amount='1200.50',
             store_name='Omuwenga',
         )
-        self.assertEqual(text, 'Hi Sunrise, balance KES 1200.5 at Omuwenga.')
+        self.assertEqual(text, 'Hi Sunrise, balance KES 1,200.5 at Omuwenga.')

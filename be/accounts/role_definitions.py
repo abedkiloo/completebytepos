@@ -332,6 +332,8 @@ def _field_agent_queryset():
             module='agents',
             action__in=['view', 'create', 'update'],
         )
+        # Agents need the daily sales tracker to see their own field + shop sales.
+        | Permission.objects.filter(module='sales', action='daily_sales')
     )
 
 
@@ -482,6 +484,11 @@ def sync_default_roles(created_by=None):
     )
     if agent_created:
         field_agent.permissions.set(_field_agent_queryset())
+    else:
+        # Additive: existing Field Sales roles need daily tracker after upgrade.
+        field_agent.permissions.add(
+            *Permission.objects.filter(module='sales', action='daily_sales')
+        )
 
     dispatcher, dispatcher_created = Role.objects.update_or_create(
         name=ROLE_DISPATCHER,

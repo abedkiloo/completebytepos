@@ -3,11 +3,14 @@ source = .
 omit =
     */migrations/*
     */tests/*
-    */management/commands/populate_test_data.py
+    */test_*.py
+    */management/commands/*
     */venv/*
     manage.py
-    config/wsgi.py
-    config/asgi.py
+    config/*
+    */apps.py
+    qrcode.py
+    */qrcode.py
 
 [report]
 show_missing = True

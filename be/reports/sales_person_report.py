@@ -98,7 +98,7 @@ class SalesPersonReportService:
         )
         items_by_staff = {
             row['staff_id']: row['items_sold']
-            for row in SaleItem.objects.filter(sale__in=sales_qs.values('pk'))
+            for row in SaleItem.objects.filter(sale__in=sales_qs)
             .annotate(staff_id=Coalesce('sale__served_by_id', 'sale__cashier_id'))
             .values('staff_id')
             .annotate(items_sold=Sum('quantity'))
@@ -210,7 +210,9 @@ class SalesPersonReportService:
             else:
                 detail_qs = sales_qs.none()
 
-            sale_ids = [s.id for s in detail_qs]
+            # Evaluate once — avoids a second query over the same queryset.
+            detail_sales = list(detail_qs)
+            sale_ids = [s.id for s in detail_sales]
             refunded_map = {
                 r['sale_id']: _decimal_float(r['total'])
                 for r in SaleRefund.objects.filter(sale_id__in=sale_ids)
@@ -218,7 +220,7 @@ class SalesPersonReportService:
                 .annotate(total=Sum('amount'))
             }
 
-            for sale in detail_qs:
+            for sale in detail_sales:
                 refunded = refunded_map.get(sale.id, 0.0)
                 detail.append({
                     'sale_id': sale.id,

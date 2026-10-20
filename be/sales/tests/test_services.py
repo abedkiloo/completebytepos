@@ -260,8 +260,9 @@ class SaleServiceTestCase(TestCase):
             {'product_id': self.product.id, 'quantity': 200},
         ]
         validated = self.service.validate_sale_items(items_data, check_stock=False)
-        self.assertEqual(len(validated), 1)
-        self.assertEqual(validated[0]['quantity'], 200)
+        # FIFO layers may split one cart line into multiple validated rows.
+        self.assertGreaterEqual(len(validated), 1)
+        self.assertEqual(sum(int(row['quantity']) for row in validated), 200)
 
     def test_validate_sale_items_consolidates_duplicate_rows(self):
         items_data = [

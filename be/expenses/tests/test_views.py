@@ -234,6 +234,59 @@ class ExpenseApproveSuperAdminTests(SuperAdminAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         self.cat.refresh_from_db()
         self.assertFalse(self.cat.include_in_trading_profit)
+        detail = self.client.get(f'/api/expenses/categories/{self.cat.id}/')
+        self.assertEqual(detail.status_code, status.HTTP_200_OK)
+        self.assertFalse(detail.data['include_in_trading_profit'])
+
+        expense = Expense.objects.create(
+            category=self.cat,
+            description='Excluded row',
+            amount=Decimal('11.00'),
+            expense_date=timezone.localdate(),
+            status='approved',
+            created_by=self.admin,
+        )
+        listed = self.client.get('/api/expenses/?category=' + str(self.cat.id))
+        self.assertEqual(listed.status_code, status.HTTP_200_OK)
+        rows = listed.data.get('results', listed.data)
+        self.assertTrue(rows)
+        self.assertFalse(rows[0]['category_include_in_trading_profit'])
+        detail = self.client.get(f'/api/expenses/{expense.id}/')
+        self.assertEqual(detail.status_code, status.HTTP_200_OK)
+        self.assertFalse(detail.data['category_include_in_trading_profit'])
+
+    def test_admin_can_void_pending_and_resubmit_rejected(self):
+        create = self.client.post(
+            '/api/expenses/',
+            {
+                'category': self.cat.id,
+                'description': 'Duplicate entry',
+                'amount': '15.00',
+                'expense_date': timezone.now().date().isoformat(),
+                'payment_method': 'cash',
+            },
+            format='json',
+        )
+        self.assertEqual(create.status_code, status.HTTP_201_CREATED, create.data)
+        void = self.client.post(
+            f'/api/expenses/{create.data["id"]}/void/',
+            {'reason': 'Entered twice'},
+            format='json',
+        )
+        self.assertEqual(void.status_code, status.HTTP_200_OK, void.data)
+        self.assertEqual(void.data['status'], 'voided')
+
+        rejected = Expense.objects.create(
+            category=self.cat,
+            description='Needs rework',
+            amount=Decimal('9.00'),
+            expense_date=timezone.now().date(),
+            status='rejected',
+            created_by=self.admin,
+        )
+        resubmit = self.client.post(f'/api/expenses/{rejected.id}/resubmit/')
+        self.assertEqual(resubmit.status_code, status.HTTP_200_OK, resubmit.data)
+        self.assertEqual(resubmit.data['status'], 'pending')
 
     def test_super_admin_can_approve_expense(self):
         create = self.client.post(

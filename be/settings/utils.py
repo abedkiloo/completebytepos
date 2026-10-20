@@ -43,8 +43,9 @@ def get_current_tenant(request):
         except (Tenant.DoesNotExist, ValueError) as e:
             pass
     
-    # Try to get from query params
-    tenant_id = request.query_params.get('tenant_id')
+    # Try to get from query params (DRF Request or plain Django WSGIRequest)
+    params = getattr(request, 'query_params', None) or getattr(request, 'GET', {})
+    tenant_id = params.get('tenant_id')
     if tenant_id:
         try:
             tenant = Tenant.objects.get(id=int(tenant_id), is_active=True)
@@ -108,8 +109,9 @@ def get_current_branch(request, tenant=None):
         except (Branch.DoesNotExist, ValueError) as e:
             pass
     
-    # Try to get from query params
-    branch_id = request.query_params.get('branch_id')
+    # Try to get from query params (DRF Request or plain Django WSGIRequest)
+    params = getattr(request, 'query_params', None) or getattr(request, 'GET', {})
+    branch_id = params.get('branch_id')
     if branch_id:
         try:
             branch = Branch.objects.get(id=int(branch_id), is_active=True)

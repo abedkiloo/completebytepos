@@ -155,20 +155,30 @@ class DailyNoteViewSet(DailyAuthorScopedViewSetMixin, viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
         from django.contrib.auth.models import User
+        from django.db.models import Q
         from daily_notes.serializers import _author_display
 
+        # Cap + optional search — never dump the full user table at scale.
+        staff_limit = 200
         qs = (
-            User.objects.filter(is_active=True)
+            User.objects.filter(is_active=True, profile__isnull=False)
             .select_related('profile')
             .order_by('first_name', 'last_name', 'username')
         )
+        q = (request.query_params.get('q') or '').strip()
+        if q:
+            qs = qs.filter(
+                Q(username__icontains=q)
+                | Q(first_name__icontains=q)
+                | Q(last_name__icontains=q)
+            )
         return Response([
             {
                 'id': u.id,
                 'username': u.username,
                 'display_name': _author_display(u),
             }
-            for u in qs
+            for u in qs[:staff_limit]
         ])
 
     @action(detail=False, methods=['get'], url_path='roles')

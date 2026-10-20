@@ -219,3 +219,173 @@ class TradingProfitAPITests(ManagerAPITestCase):
         self.assertEqual(summary['expenses'], 30.0)
         self.assertEqual(summary['expenses_excluded'], 100.0)
         self.assertEqual(summary['net_profit'], 80.0)
+
+    def test_default_period_is_month_when_unspecified(self):
+        self._seed_period_data()
+        admin = self._admin_client()
+        resp = admin.get('/api/reports/trading_profit/')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
+        self.assertEqual(resp.data['period'], 'month')
+
+    def test_legacy_sale_cogs_from_stock_movement(self):
+        """Lines without unit_cost fall back to sale stock movements (SQL subquery)."""
+        from inventory.models import StockMovement
+
+        sale = Sale.objects.create(
+            sale_number='S-TP-LEGACY',
+            status='completed',
+            subtotal=Decimal('100'),
+            total=Decimal('100'),
+            tax_amount=Decimal('0'),
+            payment_method='cash',
+            amount_paid=Decimal('100'),
+            cashier=self.manager_user,
+            occurred_at=timezone.now(),
+        )
+        SaleItem.objects.create(
+            sale=sale,
+            product=self.product,
+            quantity=2,
+            unit_price=Decimal('50'),
+            unit_cost=None,
+            subtotal=Decimal('100'),
+        )
+        StockMovement.objects.create(
+            product=self.product,
+            movement_type='sale',
+            quantity=-2,
+            unit_cost=Decimal('25'),
+            total_cost=Decimal('50'),
+            reference='S-TP-LEGACY',
+            user=self.manager_user,
+        )
+        admin = self._admin_client()
+        resp = admin.get('/api/reports/trading_profit/', {'period': 'month'})
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
+        self.assertEqual(resp.data['summary']['cogs_sold'], 50.0)
+
+        cogs = admin.get('/api/reports/trading_profit/cogs/', {'period': 'month'})
+        self.assertEqual(cogs.status_code, status.HTTP_200_OK, cogs.data)
+        legacy_sale = next(s for s in cogs.data['sales'] if s['sale_number'] == 'S-TP-LEGACY')
+        self.assertEqual(legacy_sale['cogs'], 50.0)
+        sources = {line['source'] for line in legacy_sale['lines']}
+        self.assertIn('legacy_movement', sources)
+
+    def test_refund_without_unit_cost_skipped_and_cogs_floor_zero(self):
+        from reports.trading_profit import compute_trading_profit
+
+        sale = Sale.objects.create(
+            sale_number='S-TP-FLOOR',
+            status='completed',
+            subtotal=Decimal('40'),
+            total=Decimal('40'),
+            tax_amount=Decimal('0'),
+            payment_method='cash',
+            amount_paid=Decimal('40'),
+            cashier=self.manager_user,
+            occurred_at=timezone.now(),
+        )
+        line = SaleItem.objects.create(
+            sale=sale,
+            product=self.product,
+            quantity=1,
+            unit_price=Decimal('40'),
+            unit_cost=Decimal('10'),
+            subtotal=Decimal('40'),
+        )
+        no_cost = SaleItem.objects.create(
+            sale=sale,
+            product=self.product,
+            quantity=1,
+            unit_price=Decimal('40'),
+            unit_cost=None,
+            subtotal=Decimal('40'),
+        )
+        # Over-refund cost relative to sold COGS → floor at 0
+        refund = SaleRefund.objects.create(
+            sale=sale,
+            refund_type='partial',
+            amount=Decimal('40'),
+            reason='Full undo',
+            refunded_by=self.manager_user,
+        )
+        SaleRefundItem.objects.create(
+            refund=refund,
+            sale_item=line,
+            product=self.product,
+            quantity=5,
+            unit_price=Decimal('40'),
+            subtotal=Decimal('40'),
+        )
+        # Refund of a line with no stamped cost must be ignored by the aggregate
+        SaleRefundItem.objects.create(
+            refund=refund,
+            sale_item=no_cost,
+            product=self.product,
+            quantity=1,
+            unit_price=Decimal('40'),
+            subtotal=Decimal('40'),
+        )
+        summary = compute_trading_profit(start=None, end=None)
+        self.assertEqual(summary['cogs'], 0.0)
+
+    def test_trading_profit_query_count_stays_bounded(self):
+        """Hot path must stay O(1) in query count vs sale/expense row volume."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from reports.trading_profit import compute_cogs_breakdown, compute_trading_profit
+
+        for i in range(8):
+            sale = Sale.objects.create(
+                sale_number=f'S-TP-Q{i}',
+                status='completed',
+                subtotal=Decimal('100'),
+                total=Decimal('100'),
+                tax_amount=Decimal('0'),
+                payment_method='cash',
+                amount_paid=Decimal('100'),
+                cashier=self.manager_user,
+                occurred_at=timezone.now(),
+            )
+            SaleItem.objects.create(
+                sale=sale,
+                product=self.product,
+                quantity=1,
+                unit_price=Decimal('100'),
+                unit_cost=Decimal('40'),
+                subtotal=Decimal('100'),
+            )
+            Expense.objects.create(
+                category=self.expense_cat,
+                amount=Decimal('5'),
+                expense_date=timezone.localdate(),
+                status='approved',
+                description=f'Ops {i}',
+                created_by=self.manager_user,
+            )
+
+        with CaptureQueriesContext(connection) as ctx:
+            compute_trading_profit(start=None, end=None)
+        # Aggregates only — must not scale with number of sales/expenses.
+        self.assertLessEqual(len(ctx.captured_queries), 12)
+
+        # COGS breakdown floor when refunded cost exceeds sold cost
+        refund_sale = Sale.objects.get(sale_number='S-TP-Q0')
+        line = SaleItem.objects.get(sale=refund_sale)
+        refund = SaleRefund.objects.create(
+            sale=refund_sale,
+            refund_type='partial',
+            amount=Decimal('100'),
+            reason='Undo',
+            refunded_by=self.manager_user,
+        )
+        SaleRefundItem.objects.create(
+            refund=refund,
+            sale_item=line,
+            product=self.product,
+            quantity=10,
+            unit_price=Decimal('100'),
+            subtotal=Decimal('100'),
+        )
+        breakdown = compute_cogs_breakdown(start=None, end=None)
+        self.assertEqual(breakdown['cogs'], 0.0)

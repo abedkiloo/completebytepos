@@ -2,14 +2,14 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.db.models import Sum, Count, F, Q, Max
-from django.db.models.functions import TruncDate
+from django.db.models import Sum, Count, F, Q, Max, ExpressionWrapper, fields as dj_fields
+from django.db.models.functions import TruncDate, TruncMonth
 from django.utils import timezone
 from datetime import datetime, timedelta
 from functools import wraps
 from decimal import Decimal
 from reports.sale_scope import items_sold, posted_sales, posted_sale_items
-from sales.models import Invoice, Customer, Payment
+from sales.models import Invoice, Customer, Payment, SaleItem
 from products.models import Product
 from inventory.models import StockMovement
 from expenses.models import Expense
@@ -576,28 +576,25 @@ class ReportViewSet(viewsets.ViewSet):
 
         total_purchases = purchases_queryset.aggregate(total=Sum('total_cost'))['total'] or 0
 
-        # Product COGS: prefer FIFO layer cost stamped on sale lines; fall back
-        # to sale stock movements for legacy lines without unit_cost.
-        from django.db.models import ExpressionWrapper, fields as dj_fields
-        from sales.models import SaleItem
-
+        # Product COGS: FIFO line unit_cost; legacy via stock movements (subquery, not list()).
+        line_cost = ExpressionWrapper(
+            F('quantity') * F('unit_cost'),
+            output_field=dj_fields.DecimalField(max_digits=14, decimal_places=2),
+        )
         sale_items = SaleItem.objects.filter(sale__in=sales_queryset)
         with_cost = sale_items.filter(unit_cost__isnull=False).aggregate(
-            total=Sum(
-                ExpressionWrapper(
-                    F('quantity') * F('unit_cost'),
-                    output_field=dj_fields.DecimalField(max_digits=14, decimal_places=2),
-                )
-            )
+            total=Sum(line_cost)
         )['total'] or 0
-        legacy_ids = sale_items.filter(unit_cost__isnull=True).values_list(
+        legacy_refs = sale_items.filter(unit_cost__isnull=True).values_list(
             'sale__sale_number', flat=True
         )
-        sale_movements = StockMovement.objects.filter(
-            movement_type='sale',
-            reference__in=list(legacy_ids),
+        legacy_cogs = (
+            StockMovement.objects.filter(
+                movement_type='sale',
+                reference__in=legacy_refs,
+            ).aggregate(total=Sum('total_cost'))['total']
+            or 0
         )
-        legacy_cogs = sale_movements.aggregate(total=Sum('total_cost'))['total'] or 0
         total_cogs = Decimal(str(with_cost)) + Decimal(str(legacy_cogs or 0))
 
         net_profit = float(total_revenue) - float(total_expenses) - float(total_cogs)
@@ -612,17 +609,38 @@ class ReportViewSet(viewsets.ViewSet):
             'net_profit': float(net_profit),
             'profit_margin': round(profit_margin, 2),
         }
-        
-        # Monthly breakdown
+
+        # One TruncMonth pass each — not 12×2 queries.
+        def _month_key(value):
+            if value is None:
+                return None
+            if hasattr(value, 'date') and callable(value.date):
+                value = value.date()
+            return value.replace(day=1)
+
+        sales_by_month = {
+            _month_key(row['month']): row['total'] or 0
+            for row in (
+                sales_queryset.annotate(month=TruncMonth('occurred_at'))
+                .values('month')
+                .annotate(total=Sum('total'))
+            )
+            if row['month']
+        }
+        expenses_by_month = {
+            _month_key(row['month']): row['total'] or 0
+            for row in (
+                expenses_queryset.annotate(month=TruncMonth('expense_date'))
+                .values('month')
+                .annotate(total=Sum('amount'))
+            )
+            if row['month']
+        }
+        month_keys = sorted(set(sales_by_month) | set(expenses_by_month))
         monthly_breakdown = []
-        # Simplified - in production, you'd want proper month grouping
-        for i in range(12):
-            month_start = timezone.now().replace(month=i+1, day=1)
-            month_end = timezone.now().replace(month=i+1, day=28)
-            month_sales = sales_queryset.filter(
-                occurred_at__gte=month_start, occurred_at__lte=month_end
-            ).aggregate(total=Sum('total'))['total'] or 0
-            month_expenses = expenses_queryset.filter(expense_date__gte=month_start.date(), expense_date__lte=month_end.date()).aggregate(total=Sum('amount'))['total'] or 0
+        for month_start in month_keys:
+            month_sales = sales_by_month.get(month_start, 0)
+            month_expenses = expenses_by_month.get(month_start, 0)
             monthly_breakdown.append({
                 'month': month_start.strftime('%B %Y'),
                 'revenue': float(month_sales),
@@ -673,19 +691,30 @@ class ReportViewSet(viewsets.ViewSet):
             'growth_rate': round(growth_rate, 2),
         }
         
-        # Monthly data
+        # Two TruncMonth queries instead of 24 per-month aggregates.
+        sales_by_month = {
+            row['month'].month: row['total'] or 0
+            for row in (
+                sales_queryset.annotate(month=TruncMonth('occurred_at'))
+                .values('month')
+                .annotate(total=Sum('total'))
+            )
+            if row['month']
+        }
+        expenses_by_month = {
+            row['month'].month: row['total'] or 0
+            for row in (
+                expenses_queryset.annotate(month=TruncMonth('expense_date'))
+                .values('month')
+                .annotate(total=Sum('amount'))
+            )
+            if row['month']
+        }
         monthly_data = []
         for month in range(1, 13):
             month_start = timezone.make_aware(datetime(year, month, 1))
-            if month == 12:
-                month_end = timezone.make_aware(datetime(year, month, 31, 23, 59, 59))
-            else:
-                month_end = timezone.make_aware(datetime(year, month + 1, 1)) - timedelta(days=1)
-            
-            month_sales = sales_queryset.filter(
-                occurred_at__gte=month_start, occurred_at__lte=month_end
-            ).aggregate(total=Sum('total'))['total'] or 0
-            month_expenses = expenses_queryset.filter(expense_date__month=month).aggregate(total=Sum('amount'))['total'] or 0
+            month_sales = sales_by_month.get(month, 0)
+            month_expenses = expenses_by_month.get(month, 0)
             monthly_data.append({
                 'month': month_start.strftime('%B'),
                 'sales': float(month_sales),

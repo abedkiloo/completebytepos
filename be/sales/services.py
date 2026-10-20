@@ -288,6 +288,10 @@ class SaleService(BaseService):
                 unit_price = sellable_unit_price(product, variant, override=override)
             elif plan:
                 unit_price = Decimal(str(plan[0]['unit_sell_price']))
+                # Legacy variant products (feature off) often have parent price 0;
+                # fall back to catalog/min-variant sell price.
+                if unit_price <= 0:
+                    unit_price = sellable_unit_price(product, variant)
             else:
                 unit_price = sellable_unit_price(product, variant)
 

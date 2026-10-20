@@ -82,6 +82,11 @@ def create_notes_for_assignees(
         targets = [None]
         role = None
 
+    # Guard against accidental fan-out across a huge staff table.
+    max_targets = 500
+    if len(targets) > max_targets:
+        targets = targets[:max_targets]
+
     group = uuid.uuid4() if len(targets) > 1 else None
     notes = []
     done_at = timezone.now() if is_done else None
@@ -102,9 +107,11 @@ def create_notes_for_assignees(
         else:
             note.is_done = False
             note.completed_at = None
-        note.save()
         notes.append(note)
-    return notes
+    if not notes:
+        return []
+    # One INSERT instead of N round-trips when broadcasting to a role / all staff.
+    return list(DailyNote.objects.bulk_create(notes))
 
 
 def _scoped_queryset(model, *, user, view_all: bool):

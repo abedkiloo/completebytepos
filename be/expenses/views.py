@@ -163,6 +163,11 @@ class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             ]
         return super().get_permissions()
 
+    def get_serializer_class(self):
+        if getattr(self, 'action', None) == 'list':
+            return ExpenseListSerializer
+        return ExpenseSerializer
+
     def get_queryset(self):
         """Get queryset using service layer - all query logic moved to service"""
         filters = {}

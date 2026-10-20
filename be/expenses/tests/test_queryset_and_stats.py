@@ -209,6 +209,41 @@ class ExpenseAPIExtendedTests(ManagerAPITestCase):
         rows = response.data.get('results', response.data)
         self.assertTrue(any(r['description'] == 'Visible' for r in rows))
 
+    def test_list_filter_include_in_trading_profit(self):
+        included = ExpenseCategory.objects.create(
+            name='Trading ops', is_active=True, include_in_trading_profit=True
+        )
+        excluded = ExpenseCategory.objects.create(
+            name='Drawings', is_active=True, include_in_trading_profit=False
+        )
+        Expense.objects.create(
+            category=included,
+            description='Shop power',
+            amount=Decimal('20.00'),
+            expense_date=timezone.now().date(),
+            status='approved',
+            created_by=self.manager_user,
+        )
+        Expense.objects.create(
+            category=excluded,
+            description='Owner take',
+            amount=Decimal('50.00'),
+            expense_date=timezone.now().date(),
+            status='approved',
+            created_by=self.manager_user,
+        )
+        only_in = self.client.get('/api/expenses/?include_in_trading_profit=true')
+        self.assertEqual(only_in.status_code, status.HTTP_200_OK)
+        in_rows = only_in.data.get('results', only_in.data)
+        self.assertTrue(any(r['description'] == 'Shop power' for r in in_rows))
+        self.assertFalse(any(r['description'] == 'Owner take' for r in in_rows))
+        self.assertTrue(all(r.get('category_include_in_trading_profit') is not False for r in in_rows))
+
+        only_out = self.client.get('/api/expenses/?include_in_trading_profit=false')
+        self.assertEqual(only_out.status_code, status.HTTP_200_OK)
+        out_rows = only_out.data.get('results', only_out.data)
+        self.assertTrue(any(r['description'] == 'Owner take' for r in out_rows))
+        self.assertTrue(all(r.get('category_include_in_trading_profit') is False for r in out_rows))
 
 
 class ExpenseTransferPermissionsTestCase(SalesAPITestCase):

@@ -5,9 +5,12 @@ from employees.models import Employee
 from sales.models import Customer, Sale
 from settings.models import ModuleSettings
 from utils.list_ordering import (
+    NameSavedOrderingFilter,
     infer_name_target,
     infer_saved_target,
+    map_ordering_fields,
     mapped_ordering,
+    resolve_aliases,
 )
 from utils.tests.api_test_base import ManagerAPITestCase
 
@@ -38,6 +41,58 @@ class InferListOrderingTests(ManagerAPITestCase):
             mapped_ordering('name', aliases={'name': ('first_name', 'last_name')}),
             ['first_name', 'last_name'],
         )
+
+    def test_mapped_ordering_defaults_and_allowed(self):
+        self.assertEqual(mapped_ordering('', default='-created_at'), ['-created_at'])
+        self.assertEqual(mapped_ordering('', default=['a', 'b']), ['a', 'b'])
+        self.assertEqual(mapped_ordering(''), [])
+        self.assertEqual(
+            mapped_ordering('bogus', allowed={'name'}, default='-id'),
+            ['-id'],
+        )
+        self.assertEqual(
+            mapped_ordering('name', allowed={'name'}, aliases={'name': 'title'}),
+            ['title'],
+        )
+        self.assertEqual(
+            map_ordering_fields(['-saved'], {'saved': 'created_at'}),
+            ['-created_at'],
+        )
+        aliases = resolve_aliases(Customer, {'name': 'display_name'})
+        self.assertEqual(aliases['name'], 'display_name')
+        self.assertEqual(infer_name_target(Customer, {'name': 'label'}), 'label')
+        self.assertEqual(infer_saved_target(Customer, {'saved': 'updated_at'}), 'updated_at')
+        self.assertEqual(
+            mapped_ordering('bogus', allowed={'name'}, default=None),
+            [],
+        )
+        self.assertEqual(
+            mapped_ordering('bogus', allowed={'name'}, default=['-id', 'name']),
+            ['-id', 'name'],
+        )
+        self.assertEqual(map_ordering_fields(['', None], {}), [])
+        self.assertIsNone(infer_name_target(object()))
+        self.assertIsNone(infer_saved_target(object()))
+
+    def test_name_saved_ordering_filter_valid_fields(self):
+        class View:
+            ordering_fields = ('id',)
+            ordering_aliases = None
+
+        filt = NameSavedOrderingFilter()
+        qs = Customer.objects.all()
+        fields = filt.get_valid_fields(qs, View())
+        keys = {item[0] for item in fields}
+        self.assertIn('id', keys)
+        self.assertIn('name', keys)
+        self.assertIn('saved', keys)
+
+        class AllView:
+            ordering_fields = '__all__'
+            ordering_aliases = {'name': 'title'}
+
+        fields_all = filt.get_valid_fields(qs, AllView())
+        self.assertTrue(any(item[0] == 'name' for item in fields_all))
 
 
 class CustomerListOrderingAPITests(ManagerAPITestCase):

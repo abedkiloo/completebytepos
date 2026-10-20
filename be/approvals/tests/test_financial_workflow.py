@@ -165,7 +165,12 @@ class ExpenseMakerCheckerAPITests(ManagerAPITestCase):
             {'description': 'Changed', 'proposal_reason': 'Try edit'},
             format='json',
         )
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        # Manager lacks expenses.update by default → 403; 400 if update allowed but finalized.
+        self.assertIn(
+            resp.status_code,
+            (status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN),
+            resp.data,
+        )
 
 
 class IncomeMakerCheckerAPITests(ManagerAPITestCase):

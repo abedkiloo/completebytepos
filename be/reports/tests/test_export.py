@@ -72,9 +72,9 @@ class ScalarizeTests(SimpleTestCase):
         self.assertEqual(scalarize(None), '')
         self.assertEqual(scalarize(True), 'Yes')
         self.assertEqual(scalarize(False), 'No')
-        self.assertEqual(scalarize(Decimal('1.5')), 1.5)
+        self.assertEqual(scalarize(Decimal('1.5')), '1.5')
         self.assertEqual(scalarize('cash'), 'cash')
-        self.assertEqual(scalarize(3), 3)
+        self.assertEqual(scalarize(3), '3')
 
     def test_dates(self):
         self.assertEqual(scalarize(date(2026, 1, 2)), '2026-01-02')

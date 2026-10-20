@@ -50,3 +50,47 @@ class AuditHelpersTests(TestCase):
         )
         row = AuditLog.objects.get(module='products', action='update')
         self.assertIn('price', row.changes)
+
+    def test_module_for_snapshot_and_safe_serializer(self):
+        from unittest.mock import MagicMock
+
+        from utils.audit_helpers import (
+            _module_for,
+            _snapshot,
+            audited_perform_create,
+            safe_serializer_data,
+        )
+
+        class View:
+            audit_module = 'custom'
+            request = self.request
+
+        self.assertEqual(_module_for(View(), None), 'custom')
+
+        class BareView:
+            audit_module = None
+
+        cat = Category.objects.create(name='AuditCat', is_active=True)
+        self.assertEqual(_module_for(BareView(), cat), 'products')
+        self.assertEqual(_module_for(BareView(), None), '')
+        self.assertEqual(_snapshot(None), {})
+        snap = _snapshot(cat)
+        self.assertIn('name', snap)
+
+        ser_ok = MagicMock()
+        ser_ok.data = {'a': 1}
+        self.assertEqual(safe_serializer_data(ser_ok), {'a': 1})
+        ser_bad = MagicMock()
+        type(ser_bad).data = property(lambda self: (_ for _ in ()).throw(RuntimeError('x')))
+        self.assertEqual(safe_serializer_data(ser_bad), {})
+
+        # audited_perform_create with serializer.data raising → empty __created__
+        product_ser = MagicMock()
+        product = Product.objects.create(
+            name='AudP', sku='AUD-P1', category=cat, price=1, is_active=True,
+        )
+        product_ser.save.return_value = product
+        type(product_ser).data = property(lambda self: (_ for _ in ()).throw(ValueError('bad')))
+        out = audited_perform_create(View(), product_ser)
+        self.assertEqual(out.pk, product.pk)
+        self.assertTrue(AuditLog.objects.filter(action=AuditLog.ACTION_CREATE, module='custom').exists())

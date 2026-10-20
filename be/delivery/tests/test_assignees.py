@@ -115,11 +115,19 @@ class DeliveryAssigneesTests(TestCase):
         view = Permission.objects.get(module='delivery', action='view')
         update = Permission.objects.get(module='delivery', action='update')
         sales.permissions.remove(view, update)
+        role = self.sales.profile.custom_role
+        if hasattr(role, '_permission_pairs_cache'):
+            del role._permission_pairs_cache
         self.assertFalse(user_can_do_delivery(self.sales))
         mod.grant_sales_delivery(apps, None)
+        if hasattr(role, '_permission_pairs_cache'):
+            del role._permission_pairs_cache
         self.assertTrue(user_can_do_delivery(self.sales))
         mod.ungrant_sales_delivery(apps, None)
         self.sales.profile.custom_role.refresh_from_db()
+        role = self.sales.profile.custom_role
+        if hasattr(role, '_permission_pairs_cache'):
+            del role._permission_pairs_cache
         self.assertFalse(user_can_do_delivery(self.sales))
         mod.grant_sales_delivery(apps, None)
         Permission.objects.filter(module='delivery', action__in=['view', 'update']).delete()

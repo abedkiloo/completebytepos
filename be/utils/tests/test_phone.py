@@ -43,3 +43,35 @@ class NormalizePhoneNumberTests(TestCase):
     @override_settings(DEFAULT_PHONE_COUNTRY_CODE='254')
     def test_settings_override_still_254(self):
         self.assertEqual(normalize_phone_number('0712345678'), '254712345678')
+
+    def test_explicit_default_country_and_international(self):
+        self.assertEqual(
+            normalize_phone_number('0712345678', default_country='254'),
+            '254712345678',
+        )
+        # Already international (10–15 digits, no leading 0) returned as-is
+        self.assertEqual(normalize_phone_number('15551234567'), '15551234567')
+
+    def test_254_wrong_length_raises(self):
+        with self.assertRaises(PhoneNumberError) as ctx:
+            normalize_phone_number('254712345')  # too short after prefix
+        self.assertIn('need 12', str(ctx.exception))
+
+    @override_settings(DEFAULT_PHONE_COUNTRY_CODE='!!')
+    def test_non_digit_country_falls_back_to_254(self):
+        self.assertEqual(default_country_code(), '254')
+
+    def test_validate_optional_phone_ok_and_error(self):
+        from rest_framework.exceptions import ValidationError as DRFValidationError
+        from utils.phone import validate_optional_phone
+
+        self.assertEqual(validate_optional_phone(''), '')
+        self.assertEqual(validate_optional_phone('0712345678'), '254712345678')
+        with self.assertRaises(DRFValidationError):
+            validate_optional_phone('abc')
+
+    def test_non_254_country_length_bounds(self):
+        # Passes prefix logic but fails 10–15 digit bound
+        with self.assertRaises(PhoneNumberError) as ctx:
+            normalize_phone_number('12', default_country='999')
+        self.assertIn('digits', str(ctx.exception))

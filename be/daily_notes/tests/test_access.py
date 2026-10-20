@@ -109,6 +109,10 @@ class DailyNotesAccessUnitTests(TestCase):
         role.permissions.add(
             Permission.objects.get(module='daily_notes', action='view_all')
         )
+        # Role._permission_pairs_cache may already be warm on profile.custom_role
+        cached_role = self.sales.profile.custom_role
+        if cached_role is not None and hasattr(cached_role, '_permission_pairs_cache'):
+            del cached_role._permission_pairs_cache
         self.assertTrue(user_may_view_all_daily_notes(self.sales))
 
     def test_super_admin_role_may_view_all(self):
