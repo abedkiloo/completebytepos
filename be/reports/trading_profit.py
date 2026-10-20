@@ -13,6 +13,8 @@ from inventory.models import StockMovement
 from reports.sale_scope import posted_sales
 from sales.models import SaleItem, SaleRefund, SaleRefundItem
 
+COGS_BREAKDOWN_SALE_LIMIT = 200
+
 
 def _d(value) -> Decimal:
     return Decimal(str(value or 0))
@@ -20,6 +22,14 @@ def _d(value) -> Decimal:
 
 def _money(value) -> float:
     return float(_d(value).quantize(Decimal('0.01')))
+
+
+def _as_date(value):
+    if value is None:
+        return None
+    if hasattr(value, 'date'):
+        return value.date()
+    return value
 
 
 def _cogs_for_sales(sales_qs) -> Decimal:
@@ -63,17 +73,44 @@ def _refund_cogs(refund_qs) -> Decimal:
     return total
 
 
-def compute_trading_profit(*, start, end) -> dict[str, Any]:
-    """
-    Net profit = (gross sales − refunds) − (COGS − refund COGS) − expenses + other income.
-
-    Revenue uses Sale.total (tax-inclusive). ``tax_amount`` is returned for visibility only.
-    """
+def _period_sales_and_refunds(*, start, end):
     sales_qs = posted_sales()
     if start is not None:
         sales_qs = sales_qs.filter(occurred_at__gte=start)
     if end is not None:
         sales_qs = sales_qs.filter(occurred_at__lte=end)
+
+    refund_qs = SaleRefund.objects.filter(sale__status='completed')
+    if start is not None:
+        refund_qs = refund_qs.filter(created_at__gte=start)
+    if end is not None:
+        refund_qs = refund_qs.filter(created_at__lte=end)
+    return sales_qs, refund_qs
+
+
+def _trading_expenses_qs(*, start, end):
+    """Approved expenses that admins have marked to count toward trading profit."""
+    expenses_qs = Expense.objects.filter(
+        status='approved',
+        include_in_trading_profit=True,
+    )
+    start_d = _as_date(start)
+    end_d = _as_date(end)
+    if start_d is not None:
+        expenses_qs = expenses_qs.filter(expense_date__gte=start_d)
+    if end_d is not None:
+        expenses_qs = expenses_qs.filter(expense_date__lte=end_d)
+    return expenses_qs
+
+
+def compute_trading_profit(*, start, end) -> dict[str, Any]:
+    """
+    Net profit = (gross sales − refunds) − (COGS − refund COGS) − expenses + other income.
+
+    Revenue uses Sale.total (tax-inclusive). ``tax_amount`` is returned for visibility only.
+    Expenses: approved + include_in_trading_profit (default on for all expenses).
+    """
+    sales_qs, refund_qs = _period_sales_and_refunds(start=start, end=end)
 
     sales_agg = sales_qs.aggregate(
         gross_sales=Sum('total'),
@@ -85,11 +122,6 @@ def compute_trading_profit(*, start, end) -> dict[str, Any]:
     tax_amount = _d(sales_agg['tax_amount'])
     discount_amount = _d(sales_agg['discount_amount'])
 
-    refund_qs = SaleRefund.objects.filter(sale__status='completed')
-    if start is not None:
-        refund_qs = refund_qs.filter(created_at__gte=start)
-    if end is not None:
-        refund_qs = refund_qs.filter(created_at__lte=end)
     refunds_total = _d(refund_qs.aggregate(total=Sum('amount'))['total'])
     refund_count = refund_qs.count()
 
@@ -100,26 +132,29 @@ def compute_trading_profit(*, start, end) -> dict[str, Any]:
     if cogs < 0:
         cogs = Decimal('0')
 
-    expenses_qs = Expense.objects.filter(status='approved')
-    if start is not None:
-        expenses_qs = expenses_qs.filter(
-            expense_date__gte=start.date() if hasattr(start, 'date') else start
-        )
-    if end is not None:
-        expenses_qs = expenses_qs.filter(
-            expense_date__lte=end.date() if hasattr(end, 'date') else end
-        )
+    expenses_qs = _trading_expenses_qs(start=start, end=end)
     expenses_total = _d(expenses_qs.aggregate(total=Sum('amount'))['total'])
+    expenses_count = expenses_qs.count()
+
+    # Approved but excluded from trading profit (admin turned the flag off).
+    start_d = _as_date(start)
+    end_d = _as_date(end)
+    excluded_qs = Expense.objects.filter(
+        status='approved',
+        include_in_trading_profit=False,
+    )
+    if start_d is not None:
+        excluded_qs = excluded_qs.filter(expense_date__gte=start_d)
+    if end_d is not None:
+        excluded_qs = excluded_qs.filter(expense_date__lte=end_d)
+    expenses_excluded_total = _d(excluded_qs.aggregate(total=Sum('amount'))['total'])
+    expenses_excluded_count = excluded_qs.count()
 
     income_qs = Income.objects.filter(status='approved')
-    if start is not None:
-        income_qs = income_qs.filter(
-            income_date__gte=start.date() if hasattr(start, 'date') else start
-        )
-    if end is not None:
-        income_qs = income_qs.filter(
-            income_date__lte=end.date() if hasattr(end, 'date') else end
-        )
+    if start_d is not None:
+        income_qs = income_qs.filter(income_date__gte=start_d)
+    if end_d is not None:
+        income_qs = income_qs.filter(income_date__lte=end_d)
     other_income = _d(income_qs.aggregate(total=Sum('amount'))['total'])
 
     # Purchases for visibility only — not in net profit.
@@ -147,6 +182,9 @@ def compute_trading_profit(*, start, end) -> dict[str, Any]:
         'cogs_refunded': _money(cogs_refunded),
         'gross_profit': _money(gross_profit),
         'expenses': _money(expenses_total),
+        'expenses_count': expenses_count,
+        'expenses_excluded': _money(expenses_excluded_total),
+        'expenses_excluded_count': expenses_excluded_count,
         'other_income': _money(other_income),
         'purchases': _money(purchases_total),
         'net_profit': _money(net_profit),
@@ -156,13 +194,157 @@ def compute_trading_profit(*, start, end) -> dict[str, Any]:
     }
 
 
-def trading_profit_for_request(request) -> dict[str, Any]:
+def compute_cogs_breakdown(*, start, end, sale_limit: int = COGS_BREAKDOWN_SALE_LIMIT) -> dict[str, Any]:
+    """
+    How COGS was built for the period: per sale / line (unit_cost × qty),
+    plus refund cost restored.
+    """
+    sales_qs, refund_qs = _period_sales_and_refunds(start=start, end=end)
+    cogs_sold = _cogs_for_sales(sales_qs)
+    cogs_refunded = _refund_cogs(refund_qs)
+    cogs = cogs_sold - cogs_refunded
+    if cogs < 0:
+        cogs = Decimal('0')
+
+    total_sales = sales_qs.count()
+    sales_list = list(
+        sales_qs.select_related('cashier')
+        .order_by('-occurred_at', '-id')[:sale_limit]
+    )
+    sale_ids = [s.id for s in sales_list]
+    items = (
+        SaleItem.objects.filter(sale_id__in=sale_ids)
+        .select_related('product', 'sale')
+        .order_by('sale_id', 'id')
+    )
+    lines_by_sale: dict[int, list] = {sid: [] for sid in sale_ids}
+    legacy_sale_numbers = set()
+    for item in items:
+        unit_cost = item.unit_cost
+        qty = _d(item.quantity)
+        if unit_cost is not None:
+            line_cogs = _d(unit_cost) * qty
+            source = 'unit_cost'
+        else:
+            line_cogs = Decimal('0')
+            source = 'legacy_pending'
+            if item.sale_id and item.sale.sale_number:
+                legacy_sale_numbers.add(item.sale.sale_number)
+        lines_by_sale[item.sale_id].append(
+            {
+                'product_name': getattr(item.product, 'name', None) or 'Item',
+                'sku': getattr(item.product, 'sku', None) or '',
+                'quantity': float(qty),
+                'unit_cost': _money(unit_cost) if unit_cost is not None else None,
+                'line_cogs': _money(line_cogs),
+                'source': source,
+            }
+        )
+
+    legacy_by_ref = {}
+    if legacy_sale_numbers:
+        for row in (
+            StockMovement.objects.filter(
+                movement_type='sale',
+                reference__in=list(legacy_sale_numbers),
+            )
+            .values('reference')
+            .annotate(total=Sum('total_cost'))
+        ):
+            legacy_by_ref[row['reference']] = _d(row['total'])
+
+    sales_payload = []
+    for sale in sales_list:
+        lines = lines_by_sale.get(sale.id, [])
+        sale_cogs = sum((_d(line['line_cogs']) for line in lines), Decimal('0'))
+        if any(line['source'] == 'legacy_pending' for line in lines):
+            legacy_total = legacy_by_ref.get(sale.sale_number, Decimal('0'))
+            if legacy_total and sale_cogs == 0:
+                sale_cogs = legacy_total
+                lines.append(
+                    {
+                        'product_name': 'Legacy stock movements (no line unit cost)',
+                        'sku': '',
+                        'quantity': None,
+                        'unit_cost': None,
+                        'line_cogs': _money(legacy_total),
+                        'source': 'legacy_movement',
+                    }
+                )
+        sales_payload.append(
+            {
+                'sale_id': sale.id,
+                'sale_number': sale.sale_number,
+                'occurred_at': sale.occurred_at.isoformat() if sale.occurred_at else None,
+                'sale_total': _money(sale.total),
+                'cogs': _money(sale_cogs),
+                'lines': lines,
+            }
+        )
+
+    refund_rows = list(
+        refund_qs.select_related('sale').order_by('-created_at', '-id')[:sale_limit]
+    )
+    refund_ids = [r.id for r in refund_rows]
+    refund_items = (
+        SaleRefundItem.objects.filter(refund_id__in=refund_ids)
+        .select_related('product', 'sale_item', 'refund')
+        .order_by('refund_id', 'id')
+    )
+    items_by_refund: dict[int, list] = {rid: [] for rid in refund_ids}
+    for ri in refund_items:
+        unit_cost = getattr(ri.sale_item, 'unit_cost', None) if ri.sale_item_id else None
+        qty = _d(ri.quantity)
+        line_cogs = (_d(unit_cost) * qty) if unit_cost is not None else Decimal('0')
+        items_by_refund[ri.refund_id].append(
+            {
+                'product_name': getattr(ri.product, 'name', None) or 'Item',
+                'quantity': float(qty),
+                'unit_cost': _money(unit_cost) if unit_cost is not None else None,
+                'line_cogs': _money(line_cogs),
+            }
+        )
+
+    refunds_payload = []
+    for refund in refund_rows:
+        lines = items_by_refund.get(refund.id, [])
+        restored = sum((_d(line['line_cogs']) for line in lines), Decimal('0'))
+        refunds_payload.append(
+            {
+                'refund_id': refund.id,
+                'sale_number': getattr(refund.sale, 'sale_number', '') or '',
+                'created_at': refund.created_at.isoformat() if refund.created_at else None,
+                'refund_amount': _money(refund.amount),
+                'cogs_restored': _money(restored),
+                'lines': lines,
+            }
+        )
+
+    return {
+        'date_from': start.isoformat() if start else None,
+        'date_to': end.isoformat() if end else None,
+        'cogs_sold': _money(cogs_sold),
+        'cogs_refunded': _money(cogs_refunded),
+        'cogs': _money(cogs),
+        'sale_count': total_sales,
+        'sales_shown': len(sales_payload),
+        'truncated': total_sales > sale_limit,
+        'explanation': (
+            'COGS = sum of (quantity × unit cost) on sale lines in the period, '
+            'minus cost restored on refunds/voids. Unit cost is stamped at sale (FIFO).'
+        ),
+        'sales': sales_payload,
+        'refunds': refunds_payload,
+    }
+
+
+def _resolve_bounds(request):
     from reports.services import resolve_period
 
     params = getattr(request, 'query_params', request.GET)
     period = (params.get('period') or '').lower().strip()
     if not period and not params.get('date_from'):
-        # Default: month-to-date
+
         class _Req:
             query_params = {'period': 'month'}
             GET = query_params
@@ -176,11 +358,24 @@ def trading_profit_for_request(request) -> dict[str, Any]:
 
     if end is None:
         end = timezone.now()
+    return start, end, period, label
 
+
+def trading_profit_for_request(request) -> dict[str, Any]:
+    start, end, period, label = _resolve_bounds(request)
     summary = compute_trading_profit(start=start, end=end)
     return {
         'period': period if period in ('week', 'month', 'year', 'today') else (label or 'custom'),
         'date_from': start.isoformat() if start else None,
         'date_to': end.isoformat() if end else None,
         'summary': summary,
+    }
+
+
+def trading_profit_cogs_for_request(request) -> dict[str, Any]:
+    start, end, period, label = _resolve_bounds(request)
+    breakdown = compute_cogs_breakdown(start=start, end=end)
+    return {
+        'period': period if period in ('week', 'month', 'year', 'today') else (label or 'custom'),
+        **breakdown,
     }

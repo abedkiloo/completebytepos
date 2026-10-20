@@ -73,11 +73,17 @@ def validate_past_dated_checker(checker, *dates) -> None:
         raise ValidationError(PAST_DATED_ADMIN_ONLY_MESSAGE)
 
 
-def validate_locked_record_update(instance) -> None:
-    """Block edits to voided rows always, and to finalized rows when maker-checker is on."""
+def validate_locked_record_update(instance, *, allow_finalized: bool = False) -> None:
+    """Block edits to voided rows always, and to finalized rows when maker-checker is on.
+
+    ``allow_finalized=True`` lets permission-gated corrections (e.g. expenses.update)
+    edit approved/paid rows without turning maker-checker off.
+    """
     status = getattr(instance, 'status', None)
     if status == 'voided':
         raise ValidationError('Voided records cannot be edited.')
+    if allow_finalized:
+        return
     if not is_maker_checker_enabled():
         return
     if status in ('approved', 'completed', 'paid'):
@@ -98,20 +104,23 @@ def finalize_financial_create(request, instance) -> None:
         instance.save(update_fields=list(dict.fromkeys(update_fields)))
 
 
-def prepare_financial_update(request, instance) -> None:
-    validate_locked_record_update(instance)
+def prepare_financial_update(request, instance, *, allow_finalized: bool = False) -> None:
+    validate_locked_record_update(instance, allow_finalized=allow_finalized)
+    status = getattr(instance, 'status', None)
+    # Permission-gated correction of posted rows — keep status, no maker reason.
+    if allow_finalized and status in ('approved', 'completed', 'paid'):
+        return
     reason = require_proposal_reason(request)
     update_fields = []
     if reason:
         append_reason_to_notes(instance, reason)
         if hasattr(instance, 'notes'):
             update_fields.append('notes')
-    if is_maker_checker_enabled() and getattr(instance, 'status', None) == 'rejected':
+    if is_maker_checker_enabled() and status == 'rejected':
         instance.status = 'pending'
         update_fields.append('status')
     if update_fields:
         instance.save(update_fields=list(dict.fromkeys(update_fields)))
-
 
 def require_rejection_reason(request) -> str:
     data = getattr(request, 'data', None) or {}

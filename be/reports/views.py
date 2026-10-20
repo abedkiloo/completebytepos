@@ -85,6 +85,7 @@ REPORTS_PERMS = RequirePermPerAction('reports', {
     'sales_by_person': 'view',
     'stock_valuation': 'view',
     'trading_profit': 'profit',
+    'trading_profit_cogs': 'profit',
 })
 
 
@@ -1051,4 +1052,16 @@ class ReportViewSet(viewsets.ViewSet):
         from reports.trading_profit import trading_profit_for_request
 
         return Response(trading_profit_for_request(request))
+
+    @action(detail=False, methods=['get'], url_path='trading_profit/cogs')
+    @gated_report_action('trading_profit')
+    def trading_profit_cogs(self, request):
+        """
+        COGS drill-down for trading profit: per-sale / per-line cost build-up.
+
+        Same period params as ``trading_profit``.
+        """
+        from reports.trading_profit import trading_profit_cogs_for_request
+
+        return Response(trading_profit_cogs_for_request(request))
 

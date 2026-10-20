@@ -13,6 +13,13 @@ import { PageShell, PageHeader, PageLoading, EmptyState, FilterBar, FilterField 
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
 import PeriodPills from './PeriodPills';
 
 const PROFIT_PERIODS = [
@@ -38,11 +45,19 @@ function expensesHrefForRange(dateFrom, dateTo) {
     date_from: from,
     date_to: to,
     status: 'approved',
+    include_in_trading_profit: 'true',
   });
   return `/expenses?${params.toString()}`;
 }
 
-function Row({ label, value, emphasize = false, muted = false, to = null }) {
+function Row({
+  label,
+  value,
+  emphasize = false,
+  muted = false,
+  to = null,
+  onClick = null,
+}) {
   const valueClass = emphasize
     ? 'text-base font-semibold tabular-nums'
     : 'text-sm font-medium tabular-nums';
@@ -56,6 +71,14 @@ function Row({ label, value, emphasize = false, muted = false, to = null }) {
     >
       {label}
     </Link>
+  ) : onClick ? (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-left text-sm font-medium text-primary underline-offset-2 hover:underline"
+    >
+      {label}
+    </button>
   ) : (
     <span className={muted ? 'text-sm text-muted-foreground' : 'text-sm'}>{label}</span>
   );
@@ -67,6 +90,14 @@ function Row({ label, value, emphasize = false, muted = false, to = null }) {
         <Link to={to} className={cn(valueClass, 'text-primary hover:underline')}>
           {formatCurrency(value)}
         </Link>
+      ) : onClick ? (
+        <button
+          type="button"
+          onClick={onClick}
+          className={cn(valueClass, 'text-primary hover:underline')}
+        >
+          {formatCurrency(value)}
+        </button>
       ) : (
         <span className={valueClass}>{formatCurrency(value)}</span>
       )}
@@ -87,16 +118,24 @@ export default function TradingProfitReportView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [data, setData] = useState(null);
+  const [cogsOpen, setCogsOpen] = useState(false);
+  const [cogsLoading, setCogsLoading] = useState(false);
+  const [cogsError, setCogsError] = useState('');
+  const [cogsData, setCogsData] = useState(null);
+
+  const reportParams = useMemo(
+    () =>
+      period === 'custom'
+        ? { date_from: dateFrom, date_to: dateTo }
+        : { period },
+    [period, dateFrom, dateTo]
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const params =
-        period === 'custom'
-          ? { date_from: dateFrom, date_to: dateTo }
-          : { period };
-      const res = await reportsAPI.tradingProfit(params);
+      const res = await reportsAPI.tradingProfit(reportParams);
       setData(res.data);
       // Keep date inputs in sync with the range the server actually used.
       const from = isoDateOnly(res.data?.date_from);
@@ -114,7 +153,7 @@ export default function TradingProfitReportView() {
     } finally {
       setLoading(false);
     }
-  }, [period, dateFrom, dateTo]);
+  }, [reportParams]);
 
   useEffect(() => {
     // Preset pills load immediately; custom ranges load via Apply.
@@ -122,6 +161,27 @@ export default function TradingProfitReportView() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period]);
+
+  const openCogsBreakdown = async () => {
+    setCogsOpen(true);
+    setCogsLoading(true);
+    setCogsError('');
+    try {
+      const params =
+        period === 'custom'
+          ? { date_from: dateFrom, date_to: dateTo }
+          : { period };
+      const res = await reportsAPI.tradingProfitCogs(params);
+      setCogsData(res.data);
+    } catch (err) {
+      setCogsData(null);
+      setCogsError(
+        err?.response?.data?.error || 'Could not load COGS breakdown.'
+      );
+    } finally {
+      setCogsLoading(false);
+    }
+  };
 
   const applyCustomRange = () => {
     if (!dateFrom || !dateTo) {
@@ -305,13 +365,24 @@ export default function TradingProfitReportView() {
               <Row label="Gross sales" value={summary.gross_sales} />
               <Row label="Refunds / voids" value={summary.refunds} muted />
               <Row label="Net sales" value={summary.net_sales} emphasize />
-              <Row label="COGS (cost of goods sold)" value={summary.cogs} />
+              <Row
+                label="COGS (cost of goods sold) — click for sales"
+                value={summary.cogs}
+                onClick={openCogsBreakdown}
+              />
               <Row label="Gross profit" value={summary.gross_profit} emphasize />
               <Row
-                label="Expenses (approved)"
+                label="Expenses (in trading profit)"
                 value={summary.expenses}
                 to={expensesHref}
               />
+              {Number(summary.expenses_excluded) > 0 ? (
+                <Row
+                  label={`Excluded expenses (${summary.expenses_excluded_count || 0})`}
+                  value={summary.expenses_excluded}
+                  muted
+                />
+              ) : null}
               <Row label="Other income" value={summary.other_income} muted />
               <Row label="Net profit" value={summary.net_profit} emphasize />
             </CardContent>
@@ -325,6 +396,8 @@ export default function TradingProfitReportView() {
               <p>
                 Sales use business date; refunds use when the void was applied; expenses use
                 expense date. Pending voids do not change these numbers until approved.
+                Admins can turn off “Include in trading profit” on an expense so it stays in
+                Expenses but does not reduce trading profit.
               </p>
               <p>
                 Purchases this period ({formatCurrency(summary.purchases)}) are shown for
@@ -339,6 +412,105 @@ export default function TradingProfitReportView() {
           </Card>
         </div>
       ) : null}
+
+      <Dialog open={cogsOpen} onOpenChange={setCogsOpen}>
+        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>How COGS was calculated</DialogTitle>
+            <DialogDescription>
+              Cost of goods sold from sale lines in this period (quantity × unit cost),
+              minus cost restored on refunds.
+            </DialogDescription>
+          </DialogHeader>
+          {cogsLoading ? <PageLoading rows={4} /> : null}
+          {!cogsLoading && cogsError ? (
+            <p className="text-sm text-destructive">{cogsError}</p>
+          ) : null}
+          {!cogsLoading && !cogsError && cogsData ? (
+            <div className="space-y-4 text-sm">
+              <div className="grid gap-2 sm:grid-cols-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">COGS sold</p>
+                  <p className="font-semibold tabular-nums">
+                    {formatCurrency(cogsData.cogs_sold)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Refunded cost</p>
+                  <p className="font-semibold tabular-nums">
+                    {formatCurrency(cogsData.cogs_refunded)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Net COGS</p>
+                  <p className="font-semibold tabular-nums">
+                    {formatCurrency(cogsData.cogs)}
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">{cogsData.explanation}</p>
+              {cogsData.truncated ? (
+                <p className="text-xs text-warning">
+                  Showing {cogsData.sales_shown} of {cogsData.sale_count} sales.
+                </p>
+              ) : null}
+              <ul className="space-y-3">
+                {(cogsData.sales || []).map((sale) => (
+                  <li
+                    key={sale.sale_id}
+                    className="rounded-md border px-3 py-2"
+                    data-testid={`cogs-sale-${sale.sale_id}`}
+                  >
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <span className="font-medium">{sale.sale_number}</span>
+                      <span className="tabular-nums text-muted-foreground">
+                        Sale {formatCurrency(sale.sale_total)} · COGS{' '}
+                        {formatCurrency(sale.cogs)}
+                      </span>
+                    </div>
+                    <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                      {(sale.lines || []).map((line, idx) => (
+                        <li key={`${sale.sale_id}-${idx}`} className="flex justify-between gap-2">
+                          <span>
+                            {line.product_name}
+                            {line.quantity != null ? ` × ${line.quantity}` : ''}
+                            {line.unit_cost != null
+                              ? ` @ ${formatCurrency(line.unit_cost)}`
+                              : ''}
+                          </span>
+                          <span className="tabular-nums">{formatCurrency(line.line_cogs)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+              {(cogsData.refunds || []).length > 0 ? (
+                <div>
+                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Refunds restoring cost
+                  </p>
+                  <ul className="space-y-2">
+                    {cogsData.refunds.map((refund) => (
+                      <li
+                        key={refund.refund_id}
+                        className="rounded-md border border-dashed px-3 py-2 text-xs"
+                      >
+                        <div className="flex justify-between gap-2">
+                          <span>Refund on {refund.sale_number || 'sale'}</span>
+                          <span className="tabular-nums">
+                            −{formatCurrency(refund.cogs_restored)}
+                          </span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </PageShell>
   );
 }

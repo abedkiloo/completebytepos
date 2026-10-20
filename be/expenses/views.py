@@ -1,4 +1,4 @@
-from rest_framework import viewsets, status, filters
+from rest_framework import viewsets, status, filters, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -13,7 +13,7 @@ from .serializers import (
 )
 from .services import ExpenseCategoryService, ExpenseService
 from utils.list_ordering import NameSavedOrderingFilter
-from accounts.permissions import RequirePermPerAction, IsSuperAdmin
+from accounts.permissions import RequireModuleEnabled, RequirePermPerAction, IsSuperAdmin
 from utils.audit_events import log_approval_event
 from utils.audit_helpers import audited_perform_create, audited_perform_update
 from approvals.financial_workflow import finalize_financial_create, prepare_financial_update
@@ -24,25 +24,64 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _user_has_expenses_perm(user, action: str) -> bool:
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    profile = getattr(user, 'profile', None)
+    return bool(profile and profile.has_permission('expenses', action))
+
+
+class CanUpdateExpense(permissions.BasePermission):
+    """
+    expenses.update — edit any non-voided expense (admin default, grantable).
+
+    Creators with expenses.create may still edit their own pending/rejected rows.
+    """
+
+    message = 'You do not have permission to edit this expense.'
+
+    def has_permission(self, request, view):
+        if _user_has_expenses_perm(request.user, 'update'):
+            return True
+        return _user_has_expenses_perm(request.user, 'create')
+
+    def has_object_permission(self, request, view, obj):
+        if _user_has_expenses_perm(request.user, 'update'):
+            return getattr(obj, 'status', None) != 'voided'
+        if getattr(obj, 'status', None) not in ('pending', 'rejected'):
+            return False
+        return obj.created_by_id == getattr(request.user, 'id', None)
+
+
+EXPENSE_CATEGORY_PERMS = RequirePermPerAction('expenses', {
+    'list': 'view',
+    'retrieve': 'view',
+    'create': 'create',
+    # Category maintenance uses create; expense row edits use expenses.update.
+    'update': 'create',
+    'partial_update': 'create',
+    'destroy': 'delete',
+})
+
 EXPENSES_PERMS = RequirePermPerAction('expenses', {
     'list': 'view',
     'retrieve': 'view',
     'create': 'create',
-    'update': 'update',
-    'partial_update': 'update',
     'destroy': 'delete',
     'void': 'delete',
     'statistics': 'view',
     'approve': 'approve',
     'reject': 'approve',
-    'resubmit': 'update',
+    # update / partial_update / resubmit use CanUpdateExpense via get_permissions
 })
 
 
 class ExpenseCategoryViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = ExpenseCategory.objects.all()
     serializer_class = ExpenseCategorySerializer
-    permission_classes = [IsAuthenticated, EXPENSES_PERMS]
+    permission_classes = [IsAuthenticated, EXPENSE_CATEGORY_PERMS]
     audit_module = 'expense_categories'
     filter_backends = [filters.SearchFilter, NameSavedOrderingFilter]
     search_fields = ['name', 'description']
@@ -115,6 +154,15 @@ class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         super().__init__(*args, **kwargs)
         self.expense_service = ExpenseService()
 
+    def get_permissions(self):
+        if getattr(self, 'action', None) in ('update', 'partial_update', 'resubmit'):
+            return [
+                IsAuthenticated(),
+                RequireModuleEnabled('expenses')(),
+                CanUpdateExpense(),
+            ]
+        return super().get_permissions()
+
     def get_queryset(self):
         """Get queryset using service layer - all query logic moved to service"""
         filters = {}
@@ -131,6 +179,7 @@ class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             'payment_method',
             'approved_by',
             'created_by',
+            'include_in_trading_profit',
         ]:
             if param in query_params:
                 filters[param] = query_params.get(param)
@@ -150,7 +199,12 @@ class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         finalize_financial_create(self.request, instance)
 
     def perform_update(self, serializer):
-        prepare_financial_update(self.request, serializer.instance)
+        allow_finalized = _user_has_expenses_perm(self.request.user, 'update')
+        prepare_financial_update(
+            self.request,
+            serializer.instance,
+            allow_finalized=allow_finalized,
+        )
         audited_perform_update(self, serializer)
 
     @action(detail=True, methods=['post'])

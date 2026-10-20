@@ -19,6 +19,9 @@ export function buildExpenseFilterParams(filters = {}) {
   if (isUsableFilterValue(filters.payment_method)) {
     params.payment_method = filters.payment_method;
   }
+  if (isUsableFilterValue(filters.include_in_trading_profit)) {
+    params.include_in_trading_profit = filters.include_in_trading_profit;
+  }
   if (isUsableFilterValue(filters.search)) params.search = filters.search;
   return params;
 }

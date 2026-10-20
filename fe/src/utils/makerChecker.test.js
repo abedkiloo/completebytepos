@@ -28,6 +28,7 @@ import {
   isCurrentUserAdmin,
   financialSubmitSuccessMessage,
   financialRecordNeedsReason,
+  canEditExpense,
   financialRecordEditable,
   getCurrentUserId,
   getPermissionsFromStorage,
@@ -469,9 +470,28 @@ describe('makerChecker', () => {
     ['approved', 'completed', 'paid'].forEach((status) => {
       expect(financialRecordEditable({ status }, on)).toBe(false);
       expect(financialRecordEditable({ status }, off)).toBe(true);
+      expect(financialRecordEditable({ status }, on, { allowFinalized: true })).toBe(true);
     });
     expect(financialRecordEditable({ status: 'voided' }, off)).toBe(false);
     expect(financialRecordEditable({ status: 'voided' }, on)).toBe(false);
+  });
+
+  it('canEditExpense requires expenses.update or own pending create', () => {
+    const on = { maker_checker_enabled: true };
+    const updatePerms = [{ module: 'expenses', action: 'update' }];
+    const createPerms = [{ module: 'expenses', action: 'create' }];
+    expect(
+      canEditExpense({ status: 'approved', created_by: 1 }, on, updatePerms, 1)
+    ).toBe(true);
+    expect(
+      canEditExpense({ status: 'approved', created_by: 1 }, on, createPerms, 1)
+    ).toBe(false);
+    expect(
+      canEditExpense({ status: 'pending', created_by: 9 }, on, createPerms, 9)
+    ).toBe(true);
+    expect(
+      canEditExpense({ status: 'pending', created_by: 9 }, on, createPerms, 1)
+    ).toBe(false);
   });
 
   it('getCurrentUserId returns null on invalid storage', () => {

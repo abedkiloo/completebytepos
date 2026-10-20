@@ -47,7 +47,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
             'amount', 'description', 'payment_method', 'status',
             'vendor', 'receipt_number', 'expense_date',
             'created_by', 'created_by_name', 'approved_by', 'approved_by_name',
-            'notes', 'created_at', 'updated_at'
+            'notes', 'include_in_trading_profit', 'created_at', 'updated_at'
         ]
         read_only_fields = [
             'expense_number', 'status', 'approved_by', 'created_at', 'updated_at',
@@ -78,6 +78,7 @@ class ExpenseListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'expense_number', 'category_name',
             'amount', 'description', 'payment_method', 'status',
-            'vendor', 'expense_date', 'created_by', 'created_by_name', 'created_at'
+            'vendor', 'expense_date', 'include_in_trading_profit',
+            'created_by', 'created_by_name', 'created_at'
         ]
 

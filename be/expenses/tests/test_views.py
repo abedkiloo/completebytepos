@@ -92,9 +92,9 @@ class ExpenseViewsTestCase(ManagerAPITestCase):
             expense_date=timezone.localdate(), created_by=self.manager_user,
         )
         approved = Expense.objects.create(description='Paid rent', status='approved', **common)
+        # Managers no longer get expenses.update by default — cannot edit approved.
         locked = self._form_put(approved, proposal_reason='Fix typo')
-        self.assertEqual(locked.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('Approved records cannot be edited', str(locked.data))
+        self.assertEqual(locked.status_code, status.HTTP_403_FORBIDDEN)
 
         pending = Expense.objects.create(description='Fuel', status='pending', **common)
         no_reason = self._form_put(pending)
@@ -163,8 +163,7 @@ class ExpenseViewsTestCase(ManagerAPITestCase):
             created_by=self.manager_user,
         )
         response = self._form_put(voided, proposal_reason='Try edit')
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('Voided records cannot be edited.', str(response.data))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_update_can_change_occurred_date_without_resetting_on_partial(self):
         occurred = timezone.localdate() - timedelta(days=6)
@@ -202,6 +201,34 @@ class ExpenseApproveSuperAdminTests(SuperAdminAPITestCase):
     def setUpTestData(cls):
         super().setUpTestData()
         cls.cat = ExpenseCategory.objects.create(name='Ops', is_active=True)
+
+    def test_admin_can_edit_approved_expense_when_maker_checker_on(self):
+        from settings.test_utils import enable_maker_checker
+
+        enable_maker_checker()
+        expense = Expense.objects.create(
+            category=self.cat,
+            description='Shop rent',
+            amount=Decimal('1000.00'),
+            payment_method='cash',
+            expense_date=timezone.localdate(),
+            status='approved',
+            created_by=self.admin,
+            include_in_trading_profit=True,
+        )
+        response = self.client.patch(
+            f'/api/expenses/{expense.id}/',
+            {
+                'include_in_trading_profit': False,
+                'description': 'Shop rent — owner drawing',
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        expense.refresh_from_db()
+        self.assertFalse(expense.include_in_trading_profit)
+        self.assertEqual(expense.status, 'approved')
+        self.assertEqual(expense.description, 'Shop rent — owner drawing')
 
     def test_super_admin_can_approve_expense(self):
         create = self.client.post(

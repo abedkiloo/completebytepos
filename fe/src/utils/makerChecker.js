@@ -473,13 +473,34 @@ export function financialRecordNeedsReason() {
 const FINALIZED_FINANCIAL_STATUSES = ['approved', 'completed', 'paid'];
 
 /** Mirrors the server: voided rows never change; finalized rows are locked under maker-checker. */
-export function financialRecordEditable(record, settings) {
+export function financialRecordEditable(record, settings, { allowFinalized = false } = {}) {
   const status = record?.status;
   if (status === 'voided') return false;
+  if (allowFinalized) return true;
   if (isMakerCheckerEnabled(settings) && FINALIZED_FINANCIAL_STATUSES.includes(status)) {
     return false;
   }
   return true;
+}
+
+/**
+ * Expense edit: ``expenses.update`` (admin default) may correct any non-voided row.
+ * Creators with ``expenses.create`` may still edit their own pending/rejected rows.
+ */
+export function canEditExpense(
+  record,
+  settings,
+  permissions = getPermissionsFromStorage(),
+  currentUserId = getCurrentUserId(),
+) {
+  if (!record || record.status === 'voided') return false;
+  if (hasPermission(permissions, 'expenses', 'update')) {
+    return financialRecordEditable(record, settings, { allowFinalized: true });
+  }
+  if (!financialRecordEditable(record, settings)) return false;
+  if (!hasPermission(permissions, 'expenses', 'create')) return false;
+  if (currentUserId == null || record.created_by == null) return false;
+  return Number(record.created_by) === Number(currentUserId);
 }
 
 export function getPermissionsFromStorage() {

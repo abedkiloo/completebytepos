@@ -10,8 +10,10 @@ import { Input } from '../ui/input';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import {
   financialSubmitSuccessMessage,
+  getPermissionsFromStorage,
   isMakerCheckerEnabled,
 } from '../../utils/makerChecker';
+import { hasPermission } from '../../utils/roleAccess';
 import { findCategoryByName } from '../../utils/expenseFilters';
 import { CATALOG_FETCH_PAGE_SIZE } from '../../config/pagination';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
@@ -26,6 +28,15 @@ import { formBannerMessage } from '../../utils/formFeedback';
 import FormBanner from '../form/FormBanner';
 
 const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }) => {
+  const canCorrectPosted = hasPermission(
+    getPermissionsFromStorage(),
+    'expenses',
+    'update'
+  );
+  const isPostedCorrection =
+    canCorrectPosted &&
+    expense &&
+    ['approved', 'paid', 'completed'].includes(expense.status);
   const [formData, setFormData] = useState({
     category: '',
     amount: '',
@@ -35,6 +46,7 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
     receipt_number: '',
     expense_date: toLocalISODate(),
     notes: '',
+    include_in_trading_profit: true,
   });
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
@@ -45,7 +57,8 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
   const [showCommitConfirm, setShowCommitConfirm] = useState(false);
   const { settings: storeSettings, refresh: refreshStoreSettings } = useStoreSettings();
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
-  const showReasonField = makerCheckerOn || Boolean(errors.proposal_reason);
+  const showReasonField =
+    (makerCheckerOn && !isPostedCorrection) || Boolean(errors.proposal_reason);
 
   useEffect(() => {
     if (expense) {
@@ -58,15 +71,16 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
         receipt_number: expense.receipt_number || '',
         expense_date: toDateInputValue(expense.expense_date),
         notes: expense.notes || '',
+        include_in_trading_profit: expense.include_in_trading_profit !== false,
       });
     }
   }, [expense]);
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
+    const { name, value, type, checked } = e.target;
     setFormData((prev) => ({
       ...prev,
-      [name]: value,
+      [name]: type === 'checkbox' ? checked : value,
     }));
     if (errors[name]) {
       setErrors((prev) => {
@@ -88,7 +102,7 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
     if (descErr) newErrors.description = descErr;
     const dateErr = dateMessage(formData.expense_date, { label: 'expense date' });
     if (dateErr) newErrors.expense_date = dateErr;
-    if (makerCheckerOn && !proposalReason.trim()) {
+    if (makerCheckerOn && !isPostedCorrection && !proposalReason.trim()) {
       newErrors.proposal_reason = 'A reason is required when maker-checker is enabled.';
     }
 
@@ -409,6 +423,22 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
                 rows="2"
                 placeholder="Additional notes..."
               />
+            </div>
+            <div className="form-checkboxes full-width">
+              <label>
+                <input
+                  type="checkbox"
+                  name="include_in_trading_profit"
+                  checked={Boolean(formData.include_in_trading_profit)}
+                  onChange={handleChange}
+                  data-testid="expense-include-trading-profit"
+                />
+                Include in trading profit
+              </label>
+              <p className="mt-1 text-xs text-muted-foreground">
+                On by default. Turn off for approved spend that should not reduce trading
+                profit (e.g. owner drawings or one-off capital).
+              </p>
             </div>
           </div>
           <div className="slide-in-panel-footer">

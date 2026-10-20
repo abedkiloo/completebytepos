@@ -108,7 +108,11 @@ PERMISSIONS_DATA = [
     ('invoicing', 'export', 'Export invoices'),
     ('expenses', 'view', 'View expenses'),
     ('expenses', 'create', 'Create expenses'),
-    ('expenses', 'update', 'Update expenses'),
+    (
+        'expenses',
+        'update',
+        'Edit expenses (admin by default; grant to roles that may correct expenses)',
+    ),
     ('expenses', 'delete', 'Delete expenses'),
     ('expenses', 'approve', 'Approve expenses'),
     ('expenses', 'export', 'Export expenses'),
@@ -294,6 +298,8 @@ def _manager_queryset():
         .exclude(module='accounting', action='correct')
         # Trading profit report stays admin unless explicitly checked on the role.
         .exclude(module='reports', action='profit')
+        # Editing expenses (incl. approved) stays admin unless explicitly checked.
+        .exclude(module='expenses', action='update')
     ) | Permission.objects.filter(
         module='appraisals',
         action__in=['view', 'view_all'],

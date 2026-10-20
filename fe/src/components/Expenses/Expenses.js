@@ -13,7 +13,8 @@ import { formatOccurredDate } from '../../utils/localDate';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import {
   canApproveFinancialRecord,
-  financialRecordEditable,
+  canEditExpense,
+  getPermissionsFromStorage,
   isMakerCheckerEnabled,
 } from '../../utils/makerChecker';
 import {
@@ -68,6 +69,7 @@ function filtersFromSearchParams(searchParams) {
     date_from,
     date_to,
     payment_method: searchParams.get('payment_method') || '',
+    include_in_trading_profit: searchParams.get('include_in_trading_profit') || '',
     search: searchParams.get('search') || '',
   };
 }
@@ -100,6 +102,7 @@ const Expenses = () => {
   const { ordering, setOrdering } = useListOrdering();
   const { settings: storeSettings } = useStoreSettings();
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
+  const permissions = getPermissionsFromStorage();
 
   useEffect(() => {
     loadCategories();
@@ -110,7 +113,8 @@ const Expenses = () => {
     const hasDeepLink =
       searchParams.has('date_from') ||
       searchParams.has('date_to') ||
-      searchParams.has('status');
+      searchParams.has('status') ||
+      searchParams.has('include_in_trading_profit');
     if (!hasDeepLink) return;
     const next = filtersFromSearchParams(searchParams);
     setFilters((prev) => {
@@ -120,6 +124,7 @@ const Expenses = () => {
         prev.status === next.status &&
         prev.category === next.category &&
         prev.payment_method === next.payment_method &&
+        prev.include_in_trading_profit === next.include_in_trading_profit &&
         prev.search === next.search
       ) {
         return prev;
@@ -447,6 +452,19 @@ const Expenses = () => {
               placeholder="All methods"
             />
           </FilterField>
+          <FilterField label="Trading profit">
+            <SearchableSelect
+              name="include_in_trading_profit"
+              value={filters.include_in_trading_profit}
+              onChange={handleFilterChange}
+              options={[
+                { id: '', name: 'All expenses' },
+                { id: 'true', name: 'Counted in trading profit' },
+                { id: 'false', name: 'Excluded from trading profit' },
+              ]}
+              placeholder="Trading profit"
+            />
+          </FilterField>
           <FilterField label="Search" className="min-w-[180px] flex-[2]">
             <Input
               type="search"
@@ -491,6 +509,7 @@ const Expenses = () => {
                 </DataTableHead>
                 <DataTableHead align="right">Amount</DataTableHead>
                 <DataTableHead>Status</DataTableHead>
+                <DataTableHead>Trading profit</DataTableHead>
                 <DataTableHead>Notes</DataTableHead>
                 <DataTableHead align="right">Actions</DataTableHead>
               </DataTableHeader>
@@ -514,6 +533,9 @@ const Expenses = () => {
                     </DataTableCell>
                     <DataTableCell>
                       <StatusBadge status={expense.status} />
+                    </DataTableCell>
+                    <DataTableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                      {expense.include_in_trading_profit === false ? 'Excluded' : 'Included'}
                     </DataTableCell>
                     <DataTableCell>
                       {hasNotes ? (
@@ -562,7 +584,7 @@ const Expenses = () => {
                             <HelpHint actionKey="reject_change" />
                           </>
                         )}
-                        {financialRecordEditable(expense, storeSettings) && (
+                        {canEditExpense(expense, storeSettings, permissions) && (
                         <Button
                           variant="ghost"
                           size="sm"

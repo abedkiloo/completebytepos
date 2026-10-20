@@ -81,6 +81,13 @@ class Expense(models.Model):
         related_name='expenses_approved'
     )
     notes = models.TextField(blank=True)
+    include_in_trading_profit = models.BooleanField(
+        default=True,
+        help_text=(
+            'When true (default), an approved expense is subtracted in trading profit. '
+            'Turn off for spend that should not affect trading P&L.'
+        ),
+    )
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -90,6 +97,7 @@ class Expense(models.Model):
             models.Index(fields=['expense_date']),
             models.Index(fields=['status']),
             models.Index(fields=['category', 'expense_date']),
+            models.Index(fields=['include_in_trading_profit', 'status']),
         ]
 
     def __str__(self):

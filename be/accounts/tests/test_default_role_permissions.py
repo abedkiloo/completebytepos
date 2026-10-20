@@ -42,6 +42,11 @@ class DefaultRolePermissionTests(TestCase):
         self.assertTrue(self._has(self.manager_role, 'expenses', 'create'))
         self.assertTrue(self._has(self.manager_role, 'expenses', 'view'))
 
+    def test_only_super_admin_has_expenses_update_by_default(self):
+        self.assertTrue(self._has(self.super_role, 'expenses', 'update'))
+        self.assertFalse(self._has(self.manager_role, 'expenses', 'update'))
+        self.assertFalse(self._has(self.sales_role, 'expenses', 'update'))
+
     def test_debt_management_is_independently_grantable(self):
         self.assertTrue(self._has(self.manager_role, 'debt_management', 'view'))
         self.assertTrue(self._has(self.manager_role, 'debt_management', 'update'))

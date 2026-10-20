@@ -177,6 +177,13 @@ class ExpenseService(BaseService):
         if payment_method:
             queryset = queryset.filter(payment_method=payment_method)
 
+        include_tp = _clean_filter_value(filters.get('include_in_trading_profit'))
+        if include_tp is not None:
+            if include_tp.lower() in ('true', '1', 'yes'):
+                queryset = queryset.filter(include_in_trading_profit=True)
+            elif include_tp.lower() in ('false', '0', 'no'):
+                queryset = queryset.filter(include_in_trading_profit=False)
+
         return queryset.order_by('-expense_date', '-created_at')
     
     @transaction.atomic
