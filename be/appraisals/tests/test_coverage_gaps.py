@@ -178,7 +178,10 @@ class PolicyUnitCoverageTests(TestCase):
 
 class EngineAndTipsCoverageTests(SimpleTestCase):
     def test_engine_edge_paths(self):
-        self.assertEqual(pick_band(10, []), {'min': 0, 'stars': 1, 'bonus': 0, 'label': ''})
+        self.assertEqual(pick_band(10, []), {'min': 0, 'stars': 0, 'bonus': 0, 'label': ''})
+        self.assertEqual(pick_band(100, [{'min': 500, 'stars': 4, 'bonus': 2000}]), {
+            'min': 0, 'stars': 0, 'bonus': 0, 'label': '',
+        })
         self.assertEqual(band_progress(10, [{'min': 0, 'stars': 1}, {'min': 0, 'stars': 2}]), 1.0)
         tpl = default_template()
         daily = daily_star(0, tpl)
@@ -422,9 +425,14 @@ class AppraisalsExtraGapTests(TestCase):
         self.assertIsNone(_parse_iso_date('bad'))
         self.assertIsNone(_parse_iso_date('2026-13-40'))
 
-        # span <= 0 in band_progress
+        # Below every min: progress is toward the first real threshold (not 100%).
         self.assertEqual(
-            band_progress(5, [{'min': 10, 'stars': 1}, {'min': 10, 'stars': 2}]),
+            band_progress(5, [{'min': 10, 'stars': 1}, {'min': 20, 'stars': 2}]),
+            0.5,
+        )
+        # Same min twice → span 0 once that tier is met
+        self.assertEqual(
+            band_progress(15, [{'min': 10, 'stars': 1}, {'min': 10, 'stars': 2}]),
             1.0,
         )
         # next bonus below min stars

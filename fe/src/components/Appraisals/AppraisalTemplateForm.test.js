@@ -1,6 +1,9 @@
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
-import AppraisalTemplateForm from './AppraisalTemplateForm';
+import AppraisalTemplateForm, {
+  bonusLadderProblems,
+  recommendedBonusLadder,
+} from './AppraisalTemplateForm';
 
 const policy = {
   basic_pay: 15000,
@@ -39,7 +42,13 @@ const policy = {
   },
   role_frameworks: {
     Manager: { daily_target: 35000 },
-    'Sales Personnel': { daily_target: 20000 },
+    'Sales Personnel': {
+      daily_target: 20000,
+      monthly_bonus_bands: [
+        { min: 520000, stars: 4, bonus: 2000, label: 'BASE' },
+        { min: 6, stars: 4, bonus: 2000, label: 'BASE' },
+      ],
+    },
     'Field Sales': { daily_target: 25000 },
   },
 };
@@ -70,5 +79,23 @@ describe('AppraisalTemplateForm', () => {
     // Month 4★ / expected = 35,000 × 26 working days = 910,000
     expect(preview).toHaveTextContent(/Month 4★ \/ expected/);
     expect(preview).toHaveTextContent('910,000');
+  });
+
+  it('flags duplicate 4★ cash rows and restores the recommended ladder', () => {
+    const onSave = jest.fn();
+    render(
+      <AppraisalTemplateForm saving={false} onSave={onSave} policy={policy} />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Monthly bonus/i }));
+    expect(screen.getByTestId('appraisal-bonus-problems')).toHaveTextContent(/Rating 4/);
+    expect(screen.getByTestId('appraisal-bonus-problems')).toHaveTextContent(/almost everyone/);
+
+    fireEvent.click(screen.getByTestId('appraisal-bonus-restore'));
+    expect(screen.queryByTestId('appraisal-bonus-problems')).not.toBeInTheDocument();
+
+    const restored = recommendedBonusLadder({ dailyTarget: 20000, workingDays: 26 });
+    expect(restored.find((b) => b.stars === 4).min).toBe(520000);
+    expect(bonusLadderProblems(restored, 4)).toEqual([]);
   });
 });

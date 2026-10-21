@@ -26,7 +26,7 @@ function num(value, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
-function BandTable({ title, hint, rows, columns, onChange, onAdd, onRemove }) {
+function BandTable({ title, hint, rows, columns, onChange, onAdd, onRemove, rowTone }) {
   return (
     <div className="space-y-2" data-testid="appraisal-band-table">
       <div className="flex items-center justify-between gap-2">
@@ -34,10 +34,12 @@ function BandTable({ title, hint, rows, columns, onChange, onAdd, onRemove }) {
           <p className="text-sm font-medium">{title}</p>
           {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
         </div>
-        <Button type="button" size="sm" variant="outline" onClick={onAdd}>
-          <Plus className="mr-1 h-3.5 w-3.5" />
-          Add
-        </Button>
+        {onAdd ? (
+          <Button type="button" size="sm" variant="outline" onClick={onAdd}>
+            <Plus className="mr-1 h-3.5 w-3.5" />
+            Add
+          </Button>
+        ) : null}
       </div>
       <div className="overflow-x-auto rounded-md border">
         <table className="w-full min-w-[28rem] text-sm">
@@ -51,7 +53,13 @@ function BandTable({ title, hint, rows, columns, onChange, onAdd, onRemove }) {
           </thead>
           <tbody>
             {rows.map((row, index) => (
-              <tr key={`${row.min}-${index}`} className="border-b border-border/60 last:border-0">
+              <tr
+                key={`${row.min}-${row.stars}-${index}`}
+                className={cn(
+                  'border-b border-border/60 last:border-0',
+                  rowTone?.(row, index),
+                )}
+              >
                 {columns.map((col) => (
                   <td key={col.key} className="px-2 py-1.5">
                     <Input
@@ -82,6 +90,51 @@ function BandTable({ title, hint, rows, columns, onChange, onAdd, onRemove }) {
       </div>
     </div>
   );
+}
+
+/** Standard ladder scaled so 4★ From = daily × working days (Sales 20k×26 → 520k). */
+export function recommendedBonusLadder({ dailyTarget, workingDays, bonusCap = 10000 }) {
+  const four = Math.max(0, Math.round(num(dailyTarget) * Math.max(1, num(workingDays, 26))));
+  const scale = four > 0 ? four / 520000 : 1;
+  const cap = Math.max(0, num(bonusCap, 10000));
+  return [
+    { min: 0, stars: 1, bonus: 0, label: '' },
+    { min: Math.round(312000 * scale), stars: 2, bonus: 0, label: '' },
+    { min: Math.round(416000 * scale), stars: 3, bonus: 0, label: '' },
+    { min: four, stars: 4, bonus: Math.min(2000, cap || 2000), label: 'BASE' },
+    { min: Math.round(650000 * scale), stars: 4.5, bonus: Math.min(6000, cap || 6000), label: '' },
+    { min: Math.round(780000 * scale), stars: 5, bonus: Math.min(10000, cap || 10000), label: 'MAX' },
+  ];
+}
+
+export function bonusLadderProblems(rows, bonusMinStars = 4) {
+  const problems = [];
+  const minStars = num(bonusMinStars, 4);
+  const byStars = new Map();
+  (rows || []).forEach((row, index) => {
+    const stars = num(row.stars);
+    const key = String(stars);
+    if (!byStars.has(key)) byStars.set(key, []);
+    byStars.get(key).push(index + 1);
+  });
+  byStars.forEach((lineNos, stars) => {
+    if (lineNos.length > 1) {
+      problems.push(
+        `Rating ${stars}★ is on rows ${lineNos.join(' and ')}. Keep one row per rating — delete the extra.`,
+      );
+    }
+  });
+  (rows || []).forEach((row, index) => {
+    const from = num(row.min);
+    const bonus = num(row.bonus);
+    const stars = num(row.stars);
+    if (bonus > 0 && from < 1000 && stars >= minStars) {
+      problems.push(
+        `Row ${index + 1}: From ${from.toLocaleString('en-KE')} with KES ${bonus.toLocaleString('en-KE')} at ${stars}★ pays almost everyone. Raise From to the month 4★ floor, or set Bonus to 0.`,
+      );
+    }
+  });
+  return problems;
 }
 
 function roleTargetsFromPolicy(policy) {
@@ -296,6 +349,21 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
       ? salesBands
       : form.monthly_bonus_bands;
 
+    const ladderProblems = [];
+    ladderProblems.push(...bonusLadderProblems(monthlyBonusBands, form.bonus_min_stars));
+    Object.entries(roleFrameworks).forEach(([role, fw]) => {
+      if (fw?.monthly_bonus_bands?.length) {
+        bonusLadderProblems(fw.monthly_bonus_bands, form.bonus_min_stars).forEach((msg) => {
+          ladderProblems.push(`${role}: ${msg}`);
+        });
+      }
+    });
+    if (ladderProblems.length) {
+      setSection('bonus');
+      window.alert(`Fix the bonus ladder before saving:\n\n• ${ladderProblems.slice(0, 4).join('\n• ')}`);
+      return;
+    }
+
     let bonusMinStars = num(form.bonus_min_stars, 4);
     const paidStars = [];
     const collectPaid = (bands) => {
@@ -485,8 +553,10 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
               <div>
                 <h2 className="text-base font-semibold">Monthly bonus</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Cash starts at {num(form.bonus_min_stars, 4)}★ with a KES {num(form.bonus_cap, 10000).toLocaleString('en-KE')}{' '}
-                  cap. Bands below that keep star labels but must pay 0. Each role has its own ladder.
+                  Cash starts at {num(form.bonus_min_stars, 4)}★ when month sales hit that role’s daily target × working days
+                  {preview?.four_star_bonus_min
+                    ? ` (now ${kes(preview.four_star_bonus_min)})`
+                    : ''}. Rows below that rating are labels only — Bonus must be 0.
                 </p>
               </div>
               {rolePicker}
@@ -511,19 +581,186 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
                   />
                 </div>
               </div>
-              <BandTable
-                title={`Bonus ladder · ${selectedRole || 'role'}`}
-                hint="Example: 4★ → 2,000 · 4.5★ → 6,000 · 5★ → 10,000"
-                rows={selectedFramework?.monthly_bonus_bands || []}
-                columns={bonusColumns}
-                onChange={(i, k, v) => patchFrameworkBand(selectedRole, 'monthly_bonus_bands', i, k, v)}
-                onAdd={() => patchFramework(selectedRole, 'monthly_bonus_bands', [...(selectedFramework?.monthly_bonus_bands || []), { min: 0, stars: 4, bonus: 2000, label: 'BASE' }])}
-                onRemove={(i) => patchFramework(
-                  selectedRole,
-                  'monthly_bonus_bands',
-                  (selectedFramework?.monthly_bonus_bands || []).filter((_, idx) => idx !== i),
-                )}
-              />
+              {(() => {
+                const bonusRows = selectedFramework?.monthly_bonus_bands || [];
+                const problems = bonusLadderProblems(bonusRows, form.bonus_min_stars);
+                const starCounts = bonusRows.reduce((acc, row) => {
+                  const key = String(num(row.stars));
+                  acc[key] = (acc[key] || 0) + 1;
+                  return acc;
+                }, {});
+                const expectedFour = preview?.four_star_bonus_min;
+                return (
+                  <div className="space-y-3" data-testid="appraisal-bonus-ladder">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-medium">Bonus ladder · {selectedRole || 'role'}</p>
+                        <p className="text-xs text-muted-foreground">
+                          One row per rating. 4★ From should be {expectedFour ? kes(expectedFour) : 'daily × days'}.
+                          Unpaid 1–3★ rows are fine; only 4★+ may pay cash.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          data-testid="appraisal-bonus-restore"
+                          onClick={() => {
+                            if (!selectedRole) return;
+                            const fw = selectedFramework || {};
+                            patchFramework(
+                              selectedRole,
+                              'monthly_bonus_bands',
+                              recommendedBonusLadder({
+                                dailyTarget: num(fw.daily_target, preview?.daily_target),
+                                workingDays: num(fw.working_days, form.working_days),
+                                bonusCap: form.bonus_cap,
+                              }),
+                            );
+                          }}
+                        >
+                          Restore recommended
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            const rows = bonusRows;
+                            const maxMin = rows.reduce((m, r) => Math.max(m, num(r.min, 0)), 0);
+                            const maxStars = rows.reduce((m, r) => Math.max(m, num(r.stars, 0)), 0);
+                            const nextMin = expectedFour && maxMin < expectedFour
+                              ? expectedFour
+                              : (maxMin > 0 ? maxMin + Math.round((expectedFour || 130000) * 0.25) : (expectedFour || 520000));
+                            patchFramework(selectedRole, 'monthly_bonus_bands', [
+                              ...rows,
+                              {
+                                min: nextMin,
+                                stars: Math.min(5, maxStars >= 4 ? maxStars + 0.5 : 4),
+                                bonus: 0,
+                                label: '',
+                              },
+                            ]);
+                          }}
+                        >
+                          <Plus className="mr-1 h-3.5 w-3.5" />
+                          Add step
+                        </Button>
+                      </div>
+                    </div>
+                    {problems.length ? (
+                      <div
+                        className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+                        data-testid="appraisal-bonus-problems"
+                        role="alert"
+                      >
+                        <p className="font-medium">Fix before save</p>
+                        <ul className="mt-1 list-disc space-y-1 pl-4">
+                          {problems.map((msg) => (
+                            <li key={msg}>{msg}</li>
+                          ))}
+                        </ul>
+                        <p className="mt-2 text-xs text-destructive/90">
+                          Fastest fix: click <strong>Restore recommended</strong>, then adjust cash amounts if needed.
+                        </p>
+                      </div>
+                    ) : null}
+                    <div className="overflow-x-auto rounded-md border">
+                      <table className="w-full min-w-[32rem] text-sm" data-testid="appraisal-band-table">
+                        <thead>
+                          <tr className="border-b bg-muted/40 text-left text-xs uppercase text-muted-foreground">
+                            <th className="px-2 py-2 font-medium">From (KES)</th>
+                            <th className="px-2 py-2 font-medium">Rating</th>
+                            <th className="px-2 py-2 font-medium">Bonus (KES)</th>
+                            <th className="px-2 py-2 font-medium">Label</th>
+                            <th className="px-2 py-2 font-medium">Pays?</th>
+                            <th className="w-10 px-2 py-2" />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {bonusRows.map((row, index) => {
+                            const dup = (starCounts[String(num(row.stars))] || 0) > 1;
+                            const badFloor = num(row.bonus) > 0 && num(row.min) < 1000
+                              && num(row.stars) >= num(form.bonus_min_stars, 4);
+                            const pays = num(row.bonus) > 0;
+                            return (
+                              <tr
+                                key={`bonus-${index}`}
+                                className={cn(
+                                  'border-b border-border/60 last:border-0',
+                                  (dup || badFloor) && 'bg-destructive/10',
+                                  pays && !dup && !badFloor && 'bg-emerald-500/5',
+                                )}
+                              >
+                                <td className="px-2 py-1.5">
+                                  <Input
+                                    type="number"
+                                    step="1"
+                                    value={row.min ?? ''}
+                                    onChange={(e) => patchFrameworkBand(selectedRole, 'monthly_bonus_bands', index, 'min', e.target.value)}
+                                    className="h-8"
+                                  />
+                                </td>
+                                <td className="px-2 py-1.5">
+                                  <Input
+                                    type="number"
+                                    step="0.5"
+                                    value={row.stars ?? ''}
+                                    onChange={(e) => patchFrameworkBand(selectedRole, 'monthly_bonus_bands', index, 'stars', e.target.value)}
+                                    className="h-8"
+                                  />
+                                </td>
+                                <td className="px-2 py-1.5">
+                                  <Input
+                                    type="number"
+                                    step="1"
+                                    value={row.bonus ?? ''}
+                                    onChange={(e) => patchFrameworkBand(selectedRole, 'monthly_bonus_bands', index, 'bonus', e.target.value)}
+                                    className="h-8"
+                                  />
+                                </td>
+                                <td className="px-2 py-1.5">
+                                  <Input
+                                    type="text"
+                                    value={row.label ?? ''}
+                                    onChange={(e) => patchFrameworkBand(selectedRole, 'monthly_bonus_bands', index, 'label', e.target.value)}
+                                    className="h-8"
+                                  />
+                                </td>
+                                <td className="px-2 py-1.5 text-xs text-muted-foreground">
+                                  {pays
+                                    ? `Yes · ${kes(num(row.bonus))}`
+                                    : 'No · label only'}
+                                  {expectedFour && Math.abs(num(row.stars) - 4) < 0.01 && num(row.min) !== expectedFour
+                                    ? ` · want From ${kes(expectedFour)}`
+                                    : ''}
+                                </td>
+                                <td className="px-1 py-1.5">
+                                  <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => patchFramework(
+                                      selectedRole,
+                                      'monthly_bonus_bands',
+                                      bonusRows.filter((_, idx) => idx !== index),
+                                    )}
+                                    aria-label="Remove band"
+                                    disabled={bonusRows.length <= 1}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           ) : null}
 

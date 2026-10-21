@@ -13,16 +13,13 @@ def money(value) -> Decimal:
 
 
 def pick_band(amount, bands: list[dict[str, Any]]) -> dict[str, Any]:
+    """Highest band whose ``min`` the amount meets. No fallback to unmet tiers."""
     amount = money(amount)
-    chosen = None
     for band in sorted(bands or [], key=lambda b: money(b.get('min')), reverse=True):
         if amount >= money(band.get('min')):
-            chosen = band
-            break
-    if chosen is None:
-        fallback = sorted(bands or [], key=lambda b: money(b.get('min')))
-        return fallback[0] if fallback else {'min': 0, 'stars': 1, 'bonus': 0, 'label': ''}
-    return chosen
+            return band
+    # Below every threshold — nothing earned yet (do not gift the lowest unmet band).
+    return {'min': 0, 'stars': 0, 'bonus': 0, 'label': ''}
 
 
 def next_band(amount, bands: list[dict[str, Any]]) -> dict[str, Any] | None:

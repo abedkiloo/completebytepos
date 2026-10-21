@@ -694,6 +694,13 @@ def _validate_bonus_bands(
     mins = [b['min'] for b in bands]
     if len(mins) != len(set(mins)):
         raise PolicyError(f'{label} band minimums must be unique.')
+    star_keys = [round(_float(b.get('stars'), 0), 4) for b in bands]
+    if len(star_keys) != len(set(star_keys)):
+        raise PolicyError(
+            f'{label}: each star rating may appear only once. '
+            f'Remove the duplicate row (e.g. two 4★ bands) — a paid KES 0 floor '
+            f'with the same stars as the sales threshold would pay everyone.'
+        )
     for band in bands:
         bonus = _float(band.get('bonus'), 0)
         stars = _float(band.get('stars'), 0)

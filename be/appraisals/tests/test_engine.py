@@ -73,6 +73,35 @@ class AppraisalEngineTests(SimpleTestCase):
         self.assertEqual(almost['next_bonus'], 6000)
         self.assertEqual(almost['amount_to_next'], 70000)
 
+    def test_bonus_not_paid_below_threshold_without_floor_row(self):
+        """Sales under the first paid From must not inherit that tier (no unmet fallback)."""
+        custom = normalize_template({
+            **self.template,
+            'bonus_min_stars': 4,
+            'monthly_bonus_bands': [
+                {'min': 520000, 'stars': 4, 'bonus': 2000, 'label': 'BASE'},
+                {'min': 650000, 'stars': 4.5, 'bonus': 6000, 'label': ''},
+            ],
+        })
+        below = monthly_bonus(203930, custom)
+        self.assertEqual(below['bonus'], 0)
+        self.assertEqual(below['stars'], 0)
+        self.assertEqual(below['next_bonus'], 2000)
+        self.assertEqual(below['amount_to_next'], 520000 - 203930)
+        self.assertEqual(monthly_bonus(520000, custom)['bonus'], 2000)
+
+    def test_reject_duplicate_star_bonus_bands(self):
+        """Paid KES 0 + 520k both at 4★ must not save — everyone would get the bonus."""
+        with self.assertRaises(PolicyError) as ctx:
+            validate_template({
+                **self.template,
+                'monthly_bonus_bands': [
+                    {'min': 520000, 'stars': 4, 'bonus': 2000, 'label': 'BASE'},
+                    {'min': 0, 'stars': 4, 'bonus': 2000, 'label': 'BASE'},
+                ],
+            })
+        self.assertIn('only once', str(ctx.exception).lower())
+
     def test_bonus_gated_below_four_stars_even_if_band_misconfigured(self):
         custom = normalize_template({
             **self.template,
