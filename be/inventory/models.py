@@ -175,7 +175,7 @@ class StockMovement(models.Model):
                     self._guard_negative(before, delta, str(locked))
                 update_kwargs = {'stock_quantity': F('stock_quantity') + delta}
                 if (
-                    self.movement_type == 'purchase'
+                    self.movement_type in ('purchase', 'adjustment')
                     and self.unit_cost
                     and delta > 0
                     and not self._layers_enabled()
@@ -203,7 +203,7 @@ class StockMovement(models.Model):
                     self._guard_negative(before, delta, locked.name)
                 update_kwargs = {'stock_quantity': F('stock_quantity') + delta}
                 if (
-                    self.movement_type == 'purchase'
+                    self.movement_type in ('purchase', 'adjustment')
                     and self.unit_cost
                     and delta > 0
                     and not self._layers_enabled()

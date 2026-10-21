@@ -58,6 +58,18 @@ class StockAdjustmentSerializer(serializers.Serializer):
     product_id = serializers.IntegerField()
     variant_id = serializers.IntegerField(required=False, allow_null=True)
     quantity = serializers.IntegerField()
+    unit_cost = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+        help_text='Cost for this intake batch when adding stock (ignored when use_catalog_cost).',
+    )
+    use_catalog_cost = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text='When true on positive adjust, reuse current product/variant catalog cost.',
+    )
     notes = serializers.CharField(required=False, allow_blank=True)
 
 
@@ -66,7 +78,18 @@ class StockPurchaseSerializer(serializers.Serializer):
     product_id = serializers.IntegerField()
     variant_id = serializers.IntegerField(required=False, allow_null=True)
     quantity = serializers.IntegerField(min_value=1)
-    unit_cost = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    unit_cost = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+        help_text='Cost for this purchase batch (required unless use_catalog_cost).',
+    )
+    use_catalog_cost = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text='When true, reuse current product/variant catalog cost for this batch.',
+    )
     unit_sell_price = serializers.DecimalField(
         max_digits=10,
         decimal_places=2,

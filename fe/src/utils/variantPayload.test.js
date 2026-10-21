@@ -227,4 +227,19 @@ describe('variantFinancialValidationMessage', () => {
       )
     ).toBeNull();
   });
+
+  test('requires positive cost when requireCost is set', () => {
+    expect(
+      variantFinancialValidationMessage(
+        { price: '100', cost: '' },
+        { label: 'Large / Blue', canEditCost: true, requireCost: true }
+      )
+    ).toBe('Enter a cost greater than zero for variant Large / Blue.');
+    expect(
+      variantFinancialValidationMessage(
+        { price: '100', cost: '0' },
+        { label: 'M', canEditCost: true, requireCost: true }
+      )
+    ).toBe('Enter a cost greater than zero for variant M.');
+  });
 });

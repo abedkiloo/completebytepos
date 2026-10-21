@@ -95,6 +95,83 @@ class StockMovementServiceTestCase(TestCase):
                 user=self.user,
             )
 
+    def test_purchase_rejects_zero_unit_cost_when_catalog_zero(self):
+        self.product.cost = Decimal('0.00')
+        self.product.save(update_fields=['cost'])
+        with self.assertRaises(ValidationError) as ctx:
+            self.service.purchase_stock(
+                product_id=self.product.id,
+                variant_id=None,
+                quantity=2,
+                unit_cost=Decimal('0.00'),
+                user=self.user,
+            )
+        self.assertIn('greater than zero', str(ctx.exception).lower())
+
+    def test_purchase_requires_cost_when_catalog_zero_and_omitted(self):
+        self.product.cost = Decimal('0.00')
+        self.product.save(update_fields=['cost'])
+        with self.assertRaises(ValidationError) as ctx:
+            self.service.purchase_stock(
+                product_id=self.product.id,
+                variant_id=None,
+                quantity=2,
+                unit_cost=None,
+                user=self.user,
+            )
+        self.assertIn('required', str(ctx.exception).lower())
+
+    def test_purchase_use_catalog_cost_reuses_existing(self):
+        movement = self.service.purchase_stock(
+            product_id=self.product.id,
+            variant_id=None,
+            quantity=3,
+            unit_cost=None,
+            use_catalog_cost=True,
+            user=self.user,
+        )
+        self.assertEqual(movement.unit_cost, Decimal('5.00'))
+        self.assertEqual(movement.total_cost, Decimal('15.00'))
+
+    def test_purchase_use_catalog_cost_blocked_when_zero(self):
+        self.product.cost = Decimal('0.00')
+        self.product.save(update_fields=['cost'])
+        with self.assertRaises(ValidationError) as ctx:
+            self.service.purchase_stock(
+                product_id=self.product.id,
+                variant_id=None,
+                quantity=1,
+                use_catalog_cost=True,
+                user=self.user,
+            )
+        self.assertIn('zero', str(ctx.exception).lower())
+
+    def test_positive_adjust_requires_cost_when_catalog_zero(self):
+        self.product.cost = Decimal('0.00')
+        self.product.save(update_fields=['cost'])
+        with self.assertRaises(ValidationError):
+            self.service.adjust_stock(
+                product_id=self.product.id,
+                variant_id=None,
+                quantity=2,
+                notes='found stock',
+                user=self.user,
+            )
+
+    def test_positive_adjust_accepts_new_batch_cost(self):
+        self.product.cost = Decimal('0.00')
+        self.product.save(update_fields=['cost'])
+        movement = self.service.adjust_stock(
+            product_id=self.product.id,
+            variant_id=None,
+            quantity=2,
+            notes='found stock',
+            user=self.user,
+            unit_cost=Decimal('12.50'),
+        )
+        self.assertEqual(movement.unit_cost, Decimal('12.50'))
+        self.assertEqual(movement.total_cost, Decimal('25.00'))
+
     def test_adjustment_negative_below_zero_blocked(self):
         with self.assertRaises(ValidationError):
             self.service.adjust_stock(

@@ -633,6 +633,30 @@ class ProductService(BaseService):
                     track_stock = track_stock_lower == 'true'
             if track_stock is not None:
                 queryset = queryset.filter(track_stock=track_stock)
+
+        zero_cost = filters.get('zero_cost')
+        if zero_cost is not None:
+            if isinstance(zero_cost, str):
+                zero_cost_lower = zero_cost.lower().strip()
+                if zero_cost_lower in ['undefined', 'null', '']:
+                    zero_cost = None
+                else:
+                    zero_cost = zero_cost_lower == 'true'
+            if zero_cost:
+                # Tracked goods with catalog cost 0, or any active size/colour at 0/null cost.
+                queryset = queryset.filter(track_stock=True).filter(
+                    Q(cost__lte=0)
+                    | Q(
+                        has_variants=True,
+                        variants__is_active=True,
+                        variants__cost__lte=0,
+                    )
+                    | Q(
+                        has_variants=True,
+                        variants__is_active=True,
+                        variants__cost__isnull=True,
+                    )
+                ).distinct()
         
         supplier = filters.get('supplier')
         if supplier:

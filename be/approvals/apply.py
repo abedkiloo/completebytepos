@@ -149,6 +149,7 @@ def _apply_stock_movement(change: PendingChange) -> None:
     quantity = payload.get('quantity')
     notes = payload.get('notes', '')
     unit_cost = payload.get('unit_cost')
+    use_catalog_cost = bool(payload.get('use_catalog_cost'))
     unit_sell_price = payload.get('unit_sell_price')
     branch = payload.get('branch_id')
 
@@ -171,6 +172,7 @@ def _apply_stock_movement(change: PendingChange) -> None:
             user=user,
             branch=branch_obj,
             unit_cost=unit_cost,
+            use_catalog_cost=use_catalog_cost,
         )
     elif change.action_type == ACTION_STOCK_PURCHASE:
         service.purchase_stock(
@@ -183,6 +185,7 @@ def _apply_stock_movement(change: PendingChange) -> None:
             branch=branch_obj,
             reference=payload.get('reference', ''),
             unit_sell_price=unit_sell_price,
+            use_catalog_cost=use_catalog_cost,
         )
     elif change.action_type == ACTION_STOCK_TRANSFER:
         from settings.models import Branch as BranchModel

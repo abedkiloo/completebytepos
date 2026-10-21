@@ -511,8 +511,8 @@ const ProductForm = ({
 
     if (showCostField && !formData.has_variants) {
       const costErr = moneyMessage(formData.cost, {
-        allowZero: true,
-        required: false,
+        allowZero: false,
+        required: true,
         label: 'cost',
       });
       if (costErr) newErrors.cost = costErr;
@@ -598,6 +598,8 @@ const ProductForm = ({
         const financialError = variantFinancialValidationMessage(draft, {
           label,
           canEditMrp: showMrp && showPricingFields,
+          canEditCost: showCostField,
+          requireCost: showCostField,
         });
         if (financialError) {
           toast.warning(financialError);
@@ -1061,7 +1063,7 @@ const ProductForm = ({
           <div className="form-row">
             <div className="form-group">
               <label className="inline-flex flex-wrap items-center gap-2">
-                Cost (KES)
+                Cost (KES) *
                 <PendingApprovalBadges pendingApproval={pendingApproval} />
               </label>
               <input
@@ -1070,8 +1072,10 @@ const ProductForm = ({
                 value={formData.cost}
                 onChange={handleChange}
                 step="0.01"
-                min="0"
+                min="0.01"
+                required
               />
+              <small className="form-text">Required — used for trading profit and stock valuation.</small>
               {errors.cost && <span className="error">{errors.cost}</span>}
               {pendingCost != null && (
                 <small className="mt-1 block text-amber-700">

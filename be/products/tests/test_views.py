@@ -386,7 +386,7 @@ class ProductViewSetTestCase(APITestCase):
         self.assertIn('100', str(response.data['cost']))
 
     def test_create_without_price_defaults_to_zero(self):
-        """Variant catalog and quick-add flows may omit price on create."""
+        """Variant catalog may omit selling price on create; cost is still required."""
         token = self.get_auth_token(self.superuser)
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
 
@@ -396,6 +396,7 @@ class ProductViewSetTestCase(APITestCase):
                 'name': 'Bottled Water 500ml',
                 'category': self.main_category.id,
                 'has_variants': True,
+                'cost': '40.00',
             },
             format='json',
         )
@@ -403,7 +404,24 @@ class ProductViewSetTestCase(APITestCase):
         product = Product.objects.get(pk=response.data['id'])
         self.assertEqual(product.price, Decimal('0'))
         self.assertEqual(product.mrp, Decimal('0'))
-        self.assertEqual(product.cost, Decimal('0'))
+        self.assertEqual(product.cost, Decimal('40.00'))
+
+    def test_create_without_cost_rejected(self):
+        """Stocked products cannot be created with missing/zero cost."""
+        token = self.get_auth_token(self.superuser)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+        response = self.client.post(
+            '/api/products/',
+            {
+                'name': 'No Cost Item',
+                'category': self.main_category.id,
+                'price': '100.00',
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('cost', response.data)
     
     def test_delete_product(self):
         """Test product deletion"""

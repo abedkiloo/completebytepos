@@ -18,6 +18,51 @@ from services.base import BaseService
 from services.datetime_filters import inclusive_end_datetime, inclusive_start_datetime
 
 
+def catalog_unit_cost(product: Product, variant: Optional[ProductVariant] = None) -> Decimal:
+    """Effective catalog cost for a product or variant row."""
+    if variant is not None and variant.cost is not None:
+        return Decimal(str(variant.cost))
+    return Decimal(str(product.cost or 0))
+
+
+def resolve_intake_unit_cost(
+    *,
+    product: Product,
+    variant: Optional[ProductVariant] = None,
+    unit_cost=None,
+    use_catalog_cost: bool = False,
+) -> Decimal:
+    """
+    Resolve cost for stock intake (purchase or positive adjust).
+
+    Cost changes per delivery: either reuse the current catalog cost
+    (``use_catalog_cost``) or require a positive ``unit_cost`` for the new batch.
+    Catalog cost of 0/null cannot be reused — callers must enter a new cost.
+    """
+    catalog = catalog_unit_cost(product, variant)
+    if use_catalog_cost:
+        if catalog <= 0:
+            raise ValidationError(
+                'Current cost is zero. Enter a new unit cost for this stock batch.'
+            )
+        return catalog
+
+    if unit_cost is not None and unit_cost != '':
+        resolved = Decimal(str(unit_cost))
+        if resolved <= 0:
+            raise ValidationError('Unit cost must be greater than zero.')
+        return resolved
+
+    # Backward-compatible: omitted unit_cost falls back to positive catalog cost.
+    if catalog > 0:
+        return catalog
+
+    raise ValidationError(
+        'Unit cost is required because catalog cost is zero. '
+        'Enter the cost for this batch, or update the product cost first.'
+    )
+
+
 class StockMovementService(BaseService):
     """Service for stock movement operations"""
     
@@ -95,10 +140,15 @@ class StockMovementService(BaseService):
     @transaction.atomic
     def adjust_stock(self, product_id: int, variant_id: Optional[int],
                     quantity: int, notes: str = '', user=None,
-                    branch: Optional[Branch] = None, unit_cost: Optional[Decimal] = None) -> StockMovement:
+                    branch: Optional[Branch] = None, unit_cost: Optional[Decimal] = None,
+                    use_catalog_cost: bool = False) -> StockMovement:
         """
         Adjust stock for a product or variant.
         Creates stock movement and updates product/variant stock quantity.
+
+        Positive adjustments require a positive unit cost (new batch or catalog).
+        When layers are enabled, +qty creates a FIFO layer and -qty drains FIFO
+        so valuation/reports stay aligned with on-hand quantity.
         """
         try:
             product = Product.objects.get(id=product_id)
@@ -116,10 +166,35 @@ class StockMovementService(BaseService):
         if not variant and not product.track_stock:
             raise ValidationError('Product does not track stock')
 
-        # Calculate costs (read-only — no direct stock_quantity mutation here;
-        # StockMovement.save() is the single source of truth for stock writes).
-        if unit_cost is None:
-            unit_cost = variant.cost if variant and variant.cost else product.cost
+        if quantity == 0:
+            raise ValidationError('Adjustment quantity must be non-zero')
+
+        from inventory.stock_layers import (
+            apply_fifo_sale_drain,
+            create_layer_for_purchase,
+            ensure_opening_layer_if_needed,
+            layers_enabled,
+        )
+
+        # Positive intake: resolve new-vs-catalog cost. Negative: stamp movement
+        # with catalog/FIFO cost for write-off valuation (layer drain below).
+        if quantity > 0:
+            unit_cost = resolve_intake_unit_cost(
+                product=product,
+                variant=variant,
+                unit_cost=unit_cost,
+                use_catalog_cost=use_catalog_cost,
+            )
+            if layers_enabled():
+                ensure_opening_layer_if_needed(
+                    product_id=product.id,
+                    variant_id=variant.id if variant else None,
+                )
+        else:
+            if unit_cost is None or unit_cost == '':
+                unit_cost = catalog_unit_cost(product, variant)
+            else:
+                unit_cost = Decimal(str(unit_cost))
 
         total_cost = unit_cost * abs(quantity) if unit_cost else None
 
@@ -139,20 +214,39 @@ class StockMovementService(BaseService):
             user=user
         )
 
+        if layers_enabled():
+            if quantity > 0:
+                if variant is not None and variant.price is not None:
+                    sell = variant.price
+                else:
+                    sell = product.price
+                create_layer_for_purchase(
+                    movement=movement,
+                    unit_sell_price=Decimal(str(sell or 0)),
+                )
+            else:
+                apply_fifo_sale_drain(
+                    product_id=product.id,
+                    variant_id=variant.id if variant else None,
+                    quantity=abs(quantity),
+                )
+
         return movement
     
     @transaction.atomic
     def purchase_stock(self, product_id: int, variant_id: Optional[int],
-                      quantity: int, unit_cost: Decimal, notes: str = '',
+                      quantity: int, unit_cost: Decimal = None, notes: str = '',
                       user=None, branch: Optional[Branch] = None,
                       reference: str = '',
-                      unit_sell_price: Optional[Decimal] = None) -> StockMovement:
+                      unit_sell_price: Optional[Decimal] = None,
+                      use_catalog_cost: bool = False) -> StockMovement:
         """
         Record a stock purchase (add stock).
 
         When stock layers are enabled, creates a FIFO layer with this intake's
         cost + selling price and syncs catalog price/cost from the oldest open
-        layer (WAC blending is skipped).
+        layer (WAC blending is skipped). Cost may be a new batch cost or the
+        existing catalog cost (``use_catalog_cost``).
         """
         if quantity <= 0:
             raise ValidationError('Purchase quantity must be positive')
@@ -173,9 +267,12 @@ class StockMovementService(BaseService):
         if not variant and not product.track_stock:
             raise ValidationError('Product does not track stock')
 
-        if unit_cost is None:
-            unit_cost = variant.cost if variant and variant.cost is not None else product.cost
-        unit_cost = Decimal(str(unit_cost or 0))
+        unit_cost = resolve_intake_unit_cost(
+            product=product,
+            variant=variant,
+            unit_cost=unit_cost,
+            use_catalog_cost=use_catalog_cost,
+        )
         total_cost = unit_cost * quantity
 
         from inventory.stock_layers import (

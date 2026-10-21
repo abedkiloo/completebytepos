@@ -450,6 +450,12 @@ export default function TradingProfitReportView() {
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">{cogsData.explanation}</p>
+              {cogsData.cost_missing_sale_count > 0 ? (
+                <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-100" role="status">
+                  {cogsData.cost_missing_sale_count} sale(s) still have cost concerns.
+                  Every tracked product must have a cost on the product or its sizes.
+                </p>
+              ) : null}
               {cogsData.truncated ? (
                 <p className="text-xs text-warning">
                   Showing {cogsData.sales_shown} of {cogsData.sale_count} sales.
@@ -469,15 +475,26 @@ export default function TradingProfitReportView() {
                         {formatCurrency(sale.cogs)}
                       </span>
                     </div>
+                    {(sale.concerns || []).length > 0 ? (
+                      <ul className="mt-1 space-y-0.5 text-xs text-amber-800 dark:text-amber-200">
+                        {sale.concerns.map((msg) => (
+                          <li key={msg}>⚠ {msg}</li>
+                        ))}
+                      </ul>
+                    ) : null}
                     <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
                       {(sale.lines || []).map((line, idx) => (
-                        <li key={`${sale.sale_id}-${idx}`} className="flex justify-between gap-2">
+                        <li
+                          key={`${sale.sale_id}-${idx}`}
+                          className={`flex justify-between gap-2 ${line.cost_missing ? 'text-amber-800 dark:text-amber-200' : ''}`}
+                        >
                           <span>
                             {line.product_name}
                             {line.quantity != null ? ` × ${line.quantity}` : ''}
                             {line.unit_cost != null
                               ? ` @ ${formatCurrency(line.unit_cost)}`
                               : ''}
+                            {line.cost_missing ? ' · cost missing' : ''}
                           </span>
                           <span className="tabular-nums">{formatCurrency(line.line_cogs)}</span>
                         </li>

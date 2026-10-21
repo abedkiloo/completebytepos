@@ -129,6 +129,7 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         quantity = serializer.validated_data['quantity']
         notes = serializer.validated_data.get('notes', '')
         unit_cost = serializer.validated_data.get('unit_cost')
+        use_catalog_cost = bool(serializer.validated_data.get('use_catalog_cost'))
         
         current_branch = get_current_branch(request)
         reason = request.data.get('reason') or notes or 'Stock adjustment'
@@ -145,6 +146,7 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 'quantity': quantity,
                 'notes': notes,
                 'unit_cost': str(unit_cost) if unit_cost is not None else None,
+                'use_catalog_cost': use_catalog_cost,
                 'branch_id': current_branch.id if current_branch else None,
             },
             reason=reason,
@@ -160,7 +162,8 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 notes=notes,
                 user=request.user,
                 branch=current_branch,
-                unit_cost=unit_cost
+                unit_cost=unit_cost,
+                use_catalog_cost=use_catalog_cost,
             )
             from utils.audit_events import log_stock_movement_event
 
@@ -195,6 +198,7 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         variant_id = serializer.validated_data.get('variant_id')
         quantity = serializer.validated_data['quantity']
         unit_cost = serializer.validated_data.get('unit_cost')
+        use_catalog_cost = bool(serializer.validated_data.get('use_catalog_cost'))
         unit_sell_price = serializer.validated_data.get('unit_sell_price')
         reference = serializer.validated_data.get('reference', '')
         notes = serializer.validated_data.get('notes', '')
@@ -214,6 +218,7 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 'quantity': quantity,
                 'notes': notes,
                 'unit_cost': str(unit_cost) if unit_cost is not None else None,
+                'use_catalog_cost': use_catalog_cost,
                 'unit_sell_price': (
                     str(unit_sell_price) if unit_sell_price is not None else None
                 ),
@@ -236,6 +241,7 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 branch=current_branch,
                 reference=reference,
                 unit_sell_price=unit_sell_price,
+                use_catalog_cost=use_catalog_cost,
             )
             from utils.audit_events import log_stock_movement_event
 
@@ -508,6 +514,7 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                     user=request.user,
                     branch=current_branch,
                     unit_cost=adj.get('unit_cost'),
+                    use_catalog_cost=bool(adj.get('use_catalog_cost')),
                 )
                 created_movements.append(movement)
                 from utils.audit_events import log_stock_movement_event

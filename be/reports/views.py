@@ -576,26 +576,10 @@ class ReportViewSet(viewsets.ViewSet):
 
         total_purchases = purchases_queryset.aggregate(total=Sum('total_cost'))['total'] or 0
 
-        # Product COGS: FIFO line unit_cost; legacy via stock movements (subquery, not list()).
-        line_cost = ExpressionWrapper(
-            F('quantity') * F('unit_cost'),
-            output_field=dj_fields.DecimalField(max_digits=14, decimal_places=2),
-        )
-        sale_items = SaleItem.objects.filter(sale__in=sales_queryset)
-        with_cost = sale_items.filter(unit_cost__isnull=False).aggregate(
-            total=Sum(line_cost)
-        )['total'] or 0
-        legacy_refs = sale_items.filter(unit_cost__isnull=True).values_list(
-            'sale__sale_number', flat=True
-        )
-        legacy_cogs = (
-            StockMovement.objects.filter(
-                movement_type='sale',
-                reference__in=legacy_refs,
-            ).aggregate(total=Sum('total_cost'))['total']
-            or 0
-        )
-        total_cogs = Decimal(str(with_cost)) + Decimal(str(legacy_cogs or 0))
+        # Product COGS: same fallbacks as trading profit (stamped → layers → movements → catalog).
+        from reports.trading_profit import _cogs_for_sales
+
+        total_cogs = _cogs_for_sales(sales_queryset)
 
         net_profit = float(total_revenue) - float(total_expenses) - float(total_cogs)
         profit_margin = (net_profit / float(total_revenue) * 100) if total_revenue > 0 else 0

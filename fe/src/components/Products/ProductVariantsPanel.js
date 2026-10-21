@@ -219,6 +219,8 @@ export default function ProductVariantsPanel({
     const financialError = variantFinancialValidationMessage(draft, {
       label: rowLabel,
       canEditMrp,
+      canEditCost,
+      requireCost: canEditCost,
     });
     if (financialError) {
       toast.warning(financialError);

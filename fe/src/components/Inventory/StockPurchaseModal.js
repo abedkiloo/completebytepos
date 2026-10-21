@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { inventoryAPI, productsAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
 import SearchableSelect from '../Shared/SearchableSelect';
@@ -13,18 +13,28 @@ import {
 } from '../../utils/makerChecker';
 import CommitConfirm from '../Shared/CommitConfirm';
 
+const catalogCostOf = (prod) => {
+  const raw = prod?.cost;
+  if (raw === null || raw === undefined || raw === '') return 0;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0;
+};
+
 const StockPurchaseModal = ({ product, onClose, onSave }) => {
   const defaultQuantity = (product?.reorder_quantity != null && product.reorder_quantity > 0)
     ? product.reorder_quantity
     : 1;
+  const initialCatalog = catalogCostOf(product);
   const [formData, setFormData] = useState({
     product_id: product?.id || '',
     quantity: defaultQuantity,
-    unit_cost: product?.cost || '',
+    unit_cost: initialCatalog > 0 ? initialCatalog : '',
     unit_sell_price: product?.selling_price ?? product?.price ?? '',
     reference: '',
     notes: '',
   });
+  /** 'catalog' = keep existing cost for this batch; 'new' = enter a new batch cost */
+  const [costMode, setCostMode] = useState(initialCatalog > 0 ? 'catalog' : 'new');
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -34,6 +44,15 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
   const { settings: storeSettings } = useStoreSettings();
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
 
+  const selectedProduct = useMemo(
+    () =>
+      product ||
+      products.find((p) => Number(p.id) === Number(formData.product_id)),
+    [product, products, formData.product_id]
+  );
+  const catalogCost = catalogCostOf(selectedProduct);
+  const hasCatalogCost = catalogCost > 0;
+
   useEffect(() => {
     if (!product) {
       loadProducts();
@@ -41,13 +60,15 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
       const qty = (product.reorder_quantity != null && product.reorder_quantity > 0)
         ? product.reorder_quantity
         : 1;
-      setFormData(prev => ({
+      const cost = catalogCostOf(product);
+      setFormData((prev) => ({
         ...prev,
         product_id: product.id,
         quantity: qty,
-        unit_cost: product.cost || '',
+        unit_cost: cost > 0 ? cost : '',
         unit_sell_price: product.selling_price ?? product.price ?? '',
       }));
+      setCostMode(cost > 0 ? 'catalog' : 'new');
     }
   }, [product]);
 
@@ -57,44 +78,54 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
         track_stock: 'true',
         is_active: 'true',
         page_size: 1000,
-        needs_restock: 'true', // Only products that need restock (low or out of stock)
+        needs_restock: 'true',
       };
       const response = await productsAPI.list(params);
       const productsData = response.data.results || response.data || [];
       setProducts(Array.isArray(productsData) ? productsData : []);
-    } catch (error) {
+    } catch (err) {
+      // Product picker stays empty; user can still open from a product context.
     }
   };
 
-  // Transform products for SearchableSelect (option labels include stock for clarity)
-  const productOptions = products.map(prod => ({
+  const productOptions = products.map((prod) => ({
     id: prod.id,
-    name: `${prod.name}${prod.sku ? ` (${prod.sku})` : ''} - Stock: ${prod.stock_quantity ?? 0}${prod.low_stock_threshold != null ? ` / threshold ${prod.low_stock_threshold}` : ''}`,
+    name: `${prod.name}${prod.sku ? ` (${prod.sku})` : ''} - Stock: ${prod.stock_quantity ?? 0}${prod.low_stock_threshold != null ? ` / threshold ${prod.low_stock_threshold}` : ''}${prod.cost_missing ? ' · cost missing' : ''}`,
   }));
 
   const handleProductChange = (e) => {
     const productId = e.target.value;
-    setFormData(prev => ({
+    const next = products.find((p) => Number(p.id) === Number(productId));
+    const cost = catalogCostOf(next);
+    setFormData((prev) => ({
       ...prev,
-      product_id: productId ? parseInt(productId) : ''
+      product_id: productId ? parseInt(productId, 10) : '',
+      unit_cost: cost > 0 ? cost : '',
+      unit_sell_price: next?.selling_price ?? next?.price ?? prev.unit_sell_price,
     }));
+    setCostMode(cost > 0 ? 'catalog' : 'new');
   };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       [name]: name === 'quantity'
         ? (value === '' ? '' : (parseInt(value, 10) || 0))
         : name === 'product_id'
         ? (value ? parseInt(value, 10) : '')
         : name === 'unit_cost' || name === 'unit_sell_price'
-        ? (parseFloat(value) || 0)
-        : value
+        ? value
+        : value,
     }));
   };
 
   const quantityNum = Number(formData.quantity);
+  const effectiveUnitCost =
+    costMode === 'catalog' && hasCatalogCost
+      ? catalogCost
+      : Number(formData.unit_cost);
+
   const handleSubmit = (e) => {
     e.preventDefault();
     setError('');
@@ -106,7 +137,34 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
       setError('Select a product.');
       return;
     }
-    const payload = { ...formData, quantity: quantityNum };
+
+    const useCatalog = costMode === 'catalog' && hasCatalogCost;
+    if (!useCatalog) {
+      const costNum = Number(formData.unit_cost);
+      if (!Number.isFinite(costNum) || costNum <= 0) {
+        setError(
+          hasCatalogCost
+            ? 'Enter a unit cost greater than zero for this new batch.'
+            : 'Cost is missing on this product. Enter the unit cost for this stock before recording.'
+        );
+        return;
+      }
+    }
+
+    const payload = {
+      product_id: formData.product_id || product?.id,
+      quantity: quantityNum,
+      unit_sell_price: formData.unit_sell_price === '' ? undefined : formData.unit_sell_price,
+      reference: formData.reference,
+      notes: formData.notes,
+    };
+    if (useCatalog) {
+      payload.use_catalog_cost = true;
+    } else {
+      payload.unit_cost = Number(formData.unit_cost);
+      payload.use_catalog_cost = false;
+    }
+
     if (makerCheckerOn) {
       const reasonError = stockReasonValidationMessage(changeReason);
       if (reasonError) {
@@ -142,16 +200,19 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
     }
   };
 
-  const totalCost = (quantityNum >= 0 ? quantityNum : 0) * (formData.unit_cost || 0);
-  const selectedProduct =
-    product || products.find((p) => Number(p.id) === Number(pendingPayload?.product_id || formData.product_id));
+  const totalCost =
+    (quantityNum >= 0 ? quantityNum : 0) *
+    (Number.isFinite(effectiveUnitCost) ? effectiveUnitCost : 0);
   const commitRows = pendingPayload
     ? [
         { label: 'Product', value: selectedProduct?.name || `Product #${pendingPayload.product_id}` },
         { label: 'Quantity', value: `+${pendingPayload.quantity}`, tone: 'success', emphasis: true },
-        pendingPayload.unit_cost
-          ? { label: 'Unit cost', value: formatCurrency(pendingPayload.unit_cost) }
-          : null,
+        {
+          label: 'Unit cost',
+          value: pendingPayload.use_catalog_cost
+            ? `${formatCurrency(catalogCost)} (existing)`
+            : formatCurrency(pendingPayload.unit_cost),
+        },
         pendingPayload.unit_sell_price
           ? { label: 'Selling price (this batch)', value: formatCurrency(pendingPayload.unit_sell_price) }
           : null,
@@ -191,6 +252,11 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
             <div className="product-info-box">
               <h3>{product.name}</h3>
               <p>SKU: {product.sku} | Current Stock: {product.stock_quantity}</p>
+              {catalogCostOf(product) <= 0 ? (
+                <p className="text-sm text-amber-700">
+                  Cost is zero — enter the cost for this delivery so reports and COGS stay correct.
+                </p>
+              ) : null}
             </div>
           )}
 
@@ -207,19 +273,54 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
               />
               <small>Must be at least 1 to record a purchase.</small>
             </div>
+          </div>
 
-            <div className="form-group">
-              <label>Unit Cost (KES)</label>
+          <div className="form-group">
+            <label>Cost for this batch *</label>
+            <div className="mt-1 space-y-2">
+              <label className={`flex items-start gap-2 text-sm ${!hasCatalogCost ? 'opacity-50' : ''}`}>
+                <input
+                  type="radio"
+                  name="cost_mode"
+                  checked={costMode === 'catalog'}
+                  disabled={!hasCatalogCost}
+                  onChange={() => setCostMode('catalog')}
+                />
+                <span>
+                  Keep existing cost
+                  {hasCatalogCost ? (
+                    <span className="text-muted-foreground"> ({formatCurrency(catalogCost)})</span>
+                  ) : (
+                    <span className="text-muted-foreground"> — none on file</span>
+                  )}
+                </span>
+              </label>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="cost_mode"
+                  checked={costMode === 'new'}
+                  onChange={() => setCostMode('new')}
+                />
+                <span>New cost for this delivery (supplier / period change)</span>
+              </label>
+            </div>
+            {costMode === 'new' ? (
               <input
                 type="number"
                 name="unit_cost"
+                className="mt-2"
                 value={formData.unit_cost}
                 onChange={handleChange}
                 step="0.01"
-                min="0"
-                placeholder="Auto from product cost"
+                min="0.01"
+                required
+                placeholder="Unit cost (KES)"
               />
-            </div>
+            ) : null}
+            <small>
+              Each delivery can have its own cost. FIFO layers keep older stock at its original cost until sold.
+            </small>
           </div>
 
           <div className="form-group">
@@ -305,4 +406,3 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
 };
 
 export default StockPurchaseModal;
-

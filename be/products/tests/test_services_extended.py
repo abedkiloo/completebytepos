@@ -210,6 +210,41 @@ class ProductServiceBuildQuerysetTestCase(TestCase):
         queryset = self.service.build_queryset({'track_stock': 'true'})
         self.assertEqual(queryset.count(), 1)
         self.assertEqual(queryset.first().sku, 'TRACK-001')
+
+    def test_build_queryset_zero_cost_filter(self):
+        """Flag tracked products/variants with cost 0 for cost update."""
+        Product.objects.create(
+            name='Priced',
+            sku='COST-OK',
+            category=self.category,
+            price=Decimal('100.00'),
+            cost=Decimal('40.00'),
+            track_stock=True,
+            is_active=True,
+        )
+        zero = Product.objects.create(
+            name='Zero Cost',
+            sku='COST-ZERO',
+            category=self.category,
+            price=Decimal('100.00'),
+            cost=Decimal('0.00'),
+            track_stock=True,
+            is_active=True,
+        )
+        Product.objects.create(
+            name='Untracked Zero',
+            sku='COST-UNTRACK',
+            category=self.category,
+            price=Decimal('100.00'),
+            cost=Decimal('0.00'),
+            track_stock=False,
+            is_active=True,
+        )
+        queryset = self.service.build_queryset({'zero_cost': 'true'})
+        skus = set(queryset.values_list('sku', flat=True))
+        self.assertIn(zero.sku, skus)
+        self.assertNotIn('COST-OK', skus)
+        self.assertNotIn('COST-UNTRACK', skus)
     
     def test_build_queryset_supplier_filter_by_id(self):
         """Test build_queryset with supplier filter by ID"""

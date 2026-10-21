@@ -94,6 +94,7 @@ const EMPTY_FILTERS = {
   is_active: '',
   low_stock: false,
   out_of_stock: false,
+  zero_cost: false,
 };
 
 const Products = () => {
@@ -149,6 +150,7 @@ const Products = () => {
           productFiltersToSearchParams({
             low_stock: next.low_stock,
             out_of_stock: next.out_of_stock,
+            zero_cost: next.zero_cost,
             is_active: next.is_active,
           }),
           { replace: true }
@@ -207,6 +209,7 @@ const Products = () => {
       if (showStatus && filters.is_active) params.is_active = filters.is_active;
       if (filters.low_stock) params.low_stock = 'true';
       if (filters.out_of_stock) params.out_of_stock = 'true';
+      if (filters.zero_cost) params.zero_cost = 'true';
 
       const response = await productsAPI.list(params);
       const data = response.data.results || response.data || [];
@@ -264,6 +267,7 @@ const Products = () => {
     filters.is_active,
     filters.low_stock,
     filters.out_of_stock,
+    filters.zero_cost,
     showStatus,
   ]);
 
@@ -283,8 +287,9 @@ const Products = () => {
     if (showStatus && filters.is_active) count += 1;
     if (filters.low_stock) count += 1;
     if (filters.out_of_stock) count += 1;
+    if (showCost && filters.zero_cost) count += 1;
     return count;
-  }, [filters, showStatus]);
+  }, [filters, showStatus, showCost]);
 
   const allSelected =
     products.length > 0 && selectedProductIds.length === products.length;
@@ -628,6 +633,7 @@ const Products = () => {
           categories={categories}
           activeCount={activeFilterCount}
           showProductStatus={showStatus}
+          showCost={showCost}
         />
 
         {/* --- Bulk action bar --- */}
@@ -1012,7 +1018,14 @@ function SummaryStats({ statistics, onSelectFilter }) {
   );
 }
 
-function FilterBar({ filters, setFilters, categories, activeCount, showProductStatus: showStatus = true }) {
+function FilterBar({
+  filters,
+  setFilters,
+  categories,
+  activeCount,
+  showProductStatus: showStatus = true,
+  showCost = false,
+}) {
   const update = (patch) => setFilters((prev) => ({ ...prev, ...patch }));
   return (
     <div className="space-y-3">
@@ -1101,6 +1114,22 @@ function FilterBar({ filters, setFilters, categories, activeCount, showProductSt
               />
               Out of stock only
             </DropdownMenuItem>
+            {showCost ? (
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault();
+                  update({ zero_cost: !filters.zero_cost });
+                }}
+              >
+                <input
+                  type="checkbox"
+                  readOnly
+                  checked={filters.zero_cost}
+                  className="mr-2 h-3.5 w-3.5 rounded border-input"
+                />
+                Zero / missing cost
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onSelect={() => setFilters({ ...EMPTY_FILTERS, search: filters.search })}
@@ -1253,6 +1282,11 @@ function ProductRow({
               {showLowStock && !alertFiltering && productHasOutOfStock(product) && (
                 <Badge variant="destructive" className="px-1.5 py-0 text-[10px]">
                   Out of stock
+                </Badge>
+              )}
+              {showCost && product.cost_missing && (
+                <Badge variant="outline" className="border-amber-500/50 px-1.5 py-0 text-[10px] text-amber-700">
+                  Update cost
                 </Badge>
               )}
               <PendingApprovalBadges pendingApproval={product.pending_approval} />

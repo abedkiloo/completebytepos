@@ -229,6 +229,16 @@ class SaleServiceTestCase(TestCase):
         self.assertEqual(len(validated), 1)
         self.assertEqual(validated[0]['quantity'], 2)
         self.assertEqual(validated[0]['subtotal'], Decimal('200.00'))
+
+    def test_validate_sale_items_rejects_zero_cost(self):
+        """Tracked goods must have a cost — zero cost is a hard checkout error."""
+        self.product.cost = Decimal('0')
+        self.product.save(update_fields=['cost'])
+        with self.assertRaises(ValidationError) as ctx:
+            self.service.validate_sale_items([
+                {'product_id': self.product.id, 'quantity': 1},
+            ])
+        self.assertIn('no cost', str(ctx.exception).lower())
     
     def test_validate_sale_items_missing_product(self):
         """Test validation fails with missing product"""

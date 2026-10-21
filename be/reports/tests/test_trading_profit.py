@@ -269,7 +269,103 @@ class TradingProfitAPITests(ManagerAPITestCase):
         legacy_sale = next(s for s in cogs.data['sales'] if s['sale_number'] == 'S-TP-LEGACY')
         self.assertEqual(legacy_sale['cogs'], 50.0)
         sources = {line['source'] for line in legacy_sale['lines']}
-        self.assertIn('legacy_movement', sources)
+        # Null lines resolve via stock_movement (or legacy_movement bucket).
+        self.assertTrue(sources & {'stock_movement', 'legacy_movement'})
+
+    def test_zero_unit_cost_uses_catalog_and_movements(self):
+        """Stamped 0 must not hide COGS — zippers @ 0 understated trading profit."""
+        from inventory.models import StockMovement
+        from reports.trading_profit import compute_cogs_breakdown, compute_trading_profit
+
+        zipper = Product.objects.create(
+            name='NO 10 Zipper',
+            sku='ZIP-10',
+            category=self.cat,
+            price=Decimal('50'),
+            cost=Decimal('15'),
+            stock_quantity=100,
+            track_stock=True,
+            is_active=True,
+        )
+        hook = Product.objects.create(
+            name='50mm Hook&loop',
+            sku='HOOK-50',
+            category=self.cat,
+            price=Decimal('600'),
+            cost=Decimal('600'),
+            stock_quantity=50,
+            track_stock=True,
+            is_active=True,
+        )
+        sale = Sale.objects.create(
+            sale_number='SALE-9837F91D',
+            status='completed',
+            subtotal=Decimal('14500'),
+            total=Decimal('14500'),
+            tax_amount=Decimal('0'),
+            payment_method='cash',
+            amount_paid=Decimal('14500'),
+            cashier=self.manager_user,
+            occurred_at=timezone.now(),
+        )
+        SaleItem.objects.create(
+            sale=sale,
+            product=self.product,
+            quantity=500,
+            unit_price=Decimal('10'),
+            unit_cost=Decimal('10'),
+            subtotal=Decimal('5000'),
+        )
+        SaleItem.objects.create(
+            sale=sale,
+            product=zipper,
+            quantity=1,
+            unit_price=Decimal('50'),
+            unit_cost=Decimal('0'),
+            subtotal=Decimal('50'),
+        )
+        SaleItem.objects.create(
+            sale=sale,
+            product=zipper,
+            quantity=1,
+            unit_price=Decimal('50'),
+            unit_cost=Decimal('0'),
+            subtotal=Decimal('50'),
+        )
+        SaleItem.objects.create(
+            sale=sale,
+            product=hook,
+            quantity=2,
+            unit_price=Decimal('600'),
+            unit_cost=Decimal('600'),
+            subtotal=Decimal('1200'),
+        )
+        # Stamped positive: 500*10 + 2*600 = 6200; zippers @ 0 → catalog 15*2 = 30
+        summary = compute_trading_profit(start=None, end=None)
+        self.assertEqual(summary['cogs_sold'], 6230.0)
+
+        breakdown = compute_cogs_breakdown(start=None, end=None)
+        row = next(s for s in breakdown['sales'] if s['sale_number'] == 'SALE-9837F91D')
+        self.assertEqual(row['cogs'], 6230.0)
+        zipper_lines = [ln for ln in row['lines'] if 'Zipper' in ln['product_name']]
+        self.assertEqual(len(zipper_lines), 2)
+        self.assertTrue(all(ln['line_cogs'] == 15.0 for ln in zipper_lines))
+        self.assertTrue(all(ln['source'] == 'catalog' for ln in zipper_lines))
+
+        # Movement gap wins over catalog when movements carry real cost
+        Sale.objects.filter(pk=sale.pk).update(sale_number='SALE-ZERO-MOV')
+        StockMovement.objects.create(
+            product=zipper,
+            movement_type='sale',
+            quantity=-2,
+            unit_cost=Decimal('40'),
+            total_cost=Decimal('80'),
+            reference='SALE-ZERO-MOV',
+            user=self.manager_user,
+        )
+        summary2 = compute_trading_profit(start=None, end=None)
+        # 6200 stamped + 80 movement gap for zippers
+        self.assertEqual(summary2['cogs_sold'], 6280.0)
 
     def test_refund_without_unit_cost_skipped_and_cogs_floor_zero(self):
         from reports.trading_profit import compute_trading_profit

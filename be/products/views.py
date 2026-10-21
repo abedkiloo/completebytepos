@@ -421,7 +421,8 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         
         # Extract all filter parameters, ignoring "undefined" values from frontend
         for param in ['is_active', 'category', 'subcategory', 'low_stock', 
-                     'out_of_stock', 'track_stock', 'supplier', 'needs_restock']:
+                     'out_of_stock', 'track_stock', 'supplier', 'needs_restock',
+                     'zero_cost']:
             if param in query_params:
                 value = query_params.get(param)
                 # Skip "undefined", "null", empty strings, and None values

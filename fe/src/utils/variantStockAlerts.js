@@ -89,13 +89,21 @@ export function summaryFilterFromCard(label) {
 export function parseProductFiltersFromSearch(searchParams) {
   const lowStock = searchParams.get('low_stock') === 'true';
   const outOfStock = searchParams.get('out_of_stock') === 'true';
+  const zeroCost = searchParams.get('zero_cost') === 'true';
   const active = searchParams.get('is_active');
-  if (!lowStock && !outOfStock && active !== 'true' && active !== 'false') {
+  if (
+    !lowStock &&
+    !outOfStock &&
+    !zeroCost &&
+    active !== 'true' &&
+    active !== 'false'
+  ) {
     return null;
   }
   return {
     low_stock: lowStock,
     out_of_stock: outOfStock,
+    zero_cost: zeroCost,
     is_active: active === 'true' ? 'true' : active === 'false' ? 'false' : '',
   };
 }
@@ -104,6 +112,7 @@ export function productFiltersToSearchParams(filters) {
   const params = new URLSearchParams();
   if (filters.low_stock) params.set('low_stock', 'true');
   if (filters.out_of_stock) params.set('out_of_stock', 'true');
+  if (filters.zero_cost) params.set('zero_cost', 'true');
   if (filters.is_active) params.set('is_active', filters.is_active);
   return params;
 }

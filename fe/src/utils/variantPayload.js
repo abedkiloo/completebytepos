@@ -165,8 +165,16 @@ export function buildVariantDraftPatchPayload(variant, draft) {
  */
 export function variantFinancialValidationMessage(
   draft,
-  { label = 'this variant', canEditMrp = false } = {}
+  { label = 'this variant', canEditMrp = false, canEditCost = false, requireCost = false } = {}
 ) {
+  if (requireCost && canEditCost) {
+    const costText = String(draft.cost ?? '').trim();
+    const costNum = parseFloat(costText);
+    if (!costText || !Number.isFinite(costNum) || costNum <= 0) {
+      return `Enter a cost greater than zero for variant ${label}.`;
+    }
+  }
+
   const priceNum = parseFloat(draft.price);
   const costNum = parseFloat(draft.cost);
   if (

@@ -236,6 +236,23 @@ class ProductVariantSerializer(serializers.ModelSerializer):
         cost = data.get('cost')
         if cost is None and self.instance is not None:
             cost = self.instance.cost
+
+        # New variants need a positive cost (or inherit a positive parent cost).
+        if self.instance is None:
+            from products.module_settings import products_show_cost_price
+
+            if products_show_cost_price():
+                product = data.get('product') or self.context.get('parent_product')
+                parent_cost = getattr(product, 'cost', None) if product is not None else None
+                effective = cost if cost is not None else parent_cost
+                if effective is None or Decimal(str(effective)) <= 0:
+                    raise serializers.ValidationError({
+                        'cost': (
+                            'Cost is required and must be greater than zero '
+                            'for each size/colour.'
+                        ),
+                    })
+
         if price is not None and cost is not None and price < cost:
             submitted = set(getattr(self, 'initial_data', {}) or {})
             cost_changed = 'cost' in submitted
@@ -453,6 +470,7 @@ class ProductSerializer(serializers.ModelSerializer):
     profit_amount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     total_value = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     needs_reorder = serializers.BooleanField(read_only=True)
+    cost_missing = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()
     supplier_name_display = serializers.SerializerMethodField()
     supplier_detail = serializers.SerializerMethodField()
@@ -478,7 +496,7 @@ class ProductSerializer(serializers.ModelSerializer):
             'mrp', 'price', 'selling_price', 'cost', 'stock_quantity', 'low_stock_threshold', 'reorder_quantity',
             'unit', 'image', 'image_url', 'description', 
             'supplier', 'supplier_name', 'supplier_name_display', 'supplier_detail', 'supplier_contact',
-            'tax_rate', 'is_taxable', 'track_stock', 'is_low_stock', 'needs_reorder',
+            'tax_rate', 'is_taxable', 'track_stock', 'is_low_stock', 'needs_reorder', 'cost_missing',
             'profit_margin', 'profit_amount', 'total_value', 'is_active',
             'stock_layers',
             'created_at', 'updated_at'
@@ -644,6 +662,30 @@ class ProductSerializer(serializers.ModelSerializer):
             from config.media_urls import absolute_media_url
             return absolute_media_url(self.context.get('request'), obj.image.url)
         return None
+
+    def get_cost_missing(self, obj):
+        """True when tracked stock has catalog cost 0/null (product or any active variant)."""
+        if not getattr(obj, 'track_stock', True):
+            return False
+        cost = getattr(obj, 'cost', None)
+        if cost is None or cost <= 0:
+            return True
+        if not getattr(obj, 'has_variants', False):
+            return False
+        variants = getattr(obj, 'variants', None)
+        if variants is None:
+            return False
+        try:
+            rows = variants.all() if hasattr(variants, 'all') else variants
+        except Exception:
+            return False
+        for v in rows:
+            if not getattr(v, 'is_active', True):
+                continue
+            vc = getattr(v, 'cost', None)
+            if vc is None or vc <= 0:
+                return True
+        return False
 
     def get_stock_layers(self, obj):
         """Open FIFO layers on hand (remaining qty, cost, sell, received).
@@ -848,7 +890,8 @@ class ProductSerializer(serializers.ModelSerializer):
         from products.module_settings import products_show_cost_price, products_show_mrp
         from products.status_rules import strip_product_status_from_write_data
 
-        if not products_show_cost_price():
+        show_cost = products_show_cost_price()
+        if not show_cost:
             data.pop('cost', None)
         if not products_show_mrp():
             data.pop('mrp', None)
@@ -857,6 +900,50 @@ class ProductSerializer(serializers.ModelSerializer):
             from products.units import validate_unit_code
 
             data['unit'] = validate_unit_code(data.get('unit'))
+
+        # Cost > 0 is required for tracked goods when the cost field is in play.
+        # Catalog-only personas (no cost edit) and hidden cost settings are exempt.
+        if show_cost and not catalog_skip:
+            track_stock = data.get('track_stock')
+            if track_stock is None and self.instance is not None:
+                track_stock = self.instance.track_stock
+            if track_stock is None:
+                track_stock = True
+            track_stock = _coerce_boolish(track_stock)
+            cost_in_payload = 'cost' in data or self.instance is None
+            if track_stock and cost_in_payload:
+                cost_val = data.get('cost')
+                if cost_val is None and self.instance is not None:
+                    cost_val = self.instance.cost
+                if cost_val is None or Decimal(str(cost_val)) <= 0:
+                    if not has_variants:
+                        raise serializers.ValidationError({
+                            'cost': (
+                                'Cost is required and must be greater than zero '
+                                'for stocked products.'
+                            ),
+                        })
+                    # Variant parents: allow parent cost 0 only when every
+                    # nested variant row already carries a positive cost.
+                    variants_payload = data.get('variants') or []
+                    if not variants_payload:
+                        raise serializers.ValidationError({
+                            'cost': (
+                                'Cost is required and must be greater than zero '
+                                '(default for sizes/colours), or set cost on each variant.'
+                            ),
+                        })
+                    for row in variants_payload:
+                        if not isinstance(row, dict):
+                            continue
+                        vc = row.get('cost')
+                        if vc is None or Decimal(str(vc or 0)) <= 0:
+                            raise serializers.ValidationError({
+                                'cost': (
+                                    'Each size/colour needs a cost greater than zero, '
+                                    'or set a positive default cost on the product.'
+                                ),
+                            })
 
         data = _apply_product_financial_defaults(data, instance=self.instance)
         return strip_product_status_from_write_data(data)
@@ -1151,6 +1238,7 @@ class ProductListSerializer(serializers.ModelSerializer):
     available_colors_detail = ColorSerializer(source='available_colors', many=True, read_only=True)
     is_low_stock = serializers.SerializerMethodField()
     has_out_of_stock = serializers.SerializerMethodField()
+    cost_missing = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()
     selling_price = serializers.DecimalField(
         source='price', max_digits=10, decimal_places=2, read_only=True
@@ -1167,7 +1255,7 @@ class ProductListSerializer(serializers.ModelSerializer):
             'has_variants', 'variants_count',
             'available_sizes_detail', 'available_colors_detail',
             'mrp', 'price', 'selling_price', 'cost', 'stock_quantity', 'unit', 'track_stock',
-            'is_low_stock', 'has_out_of_stock', 'is_active', 'image_url'
+            'is_low_stock', 'has_out_of_stock', 'cost_missing', 'is_active', 'image_url'
         ]
     
     def get_is_low_stock(self, obj):
@@ -1177,6 +1265,30 @@ class ProductListSerializer(serializers.ModelSerializer):
     def get_has_out_of_stock(self, obj):
         from products.stock_alerts import product_has_out_of_stock
         return product_has_out_of_stock(obj)
+
+    def get_cost_missing(self, obj):
+        """True when tracked stock has catalog cost 0/null (product or any active variant)."""
+        if not getattr(obj, 'track_stock', True):
+            return False
+        cost = getattr(obj, 'cost', None)
+        if cost is None or cost <= 0:
+            return True
+        if not getattr(obj, 'has_variants', False):
+            return False
+        variants = getattr(obj, 'variants', None)
+        if variants is None:
+            return False
+        try:
+            rows = variants.all() if hasattr(variants, 'all') else variants
+        except Exception:
+            return False
+        for v in rows:
+            if not getattr(v, 'is_active', True):
+                continue
+            vc = getattr(v, 'cost', None)
+            if vc is None or vc <= 0:
+                return True
+        return False
     
     def get_category_name(self, obj):
         return obj.category.name if obj.category else None

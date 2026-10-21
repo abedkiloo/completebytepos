@@ -98,9 +98,20 @@ def sellable_unit_price(product, variant=None, override=None) -> Decimal:
 
 def sellable_unit_cost(product, variant=None) -> Decimal:
     """Catalog unit cost (synced from oldest open layer). No per-call layer query."""
+    from decimal import Decimal
+
     if variant is not None and variant.cost is not None:
-        return variant.cost
-    return product.cost
+        return Decimal(str(variant.cost))
+    # Size not picked: do not pretend parent cost 0 is real when variants have costs.
+    if getattr(product, 'has_variants', False):
+        costs = [
+            Decimal(str(v.cost))
+            for v in product.variants.filter(is_active=True).only('cost')
+            if v.cost is not None and Decimal(str(v.cost)) > 0
+        ]
+        if costs:
+            return min(costs)
+    return Decimal(str(getattr(product, 'cost', 0) or 0))
 
 
 def sync_product_cost_from_variants(product) -> Decimal:

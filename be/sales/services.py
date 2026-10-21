@@ -261,6 +261,22 @@ class SaleService(BaseService):
                 variant_id=variant_id,
                 quantity=int(quantity),
             )
+            # Still needed even when catalog cost is mandatory: stock for
+            # has_variants lives on size/colour layers. Selling without a size
+            # calls plan_fifo_allocations(variant_id=None) which only sees empty
+            # *parent* layers → planned cost 0. Mirror the stock-drain path and
+            # plan FIFO across active variants instead.
+            if (
+                variant is None
+                and product.has_variants
+                and is_product_variants_enabled()
+            ):
+                planned_cost = sum(
+                    Decimal(str(c.get('unit_cost') or 0)) * int(c.get('quantity') or 0)
+                    for c in (plan or [])
+                )
+                if planned_cost <= 0:
+                    plan = self._plan_fifo_across_variants(product, int(quantity))
 
             # Cross-layer cart qty → split sale lines (clear receipts) unless
             # the cashier overrode unit price (keep one line, stamp allocations).
@@ -273,6 +289,11 @@ class SaleService(BaseService):
                     qty = int(chunk['quantity'])
                     unit_price = Decimal(str(chunk['unit_sell_price']))
                     unit_cost = Decimal(str(chunk['unit_cost']))
+                    if product.track_stock and unit_cost <= 0:
+                        raise ValidationError(
+                            f'"{product.name}" has no cost on stock layers. '
+                            'Set cost on each size/colour (or purchase with cost) before selling.'
+                        )
                     validated_items.append({
                         'product': product,
                         'variant': variant,
@@ -305,6 +326,13 @@ class SaleService(BaseService):
             else:
                 unit_cost = sellable_unit_cost(product, variant)
 
+            if product.track_stock and Decimal(str(unit_cost or 0)) <= 0:
+                raise ValidationError(
+                    f'"{product.name}" has no cost set. '
+                    'Set cost on the product or its sizes/colours before selling — '
+                    'all goods must have a cost for trading profit.'
+                )
+
             validated_items.append({
                 'product': product,
                 'variant': variant,
@@ -316,6 +344,45 @@ class SaleService(BaseService):
             })
         
         return validated_items
+
+    def _plan_fifo_across_variants(self, product, quantity: int) -> list:
+        """Same order as ``_create_sale_stock_movements`` when no size is selected."""
+        remaining = int(quantity or 0)
+        plan: list = []
+        if remaining <= 0:
+            return plan
+        variants = product.variants.filter(is_active=True, stock_quantity__gt=0).order_by('id')
+        for v in variants:
+            if remaining <= 0:
+                break
+            take = min(remaining, int(v.stock_quantity or 0))
+            if take <= 0:
+                continue
+            plan.extend(
+                plan_fifo_allocations(
+                    product_id=product.id,
+                    variant_id=v.id,
+                    quantity=take,
+                )
+            )
+            remaining -= take
+        if remaining > 0 and not plan:
+            # No open variant stock — catalog fallback via any active variant / parent.
+            plan = plan_fifo_allocations(
+                product_id=product.id,
+                variant_id=None,
+                quantity=int(quantity),
+            )
+        elif remaining > 0:
+            first = product.variants.filter(is_active=True).order_by('id').first()
+            plan.extend(
+                plan_fifo_allocations(
+                    product_id=product.id,
+                    variant_id=first.id if first else None,
+                    quantity=remaining,
+                )
+            )
+        return plan
 
     def _create_sale_stock_movements(
         self,

@@ -6,6 +6,7 @@ import { Input } from '../ui/input';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import ChangeReasonField from '../Approvals/ChangeReasonField';
 import { toast } from '../../utils/toast';
+import { formatCurrency } from '../../utils/formatters';
 import { variantDisplayLabel } from '../../utils/variantCombinations';
 import {
   fetchTrackedStockProducts,
@@ -24,11 +25,19 @@ import CommitConfirm from '../Shared/CommitConfirm';
 import CenterScreenLoader from '../Shared/CenterScreenLoader';
 import { formatSignedQty } from '../../utils/commitConfirm';
 
+const catalogCostOf = (row) => {
+  const raw = row?.cost;
+  if (raw === null || raw === undefined || raw === '') return 0;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0;
+};
+
 const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
   const [formData, setFormData] = useState({
     product_id: product?.id || '',
     quantity: 0,
     notes: '',
+    unit_cost: catalogCostOf(product) > 0 ? catalogCostOf(product) : '',
   });
   const [products, setProducts] = useState([]);
   const [productSearch, setProductSearch] = useState('');
@@ -41,6 +50,9 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
   const [changeReason, setChangeReason] = useState('');
   const [pendingLines, setPendingLines] = useState(null);
   const [showCommitConfirm, setShowCommitConfirm] = useState(false);
+  const [costMode, setCostMode] = useState(
+    catalogCostOf(product) > 0 ? 'catalog' : 'new'
+  );
   const { settings: storeSettings } = useStoreSettings();
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
 
@@ -51,12 +63,20 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
 
   const contextProductId = pickedProduct?.id || formData.product_id || null;
   const variantMode = Boolean(pickedProduct?.has_variants);
+  const productCatalogCost = catalogCostOf(pickedProduct);
+  const hasCatalogCost = productCatalogCost > 0;
 
   useEffect(() => {
     if (!product) {
       loadProducts();
     } else {
-      setFormData((prev) => ({ ...prev, product_id: product.id }));
+      const cost = catalogCostOf(product);
+      setFormData((prev) => ({
+        ...prev,
+        product_id: product.id,
+        unit_cost: cost > 0 ? cost : '',
+      }));
+      setCostMode(cost > 0 ? 'catalog' : 'new');
     }
   }, [product]);
 
@@ -111,11 +131,15 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
 
   const handleProductChange = (e) => {
     const productId = e.target.value;
+    const next = findProductById(products, productId);
+    const cost = catalogCostOf(next);
     setFormData((prev) => ({
       ...prev,
       product_id: productId ? parseInt(productId, 10) : '',
       quantity: 0,
+      unit_cost: cost > 0 ? cost : '',
     }));
+    setCostMode(cost > 0 ? 'catalog' : 'new');
     setError('');
   };
 
@@ -123,9 +147,25 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
       ...prev,
-      [name]: name === 'quantity' || name === 'product_id' ? parseInt(value, 10) || 0 : value,
+      [name]:
+        name === 'quantity' || name === 'product_id'
+          ? parseInt(value, 10) || 0
+          : name === 'unit_cost'
+            ? value
+            : value,
     }));
   };
+
+  const hasPositiveIntake = useMemo(() => {
+    if (variantMode) {
+      return Object.values(variantAdjustments).some((raw) => {
+        if (raw === '' || raw === undefined || raw === null) return false;
+        const qty = parseInt(raw, 10);
+        return !Number.isNaN(qty) && qty > 0;
+      });
+    }
+    return Number(formData.quantity) > 0;
+  }, [variantMode, variantAdjustments, formData.quantity]);
 
   const updateVariantAdjustment = (variantId, value) => {
     setVariantAdjustments((prev) => ({
@@ -149,6 +189,14 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
       if (line.variant_id) {
         payload.variant_id = line.variant_id;
       }
+      if (line.quantity > 0) {
+        if (line.use_catalog_cost) {
+          payload.use_catalog_cost = true;
+        } else if (line.unit_cost != null) {
+          payload.unit_cost = line.unit_cost;
+          payload.use_catalog_cost = false;
+        }
+      }
       if (makerCheckerOn) {
         payload.reason = reason;
       }
@@ -160,6 +208,22 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
     }
 
     return { lastResponse, pendingCount };
+  };
+
+  const resolveIntakeCostFields = () => {
+    const useCatalog = costMode === 'catalog' && hasCatalogCost;
+    if (useCatalog) {
+      return { use_catalog_cost: true, unit_cost: undefined };
+    }
+    const costNum = Number(formData.unit_cost);
+    if (!Number.isFinite(costNum) || costNum <= 0) {
+      return {
+        error: hasCatalogCost
+          ? 'Enter a unit cost greater than zero for stock you are adding.'
+          : 'Cost is missing. Enter the unit cost for the stock you are adding.',
+      };
+    }
+    return { use_catalog_cost: false, unit_cost: costNum };
   };
 
   const handleSubmit = async (e) => {
@@ -225,6 +289,24 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
         ];
       }
 
+      const adding = lines.some((line) => line.quantity > 0);
+      if (adding) {
+        const costFields = resolveIntakeCostFields();
+        if (costFields.error) {
+          setError(costFields.error);
+          return;
+        }
+        lines = lines.map((line) =>
+          line.quantity > 0
+            ? {
+                ...line,
+                use_catalog_cost: costFields.use_catalog_cost,
+                unit_cost: costFields.unit_cost,
+              }
+            : line
+        );
+      }
+
       setPendingLines(lines);
       setShowCommitConfirm(true);
     } catch (err) {
@@ -256,18 +338,29 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
     }
   };
 
-  const commitRows = (pendingLines || []).flatMap((line, index) => [
-    {
-      label: pendingLines.length > 1 ? `Line ${index + 1}` : 'Product',
-      value: line.label || pickedProduct?.name || `Product #${line.product_id}`,
-    },
-    {
-      label: pendingLines.length > 1 ? `Qty Δ ${index + 1}` : 'Quantity change',
-      value: formatSignedQty(line.quantity),
-      tone: line.quantity < 0 ? 'danger' : 'success',
-      emphasis: true,
-    },
-  ]);
+  const commitRows = (pendingLines || []).flatMap((line, index) => {
+    const rows = [
+      {
+        label: pendingLines.length > 1 ? `Line ${index + 1}` : 'Product',
+        value: line.label || pickedProduct?.name || `Product #${line.product_id}`,
+      },
+      {
+        label: pendingLines.length > 1 ? `Qty Δ ${index + 1}` : 'Quantity change',
+        value: formatSignedQty(line.quantity),
+        tone: line.quantity < 0 ? 'danger' : 'success',
+        emphasis: true,
+      },
+    ];
+    if (line.quantity > 0) {
+      rows.push({
+        label: pendingLines.length > 1 ? `Unit cost ${index + 1}` : 'Unit cost',
+        value: line.use_catalog_cost
+          ? `${formatCurrency(productCatalogCost)} (existing)`
+          : formatCurrency(line.unit_cost),
+      });
+    }
+    return rows;
+  });
   if (formData.notes) {
     commitRows.push({ label: 'Notes', value: formData.notes });
   }
@@ -347,6 +440,9 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
                           <p className="text-xs text-muted-foreground">
                             On hand: {variant.stock_quantity ?? 0}
                             {variant.sku ? ` · ${variant.sku}` : ''}
+                            {catalogCostOf(variant) > 0
+                              ? ` · cost ${formatCurrency(catalogCostOf(variant))}`
+                              : ' · cost missing'}
                           </p>
                         </div>
                         <Input
@@ -380,6 +476,63 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
                 </div>
               ) : null
             )}
+
+            {hasPositiveIntake ? (
+              <div className="form-group">
+                <label>Cost for stock being added *</label>
+                {!hasCatalogCost ? (
+                  <p className="mb-2 text-sm text-amber-700">
+                    Catalog cost is zero — enter the cost for these units so valuation and
+                    trading profit stay correct.
+                  </p>
+                ) : null}
+                <div className="mt-1 space-y-2">
+                  <label
+                    className={`flex items-start gap-2 text-sm ${!hasCatalogCost ? 'opacity-50' : ''}`}
+                  >
+                    <input
+                      type="radio"
+                      name="adj_cost_mode"
+                      checked={costMode === 'catalog'}
+                      disabled={!hasCatalogCost}
+                      onChange={() => setCostMode('catalog')}
+                    />
+                    <span>
+                      Keep existing cost
+                      {hasCatalogCost ? (
+                        <span className="text-muted-foreground">
+                          {' '}
+                          ({formatCurrency(productCatalogCost)})
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground"> — none on file</span>
+                      )}
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="adj_cost_mode"
+                      checked={costMode === 'new'}
+                      onChange={() => setCostMode('new')}
+                    />
+                    <span>New cost for this intake</span>
+                  </label>
+                </div>
+                {costMode === 'new' ? (
+                  <input
+                    type="number"
+                    name="unit_cost"
+                    className="mt-2"
+                    value={formData.unit_cost}
+                    onChange={handleChange}
+                    step="0.01"
+                    min="0.01"
+                    placeholder="Unit cost (KES)"
+                  />
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="form-group">
               <label>Notes</label>
