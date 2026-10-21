@@ -116,7 +116,54 @@ class TradingProfitAPITests(ManagerAPITestCase):
         self.assertEqual(summary['gross_profit'], 110.0)
         self.assertEqual(summary['expenses'], 30.0)
         self.assertEqual(summary['net_profit'], 80.0)
+        # Fully paid seed sale
+        self.assertEqual(summary['collected_on_sales'], 200.0)
+        self.assertEqual(summary['unpaid_on_sales'], 0.0)
+        self.assertIn('cash_vs_debt_note', summary)
         self.assertEqual(resp.data['period'], 'month')
+
+    def test_unpaid_sale_included_in_profit_and_shown_as_debt(self):
+        """Trading profit uses full total; unpaid is called out separately."""
+        from sales.models import Customer
+
+        customer = Customer.objects.create(name='Debtor', phone='0700000001')
+        Sale.objects.create(
+            sale_number='S-TP-DEBT',
+            status='completed',
+            sale_type='pos',
+            customer=customer,
+            subtotal=Decimal('100'),
+            total=Decimal('100'),
+            tax_amount=Decimal('0'),
+            payment_method='cash',
+            amount_paid=Decimal('40'),
+            cashier=self.manager_user,
+            occurred_at=timezone.now(),
+        )
+        SaleItem.objects.create(
+            sale=Sale.objects.get(sale_number='S-TP-DEBT'),
+            product=self.product,
+            quantity=1,
+            unit_price=Decimal('100'),
+            unit_cost=Decimal('40'),
+            subtotal=Decimal('100'),
+        )
+        admin = self._admin_client()
+        resp = admin.get('/api/reports/trading_profit/', {'period': 'month'})
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
+        summary = resp.data['summary']
+        self.assertEqual(summary['gross_sales'], 100.0)
+        self.assertEqual(summary['collected_on_sales'], 40.0)
+        self.assertEqual(summary['unpaid_on_sales'], 60.0)
+        # Accrual: full sale 100 − 40 COGS = 60
+        self.assertEqual(summary['net_sales'], 100.0)
+        self.assertEqual(summary['cogs'], 40.0)
+        self.assertEqual(summary['gross_profit'], 60.0)
+        self.assertEqual(summary['net_profit'], 60.0)
+        # Cash: only 40 collected − 40 COGS = 0
+        self.assertEqual(summary['cash_in_period'], 40.0)
+        self.assertEqual(summary['cash_gross_profit'], 0.0)
+        self.assertEqual(summary['cash_net_profit'], 0.0)
 
     def test_week_and_year_periods_ok(self):
         self._seed_period_data()

@@ -229,7 +229,9 @@ export default function TradingProfitReportView() {
 
   const summary = data?.summary;
   const isLoss = summary != null && Number(summary.net_profit) < 0;
+  const isCashLoss = summary != null && Number(summary.cash_net_profit) < 0;
   const TrendIcon = isLoss ? TrendingDown : TrendingUp;
+  const CashTrendIcon = isCashLoss ? TrendingDown : TrendingUp;
   const rangeLabel =
     period === 'custom'
       ? `${dateFrom || '…'} → ${dateTo || '…'}`
@@ -247,7 +249,7 @@ export default function TradingProfitReportView() {
     <PageShell>
       <PageHeader
         title="Trading profit"
-        description="Net sales minus cost of goods sold and expenses — this week, month, year, or any past date range."
+        description="Trading profit (accrual, includes unpaid) and cash trading profit (money collected) — this week, month, year, or any past date range."
       >
         <Button variant="outline" size="sm" onClick={() => navigate('/reports')}>
           <ArrowLeft className="mr-2 h-4 w-4" />
@@ -321,7 +323,7 @@ export default function TradingProfitReportView() {
                   <CardTitle
                     className={cn('text-base', isLoss && 'text-destructive')}
                   >
-                    {isLoss ? 'Net loss' : 'Net profit'}
+                    {isLoss ? 'Trading loss' : 'Trading profit'}
                   </CardTitle>
                   <p
                     className={cn(
@@ -329,7 +331,7 @@ export default function TradingProfitReportView() {
                       isLoss ? 'text-destructive/70' : 'text-muted-foreground'
                     )}
                   >
-                    {rangeLabel} · trading basis
+                    {rangeLabel} · accrual (includes unpaid / debt)
                   </p>
                 </div>
               </div>
@@ -351,12 +353,76 @@ export default function TradingProfitReportView() {
               >
                 Margin {summary.profit_margin}% of net sales
               </p>
+              {Number(summary.unpaid_on_sales) > 0 ? (
+                <p className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-950 dark:text-amber-100">
+                  Includes {formatCurrency(summary.unpaid_on_sales)} still unpaid on these
+                  sales — counted in trading profit, not yet in the till.
+                </p>
+              ) : null}
+            </CardContent>
+          </Card>
+
+          <Card
+            className={cn(
+              isCashLoss && 'border-destructive/25 bg-destructive/[0.04] text-destructive'
+            )}
+          >
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <div
+                  className={cn(
+                    'rounded-md p-2',
+                    isCashLoss
+                      ? 'bg-destructive/10 text-destructive'
+                      : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                  )}
+                >
+                  <CashTrendIcon className="h-5 w-5" />
+                </div>
+                <div>
+                  <CardTitle
+                    className={cn('text-base', isCashLoss && 'text-destructive')}
+                  >
+                    {isCashLoss ? 'Cash trading loss' : 'Cash trading profit'}
+                  </CardTitle>
+                  <p
+                    className={cn(
+                      'text-xs capitalize',
+                      isCashLoss ? 'text-destructive/70' : 'text-muted-foreground'
+                    )}
+                  >
+                    {rangeLabel} · cash collected only
+                  </p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <p
+                className={cn(
+                  'text-3xl font-semibold tabular-nums tracking-tight',
+                  isCashLoss && 'text-destructive'
+                )}
+              >
+                {formatCurrency(summary.cash_net_profit ?? 0)}
+              </p>
+              <p
+                className={cn(
+                  'mt-1 text-xs',
+                  isCashLoss ? 'text-destructive/70' : 'text-muted-foreground'
+                )}
+              >
+                Margin {summary.cash_profit_margin ?? 0}% of cash in
+              </p>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Cash in {formatCurrency(summary.cash_in_period ?? 0)} − same COGS &amp;
+                expenses as trading profit.
+              </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">How we got there</CardTitle>
+              <CardTitle className="text-base">Trading profit (accrual)</CardTitle>
               <p className="text-xs text-muted-foreground">
                 Net sales − COGS − expenses + other income
               </p>
@@ -384,7 +450,55 @@ export default function TradingProfitReportView() {
                 />
               ) : null}
               <Row label="Other income" value={summary.other_income} muted />
-              <Row label="Net profit" value={summary.net_profit} emphasize />
+              <Row label="Trading profit" value={summary.net_profit} emphasize />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Cash trading profit</CardTitle>
+              <p className="text-xs text-muted-foreground">
+                (Collected + debt collections) − COGS − expenses + other income
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-0">
+              <Row
+                label="Collected on these sales"
+                value={summary.collected_on_sales ?? 0}
+              />
+              <Row
+                label="Debt collections this period"
+                value={summary.debt_collections ?? 0}
+                muted
+                to="/customers/debt"
+              />
+              <Row
+                label="Cash in"
+                value={summary.cash_in_period ?? 0}
+                emphasize
+              />
+              <Row
+                label="Still unpaid on these sales"
+                value={summary.unpaid_on_sales ?? 0}
+                emphasize={Number(summary.unpaid_on_sales) > 0}
+              />
+              <Row label="COGS (same as accrual)" value={summary.cogs} muted />
+              <Row
+                label="Cash gross profit"
+                value={summary.cash_gross_profit ?? 0}
+                emphasize
+              />
+              <Row label="Expenses" value={summary.expenses} muted />
+              <Row label="Other income" value={summary.other_income} muted />
+              <Row
+                label="Cash trading profit"
+                value={summary.cash_net_profit ?? 0}
+                emphasize
+              />
+              <p className="pt-3 text-xs text-muted-foreground">
+                {summary.cash_vs_debt_note ||
+                  'When customers still owe, cash trading profit is lower than trading profit.'}
+              </p>
             </CardContent>
           </Card>
 

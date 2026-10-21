@@ -6,13 +6,19 @@ from decimal import Decimal
 from typing import Any
 
 from django.db.models import Count, ExpressionWrapper, F, Q, Sum, Value, fields as dj_fields
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, Greatest, Least
 from django.utils import timezone
 from expenses.models import Expense
 from income.models import Income
 from inventory.models import StockMovement
 from reports.sale_scope import posted_sales
-from sales.models import SaleItem, SaleItemLayerAllocation, SaleRefund, SaleRefundItem
+from sales.models import (
+    CustomerWalletTransaction,
+    SaleItem,
+    SaleItemLayerAllocation,
+    SaleRefund,
+    SaleRefundItem,
+)
 
 COGS_BREAKDOWN_SALE_LIMIT = 200
 
@@ -211,16 +217,30 @@ def compute_trading_profit(*, start, end) -> dict[str, Any]:
     """
     sales_qs, refund_qs = _period_sales_and_refunds(start=start, end=end)
 
+    collected_expr = ExpressionWrapper(
+        Least(F('amount_paid'), F('total')),
+        output_field=_DEC,
+    )
+    unpaid_expr = ExpressionWrapper(
+        Greatest(F('total') - F('amount_paid'), _ZERO),
+        output_field=_DEC,
+    )
     sales_agg = sales_qs.aggregate(
         gross_sales=Sum('total'),
         tax_amount=Sum('tax_amount'),
         discount_amount=Sum('discount_amount'),
         sale_count=Count('id'),
+        # Cash taken on these sales (never above the sale total).
+        collected_on_sales=Sum(collected_expr),
+        # Still owed on these sales (wallet debt + invoice outstanding).
+        unpaid_on_sales=Sum(unpaid_expr),
     )
     sale_count = int(sales_agg['sale_count'] or 0)
     gross_sales = _d(sales_agg['gross_sales'])
     tax_amount = _d(sales_agg['tax_amount'])
     discount_amount = _d(sales_agg['discount_amount'])
+    collected_on_sales = _d(sales_agg['collected_on_sales'])
+    unpaid_on_sales = _d(sales_agg['unpaid_on_sales'])
 
     refund_agg = refund_qs.aggregate(total=Sum('amount'), refund_count=Count('id'))
     refunds_total = _d(refund_agg['total'])
@@ -252,6 +272,17 @@ def compute_trading_profit(*, start, end) -> dict[str, Any]:
         income_qs = income_qs.filter(income_date__lte=end_d)
     other_income = _d(income_qs.aggregate(total=Sum('amount'))['total'])
 
+    # Debt settlements received in the period (cash in — may clear older sales).
+    settlements_qs = CustomerWalletTransaction.objects.filter(
+        source_type='debt_settlement',
+        transaction_type='credit',
+    )
+    if start is not None:
+        settlements_qs = settlements_qs.filter(created_at__gte=start)
+    if end is not None:
+        settlements_qs = settlements_qs.filter(created_at__lte=end)
+    debt_collections = _d(settlements_qs.aggregate(total=Sum('amount'))['total'])
+
     # Purchases for visibility only — not in net profit.
     purchases_qs = StockMovement.objects.filter(movement_type='purchase')
     if start is not None:
@@ -264,9 +295,21 @@ def compute_trading_profit(*, start, end) -> dict[str, Any]:
     net_profit = gross_profit - expenses_total + other_income
     margin = float(net_profit / net_sales * 100) if net_sales > 0 else 0.0
 
+    # Cash trading profit: same COGS/expenses/income, but revenue = cash taken
+    # on period sales + debt settlements received in the period (not unpaid).
+    cash_in_period = collected_on_sales + debt_collections
+    cash_gross_profit = cash_in_period - cogs
+    cash_net_profit = cash_gross_profit - expenses_total + other_income
+    cash_margin = (
+        float(cash_net_profit / cash_in_period * 100) if cash_in_period > 0 else 0.0
+    )
+
     return {
         'basis': 'trading',
         'formula': 'net_sales - cogs - expenses + other_income',
+        'cash_formula': (
+            '(collected_on_sales + debt_collections) - cogs - expenses + other_income'
+        ),
         'gross_sales': _money(gross_sales),
         'refunds': _money(refunds_total),
         'net_sales': _money(net_sales),
@@ -286,6 +329,20 @@ def compute_trading_profit(*, start, end) -> dict[str, Any]:
         'profit_margin': round(margin, 2),
         'sale_count': sale_count,
         'refund_count': refund_count,
+        # Cash vs debt + cash trading profit (same period costs).
+        'collected_on_sales': _money(collected_on_sales),
+        'unpaid_on_sales': _money(unpaid_on_sales),
+        'debt_collections': _money(debt_collections),
+        'cash_in_period': _money(cash_in_period),
+        'cash_gross_profit': _money(cash_gross_profit),
+        'cash_net_profit': _money(cash_net_profit),
+        'cash_profit_margin': round(cash_margin, 2),
+        'cash_vs_debt_note': (
+            'Trading profit (accrual) uses full sale totals including unpaid / debt. '
+            'Cash trading profit uses only money collected on these sales plus debt '
+            'collections received this period, with the same COGS and expenses. '
+            'When customers still owe, cash profit is lower than trading profit.'
+        ),
     }
 
 
