@@ -21,12 +21,17 @@ export function systemQtyAtOpen(line) {
 }
 
 /**
- * True when draft is a valid qty and differs from the snapshot at open.
- * Unchanged drafts cannot be saved yet (see TODO above).
+ * True when draft is a valid qty and differs from the baseline for this line.
+ * Pending: baseline is system qty at open.
+ * Counted (correction): baseline is the saved counted qty.
+ * Unchanged pending drafts cannot be saved yet (see TODO above).
  */
 export function isCountDraftChanged(line, draftRaw) {
   const qty = parseCountDraft(draftRaw);
   if (qty === null) return false;
+  if (line?.status === 'counted') {
+    return qty !== Number(line.counted_qty ?? 0);
+  }
   return qty !== systemQtyAtOpen(line);
 }
 

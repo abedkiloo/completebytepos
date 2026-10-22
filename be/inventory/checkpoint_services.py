@@ -265,41 +265,28 @@ def open_checkpoint(
     return checkpoint
 
 
-@transaction.atomic
-def count_checkpoint_line(
+def _parse_counted_qty(counted_qty) -> int:
+    try:
+        qty = int(counted_qty)
+    except (TypeError, ValueError):
+        raise ValidationError('Enter a valid stock-at-hand quantity.')
+    if qty < 0:
+        raise ValidationError('Stock at hand cannot be negative.')
+    return qty
+
+
+def _apply_checkpoint_stock_delta(
     *,
-    line_id: int,
+    line: StockCheckpointLine,
+    delta: int,
     counted_qty: int,
     user,
     branch=None,
-) -> StockCheckpointLine:
-    try:
-        # of=('self',): Postgres forbids FOR UPDATE on nullable OUTER JOINs
-        # (variant is null for product-level lines).
-        line = (
-            StockCheckpointLine.objects.select_for_update(of=('self',))
-            .select_related('checkpoint', 'product', 'variant')
-            .get(pk=line_id)
-        )
-    except StockCheckpointLine.DoesNotExist:
-        raise ValidationError('Checkpoint line not found.')
-
-    if line.checkpoint.status != StockCheckpoint.STATUS_OPEN:
-        raise ValidationError('Only open checkpoints can be counted.')
-    if line.status == StockCheckpointLine.STATUS_COUNTED:
-        raise ValidationError('This line is already counted.')
-
-    try:
-        counted_qty = int(counted_qty)
-    except (TypeError, ValueError):
-        raise ValidationError('Enter a valid stock-at-hand quantity.')
-    if counted_qty < 0:
-        raise ValidationError('Stock at hand cannot be negative.')
-
+    notes: str,
+):
+    """Adjust on-hand stock and post inventory journal for a checkpoint delta."""
     product = line.product
     variant = line.variant
-    current = _on_hand(product, variant)
-    delta = counted_qty - current
     unit_cost = line.unit_cost_snapshot or _unit_cost(product, variant)
 
     movement = None
@@ -308,12 +295,11 @@ def count_checkpoint_line(
             product_id=product.id,
             variant_id=variant.id if variant else None,
             quantity=delta,
-            notes=f'Stock checkpoint #{line.checkpoint_id}: set on-hand to {counted_qty}',
+            notes=notes,
             user=user,
             branch=branch,
             unit_cost=unit_cost,
         )
-        # Retarget reference for audit trail
         movement.reference = f'CHECKPOINT-{line.checkpoint_id}'
         movement.save(update_fields=['reference'])
 
@@ -321,7 +307,8 @@ def count_checkpoint_line(
     line.status = StockCheckpointLine.STATUS_COUNTED
     line.counted_at = timezone.now()
     line.counted_by = user
-    line.movement = movement
+    if movement is not None:
+        line.movement = movement
     line.save(
         update_fields=[
             'counted_qty',
@@ -337,6 +324,71 @@ def count_checkpoint_line(
     )
     post_inventory_count_journal(line=line, delta=delta, amount=amount, user=user)
     return line
+
+
+@transaction.atomic
+def count_checkpoint_line(
+    *,
+    line_id: int,
+    counted_qty: int,
+    user,
+    branch=None,
+) -> StockCheckpointLine:
+    """
+    Save stock-at-hand for a checkpoint line.
+
+    Pending lines: first count (adjust from current on-hand).
+    Already counted lines on an **open** checkpoint: correct the prior qty
+    (adjust by new − previous counted, so sales after the wrong count are kept).
+    """
+    try:
+        # of=('self',): Postgres forbids FOR UPDATE on nullable OUTER JOINs
+        # (variant is null for product-level lines).
+        line = (
+            StockCheckpointLine.objects.select_for_update(of=('self',))
+            .select_related('checkpoint', 'product', 'variant')
+            .get(pk=line_id)
+        )
+    except StockCheckpointLine.DoesNotExist:
+        raise ValidationError('Checkpoint line not found.')
+
+    if line.checkpoint.status != StockCheckpoint.STATUS_OPEN:
+        raise ValidationError('Only open checkpoints can be counted.')
+
+    counted_qty = _parse_counted_qty(counted_qty)
+
+    # Correct a mistyped count while the checkpoint is still open.
+    if line.status == StockCheckpointLine.STATUS_COUNTED:
+        previous = int(line.counted_qty or 0)
+        if counted_qty == previous:
+            raise ValidationError('New count matches the saved count.')
+        delta = counted_qty - previous
+        return _apply_checkpoint_stock_delta(
+            line=line,
+            delta=delta,
+            counted_qty=counted_qty,
+            user=user,
+            branch=branch,
+            notes=(
+                f'Stock checkpoint #{line.checkpoint_id}: corrected count '
+                f'{previous} → {counted_qty}'
+            ),
+        )
+
+    product = line.product
+    variant = line.variant
+    current = _on_hand(product, variant)
+    delta = counted_qty - current
+    return _apply_checkpoint_stock_delta(
+        line=line,
+        delta=delta,
+        counted_qty=counted_qty,
+        user=user,
+        branch=branch,
+        notes=(
+            f'Stock checkpoint #{line.checkpoint_id}: set on-hand to {counted_qty}'
+        ),
+    )
 
 
 @transaction.atomic

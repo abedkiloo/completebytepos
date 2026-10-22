@@ -51,6 +51,17 @@ describe('isCountDraftChanged', () => {
     expect(isCountDraftChanged(line, '-3')).toBe(false);
     expect(isCountDraftChanged(line, 'x')).toBe(false);
   });
+
+  it('for counted lines compares against saved counted qty (correction)', () => {
+    const counted = {
+      id: 2,
+      status: 'counted',
+      system_qty_at_open: 10,
+      counted_qty: 5048,
+    };
+    expect(isCountDraftChanged(counted, '5048')).toBe(false);
+    expect(isCountDraftChanged(counted, '548')).toBe(true);
+  });
 });
 
 describe('sortCheckpointLines', () => {

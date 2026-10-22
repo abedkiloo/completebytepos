@@ -194,11 +194,14 @@ export default function StockCheckpointsPage() {
 
   const handleCount = async (line) => {
     const raw = countDrafts[line.id];
+    const correcting = line.status === 'counted';
     // TODO(checkpoint-confirm-unchanged): allow save when qty matches system.
     if (!isCountDraftChanged(line, raw)) {
       reportFormError(
         setFormBanner,
-        'Change the stock at hand before saving (confirming unchanged stock comes later).'
+        correcting
+          ? 'Change the quantity to correct this count.'
+          : 'Change the stock at hand before saving (confirming unchanged stock comes later).'
       );
       return;
     }
@@ -211,11 +214,17 @@ export default function StockCheckpointsPage() {
     try {
       await inventoryAPI.countCheckpointLine(selectedId, line.id, { counted_qty: qty });
       clearFormBanner(setFormBanner);
-      toast.success(`Counted ${line.product_name}`);
+      toast.success(
+        correcting
+          ? `Corrected ${line.product_name} to ${qty}`
+          : `Counted ${line.product_name}`
+      );
       await loadDetail(selectedId);
       await loadList();
       // Keep remaining work at the top after the saved row drops below.
-      requestAnimationFrame(scrollLinesToTop);
+      if (!correcting) {
+        requestAnimationFrame(scrollLinesToTop);
+      }
     } catch (err) {
       reportFormError(setFormBanner, err.response?.data?.error || 'Could not save count');
     } finally {
@@ -446,10 +455,11 @@ export default function StockCheckpointsPage() {
                     </div>
                   ) : null}
                 </div>
-                {detail.status === 'open' && pendingLines.length > 0 ? (
+                {detail.status === 'open' ? (
                   <p className="mb-3 text-xs text-muted-foreground">
-                    Still to count stays on top. Save stays off until you change a quantity
-                    (confirming “same as system” comes later). After save, that row moves below.
+                    Still to count stays on top. After save, that row moves below. Mistyped a
+                    counted line? Change its quantity and click Correct — stock adjusts by the
+                    difference (e.g. 5048 → 548) while this checkpoint is open.
                   </p>
                 ) : null}
 
@@ -472,15 +482,13 @@ export default function StockCheckpointsPage() {
                         </DataTableCell>
                         <DataTableCell align="right">{line.system_qty_at_open}</DataTableCell>
                         <DataTableCell align="right">
-                          {line.status === 'counted' ? (
-                            line.counted_qty
-                          ) : (
+                          {detail.status === 'open' ? (
                             <Input
                               type="number"
                               min={0}
                               className="ml-auto h-9 w-24 text-right"
                               value={countDrafts[line.id] ?? ''}
-                              disabled={busy || detail.status !== 'open'}
+                              disabled={busy}
                               onChange={(e) =>
                                 setCountDrafts((prev) => ({
                                   ...prev,
@@ -488,27 +496,37 @@ export default function StockCheckpointsPage() {
                                 }))
                               }
                             />
+                          ) : (
+                            line.counted_qty ?? line.system_qty_at_open
                           )}
                         </DataTableCell>
                         <DataTableCell align="right">
-                          {line.status === 'counted' ? (
+                          {detail.status === 'open' ? (
+                            <div className="flex flex-col items-end gap-1">
+                              {line.status === 'counted' ? (
+                                <Badge variant="success">Counted</Badge>
+                              ) : null}
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={line.status === 'counted' ? 'outline' : 'default'}
+                                disabled={
+                                  busy || !isCountDraftChanged(line, countDrafts[line.id])
+                                }
+                                title={
+                                  isCountDraftChanged(line, countDrafts[line.id])
+                                    ? undefined
+                                    : line.status === 'counted'
+                                      ? 'Change the quantity to correct'
+                                      : 'Change the quantity to enable save'
+                                }
+                                onClick={() => handleCount(line)}
+                              >
+                                {line.status === 'counted' ? 'Correct' : 'Save count'}
+                              </Button>
+                            </div>
+                          ) : line.status === 'counted' ? (
                             <Badge variant="success">Counted</Badge>
-                          ) : detail.status === 'open' ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              disabled={
-                                busy || !isCountDraftChanged(line, countDrafts[line.id])
-                              }
-                              title={
-                                isCountDraftChanged(line, countDrafts[line.id])
-                                  ? undefined
-                                  : 'Change the quantity to enable save'
-                              }
-                              onClick={() => handleCount(line)}
-                            >
-                              Save count
-                            </Button>
                           ) : (
                             <Badge variant="secondary">Pending</Badge>
                           )}

@@ -385,10 +385,16 @@ class CheckpointServiceGapTests(ManagerAPITestCase):
         count_checkpoint_line(
             line_id=line.id, counted_qty=10, user=self.manager_user
         )
+        # Same qty again is rejected; a different qty corrects the prior count.
         with self.assertRaises(ValidationError):
             count_checkpoint_line(
-                line_id=line.id, counted_qty=9, user=self.manager_user
+                line_id=line.id, counted_qty=10, user=self.manager_user
             )
+        count_checkpoint_line(
+            line_id=line.id, counted_qty=9, user=self.manager_user
+        )
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 9)
 
         cp2 = open_checkpoint(
             title='Qty errors',
