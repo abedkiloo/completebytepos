@@ -28,11 +28,8 @@ import {
   standingLabel,
 } from '../../utils/customerDetail';
 import { getWalletDebtAmount } from '../../utils/walletDisplay';
-import {
-  engagementTierLabel,
-  buyerSegmentLabel,
-  formatPurchaseCount,
-} from '../../utils/customerIntelligence';
+import { formatPurchaseCount } from '../../utils/customerIntelligence';
+import { CustomerClassificationBadges } from './ClassificationBadge';
 import { customerCommitRows } from '../../utils/formCommitSummary';
 import {
   EMPTY_CUSTOMER_FORM,
@@ -345,14 +342,11 @@ export default function CustomerDetailPage() {
       </PageHeader>
 
       <div className="flex flex-wrap items-center gap-2" data-testid="customer-classification">
-        {customer.engagement_tier ? (
-          <Badge variant={customer.engagement_tier === 'buyer' ? 'default' : 'outline'}>
-            {engagementTierLabel(customer.engagement_tier)}
-          </Badge>
-        ) : null}
-        {customer.engagement_tier === 'buyer' && buyerSegmentLabel(customer.buyer_segment) ? (
-          <Badge variant="secondary">{buyerSegmentLabel(customer.buyer_segment)}</Badge>
-        ) : null}
+        <CustomerClassificationBadges
+          engagementTier={customer.engagement_tier}
+          buyerSegment={customer.buyer_segment}
+          size="md"
+        />
         {customer.engagement_tier === 'buyer' && Number(customer.purchase_count) > 0 ? (
           <span className="text-sm text-muted-foreground">
             {formatPurchaseCount(customer.purchase_count)}

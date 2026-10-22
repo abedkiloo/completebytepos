@@ -64,10 +64,9 @@ import {
   ENGAGEMENT_TIERS,
   BUYER_SEGMENT_FILTERS,
   CUSTOMER_RANK_OPTIONS,
-  engagementTierLabel,
   buyerSegmentLabel,
-  formatPurchaseCount,
 } from '../../utils/customerIntelligence';
+import { CustomerClassificationBadges } from './ClassificationBadge';
 import { CustomerWalletBalance } from './CustomerWalletBalance';
 import ReceiveWalletPaymentDialog from './ReceiveWalletPaymentDialog';
 
@@ -434,6 +433,8 @@ const Customers = () => {
                   variant={engagementTier === tier.id ? 'default' : 'outline'}
                   onClick={() => setEngagementTier(tier.id)}
                   aria-pressed={engagementTier === tier.id}
+                  title={tier.tip}
+                  aria-label={`${tier.label}. ${tier.tip}`}
                   data-testid={`customers-tier-${tier.id || 'all'}`}
                 >
                   {tier.label}
@@ -454,6 +455,8 @@ const Customers = () => {
                     variant={buyerSegment === seg.id ? 'default' : 'outline'}
                     onClick={() => setBuyerSegment(seg.id)}
                     aria-pressed={buyerSegment === seg.id}
+                    title={seg.tip}
+                    aria-label={`${seg.label}. ${seg.tip}`}
                     data-testid={`customers-segment-${seg.id || 'any'}`}
                   >
                     {seg.label}
@@ -696,26 +699,13 @@ function CustomerRow({
               {customer.customer_code}
             </span>
           )}
-          <div className="flex flex-wrap items-center gap-1">
-            {customer.engagement_tier ? (
-              <Badge
-                variant={customer.engagement_tier === 'buyer' ? 'default' : 'outline'}
-                className="px-1.5 py-0 text-[10px]"
-              >
-                {engagementTierLabel(customer.engagement_tier)}
-              </Badge>
-            ) : null}
-            {customer.engagement_tier === 'buyer' && buyerSegmentLabel(customer.buyer_segment) ? (
-              <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
-                {buyerSegmentLabel(customer.buyer_segment)}
-              </Badge>
-            ) : null}
-            {customer.engagement_tier === 'buyer' && Number(customer.purchase_count) > 0 ? (
-              <span className="text-[10px] text-muted-foreground">
-                {formatPurchaseCount(customer.purchase_count)}
-              </span>
-            ) : null}
-          </div>
+          <CustomerClassificationBadges
+            engagementTier={customer.engagement_tier}
+            buyerSegment={customer.buyer_segment}
+            purchaseCount={customer.purchase_count}
+            showPurchaseCount
+            size="sm"
+          />
         </div>
       </td>
       <td className="px-4 py-3">

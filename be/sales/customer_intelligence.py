@@ -186,7 +186,7 @@ def segment_label(segment: str) -> str:
         SEGMENT_NONE: 'No purchases',
         SEGMENT_NEW: 'New buyer',
         SEGMENT_ACTIVE: 'Active',
-        SEGMENT_AT_RISK: 'At risk',
+        SEGMENT_AT_RISK: 'Cooling off',
         SEGMENT_DORMANT: 'Dormant',
         SEGMENT_CHAMPION: 'Champion',
     }.get(segment, segment)

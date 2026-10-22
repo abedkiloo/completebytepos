@@ -20,7 +20,7 @@ class Customer(models.Model):
         ('none', 'No purchases'),
         ('new', 'New buyer'),
         ('active', 'Active'),
-        ('at_risk', 'At risk'),
+        ('at_risk', 'Cooling off'),
         ('dormant', 'Dormant'),
         ('champion', 'Champion'),
     ]
