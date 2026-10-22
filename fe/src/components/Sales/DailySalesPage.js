@@ -140,6 +140,81 @@ function tabFromSearchParams(searchParams) {
   return VALID_TABS.includes(tab) ? tab : 'all';
 }
 
+/** Paid vs debt shares of the day's goods sold (for the mix progress bar). */
+export function dailySalesPaidDebtMix(summary) {
+  const total = Math.max(0, Number(summary?.total_sales) || 0);
+  const paid = Math.max(0, Number(summary?.total_paid) || 0);
+  const debt = Math.max(0, Number(summary?.total_debt_incurred) || 0);
+  if (total <= 0) {
+    return { total: 0, paid: 0, debt: 0, paidPct: 0, debtPct: 0 };
+  }
+  const paidPct = Math.min(100, (paid / total) * 100);
+  const debtPct = Math.min(100 - paidPct, (debt / total) * 100);
+  return { total, paid, debt, paidPct, debtPct };
+}
+
+function paymentStatusTone(status) {
+  if (status === 'paid') return 'success';
+  if (status === 'partial') return 'warning';
+  if (status === 'debt') return 'destructive';
+  return 'secondary';
+}
+
+function paymentStatusLabel(status) {
+  if (status === 'paid') return 'Paid';
+  if (status === 'partial') return 'Partial';
+  if (status === 'debt') return 'Debt';
+  return status || '—';
+}
+
+function PaidDebtMixBar({ paidPct, debtPct, paidLabel, debtLabel, className = '' }) {
+  const hasMix = paidPct > 0 || debtPct > 0;
+  return (
+    <div className={className} data-testid="daily-paid-debt-bar">
+      <div
+        className="flex h-3 w-full overflow-hidden rounded-full bg-muted"
+        role="img"
+        aria-label={
+          hasMix
+            ? `Paid ${Math.round(paidPct)} percent, debt ${Math.round(debtPct)} percent`
+            : 'No sales yet'
+        }
+      >
+        {paidPct > 0 ? (
+          <div
+            className="h-full bg-emerald-500 transition-[width]"
+            style={{ width: `${paidPct}%` }}
+            data-testid="daily-paid-segment"
+          />
+        ) : null}
+        {debtPct > 0 ? (
+          <div
+            className="h-full bg-rose-500 transition-[width]"
+            style={{ width: `${debtPct}%` }}
+            data-testid="daily-debt-segment"
+          />
+        ) : null}
+      </div>
+      {(paidLabel || debtLabel) ? (
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+          {paidLabel ? (
+            <span className="inline-flex items-center gap-1.5 font-medium text-emerald-700 dark:text-emerald-400">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
+              {paidLabel}
+            </span>
+          ) : null}
+          {debtLabel ? (
+            <span className="inline-flex items-center gap-1.5 font-medium text-rose-700 dark:text-rose-400">
+              <span className="h-2 w-2 rounded-full bg-rose-500" aria-hidden />
+              {debtLabel}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function DailySalesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialDate = searchParams.get('date') || getTodayDateString();
@@ -186,6 +261,7 @@ export default function DailySalesPage() {
 
   const todayStr = getTodayDateString();
   const isFutureOrToday = date >= todayStr;
+  const paidDebtMix = useMemo(() => dailySalesPaidDebtMix(summary), [summary]);
 
   // Sync date with URL params
   const handleDateChange = (newDate) => {
@@ -495,6 +571,27 @@ export default function DailySalesPage() {
         />
       </div>
 
+      {/* Paid (green) vs debt (rose) share of today's goods sold */}
+      <div className="rounded-xl border bg-card p-3 shadow-xs sm:p-4">
+        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+          <div>
+            <p className="text-sm font-semibold text-foreground">Paid vs debt on goods sold</p>
+            <p className="text-xs text-muted-foreground">
+              Green is money taken at checkout; rose is still on the customer’s account.
+            </p>
+          </div>
+          <p className="text-xs tabular-nums text-muted-foreground">
+            {Math.round(paidDebtMix.paidPct)}% paid · {Math.round(paidDebtMix.debtPct)}% in debt
+          </p>
+        </div>
+        <PaidDebtMixBar
+          paidPct={paidDebtMix.paidPct}
+          debtPct={paidDebtMix.debtPct}
+          paidLabel={`Paid ${formatCurrency(paidDebtMix.paid)}`}
+          debtLabel={`Debt ${formatCurrency(paidDebtMix.debt)}`}
+        />
+      </div>
+
       {/* Cash Flow Reconciliation Strip */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 px-4 py-2.5 text-xs sm:text-sm">
         <div className="flex items-center gap-2">
@@ -729,10 +826,23 @@ export default function DailySalesPage() {
             </DataTableHeader>
             <DataTableBody>
               {orders.map((order) => {
-                const isPaid = order.payment_status === 'paid';
+                const payStatus = order.payment_status;
+                const rowMix = dailySalesPaidDebtMix({
+                  total_sales: order.total,
+                  total_paid: order.paid_amount ?? order.amount_paid,
+                  total_debt_incurred: order.debt_amount,
+                });
+                const debtTaken = Number(order.debt_amount) > 0;
+                const paidUpfront = Number(order.paid_amount ?? order.amount_paid) > 0;
+                const rowTone =
+                  payStatus === 'debt'
+                    ? 'bg-rose-50/70 dark:bg-rose-950/20'
+                    : payStatus === 'partial'
+                      ? 'bg-amber-50/60 dark:bg-amber-950/15'
+                      : '';
 
                 return (
-                  <DataTableRow key={order.id}>
+                  <DataTableRow key={order.id} className={rowTone}>
                     <DataTableCell>
                       <button
                         type="button"
@@ -778,16 +888,28 @@ export default function DailySalesPage() {
                     </DataTableCell>
 
                     <DataTableCell align="right" className="font-semibold">
-                      {formatCurrency(order.total)}
+                      <div>{formatCurrency(order.total)}</div>
+                      <PaidDebtMixBar
+                        className="mt-1.5 min-w-[5.5rem]"
+                        paidPct={rowMix.paidPct}
+                        debtPct={rowMix.debtPct}
+                      />
                     </DataTableCell>
 
-                    <DataTableCell align="right" className={isPaid ? 'text-success font-medium' : ''}>
-                      {formatCurrency(order.paid_amount)}
+                    <DataTableCell
+                      align="right"
+                      className={
+                        paidUpfront
+                          ? 'font-semibold tabular-nums text-emerald-700 dark:text-emerald-400'
+                          : 'text-muted-foreground'
+                      }
+                    >
+                      {paidUpfront ? formatCurrency(order.paid_amount) : '—'}
                     </DataTableCell>
 
                     <DataTableCell align="right">
-                      {Number(order.debt_amount) > 0 ? (
-                        <span className="font-bold text-destructive">
+                      {debtTaken ? (
+                        <span className="font-bold tabular-nums text-rose-700 dark:text-rose-400">
                           {formatCurrency(order.debt_amount)}
                         </span>
                       ) : (
@@ -796,17 +918,18 @@ export default function DailySalesPage() {
                     </DataTableCell>
 
                     <DataTableCell>
-                      <Badge
-                        variant={
-                          ['cancelled', 'rejected'].includes(saleStatusBadgeTone(order))
-                            ? 'destructive'
-                            : ['holding', 'pending'].includes(saleStatusBadgeTone(order))
-                              ? 'warning'
-                              : 'success'
-                        }
-                      >
-                        {saleFinalStatusLabel(order)}
-                      </Badge>
+                      <div className="flex flex-col items-start gap-1">
+                        <Badge variant={paymentStatusTone(payStatus)}>
+                          {paymentStatusLabel(payStatus)}
+                        </Badge>
+                        {['cancelled', 'rejected', 'holding', 'pending'].includes(
+                          saleStatusBadgeTone(order),
+                        ) ? (
+                          <span className="text-[10px] text-muted-foreground">
+                            {saleFinalStatusLabel(order)}
+                          </span>
+                        ) : null}
+                      </div>
                     </DataTableCell>
 
                     <DataTableCell>

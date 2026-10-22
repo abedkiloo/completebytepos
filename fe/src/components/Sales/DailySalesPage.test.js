@@ -9,6 +9,7 @@ import {
   shiftDate,
   formatDateLabel,
   getTodayDateString,
+  dailySalesPaidDebtMix,
 } from './DailySalesPage';
 
 let mockSearchParams = new URLSearchParams();
@@ -176,6 +177,11 @@ jest.mock('../Customers/ReceiveWalletPaymentDialog', () => ({
     ) : null,
 }));
 
+jest.mock('../Inventory/CheckpointMarkersStrip', () => ({
+  __esModule: true,
+  default: () => null,
+}));
+
 jest.mock('../page', () => ({
   __esModule: true,
   PageShell: ({ children }) => <div data-testid="page-shell">{children}</div>,
@@ -339,6 +345,29 @@ describe('DailySales helpers', () => {
     const yesterday = shiftDate(today, -1);
     expect(formatDateLabel(yesterday)).toContain('Yesterday');
   });
+
+  it('computes paid vs debt mix percentages', () => {
+    expect(
+      dailySalesPaidDebtMix({
+        total_sales: '5000',
+        total_paid: '1500',
+        total_debt_incurred: '3500',
+      }),
+    ).toEqual({
+      total: 5000,
+      paid: 1500,
+      debt: 3500,
+      paidPct: 30,
+      debtPct: 70,
+    });
+    expect(dailySalesPaidDebtMix({ total_sales: 0 })).toEqual({
+      total: 0,
+      paid: 0,
+      debt: 0,
+      paidPct: 0,
+      debtPct: 0,
+    });
+  });
 });
 
 describe('DailySalesPage', () => {
@@ -385,9 +414,13 @@ describe('DailySalesPage', () => {
       expect(screen.getByText('Charlie Credit')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('Paid in full')).toBeInTheDocument();
-    expect(screen.getByText('Partial payment')).toBeInTheDocument();
-    expect(screen.getByText('Unpaid')).toBeInTheDocument();
+    expect(screen.getByText('Paid vs debt on goods sold')).toBeInTheDocument();
+    expect(screen.getAllByTestId('daily-paid-debt-bar').length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId('daily-paid-segment').length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId('daily-debt-segment').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Paid').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Partial').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Debt').length).toBeGreaterThan(0);
   });
 
   it('navigates to previous day when Previous Day is clicked', async () => {
