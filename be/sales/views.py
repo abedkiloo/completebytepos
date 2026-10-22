@@ -1024,6 +1024,16 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     audit_module = 'customers'
     ordering = ['name']
     ordering_aliases = {'saved': 'created_at'}
+    # Purchase intelligence ranks (RFM-lite) — name/saved aliases still work via filter.
+    ordering_fields = [
+        'name',
+        'created_at',
+        'purchase_count',
+        'lifetime_sales_value',
+        'last_purchased_at',
+        'engagement_tier',
+        'buyer_segment',
+    ]
 
     @staticmethod
     def _feature_disabled_response(feature_label: str):

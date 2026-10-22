@@ -158,6 +158,22 @@ def _serialize_customer_profile(customer: Customer) -> Dict[str, Any]:
         'total_outstanding': str(invoice_outstanding),
         'total_invoices': customer.total_invoices,
         'standing': standing,
+        'engagement_tier': getattr(customer, 'engagement_tier', None) or 'prospect',
+        'buyer_segment': getattr(customer, 'buyer_segment', None) or 'none',
+        'purchase_count': int(getattr(customer, 'purchase_count', 0) or 0),
+        'lifetime_sales_value': str(
+            _q(getattr(customer, 'lifetime_sales_value', None) or 0)
+        ),
+        'last_purchased_at': (
+            customer.last_purchased_at.isoformat()
+            if getattr(customer, 'last_purchased_at', None)
+            else None
+        ),
+        'first_purchased_at': (
+            customer.first_purchased_at.isoformat()
+            if getattr(customer, 'first_purchased_at', None)
+            else None
+        ),
     }
 
 

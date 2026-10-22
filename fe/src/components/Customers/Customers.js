@@ -62,8 +62,11 @@ import { getWalletDebtAmount } from '../../utils/walletDisplay';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 import {
   ENGAGEMENT_TIERS,
+  BUYER_SEGMENT_FILTERS,
+  CUSTOMER_RANK_OPTIONS,
   engagementTierLabel,
   buyerSegmentLabel,
+  formatPurchaseCount,
 } from '../../utils/customerIntelligence';
 import { CustomerWalletBalance } from './CustomerWalletBalance';
 import ReceiveWalletPaymentDialog from './ReceiveWalletPaymentDialog';
@@ -92,6 +95,7 @@ const Customers = () => {
   const debouncedSearch = useDebouncedValue(searchQuery);
   const [addedOn, setAddedOn] = useState('');
   const [engagementTier, setEngagementTier] = useState('');
+  const [buyerSegment, setBuyerSegment] = useState('');
   const todayStr = getTodayDateString();
 
   // --- Editor / delete confirm state ---
@@ -124,6 +128,9 @@ const Customers = () => {
       if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
       if (addedOn) params.created_on = addedOn;
       if (engagementTier) params.engagement_tier = engagementTier;
+      if (buyerSegment && engagementTier !== 'prospect') {
+        params.buyer_segment = buyerSegment;
+      }
       const response = await customersAPI.list(params);
       if (signal?.aborted) return;
       const data = response.data.results || response.data || [];
@@ -138,11 +145,25 @@ const Customers = () => {
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [debouncedSearch, addedOn, engagementTier, pagination.page, pagination.page_size, ordering]);
+  }, [
+    debouncedSearch,
+    addedOn,
+    engagementTier,
+    buyerSegment,
+    pagination.page,
+    pagination.page_size,
+    ordering,
+  ]);
 
   useEffect(() => {
     setPagination((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
-  }, [debouncedSearch, addedOn, engagementTier]);
+  }, [debouncedSearch, addedOn, engagementTier, buyerSegment]);
+
+  useEffect(() => {
+    if (engagementTier === 'prospect' && buyerSegment) {
+      setBuyerSegment('');
+    }
+  }, [engagementTier, buyerSegment]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -153,7 +174,7 @@ const Customers = () => {
   // --- Derived ---
   const totals = useMemo(
     () => ({
-      count: customers.length,
+      count: pagination.count,
       withDebt: showOutstanding
         ? customers.filter((c) => (c.total_outstanding || 0) > 0).length
         : 0,
@@ -167,7 +188,7 @@ const Customers = () => {
         ? customers.reduce((sum, c) => sum + getWalletDebtAmount(c.wallet_balance), 0)
         : 0,
     }),
-    [customers, showOutstanding, showWallet]
+    [customers, pagination.count, showOutstanding, showWallet]
   );
 
   const tableColumnCount =
@@ -285,7 +306,7 @@ const Customers = () => {
     <PageShell>
         <PageHeader
           title="Customers"
-          description="Manage shoppers, contact details, invoice balances, and POS wallet debt."
+          description="Classify buyers vs registered-only dukas, track contact details, invoice balances, and POS wallet debt."
         >
           {canCreate && (
             <Button onClick={openCreate}>
@@ -413,11 +434,33 @@ const Customers = () => {
                   variant={engagementTier === tier.id ? 'default' : 'outline'}
                   onClick={() => setEngagementTier(tier.id)}
                   aria-pressed={engagementTier === tier.id}
+                  data-testid={`customers-tier-${tier.id || 'all'}`}
                 >
                   {tier.label}
                 </Button>
               ))}
             </div>
+            {engagementTier !== 'prospect' ? (
+              <div
+                className="flex flex-wrap items-center gap-1.5"
+                role="group"
+                aria-label="Buyer segment"
+              >
+                {BUYER_SEGMENT_FILTERS.map((seg) => (
+                  <Button
+                    key={seg.id || 'any-segment'}
+                    type="button"
+                    size="sm"
+                    variant={buyerSegment === seg.id ? 'default' : 'outline'}
+                    onClick={() => setBuyerSegment(seg.id)}
+                    aria-pressed={buyerSegment === seg.id}
+                    data-testid={`customers-segment-${seg.id || 'any'}`}
+                  >
+                    {seg.label}
+                  </Button>
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -448,6 +491,7 @@ const Customers = () => {
           suffix={`${pagination.count} customers`}
           ordering={ordering}
           onOrderingChange={setOrdering}
+          sortOptions={CUSTOMER_RANK_OPTIONS}
           onPageChange={(nextPage) =>
             setPagination((prev) => ({ ...prev, page: nextPage }))
           }
@@ -499,6 +543,9 @@ const Customers = () => {
                       <EmptyState
                         onCreate={canCreate ? openCreate : undefined}
                         searchQuery={searchQuery}
+                        engagementTier={engagementTier}
+                        buyerSegment={buyerSegment}
+                        addedOn={addedOn}
                       />
                     </td>
                   </tr>
@@ -649,7 +696,7 @@ function CustomerRow({
               {customer.customer_code}
             </span>
           )}
-          <div className="flex flex-wrap gap-1">
+          <div className="flex flex-wrap items-center gap-1">
             {customer.engagement_tier ? (
               <Badge
                 variant={customer.engagement_tier === 'buyer' ? 'default' : 'outline'}
@@ -662,6 +709,11 @@ function CustomerRow({
               <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
                 {buyerSegmentLabel(customer.buyer_segment)}
               </Badge>
+            ) : null}
+            {customer.engagement_tier === 'buyer' && Number(customer.purchase_count) > 0 ? (
+              <span className="text-[10px] text-muted-foreground">
+                {formatPurchaseCount(customer.purchase_count)}
+              </span>
             ) : null}
           </div>
         </div>
@@ -763,7 +815,13 @@ function CustomerRow({
   );
 }
 
-function EmptyState({ onCreate, searchQuery }) {
+function EmptyState({
+  onCreate,
+  searchQuery,
+  engagementTier = '',
+  buyerSegment = '',
+  addedOn = '',
+}) {
   if (searchQuery) {
     return (
       <div className="flex flex-col items-center gap-2 text-muted-foreground">
@@ -773,6 +831,54 @@ function EmptyState({ onCreate, searchQuery }) {
       </div>
     );
   }
+
+  if (engagementTier === 'buyer' && buyerSegment) {
+    const seg = buyerSegmentLabel(buyerSegment) || buyerSegment;
+    return (
+      <div className="flex flex-col items-center gap-2 text-muted-foreground">
+        <UsersIcon className="h-8 w-8 opacity-50" />
+        <p className="font-medium text-foreground">No customers in “{seg}”</p>
+        <p className="text-sm">
+          Buyers move into this segment based on how recently and how often they purchase.
+        </p>
+      </div>
+    );
+  }
+
+  if (engagementTier === 'buyer') {
+    return (
+      <div className="flex flex-col items-center gap-2 text-muted-foreground">
+        <UsersIcon className="h-8 w-8 opacity-50" />
+        <p className="font-medium text-foreground">No buyers yet</p>
+        <p className="text-sm">
+          Customers who complete a sale from Omuwenga show up here as buyers.
+        </p>
+      </div>
+    );
+  }
+
+  if (engagementTier === 'prospect') {
+    return (
+      <div className="flex flex-col items-center gap-2 text-muted-foreground">
+        <UsersIcon className="h-8 w-8 opacity-50" />
+        <p className="font-medium text-foreground">No registered-only customers</p>
+        <p className="text-sm">
+          Everyone here has already bought — switch to All customers or Bought from Omuwenga.
+        </p>
+      </div>
+    );
+  }
+
+  if (addedOn) {
+    return (
+      <div className="flex flex-col items-center gap-2 text-muted-foreground">
+        <UsersIcon className="h-8 w-8 opacity-50" />
+        <p className="font-medium text-foreground">No customers added on this date</p>
+        <p className="text-sm">Clear the date filter to see the full list.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col items-center gap-3 text-muted-foreground">
       <UsersIcon className="h-10 w-10 opacity-40" />
