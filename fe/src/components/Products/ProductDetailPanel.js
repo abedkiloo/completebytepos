@@ -15,6 +15,7 @@ import {
 import { resolveProductDetailVisibility } from '../../utils/productAccess';
 import { proposedPendingCost } from '../../utils/makerChecker';
 import PendingApprovalBadges from '../Approvals/PendingApprovalBadges';
+import { ProductImageThumb } from '../Shared/ProductImageLightbox';
 import StockHistoryModal from '../Inventory/StockHistoryModal';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -174,10 +175,13 @@ export default function ProductDetailPanel({
             <>
               <div className="flex gap-4">
                 {imageSrc ? (
-                  <img
+                  <ProductImageThumb
                     src={imageSrc}
                     alt={product.name}
-                    className="h-20 w-20 shrink-0 rounded-md border object-cover"
+                    title={product.name}
+                    subtitle={product.sku || undefined}
+                    meta={product.category_name || product.category?.name || undefined}
+                    size="lg"
                   />
                 ) : null}
                 <div className="min-w-0 flex-1">

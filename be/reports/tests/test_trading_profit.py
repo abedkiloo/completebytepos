@@ -532,3 +532,314 @@ class TradingProfitAPITests(ManagerAPITestCase):
         )
         breakdown = compute_cogs_breakdown(start=None, end=None)
         self.assertEqual(breakdown['cogs'], 0.0)
+
+    def test_cogs_breakdown_layer_allocation_and_catalog_paths(self):
+        """Cover layer allocation, catalog fallback, and zero-stamped concerns."""
+        from inventory.models import StockLayer
+        from reports.trading_profit import _as_date, _unit_cost_missing, compute_cogs_breakdown
+        from sales.models import SaleItemLayerAllocation
+
+        self.assertTrue(_unit_cost_missing(None))
+        self.assertTrue(_unit_cost_missing(Decimal('0')))
+        self.assertFalse(_unit_cost_missing(Decimal('1')))
+        naive = timezone.now().replace(tzinfo=None)
+        self.assertEqual(_as_date(naive), naive.date())
+        self.assertEqual(_as_date('2026-01-15'), '2026-01-15')
+
+        sale = Sale.objects.create(
+            sale_number='S-TP-ALLOC',
+            status='completed',
+            subtotal=Decimal('100'),
+            total=Decimal('100'),
+            amount_paid=Decimal('100'),
+            cashier=self.manager_user,
+            occurred_at=timezone.now(),
+        )
+        item_alloc = SaleItem.objects.create(
+            sale=sale,
+            product=self.product,
+            quantity=1,
+            unit_price=Decimal('50'),
+            unit_cost=Decimal('0'),
+            subtotal=Decimal('50'),
+        )
+        item_catalog = SaleItem.objects.create(
+            sale=sale,
+            product=self.product,
+            quantity=1,
+            unit_price=Decimal('50'),
+            unit_cost=None,
+            subtotal=Decimal('50'),
+        )
+        layer = StockLayer.objects.create(
+            product=self.product,
+            qty_received=10,
+            qty_remaining=10,
+            unit_cost=Decimal('22'),
+            unit_sell_price=Decimal('50'),
+            received_at=timezone.now(),
+        )
+        SaleItemLayerAllocation.objects.create(
+            sale_item=item_alloc,
+            stock_layer=layer,
+            quantity=1,
+            unit_cost=Decimal('22'),
+            unit_sell_price=Decimal('50'),
+        )
+        # Force catalog path for the null-cost line (no movement / alloc).
+        self.product.cost = Decimal('18')
+        self.product.save(update_fields=['cost'])
+
+        breakdown = compute_cogs_breakdown(start=None, end=None)
+        row = next(s for s in breakdown['sales'] if s['sale_number'] == 'S-TP-ALLOC')
+        sources = {line['source'] for line in row['lines']}
+        self.assertIn('layer_allocation', sources)
+        self.assertTrue(sources & {'catalog', 'legacy_pending', 'stock_movement'})
+        self.assertTrue(row['concerns'] or row['cogs'] > 0)
+
+    def test_cogs_breakdown_refund_catalog_fallback(self):
+        from reports.trading_profit import compute_cogs_breakdown
+
+        sale = Sale.objects.create(
+            sale_number='S-TP-REF-CAT',
+            status='completed',
+            subtotal=Decimal('100'),
+            total=Decimal('100'),
+            amount_paid=Decimal('100'),
+            cashier=self.manager_user,
+            occurred_at=timezone.now(),
+        )
+        line = SaleItem.objects.create(
+            sale=sale,
+            product=self.product,
+            quantity=1,
+            unit_price=Decimal('100'),
+            unit_cost=None,
+            subtotal=Decimal('100'),
+        )
+        refund = SaleRefund.objects.create(
+            sale=sale,
+            refund_type='partial',
+            amount=Decimal('100'),
+            reason='Return',
+            refunded_by=self.manager_user,
+        )
+        SaleRefundItem.objects.create(
+            refund=refund,
+            sale_item=line,
+            product=self.product,
+            quantity=1,
+            unit_price=Decimal('100'),
+            subtotal=Decimal('100'),
+        )
+        self.product.cost = Decimal('35')
+        self.product.save(update_fields=['cost'])
+        breakdown = compute_cogs_breakdown(start=None, end=None)
+        ref = next(r for r in breakdown['refunds'] if r['sale_number'] == 'S-TP-REF-CAT')
+        self.assertGreaterEqual(ref['cogs_restored'], 0.0)
+
+    def test_cash_and_accrual_profit_fields_present(self):
+        self._seed_period_data()
+        admin = self._admin_client()
+        resp = admin.get('/api/reports/trading_profit/', {'period': 'month'})
+        self.assertEqual(resp.status_code, 200)
+        summary = resp.data['summary']
+        for key in (
+            'net_profit',
+            'cash_net_profit',
+            'cash_gross_profit',
+            'collected_on_sales',
+            'unpaid_on_sales',
+            'debt_collections',
+            'cash_in_period',
+            'cash_formula',
+        ):
+            self.assertIn(key, summary)
+
+    def test_cogs_zero_stamp_no_catalog_flags_concern(self):
+        """unit_cost=0 with catalog 0 → concern that cost is missing."""
+        from reports.trading_profit import compute_cogs_breakdown
+
+        self.product.cost = Decimal('0')
+        self.product.save(update_fields=['cost'])
+        sale = Sale.objects.create(
+            sale_number='S-TP-ZERO-COST',
+            status='completed',
+            subtotal=Decimal('50'),
+            total=Decimal('50'),
+            amount_paid=Decimal('50'),
+            cashier=self.manager_user,
+            occurred_at=timezone.now(),
+        )
+        SaleItem.objects.create(
+            sale=sale,
+            product=self.product,
+            quantity=1,
+            unit_price=Decimal('50'),
+            unit_cost=Decimal('0'),
+            subtotal=Decimal('50'),
+        )
+        breakdown = compute_cogs_breakdown(start=None, end=None)
+        row = next(s for s in breakdown['sales'] if s['sale_number'] == 'S-TP-ZERO-COST')
+        self.assertTrue(any(line.get('cost_missing') for line in row['lines']))
+        self.assertTrue(row['concerns'])
+
+    def test_cogs_all_null_lines_legacy_movement_bucket(self):
+        """All lines unresolved + orphan movement total → legacy_movement concern row."""
+        from inventory.models import StockMovement
+        from reports.trading_profit import compute_cogs_breakdown
+
+        orphan = Product.objects.create(
+            name='Orphan Move',
+            sku='TP-ORPH',
+            category=self.cat,
+            price=Decimal('10'),
+            cost=Decimal('0'),
+            stock_quantity=5,
+            track_stock=True,
+            is_active=True,
+        )
+        self.product.cost = Decimal('0')
+        self.product.save(update_fields=['cost'])
+        sale = Sale.objects.create(
+            sale_number='S-TP-LEGACY-ALL',
+            status='completed',
+            subtotal=Decimal('80'),
+            total=Decimal('80'),
+            amount_paid=Decimal('80'),
+            cashier=self.manager_user,
+            occurred_at=timezone.now(),
+        )
+        SaleItem.objects.create(
+            sale=sale,
+            product=self.product,
+            quantity=2,
+            unit_price=Decimal('40'),
+            unit_cost=None,
+            subtotal=Decimal('80'),
+        )
+        # Movement for a different product on the same sale ref → lines stay
+        # legacy_pending while mov_for_sale still has a positive total.
+        StockMovement.objects.create(
+            product=orphan,
+            movement_type='sale',
+            quantity=-2,
+            unit_cost=Decimal('12'),
+            total_cost=Decimal('24'),
+            reference='S-TP-LEGACY-ALL',
+            user=self.manager_user,
+        )
+        breakdown = compute_cogs_breakdown(start=None, end=None)
+        row = next(s for s in breakdown['sales'] if s['sale_number'] == 'S-TP-LEGACY-ALL')
+        sources = {line['source'] for line in row['lines']}
+        self.assertIn('legacy_movement', sources)
+        self.assertTrue(any('stock movements' in c.lower() for c in row['concerns']))
+
+    def test_refund_zero_cost_no_catalog(self):
+        from reports.trading_profit import compute_cogs_breakdown
+
+        self.product.cost = Decimal('0')
+        self.product.save(update_fields=['cost'])
+        sale = Sale.objects.create(
+            sale_number='S-TP-REF-ZERO',
+            status='completed',
+            subtotal=Decimal('40'),
+            total=Decimal('40'),
+            amount_paid=Decimal('40'),
+            cashier=self.manager_user,
+            occurred_at=timezone.now(),
+        )
+        line = SaleItem.objects.create(
+            sale=sale,
+            product=self.product,
+            quantity=1,
+            unit_price=Decimal('40'),
+            unit_cost=Decimal('0'),
+            subtotal=Decimal('40'),
+        )
+        refund = SaleRefund.objects.create(
+            sale=sale,
+            refund_type='partial',
+            amount=Decimal('40'),
+            reason='Zero cost return',
+            refunded_by=self.manager_user,
+        )
+        SaleRefundItem.objects.create(
+            refund=refund,
+            sale_item=line,
+            product=self.product,
+            quantity=1,
+            unit_price=Decimal('40'),
+            subtotal=Decimal('40'),
+        )
+        breakdown = compute_cogs_breakdown(start=None, end=None)
+        ref = next(r for r in breakdown['refunds'] if r['sale_number'] == 'S-TP-REF-ZERO')
+        self.assertEqual(ref['cogs_restored'], 0.0)
+
+    def test_cogs_variant_catalog_and_refund_variant(self):
+        from products.models import ProductVariant, Size
+        from reports.trading_profit import compute_cogs_breakdown
+
+        size = Size.objects.create(name='L', code='L', is_active=True)
+        self.product.has_variants = True
+        self.product.save(update_fields=['has_variants'])
+        variant = ProductVariant.objects.create(
+            product=self.product,
+            size=size,
+            sku='TP-1-L',
+            price=Decimal('120'),
+            cost=Decimal('55'),
+            stock_quantity=5,
+            is_active=True,
+        )
+        sale = Sale.objects.create(
+            sale_number='S-TP-VAR-CAT',
+            status='completed',
+            subtotal=Decimal('120'),
+            total=Decimal('120'),
+            amount_paid=Decimal('120'),
+            cashier=self.manager_user,
+            occurred_at=timezone.now(),
+        )
+        line = SaleItem.objects.create(
+            sale=sale,
+            product=self.product,
+            variant=variant,
+            quantity=1,
+            unit_price=Decimal('120'),
+            unit_cost=None,
+            subtotal=Decimal('120'),
+        )
+        refund = SaleRefund.objects.create(
+            sale=sale,
+            refund_type='partial',
+            amount=Decimal('120'),
+            reason='Size exchange',
+            refunded_by=self.manager_user,
+        )
+        SaleRefundItem.objects.create(
+            refund=refund,
+            sale_item=line,
+            product=self.product,
+            quantity=1,
+            unit_price=Decimal('120'),
+            subtotal=Decimal('120'),
+        )
+        breakdown = compute_cogs_breakdown(start=None, end=None)
+        row = next(s for s in breakdown['sales'] if s['sale_number'] == 'S-TP-VAR-CAT')
+        self.assertTrue(any(line['source'] == 'catalog' for line in row['lines']))
+        ref = next(r for r in breakdown['refunds'] if r['sale_number'] == 'S-TP-VAR-CAT')
+        self.assertGreater(ref['cogs_restored'], 0)
+
+    def test_resolve_bounds_clamps_open_ended_end(self):
+        from reports.trading_profit import _resolve_bounds, trading_profit_for_request
+
+        class _Req:
+            query_params = {'date_from': '2020-01-01'}
+            GET = query_params
+
+        start, end, period, label = _resolve_bounds(_Req())
+        self.assertIsNotNone(end)
+        self.assertEqual(period, 'custom')
+        payload = trading_profit_for_request(_Req())
+        self.assertIn('summary', payload)

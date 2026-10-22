@@ -907,6 +907,16 @@ class SaleService(BaseService):
                 import logging
                 logger = logging.getLogger(__name__)
                 logger.error(f"Error creating journal entry for sale: {e}")
+            try:
+                from sales.customer_intelligence import on_sale_completed
+
+                on_sale_completed(sale)
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception(
+                    'Customer purchase intelligence refresh failed for sale %s',
+                    sale.sale_number,
+                )
         
         return sale
     
@@ -1210,6 +1220,18 @@ class SaleService(BaseService):
         sale.amount_paid = payment_result['amount_paid_recorded']
         sale.change = payment_result['change']
         sale.save(update_fields=['customer', 'amount_paid', 'change', 'updated_at'])
+
+        # Purchase intelligence (buyer vs prospect + RFM-lite) — O(1) denormalized.
+        if sale.status == 'completed':
+            try:
+                from sales.customer_intelligence import on_sale_completed
+
+                on_sale_completed(sale)
+            except Exception:
+                logger.exception(
+                    'Customer purchase intelligence refresh failed for sale %s',
+                    getattr(sale, 'sale_number', sale.pk),
+                )
 
         # One customer SMS on final sale (includes balance if they still owe).
         # Debt from this sale is covered here — no separate "debt increase" SMS.

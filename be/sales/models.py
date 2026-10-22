@@ -12,6 +12,18 @@ class Customer(models.Model):
         ('individual', 'Individual'),
         ('business', 'Business'),
     ]
+    ENGAGEMENT_TIER_CHOICES = [
+        ('prospect', 'Registered only'),
+        ('buyer', 'Has bought from Omuwenga'),
+    ]
+    BUYER_SEGMENT_CHOICES = [
+        ('none', 'No purchases'),
+        ('new', 'New buyer'),
+        ('active', 'Active'),
+        ('at_risk', 'At risk'),
+        ('dormant', 'Dormant'),
+        ('champion', 'Champion'),
+    ]
     
     name = models.CharField(max_length=200, db_index=True)
     customer_code = models.CharField(max_length=50, unique=True, editable=False, db_index=True)
@@ -94,6 +106,34 @@ class Customer(models.Model):
         ],
         help_text='Customer wallet balance (positive = credit, negative = debt/amount owed). Range: -99,999,999.99 to 99,999,999.99'
     )
+    # Denormalized purchase intelligence (refreshed on sale complete — not at list time).
+    engagement_tier = models.CharField(
+        max_length=20,
+        choices=ENGAGEMENT_TIER_CHOICES,
+        default='prospect',
+        db_index=True,
+        help_text='prospect = registered only; buyer = has completed a purchase from Omuwenga.',
+    )
+    buyer_segment = models.CharField(
+        max_length=20,
+        choices=BUYER_SEGMENT_CHOICES,
+        default='none',
+        db_index=True,
+        help_text='RFM-lite segment for buyers (new/active/at_risk/dormant/champion).',
+    )
+    purchase_count = models.PositiveIntegerField(
+        default=0,
+        help_text='Completed sales count (excludes fully refunded).',
+    )
+    lifetime_sales_value = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text='Sum of completed sale totals for this customer.',
+    )
+    first_purchased_at = models.DateTimeField(null=True, blank=True)
+    last_purchased_at = models.DateTimeField(null=True, blank=True)
+    intelligence_updated_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -110,6 +150,8 @@ class Customer(models.Model):
             models.Index(fields=['phone']),
             models.Index(fields=['email']),
             models.Index(fields=['is_active']),
+            models.Index(fields=['engagement_tier', 'buyer_segment']),
+            models.Index(fields=['engagement_tier', 'last_purchased_at']),
         ]
     
     def save(self, *args, **kwargs):

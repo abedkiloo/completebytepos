@@ -1164,6 +1164,17 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         
         if customer_type:
             queryset = queryset.filter(customer_type=customer_type)
+
+        engagement_tier = (self.request.query_params.get('engagement_tier') or '').strip()
+        if engagement_tier in ('buyer', 'prospect'):
+            queryset = queryset.filter(engagement_tier=engagement_tier)
+
+        buyer_segment = (self.request.query_params.get('buyer_segment') or '').strip()
+        if buyer_segment:
+            from sales.customer_intelligence import BUYER_SEGMENTS
+
+            if buyer_segment in BUYER_SEGMENTS:
+                queryset = queryset.filter(buyer_segment=buyer_segment)
         
         if search:
             try:

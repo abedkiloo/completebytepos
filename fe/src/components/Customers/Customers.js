@@ -60,6 +60,11 @@ import {
 } from '../../utils/customerDisplay';
 import { getWalletDebtAmount } from '../../utils/walletDisplay';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
+import {
+  ENGAGEMENT_TIERS,
+  engagementTierLabel,
+  buyerSegmentLabel,
+} from '../../utils/customerIntelligence';
 import { CustomerWalletBalance } from './CustomerWalletBalance';
 import ReceiveWalletPaymentDialog from './ReceiveWalletPaymentDialog';
 
@@ -86,6 +91,7 @@ const Customers = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearch = useDebouncedValue(searchQuery);
   const [addedOn, setAddedOn] = useState('');
+  const [engagementTier, setEngagementTier] = useState('');
   const todayStr = getTodayDateString();
 
   // --- Editor / delete confirm state ---
@@ -117,6 +123,7 @@ const Customers = () => {
       }, ordering);
       if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
       if (addedOn) params.created_on = addedOn;
+      if (engagementTier) params.engagement_tier = engagementTier;
       const response = await customersAPI.list(params);
       if (signal?.aborted) return;
       const data = response.data.results || response.data || [];
@@ -131,11 +138,11 @@ const Customers = () => {
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [debouncedSearch, addedOn, pagination.page, pagination.page_size, ordering]);
+  }, [debouncedSearch, addedOn, engagementTier, pagination.page, pagination.page_size, ordering]);
 
   useEffect(() => {
     setPagination((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
-  }, [debouncedSearch, addedOn]);
+  }, [debouncedSearch, addedOn, engagementTier]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -397,6 +404,20 @@ const Customers = () => {
                 <X className="h-4 w-4" />
               </Button>
             )}
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Purchase tier">
+              {ENGAGEMENT_TIERS.map((tier) => (
+                <Button
+                  key={tier.id || 'all'}
+                  type="button"
+                  size="sm"
+                  variant={engagementTier === tier.id ? 'default' : 'outline'}
+                  onClick={() => setEngagementTier(tier.id)}
+                  aria-pressed={engagementTier === tier.id}
+                >
+                  {tier.label}
+                </Button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -621,13 +642,28 @@ function CustomerRow({
       onClick={onView}
     >
       <td className="px-4 py-3">
-        <div className="flex flex-col">
+        <div className="flex flex-col gap-1">
           <span className="font-medium text-foreground">{customer.name}</span>
           {showCustomerCode && customer.customer_code && (
             <span className="font-mono text-xs text-muted-foreground">
               {customer.customer_code}
             </span>
           )}
+          <div className="flex flex-wrap gap-1">
+            {customer.engagement_tier ? (
+              <Badge
+                variant={customer.engagement_tier === 'buyer' ? 'default' : 'outline'}
+                className="px-1.5 py-0 text-[10px]"
+              >
+                {engagementTierLabel(customer.engagement_tier)}
+              </Badge>
+            ) : null}
+            {customer.engagement_tier === 'buyer' && buyerSegmentLabel(customer.buyer_segment) ? (
+              <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                {buyerSegmentLabel(customer.buyer_segment)}
+              </Badge>
+            ) : null}
+          </div>
         </div>
       </td>
       <td className="px-4 py-3">

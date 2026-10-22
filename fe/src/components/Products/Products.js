@@ -40,6 +40,7 @@ import {
 } from '../../utils/variantStockAlerts';
 import { variantDisplayLabel } from '../../utils/variantCombinations';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
+import { ProductImageThumb } from '../Shared/ProductImageLightbox';
 import ProductForm from './ProductForm';
 import ProductDetailPanel from './ProductDetailPanel';
 import StockCountModal from '../Inventory/StockCountModal';
@@ -1392,11 +1393,13 @@ function ProductThumb({ product }) {
   const imageSrc = resolveMediaUrl(product.image_url || product.image);
   if (imageSrc) {
     return (
-      <img
+      <ProductImageThumb
         src={imageSrc}
         alt={product.name}
-        className="h-10 w-10 shrink-0 rounded-md border bg-muted object-cover"
-        loading="lazy"
+        title={product.name}
+        subtitle={product.sku || undefined}
+        meta={product.category_name || product.category?.name || undefined}
+        size="sm"
       />
     );
   }

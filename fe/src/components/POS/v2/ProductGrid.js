@@ -1,5 +1,5 @@
-import React from 'react';
-import { Search, Package, Filter } from 'lucide-react';
+import React, { useState } from 'react';
+import { Search, Package, Filter, Expand } from 'lucide-react';
 
 import { Input } from '../../ui/input';
 import { Button } from '../../ui/button';
@@ -10,6 +10,7 @@ import { cn } from '../../../lib/cn';
 import { isProductOutOfStock } from '../../../utils/productStock';
 import { resolveMediaUrl } from '../../../utils/mediaUrl';
 import PendingApprovalBadges from '../../Approvals/PendingApprovalBadges';
+import ProductImageLightbox from '../../Shared/ProductImageLightbox';
 
 /**
  * Left + centre region of the POS:
@@ -160,51 +161,72 @@ function CategoryChip({ active, onClick, label, badge, icon: Icon, size = 'md' }
 }
 
 function ProductTile({ product, onClick, respectStockLimits = true }) {
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const stock = product.stock_quantity ?? 0;
   const lowStock = product.track_stock && stock > 0 && stock <= (product.low_stock_threshold || 5);
   const outOfStock = respectStockLimits && isProductOutOfStock(product);
+  const imageSrc = resolveMediaUrl(product.image_url || product.image);
 
   return (
-    <button
-      type="button"
-      onClick={outOfStock ? undefined : onClick}
-      disabled={outOfStock}
-      aria-disabled={outOfStock}
+    <div
       className={cn(
         'group relative flex flex-col overflow-hidden rounded-lg border bg-card text-left shadow-sm transition-all',
         outOfStock
           ? 'cursor-not-allowed border-red-300 bg-red-50/80 opacity-90'
           : 'hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md',
-        'focus-visible:-translate-y-0.5 focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
         outOfStock && 'hover:translate-y-0 hover:shadow-sm'
       )}
     >
-      {/* Image placeholder area */}
+      {/* Image: tap opens lightbox; does not add to cart */}
       <div className="relative flex aspect-square w-full items-center justify-center bg-muted">
-        {product.image_url || product.image ? (
-          <img
-            src={resolveMediaUrl(product.image_url || product.image)}
-            alt={product.name}
-            className="h-full w-full object-cover"
-            loading="lazy"
-          />
+        {imageSrc ? (
+          <button
+            type="button"
+            onClick={() => setLightboxOpen(true)}
+            className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            aria-label={`View image of ${product.name}`}
+          >
+            <img
+              src={imageSrc}
+              alt={product.name}
+              className="h-full w-full object-cover"
+              loading="lazy"
+              draggable={false}
+            />
+            <span
+              className="pointer-events-none absolute bottom-2 left-2 flex h-7 w-7 items-center justify-center rounded-md bg-black/45 text-white opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100"
+              aria-hidden
+            >
+              <Expand className="h-3.5 w-3.5" />
+            </span>
+          </button>
         ) : (
           <Package className="h-10 w-10 text-muted-foreground/40" />
         )}
         {outOfStock && (
-          <Badge variant="destructive" className="absolute right-2 top-2">
+          <Badge variant="destructive" className="pointer-events-none absolute right-2 top-2 z-10">
             Out of stock
           </Badge>
         )}
         {!outOfStock && lowStock && (
-          <Badge variant="warning" className="absolute right-2 top-2">
+          <Badge variant="warning" className="pointer-events-none absolute right-2 top-2 z-10">
             Low: {stock}
           </Badge>
         )}
       </div>
 
-      {/* Meta */}
-      <div className="flex flex-1 flex-col gap-1 p-2.5">
+      {/* Meta / add-to-cart hit target */}
+      <button
+        type="button"
+        onClick={outOfStock ? undefined : onClick}
+        disabled={outOfStock}
+        aria-disabled={outOfStock}
+        className={cn(
+          'flex flex-1 flex-col gap-1 p-2.5 text-left',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+          !outOfStock && 'cursor-pointer'
+        )}
+      >
         <div className="flex flex-wrap items-start gap-1">
           <PendingApprovalBadges
             pendingApproval={product.pending_approval}
@@ -222,8 +244,19 @@ function ProductTile({ product, onClick, respectStockLimits = true }) {
         <span className="mt-auto text-base font-semibold text-foreground">
           {formatCurrency(product.price)}
         </span>
-      </div>
-    </button>
+      </button>
+
+      {imageSrc ? (
+        <ProductImageLightbox
+          open={lightboxOpen}
+          onOpenChange={setLightboxOpen}
+          src={imageSrc}
+          alt={product.name}
+          title={product.name}
+          subtitle={product.sku || undefined}
+        />
+      ) : null}
+    </div>
   );
 }
 

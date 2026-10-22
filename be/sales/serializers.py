@@ -48,10 +48,17 @@ class CustomerSerializer(serializers.ModelSerializer):
             'address', 'city', 'county', 'sub_county', 'ward', 'country',
             'tax_id', 'notes', 'owner_name', 'contact_person', 'typical_goods', 'is_active',
             'total_invoices', 'total_outstanding', 'wallet_balance',
+            'engagement_tier', 'buyer_segment', 'purchase_count', 'lifetime_sales_value',
+            'first_purchased_at', 'last_purchased_at', 'intelligence_updated_at',
             'created_by', 'created_by_name',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['customer_code', 'total_invoices', 'total_outstanding', 'wallet_balance', 'created_at', 'updated_at']
+        read_only_fields = [
+            'customer_code', 'total_invoices', 'total_outstanding', 'wallet_balance',
+            'engagement_tier', 'buyer_segment', 'purchase_count', 'lifetime_sales_value',
+            'first_purchased_at', 'last_purchased_at', 'intelligence_updated_at',
+            'created_at', 'updated_at',
+        ]
     
     def validate_name(self, value):
         """Validate customer name"""
@@ -219,6 +226,8 @@ class CustomerListSerializer(serializers.ModelSerializer):
             'email', 'phone', 'latitude', 'longitude',
             'city', 'county', 'sub_county', 'ward', 'country',
             'is_active', 'total_outstanding', 'wallet_balance',
+            'engagement_tier', 'buyer_segment', 'purchase_count',
+            'lifetime_sales_value', 'last_purchased_at',
         ]
 
     def get_total_outstanding(self, obj):
