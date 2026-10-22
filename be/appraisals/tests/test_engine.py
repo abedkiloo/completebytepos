@@ -1,6 +1,7 @@
 from django.test import SimpleTestCase
 
 from appraisals.engine import (
+    apply_bonus_collection_gate,
     daily_star,
     greeting_copy,
     increment_progress_message,
@@ -72,6 +73,44 @@ class AppraisalEngineTests(SimpleTestCase):
         self.assertEqual(almost['bonus'], 2000)
         self.assertEqual(almost['next_bonus'], 6000)
         self.assertEqual(almost['amount_to_next'], 70000)
+
+    def test_bonus_held_when_collections_below_80_percent(self):
+        earned = monthly_bonus(520000, self.template)
+        self.assertEqual(earned['bonus'], 2000)
+        gated = apply_bonus_collection_gate(
+            bonus_result=earned,
+            sold=520000,
+            collected=300000,  # ~58%
+            template=self.template,
+        )
+        self.assertEqual(gated['bonus_earned'], 2000)
+        self.assertEqual(gated['bonus'], 0)
+        self.assertFalse(gated['bonus_qualified'])
+        self.assertTrue(gated['bonus_block_reasons'])
+        self.assertIn('80%', gated['bonus_block_reasons'][0])
+
+        ok = apply_bonus_collection_gate(
+            bonus_result=earned,
+            sold=520000,
+            collected=416000,  # exactly 80%
+            template=self.template,
+        )
+        self.assertEqual(ok['bonus'], 2000)
+        self.assertTrue(ok['bonus_qualified'])
+        self.assertEqual(ok['bonus_block_reasons'], [])
+
+    def test_greeting_mentions_held_bonus(self):
+        today = daily_star(20000, self.template)
+        month = {
+            'official_average': 4.2,
+            'bonus_earned': 2000,
+            'bonus': 0,
+            'bonus_block_reasons': ['held'],
+            'collection_ratio': 0.5,
+            'collection_required_ratio': 0.8,
+        }
+        copy = greeting_copy(today, month, {'four_star_months': 1, 'four_star_months_required': 8})
+        self.assertIn('on hold', copy['detail'].lower())
 
     def test_bonus_not_paid_below_threshold_without_floor_row(self):
         """Sales under the first paid From must not inherit that tier (no unmet fallback)."""

@@ -200,6 +200,7 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
     role_frameworks: policy?.role_frameworks || {},
     bonus_min_stars: num(policy?.bonus_min_stars, 4),
     bonus_cap: num(policy?.bonus_cap, 10000),
+    bonus_min_collection_ratio: num(policy?.bonus_min_collection_ratio, 0.8),
     staff_facing: policy?.staff_facing !== false,
     change_reason: '',
     effective_from: '',
@@ -390,6 +391,10 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
       annual_avg_required: num(form.annual_avg_required, 4),
       bonus_min_stars: bonusMinStars,
       bonus_cap: num(form.bonus_cap, 10000),
+      bonus_min_collection_ratio: Math.min(
+        1,
+        Math.max(0, num(form.bonus_min_collection_ratio, 0.8)),
+      ),
       monthly_bonus_bands: monthlyBonusBands,
       show_year_end_increment: Boolean(form.show_year_end_increment),
       staff_facing: form.staff_facing !== false,
@@ -557,10 +562,13 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
                   {preview?.four_star_bonus_min
                     ? ` (now ${kes(preview.four_star_bonus_min)})`
                     : ''}. Rows below that rating are labels only — Bonus must be 0.
+                  After the month, at least{' '}
+                  {Math.round(num(form.bonus_min_collection_ratio, 0.8) * 100)}% of goods sold
+                  must be collected before bonus is paid (credit sales count toward targets, not cash).
                 </p>
               </div>
               {rolePicker}
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-3">
                 <div>
                   <Label htmlFor="bonus_min_stars">Bonus starts at (★)</Label>
                   <Input
@@ -578,6 +586,22 @@ export default function AppraisalTemplateForm({ policy, saving, onSave }) {
                     type="number"
                     value={form.bonus_cap ?? 10000}
                     onChange={(e) => setField('bonus_cap', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="bonus_min_collection_pct">Collections to pay bonus (%)</Label>
+                  <Input
+                    id="bonus_min_collection_pct"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={Math.round(num(form.bonus_min_collection_ratio, 0.8) * 100)}
+                    onChange={(e) => {
+                      const pct = Number(e.target.value);
+                      const ratio = Number.isFinite(pct) ? pct / 100 : 0.8;
+                      setField('bonus_min_collection_ratio', ratio);
+                    }}
                   />
                 </div>
               </div>

@@ -47,3 +47,34 @@ class AppraisalServiceTests(SalesAPITestCase):
         self.assertTrue(all(day >= '2026-10-15' for day in dates))
         self.assertIn('2026-10-20', dates)
         self.assertNotIn('2026-10-01', dates)
+
+    def test_bonus_held_when_month_collections_below_80_percent(self):
+        """Credit-heavy months earn stars on sales but hold cash bonus until collected."""
+        today = date(2026, 10, 22)
+        self.sales_user.date_joined = timezone.make_aware(datetime(2026, 1, 1, 9, 0))
+        self.sales_user.save(update_fields=['date_joined'])
+        # One large partially paid sale that clears the 4★ month ladder (~520k) at 50% collected.
+        Sale.objects.create(
+            status='completed',
+            payment_method='other',
+            subtotal=Decimal('520000'),
+            tax_amount=Decimal('0'),
+            discount_amount=Decimal('0'),
+            total=Decimal('520000'),
+            amount_paid=Decimal('260000'),
+            cashier=self.sales_user,
+            served_by=self.sales_user,
+            occurred_at=timezone.make_aware(datetime(2026, 10, 10, 12, 0)),
+        )
+        snap = staff_snapshot(self.sales_user, year=2026, today=today)
+        month = snap['month']
+        self.assertEqual(month['sales'], 520000.0)
+        self.assertEqual(month['bonus_earned'], 2000.0)
+        self.assertEqual(month['bonus'], 0.0)
+        self.assertFalse(month['bonus_qualified'])
+        self.assertAlmostEqual(month['collection_ratio'], 0.5)
+        self.assertEqual(month['collection_required_ratio'], 0.80)
+        self.assertTrue(month['bonus_block_reasons'])
+        self.assertIn('80%', month['bonus_block_reasons'][0])
+        detail = (snap.get('greeting') or {}).get('detail') or ''
+        self.assertIn('on hold', detail.lower())

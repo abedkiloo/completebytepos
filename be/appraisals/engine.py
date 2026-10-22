@@ -102,6 +102,73 @@ def monthly_bonus(amount, template: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def apply_bonus_collection_gate(
+    *,
+    bonus_result: dict[str, Any],
+    sold,
+    collected,
+    template: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """
+    Hold cash bonus until enough of the month's goods are collected.
+
+    Stars / ladder stay based on sales; payable ``bonus`` is zeroed when
+    collections / goods-sold is below ``bonus_min_collection_ratio`` (default 80%).
+    """
+    tpl = template or {}
+    required = money(tpl.get('bonus_min_collection_ratio') or '0.80')
+    if required < 0:
+        required = Decimal('0')
+    if required > 1:
+        required = Decimal('1')
+
+    sold_amt = money(sold)
+    collected_amt = money(collected)
+    if collected_amt < 0:
+        collected_amt = Decimal('0')
+    # Never count collections above goods sold for the ratio.
+    if sold_amt > 0 and collected_amt > sold_amt:
+        collected_amt = sold_amt
+
+    if sold_amt <= 0:
+        ratio = Decimal('1')
+        qualified = True
+        shortfall = Decimal('0')
+    else:
+        ratio = collected_amt / sold_amt
+        needed = (sold_amt * required).quantize(Decimal('0.01'))
+        # 1-cent tolerance for money rounding
+        qualified = collected_amt + Decimal('0.01') >= needed
+        shortfall = max(Decimal('0'), needed - collected_amt)
+
+    earned = money(bonus_result.get('bonus'))
+    reasons: list[str] = []
+    payable = earned
+    if earned > 0 and not qualified:
+        payable = Decimal('0')
+        need_pct = int(round(float(required) * 100))
+        have_pct = int(round(float(ratio) * 100))
+        reasons.append(
+            f'Collections are at {have_pct}% of goods you sold this month '
+            f'(need at least {need_pct}%). '
+            f'About KES {shortfall:,.2f} is still outstanding on those sales — '
+            f'bonus is held until collections catch up. '
+            f'Credit sales count toward targets, but cash bonus waits for money in.'
+        )
+
+    out = dict(bonus_result)
+    out['bonus'] = float(payable)
+    out['bonus_earned'] = float(earned)
+    out['bonus_qualified'] = bool(qualified) if earned > 0 else True
+    out['collection_sold'] = float(sold_amt)
+    out['collection_collected'] = float(collected_amt)
+    out['collection_ratio'] = float(ratio)
+    out['collection_required_ratio'] = float(required)
+    out['collection_shortfall'] = float(shortfall)
+    out['bonus_block_reasons'] = reasons
+    return out
+
+
 def monthly_average(star_total, working_days) -> float:
     days = max(1, int(working_days or 1))
     return float(money(star_total) / Decimal(days))
@@ -259,6 +326,15 @@ def greeting_copy(
         four_count = int(year.get('four_star_months') or 0)
         needed = int(year.get('four_star_months_required') or 8)
         detail = f'{detail} {four_count}/{needed} four-star months this year.'
+    reasons = list(month.get('bonus_block_reasons') or [])
+    earned = float(month.get('bonus_earned') or 0)
+    if reasons and earned > 0:
+        ratio = float(month.get('collection_ratio') or 0)
+        need = float(month.get('collection_required_ratio') or 0.8)
+        detail = (
+            f'{detail} Bonus of KES {int(earned):,} is on hold — collections are at '
+            f'{int(round(ratio * 100))}% of goods sold (need {int(round(need * 100))}%).'
+        )
     return {
         'headline': headline,
         'detail': detail,

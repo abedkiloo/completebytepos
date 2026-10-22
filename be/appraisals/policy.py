@@ -25,7 +25,9 @@ CONTRACT_LINE = (
 BONUS_POLICY_LINE = (
     'Monthly bonus starts only at 4 Stars (KES 2,000 base). '
     '4★ sales = that role’s daily target × working days (e.g. 20,000 × 26 = 520,000). '
-    'Cash awards stay the same across roles, up to KES 10,000 at 5 Stars.'
+    'Cash awards stay the same across roles, up to KES 10,000 at 5 Stars. '
+    'After the month, at least 80% of goods sold must be collected before bonus is paid — '
+    'credit sales count toward stars, but cash stays with the customer until they pay.'
 )
 
 DEFAULT_DAILY_BANDS = [
@@ -63,6 +65,8 @@ DEFAULT_TEMPLATE: dict[str, Any] = {
     'annual_avg_required': 4.0,
     'bonus_min_stars': 4.0,
     'bonus_cap': 10000,
+    # Fraction of month goods-sold that must be collected before cash bonus pays.
+    'bonus_min_collection_ratio': 0.80,
     'daily_star_bands': DEFAULT_DAILY_BANDS,
     'monthly_bonus_bands': DEFAULT_BONUS_BANDS,
     'contract_line': CONTRACT_LINE,
@@ -398,6 +402,7 @@ SCORING_KEYS = (
     'annual_avg_required',
     'bonus_min_stars',
     'bonus_cap',
+    'bonus_min_collection_ratio',
     'daily_star_bands',
     'monthly_bonus_bands',
     'sales_basis',
@@ -573,6 +578,12 @@ def normalize_template(raw: Any) -> dict[str, Any]:
         data['bonus_min_stars'] = max(0, _float(raw['bonus_min_stars'], 4))
     if 'bonus_cap' in raw:
         data['bonus_cap'] = max(0, _float(raw['bonus_cap'], 10000))
+    if 'bonus_min_collection_ratio' in raw:
+        ratio = _float(raw['bonus_min_collection_ratio'], 0.80)
+        # Accept 80 or 0.80 from admin forms.
+        if ratio > 1:
+            ratio = ratio / 100.0
+        data['bonus_min_collection_ratio'] = min(1.0, max(0.0, ratio))
     if 'contract_line' in raw:
         data['contract_line'] = str(raw.get('contract_line') or data['contract_line'])
     if 'bonus_policy_line' in raw:

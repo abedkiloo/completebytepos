@@ -9,8 +9,8 @@ from decimal import Decimal
 from typing import Any, Iterable
 
 from django.contrib.auth.models import User
-from django.db.models import Q, Sum
-from django.db.models.functions import Coalesce, TruncDate
+from django.db.models import DecimalField, F, Q, Sum, Value
+from django.db.models.functions import Coalesce, Greatest, Least, TruncDate, TruncMonth
 from django.utils import timezone
 
 from accounts.models import UserProfile
@@ -18,6 +18,7 @@ from reports.sale_scope import posted_sales
 from sales.models import SaleRefund
 
 from .engine import (
+    apply_bonus_collection_gate,
     daily_star,
     greeting_copy,
     increment_progress_message,
@@ -127,6 +128,8 @@ def applied_policy_payload(
         'annual_avg_required': applied.get('annual_avg_required'),
         'bonus_min_stars': applied.get('bonus_min_stars'),
         'bonus_cap': applied.get('bonus_cap'),
+        'bonus_min_collection_ratio': applied.get('bonus_min_collection_ratio', 0.80),
+        'bonus_policy_line': applied.get('bonus_policy_line') or base.get('bonus_policy_line'),
         'daily_star_bands': list(applied.get('daily_star_bands') or []),
         'monthly_bonus_bands': list(applied.get('monthly_bonus_bands') or []),
         'show_year_end_increment': bool(
@@ -170,6 +173,43 @@ def _net_sales_by_day(user_id: int, start: datetime, end: datetime) -> dict:
             continue
         by_day[day] -= row['total'] or Decimal('0')
     return {day: max(Decimal('0'), amount) for day, amount in by_day.items()}
+
+
+def _collections_by_month(user_id: int, start: datetime, end: datetime) -> dict:
+    """
+    Money collected on a staff member's completed sales in the period.
+
+    Uses ``min(amount_paid, total)`` so credit balances do not inflate collections.
+    Fully refunded sales are excluded (same spirit as net sales).
+    """
+    money_field = DecimalField(max_digits=14, decimal_places=2)
+    zero = Value(Decimal('0.00'), output_field=money_field)
+    rows = (
+        posted_sales()
+        .filter(_staff_q(user_id), occurred_at__gte=start, occurred_at__lt=end)
+        .exclude(refund_status='refunded')
+        .annotate(month=TruncMonth('occurred_at'))
+        .values('month')
+        .annotate(
+            collected=Coalesce(
+                Sum(
+                    Least(
+                        Greatest(F('amount_paid'), zero),
+                        Greatest(F('total'), zero),
+                    )
+                ),
+                zero,
+            )
+        )
+    )
+    out: dict = {}
+    for row in rows:
+        month = row['month']
+        if month is None:
+            continue
+        key = (month.year, month.month)
+        out[key] = Decimal(str(row['collected'] or 0))
+    return out
 
 
 def _month_days(year: int, month: int, today, *, include_future: bool) -> Iterable:
@@ -242,6 +282,20 @@ def _cycle_eligible(hire_date, year: int, month: int) -> bool:
     return hire_date <= month_start
 
 
+def _empty_collection_fields(template: dict[str, Any] | None = None) -> dict[str, Any]:
+    required = float((template or {}).get('bonus_min_collection_ratio') or 0.80)
+    return {
+        'bonus_earned': 0.0,
+        'bonus_qualified': True,
+        'collection_sold': 0.0,
+        'collection_collected': 0.0,
+        'collection_ratio': 1.0,
+        'collection_required_ratio': required,
+        'collection_shortfall': 0.0,
+        'bonus_block_reasons': [],
+    }
+
+
 def _build_month(
     *,
     year: int,
@@ -253,6 +307,7 @@ def _build_month(
     hire_date=None,
     base_template=None,
     role_name: str | None = None,
+    collections_by_month: dict | None = None,
 ) -> dict[str, Any]:
     last = monthrange(year, month)[1]
     month_on = datetime(year, month, last).date()
@@ -299,6 +354,15 @@ def _build_month(
     stars_needed = max(Decimal('0'), needed_points - star_total)
     progress = float(min(Decimal('1'), star_total / needed_points)) if needed_points > 0 else 1.0
     bonus = monthly_bonus(month_sales, month_end_applied)
+    collected = Decimal('0')
+    if collections_by_month is not None:
+        collected = Decimal(str(collections_by_month.get((year, month), 0) or 0))
+    bonus = apply_bonus_collection_gate(
+        bonus_result=bonus,
+        sold=month_sales,
+        collected=collected,
+        template=month_end_applied,
+    )
     daily_target = float(month_end_applied.get('daily_target') or 0)
     four_star_days = sum(1 for row in daily_rows if float(row.get('stars') or 0) >= 4)
     return {
@@ -320,11 +384,19 @@ def _build_month(
         'days': daily_rows,
         'stars': bonus['stars'],
         'bonus': bonus['bonus'],
+        'bonus_earned': bonus.get('bonus_earned', bonus['bonus']),
+        'bonus_qualified': bonus.get('bonus_qualified', True),
         'bonus_label': bonus['label'],
         'next_bonus': bonus['next_bonus'],
         'next_bonus_min': bonus['next_min'],
         'amount_to_next_bonus': bonus['amount_to_next'],
         'bonus_progress': bonus['progress'],
+        'collection_sold': bonus.get('collection_sold', float(month_sales)),
+        'collection_collected': bonus.get('collection_collected', 0.0),
+        'collection_ratio': bonus.get('collection_ratio', 1.0),
+        'collection_required_ratio': bonus.get('collection_required_ratio', 0.80),
+        'collection_shortfall': bonus.get('collection_shortfall', 0.0),
+        'bonus_block_reasons': list(bonus.get('bonus_block_reasons') or []),
         'tone': star_tone(official_avg if official_avg else bonus['stars']),
     }
 
@@ -338,6 +410,7 @@ def _build_year(
     hire_date=None,
     base_template=None,
     role_name: str | None = None,
+    collections_by_month: dict | None = None,
 ) -> dict[str, Any]:
     months = []
     averages = []
@@ -373,6 +446,7 @@ def _build_year(
                 'amount_to_next_bonus': empty_bonus['amount_to_next'],
                 'bonus_progress': empty_bonus['progress'],
                 'tone': empty_bonus['tone'],
+                **_empty_collection_fields(template),
             }
         else:
             snapshot = _build_month(
@@ -385,6 +459,7 @@ def _build_year(
                 hire_date=hire_date,
                 base_template=base_template,
                 role_name=role_name,
+                collections_by_month=collections_by_month,
             )
             snapshot.pop('days', None)
         months.append(snapshot)
@@ -448,6 +523,7 @@ def staff_snapshot(user: User, *, year: int | None = None, today=None, template=
     role_name = staff_role_name(user)
     start, end = _year_bounds(year)
     daily_net = _net_sales_by_day(user.id, start, end)
+    collections_by_month = _collections_by_month(user.id, start, end)
     if year < today.year:
         month_today = datetime(year, 12, 31).date()
     elif year > today.year:
@@ -470,6 +546,7 @@ def staff_snapshot(user: User, *, year: int | None = None, today=None, template=
         hire_date=hire_date,
         base_template=base,
         role_name=role_name,
+        collections_by_month=collections_by_month,
     )
     year_snap = _build_year(
         year=year,
@@ -479,6 +556,7 @@ def staff_snapshot(user: User, *, year: int | None = None, today=None, template=
         hire_date=hire_date,
         base_template=base,
         role_name=role_name,
+        collections_by_month=collections_by_month,
     )
     greeting = greeting_copy(
         today_rating,
@@ -550,6 +628,16 @@ def team_snapshots(*, year: int | None = None, today=None, template=None) -> dic
                 'expected_sales': snap['month'].get('expected_sales'),
                 'stars': snap['month']['stars'],
                 'bonus': snap['month']['bonus'],
+                'bonus_earned': snap['month'].get('bonus_earned'),
+                'bonus_qualified': snap['month'].get('bonus_qualified', True),
+                'bonus_block_reasons': snap['month'].get('bonus_block_reasons') or [],
+                'collection_ratio': snap['month'].get('collection_ratio'),
+                'collection_required_ratio': snap['month'].get(
+                    'collection_required_ratio'
+                ),
+                'collection_collected': snap['month'].get('collection_collected'),
+                'collection_sold': snap['month'].get('collection_sold'),
+                'collection_shortfall': snap['month'].get('collection_shortfall'),
                 'official_average': snap['month']['official_average'],
                 'four_star_month': snap['month']['four_star_month'],
                 'four_star_days': snap['month'].get('four_star_days'),

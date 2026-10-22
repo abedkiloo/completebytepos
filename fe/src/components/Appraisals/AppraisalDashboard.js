@@ -133,11 +133,22 @@ function MonthCard({ month, policy }) {
   );
 }
 
-function BonusLadder({ month, bands, bonusMinStars = 4 }) {
+function BonusLadder({ month, bands, bonusMinStars = 4, collectionRequiredRatio = 0.8 }) {
   const sales = Number(month?.sales || 0);
-  const current = Number(month?.bonus || 0);
+  const payable = Number(month?.bonus || 0);
+  const earned = Number(month?.bonus_earned ?? month?.bonus || 0);
   const next = month?.next_bonus;
   const toNext = Number(month?.amount_to_next_bonus || 0);
+  const qualified = month?.bonus_qualified !== false;
+  const collectionRatio = Number(month?.collection_ratio ?? 1);
+  const requiredRatio = Number(
+    month?.collection_required_ratio ?? collectionRequiredRatio ?? 0.8,
+  );
+  const collected = Number(month?.collection_collected || 0);
+  const shortfall = Number(month?.collection_shortfall || 0);
+  const blockReasons = Array.isArray(month?.bonus_block_reasons)
+    ? month.bonus_block_reasons
+    : [];
   const rows = Array.isArray(bands) ? [...bands].sort((a, b) => Number(a.min) - Number(b.min)) : [];
   const paidRows = rows.filter(
     (band) => Number(band.stars || 0) >= Number(bonusMinStars || 4) || Number(band.bonus || 0) > 0,
@@ -150,11 +161,17 @@ function BonusLadder({ month, bands, bonusMinStars = 4 }) {
       <CardContent className="space-y-3">
         <p className="text-xs text-muted-foreground">
           Cash starts at {Number(bonusMinStars || 4)}★ when month sales hit daily target × working days
-          (KES 2,000 base), then steps up to the role cap.
+          (KES 2,000 base), then steps up to the role cap. After the month, at least{' '}
+          {Math.round(requiredRatio * 100)}% of goods sold must be collected before bonus is paid.
         </p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Metric label="Current sales" value={kes(sales)} tone={month?.tone} />
-          <Metric label="Current bonus" value={kes(current)} tone={current ? 'emerald' : 'rose'} />
+          <Metric
+            label={qualified ? 'Payable bonus' : 'Bonus on hold'}
+            value={kes(payable)}
+            hint={!qualified && earned > 0 ? `Earned ${kes(earned)} on sales` : ''}
+            tone={payable ? 'emerald' : 'rose'}
+          />
           <Metric
             label="Next bonus"
             value={toNext > 0 ? kes(next) : 'Max reached'}
@@ -162,6 +179,45 @@ function BonusLadder({ month, bands, bonusMinStars = 4 }) {
             tone={toNext > 0 ? 'amber' : 'gold'}
           />
         </div>
+        <div className="rounded-lg border border-border px-3 py-2" data-testid="appraisal-collections">
+          <div className="flex items-center justify-between gap-2 text-sm">
+            <span className="font-medium text-foreground">Collections vs goods sold</span>
+            <span
+              className={cn(
+                'tabular-nums font-semibold',
+                qualified ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-800 dark:text-amber-200',
+              )}
+            >
+              {Math.round(collectionRatio * 100)}%
+              <span className="font-normal text-muted-foreground">
+                {' '}
+                / {Math.round(requiredRatio * 100)}% needed
+              </span>
+            </span>
+          </div>
+          <AppraisalProgressBar
+            progress={Math.min(1, collectionRatio / Math.max(requiredRatio, 0.01))}
+            tone={qualified ? 'emerald' : 'amber'}
+            label={`${kes(collected)} collected of ${kes(sales)} sold`}
+          />
+        </div>
+        {blockReasons.length > 0 ? (
+          <div
+            className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
+            data-testid="appraisal-bonus-held"
+            role="status"
+          >
+            <p className="font-semibold">Why bonus is not paid yet</p>
+            {blockReasons.map((reason) => (
+              <p key={reason}>{reason}</p>
+            ))}
+            {shortfall > 0 ? (
+              <p className="text-xs opacity-90">
+                Collect about {kes(shortfall)} more on this month’s sales to unlock payment.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         <ol className="space-y-2">
           {(paidRows.length ? paidRows : rows).map((band) => {
             const unlocked = sales >= Number(band.min || 0);
@@ -319,6 +375,7 @@ export default function AppraisalDashboard({ snapshot, dayHref }) {
         month={month}
         bands={rules?.monthly_bonus_bands}
         bonusMinStars={rules?.bonus_min_stars}
+        collectionRequiredRatio={rules?.bonus_min_collection_ratio}
       />
       <SalaryCard year={year} policy={rules} />
       <DayStrip days={month?.days} dayHref={dayHref} />

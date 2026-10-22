@@ -195,7 +195,18 @@ export default function AppraisalTeamBoard({ team, showIncrement }) {
                   </td>
                   <td className="px-3 py-2 tabular-nums">{kes(row.month?.sales)}</td>
                   <td className="px-3 py-2 tabular-nums">{Number(row.month?.official_average || 0).toFixed(2)}</td>
-                  <td className="px-3 py-2 tabular-nums">{kes(row.month?.bonus)}</td>
+                  <td className="px-3 py-2 tabular-nums">
+                    {kes(row.month?.bonus)}
+                    {row.month?.bonus_qualified === false &&
+                    Number(row.month?.bonus_earned || 0) > 0 ? (
+                      <span
+                        className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700"
+                        title={(row.month?.bonus_block_reasons || []).join(' ')}
+                      >
+                        held
+                      </span>
+                    ) : null}
+                  </td>
                   {showIncrement ? (
                     <td className="px-3 py-2">
                       {row.year?.four_star_months}/{row.year?.four_star_months_required}
