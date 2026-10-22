@@ -6,6 +6,7 @@ import { cn } from '../../lib/cn';
 import { Card, CardContent } from '../ui/card';
 import { appraisalTone, kes, starGlyphs } from '../../utils/appraisalStars';
 import AppraisalProgressBar from './AppraisalProgressBar';
+import AppraisalCollectionMix from './AppraisalCollectionMix';
 import AppraisalDailyTips from './AppraisalDailyTips';
 
 function StarPill({ stars, tone, label, emphasis }) {
@@ -90,7 +91,20 @@ export default function AppraisalProgressCard({
           progress={today?.target_progress}
           tone={today?.tone}
           emphasis={emphasis}
-          label={`Today ${kes(today?.sales)} of ${kes(today?.target)} daily target`}
+          label={`Today sales ${kes(today?.sales)} of ${kes(today?.target)} daily target`}
+        />
+        <AppraisalProgressBar
+          progress={today?.collection_target_progress}
+          tone="emerald"
+          emphasis={emphasis}
+          label={`Today collected ${kes(today?.collected)} toward ${kes(today?.target)} daily target`}
+        />
+        <AppraisalCollectionMix
+          sold={today?.sales}
+          collected={today?.collected}
+          requiredRatio={today?.collection_required_ratio ?? month?.collection_required_ratio}
+          emphasis={emphasis}
+          label="Today · paid vs on credit"
         />
         <AppraisalProgressBar
           progress={month?.progress_to_four_star}
@@ -98,6 +112,26 @@ export default function AppraisalProgressCard({
           emphasis={emphasis}
           label={`This month ${Number(month?.official_average || 0).toFixed(2)}/5 toward a 4-star month`}
         />
+        {month?.bonus_qualified === false && Number(month?.bonus_earned || 0) > 0 ? (
+          <p
+            className={cn(
+              'rounded-lg px-3 py-2 text-xs font-semibold',
+              emphasis
+                ? 'bg-amber-400/20 text-amber-50'
+                : 'border border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100',
+            )}
+            data-testid="appraisal-progress-bonus-hold"
+          >
+            {Math.round(
+              Number(
+                month?.uncollected_pct ??
+                  (1 - Number(month?.collection_ratio ?? 1)),
+              ) * 100,
+            )}
+            % of this month’s sales are still on credit — holding the {kes(month?.bonus_earned)} bonus
+            (need {Math.round(Number(month?.collection_required_ratio ?? 0.8) * 100)}% collected).
+          </p>
+        ) : null}
         {showIncrement ? (
           <AppraisalProgressBar
             progress={year?.progress_to_increment}

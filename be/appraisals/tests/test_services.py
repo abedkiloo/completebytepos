@@ -64,7 +64,7 @@ class AppraisalServiceTests(SalesAPITestCase):
             amount_paid=Decimal('260000'),
             cashier=self.sales_user,
             served_by=self.sales_user,
-            occurred_at=timezone.make_aware(datetime(2026, 10, 10, 12, 0)),
+            occurred_at=timezone.make_aware(datetime(2026, 10, 22, 12, 0)),
         )
         snap = staff_snapshot(self.sales_user, year=2026, today=today)
         month = snap['month']
@@ -78,3 +78,11 @@ class AppraisalServiceTests(SalesAPITestCase):
         self.assertIn('80%', month['bonus_block_reasons'][0])
         detail = (snap.get('greeting') or {}).get('detail') or ''
         self.assertIn('on hold', detail.lower())
+        self.assertIn('on credit', detail.lower())
+        day = snap['today']
+        self.assertEqual(day['sales'], 520000.0)
+        self.assertEqual(day['collected'], 260000.0)
+        self.assertEqual(day['debt'], 260000.0)
+        self.assertAlmostEqual(day['uncollected_pct'], 0.5)
+        self.assertAlmostEqual(day['collection_target_progress'], 1.0)
+        self.assertAlmostEqual(month['uncollected_pct'], 0.5)

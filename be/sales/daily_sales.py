@@ -7,11 +7,42 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
 from django.core.paginator import Paginator
-from django.db.models import Count, F, Q, Sum
+from django.db.models import Count, DecimalField, F, Q, Sum, Value
+from django.db.models.functions import Coalesce, Greatest, Least
 from django.utils import timezone
 
 from sales.debt_management import list_debt_collections
 from sales.models import CustomerWalletTransaction, Sale
+
+_MONEY = DecimalField(max_digits=14, decimal_places=2)
+
+
+def paid_debt_expression_sums():
+    """SQL expressions: paid = min(amount_paid, total), debt = max(0, total - amount_paid)."""
+    zero = Value(Decimal('0.00'), output_field=_MONEY)
+    total = Greatest(F('total'), zero)
+    paid_raw = Greatest(F('amount_paid'), zero)
+    paid = Least(paid_raw, total)
+    debt = Greatest(total - paid_raw, zero)
+    return paid, debt
+
+
+def aggregate_paid_debt(sales_qs) -> Dict[str, float]:
+    """Paid-at-checkout vs debt incurred totals for a sale queryset."""
+    paid_expr, debt_expr = paid_debt_expression_sums()
+    zero = Value(Decimal('0.00'), output_field=_MONEY)
+    row = sales_qs.aggregate(
+        total_paid=Coalesce(Sum(paid_expr), zero),
+        total_debt=Coalesce(Sum(debt_expr), zero),
+        paid_orders=Count('id', filter=Q(amount_paid__gte=F('total'))),
+        debt_orders=Count('id', filter=Q(amount_paid__lt=F('total'))),
+    )
+    return {
+        'total_paid': float(row['total_paid'] or 0),
+        'total_debt': float(row['total_debt'] or 0),
+        'paid_orders_count': int(row['paid_orders'] or 0),
+        'debt_orders_count': int(row['debt_orders'] or 0),
+    }
 
 
 def parse_target_date(date_str: Optional[str]) -> Tuple[date, datetime, datetime]:

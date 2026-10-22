@@ -467,11 +467,17 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         today_sales = base.filter(created_at__gte=start_of_day)
 
         from reports.week_summary import week_sales_summary
+        from sales.daily_sales import aggregate_paid_debt
 
+        today_mix = aggregate_paid_debt(today_sales)
         payload = {
             'today': {
                 'sales_count': today_sales.count(),
                 'total': float(today_sales.aggregate(total=Sum('total'))['total'] or 0),
+                'total_paid': today_mix['total_paid'],
+                'total_debt': today_mix['total_debt'],
+                'paid_orders_count': today_mix['paid_orders_count'],
+                'debt_orders_count': today_mix['debt_orders_count'],
             },
             'week': week_sales_summary(base, at_field='created_at'),
         }

@@ -100,17 +100,27 @@ class AppraisalEngineTests(SimpleTestCase):
         self.assertEqual(ok['bonus_block_reasons'], [])
 
     def test_greeting_mentions_held_bonus(self):
-        today = daily_star(20000, self.template)
+        today = {
+            **daily_star(20000, self.template),
+            'collected': 10000,
+            'debt': 10000,
+            'uncollected_pct': 0.5,
+        }
         month = {
             'official_average': 4.2,
+            'sales': 520000,
             'bonus_earned': 2000,
             'bonus': 0,
             'bonus_block_reasons': ['held'],
             'collection_ratio': 0.5,
             'collection_required_ratio': 0.8,
+            'uncollected_pct': 0.5,
         }
         copy = greeting_copy(today, month, {'four_star_months': 1, 'four_star_months_required': 8})
-        self.assertIn('on hold', copy['detail'].lower())
+        detail = copy['detail'].lower()
+        self.assertIn('on hold', detail)
+        self.assertIn('on credit', detail)
+        self.assertIn('50%', detail)
 
     def test_bonus_not_paid_below_threshold_without_floor_row(self):
         """Sales under the first paid From must not inherit that tier (no unmet fallback)."""

@@ -15,6 +15,7 @@ import { appraisalTone, kes, MONTH_NAMES, starGlyphs } from '../../utils/apprais
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import AppraisalDailyTips from './AppraisalDailyTips';
 import AppraisalProgressBar from './AppraisalProgressBar';
+import AppraisalCollectionMix from './AppraisalCollectionMix';
 
 const WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 
@@ -50,6 +51,9 @@ function TodayCard({ today }) {
   const remaining = Number(today?.amount_to_target || 0);
   const toFour = Number(today?.amount_to_next || remaining);
   const stars = Number(today?.stars || 1);
+  const collected = Number(today?.collected || 0);
+  const debt = Number(today?.debt || 0);
+  const uncollectedPct = Math.round(Number(today?.uncollected_pct || 0) * 100);
   return (
     <Card className={cn('overflow-hidden border-2', theme.border, theme.bg)} data-testid="appraisal-today">
       <CardContent className="space-y-4 p-4 sm:p-5">
@@ -75,8 +79,28 @@ function TodayCard({ today }) {
         <AppraisalProgressBar
           progress={today?.target_progress}
           tone={today?.tone}
-          label="Daily target"
+          label="Sales vs daily target"
         />
+        <AppraisalProgressBar
+          progress={today?.collection_target_progress}
+          tone="emerald"
+          label={`Collections vs daily target · ${kes(collected)} collected`}
+        />
+        <AppraisalCollectionMix
+          sold={today?.sales}
+          collected={collected}
+          requiredRatio={today?.collection_required_ratio}
+          label="Today’s sales · paid vs on credit"
+        />
+        {debt > 0 ? (
+          <p
+            className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-center text-xs font-semibold text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-100"
+            data-testid="appraisal-today-debt"
+          >
+            {uncollectedPct}% of today’s sales ({kes(debt)}) is still on credit — stars count sales,
+            but month-end bonus needs collections.
+          </p>
+        ) : null}
         <p
           className={cn(
             'rounded-lg px-3 py-2 text-center text-sm font-bold sm:text-base',
@@ -99,6 +123,15 @@ function MonthCard({ month, policy }) {
   const pct = expected > 0 ? sales / expected : 0;
   const avg = Number(month?.official_average || 0);
   const needed = Number(policy?.four_star_month_min_avg || 4);
+  const collected = Number(month?.collection_collected || 0);
+  const uncollectedPct = Math.round(
+    Number(
+      month?.uncollected_pct ??
+        (sales > 0 ? 1 - Number(month?.collection_ratio ?? 1) : 0),
+    ) * 100,
+  );
+  const bonusHeld =
+    month?.bonus_qualified === false && Number(month?.bonus_earned || 0) > 0;
   return (
     <Card data-testid="appraisal-month">
       <CardHeader className="pb-2">
@@ -115,15 +148,33 @@ function MonthCard({ month, policy }) {
             tone={month?.four_star_month ? 'emerald' : month?.tone}
           />
           <Metric
-            label="4-Star days"
-            value={`${month?.four_star_days || 0}`}
-            hint={`${month?.days_elapsed || 0} of ${month?.working_days || 0} days`}
-            tone={month?.tone}
+            label="On credit"
+            value={`${uncollectedPct}%`}
+            hint={uncollectedPct > 0 ? `${kes(Math.max(0, sales - collected))} unpaid` : 'All collected'}
+            tone={uncollectedPct > 0 ? 'rose' : 'emerald'}
           />
         </div>
         <AppraisalProgressBar progress={pct} tone={month?.tone} label="Expected monthly sales" />
+        <AppraisalCollectionMix
+          sold={sales}
+          collected={collected}
+          requiredRatio={month?.collection_required_ratio ?? policy?.bonus_min_collection_ratio}
+          label="Month sales · collected vs on credit"
+        />
+        {bonusHeld ? (
+          <p
+            className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
+            data-testid="appraisal-month-bonus-hold"
+          >
+            <span className="font-semibold">{uncollectedPct}% of this month’s sales</span> are still
+            on credit — that share is why the {kes(month?.bonus_earned)} bonus stays on hold until
+            collections reach{' '}
+            {Math.round(Number(month?.collection_required_ratio ?? 0.8) * 100)}%.
+          </p>
+        ) : null}
         <p className="text-xs text-muted-foreground">
-          {month?.days_remaining || 0} working days remaining
+          {month?.days_remaining || 0} working days remaining · {month?.four_star_days || 0} four-star
+          days ({month?.days_elapsed || 0}/{month?.working_days || 0})
           {month?.four_star_month_eligible === false
             ? ' · Incomplete first cycle — recorded, not eligible for 4-Star month qualification'
             : ''}

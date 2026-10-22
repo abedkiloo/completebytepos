@@ -331,9 +331,24 @@ def greeting_copy(
     if reasons and earned > 0:
         ratio = float(month.get('collection_ratio') or 0)
         need = float(month.get('collection_required_ratio') or 0.8)
+        uncollected = float(month.get('uncollected_pct'))
+        if not uncollected and float(month.get('sales') or 0) > 0:
+            uncollected = max(0.0, 1.0 - ratio)
         detail = (
-            f'{detail} Bonus of KES {int(earned):,} is on hold — collections are at '
-            f'{int(round(ratio * 100))}% of goods sold (need {int(round(need * 100))}%).'
+            f'{detail} Bonus of KES {int(earned):,} is on hold — '
+            f'{int(round(uncollected * 100))}% of this month’s sales are still on credit '
+            f'(collections {int(round(ratio * 100))}%, need {int(round(need * 100))}%).'
+        )
+    today_debt = float(today.get('debt') or 0)
+    today_sales = float(today.get('sales') or 0)
+    if today_debt > 0 and today_sales > 0:
+        today_unc = float(today.get('uncollected_pct') or (today_debt / today_sales))
+        collected = int(float(today.get('collected') or 0))
+        target = int(float(today.get('target') or 0))
+        detail = (
+            f'{detail} Today {int(round(today_unc * 100))}% of sales are still unpaid '
+            f'(collected KES {collected:,} of KES {int(today_sales):,} toward the '
+            f'KES {target:,} daily target).'
         )
     return {
         'headline': headline,

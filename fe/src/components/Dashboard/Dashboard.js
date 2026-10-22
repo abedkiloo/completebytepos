@@ -40,6 +40,11 @@ import {
   userSeesAllSalesFromStorage,
 } from '../../utils/roleAccess';
 import { canViewDailySalesFromStorage, dailySalesListPath } from '../../utils/dailySalesAccess';
+import { dailySalesPaidDebtMix } from '../Sales/DailySalesPage';
+import {
+  saleBalanceDue,
+  salePaymentStatusLabel,
+} from '../../utils/saleItemDisplay';
 
 const QUICK_ACTIONS = {
   super_admin: [
@@ -126,7 +131,7 @@ const Dashboard = () => {
     me?.profile?.custom_role?.name || me?.profile?.role_display || 'Team member';
 
   const data = dashboardData || {
-    today: { sales_count: 0, total: 0 },
+    today: { sales_count: 0, total: 0, total_paid: 0, total_debt: 0 },
     week: { sales_count: 0, total: 0, days: [] },
     month: { total: 0 },
     low_stock_count: 0,
@@ -134,6 +139,16 @@ const Dashboard = () => {
     growth: { sales: 0 },
     overall: { customers: 0, orders: 0 },
   };
+
+  const todayMix = useMemo(
+    () =>
+      dailySalesPaidDebtMix({
+        total_sales: data.today?.total,
+        total_paid: data.today?.total_paid,
+        total_debt_incurred: data.today?.total_debt,
+      }),
+    [data.today],
+  );
 
   const kpis = useMemo(() => {
     const ownOnly = !userSeesAllSalesFromStorage();
@@ -144,6 +159,18 @@ const Dashboard = () => {
         hint: `${data.today?.sales_count || 0} order${data.today?.sales_count === 1 ? '' : 's'}${
           ownOnly ? ' by you' : ' today'
         }`,
+      },
+      {
+        label: 'Paid at checkout',
+        value: formatCurrency(todayMix.paid),
+        hint: `${data.today?.paid_orders_count || 0} fully paid`,
+        tone: 'paid',
+      },
+      {
+        label: 'Taken as debt',
+        value: formatCurrency(todayMix.debt),
+        hint: `${data.today?.debt_orders_count || 0} with balance due`,
+        tone: 'debt',
       },
       {
         label: ownOnly ? 'Your week' : 'This week',
@@ -178,6 +205,7 @@ const Dashboard = () => {
     return items;
   }, [
     data,
+    todayMix,
     canViewMonthRevenue,
     lowStockProducts.length,
   ]);
@@ -262,11 +290,30 @@ const Dashboard = () => {
           {kpis.map((kpi) => (
             <Card
               key={kpi.label}
-              className={cn(kpi.alert && 'border-amber-300 dark:border-amber-800')}
+              className={cn(
+                kpi.alert && 'border-amber-300 dark:border-amber-800',
+                kpi.tone === 'paid' && 'border-emerald-200 dark:border-emerald-900',
+                kpi.tone === 'debt' && todayMix.debt > 0 && 'border-rose-200 dark:border-rose-900',
+              )}
             >
               <CardHeader className="pb-2">
-                <CardDescription>{kpi.label}</CardDescription>
-                <CardTitle className="text-2xl font-bold tabular-nums">{kpi.value}</CardTitle>
+                <CardDescription
+                  className={cn(
+                    kpi.tone === 'paid' && 'text-emerald-700 dark:text-emerald-400',
+                    kpi.tone === 'debt' && todayMix.debt > 0 && 'text-rose-700 dark:text-rose-400',
+                  )}
+                >
+                  {kpi.label}
+                </CardDescription>
+                <CardTitle
+                  className={cn(
+                    'text-2xl font-bold tabular-nums',
+                    kpi.tone === 'paid' && 'text-emerald-700 dark:text-emerald-400',
+                    kpi.tone === 'debt' && todayMix.debt > 0 && 'text-rose-700 dark:text-rose-400',
+                  )}
+                >
+                  {kpi.value}
+                </CardTitle>
               </CardHeader>
               <CardContent className="pt-0">
                 <p className="text-xs text-muted-foreground">{kpi.hint}</p>
@@ -274,6 +321,47 @@ const Dashboard = () => {
             </Card>
           ))}
         </section>
+
+        {(todayMix.paid > 0 || todayMix.debt > 0) && (
+          <Card data-testid="dashboard-paid-debt-bar">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Today · paid vs debt</CardTitle>
+              <CardDescription>
+                Green is money taken at checkout; rose is still on the customer’s account.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div
+                className="flex h-3 w-full overflow-hidden rounded-full bg-muted"
+                role="img"
+                aria-label={`Paid ${Math.round(todayMix.paidPct)} percent, debt ${Math.round(todayMix.debtPct)} percent`}
+              >
+                {todayMix.paidPct > 0 ? (
+                  <div
+                    className="h-full bg-emerald-500"
+                    style={{ width: `${todayMix.paidPct}%` }}
+                  />
+                ) : null}
+                {todayMix.debtPct > 0 ? (
+                  <div
+                    className="h-full bg-rose-500"
+                    style={{ width: `${todayMix.debtPct}%` }}
+                  />
+                ) : null}
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                <span className="inline-flex items-center gap-1.5 font-medium text-emerald-700 dark:text-emerald-400">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
+                  Paid {formatCurrency(todayMix.paid)} · {Math.round(todayMix.paidPct)}%
+                </span>
+                <span className="inline-flex items-center gap-1.5 font-medium text-rose-700 dark:text-rose-400">
+                  <span className="h-2 w-2 rounded-full bg-rose-500" aria-hidden />
+                  Debt {formatCurrency(todayMix.debt)} · {Math.round(todayMix.debtPct)}%
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {Array.isArray(data.week?.days) && data.week.days.length > 0 && (
           <Card>
@@ -283,6 +371,13 @@ const Dashboard = () => {
                 <CardDescription>
                   {data.week.sales_count || 0} order{(data.week.sales_count || 0) === 1 ? '' : 's'} ·{' '}
                   {formatCurrency(data.week.total || 0)} Mon–Sun this week
+                  {(Number(data.week.total_paid) > 0 || Number(data.week.total_debt) > 0) ? (
+                    <span className="ml-1">
+                      · <span className="text-emerald-700 dark:text-emerald-400">paid {formatCurrency(data.week.total_paid || 0)}</span>
+                      {' / '}
+                      <span className="text-rose-700 dark:text-rose-400">debt {formatCurrency(data.week.total_debt || 0)}</span>
+                    </span>
+                  ) : null}
                 </CardDescription>
               </div>
             </CardHeader>
@@ -290,15 +385,37 @@ const Dashboard = () => {
               <ul className="space-y-2">
                 {data.week.days.map((day) => {
                   const maxTotal = Math.max(...data.week.days.map((d) => Number(d.total) || 0), 1);
-                  const pct = Math.round(((Number(day.total) || 0) / maxTotal) * 100);
+                  const dayTotal = Number(day.total) || 0;
+                  const pct = Math.round((dayTotal / maxTotal) * 100);
+                  const dayMix = dailySalesPaidDebtMix({
+                    total_sales: day.total,
+                    total_paid: day.total_paid,
+                    total_debt_incurred: day.total_debt,
+                  });
+                  const paidShare = dayTotal > 0 ? (dayMix.paidPct / 100) * pct : 0;
+                  const debtShare = dayTotal > 0 ? (dayMix.debtPct / 100) * pct : 0;
                   const row = (
                     <>
                       <span className="w-9 shrink-0 text-xs text-muted-foreground">{day.label}</span>
-                      <div className="h-2 min-w-0 flex-1 rounded-full bg-muted">
-                        <div
-                          className="h-2 rounded-full bg-primary"
-                          style={{ width: `${pct}%` }}
-                        />
+                      <div className="flex h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
+                        {paidShare > 0 ? (
+                          <div
+                            className="h-2 bg-emerald-500"
+                            style={{ width: `${paidShare}%` }}
+                          />
+                        ) : null}
+                        {debtShare > 0 ? (
+                          <div
+                            className="h-2 bg-rose-500"
+                            style={{ width: `${debtShare}%` }}
+                          />
+                        ) : null}
+                        {paidShare <= 0 && debtShare <= 0 && pct > 0 ? (
+                          <div
+                            className="h-2 rounded-full bg-primary"
+                            style={{ width: `${pct}%` }}
+                          />
+                        ) : null}
                       </div>
                       <span className="w-16 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
                         {day.sales_count || 0}
@@ -374,35 +491,70 @@ const Dashboard = () => {
                 </p>
               ) : (
                 <ul className="divide-y">
-                  {recentSales.map((sale) => (
-                    <li
-                      key={sale.id}
-                      className="flex items-center justify-between gap-2 py-3 first:pt-0 last:pb-0"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate font-medium text-sm inline-flex items-center gap-1.5">
-                          <SaleChannelIcon channel={sale.client_channel} />
-                          <span className="truncate">
-                            {sale.sale_number || `Sale #${sale.id}`}
-                          </span>
-                          <SaleOriginBadge sale={sale} />
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {sale.created_at
-                            ? new Date(sale.created_at).toLocaleString()
-                            : '—'}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-semibold tabular-nums text-sm">
-                          {formatCurrency(saleDisplayTotal(sale))}
-                        </p>
-                        <Badge variant="outline" className="mt-1 text-xs capitalize">
-                          {sale.status || 'completed'}
-                        </Badge>
-                      </div>
-                    </li>
-                  ))}
+                  {recentSales.map((sale) => {
+                    const payLabel = salePaymentStatusLabel(sale);
+                    const debtDue = saleBalanceDue(sale);
+                    const payTone =
+                      payLabel === 'Paid in full'
+                        ? 'success'
+                        : payLabel === 'Partial payment'
+                          ? 'warning'
+                          : debtDue > 0
+                            ? 'destructive'
+                            : 'outline';
+                    return (
+                      <li
+                        key={sale.id}
+                        className={cn(
+                          'flex items-center justify-between gap-2 py-3 first:pt-0 last:pb-0',
+                          debtDue > 0 && 'rounded-md -mx-1 px-1',
+                          payLabel === 'Unpaid' && 'bg-rose-50/70 dark:bg-rose-950/20',
+                          payLabel === 'Partial payment' && 'bg-amber-50/60 dark:bg-amber-950/15',
+                        )}
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-sm inline-flex items-center gap-1.5">
+                            <SaleChannelIcon channel={sale.client_channel} />
+                            <span className="truncate">
+                              {sale.sale_number || `Sale #${sale.id}`}
+                            </span>
+                            <SaleOriginBadge sale={sale} />
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {sale.created_at
+                              ? new Date(sale.created_at).toLocaleString()
+                              : '—'}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p
+                            className={cn(
+                              'font-semibold tabular-nums text-sm',
+                              debtDue > 0
+                                ? 'text-rose-700 dark:text-rose-400'
+                                : 'text-emerald-700 dark:text-emerald-400',
+                            )}
+                          >
+                            {formatCurrency(saleDisplayTotal(sale))}
+                          </p>
+                          <Badge variant={payTone} className="mt-1 text-xs">
+                            {payLabel === 'Paid in full'
+                              ? 'Paid'
+                              : payLabel === 'Partial payment'
+                                ? 'Partial'
+                                : payLabel === 'Unpaid'
+                                  ? 'Debt'
+                                  : payLabel}
+                          </Badge>
+                          {debtDue > 0 ? (
+                            <p className="mt-0.5 text-[11px] font-medium tabular-nums text-rose-700 dark:text-rose-400">
+                              Debt {formatCurrency(debtDue)}
+                            </p>
+                          ) : null}
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </CardContent>

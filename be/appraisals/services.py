@@ -175,6 +175,13 @@ def _net_sales_by_day(user_id: int, start: datetime, end: datetime) -> dict:
     return {day: max(Decimal('0'), amount) for day, amount in by_day.items()}
 
 
+def _collected_expr(zero):
+    return Least(
+        Greatest(F('amount_paid'), zero),
+        Greatest(F('total'), zero),
+    )
+
+
 def _collections_by_month(user_id: int, start: datetime, end: datetime) -> dict:
     """
     Money collected on a staff member's completed sales in the period.
@@ -190,17 +197,7 @@ def _collections_by_month(user_id: int, start: datetime, end: datetime) -> dict:
         .exclude(refund_status='refunded')
         .annotate(month=TruncMonth('occurred_at'))
         .values('month')
-        .annotate(
-            collected=Coalesce(
-                Sum(
-                    Least(
-                        Greatest(F('amount_paid'), zero),
-                        Greatest(F('total'), zero),
-                    )
-                ),
-                zero,
-            )
-        )
+        .annotate(collected=Coalesce(Sum(_collected_expr(zero)), zero))
     )
     out: dict = {}
     for row in rows:
@@ -209,6 +206,58 @@ def _collections_by_month(user_id: int, start: datetime, end: datetime) -> dict:
             continue
         key = (month.year, month.month)
         out[key] = Decimal(str(row['collected'] or 0))
+    return out
+
+
+def _collections_by_day(user_id: int, start: datetime, end: datetime) -> dict:
+    """Per-day collected cash on a staff member's posted sales (min(amount_paid, total))."""
+    money_field = DecimalField(max_digits=14, decimal_places=2)
+    zero = Value(Decimal('0.00'), output_field=money_field)
+    rows = (
+        posted_sales()
+        .filter(_staff_q(user_id), occurred_at__gte=start, occurred_at__lt=end)
+        .exclude(refund_status='refunded')
+        .annotate(day=TruncDate('occurred_at'))
+        .values('day')
+        .annotate(collected=Coalesce(Sum(_collected_expr(zero)), zero))
+    )
+    out: dict = {}
+    for row in rows:
+        day = row['day']
+        if day is None:
+            continue
+        out[day] = Decimal(str(row['collected'] or 0))
+    return out
+
+
+def attach_day_collections(
+    rating: dict[str, Any],
+    collected,
+    *,
+    required_ratio: float = 0.80,
+) -> dict[str, Any]:
+    """Add collected / debt mix and collections-vs-daily-target fields to a day rating."""
+    sales = Decimal(str(rating.get('sales') or 0))
+    if sales < 0:
+        sales = Decimal('0')
+    collected_amt = Decimal(str(collected or 0))
+    if collected_amt < 0:
+        collected_amt = Decimal('0')
+    if sales > 0 and collected_amt > sales:
+        collected_amt = sales
+    debt = max(Decimal('0'), sales - collected_amt)
+    target = Decimal(str(rating.get('target') or 0))
+    ratio = (collected_amt / sales) if sales > 0 else Decimal('1')
+    required = Decimal(str(required_ratio or 0.80))
+    out = dict(rating)
+    out['collected'] = float(collected_amt)
+    out['debt'] = float(debt)
+    out['collection_ratio'] = float(ratio)
+    out['uncollected_pct'] = float(Decimal('1') - ratio) if sales > 0 else 0.0
+    out['collection_required_ratio'] = float(required)
+    out['collection_target_progress'] = (
+        float(min(Decimal('1'), collected_amt / target)) if target > 0 else 1.0
+    )
     return out
 
 
@@ -292,6 +341,7 @@ def _empty_collection_fields(template: dict[str, Any] | None = None) -> dict[str
         'collection_ratio': 1.0,
         'collection_required_ratio': required,
         'collection_shortfall': 0.0,
+        'uncollected_pct': 0.0,
         'bonus_block_reasons': [],
     }
 
@@ -397,6 +447,11 @@ def _build_month(
         'collection_required_ratio': bonus.get('collection_required_ratio', 0.80),
         'collection_shortfall': bonus.get('collection_shortfall', 0.0),
         'bonus_block_reasons': list(bonus.get('bonus_block_reasons') or []),
+        'uncollected_pct': (
+            float(1.0 - float(bonus.get('collection_ratio') or 1.0))
+            if float(month_sales) > 0
+            else 0.0
+        ),
         'tone': star_tone(official_avg if official_avg else bonus['stars']),
     }
 
@@ -524,6 +579,7 @@ def staff_snapshot(user: User, *, year: int | None = None, today=None, template=
     start, end = _year_bounds(year)
     daily_net = _net_sales_by_day(user.id, start, end)
     collections_by_month = _collections_by_month(user.id, start, end)
+    collections_by_day = _collections_by_day(user.id, start, end)
     if year < today.year:
         month_today = datetime(year, 12, 31).date()
     elif year > today.year:
@@ -535,7 +591,14 @@ def staff_snapshot(user: User, *, year: int | None = None, today=None, template=
     )
     today_applied = _apply_employee_salary(user, today_applied)
     today_sales = daily_net.get(today, Decimal('0')) if today.year == year else Decimal('0')
-    today_rating = daily_star(today_sales, today_applied)
+    today_collected = (
+        collections_by_day.get(today, Decimal('0')) if today.year == year else Decimal('0')
+    )
+    today_rating = attach_day_collections(
+        daily_star(today_sales, today_applied),
+        today_collected,
+        required_ratio=float(today_applied.get('bonus_min_collection_ratio') or 0.80),
+    )
     month = _build_month(
         year=year,
         month=month_today.month,

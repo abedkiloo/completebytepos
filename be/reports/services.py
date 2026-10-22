@@ -116,10 +116,13 @@ class ReportDashboardService:
             datetime(today.year, today.month - 1 if today.month > 1 else 12, 1)
         )
 
+        from sales.daily_sales import aggregate_paid_debt
+
         completed = posted_sales()
         today_sales = completed.filter(occurred_at__gte=start_of_day)
         today_total = today_sales.aggregate(total=Sum('total'))['total'] or 0
         today_count = today_sales.count()
+        today_mix = aggregate_paid_debt(today_sales)
         week = week_sales_summary(completed, at_field='occurred_at')
 
         month_sales = completed.filter(occurred_at__gte=start_of_month)
@@ -225,6 +228,10 @@ class ReportDashboardService:
             'today': {
                 'sales_count': today_count,
                 'total': float(today_total),
+                'total_paid': today_mix['total_paid'],
+                'total_debt': today_mix['total_debt'],
+                'paid_orders_count': today_mix['paid_orders_count'],
+                'debt_orders_count': today_mix['debt_orders_count'],
             },
             'week': week,
             'month': {

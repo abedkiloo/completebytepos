@@ -80,8 +80,21 @@ describe('Dashboard', () => {
     appraisalsAPI.me.mockResolvedValue({ data: null });
     reportsAPI.dashboard.mockResolvedValue({
       data: {
-        today: { sales_count: 2, total: 150 },
-        week: { sales_count: 3, total: 200, days: weekDays },
+        today: {
+          sales_count: 2,
+          total: 150,
+          total_paid: 100,
+          total_debt: 50,
+          paid_orders_count: 1,
+          debt_orders_count: 1,
+        },
+        week: {
+          sales_count: 3,
+          total: 200,
+          total_paid: 120,
+          total_debt: 80,
+          days: weekDays,
+        },
         month: { total: 800 },
         low_stock_count: 1,
         profit: 9999,
@@ -93,8 +106,21 @@ describe('Dashboard', () => {
     });
     salesAPI.dashboardSummary.mockResolvedValue({
       data: {
-        today: { sales_count: 2, total: 150 },
-        week: { sales_count: 3, total: 200, days: weekDays },
+        today: {
+          sales_count: 2,
+          total: 150,
+          total_paid: 100,
+          total_debt: 50,
+          paid_orders_count: 1,
+          debt_orders_count: 1,
+        },
+        week: {
+          sales_count: 3,
+          total: 200,
+          total_paid: 120,
+          total_debt: 80,
+          days: weekDays,
+        },
         month: { total: 800 },
         growth: { sales: 0 },
       },
@@ -102,7 +128,22 @@ describe('Dashboard', () => {
     salesAPI.list.mockResolvedValue({
       data: {
         results: [
-          { id: 1, sale_number: 'S-1', status: 'completed', total: 40, created_at: '2026-08-18T10:00:00Z' },
+          {
+            id: 1,
+            sale_number: 'S-1',
+            status: 'completed',
+            total: 40,
+            amount_paid: 40,
+            created_at: '2026-08-18T10:00:00Z',
+          },
+          {
+            id: 3,
+            sale_number: 'S-DEBT',
+            status: 'completed',
+            total: 50,
+            amount_paid: 0,
+            created_at: '2026-08-18T11:00:00Z',
+          },
           { id: 2, sale_number: 'HOLD', status: 'holding', total: 9 },
         ],
       },
@@ -117,9 +158,14 @@ describe('Dashboard', () => {
     });
 
     expect(screen.getByText('Weekly sales')).toBeInTheDocument();
+    expect(screen.getByText('Paid at checkout')).toBeInTheDocument();
+    expect(screen.getByText('Taken as debt')).toBeInTheDocument();
+    expect(screen.getByTestId('dashboard-paid-debt-bar')).toBeInTheDocument();
     expect(screen.getAllByText(/3 orders/).length).toBeGreaterThan(0);
     expect(screen.queryByText('Profit (est.)')).not.toBeInTheDocument();
     expect(screen.getByText('S-1')).toBeInTheDocument();
+    expect(screen.getByText('S-DEBT')).toBeInTheDocument();
+    expect(screen.getByText('Debt')).toBeInTheDocument();
     expect(screen.queryByText('HOLD')).not.toBeInTheDocument();
     expect(screen.getAllByText(/Milk/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/2 orders today/).length).toBeGreaterThan(0);
