@@ -6,15 +6,19 @@ import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { clearFormBanner, reportFormError } from '../../utils/formFeedback';
 import {
-  buildChangedCountPayload,
-  hasAnyChangedPendingDraft,
+  buildCloseCheckpointSummary,
+  buildPendingCountPayload,
+  hasAnySavablePendingDraft,
   isCountDraftChanged,
+  isCountDraftSavable,
   parseCountDraft,
   sortCheckpointLines,
+  systemQtyAtOpen,
 } from '../../utils/checkpointCountDrafts';
 import { toast } from '../../utils/toast';
 import { getStoredAuth, hasPermission } from '../../utils/roleAccess';
 import FormBanner from '../form/FormBanner';
+import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
@@ -69,6 +73,8 @@ export default function StockCheckpointsPage() {
   const [productQuery, setProductQuery] = useState('');
   const [productHits, setProductHits] = useState([]);
   const [pickedIds, setPickedIds] = useState([]);
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  const [closeSummary, setCloseSummary] = useState(null);
 
   useEffect(() => {
     if (showOpen) {
@@ -182,7 +188,7 @@ export default function StockCheckpointsPage() {
 
   const pendingLines = (detail?.lines || []).filter((line) => line.status !== 'counted');
   const sortedLines = sortCheckpointLines(detail?.lines || []);
-  const canSaveAnyChanged = hasAnyChangedPendingDraft(pendingLines, countDrafts);
+  const canSavePending = hasAnySavablePendingDraft(pendingLines, countDrafts);
 
   const scrollLinesToTop = () => {
     try {
@@ -195,13 +201,12 @@ export default function StockCheckpointsPage() {
   const handleCount = async (line) => {
     const raw = countDrafts[line.id];
     const correcting = line.status === 'counted';
-    // TODO(checkpoint-confirm-unchanged): allow save when qty matches system.
-    if (!isCountDraftChanged(line, raw)) {
+    if (!isCountDraftSavable(line, raw)) {
       reportFormError(
         setFormBanner,
         correcting
           ? 'Change the quantity to correct this count.'
-          : 'Change the stock at hand before saving (confirming unchanged stock comes later).'
+          : 'Enter a valid stock-at-hand quantity'
       );
       return;
     }
@@ -210,6 +215,7 @@ export default function StockCheckpointsPage() {
       reportFormError(setFormBanner, 'Enter a valid stock-at-hand quantity');
       return;
     }
+    const unchanged = !correcting && qty === systemQtyAtOpen(line);
     setBusy(true);
     try {
       await inventoryAPI.countCheckpointLine(selectedId, line.id, { counted_qty: qty });
@@ -217,11 +223,12 @@ export default function StockCheckpointsPage() {
       toast.success(
         correcting
           ? `Corrected ${line.product_name} to ${qty}`
-          : `Counted ${line.product_name}`
+          : unchanged
+            ? `Confirmed ${line.product_name} (no stock change)`
+            : `Counted ${line.product_name}`
       );
       await loadDetail(selectedId);
       await loadList();
-      // Keep remaining work at the top after the saved row drops below.
       if (!correcting) {
         requestAnimationFrame(scrollLinesToTop);
       }
@@ -238,13 +245,9 @@ export default function StockCheckpointsPage() {
       reportFormError(setFormBanner, 'All lines are already counted');
       return;
     }
-    // TODO(checkpoint-confirm-unchanged): include unchanged lines as confirmed.
-    const { payload } = buildChangedCountPayload(pendingLines, countDrafts);
+    const { payload } = buildPendingCountPayload(pendingLines, countDrafts);
     if (payload.length === 0) {
-      reportFormError(
-        setFormBanner,
-        'Change at least one stock-at-hand quantity before saving.'
-      );
+      reportFormError(setFormBanner, 'Enter a valid stock-at-hand quantity for at least one line.');
       return;
     }
     setBusy(true);
@@ -252,7 +255,7 @@ export default function StockCheckpointsPage() {
       const res = await inventoryAPI.countCheckpointAll(selectedId, { lines: payload });
       const n = res.data?.counted ?? payload.length;
       clearFormBanner(setFormBanner);
-      toast.success(`Saved ${n} count${n === 1 ? '' : 's'}`);
+      toast.success(`Confirmed ${n} count${n === 1 ? '' : 's'}`);
       await loadDetail(selectedId);
       await loadList();
     } catch (err) {
@@ -262,12 +265,27 @@ export default function StockCheckpointsPage() {
     }
   };
 
-  const handleClose = async () => {
+  const openCloseConfirm = () => {
+    if (!detail || detail.status !== 'open') return;
+    if ((detail.pending_line_count || 0) > 0) {
+      reportFormError(
+        setFormBanner,
+        'Confirm every line first (same as system qty is fine — use Confirm / Confirm all).'
+      );
+      return;
+    }
+    setCloseSummary(buildCloseCheckpointSummary(detail.lines || []));
+    setShowCloseConfirm(true);
+  };
+
+  const handleCloseConfirm = async () => {
     if (!selectedId) return;
     setBusy(true);
     try {
       await inventoryAPI.closeCheckpoint(selectedId);
       clearFormBanner(setFormBanner);
+      setShowCloseConfirm(false);
+      setCloseSummary(null);
       toast.success('Checkpoint closed — reporting baseline set');
       await loadList();
       await loadDetail(selectedId);
@@ -426,21 +444,26 @@ export default function StockCheckpointsPage() {
                     <div className="flex flex-wrap gap-2">
                       <Button
                         type="button"
-                        disabled={busy || !canSaveAnyChanged}
+                        disabled={busy || !canSavePending}
                         onClick={handleCountAll}
                         title={
-                          canSaveAnyChanged
-                            ? undefined
-                            : 'Change at least one quantity to enable save'
+                          canSavePending
+                            ? 'Confirm all pending lines (including unchanged stock)'
+                            : 'Enter a valid quantity on pending lines'
                         }
                       >
-                        Save all counts
+                        Confirm all
                       </Button>
                       <Button
                         type="button"
                         variant="outline"
                         disabled={busy || (detail.pending_line_count || 0) > 0}
-                        onClick={handleClose}
+                        onClick={openCloseConfirm}
+                        title={
+                          (detail.pending_line_count || 0) > 0
+                            ? 'Confirm every line before closing'
+                            : 'Review summary and close'
+                        }
                       >
                         Close checkpoint
                       </Button>
@@ -457,9 +480,9 @@ export default function StockCheckpointsPage() {
                 </div>
                 {detail.status === 'open' ? (
                   <p className="mb-3 text-xs text-muted-foreground">
-                    Still to count stays on top. After save, that row moves below. Mistyped a
-                    counted line? Change its quantity and click Correct — stock adjusts by the
-                    difference (e.g. 5048 → 548) while this checkpoint is open.
+                    Still to count stays on top. Same as system? Click Confirm — no stock change.
+                    Changed qty adjusts stock. Mistyped after confirm? Correct while this checkpoint
+                    is open. Close asks you to review a summary first.
                   </p>
                 ) : null}
 
@@ -511,18 +534,24 @@ export default function StockCheckpointsPage() {
                                 size="sm"
                                 variant={line.status === 'counted' ? 'outline' : 'default'}
                                 disabled={
-                                  busy || !isCountDraftChanged(line, countDrafts[line.id])
+                                  busy || !isCountDraftSavable(line, countDrafts[line.id])
                                 }
                                 title={
-                                  isCountDraftChanged(line, countDrafts[line.id])
-                                    ? undefined
-                                    : line.status === 'counted'
-                                      ? 'Change the quantity to correct'
-                                      : 'Change the quantity to enable save'
+                                  line.status === 'counted'
+                                    ? isCountDraftChanged(line, countDrafts[line.id])
+                                      ? 'Correct this count'
+                                      : 'Change the quantity to correct'
+                                    : isCountDraftChanged(line, countDrafts[line.id])
+                                      ? 'Save counted qty (adjusts stock)'
+                                      : 'Confirm same as system (no stock change)'
                                 }
                                 onClick={() => handleCount(line)}
                               >
-                                {line.status === 'counted' ? 'Correct' : 'Save count'}
+                                {line.status === 'counted'
+                                  ? 'Correct'
+                                  : isCountDraftChanged(line, countDrafts[line.id])
+                                    ? 'Save count'
+                                    : 'Confirm'}
                               </Button>
                             </div>
                           ) : line.status === 'counted' ? (
@@ -540,6 +569,98 @@ export default function StockCheckpointsPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={showCloseConfirm}
+        type="warning"
+        title="Close this checkpoint?"
+        message="Closing locks counts and sets the reporting baseline. Review the summary below."
+        confirmText="Close checkpoint"
+        cancelText="Keep open"
+        busy={busy}
+        onCancel={() => {
+          if (busy) return;
+          setShowCloseConfirm(false);
+          setCloseSummary(null);
+        }}
+        onConfirm={handleCloseConfirm}
+      >
+        {closeSummary ? (
+          <div className="space-y-3 rounded-md border bg-muted/30 px-3 py-3 text-sm">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase text-muted-foreground">Lines</p>
+                <p className="font-semibold tabular-nums">{closeSummary.counted}</p>
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold uppercase text-muted-foreground">
+                  Unchanged
+                </p>
+                <p className="font-semibold tabular-nums">{closeSummary.unchanged}</p>
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold uppercase text-muted-foreground">
+                  Adjusted up
+                </p>
+                <p className="font-semibold tabular-nums text-emerald-700">
+                  {closeSummary.adjustedUp}
+                  {closeSummary.unitsUp > 0 ? ` (+${closeSummary.unitsUp})` : ''}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold uppercase text-muted-foreground">
+                  Adjusted down
+                </p>
+                <p className="font-semibold tabular-nums text-rose-700">
+                  {closeSummary.adjustedDown}
+                  {closeSummary.unitsDown > 0 ? ` (−${closeSummary.unitsDown})` : ''}
+                </p>
+              </div>
+              <div className="col-span-2 sm:col-span-1">
+                <p className="text-[11px] font-semibold uppercase text-muted-foreground">
+                  Net units
+                </p>
+                <p className="font-semibold tabular-nums">
+                  {closeSummary.netUnits > 0 ? '+' : ''}
+                  {closeSummary.netUnits}
+                </p>
+              </div>
+            </div>
+            {closeSummary.adjustments.length > 0 ? (
+              <div>
+                <p className="mb-1 text-xs font-semibold text-muted-foreground">
+                  Largest adjustments
+                </p>
+                <ul className="max-h-36 space-y-1 overflow-y-auto text-xs">
+                  {closeSummary.adjustments.slice(0, 8).map((row) => (
+                    <li key={row.id} className="flex justify-between gap-2">
+                      <span className="min-w-0 truncate">
+                        {row.name}
+                        {row.variant ? ` · ${row.variant}` : ''}
+                      </span>
+                      <span className="shrink-0 tabular-nums">
+                        {row.was} → {row.now}{' '}
+                        <span
+                          className={
+                            row.delta > 0 ? 'text-emerald-700' : 'text-rose-700'
+                          }
+                        >
+                          ({row.delta > 0 ? '+' : ''}
+                          {row.delta})
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Every line matches system stock — closing will not change inventory quantities.
+              </p>
+            )}
+          </div>
+        ) : null}
+      </ConfirmDialog>
 
       <Dialog
         open={showOpen}

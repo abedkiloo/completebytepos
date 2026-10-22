@@ -1,7 +1,11 @@
 import {
   buildChangedCountPayload,
+  buildCloseCheckpointSummary,
+  buildPendingCountPayload,
   hasAnyChangedPendingDraft,
+  hasAnySavablePendingDraft,
   isCountDraftChanged,
+  isCountDraftSavable,
   parseCountDraft,
   sortCheckpointLines,
   systemQtyAtOpen,
@@ -32,27 +36,26 @@ describe('systemQtyAtOpen', () => {
   });
 });
 
-describe('isCountDraftChanged', () => {
-  const line = { id: 1, system_qty_at_open: 10, product_name: 'Widget' };
+describe('isCountDraftChanged / isCountDraftSavable', () => {
+  const line = { id: 1, system_qty_at_open: 10, product_name: 'Widget', status: 'pending' };
 
-  it('is false when draft matches system qty (save disabled for now)', () => {
+  it('marks unchanged pending drafts as savable (confirm) but not changed', () => {
     expect(isCountDraftChanged(line, '10')).toBe(false);
-    expect(isCountDraftChanged(line, 10)).toBe(false);
+    expect(isCountDraftSavable(line, '10')).toBe(true);
   });
 
   it('is true when draft differs', () => {
     expect(isCountDraftChanged(line, '9')).toBe(true);
-    expect(isCountDraftChanged(line, '11')).toBe(true);
-    expect(isCountDraftChanged(line, '0')).toBe(true);
+    expect(isCountDraftSavable(line, '9')).toBe(true);
   });
 
   it('is false for invalid drafts', () => {
     expect(isCountDraftChanged(line, '')).toBe(false);
-    expect(isCountDraftChanged(line, '-3')).toBe(false);
-    expect(isCountDraftChanged(line, 'x')).toBe(false);
+    expect(isCountDraftSavable(line, '')).toBe(false);
+    expect(isCountDraftSavable(line, '-3')).toBe(false);
   });
 
-  it('for counted lines compares against saved counted qty (correction)', () => {
+  it('for counted lines only allows a real correction', () => {
     const counted = {
       id: 2,
       status: 'counted',
@@ -60,7 +63,9 @@ describe('isCountDraftChanged', () => {
       counted_qty: 5048,
     };
     expect(isCountDraftChanged(counted, '5048')).toBe(false);
+    expect(isCountDraftSavable(counted, '5048')).toBe(false);
     expect(isCountDraftChanged(counted, '548')).toBe(true);
+    expect(isCountDraftSavable(counted, '548')).toBe(true);
   });
 });
 
@@ -80,39 +85,86 @@ describe('sortCheckpointLines', () => {
   });
 });
 
-describe('buildChangedCountPayload / hasAnyChangedPendingDraft', () => {
+describe('buildPendingCountPayload / hasAnySavablePendingDraft', () => {
   const pending = [
     { id: 1, system_qty_at_open: 5, product_name: 'A', status: 'pending' },
     { id: 2, system_qty_at_open: 8, product_name: 'B', status: 'pending' },
   ];
 
-  it('reports no changes when drafts match system', () => {
+  it('includes unchanged lines as confirmable', () => {
     const drafts = { 1: '5', 2: '8' };
     expect(hasAnyChangedPendingDraft(pending, drafts)).toBe(false);
+    expect(hasAnySavablePendingDraft(pending, drafts)).toBe(true);
+    expect(buildPendingCountPayload(pending, drafts)).toEqual({
+      payload: [
+        { line_id: 1, counted_qty: 5 },
+        { line_id: 2, counted_qty: 8 },
+      ],
+    });
     expect(buildChangedCountPayload(pending, drafts)).toEqual({ payload: [] });
   });
 
-  it('includes only changed lines', () => {
+  it('includes changed and unchanged together', () => {
     const drafts = { 1: '5', 2: '3' };
-    expect(hasAnyChangedPendingDraft(pending, drafts)).toBe(true);
+    expect(buildPendingCountPayload(pending, drafts).payload).toEqual([
+      { line_id: 1, counted_qty: 5 },
+      { line_id: 2, counted_qty: 3 },
+    ]);
     expect(buildChangedCountPayload(pending, drafts)).toEqual({
       payload: [{ line_id: 2, counted_qty: 3 }],
     });
   });
 
-  it('includes all when all changed', () => {
-    const drafts = { 1: '4', 2: '9' };
-    expect(buildChangedCountPayload(pending, drafts).payload).toEqual([
-      { line_id: 1, counted_qty: 4 },
-      { line_id: 2, counted_qty: 9 },
+  it('handles empty pending / missing drafts', () => {
+    expect(hasAnySavablePendingDraft([], {})).toBe(false);
+    expect(buildPendingCountPayload(null, null)).toEqual({ payload: [] });
+    expect(buildPendingCountPayload(pending, {})).toEqual({ payload: [] });
+  });
+});
+
+describe('buildCloseCheckpointSummary', () => {
+  it('summarises unchanged vs adjusted lines', () => {
+    const summary = buildCloseCheckpointSummary([
+      {
+        id: 1,
+        status: 'counted',
+        product_name: 'A',
+        system_qty_at_open: 10,
+        counted_qty: 10,
+      },
+      {
+        id: 2,
+        status: 'counted',
+        product_name: 'B',
+        system_qty_at_open: 5,
+        counted_qty: 8,
+      },
+      {
+        id: 3,
+        status: 'counted',
+        product_name: 'C',
+        system_qty_at_open: 20,
+        counted_qty: 12,
+      },
+      { id: 4, status: 'pending', system_qty_at_open: 1 },
     ]);
+    expect(summary.counted).toBe(3);
+    expect(summary.pending).toBe(1);
+    expect(summary.unchanged).toBe(1);
+    expect(summary.adjustedUp).toBe(1);
+    expect(summary.adjustedDown).toBe(1);
+    expect(summary.unitsUp).toBe(3);
+    expect(summary.unitsDown).toBe(8);
+    expect(summary.netUnits).toBe(-5);
+    expect(summary.adjustments[0].name).toBe('C');
   });
 
-  it('handles empty pending / missing drafts', () => {
-    expect(hasAnyChangedPendingDraft([], {})).toBe(false);
-    expect(hasAnyChangedPendingDraft(null, null)).toBe(false);
-    expect(buildChangedCountPayload(null, null)).toEqual({ payload: [] });
-    expect(buildChangedCountPayload(pending, {})).toEqual({ payload: [] });
+  it('notes all unchanged', () => {
+    const summary = buildCloseCheckpointSummary([
+      { id: 1, status: 'counted', system_qty_at_open: 4, counted_qty: 4 },
+    ]);
+    expect(summary.unchanged).toBe(1);
+    expect(summary.adjustments).toEqual([]);
   });
 });
 

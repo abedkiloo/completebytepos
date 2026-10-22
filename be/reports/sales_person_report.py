@@ -10,15 +10,19 @@ from decimal import Decimal
 from typing import Any, Optional, Tuple
 
 from django.contrib.auth.models import User
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Q, Sum, Value
+from django.db.models import DecimalField
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from reports.sale_scope import posted_sales
+from sales.daily_sales import paid_debt_expression_sums
 from sales.models import SaleItem, SaleRefund
 from utils.document_branding import brand_contact_line, brand_name_line
 
 from .services import resolve_period
+
+_MONEY = DecimalField(max_digits=14, decimal_places=2)
 
 
 def resolve_sales_person_period(request) -> Tuple[Optional[datetime], Optional[datetime], str]:
@@ -85,12 +89,16 @@ class SalesPersonReportService:
                 | Q(served_by__isnull=True, cashier_id=cashier_id_int)
             )
 
+        paid_expr, debt_expr = paid_debt_expression_sums()
+        zero = Value(Decimal('0.00'), output_field=_MONEY)
         staff_rows = list(
             sales_qs.annotate(staff_id=Coalesce('served_by_id', 'cashier_id'))
             .values('staff_id')
             .annotate(
                 sales_count=Count('id', distinct=True),
                 gross_sales=Sum('total'),
+                collected=Coalesce(Sum(paid_expr), zero),
+                not_collected=Coalesce(Sum(debt_expr), zero),
                 field_sales_count=Count('id', filter=Q(entry_source='field'), distinct=True),
                 field_sales=Sum('total', filter=Q(entry_source='field')),
             )
@@ -146,6 +154,9 @@ class SalesPersonReportService:
             'field_sales': 0.0,
             'shop_sales_count': 0,
             'shop_sales': 0.0,
+            'collected': 0.0,
+            'not_collected': 0.0,
+            'collection_pct': 0.0,
         }
 
         for row in staff_rows:
@@ -153,6 +164,12 @@ class SalesPersonReportService:
             gross = _decimal_float(row['gross_sales'])
             count = row['sales_count'] or 0
             items = int(row['items_sold'] or 0)
+            collected = _decimal_float(row.get('collected'))
+            not_collected = _decimal_float(row.get('not_collected'))
+            # Guard float drift so paid + debt ≈ gross.
+            if collected + not_collected > 0 and abs((collected + not_collected) - gross) > 0.02:
+                not_collected = max(0.0, gross - collected)
+            collection_pct = round((collected / gross) * 100, 1) if gross > 0 else 0.0
             ref = refund_by_staff.get(sid, {})
             ref_count = ref.get('refunds_count') or 0
             ref_total = _decimal_float(ref.get('refunds_total'))
@@ -170,6 +187,9 @@ class SalesPersonReportService:
                 'display_name': name,
                 'sales_count': count,
                 'gross_sales': round(gross, 2),
+                'collected': round(collected, 2),
+                'not_collected': round(not_collected, 2),
+                'collection_pct': collection_pct,
                 'refunds_count': ref_count,
                 'refunds_total': round(ref_total, 2),
                 'net_sales': round(net, 2),
@@ -183,6 +203,8 @@ class SalesPersonReportService:
 
             totals['sales_count'] += count
             totals['gross_sales'] += gross
+            totals['collected'] += collected
+            totals['not_collected'] += not_collected
             totals['refunds_count'] += ref_count
             totals['refunds_total'] += ref_total
             totals['net_sales'] += net
@@ -192,8 +214,21 @@ class SalesPersonReportService:
             totals['shop_sales_count'] += count - field_count
             totals['shop_sales'] += gross - field_gross
 
-        for key in ('gross_sales', 'refunds_total', 'net_sales', 'field_sales', 'shop_sales'):
+        for key in (
+            'gross_sales',
+            'refunds_total',
+            'net_sales',
+            'field_sales',
+            'shop_sales',
+            'collected',
+            'not_collected',
+        ):
             totals[key] = round(totals[key], 2)
+        totals['collection_pct'] = (
+            round((totals['collected'] / totals['gross_sales']) * 100, 1)
+            if totals['gross_sales'] > 0
+            else 0.0
+        )
 
         detail = []
         if cashier_id_int or len(staff) == 1:
@@ -262,6 +297,8 @@ class SalesPersonReportService:
             'transactions': detail,
             'note': (
                 'Net sales = completed sales total minus refunds recorded in this period. '
+                'Collected = cash/M-Pesa at sale plus later debt payments applied to those sales; '
+                'Not collected = balance still owed by customers. '
                 'Commission is not calculated here — use this report as proof for your own reward policy.'
             ),
         }
@@ -283,6 +320,9 @@ class SalesPersonReportService:
         writer.writerow(['Store totals'])
         writer.writerow(['Sales count', summary.get('sales_count', 0)])
         writer.writerow(['Gross sales', summary.get('gross_sales', 0)])
+        writer.writerow(['Collected', summary.get('collected', 0)])
+        writer.writerow(['Not collected', summary.get('not_collected', 0)])
+        writer.writerow(['Collection %', summary.get('collection_pct', 0)])
         writer.writerow(['Refunds', summary.get('refunds_total', 0)])
         writer.writerow(['Net sales', summary.get('net_sales', 0)])
         writer.writerow([])
@@ -292,6 +332,9 @@ class SalesPersonReportService:
             'Username',
             'Sales count',
             'Gross sales',
+            'Collected',
+            'Not collected',
+            'Collection %',
             'Refunds count',
             'Refunds total',
             'Net sales',
@@ -304,6 +347,9 @@ class SalesPersonReportService:
                 row.get('username', ''),
                 row.get('sales_count', 0),
                 row.get('gross_sales', 0),
+                row.get('collected', 0),
+                row.get('not_collected', 0),
+                row.get('collection_pct', 0),
                 row.get('refunds_count', 0),
                 row.get('refunds_total', 0),
                 row.get('net_sales', 0),

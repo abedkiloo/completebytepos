@@ -131,7 +131,8 @@ export default function SalesPersonReportView() {
             <div>
               <h2 className="text-lg font-semibold">{data.period_display || data.period}</h2>
               <p className="text-sm text-muted-foreground">
-                Performance by sales person — net sales after refunds in this period.
+                Performance by sales person — net sales, collections, and customer debt in this
+                period.
               </p>
             </div>
           </div>
@@ -148,6 +149,20 @@ export default function SalesPersonReportView() {
             <div className={R.summaryCard}>
               <h3>Gross sales</h3>
               <p className={R.summaryValue}>{formatCurrency(data.summary.gross_sales)}</p>
+            </div>
+            <div className={R.summaryCard}>
+              <h3>Collected</h3>
+              <p className={R.summaryValue}>{formatCurrency(data.summary.collected ?? 0)}</p>
+            </div>
+            <div className={R.summaryCard}>
+              <h3>Not collected</h3>
+              <p className={R.summaryValue}>{formatCurrency(data.summary.not_collected ?? 0)}</p>
+            </div>
+            <div className={R.summaryCard}>
+              <h3>Collection %</h3>
+              <p className={R.summaryValue}>
+                {formatNumber(data.summary.collection_pct ?? 0)}%
+              </p>
             </div>
             <div className={R.summaryCard}>
               <h3>Refunds</h3>
@@ -167,6 +182,9 @@ export default function SalesPersonReportView() {
                   <th>Sales</th>
                   <th>Shop / field</th>
                   <th>Gross</th>
+                  <th>Collected</th>
+                  <th>Not collected</th>
+                  <th>Collection %</th>
                   <th>Refunds</th>
                   <th>Net sales</th>
                   <th>Items</th>
@@ -192,6 +210,15 @@ export default function SalesPersonReportView() {
                       ) : null}
                     </td>
                     <td>{formatCurrency(row.gross_sales)}</td>
+                    <td className="text-emerald-700 dark:text-emerald-400">
+                      {formatCurrency(row.collected ?? 0)}
+                    </td>
+                    <td className="text-rose-700 dark:text-rose-400">
+                      {formatCurrency(row.not_collected ?? 0)}
+                    </td>
+                    <td className="font-medium tabular-nums">
+                      {formatNumber(row.collection_pct ?? 0)}%
+                    </td>
                     <td>
                       {row.refunds_count > 0 ? (
                         <span>

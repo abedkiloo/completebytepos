@@ -11,6 +11,17 @@ import { useListOrdering } from '../../hooks/useListOrdering';
 import { sortRecords } from '../../utils/listOrdering';
 import AppraisalProgressBar from './AppraisalProgressBar';
 
+function monthCollection(row) {
+  const sold = Number(row?.month?.collection_sold ?? row?.month?.sales ?? 0);
+  const collected = Number(row?.month?.collection_collected ?? 0);
+  const notCollected = Math.max(0, sold - collected);
+  const pct =
+    sold > 0
+      ? Math.round((Math.min(collected, sold) / sold) * 100)
+      : Number(row?.month?.collection_ratio || 0) * 100;
+  return { sold, collected, notCollected, pct: Math.round(pct) };
+}
+
 function InsightGrid({ insights }) {
   if (!insights) return null;
   const items = [
@@ -42,18 +53,36 @@ function InsightGrid({ insights }) {
 }
 
 function exportCsv(rows) {
-  const header = ['Employee', 'Role', 'Today', 'Monthly Sales', 'Avg Stars', 'Bonus', '4-Star Months', 'Annual Status'];
+  const header = [
+    'Employee',
+    'Role',
+    'Today',
+    'Monthly Sales',
+    'Collected',
+    'Not collected',
+    'Collection %',
+    'Avg Stars',
+    'Bonus',
+    '4-Star Months',
+    'Annual Status',
+  ];
   const lines = [header.join(',')].concat(
-    rows.map((row) => [
-      JSON.stringify(row.staff?.name || ''),
-      JSON.stringify(row.staff?.role || ''),
-      row.today?.sales || 0,
-      row.month?.sales || 0,
-      Number(row.month?.official_average || 0).toFixed(2),
-      row.month?.bonus || 0,
-      `${row.year?.four_star_months || 0}/${row.year?.four_star_months_required || 8}`,
-      row.annual_status || '',
-    ].join(',')),
+    rows.map((row) => {
+      const mix = monthCollection(row);
+      return [
+        JSON.stringify(row.staff?.name || ''),
+        JSON.stringify(row.staff?.role || ''),
+        row.today?.sales || 0,
+        row.month?.sales || 0,
+        mix.collected,
+        mix.notCollected,
+        mix.pct,
+        Number(row.month?.official_average || 0).toFixed(2),
+        row.month?.bonus || 0,
+        `${row.year?.four_star_months || 0}/${row.year?.four_star_months_required || 8}`,
+        row.annual_status || '',
+      ].join(',');
+    }),
   );
   const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
@@ -168,13 +197,16 @@ export default function AppraisalTeamBoard({ team, showIncrement }) {
       </div>
 
       <div className="overflow-x-auto rounded-lg border">
-        <table className="w-full min-w-[48rem] text-sm">
+        <table className="w-full min-w-[56rem] text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
             <tr>
               <th className="px-3 py-2 font-medium">Employee</th>
               <th className="px-3 py-2 font-medium">Role</th>
               <th className="px-3 py-2 font-medium">Today</th>
               <th className="px-3 py-2 font-medium">Monthly sales</th>
+              <th className="px-3 py-2 font-medium">Collected</th>
+              <th className="px-3 py-2 font-medium">Not collected</th>
+              <th className="px-3 py-2 font-medium">Collection %</th>
               <th className="px-3 py-2 font-medium">Avg stars</th>
               <th className="px-3 py-2 font-medium">Bonus</th>
               {showIncrement ? <th className="px-3 py-2 font-medium">4-Star months</th> : null}
@@ -184,6 +216,7 @@ export default function AppraisalTeamBoard({ team, showIncrement }) {
           <tbody>
             {ranked.map((row) => {
               const theme = appraisalTone(row.today?.tone);
+              const mix = monthCollection(row);
               return (
                 <tr key={row.staff.id} className="border-t">
                   <td className="px-3 py-2 font-medium">{row.staff.name}</td>
@@ -194,6 +227,13 @@ export default function AppraisalTeamBoard({ team, showIncrement }) {
                     </span>
                   </td>
                   <td className="px-3 py-2 tabular-nums">{kes(row.month?.sales)}</td>
+                  <td className="px-3 py-2 tabular-nums text-emerald-700 dark:text-emerald-400">
+                    {kes(mix.collected)}
+                  </td>
+                  <td className="px-3 py-2 tabular-nums text-rose-700 dark:text-rose-400">
+                    {kes(mix.notCollected)}
+                  </td>
+                  <td className="px-3 py-2 font-medium tabular-nums">{mix.pct}%</td>
                   <td className="px-3 py-2 tabular-nums">{Number(row.month?.official_average || 0).toFixed(2)}</td>
                   <td className="px-3 py-2 tabular-nums">
                     {kes(row.month?.bonus)}
@@ -225,6 +265,7 @@ export default function AppraisalTeamBoard({ team, showIncrement }) {
       <div className="space-y-3 lg:hidden">
         {ranked.map((row) => {
           const theme = appraisalTone(row.today?.tone);
+          const mix = monthCollection(row);
           return (
             <Card key={`m-${row.staff.id}`} className={cn('border', theme.border)}>
               <CardContent className="space-y-2 p-4">
@@ -236,6 +277,10 @@ export default function AppraisalTeamBoard({ team, showIncrement }) {
                   <span className="text-sm font-semibold">{starGlyphs(row.today?.stars)}</span>
                 </div>
                 <p className="text-sm">Today {kes(row.today?.sales)} · Month {kes(row.month?.sales)}</p>
+                <p className="text-xs text-muted-foreground">
+                  Collected {kes(mix.collected)} · Not collected {kes(mix.notCollected)} ·{' '}
+                  <span className="font-semibold text-foreground">{mix.pct}%</span>
+                </p>
                 <AppraisalProgressBar progress={row.month?.progress_to_four_star} tone={row.month?.tone} label="4-star month" />
               </CardContent>
             </Card>

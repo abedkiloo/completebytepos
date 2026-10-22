@@ -49,8 +49,14 @@ class SalesPersonReportTests(ManagerAPITestCase):
         mgr = next(r for r in response.data['staff'] if r['user_id'] == self.manager_user.id)
         self.assertEqual(mgr['sales_count'], 1)
         self.assertEqual(mgr['gross_sales'], 100.0)
+        self.assertEqual(mgr['collected'], 100.0)
+        self.assertEqual(mgr['not_collected'], 0.0)
+        self.assertEqual(mgr['collection_pct'], 100.0)
         self.assertEqual(mgr['refunds_total'], 20.0)
         self.assertEqual(mgr['net_sales'], 80.0)
+        self.assertIn('collected', response.data['summary'])
+        self.assertIn('not_collected', response.data['summary'])
+        self.assertIn('collection_pct', response.data['summary'])
 
     def test_sales_by_person_filter_cashier(self):
         month = timezone.now().strftime('%Y-%m')
@@ -90,6 +96,29 @@ class SalesPersonReportTests(ManagerAPITestCase):
         )
         self.assertEqual(xlsx.status_code, status.HTTP_200_OK)
         self.assertTrue(xlsx.content[:2] == b'PK')
+
+    def test_sales_by_person_collections_split(self):
+        """Partial pay shows collected vs still-on-credit and collection %."""
+        debtor = User.objects.create_user('staff_debt', password='x')
+        Sale.objects.create(
+            status='completed',
+            payment_method='cash',
+            subtotal=Decimal('1000.00'),
+            total=Decimal('1000.00'),
+            amount_paid=Decimal('400.00'),
+            cashier=debtor,
+        )
+        month = timezone.now().strftime('%Y-%m')
+        response = self.client.get(
+            '/api/reports/sales_by_person/',
+            {'month': month, 'cashier_id': debtor.id},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        row = response.data['staff'][0]
+        self.assertEqual(row['gross_sales'], 1000.0)
+        self.assertEqual(row['collected'], 400.0)
+        self.assertEqual(row['not_collected'], 600.0)
+        self.assertEqual(row['collection_pct'], 40.0)
 
     def test_holding_sales_excluded(self):
         Sale.objects.create(
