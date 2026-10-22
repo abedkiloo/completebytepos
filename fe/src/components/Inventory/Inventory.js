@@ -217,8 +217,34 @@ const Inventory = () => {
     setShowBulkAdjustModal(true);
   };
 
-  const handleViewHistory = (product) => {
-    setSelectedProduct(product);
+  const alertItemAsProduct = (item) => {
+    const productId = item.product_id ?? item.id;
+    const variantId = item.variant_id ?? null;
+    return {
+      id: productId,
+      name: item.name,
+      sku: item.sku,
+      stock_quantity: item.stock_quantity,
+      low_stock_threshold: item.low_stock_threshold,
+      has_variants: Boolean(item.has_variants || variantId),
+      initial_variant_id: variantId,
+      variants: variantId
+        ? [
+            {
+              id: variantId,
+              sku: item.sku,
+              stock_quantity: item.stock_quantity,
+              size_name: item.variant_label || undefined,
+            },
+          ]
+        : Array.isArray(item.variants)
+          ? item.variants
+          : [],
+    };
+  };
+
+  const handleViewHistory = (item) => {
+    setSelectedProduct(alertItemAsProduct(item));
     setShowHistoryModal(true);
   };
 
@@ -442,18 +468,18 @@ const Inventory = () => {
               />
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {lowStockProducts.map((product) => (
+                {lowStockProducts.map((item) => (
                   <StockProductCard
-                    key={product.id}
-                    product={product}
+                    key={item.id}
+                    product={item}
                     tone="warning"
                     label="Low stock"
                     canReorder={canPurchase}
                     onReorder={() => {
-                      setSelectedProduct(product);
+                      setSelectedProduct(alertItemAsProduct(item));
                       setShowPurchaseModal(true);
                     }}
-                    onHistory={canShowMovements ? () => handleViewHistory(product) : undefined}
+                    onHistory={canShowMovements ? () => handleViewHistory(item) : undefined}
                   />
                 ))}
               </div>
@@ -473,18 +499,18 @@ const Inventory = () => {
               />
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {outOfStockProducts.map((product) => (
+                {outOfStockProducts.map((item) => (
                   <StockProductCard
-                    key={product.id}
-                    product={product}
+                    key={item.id}
+                    product={item}
                     tone="destructive"
                     label="Out of stock"
                     canReorder={canPurchase}
                     onReorder={() => {
-                      setSelectedProduct(product);
+                      setSelectedProduct(alertItemAsProduct(item));
                       setShowPurchaseModal(true);
                     }}
-                    onHistory={canShowMovements ? () => handleViewHistory(product) : undefined}
+                    onHistory={canShowMovements ? () => handleViewHistory(item) : undefined}
                   />
                 ))}
               </div>
@@ -612,7 +638,13 @@ function StockProductCard({ product, tone, label, canReorder = true, onReorder, 
         <Badge variant={tone === 'destructive' ? 'destructive' : 'warning'}>{label}</Badge>
       </CardHeader>
       <CardContent className="space-y-2 text-sm text-muted-foreground">
-        <p>SKU {product.sku}</p>
+        <p>SKU {product.sku || '—'}</p>
+        {product.variant_label ? (
+          <p>
+            Variant:{' '}
+            <span className="font-medium text-foreground">{product.variant_label}</span>
+          </p>
+        ) : null}
         <p>
           Stock:{' '}
           <span className="font-semibold text-foreground">

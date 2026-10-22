@@ -3,12 +3,12 @@ import { Pencil, ClipboardList } from 'lucide-react';
 
 import { productsAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
-import { catalogSellableStock } from '../../utils/catalogStock';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
 import { variantDisplayLabel } from '../../utils/variantCombinations';
 import {
   SELLING_PRICE_CLASS,
   VARIANT_PARENT_PRICE_MASK,
+  VARIANT_PARENT_STOCK_MASK,
   STOCK_ON_HAND_LABEL,
   STOCK_COUNT_HINT,
 } from '../../utils/productDisplay';
@@ -198,10 +198,10 @@ export default function ProductDetailPanel({
                     {product.has_variants ? (
                       <Badge variant="secondary">Has variants</Badge>
                     ) : null}
-                    {visibility.showStock && product.is_low_stock ? (
+                    {visibility.showStock && !product.has_variants && product.is_low_stock ? (
                       <Badge variant="warning">Low stock</Badge>
                     ) : null}
-                    {visibility.showStock && product.needs_reorder ? (
+                    {visibility.showStock && !product.has_variants && product.needs_reorder ? (
                       <Badge variant="outline">Needs reorder</Badge>
                     ) : null}
                     <PendingApprovalBadges pendingApproval={product.pending_approval} />
@@ -354,14 +354,19 @@ export default function ProductDetailPanel({
 
                 {!visibility.catalogOnly && visibility.showStock ? (
                   <>
-                    <DetailRow label={STOCK_ON_HAND_LABEL}>
-                      {product.track_stock
-                        ? product.has_variants
-                          ? catalogSellableStock(product)
-                          : product.stock_quantity ?? 0
-                        : 'Not tracked'}
-                    </DetailRow>
-                    {product.track_stock && Array.isArray(product.stock_layers) && product.stock_layers.length > 0 ? (
+                    {!(product.has_variants && focusedVariant) ? (
+                      <DetailRow label={STOCK_ON_HAND_LABEL}>
+                        {product.track_stock
+                          ? product.has_variants
+                            ? VARIANT_PARENT_STOCK_MASK
+                            : product.stock_quantity ?? 0
+                          : 'Not tracked'}
+                      </DetailRow>
+                    ) : null}
+                    {product.track_stock &&
+                    Array.isArray(product.stock_layers) &&
+                    product.stock_layers.length > 0 &&
+                    (!product.has_variants || focusedVariant) ? (
                       <div className="space-y-2 pt-1" data-testid="product-stock-layers">
                         <p className="text-xs font-medium text-foreground">Layers on hand</p>
                         <div className="overflow-x-auto rounded border border-border/50">
@@ -369,7 +374,7 @@ export default function ProductDetailPanel({
                             <thead>
                               <tr className="border-b border-border/40 text-left text-muted-foreground">
                                 <th className="px-2 py-1.5 font-medium">Received</th>
-                                {product.has_variants ? (
+                                {product.has_variants && !focusedVariant ? (
                                   <th className="px-2 py-1.5 font-medium">Variant</th>
                                 ) : null}
                                 <th className="px-2 py-1.5 font-medium text-right">Qty</th>
@@ -382,14 +387,21 @@ export default function ProductDetailPanel({
                               </tr>
                             </thead>
                             <tbody>
-                              {product.stock_layers.map((layer) => (
+                              {product.stock_layers
+                                .filter((layer) => {
+                                  if (!focusedVariant) return true;
+                                  return (
+                                    String(layer.variant_id) === String(focusedVariant.id)
+                                  );
+                                })
+                                .map((layer) => (
                                 <tr key={layer.id} className="border-b border-border/30 last:border-0">
                                   <td className="px-2 py-1.5 whitespace-nowrap">
                                     {layer.received_at
                                       ? new Date(layer.received_at).toLocaleDateString()
                                       : '—'}
                                   </td>
-                                  {product.has_variants ? (
+                                  {product.has_variants && !focusedVariant ? (
                                     <td className="px-2 py-1.5">{layer.variant || '—'}</td>
                                   ) : null}
                                   <td className="px-2 py-1.5 text-right tabular-nums">

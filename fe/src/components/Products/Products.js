@@ -26,7 +26,6 @@ import { useStoreSettings } from '../../hooks/useStoreSettings';
 import { isCurrentUserAdmin } from '../../utils/makerChecker';
 import PendingApprovalBadges from '../Approvals/PendingApprovalBadges';
 import { formatCurrency } from '../../utils/formatters';
-import { catalogSellableStock } from '../../utils/catalogStock';
 import {
   filterVariantsForStockAlert,
   parseProductFiltersFromSearch,
@@ -44,7 +43,7 @@ import { ProductImageThumb } from '../Shared/ProductImageLightbox';
 import ProductForm from './ProductForm';
 import ProductDetailPanel from './ProductDetailPanel';
 import StockCountModal from '../Inventory/StockCountModal';
-import { STOCK_ON_HAND_LABEL } from '../../utils/productDisplay';
+import { STOCK_ON_HAND_LABEL, VARIANT_PARENT_STOCK_MASK } from '../../utils/productDisplay';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import { toast } from '../../utils/toast';
 
@@ -1275,12 +1274,18 @@ function ProductRow({
                   {stockAlertFilter.outOfStock ? 'Out-of-stock variants' : 'Low-stock variants'}
                 </Badge>
               )}
-              {showLowStock && !alertFiltering && productHasLowStock(product) && (
+              {showLowStock &&
+                !alertFiltering &&
+                !product.has_variants &&
+                productHasLowStock(product) && (
                 <Badge variant="warning" className="px-1.5 py-0 text-[10px]">
                   Low stock
                 </Badge>
               )}
-              {showLowStock && !alertFiltering && productHasOutOfStock(product) && (
+              {showLowStock &&
+                !alertFiltering &&
+                !product.has_variants &&
+                productHasOutOfStock(product) && (
                 <Badge variant="destructive" className="px-1.5 py-0 text-[10px]">
                   Out of stock
                 </Badge>
@@ -1338,11 +1343,7 @@ function ProductRow({
         </td>
       )}
       <td className="px-4 py-3 text-right">
-        <StockCell
-          product={product}
-          onSetStock={onSetStock}
-          alertFiltering={alertFiltering}
-        />
+        <StockCell product={product} onSetStock={onSetStock} />
       </td>
       {showStatus && (
       <td className="px-4 py-3">
@@ -1410,30 +1411,29 @@ function ProductThumb({ product }) {
   );
 }
 
-function StockCell({ product, onSetStock, alertFiltering = false }) {
+function StockCell({ product, onSetStock }) {
   if (!product.track_stock) {
     return <span className="text-xs text-muted-foreground">Not tracked</span>;
   }
-  // Under stock-alert filters, parent totals mix in-stock siblings — show variants only.
-  if (alertFiltering && product.has_variants) {
-    return <span className="text-xs text-muted-foreground">See variants</span>;
+  // Variant products: never show a summed parent total — only each variant's qty.
+  if (product.has_variants) {
+    return (
+      <span className="text-xs text-muted-foreground" title="Open variants for per-size/colour stock">
+        {VARIANT_PARENT_STOCK_MASK}
+      </span>
+    );
   }
-  const qty = product.has_variants
-    ? catalogSellableStock(product)
-    : parseInt(product.stock_quantity, 10) || 0;
+  const qty = parseInt(product.stock_quantity, 10) || 0;
   const hasOutOfStock = productHasOutOfStock(product);
   const hasLowStock = productHasLowStock(product);
   const lowThreshold = parseInt(product.low_stock_threshold, 10) || 0;
-  const tone =
-    hasOutOfStock && !product.has_variants
-      ? 'text-destructive'
-      : hasOutOfStock && product.has_variants
-      ? 'text-warning'
-      : qty <= 0
+  const tone = hasOutOfStock
+    ? 'text-destructive'
+    : qty <= 0
       ? 'text-destructive'
       : hasLowStock || (lowThreshold > 0 && qty <= lowThreshold)
-      ? 'text-warning'
-      : 'text-foreground';
+        ? 'text-warning'
+        : 'text-foreground';
   const qtyEl = (
     <span className={cn('font-semibold tabular-nums', tone)}>{qty}</span>
   );

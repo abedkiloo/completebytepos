@@ -31,12 +31,19 @@ const StockHistoryModal = ({ product, onClose, showCost = true, embedded = false
   const [hasMore, setHasMore] = useState(false);
 
   useEffect(() => {
-    setVariantId('');
+    const initial =
+      product?.initial_variant_id != null && product.initial_variant_id !== ''
+        ? String(product.initial_variant_id)
+        : variants.length === 1
+          ? String(variants[0].id)
+          : '';
+    setVariantId(initial);
     setHistory([]);
     setError('');
     setPage(1);
     setHasMore(false);
-  }, [product?.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset when product or initial variant changes
+  }, [product?.id, product?.initial_variant_id, variants.length]);
 
   useEffect(() => {
     if (!product?.id) return;

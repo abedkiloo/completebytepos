@@ -9,6 +9,9 @@ export const SELLING_PRICE_CLASS = 'text-success font-medium tabular-nums';
 /** Shown on parent rows for products that sell via variants (prices live on variant rows). */
 export const VARIANT_PARENT_PRICE_MASK = '***';
 
+/** Parent product row must not show summed variant stock. */
+export const VARIANT_PARENT_STOCK_MASK = 'See variants';
+
 export const STOCK_ON_HAND_LABEL = 'Stock on hand';
 export const STOCK_OPENING_LABEL = 'Opening stock';
 export const STOCK_COUNT_LABEL = 'Stock count';

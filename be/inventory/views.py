@@ -542,49 +542,32 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def low_stock(self, request):
-        """Get all products with low stock"""
+        """Low-stock alert rows: simple products + individual low variants."""
         if not low_stock_alerts_allowed():
             return self._feature_disabled_response('Low-stock alerts')
-        from products.serializers import ProductListSerializer
-        
-        products = Product.objects.filter(
-            stock_quantity__lte=F('low_stock_threshold'),
-            is_active=True,
-            track_stock=True
-        )
-        serializer = ProductListSerializer(products, many=True, context={'request': request})
-        return Response(serializer.data)
+        from products.stock_alerts import list_stock_alert_items
+
+        return Response(list_stock_alert_items(kind='low_stock'))
 
     @action(detail=False, methods=['get'])
     def out_of_stock(self, request):
-        """Get all products that are out of stock"""
+        """Out-of-stock alert rows: simple products + individual empty variants."""
         if not out_of_stock_alerts_allowed():
             return self._feature_disabled_response('Out-of-stock alerts')
-        from products.serializers import ProductListSerializer
-        
-        products = Product.objects.filter(
-            stock_quantity=0,
-            is_active=True,
-            track_stock=True
-        )
-        serializer = ProductListSerializer(products, many=True, context={'request': request})
-        return Response(serializer.data)
+        from products.stock_alerts import list_stock_alert_items
+
+        return Response(list_stock_alert_items(kind='out_of_stock'))
 
     @action(detail=False, methods=['get'])
     def needs_reorder(self, request):
-        """Get all products that need reordering"""
+        """Same as low stock — one row per simple product or matching variant."""
         if not low_stock_alerts_allowed():
             return self._feature_disabled_response('Low-stock alerts')
-        from products.serializers import ProductListSerializer
-        
-        products = Product.objects.filter(
-            stock_quantity__lte=F('low_stock_threshold'),
-            is_active=True,
-            track_stock=True
-        ).order_by('stock_quantity')
-        
-        serializer = ProductListSerializer(products, many=True, context={'request': request})
-        return Response(serializer.data)
+        from products.stock_alerts import list_stock_alert_items
+
+        items = list_stock_alert_items(kind='low_stock')
+        items.sort(key=lambda row: (row.get('stock_quantity') or 0, row.get('name') or ''))
+        return Response(items)
 
     @action(detail=False, methods=['get'])
     def report(self, request):
