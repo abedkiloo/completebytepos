@@ -136,7 +136,7 @@ function MonthCard({ month, policy }) {
 function BonusLadder({ month, bands, bonusMinStars = 4, collectionRequiredRatio = 0.8 }) {
   const sales = Number(month?.sales || 0);
   const payable = Number(month?.bonus || 0);
-  const earned = Number(month?.bonus_earned ?? month?.bonus || 0);
+  const earned = Number(month?.bonus_earned ?? month?.bonus ?? 0);
   const next = month?.next_bonus;
   const toNext = Number(month?.amount_to_next_bonus || 0);
   const qualified = month?.bonus_qualified !== false;
