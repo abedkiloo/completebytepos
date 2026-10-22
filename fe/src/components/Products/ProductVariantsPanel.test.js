@@ -28,7 +28,10 @@ jest.mock('../../hooks/useStoreSettings', () => ({
 
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 
-const sizes = [{ id: 1, name: 'Large', code: 'L' }];
+const sizes = [
+  { id: 1, name: 'Large', code: 'L' },
+  { id: 2, name: 'Single puller', code: 'SP' },
+];
 const colors = [{ id: 10, name: 'Blue' }];
 
 describe('ProductVariantsPanel', () => {
@@ -278,5 +281,60 @@ describe('ProductVariantsPanel', () => {
       'Enter a reason below — price, cost, stock, or status changes need approval.'
     );
     expect(variantsAPI.update).not.toHaveBeenCalled();
+  });
+
+  test('asks for confirmation before changing size/color configuration', async () => {
+    useStoreSettings.mockReturnValue({
+      settings: { maker_checker_enabled: false },
+    });
+    variantsAPI.getByProduct.mockResolvedValue({
+      data: {
+        results: [
+          {
+            id: 42,
+            product: 5,
+            size: 1,
+            color: 10,
+            size_name: 'Large',
+            color_name: 'Blue',
+            sku: 'SKU-1',
+            price: '100.00',
+            is_active: true,
+          },
+        ],
+      },
+    });
+    variantsAPI.update.mockResolvedValue({ status: 200 });
+
+    render(
+      <ProductVariantsPanel
+        productId={5}
+        sizes={sizes}
+        colors={colors}
+        canEditPrice
+      />
+    );
+
+    await screen.findByRole('button', { name: /save variant/i });
+    fireEvent.change(screen.getByTestId('variant-size-1-10'), {
+      target: { value: '2' },
+    });
+    expect(screen.getByText(/Single puller \/ Blue/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /save configuration/i }));
+
+    expect(variantsAPI.update).not.toHaveBeenCalled();
+    expect(screen.getByText(/Change variant configuration/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Large \/ Blue/i)
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /confirm & save/i }));
+
+    await waitFor(() => {
+      expect(variantsAPI.update).toHaveBeenCalledWith(
+        42,
+        expect.objectContaining({ size: 2 })
+      );
+    });
   });
 });

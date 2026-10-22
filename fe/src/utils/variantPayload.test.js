@@ -161,6 +161,17 @@ describe('buildVariantPatchPayload', () => {
       buildVariantPatchPayload({ ...variant, low_stock_threshold: 5 }, { low_stock_threshold: '12' })
     ).toEqual({ low_stock_threshold: 12 });
   });
+
+  test('includes size and color when configuration changes', () => {
+    const withCombo = { ...variant, size: 1, color: 10 };
+    expect(buildVariantPatchPayload(withCombo, { size_id: '2', color_id: '10' })).toEqual({
+      size: 2,
+    });
+    expect(buildVariantPatchPayload(withCombo, { size_id: '1', color_id: '11' })).toEqual({
+      color: 11,
+    });
+    expect(buildVariantPatchPayload(withCombo, { size_id: '1', color_id: '10' })).toEqual({});
+  });
 });
 
 describe('buildVariantDraftPatchPayload', () => {

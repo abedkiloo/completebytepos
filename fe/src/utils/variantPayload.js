@@ -106,8 +106,32 @@ export function buildVariantUpdatePayload(variant, draft) {
 /**
  * PATCH body with only fields that changed — avoids rewriting other variant data.
  */
+function normalizeVariantFk(value) {
+  if (value == null || value === '' || value === 'none') return null;
+  if (typeof value === 'object' && value !== null && 'id' in value) {
+    const n = Number(value.id);
+    return Number.isFinite(n) ? n : null;
+  }
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function buildVariantPatchPayload(variant, draft) {
   const payload = {};
+  if (draft.size_id !== undefined || draft.size !== undefined) {
+    const nextSize = normalizeVariantFk(draft.size_id ?? draft.size);
+    const prevSize = normalizeVariantFk(variant.size ?? variant.size_id);
+    if (nextSize !== prevSize) {
+      payload.size = nextSize;
+    }
+  }
+  if (draft.color_id !== undefined || draft.color !== undefined) {
+    const nextColor = normalizeVariantFk(draft.color_id ?? draft.color);
+    const prevColor = normalizeVariantFk(variant.color ?? variant.color_id);
+    if (nextColor !== prevColor) {
+      payload.color = nextColor;
+    }
+  }
   if (draft.price !== undefined && draft.price !== '') {
     const price = draft.price === '' ? null : draft.price;
     const prev = variant.price ?? variant.selling_price ?? null;
