@@ -46,13 +46,16 @@ class ProductHistoryAdminAPITests(ManagerAPITestCase):
             {'product_id': self.product.id},
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-        self.assertGreaterEqual(len(response.data), 1)
-        row = response.data[0]
+        rows = response.data.get('results', response.data)
+        self.assertGreaterEqual(len(rows), 1)
+        row = rows[0]
         self.assertIn('stock_flow', row)
         self.assertIn('previous_stock', row)
         self.assertIn('new_stock', row)
         self.assertIn('Previous stock', row['stock_flow'])
         self.assertIn('New stock', row['stock_flow'])
+        self.assertNotIn('product_detail', row)
+        self.assertNotIn('variant_detail', row)
 
     def test_product_history_disabled_by_config(self):
         cache.clear()
@@ -127,8 +130,9 @@ class ProductHistoryAdminAPITests(ManagerAPITestCase):
             {'product_id': self.product.id, 'variant_id': variant_a.id},
         )
         self.assertEqual(filtered.status_code, status.HTTP_200_OK, filtered.data)
-        self.assertGreaterEqual(len(filtered.data), 1)
-        for row in filtered.data:
+        rows = filtered.data.get('results', filtered.data)
+        self.assertGreaterEqual(len(rows), 1)
+        for row in rows:
             self.assertEqual(row.get('variant') or row.get('variant_id'), variant_a.id)
 
 

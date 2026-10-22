@@ -36,8 +36,61 @@ describe('StockHistoryModal', () => {
     await waitFor(() =>
       expect(screen.getByText(/Previous stock 10 · Sold 2 · New stock 8/)).toBeInTheDocument()
     );
-    expect(inventoryAPI.productHistory).toHaveBeenCalledWith(7, {});
+    expect(inventoryAPI.productHistory).toHaveBeenCalledWith(
+      7,
+      expect.objectContaining({ page: 1, page_size: 50 }),
+    );
     expect(screen.queryByTestId('stock-history-variant-picker')).not.toBeInTheDocument();
+  });
+
+  it('reads paginated results and shows a real API error message', async () => {
+    inventoryAPI.productHistory
+      .mockResolvedValueOnce({
+        data: {
+          count: 1,
+          next: null,
+          previous: null,
+          results: [
+            {
+              id: 3,
+              movement_type: 'adjustment',
+              quantity: 5,
+              stock_delta: 5,
+              stock_flow: 'Previous stock 0 · Adjusted +5 · New stock 5',
+              created_at: '2026-10-06T10:00:00Z',
+            },
+          ],
+        },
+      })
+      .mockRejectedValueOnce({
+        response: { status: 500, data: { error: 'Database blew up' } },
+      });
+
+    const { rerender } = render(
+      <StockHistoryModal
+        embedded
+        product={{ id: 8, name: 'Rope', has_variants: false, variants: [] }}
+      />
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText(/Adjusted \+5/)).toBeInTheDocument()
+    );
+
+    inventoryAPI.productHistory.mockRejectedValueOnce({
+      response: { status: 500, data: { error: 'Database blew up' } },
+    });
+    rerender(
+      <StockHistoryModal
+        embedded
+        product={{ id: 9, name: 'Cable', has_variants: false, variants: [] }}
+      />
+    );
+
+    await waitFor(() => expect(screen.getByText('Database blew up')).toBeInTheDocument());
+    expect(
+      screen.queryByText(/Admins only when enabled/i)
+    ).not.toBeInTheDocument();
   });
 
   it('requires selecting a variant before loading history', async () => {
@@ -78,6 +131,9 @@ describe('StockHistoryModal', () => {
     await waitFor(() =>
       expect(screen.getByText(/Previous stock 0 · Received 3 · New stock 3/)).toBeInTheDocument()
     );
-    expect(inventoryAPI.productHistory).toHaveBeenCalledWith(12, { variant_id: '21' });
+    expect(inventoryAPI.productHistory).toHaveBeenCalledWith(
+      12,
+      expect.objectContaining({ variant_id: '21', page: 1, page_size: 50 }),
+    );
   });
 });

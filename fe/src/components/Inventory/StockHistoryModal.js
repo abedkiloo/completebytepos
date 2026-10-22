@@ -25,12 +25,17 @@ const StockHistoryModal = ({ product, onClose, showCost = true, embedded = false
   const [variantId, setVariantId] = useState('');
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
 
   useEffect(() => {
     setVariantId('');
     setHistory([]);
     setError('');
+    setPage(1);
+    setHasMore(false);
   }, [product?.id]);
 
   useEffect(() => {
@@ -39,32 +44,65 @@ const StockHistoryModal = ({ product, onClose, showCost = true, embedded = false
       setHistory([]);
       setLoading(false);
       setError('');
+      setPage(1);
+      setHasMore(false);
       return;
     }
-    loadHistory();
+    loadHistory(1, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when product or variant changes
   }, [product?.id, needsVariant, variantId]);
 
-  const loadHistory = async () => {
+  const normalizeHistoryPayload = (data) => {
+    if (Array.isArray(data)) {
+      return { rows: data, hasMore: false };
+    }
+    const rows = Array.isArray(data?.results) ? data.results : [];
+    const hasNext = Boolean(data?.next);
+    return { rows, hasMore: hasNext };
+  };
+
+  const historyErrorMessage = (err) => {
+    const body = err?.response?.data;
+    if (typeof body?.error === 'string' && body.error.trim()) return body.error;
+    if (typeof body?.detail === 'string' && body.detail.trim()) return body.detail;
+    if (err?.response?.status === 403) {
+      return 'Product stock history is only available to admins when enabled in inventory settings.';
+    }
+    if (err?.response?.status === 404) {
+      return 'Product not found.';
+    }
+    if (err?.message === 'Network Error') {
+      return 'Could not load stock history — network error. Try again.';
+    }
+    return 'Could not load stock history. Try again, or pick another variant.';
+  };
+
+  const loadHistory = async (pageToLoad = 1, { replace = false } = {}) => {
     if (!product?.id) return;
 
-    setLoading(true);
+    if (replace) {
+      setLoading(true);
+    } else {
+      setLoadingMore(true);
+    }
     setError('');
     try {
-      const params = {};
+      const params = { page: pageToLoad, page_size: 50 };
       if (needsVariant && variantId) {
         params.variant_id = variantId;
       }
       const response = await inventoryAPI.productHistory(product.id, params);
-      setHistory(response.data || []);
+      const { rows, hasMore: more } = normalizeHistoryPayload(response.data);
+      setHistory((prev) => (replace ? rows : [...prev, ...rows]));
+      setPage(pageToLoad);
+      setHasMore(more);
     } catch (err) {
-      const msg =
-        err?.response?.data?.error ||
-        'Could not load stock history. Admins only when enabled in settings.';
-      setError(msg);
-      setHistory([]);
+      setError(historyErrorMessage(err));
+      if (replace) setHistory([]);
+      setHasMore(false);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
@@ -175,6 +213,18 @@ const StockHistoryModal = ({ product, onClose, showCost = true, embedded = false
               </tbody>
             </table>
           </div>
+          {hasMore ? (
+            <div className="flex justify-center pt-1">
+              <button
+                type="button"
+                className="text-sm font-medium text-primary underline-offset-2 hover:underline disabled:opacity-60"
+                disabled={loadingMore}
+                onClick={() => loadHistory(page + 1)}
+              >
+                {loadingMore ? 'Loading…' : 'Load older movements'}
+              </button>
+            </div>
+          ) : null}
         </div>
       )}
     </>

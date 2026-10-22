@@ -226,7 +226,8 @@ class InventoryViewsTestCase(ManagerAPITestCase):
             {'product_id': self.product.id},
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(len(response.data), 1)
+        rows = response.data.get('results', response.data)
+        self.assertGreaterEqual(len(rows), 1)
 
     def test_bulk_adjust_partial_success(self):
         response = self.client.post(

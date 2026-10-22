@@ -632,8 +632,10 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def product_history(self, request):
         """Get stock movement history for a product (or one variant when applicable)."""
+        from inventory.serializers import StockHistorySerializer
         from inventory.stock_history import product_stock_history_allowed
         from products.models import Product
+        from utils.pagination import StandardResultsSetPagination
 
         if not product_stock_history_allowed(request.user):
             return Response(
@@ -674,19 +676,18 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        try:
-            movements = StockMovement.objects.filter(
-                product_id=product_id
-            ).select_related(
-                'product', 'user', 'variant', 'variant__size', 'variant__color'
-            ).order_by('-created_at')
-            if variant_id:
-                movements = movements.filter(variant_id=variant_id)
+        movements = StockMovement.objects.filter(
+            product_id=product_id
+        ).select_related(
+            'product', 'user', 'variant', 'variant__size', 'variant__color'
+        ).order_by('-created_at')
+        if variant_id:
+            movements = movements.filter(variant_id=variant_id)
 
-            serializer = self.get_serializer(movements, many=True)
-            return Response(serializer.data)
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        # Lean serializer + pagination: busy variants (1000+ on hand) used to
+        # nest full ProductListSerializer per row and time out / 500, which the
+        # FE mistook for an admin-settings gate.
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(movements, request, view=self)
+        serializer = StockHistorySerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)

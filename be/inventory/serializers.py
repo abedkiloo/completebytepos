@@ -4,6 +4,17 @@ from products.serializers import ProductListSerializer, ProductVariantSerializer
 from inventory.stock_history import serialize_stock_history_entry
 
 
+def _variant_info_label(variant) -> str | None:
+    if not variant:
+        return None
+    parts = []
+    if getattr(variant, 'size', None):
+        parts.append(f"Size: {variant.size.name}")
+    if getattr(variant, 'color', None):
+        parts.append(f"Color: {variant.color.name}")
+    return " - ".join(parts) if parts else None
+
+
 class StockMovementSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source='product.name', read_only=True)
     product_sku = serializers.CharField(source='product.sku', read_only=True)
@@ -28,17 +39,54 @@ class StockMovementSerializer(serializers.ModelSerializer):
     
     def get_variant_info(self, obj):
         """Get variant information as string"""
-        if obj.variant:
-            parts = []
-            if obj.variant.size:
-                parts.append(f"Size: {obj.variant.size.name}")
-            if obj.variant.color:
-                parts.append(f"Color: {obj.variant.color.name}")
-            return " - ".join(parts) if parts else None
-        return None
+        return _variant_info_label(obj.variant)
 
     def get_stock_delta(self, obj):
         """Signed change this movement applied to on-hand stock."""
+        return obj._stock_delta()
+
+    def get_user_name(self, obj):
+        from inventory.stock_history import movement_user_display
+        return movement_user_display(obj.user)
+
+    def to_representation(self, instance):
+        from inventory.module_settings import apply_stock_movement_representation_flags
+
+        data = super().to_representation(instance)
+        data = serialize_stock_history_entry(instance, data)
+        return apply_stock_movement_representation_flags(data)
+
+
+class StockHistorySerializer(serializers.ModelSerializer):
+    """
+    Lean row for product/variant stock ledgers.
+
+    Avoids nesting ProductListSerializer (sizes/colors/alerts) per movement —
+    that blew up for high-volume variants and made the UI look like a
+    permissions failure.
+    """
+
+    product_name = serializers.CharField(source='product.name', read_only=True)
+    product_sku = serializers.CharField(source='product.sku', read_only=True)
+    variant_info = serializers.SerializerMethodField()
+    user_name = serializers.SerializerMethodField()
+    stock_delta = serializers.SerializerMethodField()
+
+    class Meta:
+        model = StockMovement
+        fields = [
+            'id', 'product', 'product_name', 'product_sku',
+            'variant', 'variant_info',
+            'movement_type', 'quantity', 'stock_delta', 'unit_cost', 'total_cost',
+            'reference', 'notes', 'user', 'user_name',
+            'stock_before', 'stock_after', 'created_at',
+        ]
+        read_only_fields = fields
+
+    def get_variant_info(self, obj):
+        return _variant_info_label(obj.variant)
+
+    def get_stock_delta(self, obj):
         return obj._stock_delta()
 
     def get_user_name(self, obj):
