@@ -240,7 +240,8 @@ class SaleViewsCoverageAPITests(ManagerAPITestCase):
         self.category = Category.objects.create(name='View Gap', is_active=True)
         self.product = Product.objects.create(
             name='View Gap Item', sku='VG-1', category=self.category,
-            price=Decimal('100'), stock_quantity=50, track_stock=True, is_active=True,
+            price=Decimal('100'), cost=Decimal('40'),
+            stock_quantity=50, track_stock=True, is_active=True,
         )
         self.customer = Customer.objects.create(name='View Cust', phone='0700888111', is_active=True)
 

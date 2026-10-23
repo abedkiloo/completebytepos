@@ -95,14 +95,15 @@ class SaleServiceValidateItemsEdges(TestCase):
             user=self.user, role='manager', custom_role=roles[ROLE_MANAGER], is_active=True,
         )
         self.product = Product.objects.create(
-            name='SI Edge', sku='SI-E', price=Decimal('40'),
+            name='SI Edge', sku='SI-E', price=Decimal('40'), cost=Decimal('15'),
             stock_quantity=2, track_stock=True, is_active=True, has_variants=True,
         )
         self.size = Size.objects.create(name='T', code='T', is_active=True)
         self.color = Color.objects.create(name='Tan', is_active=True)
         self.variant = ProductVariant.objects.create(
             product=self.product, size=self.size, color=self.color,
-            sku='SI-E-T-TAN', price=Decimal('40'), stock_quantity=2, is_active=True,
+            sku='SI-E-T-TAN', price=Decimal('40'), cost=Decimal('15'),
+            stock_quantity=2, is_active=True,
         )
         self.service = SaleService()
 
@@ -149,6 +150,41 @@ class SaleServiceValidateItemsEdges(TestCase):
             )
             self.assertEqual(len(items), 1)
 
+    def test_plan_fifo_across_variants_paths(self):
+        self.product.has_variants = True
+        self.product.cost = Decimal('12')
+        self.product.save(update_fields=['has_variants', 'cost'])
+        self.variant.cost = Decimal('12')
+        self.variant.stock_quantity = 2
+        self.variant.save(update_fields=['cost', 'stock_quantity'])
+
+        self.assertEqual(self.service._plan_fifo_across_variants(self.product, 0), [])
+        with patch('sales.services.plan_fifo_allocations', return_value=[{'quantity': 1}]) as plan_fn:
+            within = self.service._plan_fifo_across_variants(self.product, 1)
+            self.assertEqual(within, [{'quantity': 1}])
+            plan_fn.assert_called()
+            over = self.service._plan_fifo_across_variants(self.product, 5)
+            self.assertTrue(over)
+        empty_product = Product.objects.create(
+            name='No var stock',
+            sku='SI-E-EMPTY',
+            category=self.product.category,
+            price=Decimal('10'),
+            cost=Decimal('5'),
+            has_variants=True,
+            track_stock=True,
+            is_active=True,
+        )
+        with patch(
+            'sales.services.plan_fifo_allocations',
+            return_value=[{'quantity': 3, 'fallback': True}],
+        ) as plan_fn:
+            fallback = self.service._plan_fifo_across_variants(empty_product, 3)
+            self.assertEqual(fallback, [{'quantity': 3, 'fallback': True}])
+            plan_fn.assert_called_with(
+                product_id=empty_product.id, variant_id=None, quantity=3
+            )
+
 
 class InvoiceCreateAPICoverage(ManagerAPITestCase):
     def setUp(self):
@@ -156,7 +192,8 @@ class InvoiceCreateAPICoverage(ManagerAPITestCase):
         self.category = Category.objects.create(name='InvAPI', is_active=True)
         self.product = Product.objects.create(
             name='Inv API Item', sku='INV-API', category=self.category,
-            price=Decimal('80'), stock_quantity=10, track_stock=True, is_active=True,
+            price=Decimal('80'), cost=Decimal('30'),
+            stock_quantity=10, track_stock=True, is_active=True,
         )
         self.customer = Customer.objects.create(name='Inv Cust', phone='0700222333', is_active=True)
         self.sale = Sale.objects.create(
@@ -231,7 +268,8 @@ class SaleCreateSerializerEdges(ManagerAPITestCase):
         self.category = Category.objects.create(name='SerSale', is_active=True)
         self.product = Product.objects.create(
             name='Ser Sale Item', sku='SER-S', category=self.category,
-            price=Decimal('60'), stock_quantity=5, track_stock=True, is_active=True,
+            price=Decimal('60'), cost=Decimal('25'),
+            stock_quantity=5, track_stock=True, is_active=True,
         )
 
     def test_sale_item_serializer_and_create_validation(self):

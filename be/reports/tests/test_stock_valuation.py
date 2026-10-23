@@ -1,6 +1,7 @@
 """Current stock valuation report."""
 
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.test import SimpleTestCase
 from rest_framework import status
@@ -177,6 +178,22 @@ class StockValuationReportTests(ManagerAPITestCase):
         payload = StockValuationReportService.build()
         self.assertEqual(payload['owner'], 'Omuwenga Suppliers')
         self.assertFalse(payload['include_zero'])
+
+    def test_build_without_layers_includes_variants_and_zeros(self):
+        with patch('inventory.stock_layers.layers_enabled', return_value=False):
+            built = StockValuationReportService.build(
+                type('R', (), {'query_params': {'include_zero': '1'}, 'GET': {}})()
+            )
+            positive_only = StockValuationReportService.build()
+        skus = {row['sku'] for row in built['items']}
+        self.assertIn('TBL-1', skus)
+        self.assertIn('STL-0', skus)
+        self.assertIn('SOFA-1-LG', skus)
+        self.assertIn('SOFA-1-GREY', skus)
+        self.assertNotIn('SOFA-1', skus)
+        positive_skus = {row['sku'] for row in positive_only['items']}
+        self.assertNotIn('STL-0', positive_skus)
+        self.assertIn('SHELL-1', positive_skus)
 
     def test_include_zero_from_get_fallback(self):
         class FakeRequest:

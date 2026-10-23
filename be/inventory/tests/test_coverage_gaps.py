@@ -454,15 +454,17 @@ class CheckpointServiceGapTests(ManagerAPITestCase):
             product_ids=[other.id],
         )
         line_a = a.lines.get()
-        with self.assertRaises(ValidationError):
+        line_b = b.lines.get()
+        with self.assertRaises(ValidationError) as dup_ctx:
             count_checkpoint_lines(
                 checkpoint_id=b.id,
                 counts=[
-                    {'line_id': line_a.id, 'counted_qty': 3},
-                    {'line_id': line_a.id, 'counted_qty': 3},
+                    {'line_id': line_b.id, 'counted_qty': 3},
+                    {'line_id': line_b.id, 'counted_qty': 3},
                 ],
                 user=self.manager_user,
             )
+        self.assertIn('Duplicate line id', str(dup_ctx.exception))
         with self.assertRaises(ValidationError):
             count_checkpoint_lines(
                 checkpoint_id=b.id,
@@ -475,6 +477,21 @@ class CheckpointServiceGapTests(ManagerAPITestCase):
             close_checkpoint(checkpoint_id=a.id, user=self.manager_user)
         with self.assertRaises(ValidationError):
             cancel_checkpoint(checkpoint_id=a.id, user=self.manager_user)
+        with self.assertRaises(ValidationError):
+            count_checkpoint_lines(
+                checkpoint_id=a.id,
+                counts=[{'line_id': line_a.id, 'counted_qty': 1}],
+                user=self.manager_user,
+            )
+
+    def test_open_include_all_tracked(self):
+        cp = open_checkpoint(
+            title='All tracked',
+            user=self.manager_user,
+            include_all_tracked=True,
+        )
+        self.assertGreaterEqual(cp.lines.count(), 1)
+        self.assertEqual(cp.status, StockCheckpoint.STATUS_OPEN)
 
     def test_checkpoint_api_validation_errors(self):
         response = self.client.post(

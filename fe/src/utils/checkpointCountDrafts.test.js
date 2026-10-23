@@ -66,6 +66,12 @@ describe('isCountDraftChanged / isCountDraftSavable', () => {
     expect(isCountDraftSavable(counted, '5048')).toBe(false);
     expect(isCountDraftChanged(counted, '548')).toBe(true);
     expect(isCountDraftSavable(counted, '548')).toBe(true);
+    expect(
+      isCountDraftChanged({ status: 'counted', counted_qty: null }, '0')
+    ).toBe(false);
+    expect(
+      isCountDraftChanged({ status: 'counted', counted_qty: null }, '2')
+    ).toBe(true);
   });
 });
 
@@ -117,8 +123,14 @@ describe('buildPendingCountPayload / hasAnySavablePendingDraft', () => {
 
   it('handles empty pending / missing drafts', () => {
     expect(hasAnySavablePendingDraft([], {})).toBe(false);
+    expect(hasAnySavablePendingDraft(null, null)).toBe(false);
+    expect(hasAnyChangedPendingDraft(null, null)).toBe(false);
     expect(buildPendingCountPayload(null, null)).toEqual({ payload: [] });
     expect(buildPendingCountPayload(pending, {})).toEqual({ payload: [] });
+    expect(buildChangedCountPayload([], { 1: '9' })).toEqual({ payload: [] });
+    expect(isCountDraftChanged(null, '')).toBe(false);
+    expect(isCountDraftChanged(null, '1')).toBe(true);
+    expect(isCountDraftSavable(null, '1')).toBe(true);
   });
 });
 
@@ -165,6 +177,40 @@ describe('buildCloseCheckpointSummary', () => {
     ]);
     expect(summary.unchanged).toBe(1);
     expect(summary.adjustments).toEqual([]);
+  });
+
+  it('falls back labels and handles null lines', () => {
+    expect(buildCloseCheckpointSummary(null)).toEqual(
+      expect.objectContaining({
+        totalLines: 0,
+        counted: 0,
+        pending: 0,
+        adjustments: [],
+      })
+    );
+    const summary = buildCloseCheckpointSummary([
+      {
+        id: 9,
+        status: 'counted',
+        system_qty_at_open: 1,
+        counted_qty: 3,
+      },
+    ]);
+    expect(summary.adjustments[0]).toEqual(
+      expect.objectContaining({
+        name: 'Product',
+        sku: '',
+        variant: '',
+        delta: 2,
+      })
+    );
+  });
+
+  it('uses counted_qty fallback when missing on counted row', () => {
+    const summary = buildCloseCheckpointSummary([
+      { id: 1, status: 'counted', system_qty_at_open: 7 },
+    ]);
+    expect(summary.unchanged).toBe(1);
   });
 });
 

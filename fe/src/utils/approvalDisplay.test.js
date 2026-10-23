@@ -1,6 +1,7 @@
 import {
   buildApprovalDiffRows,
   describeApprovalSummary,
+  expenseApprovalDetails,
   formatActionTypeLabel,
   formatApprovalValue,
   formatEntityTypeLabel,
@@ -62,9 +63,45 @@ describe('approvalDisplay', () => {
     expect(formatApprovalValue('notes', ['a', 'b'])).toBe('a, b');
     expect(formatApprovalValue('permissions', { a: 1 })).toBe('{"a":1}');
     expect(formatApprovalValue('price', null)).toBe('—');
+    expect(formatApprovalValue('unit', 'kg')).toBe('kg');
+    expect(formatApprovalValue('payment_method', 'cheque')).toBe('cheque');
+    expect(formatApprovalValue('tax_rate', 'n/a')).toBe('n/a');
+    expect(formatApprovalValue('price', 'not-a-number')).toBe('not-a-number');
   });
 
   test('buildApprovalDiffRows returns empty when values match', () => {
     expect(buildApprovalDiffRows({ price: '10' }, { price: '10' })).toEqual([]);
+  });
+
+  test('expenseApprovalDetails builds filtered expense facts', () => {
+    const details = expenseApprovalDetails({
+      expense_number: 'EXP-9',
+      amount: '2500',
+      category_name: 'Rent',
+      expense_date: '2026-10-01',
+      payment_method: 'mpesa',
+      vendor: 'Landlord Co',
+      receipt_number: '',
+      notes: 'October',
+    });
+    expect(details.sections).toHaveLength(1);
+    expect(details.sections[0].title).toBe('Expense');
+    const labels = details.sections[0].facts.map((fact) => fact.label);
+    expect(labels).toEqual([
+      'Reference',
+      'Amount',
+      'Category',
+      'Expense date',
+      'Payment method',
+      'Vendor',
+      'Notes',
+    ]);
+    expect(details.sections[0].facts.find((f) => f.label === 'Payment method').value).toBe(
+      'M-PESA'
+    );
+    expect(expenseApprovalDetails({}).sections[0].facts).toEqual([]);
+    expect(
+      expenseApprovalDetails({ payment_method: 'wire' }).sections[0].facts[0]
+    ).toEqual({ label: 'Payment method', value: 'wire' });
   });
 });

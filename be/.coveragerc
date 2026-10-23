@@ -16,8 +16,8 @@ omit =
 show_missing = True
 skip_covered = False
 precision = 1
-# Per-module gates: use run_tests_coverage.sh; raise fail_under when whole BE ≥ 75%.
-fail_under = 0
+# Whole-tree statement floor. Per-module gates: ./run_tests_coverage.sh --gates
+fail_under = 98
 
 [html]
 directory = htmlcov

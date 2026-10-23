@@ -8,9 +8,11 @@ from django.test import TestCase
 from products.models import Category, Color, Product, ProductVariant, Size
 from products.services import ProductService
 from products.stock_alerts import (
+    _variant_display_label,
     apply_low_stock_filter,
     apply_out_of_stock_filter,
     count_stock_alert_items,
+    list_stock_alert_items,
     product_has_low_stock,
     product_has_out_of_stock,
     variant_effective_threshold,
@@ -220,3 +222,105 @@ class StockAlertsTestCase(TestCase):
         product.refresh_from_db()
         product._prefetched_objects_cache = {'variants': list(product.variants.all())}
         self.assertTrue(product_has_out_of_stock(product))
+
+    def test_list_stock_alert_items_out_of_stock_flat_rows(self):
+        product, grey = self._variant_product()
+        Product.objects.create(
+            name='Simple Out',
+            sku='S-OUT-LIST',
+            category=self.category,
+            price=Decimal('10.00'),
+            cost=Decimal('5.00'),
+            stock_quantity=0,
+            low_stock_threshold=5,
+            track_stock=True,
+            is_active=True,
+        )
+        sku_only = ProductVariant.objects.create(
+            product=product,
+            size=None,
+            color=None,
+            sku='HL-SKU-ONLY',
+            price=Decimal('400.00'),
+            stock_quantity=0,
+            is_active=True,
+        )
+        bare = ProductVariant.objects.create(
+            product=product,
+            size=None,
+            color=None,
+            sku='TEMP-BARE',
+            price=Decimal('400.00'),
+            stock_quantity=0,
+            is_active=True,
+        )
+        # Empty SKU after create (signals may fill sku on insert).
+        ProductVariant.objects.filter(pk=bare.pk).update(sku='')
+        bare.refresh_from_db()
+
+        items = list_stock_alert_items(kind='out_of_stock')
+        by_id = {row['id']: row for row in items}
+        simple = next(r for r in items if r['sku'] == 'S-OUT-LIST')
+        self.assertEqual(simple['kind'], 'product')
+        self.assertIsNone(simple['variant_id'])
+        self.assertFalse(simple['has_variants'])
+
+        oos_variant = ProductVariant.objects.filter(
+            product=product, stock_quantity=0, size=self.size_l
+        ).get()
+        labeled = by_id[f'variant-{oos_variant.id}']
+        self.assertEqual(labeled['kind'], 'variant')
+        self.assertIn('Large / Black', labeled['name'])
+        self.assertEqual(labeled['variant_label'], 'Large / Black')
+
+        self.assertEqual(by_id[f'variant-{sku_only.id}']['variant_label'], 'HL-SKU-ONLY')
+        self.assertEqual(
+            by_id[f'variant-{bare.id}']['variant_label'],
+            f'Variant #{bare.pk}',
+        )
+        # Parent total must not appear as its own OOS row when variants exist.
+        self.assertFalse(any(r['id'] == f'product-{product.id}' for r in items))
+        self.assertFalse(any(r['variant_id'] == grey.id for r in items))
+
+    def test_list_stock_alert_items_low_stock_and_needs_reorder(self):
+        product, grey = self._variant_product()
+        grey.stock_quantity = 4
+        grey.save(update_fields=['stock_quantity'])
+        Product.objects.create(
+            name='Simple Low List',
+            sku='S-LOW-LIST',
+            category=self.category,
+            price=Decimal('10.00'),
+            cost=Decimal('5.00'),
+            stock_quantity=3,
+            low_stock_threshold=10,
+            track_stock=True,
+            is_active=True,
+        )
+
+        for kind in ('low_stock', 'needs_reorder'):
+            items = list_stock_alert_items(kind=kind)
+            skus = {r['sku'] for r in items}
+            self.assertIn('S-LOW-LIST', skus)
+            self.assertIn(grey.sku, skus)
+            # Zero-stock variants are not low-stock rows.
+            self.assertFalse(
+                any(r['stock_quantity'] == 0 and r['kind'] == 'variant' for r in items)
+            )
+        # Default kind is out_of_stock.
+        default_items = list_stock_alert_items(kind=None)
+        self.assertTrue(any(r['stock_quantity'] == 0 for r in default_items))
+
+    def test_variant_display_label_helpers(self):
+        product, grey = self._variant_product()
+        self.assertEqual(_variant_display_label(grey), 'Small / Grey')
+        bare = ProductVariant(
+            product=product,
+            size=None,
+            color=None,
+            sku='',
+            pk=999001,
+        )
+        self.assertEqual(_variant_display_label(bare), 'Variant #999001')
+        sku_only = ProductVariant(product=product, size=None, color=None, sku='X-1')
+        self.assertEqual(_variant_display_label(sku_only), 'X-1')

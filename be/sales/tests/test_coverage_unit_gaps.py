@@ -573,7 +573,7 @@ class BackfillImportUnitTests(TestCase):
             user=cls.manager, role='manager', custom_role=roles[ROLE_MANAGER], is_active=True,
         )
         cls.product = Product.objects.create(
-            name='Import Pen', sku='IMP-PEN', price=Decimal('50'),
+            name='Import Pen', sku='IMP-PEN', price=Decimal('50'), cost=Decimal('20'),
             stock_quantity=100, track_stock=True, is_active=True,
         )
         store = StoreSettings.load()
@@ -692,8 +692,8 @@ class BackfillImportUnitTests(TestCase):
             f'R4,{occurred},Sold offline during outage,IMP-PEN,0,50.00,cash,50.00,pos,,,,\n'
             # unknown sku
             f'R5,{occurred},Sold offline during outage,NO-SKU,1,50.00,cash,50.00,pos,,,,\n'
-            # product_id path
-            f'R6,{occurred},Sold offline during outage,,1,50.00,cash,50.00,pos,,,{self.product.id}\n'
+            # product_id path (empty sku; id in product_id column)
+            f'R6,{occurred},Sold offline during outage,,1,50.00,cash,50.00,pos,,,,{self.product.id}\n'
             # mismatch reason on same sale
             f'R7,{occurred},Sold offline during outage A,IMP-PEN,1,50.00,cash,50.00,pos,,,,\n'
             f'R7,{occurred},Sold offline during outage B,IMP-PEN,1,50.00,cash,50.00,pos,,,,\n'

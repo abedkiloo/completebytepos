@@ -100,6 +100,7 @@ class SerializerEdgePushTests(TestCase):
         out = ser3.validate({
             'name': 'Ghost Sub',
             'price': Decimal('10'),
+            'cost': Decimal('2'),
             'category': self.parent.id,
             'subcategory': 999999,
         })

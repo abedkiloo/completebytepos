@@ -94,6 +94,20 @@ class ManagerPricingWithStoreSettingsTests(ManagerAPITestCase):
         store.save()
 
     def test_manager_create_product_keeps_pricing(self):
+        from django.core.cache import cache
+        from settings.models import ModuleSetting
+
+        cache.clear()
+        ModuleSetting.objects.update_or_create(
+            module='products',
+            key='allow_manager_edit_cost',
+            defaults={
+                'label': 'allow_manager_edit_cost',
+                'description': '',
+                'default_value': True,
+                'value': True,
+            },
+        )
         response = self.client.post(
             '/api/products/',
             {
@@ -103,6 +117,7 @@ class ManagerPricingWithStoreSettingsTests(ManagerAPITestCase):
                 'mrp': '180.00',
                 'cost': '80.00',
                 'stock_quantity': 10,
+                'track_stock': True,
             },
             format='json',
         )

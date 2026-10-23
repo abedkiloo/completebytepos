@@ -128,7 +128,7 @@ export default function StockCheckpointsPage() {
   }, [loadList]);
 
   useEffect(() => {
-    if (selectedId) loadDetail(selectedId);
+    loadDetail(selectedId);
   }, [selectedId, loadDetail]);
 
   useEffect(() => {
@@ -211,10 +211,6 @@ export default function StockCheckpointsPage() {
       return;
     }
     const qty = parseCountDraft(raw);
-    if (qty === null) {
-      reportFormError(setFormBanner, 'Enter a valid stock-at-hand quantity');
-      return;
-    }
     const unchanged = !correcting && qty === systemQtyAtOpen(line);
     setBusy(true);
     try {
@@ -444,12 +440,14 @@ export default function StockCheckpointsPage() {
                     <div className="flex flex-wrap gap-2">
                       <Button
                         type="button"
-                        disabled={busy || !canSavePending}
+                        disabled={busy || (pendingLines.length > 0 && !canSavePending)}
                         onClick={handleCountAll}
                         title={
-                          canSavePending
-                            ? 'Confirm all pending lines (including unchanged stock)'
-                            : 'Enter a valid quantity on pending lines'
+                          pendingLines.length === 0
+                            ? 'All lines are already counted'
+                            : canSavePending
+                              ? 'Confirm all pending lines (including unchanged stock)'
+                              : 'Enter a valid quantity on pending lines'
                         }
                       >
                         Confirm all
@@ -457,7 +455,7 @@ export default function StockCheckpointsPage() {
                       <Button
                         type="button"
                         variant="outline"
-                        disabled={busy || (detail.pending_line_count || 0) > 0}
+                        disabled={busy}
                         onClick={openCloseConfirm}
                         title={
                           (detail.pending_line_count || 0) > 0

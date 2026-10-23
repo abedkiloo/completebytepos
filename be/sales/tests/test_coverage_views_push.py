@@ -111,7 +111,7 @@ class InvoicePaymentViewPushTests(ManagerAPITestCase):
             name='Inv Push', phone='0700222002', is_active=True,
         )
         self.product = Product.objects.create(
-            name='Inv Push Prod', sku='IPP-1', price=Decimal('40'),
+            name='Inv Push Prod', sku='IPP-1', price=Decimal('40'), cost=Decimal('15'),
             stock_quantity=10, track_stock=True, is_active=True,
         )
         self.sale = Sale.objects.create(
@@ -237,7 +237,7 @@ class SaleCompletionApprovalUnitPushTests(TestCase):
             name='SCA Cust', phone='0700333003', wallet_balance=Decimal('50'), is_active=True,
         )
         cls.product = Product.objects.create(
-            name='SCA Prod', sku='SCA-1', price=Decimal('20'),
+            name='SCA Prod', sku='SCA-1', price=Decimal('20'), cost=Decimal('8'),
             stock_quantity=10, track_stock=True, is_active=True,
         )
 
@@ -336,7 +336,7 @@ class InvoiceCreateViewPushTests(ManagerAPITestCase):
             name='InvC Push', phone='0700444004', is_active=True,
         )
         self.product = Product.objects.create(
-            name='InvC Prod', sku='ICP-1', price=Decimal('15'),
+            name='InvC Prod', sku='ICP-1', price=Decimal('15'), cost=Decimal('5'),
             stock_quantity=5, track_stock=True, is_active=True,
         )
 
@@ -415,7 +415,7 @@ class DebtAndInvoiceQueryPushTests(ManagerAPITestCase):
             name='Debt Push', phone='0700555005', wallet_balance=Decimal('-40'), is_active=True,
         )
         self.product = Product.objects.create(
-            name='Debt Prod', sku='DP-1', price=Decimal('40'),
+            name='Debt Prod', sku='DP-1', price=Decimal('40'), cost=Decimal('15'),
             stock_quantity=5, track_stock=True, is_active=True,
         )
 
@@ -660,7 +660,7 @@ class SaleViewSetExtraPushTests(ManagerAPITestCase):
         store.backfill_maker_checker_enabled = False
         store.save(update_fields=['maker_checker_enabled', 'backfill_maker_checker_enabled'])
         self.product = Product.objects.create(
-            name='SV Push Extra', sku='SVP-X', price=Decimal('30'),
+            name='SV Push Extra', sku='SVP-X', price=Decimal('30'), cost=Decimal('12'),
             stock_quantity=20, track_stock=True, is_active=True,
         )
         self.customer = Customer.objects.create(
@@ -903,7 +903,7 @@ class SaleRefundRollbackQueuePushTests(SalesAPITestCase):
     def setUpTestData(cls):
         super().setUpTestData()
         cls.product = Product.objects.create(
-            name='Queue Ref', sku='QR-1', price=Decimal('20'),
+            name='Queue Ref', sku='QR-1', price=Decimal('20'), cost=Decimal('8'),
             stock_quantity=5, track_stock=True, is_active=True,
         )
         cls.sale = Sale.objects.create(

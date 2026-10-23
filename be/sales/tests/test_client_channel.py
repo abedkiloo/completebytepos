@@ -61,6 +61,7 @@ class SaleClientChannelAPITests(ManagerAPITestCase):
             sku='CHN-1',
             category=category,
             price=Decimal('50.00'),
+            cost=Decimal('20.00'),
             stock_quantity=10,
             track_stock=True,
             is_active=True,

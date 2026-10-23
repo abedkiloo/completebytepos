@@ -19,6 +19,8 @@ from inventory.checkpoint_services import (
     latest_closed_checkpoint,
     open_checkpoint,
 )
+from inventory.checkpoint_serializers import StockCheckpointListSerializer
+from inventory.checkpoint_views import StockCheckpointViewSet
 from inventory.models import StockCheckpoint, StockMovement
 from products.models import Category, Product
 from sales.services import SaleService
@@ -274,3 +276,73 @@ class StockCheckpointAPITests(ManagerAPITestCase):
             format='json',
         )
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_list_and_validation_error_paths(self):
+        view = StockCheckpointViewSet()
+        view.action = 'list'
+        self.assertIs(view.get_serializer_class(), StockCheckpointListSerializer)
+        listed = self.client.get('/api/inventory/checkpoints/')
+        self.assertEqual(listed.status_code, status.HTTP_200_OK)
+
+        bad_open = self.client.post(
+            '/api/inventory/checkpoints/open/',
+            {'title': 'Empty pick', 'product_ids': []},
+            format='json',
+        )
+        self.assertEqual(bad_open.status_code, status.HTTP_400_BAD_REQUEST)
+
+        open_res = self.client.post(
+            '/api/inventory/checkpoints/open/',
+            {'title': 'Err paths', 'product_ids': [self.product.id]},
+            format='json',
+        )
+        self.assertEqual(open_res.status_code, status.HTTP_201_CREATED, open_res.data)
+        cp_id = open_res.data['id']
+        line_id = open_res.data['lines'][0]['id']
+
+        other = Product.objects.create(
+            name='Other CP',
+            sku='API-W3',
+            category=self.product.category,
+            price=Decimal('10'),
+            cost=Decimal('5'),
+            stock_quantity=3,
+            track_stock=True,
+            is_active=True,
+        )
+        other_open = self.client.post(
+            '/api/inventory/checkpoints/open/',
+            {'title': 'Other', 'product_ids': [other.id], 'block_sales': False},
+            format='json',
+        )
+        self.assertEqual(other_open.status_code, status.HTTP_201_CREATED, other_open.data)
+        other_line_id = other_open.data['lines'][0]['id']
+
+        wrong_cp = self.client.post(
+            f'/api/inventory/checkpoints/{cp_id}/lines/{other_line_id}/count/',
+            {'counted_qty': 1},
+            format='json',
+        )
+        self.assertEqual(wrong_cp.status_code, status.HTTP_400_BAD_REQUEST)
+
+        bad_bulk = self.client.post(
+            f'/api/inventory/checkpoints/{cp_id}/count-all/',
+            {'lines': [{'line_id': 999999, 'counted_qty': 1}]},
+            format='json',
+        )
+        self.assertEqual(bad_bulk.status_code, status.HTTP_400_BAD_REQUEST)
+
+        cancel_ok = self.client.post(f'/api/inventory/checkpoints/{cp_id}/cancel/')
+        self.assertEqual(cancel_ok.status_code, status.HTTP_200_OK, cancel_ok.data)
+        bad_count = self.client.post(
+            f'/api/inventory/checkpoints/{cp_id}/lines/{line_id}/count/',
+            {'counted_qty': 4},
+            format='json',
+        )
+        self.assertEqual(bad_count.status_code, status.HTTP_400_BAD_REQUEST)
+        cancel_again = self.client.post(f'/api/inventory/checkpoints/{cp_id}/cancel/')
+        self.assertEqual(cancel_again.status_code, status.HTTP_400_BAD_REQUEST)
+
+        blocked = self.client.get('/api/inventory/checkpoints/blocked-products/')
+        self.assertEqual(blocked.status_code, status.HTTP_200_OK)
+        self.assertIn('product_ids', blocked.data)

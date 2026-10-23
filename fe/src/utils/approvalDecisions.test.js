@@ -48,7 +48,7 @@ describe('approvalDecisions', () => {
     });
 
     expect(row.statusLabel).toBe('Rejected');
-    expect(row.commentLabel).toBe('Your comment');
+    expect(row.commentLabel).toBe('Checker comment');
     expect(row.comment).toBe('Need receipt photo');
     expect(row.checkerComment).toBe('Need receipt photo');
     expect(row.requesterReason).toBe('Customer return');

@@ -54,8 +54,25 @@ describe('variantStockAlerts', () => {
     ).toEqual({
       low_stock: false,
       out_of_stock: true,
+      zero_cost: false,
       is_active: '',
     });
+    expect(
+      parseProductFiltersFromSearch(new URLSearchParams('zero_cost=true'))
+    ).toEqual({
+      low_stock: false,
+      out_of_stock: false,
+      zero_cost: true,
+      is_active: '',
+    });
+    expect(
+      productFiltersToSearchParams({
+        low_stock: false,
+        out_of_stock: false,
+        zero_cost: true,
+        is_active: '',
+      }).toString()
+    ).toBe('zero_cost=true');
   });
 
   it('keeps only out-of-stock variants when that filter is on', () => {

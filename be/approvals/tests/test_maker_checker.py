@@ -407,6 +407,7 @@ class MakerCheckerStockTests(ManagerAPITestCase):
             sku='MC-STK-1',
             category=cls.category,
             price=Decimal('10'),
+            cost=Decimal('4'),
             stock_quantity=20,
             track_stock=True,
             is_active=True,
@@ -469,6 +470,7 @@ class MakerCheckerStockTests(ManagerAPITestCase):
             {
                 'product_id': self.product.id,
                 'quantity': 3,
+                'unit_cost': '4.00',
                 'notes': 'emergency',
                 'reason': 'Zero stock emergency',
             },
@@ -807,6 +809,7 @@ class MakerCheckerVariantTests(ManagerAPITestCase):
             sku='MC-VAR-P',
             category=cat,
             price=Decimal('100'),
+            cost=Decimal('40'),
             has_variants=True,
             is_active=True,
         )
@@ -818,6 +821,7 @@ class MakerCheckerVariantTests(ManagerAPITestCase):
             color=cls.color,
             sku='MC-VAR-1',
             price=Decimal('100'),
+            cost=Decimal('40'),
             stock_quantity=25,
             is_active=True,
         )
@@ -932,6 +936,7 @@ class MakerCheckerVariantTests(ManagerAPITestCase):
                 'product_id': self.product.id,
                 'variant_id': self.variant.id,
                 'quantity': 6000,
+                'unit_cost': '40.00',
                 'notes': 'Update slider',
                 'reason': 'Update slider stock',
             },

@@ -11,6 +11,7 @@ from products.stock_utils import (
     sellable_stock_quantity,
     sellable_unit_cost,
     sellable_unit_price,
+    sync_product_cost_from_variants,
     sync_product_stock_from_variants,
     variants_sold_as_simple,
 )
@@ -120,6 +121,19 @@ class SellableStockQuantityTests(TestCase):
         )
         self.assertEqual(sellable_unit_price(self.product, variant=variant), Decimal('90'))
         self.assertEqual(sellable_unit_cost(self.product, variant=variant), Decimal('40'))
+        # No size picked: use min positive variant cost.
+        self.product.cost = Decimal('0')
+        self.product.save(update_fields=['cost'])
+        ProductVariant.objects.create(
+            product=self.product,
+            size=size,
+            color=Color.objects.create(name='Navy', is_active=True),
+            sku='SOFA-1-M-N',
+            cost=Decimal('55'),
+            stock_quantity=1,
+            is_active=True,
+        )
+        self.assertEqual(sellable_unit_cost(self.product, variant=None), Decimal('40'))
         self.assertEqual(
             sellable_unit_price(self.product, override=Decimal('77')),
             Decimal('77'),
@@ -127,6 +141,32 @@ class SellableStockQuantityTests(TestCase):
         self.product.price = Decimal('0')
         self.product.save(update_fields=['price'])
         self.assertEqual(sellable_unit_price(self.product), Decimal('90'))
+
+    def test_sync_product_cost_from_variants_and_plain_product(self):
+        size = Size.objects.create(name='CostS', code='CS', is_active=True)
+        color = Color.objects.create(name='CostC', is_active=True)
+        ProductVariant.objects.create(
+            product=self.product,
+            size=size,
+            color=color,
+            sku='SOFA-COST',
+            cost=Decimal('30'),
+            stock_quantity=2,
+            is_active=True,
+        )
+        avg = sync_product_cost_from_variants(self.product)
+        self.assertEqual(avg, Decimal('30.00'))
+        plain = Product.objects.create(
+            name='Plain cost',
+            sku='PLAIN-COST',
+            category=self.cat,
+            price=Decimal('10'),
+            cost=Decimal('4'),
+            has_variants=False,
+            track_stock=True,
+            is_active=True,
+        )
+        self.assertEqual(sync_product_cost_from_variants(plain), Decimal('4'))
 
     def test_sellable_unit_price_zero_when_no_prices(self):
         bare = Product.objects.create(

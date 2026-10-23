@@ -87,6 +87,7 @@ class SaleCreateModuleSettingsIntegrationTests(ManagerAPITestCase):
             sku='SFL-1',
             category=self.category,
             price='100.00',
+            cost='40.00',
             stock_quantity=5,
             track_stock=True,
             is_active=True,

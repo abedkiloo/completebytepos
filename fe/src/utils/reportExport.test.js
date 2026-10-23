@@ -9,9 +9,15 @@ import {
   salesHistoryExportParams,
   reportExportRequestPath,
 } from './reportExport';
+import { toast } from './toast';
+
+jest.mock('./toast', () => ({
+  toast: { info: jest.fn(), warning: jest.fn(), error: jest.fn(), success: jest.fn() },
+}));
 
 describe('reportExport', () => {
   beforeEach(() => {
+    jest.clearAllMocks();
     const click = jest.fn();
     const anchor = { click, href: '', download: '' };
     jest.spyOn(document, 'createElement').mockReturnValue(anchor);
@@ -131,5 +137,57 @@ describe('reportExport', () => {
     ).toEqual({ date_from: '2026-08-01', payment_method: 'cash', search: '  ' });
     expect(salesHistoryExportParams({ cashier_id: '8' })).toEqual({ cashier_id: '8' });
     expect(salesHistoryExportParams()).toEqual({});
+  });
+
+  it('warns when sales-history export is truncated with a total count', async () => {
+    const get = jest.fn().mockResolvedValue({
+      data: new Blob(['id,total\n1,10'], { type: 'text/csv' }),
+      headers: {
+        'content-type': 'text/csv',
+        'x-export-truncated': '1',
+        'x-export-total-count': '500',
+      },
+    });
+    await downloadReportExport(
+      { get },
+      { slug: 'sales-history', params: { date_from: '2026-08-01' }, format: 'csv' }
+    );
+    expect(toast.warning).toHaveBeenCalledWith(
+      expect.stringContaining('500 match these filters')
+    );
+  });
+
+  it('warns when sales-history export is truncated without a total count', async () => {
+    const get = jest.fn().mockResolvedValue({
+      data: new Blob(['id,total\n1,10'], { type: 'text/csv' }),
+      headers: {
+        'content-type': 'text/csv',
+        'x-export-truncated': 'true',
+      },
+    });
+    await downloadReportExport({ get }, { slug: 'sales-history', format: 'csv' });
+    expect(toast.warning).toHaveBeenCalledWith(
+      expect.stringContaining('Narrow filters to export everything')
+    );
+  });
+
+  it('skips truncation toast for non-sales-history or non-truncated exports', async () => {
+    const get = jest.fn().mockResolvedValue({
+      data: new Blob(['%PDF-1.4'], { type: 'application/pdf' }),
+      headers: {
+        'content-type': 'application/pdf',
+        'x-export-truncated': '1',
+        'x-export-total-count': '9',
+      },
+    });
+    await downloadReportExport({ get }, { slug: 'sales', format: 'pdf' });
+    expect(toast.warning).not.toHaveBeenCalled();
+
+    get.mockResolvedValueOnce({
+      data: new Blob(['id,total\n1,10'], { type: 'text/csv' }),
+      headers: { 'content-type': 'text/csv', 'x-export-truncated': '0' },
+    });
+    await downloadReportExport({ get }, { slug: 'sales-history', format: 'csv' });
+    expect(toast.warning).not.toHaveBeenCalled();
   });
 });

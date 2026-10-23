@@ -32,6 +32,8 @@ class NestedVariantsAPITests(TestCase):
             'category': self.category.id,
             'has_variants': True,
             'track_stock': True,
+            'cost': '40.00',
+            'price': '100.00',
             'variants': [
                 {
                     'size': self.size.id,
@@ -39,6 +41,7 @@ class NestedVariantsAPITests(TestCase):
                     'sku': 'API-VAR-1-DEF',
                     'stock_quantity': 5,
                     'price': '100.00',
+                    'cost': '40.00',
                 }
             ],
         }
@@ -63,6 +66,7 @@ class NestedVariantsAPITests(TestCase):
             sku='API-VAR-2',
             category=self.category,
             price=Decimal('50.00'),
+            cost=Decimal('20.00'),
             track_stock=True,
             has_variants=True,
             stock_quantity=0,
@@ -75,6 +79,7 @@ class NestedVariantsAPITests(TestCase):
             sku='API-VAR-2-DEF',
             stock_quantity=2,
             price=Decimal('50.00'),
+            cost=Decimal('20.00'),
             is_active=True,
         )
         # PATCH with updated existing variant and a new variant
@@ -83,6 +88,7 @@ class NestedVariantsAPITests(TestCase):
                 {
                     'id': variant.id,
                     'stock_quantity': 3,
+                    'cost': '20.00',
                 },
                 {
                     'size': self.size.id,
@@ -90,6 +96,7 @@ class NestedVariantsAPITests(TestCase):
                     'sku': 'API-VAR-2-DEF-NEW',
                     'stock_quantity': 4,
                     'price': '60.00',
+                    'cost': '20.00',
                 },
             ],
         }

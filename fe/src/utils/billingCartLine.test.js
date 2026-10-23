@@ -115,4 +115,18 @@ describe('billingCartLine', () => {
     );
     expect(line.quantity).toBe(3);
   });
+
+  it('keeps quantity when it already fits within stock', () => {
+    const line = holdingSaleItemToCartLine(
+      {
+        product_id: 5,
+        product_name: 'Webbing',
+        quantity: 2,
+        unit_price: '500',
+        product: { id: 5, name: 'Webbing', stock_quantity: 8, track_stock: true },
+      },
+      { validateStock: true }
+    );
+    expect(line.quantity).toBe(2);
+  });
 });
