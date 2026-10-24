@@ -22,6 +22,7 @@ import { Badge } from '../ui/badge';
 import { PageShell, PageHeader } from '../page';
 import { cn } from '../../lib/cn';
 import StaffPayPanel from './StaffPayPanel';
+import RolePackagesPanel from './RolePackagesPanel';
 
 const STATUS_TONE = {
   draft: 'secondary',
@@ -228,6 +229,7 @@ export default function PayrollPage() {
 
   const tabs = [
     { id: 'runs', label: 'Runs' },
+    { id: 'packages', label: 'Role packages' },
     { id: 'staff', label: 'Staff pay' },
     { id: 'components', label: 'Components' },
     { id: 'settings', label: 'Settings' },
@@ -455,6 +457,10 @@ export default function PayrollPage() {
             )}
           </section>
         </div>
+      ) : null}
+
+      {!loading && tab === 'packages' ? (
+        <RolePackagesPanel components={components} />
       ) : null}
 
       {!loading && tab === 'staff' ? <StaffPayPanel components={components} /> : null}

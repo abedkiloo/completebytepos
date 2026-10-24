@@ -7,6 +7,8 @@ from payroll.models import (
     PayrollSettings,
     Payslip,
     PayslipLine,
+    RolePayPackage,
+    RolePayPackageLine,
     StatutoryRule,
 )
 
@@ -36,6 +38,18 @@ class PayComponentAdmin(admin.ModelAdmin):
     )
     list_filter = ('kind', 'is_active', 'is_statutory')
     search_fields = ('code', 'name')
+
+
+class RolePayPackageLineInline(admin.TabularInline):
+    model = RolePayPackageLine
+    extra = 0
+
+
+@admin.register(RolePayPackage)
+class RolePayPackageAdmin(admin.ModelAdmin):
+    list_display = ('role', 'name', 'default_basic', 'is_active')
+    list_filter = ('is_active',)
+    inlines = [RolePayPackageLineInline]
 
 
 @admin.register(EmployeePayAssignment)

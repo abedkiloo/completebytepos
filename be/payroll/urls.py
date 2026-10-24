@@ -10,12 +10,18 @@ from payroll.views import (
     PayrollSettingsView,
     PayrollYearReportView,
     PayslipViewSet,
+    RolePayPackageLineViewSet,
+    RolePayPackageViewSet,
     StatutoryRuleViewSet,
 )
 
 router = DefaultRouter()
 router.register(r'components', PayComponentViewSet, basename='payroll-component')
 router.register(r'assignments', EmployeePayAssignmentViewSet, basename='payroll-assignment')
+router.register(r'packages', RolePayPackageViewSet, basename='payroll-package')
+router.register(
+    r'package-lines', RolePayPackageLineViewSet, basename='payroll-package-line'
+)
 router.register(r'statutory', StatutoryRuleViewSet, basename='payroll-statutory')
 router.register(r'runs', PayrollRunViewSet, basename='payroll-run')
 router.register(r'payslips', PayslipViewSet, basename='payroll-payslip')

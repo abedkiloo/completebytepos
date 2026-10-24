@@ -12,6 +12,8 @@ from payroll.models import (
     PayrollRun,
     PayrollSettings,
     Payslip,
+    RolePayPackage,
+    RolePayPackageLine,
     StatutoryRule,
 )
 from payroll.pdf import build_payslip_pdf
@@ -24,6 +26,9 @@ from payroll.serializers import (
     PayrollSettingsSerializer,
     PayslipListSerializer,
     PayslipSerializer,
+    RolePayPackageLineSerializer,
+    RolePayPackageSerializer,
+    RolePayPackageWriteSerializer,
     StatutoryRuleSerializer,
 )
 from payroll.services import (
@@ -110,6 +115,98 @@ class EmployeePayAssignmentViewSet(viewsets.ModelViewSet):
         emp = self.request.query_params.get('employee')
         if emp:
             qs = qs.filter(employee_id=emp)
+        return qs
+
+
+class RolePayPackageViewSet(viewsets.ModelViewSet):
+    queryset = RolePayPackage.objects.select_related('role').prefetch_related(
+        'lines__component'
+    )
+    http_method_names = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options']
+
+    def get_serializer_class(self):
+        if self.action in ('create', 'update', 'partial_update'):
+            return RolePayPackageWriteSerializer
+        return RolePayPackageSerializer
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return _perm('payroll', 'view')
+        return _perm('payroll', 'manage')
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        role = self.request.query_params.get('role')
+        if role:
+            qs = qs.filter(role_id=role)
+        return qs
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        return Response(RolePayPackageSerializer(instance).data)
+
+    def create(self, request, *args, **kwargs):
+        ser = RolePayPackageWriteSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        package = ser.save()
+        if not package.name:
+            package.name = f'{package.role.name} package'
+            package.save(update_fields=['name'])
+        return Response(
+            RolePayPackageSerializer(
+                RolePayPackage.objects.prefetch_related('lines__component').get(
+                    pk=package.pk
+                )
+            ).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        ser = RolePayPackageWriteSerializer(
+            instance, data=request.data, partial=partial
+        )
+        ser.is_valid(raise_exception=True)
+        package = ser.save()
+        return Response(
+            RolePayPackageSerializer(
+                RolePayPackage.objects.prefetch_related('lines__component').get(
+                    pk=package.pk
+                )
+            ).data
+        )
+
+    @action(detail=True, methods=['post'], url_path='lines')
+    def add_line(self, request, pk=None):
+        package = self.get_object()
+        data = {**request.data, 'package': package.id}
+        ser = RolePayPackageLineSerializer(data=data)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        package = RolePayPackage.objects.prefetch_related('lines__component').get(
+            pk=package.pk
+        )
+        return Response(
+            RolePayPackageSerializer(package).data, status=status.HTTP_201_CREATED
+        )
+
+
+class RolePayPackageLineViewSet(viewsets.ModelViewSet):
+    queryset = RolePayPackageLine.objects.select_related('component', 'package')
+    serializer_class = RolePayPackageLineSerializer
+    http_method_names = ['get', 'patch', 'put', 'delete', 'head', 'options']
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return _perm('payroll', 'view')
+        return _perm('payroll', 'manage')
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        package = self.request.query_params.get('package')
+        if package:
+            qs = qs.filter(package_id=package)
         return qs
 
 

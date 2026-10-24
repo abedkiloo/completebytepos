@@ -171,9 +171,9 @@ export default function StaffPayPanel({ components = [] }) {
   return (
     <div className="space-y-6">
       <p className="text-sm text-muted-foreground max-w-2xl">
-        Most staff need nothing here — their monthly basic on the employee record
-        is enough. Use this only when someone needs an extra allowance or
-        deduction on top of that basic.
+        Most staff need nothing here — they already get their job role’s package
+        (Role packages) plus basic salary. Use this only to add, change, or remove
+        amounts for one person.
       </p>
 
       <div className="max-w-md space-y-2">

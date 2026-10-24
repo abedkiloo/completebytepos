@@ -7,6 +7,8 @@ from payroll.models import (
     PayrollSettings,
     Payslip,
     PayslipLine,
+    RolePayPackage,
+    RolePayPackageLine,
     StatutoryRule,
 )
 
@@ -48,6 +50,76 @@ class PayComponentSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class RolePayPackageLineSerializer(serializers.ModelSerializer):
+    component_code = serializers.CharField(source='component.code', read_only=True)
+    component_name = serializers.CharField(source='component.name', read_only=True)
+    component_kind = serializers.CharField(source='component.kind', read_only=True)
+
+    class Meta:
+        model = RolePayPackageLine
+        fields = [
+            'id',
+            'package',
+            'component',
+            'component_code',
+            'component_name',
+            'component_kind',
+            'amount',
+            'rate',
+            'is_active',
+            'notes',
+            'sort_order',
+        ]
+        read_only_fields = ['id']
+
+
+class RolePayPackageSerializer(serializers.ModelSerializer):
+    role_name = serializers.CharField(source='role.name', read_only=True)
+    display_name = serializers.SerializerMethodField()
+    lines = RolePayPackageLineSerializer(many=True, read_only=True)
+    line_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RolePayPackage
+        fields = [
+            'id',
+            'role',
+            'role_name',
+            'name',
+            'display_name',
+            'default_basic',
+            'is_active',
+            'notes',
+            'lines',
+            'line_count',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_display_name(self, obj):
+        return obj.display_name()
+
+    def get_line_count(self, obj):
+        if hasattr(obj, '_prefetched_objects_cache') and 'lines' in obj._prefetched_objects_cache:
+            return len(obj.lines.all())
+        return obj.lines.count()
+
+
+class RolePayPackageWriteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RolePayPackage
+        fields = [
+            'id',
+            'role',
+            'name',
+            'default_basic',
+            'is_active',
+            'notes',
+        ]
+        read_only_fields = ['id']
 
 
 class EmployeePayAssignmentSerializer(serializers.ModelSerializer):

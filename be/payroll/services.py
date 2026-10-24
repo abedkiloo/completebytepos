@@ -23,6 +23,7 @@ from payroll.models import (
     PayrollSettings,
     Payslip,
     PayslipLine,
+    RolePayPackage,
 )
 from payroll.starters import seed_starter_components
 from utils.audit import log_audit
@@ -208,27 +209,157 @@ def calculate_run(run: PayrollRun, *, user=None, request=None) -> PayrollRun:
     return run
 
 
-def _calculate_employee(emp, *, run, settings, components) -> dict | None:
-    """
-    Shared component library + per-employee assignments.
+def _role_for_employee(emp):
+    """Job role from linked login user (custom_role)."""
+    user = getattr(emp, 'user', None)
+    if user is None and getattr(emp, 'user_id', None):
+        try:
+            from django.contrib.auth.models import User
 
-    - ``Employee.salary`` is the default basic.
-    - An active BASIC assignment with ``amount`` overrides basic for this person.
-    - Other assignments add earnings/deductions (or override component defaults/rates).
+            user = User.objects.select_related('profile', 'profile__custom_role').get(
+                pk=emp.user_id
+            )
+        except Exception:
+            return None
+    if user is None:
+        return None
+    try:
+        profile = user.profile
+    except Exception:
+        return None
+    return getattr(profile, 'custom_role', None)
+
+
+def _package_for_employee(emp) -> RolePayPackage | None:
+    role = _role_for_employee(emp)
+    if role is None:
+        return None
+    return (
+        RolePayPackage.objects.filter(role=role, is_active=True)
+        .prefetch_related('lines__component')
+        .first()
+    )
+
+
+def _merged_pay_lines(emp, *, period_end, settings, components) -> tuple[list, dict]:
     """
-    assignments = list(_active_assignments(emp, run.period_end))
-    basic = money(emp.salary)
-    basic_source = 'employee.salary'
+    Merge role package defaults with per-employee assignments.
+
+    Precedence per component: employee assignment > role package line.
+    BASIC is handled separately via ``_resolve_basic``.
+    """
+    formula_codes = {'BONUS_APPRAISAL', 'DED_LOAN', 'DED_ABSENCE'}
+    package = _package_for_employee(emp)
+    assignments = list(_active_assignments(emp, period_end))
+    by_code: dict[str, dict] = {}
+
+    if package:
+        for line in package.lines.all():
+            if not line.is_active:
+                continue
+            comp = line.component
+            if not comp.is_active or comp.code not in components:
+                continue
+            if comp.code == 'BASIC':
+                continue
+            if comp.is_statutory and not settings.statutory_enabled:
+                continue
+            if comp.code in formula_codes:
+                continue
+            by_code[comp.code] = {
+                'component': components[comp.code],
+                'amount': line.amount,
+                'rate': line.rate,
+                'include_zero': line.amount is not None,
+                'force': line.amount is not None and money(line.amount) > ZERO,
+                'meta': {
+                    'source': 'role_package',
+                    'package_id': package.id,
+                    'role': package.role.name,
+                    'notes': line.notes or '',
+                },
+            }
+
+    for assignment in assignments:
+        comp = assignment.component
+        if comp.code == 'BASIC':
+            continue
+        if not comp.is_active or comp.code not in components:
+            continue
+        if comp.is_statutory and not settings.statutory_enabled:
+            continue
+        if comp.code in formula_codes:
+            continue
+        by_code[comp.code] = {
+            'component': components[comp.code],
+            'amount': assignment.amount,
+            'rate': assignment.rate,
+            'include_zero': assignment.amount is not None,
+            'force': assignment.amount is not None and money(assignment.amount) > ZERO,
+            'meta': {
+                'source': 'assignment',
+                'assignment_id': assignment.id,
+                'notes': assignment.notes or '',
+            },
+        }
+
+    meta = {
+        'role': package.role.name if package else None,
+        'package_id': package.id if package else None,
+        'package_name': package.display_name() if package else None,
+        'assignment_count': len(assignments),
+        'package_line_count': len(by_code),
+    }
+    return list(by_code.values()), meta
+
+
+def _resolve_basic(emp, *, assignments, package) -> tuple:
+    """
+    Basic precedence:
+    1) employee BASIC assignment
+    2) employee.salary
+    3) role package BASIC line
+    4) role package.default_basic
+    5) 0
+    """
     for assignment in assignments:
         if assignment.component.code == 'BASIC' and assignment.amount is not None:
-            basic = money(assignment.amount)
-            basic_source = 'assignment'
-            break
+            return money(assignment.amount), 'assignment'
+    if emp.salary is not None:
+        return money(emp.salary), 'employee.salary'
+    if package:
+        for line in package.lines.all():
+            if (
+                line.is_active
+                and line.component.code == 'BASIC'
+                and line.amount is not None
+            ):
+                return money(line.amount), 'role_package'
+        if package.default_basic is not None:
+            return money(package.default_basic), 'role_package.default_basic'
+    return ZERO, 'none'
+
+
+def _calculate_employee(emp, *, run, settings, components) -> dict | None:
+    """
+    Role pay package (defaults) + per-employee Staff pay (overrides).
+
+    - Package comes from the linked user's job role.
+    - Employee assignments win for the same component.
+    - ``Employee.salary`` / BASIC assignment / package default set basic.
+    """
+    package = _package_for_employee(emp)
+    assignments = list(_active_assignments(emp, run.period_end))
+    basic, basic_source = _resolve_basic(
+        emp, assignments=assignments, package=package
+    )
+    merged_rows, package_meta = _merged_pay_lines(
+        emp, period_end=run.period_end, settings=settings, components=components
+    )
 
     rows: list[dict] = []
-    meta: dict = {'adapters': {}, 'assignment_count': len(assignments)}
+    meta: dict = {'adapters': {}, **package_meta}
 
-    # BASIC
     basic_comp = components.get('BASIC')
     if basic_comp:
         rows.append(
@@ -240,31 +371,7 @@ def _calculate_employee(emp, *, run, settings, components) -> dict | None:
             }
         )
 
-    # Per-employee extras / overrides (non-formula; BASIC already applied)
-    formula_codes = {'BONUS_APPRAISAL', 'DED_LOAN', 'DED_ABSENCE'}
-    for assignment in assignments:
-        comp = assignment.component
-        if comp.code == 'BASIC':
-            continue
-        if comp.is_statutory and not settings.statutory_enabled:
-            continue
-        if comp.code in formula_codes:
-            continue
-        rows.append(
-            {
-                'component': comp,
-                'amount': assignment.amount,
-                'rate': assignment.rate,
-                # Keep zero-amount rows when explicitly assigned (turn off an allowance).
-                'include_zero': assignment.amount is not None,
-                'force': assignment.amount is not None and money(assignment.amount) > ZERO,
-                'meta': {
-                    'source': 'assignment',
-                    'assignment_id': assignment.id,
-                    'notes': assignment.notes or '',
-                },
-            }
-        )
+    rows.extend(merged_rows)
 
     # Bonus adapter
     bonus_amount = ZERO

@@ -130,6 +130,89 @@ class PayComponent(models.Model):
         return f'{self.code} — {self.name}'
 
 
+class RolePayPackage(models.Model):
+    """
+    Default pay package for a job role (e.g. Sales Personnel, Manager).
+
+    Applied at calculate time; EmployeePayAssignment overrides per person.
+    """
+
+    role = models.OneToOneField(
+        'accounts.Role',
+        on_delete=models.CASCADE,
+        related_name='pay_package',
+    )
+    name = models.CharField(
+        max_length=120,
+        blank=True,
+        help_text='Display name; defaults to role name + “ package”',
+    )
+    default_basic = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text='Used when the employee has no salary set and no BASIC override',
+    )
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['role__name']
+        verbose_name = 'Role pay package'
+        verbose_name_plural = 'Role pay packages'
+
+    def __str__(self):
+        return self.name or f'{self.role.name} package'
+
+    def display_name(self):
+        return (self.name or '').strip() or f'{self.role.name} package'
+
+
+class RolePayPackageLine(models.Model):
+    """One earning/deduction line in a role package."""
+
+    package = models.ForeignKey(
+        RolePayPackage,
+        on_delete=models.CASCADE,
+        related_name='lines',
+    )
+    component = models.ForeignKey(
+        PayComponent,
+        on_delete=models.PROTECT,
+        related_name='role_package_lines',
+    )
+    amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text='Fixed amount for this role; null = component default / %',
+    )
+    rate = models.DecimalField(
+        max_digits=8,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text='Percent override for this role',
+    )
+    is_active = models.BooleanField(default=True)
+    notes = models.CharField(max_length=255, blank=True)
+    sort_order = models.PositiveSmallIntegerField(default=100)
+
+    class Meta:
+        ordering = ['sort_order', 'id']
+        unique_together = [['package', 'component']]
+        verbose_name = 'Role pay package line'
+        verbose_name_plural = 'Role pay package lines'
+
+    def __str__(self):
+        return f'{self.package_id}:{self.component.code}'
+
+
 class EmployeePayAssignment(models.Model):
     """Per-employee override or extra component for a period."""
 
