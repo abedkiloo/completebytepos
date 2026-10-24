@@ -14,6 +14,7 @@ ROLE_SALES = 'Sales Personnel'
 ROLE_FIELD_AGENT = 'Field Sales'  # was Field Agent
 ROLE_DISPATCHER = 'Dispatcher'
 ROLE_DELIVERY_AGENT = 'Delivery Driver'  # was Delivery Agent
+ROLE_PAYROLL_ADMIN = 'Payroll Admin'
 
 # Legacy names kept for migrations / existing DB rows; not created on fresh install.
 LEGACY_ROLE_NAMES = ('Admin', 'Administrator', 'Cashier')
@@ -47,6 +48,13 @@ PERMISSIONS_DATA = [
     ('appraisals', 'view', 'View own target delivery'),
     ('appraisals', 'view_all', 'View team target delivery'),
     ('appraisals', 'manage', 'Configure target delivery template and pay bands'),
+    ('payroll', 'view', 'View payroll runs and payslips'),
+    ('payroll', 'create', 'Create payroll runs'),
+    ('payroll', 'update', 'Calculate and submit payroll runs'),
+    ('payroll', 'approve', 'Approve and lock payroll runs (System Admin)'),
+    ('payroll', 'export', 'Export payroll reports and payslip PDFs'),
+    ('payroll', 'manage', 'Manage payroll settings and pay components'),
+    ('payroll', 'view_own', 'View own locked payslips (employee self-service)'),
     ('inventory', 'view', 'View inventory'),
     ('inventory', 'create', 'Create inventory movements'),
     ('inventory', 'update', 'Update inventory'),
@@ -205,7 +213,14 @@ ROLE_SCREEN_MATRIX = {
         'Daily Sales Tracker',
         'Reports hub',
         'Accounting / Expenses / Income',
+        'Payroll (approve & lock runs)',
         'System settings',
+    ],
+    ROLE_PAYROLL_ADMIN: [
+        'Payroll runs (create / calculate / submit)',
+        'Pay components & assignments',
+        'Payslips & year reports',
+        'Employees (view)',
     ],
     ROLE_MANAGER: [
         'Dashboard (your sales today/week/month; grant sales.view_all for store-wide)',
@@ -514,6 +529,40 @@ def sync_default_roles(created_by=None):
     if delivery_created:
         delivery_agent.permissions.set(_delivery_agent_queryset())
 
+    payroll_admin, payroll_created = Role.objects.update_or_create(
+        name=ROLE_PAYROLL_ADMIN,
+        defaults={
+            'description': (
+                'Payroll operations — runs, components, calculates and submits; '
+                'cannot lock (System Admin approve)'
+            ),
+            'is_system_role': True,
+            'is_active': True,
+            'created_by': created_by,
+        },
+    )
+    if payroll_created:
+        payroll_perms = list(
+            Permission.objects.filter(module='payroll').exclude(action='approve')
+        )
+        emp_perms = list(
+            Permission.objects.filter(
+                module='employees',
+                action__in=['view', 'create', 'update'],
+            )
+        )
+        payroll_admin.permissions.set(payroll_perms + emp_perms)
+    else:
+        payroll_admin.permissions.add(
+            *Permission.objects.filter(module='payroll').exclude(action='approve')
+        )
+        payroll_admin.permissions.add(
+            *Permission.objects.filter(
+                module='employees',
+                action__in=['view', 'create', 'update'],
+            )
+        )
+
     # Deactivate legacy duplicate roles so the UI shows a clean trio.
     Role.objects.filter(name__in=LEGACY_ROLE_NAMES).update(is_active=False)
     grant_daily_notes_to_sales_roles()
@@ -526,6 +575,7 @@ def sync_default_roles(created_by=None):
         ROLE_FIELD_AGENT: field_agent,
         ROLE_DISPATCHER: dispatcher,
         ROLE_DELIVERY_AGENT: delivery_agent,
+        ROLE_PAYROLL_ADMIN: payroll_admin,
     }
 
 

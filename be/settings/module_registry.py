@@ -365,6 +365,33 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
             _f('daily_tips', 'Daily sales tips', 'Short rotating coaching tips on progress screens.', 4),
         ],
     },
+    {
+        'module_name': 'payroll',
+        'domain': 'people',
+        'display_name': 'Payroll & payslips',
+        'description': 'Monthly payroll runs, pay components, and employee payslips (sync only).',
+        'default_enabled': False,
+        'sort_order': 30,
+        'features': [
+            _f('payroll_runs', 'Payroll runs', 'Create, calculate, submit, and lock monthly runs.', 1),
+            _f('pay_components', 'Pay components', 'Earnings and deductions library.', 2),
+            _f('payslips', 'Payslips', 'PDF payslips with store letterhead.', 3),
+            _f('self_service', 'Employee self-service', 'Staff can download their locked payslips.', 4),
+            _f(
+                'appraisal_bonus',
+                'Appraisal bonus sync',
+                'Pull target-delivery bonus into earnings at calculate time.',
+                5,
+            ),
+            _f(
+                'statutory',
+                'Statutory deductions',
+                'PAYE / NSSF / SHIF — off by default until configured.',
+                6,
+                enabled=False,
+            ),
+        ],
+    },
     # --- Platform ---
     {
         'module_name': 'settings',
@@ -553,6 +580,7 @@ PERMISSION_MODULE_DOMAIN: dict[str, str] = {
     'reports': 'insights',
     'employees': 'people',
     'appraisals': 'people',
+    'payroll': 'people',
     'daily_notes': 'commerce',
     'users': 'platform',
     'roles': 'platform',

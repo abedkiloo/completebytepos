@@ -111,6 +111,9 @@ export default function Employees() {
   const [statusFilter, setStatusFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [createMode, setCreateMode] = useState('manual'); // manual | from_user
+  const [linkableUsers, setLinkableUsers] = useState([]);
+  const [selectedUserId, setSelectedUserId] = useState('');
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [showCommitConfirm, setShowCommitConfirm] = useState(false);
@@ -169,14 +172,31 @@ export default function Employees() {
     loadStatistics();
   }, [loadEmployees, loadStatistics]);
 
+  const loadLinkableUsers = useCallback(async () => {
+    try {
+      const res = await employeesAPI.linkableUsers();
+      setLinkableUsers(res.data?.results || []);
+    } catch {
+      setLinkableUsers([]);
+    }
+  }, []);
+
   const openCreate = () => {
     setEditing(null);
-    setFormData(EMPTY_FORM);
+    setCreateMode('from_user');
+    setSelectedUserId('');
+    setFormData({
+      ...EMPTY_FORM,
+      hire_date: new Date().toISOString().slice(0, 10),
+    });
     setShowModal(true);
+    loadLinkableUsers();
   };
 
   const openEdit = (emp) => {
     setEditing(emp);
+    setCreateMode('manual');
+    setSelectedUserId('');
     setFormData({
       employee_id: emp.employee_id || '',
       first_name: emp.first_name || '',
@@ -194,6 +214,19 @@ export default function Employees() {
     setShowModal(true);
   };
 
+  const applySelectedUser = (userId) => {
+    setSelectedUserId(userId);
+    const u = linkableUsers.find((row) => String(row.id) === String(userId));
+    if (!u) return;
+    setFormData((prev) => ({
+      ...prev,
+      first_name: u.first_name || u.username || prev.first_name,
+      last_name: u.last_name || 'User',
+      email: u.email || '',
+      employee_id: prev.employee_id || `USR-${u.id}`,
+    }));
+  };
+
   const buildPayload = () => {
     const payload = {
       employee_id: formData.employee_id.trim(),
@@ -209,8 +242,11 @@ export default function Employees() {
     }
     if (showDepartment) payload.department = formData.department;
     if (showStatus) payload.status = formData.status;
-    if (showSalary && formData.salary !== '') {
+    // Always allow basic salary on create/edit — components stay optional in Payroll.
+    if (formData.salary !== '') {
       payload.salary = parseFloat(formData.salary) || 0;
+    } else if (editing) {
+      payload.salary = null;
     }
     if (showNotes) payload.notes = formData.notes.trim();
     return payload;
@@ -218,6 +254,35 @@ export default function Employees() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!editing && createMode === 'from_user') {
+      if (!selectedUserId) {
+        toast.error('Select a login user to make an employee');
+        return;
+      }
+      const posErr = required(formData.position, 'Enter position, e.g. Cashier');
+      if (posErr) {
+        toast.error(posErr);
+        return;
+      }
+      const hireErr = dateMessage(formData.hire_date, { label: 'hire date' });
+      if (hireErr) {
+        toast.error(hireErr);
+        return;
+      }
+      if (formData.salary !== '') {
+        const salaryErr = moneyMessage(formData.salary, {
+          allowZero: true,
+          label: 'basic salary',
+        });
+        if (salaryErr) {
+          toast.error(salaryErr);
+          return;
+        }
+      }
+      setShowCommitConfirm(true);
+      return;
+    }
+
     const firstErr = personNameMessage(formData.first_name, {
       label: 'first name',
       example: 'Jane',
@@ -263,8 +328,11 @@ export default function Employees() {
         return;
       }
     }
-    if (showSalary && formData.salary !== '') {
-      const salaryErr = moneyMessage(formData.salary, { allowZero: true, label: 'salary' });
+    if (formData.salary !== '') {
+      const salaryErr = moneyMessage(formData.salary, {
+        allowZero: true,
+        label: 'basic salary',
+      });
       if (salaryErr) {
         toast.error(salaryErr);
         return;
@@ -277,20 +345,41 @@ export default function Employees() {
     if (saving) return;
     setSaving(true);
     try {
-      const payload = buildPayload();
-      if (editing) {
-        await employeesAPI.update(editing.id, payload);
-        toast.success('Employee updated');
+      if (!editing && createMode === 'from_user') {
+        await employeesAPI.createFromUser({
+          user_id: Number(selectedUserId),
+          employee_id: formData.employee_id.trim() || undefined,
+          position: formData.position.trim(),
+          department: formData.department || 'other',
+          hire_date: formData.hire_date,
+          salary: formData.salary === '' ? null : parseFloat(formData.salary) || 0,
+          status: formData.status || 'active',
+          notes: formData.notes.trim(),
+        });
+        toast.success('Login user added as employee');
       } else {
-        await employeesAPI.create(payload);
-        toast.success('Employee created');
+        const payload = buildPayload();
+        if (editing) {
+          await employeesAPI.update(editing.id, payload);
+          toast.success('Employee updated');
+        } else {
+          await employeesAPI.create(payload);
+          toast.success('Employee created');
+        }
       }
       setShowCommitConfirm(false);
       setShowModal(false);
       loadEmployees();
       loadStatistics();
     } catch (err) {
-      toast.error(err.response?.data?.error || err.response?.data?.detail || 'Save failed');
+      const data = err.response?.data || {};
+      const detail =
+        data.error ||
+        data.detail ||
+        data.user_id?.[0] ||
+        data.employee_id?.[0] ||
+        'Save failed';
+      toast.error(detail);
     } finally {
       setSaving(false);
     }
@@ -319,7 +408,10 @@ export default function Employees() {
 
   return (
     <PageShell>
-      <PageHeader title="Employees" description="Staff records, roles, and employment details.">
+      <PageHeader
+        title="Employees"
+        description="Staff pay records. Add someone new, or select a login user and make them an employee."
+      >
         {canCreate && (
           <Button onClick={openCreate}>
             <Plus className="h-4 w-4" />
@@ -436,6 +528,11 @@ export default function Employees() {
                 <tr key={emp.id} className="hover:bg-muted/40">
                   <td className="px-4 py-3 font-medium">
                     {emp.full_name || `${emp.first_name} ${emp.last_name}`}
+                    {emp.user_username ? (
+                      <div className="text-xs font-normal text-muted-foreground">
+                        Login: {emp.user_username}
+                      </div>
+                    ) : null}
                     {showContact && emp.phone && (
                       <div className="text-xs font-normal text-muted-foreground">{emp.phone}</div>
                     )}
@@ -494,8 +591,62 @@ export default function Employees() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editing ? 'Edit employee' : 'Add employee'}</DialogTitle>
+            <p className="text-sm text-muted-foreground pt-1">
+              {editing
+                ? 'Update employment details. Pay components stay optional under Payroll → Staff pay.'
+                : 'Prefer selecting an existing login user. Or add a person who has no login yet. Only basic salary is required for payroll.'}
+            </p>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-3">
+            {!editing ? (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={createMode === 'from_user' ? 'default' : 'outline'}
+                  onClick={() => {
+                    setCreateMode('from_user');
+                    loadLinkableUsers();
+                  }}
+                >
+                  From login user
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={createMode === 'manual' ? 'default' : 'outline'}
+                  onClick={() => setCreateMode('manual')}
+                >
+                  New person (no login)
+                </Button>
+              </div>
+            ) : null}
+
+            {!editing && createMode === 'from_user' ? (
+              <Field label="Login user" required>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={selectedUserId}
+                  onChange={(e) => applySelectedUser(e.target.value)}
+                >
+                  <option value="">Select user…</option>
+                  {linkableUsers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.username}
+                      {u.full_name ? ` — ${u.full_name}` : ''}
+                      {u.email ? ` (${u.email})` : ''}
+                    </option>
+                  ))}
+                </select>
+                {linkableUsers.length === 0 ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    No unlinked users. Create a user under Users first, then return here.
+                  </p>
+                ) : null}
+              </Field>
+            ) : null}
+
+            {(editing || createMode === 'manual') ? (
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="First name" required>
                 <Input
@@ -510,11 +661,21 @@ export default function Employees() {
                 />
               </Field>
             </div>
-            <Field label="Employee ID" required>
+            ) : null}
+
+            <Field
+              label="Employee ID"
+              required={editing || createMode === 'manual'}
+            >
               <Input
                 value={formData.employee_id}
                 onChange={(e) => setFormData({ ...formData, employee_id: e.target.value })}
                 disabled={!!editing}
+                placeholder={
+                  createMode === 'from_user' && !editing
+                    ? 'Optional — auto USR-{id} if blank'
+                    : undefined
+                }
               />
             </Field>
             <Field label="Position" required>
@@ -529,6 +690,19 @@ export default function Employees() {
                 value={formData.hire_date}
                 onChange={(e) => setFormData({ ...formData, hire_date: e.target.value })}
               />
+            </Field>
+            <Field label="Monthly basic salary (KES)">
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={formData.salary}
+                onChange={(e) => setFormData({ ...formData, salary: e.target.value })}
+                placeholder="e.g. 25000"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Basic pay only. Extra allowances are optional under Payroll → Staff pay.
+              </p>
             </Field>
             {showDepartment && (
               <Field label="Department">
@@ -558,17 +732,6 @@ export default function Employees() {
                     </option>
                   ))}
                 </select>
-              </Field>
-            )}
-            {showSalary && (
-              <Field label="Monthly salary">
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={formData.salary}
-                  onChange={(e) => setFormData({ ...formData, salary: e.target.value })}
-                />
               </Field>
             )}
             {showContact && (

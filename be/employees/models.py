@@ -23,6 +23,16 @@ class Employee(models.Model):
         ('other', 'Other'),
     ]
     
+    # Optional link to a login account (Users → make employee)
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='employee_record',
+        help_text='Login user linked to this employee (payslips, appraisals)',
+    )
+
     # Basic Information
     employee_id = models.CharField(max_length=50, unique=True, help_text='Unique employee ID')
     first_name = models.CharField(max_length=100)
@@ -44,6 +54,20 @@ class Employee(models.Model):
         null=True,
         blank=True,
         help_text='Monthly salary'
+    )
+
+    # Optional bank details for payslips
+    bank_name = models.CharField(max_length=120, blank=True)
+    bank_account = models.CharField(max_length=60, blank=True)
+
+    # Optional multi-tenant link (null = default / shared store)
+    tenant = models.ForeignKey(
+        'settings.Tenant',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='employees',
+        help_text='Company this employee belongs to (optional)',
     )
     
     # Additional Information

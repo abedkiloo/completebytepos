@@ -63,3 +63,39 @@ class EmployeeViewsTestCase(SuperAdminAPITestCase):
         response = self.client.get('/api/employees/employees/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data.get('results', response.data), [])
+
+    def test_create_employee_from_login_user(self):
+        from django.contrib.auth.models import User
+
+        staff = User.objects.create_user(
+            username='grace_hr',
+            email='grace@example.com',
+            password='tmp12345',
+            first_name='Grace',
+            last_name='HR',
+        )
+        linkable = self.client.get('/api/employees/employees/linkable-users/')
+        self.assertEqual(linkable.status_code, status.HTTP_200_OK)
+        ids = {row['id'] for row in linkable.data['results']}
+        self.assertIn(staff.id, ids)
+
+        created = self.client.post(
+            '/api/employees/employees/from-user/',
+            {
+                'user_id': staff.id,
+                'position': 'HR Officer',
+                'department': 'admin',
+                'hire_date': date.today().isoformat(),
+                'salary': '45000.00',
+            },
+            format='json',
+        )
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED, created.data)
+        self.assertEqual(created.data['user'], staff.id)
+        self.assertEqual(created.data['first_name'], 'Grace')
+        self.assertEqual(created.data['email'], 'grace@example.com')
+        self.assertTrue(created.data['employee_id'].startswith('USR-'))
+
+        again = self.client.get('/api/employees/employees/linkable-users/')
+        ids_after = {row['id'] for row in again.data['results']}
+        self.assertNotIn(staff.id, ids_after)

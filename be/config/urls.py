@@ -54,6 +54,7 @@ urlpatterns = [
     path('api/suppliers/', include('suppliers.urls')),
     path('api/employees/', include('employees.urls')),
     path('api/appraisals/', include('appraisals.urls')),
+    path('api/payroll/', include('payroll.urls')),
     path('api/daily-notes/', include('daily_notes.urls')),
     path('api/visits/', include('agents.urls')),
     path('api/agents/', include('agents.urls')),  # alias — same viewsets

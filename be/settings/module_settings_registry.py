@@ -436,9 +436,9 @@ MODULE_SETTING_DEFINITIONS: dict[str, list[dict[str, Any]]] = {
         ),
         _setting(
             'show_salary',
-            'Show salary',
-            'Shows monthly salary on employee records (sensitive — off by default).',
-            False,
+            'Show basic salary',
+            'Shows monthly basic salary on employee records. Extra allowances stay optional under Payroll → Staff pay.',
+            True,
             2,
         ),
         _setting(
@@ -524,6 +524,29 @@ MODULE_SETTING_DEFINITIONS: dict[str, list[dict[str, Any]]] = {
             'Adds the daily and monthly progress card to the dashboard and app home.',
             True,
             2,
+        ),
+    ],
+    'payroll': [
+        _setting(
+            'staff_self_service',
+            'Employee payslip self-service',
+            'Lets staff download their own locked payslips from My payslips.',
+            True,
+            1,
+        ),
+        _setting(
+            'include_appraisal_bonus_default',
+            'Include appraisal bonus by default',
+            'New payroll settings default to pulling target-delivery bonus at calculate time.',
+            True,
+            2,
+        ),
+        _setting(
+            'show_bank_on_payslip',
+            'Show bank details on payslip',
+            'Prints employee bank name and account when present.',
+            True,
+            3,
         ),
     ],
     'suppliers': [

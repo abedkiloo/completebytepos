@@ -259,8 +259,32 @@ const UserForm = ({
             </FormField>
 
             {showInlineRoles ? (
-              <div className="form-row">
-                <FormField label="Default Role" name="role" errors={errors}>
+              <div className="space-y-3">
+                <FormField
+                  label="Job role"
+                  name="custom_role_id"
+                  errors={errors}
+                  hint="Pick what they do day to day (e.g. Payroll Admin for HR). They do not need every store permission."
+                >
+                  <SearchableSelect
+                    name="custom_role_id"
+                    value={formData.custom_role_id || ''}
+                    onChange={handleChange}
+                    invalid={Boolean(errors.custom_role_id)}
+                    options={[
+                      { id: '', name: 'None — use legacy default below' },
+                      ...roles.map((role) => ({ id: role.id, name: role.name })),
+                    ]}
+                    placeholder="Select role"
+                  />
+                </FormField>
+
+                <FormField
+                  label="Legacy default (optional)"
+                  name="role"
+                  errors={errors}
+                  hint="Only used if Job role is None. Prefer Job role for HR and staff."
+                >
                   <SearchableSelect
                     name="role"
                     value={formData.role}
@@ -273,20 +297,6 @@ const UserForm = ({
                       { id: 'super_admin', name: 'Super Admin' },
                     ]}
                     placeholder="Select default role"
-                  />
-                </FormField>
-
-                <FormField label="Custom Role" name="custom_role_id" errors={errors}>
-                  <SearchableSelect
-                    name="custom_role_id"
-                    value={formData.custom_role_id || ''}
-                    onChange={handleChange}
-                    invalid={Boolean(errors.custom_role_id)}
-                    options={[
-                      { id: '', name: 'None' },
-                      ...roles.map((role) => ({ id: role.id, name: role.name })),
-                    ]}
-                    placeholder="None"
                   />
                 </FormField>
               </div>

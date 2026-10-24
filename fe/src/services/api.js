@@ -327,6 +327,9 @@ export const employeesAPI = {
   update: (id, data) => api.put(`/employees/employees/${id}/`, data),
   delete: (id) => api.delete(`/employees/employees/${id}/`),
   statistics: () => api.get('/employees/employees/statistics/'),
+  linkableUsers: (params) =>
+    api.get('/employees/employees/linkable-users/', { params }),
+  createFromUser: (data) => api.post('/employees/employees/from-user/', data),
 };
 
 export const appraisalsAPI = {
@@ -336,6 +339,35 @@ export const appraisalsAPI = {
   team: (params) => api.get('/appraisals/team/', { params }),
   increments: (params) => api.get('/appraisals/increments/', { params }),
   decideIncrement: (id, data) => api.post(`/appraisals/increments/${id}/decision/`, data),
+};
+
+export const payrollAPI = {
+  getSettings: () => api.get('/payroll/settings/'),
+  updateSettings: (data) => api.put('/payroll/settings/', data),
+  listComponents: (params) => api.get('/payroll/components/', { params }),
+  seedComponents: () => api.post('/payroll/components/seed-starters/'),
+  listAssignments: (params) => api.get('/payroll/assignments/', { params }),
+  createAssignment: (data) => api.post('/payroll/assignments/', data),
+  updateAssignment: (id, data) => api.patch(`/payroll/assignments/${id}/`, data),
+  deleteAssignment: (id) => api.delete(`/payroll/assignments/${id}/`),
+  listRuns: (params) => api.get('/payroll/runs/', { params }),
+  createRun: (data) => api.post('/payroll/runs/', data),
+  getRun: (id) => api.get(`/payroll/runs/${id}/`),
+  calculateRun: (id) => api.post(`/payroll/runs/${id}/calculate/`),
+  submitRun: (id) => api.post(`/payroll/runs/${id}/submit/`),
+  approveRun: (id) => api.post(`/payroll/runs/${id}/approve/`),
+  rejectRun: (id, data) => api.post(`/payroll/runs/${id}/reject/`, data || {}),
+  cancelRun: (id) => api.post(`/payroll/runs/${id}/cancel/`),
+  runPayslips: (id) => api.get(`/payroll/runs/${id}/payslips/`),
+  runSummary: (id) => api.get(`/payroll/runs/${id}/summary/`),
+  listPayslips: (params) => api.get('/payroll/payslips/', { params }),
+  getPayslip: (id) => api.get(`/payroll/payslips/${id}/`),
+  payslipPdf: (id) =>
+    api.get(`/payroll/payslips/${id}/pdf/`, { responseType: 'blob' }),
+  myPayslips: (params) => api.get('/payroll/me/payslips/', { params }),
+  myPayslipPdf: (id) =>
+    api.get(`/payroll/me/payslips/${id}/pdf/`, { responseType: 'blob' }),
+  yearReport: (params) => api.get('/payroll/reports/year/', { params }),
 };
 
 export const variantsAPI = {

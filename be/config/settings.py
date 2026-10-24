@@ -86,6 +86,7 @@ INSTALLED_APPS = [
     'suppliers',
     'employees',
     'appraisals',
+    'payroll',
     'daily_notes',
     'agents',
     'dispatch',
@@ -377,6 +378,9 @@ _LOG_HANDLERS = {
 }
 if not RUNNING_TESTS:
     logs_dir = env_path('LOG_DIR', BASE_DIR / 'logs')
+    # Local manage.py against a Docker-oriented .env (LOG_DIR=/app/logs).
+    if str(logs_dir).startswith('/app') and not Path('/app').exists():
+        logs_dir = BASE_DIR / 'logs'
     logs_dir.mkdir(parents=True, exist_ok=True)
     _LOG_HANDLERS['file'] = {
         'level': env_str('LOG_FILE_LEVEL', 'ERROR'),

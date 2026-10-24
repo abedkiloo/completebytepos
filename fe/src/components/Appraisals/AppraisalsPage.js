@@ -20,31 +20,46 @@ export default function AppraisalsPage() {
   const [team, setTeam] = useState({ results: [], insights: null });
   const [increments, setIncrements] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [teamLoading, setTeamLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const loadTeam = useCallback(async () => {
+    if (!canTeam) return;
+    setTeamLoading(true);
+    try {
+      const tasks = [appraisalsAPI.team()];
+      if (canManage && appraisalsAPI.increments) {
+        tasks.push(appraisalsAPI.increments());
+      }
+      const [teamRes, incRes] = await Promise.all(tasks);
+      setTeam(teamRes.data || { results: [], insights: null });
+      if (incRes) {
+        setIncrements(incRes.data?.results || []);
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Could not load team board');
+      setTeam({ results: [], insights: null });
+    } finally {
+      setTeamLoading(false);
+    }
+  }, [canTeam, canManage]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      // Paint the shell (and My progress / rules) as soon as /me returns;
+      // team board loads in parallel afterward so admins are not blocked.
       const meRes = await appraisalsAPI.me();
       setMe(meRes.data);
+      setLoading(false);
       if (canTeam) {
-        const teamRes = await appraisalsAPI.team();
-        setTeam(teamRes.data || { results: [], insights: null });
-      }
-      if (canManage && appraisalsAPI.increments) {
-        try {
-          const incRes = await appraisalsAPI.increments();
-          setIncrements(incRes.data?.results || []);
-        } catch (_err) {
-          setIncrements([]);
-        }
+        loadTeam();
       }
     } catch (error) {
       toast.error(error.response?.data?.error || 'Could not load target delivery');
-    } finally {
       setLoading(false);
     }
-  }, [canTeam, canManage]);
+  }, [canTeam, loadTeam]);
 
   useEffect(() => {
     load();
@@ -128,7 +143,11 @@ export default function AppraisalsPage() {
 
         {canTeam ? (
           <TabsContent value="team" className="space-y-4">
-            <AppraisalTeamBoard team={team} showIncrement={showIncrement} />
+            {teamLoading ? (
+              <PageLoading rows={3} />
+            ) : (
+              <AppraisalTeamBoard team={team} showIncrement={showIncrement} />
+            )}
             {canManage && increments.length ? (
               <Card>
                 <CardHeader>
