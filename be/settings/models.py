@@ -11,6 +11,7 @@ class ModuleSettings(models.Model):
         ('suppliers', 'Supplier Management'),
         ('employees', 'Employee Management'),
         ('appraisals', 'Target delivery'),
+        ('payroll', 'Payroll & Payslips'),
         ('invoicing', 'Invoicing'),
         ('inventory', 'Inventory Management'),
         ('stock', 'Stock Management'),

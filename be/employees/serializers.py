@@ -24,7 +24,8 @@ class EmployeeSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'employee_id', 'first_name', 'last_name', 'full_name',
             'email', 'phone', 'position', 'department', 'hire_date',
-            'status', 'salary', 'address', 'notes',
+            'status', 'salary', 'bank_name', 'bank_account', 'tenant',
+            'address', 'notes',
             'created_by', 'created_by_username', 'created_at', 'updated_at',
             'is_active'
         ]

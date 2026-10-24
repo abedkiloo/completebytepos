@@ -45,6 +45,20 @@ class Employee(models.Model):
         blank=True,
         help_text='Monthly salary'
     )
+
+    # Optional bank details for payslips
+    bank_name = models.CharField(max_length=120, blank=True)
+    bank_account = models.CharField(max_length=60, blank=True)
+
+    # Optional multi-tenant link (null = default / shared store)
+    tenant = models.ForeignKey(
+        'settings.Tenant',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='employees',
+        help_text='Company this employee belongs to (optional)',
+    )
     
     # Additional Information
     address = models.TextField(blank=True)

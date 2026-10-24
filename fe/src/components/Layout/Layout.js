@@ -179,6 +179,14 @@ export const NAV_SECTIONS = [
     module: 'employees',
     items: [
       { to: '/employees', label: 'Employees', icon: UserCog, feature: ['employees', 'employee_management'], permission: ['employees', 'view'] },
+      {
+        to: '/payroll',
+        label: 'Payroll',
+        icon: Wallet,
+        module: 'payroll',
+        feature: ['payroll', 'payroll_runs'],
+        permission: ['payroll', 'view'],
+      },
     ],
   },
   {

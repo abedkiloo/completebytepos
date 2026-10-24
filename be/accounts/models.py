@@ -19,6 +19,8 @@ class Permission(models.Model):
         ('accounting', 'Accounting'),
         ('suppliers', 'Suppliers'),
         ('employees', 'Employee Management'),
+        ('appraisals', 'Target delivery'),
+        ('payroll', 'Payroll'),
         ('customers', 'Customer Management'),
         ('debt_management', 'Debt Management'),
         ('invoicing', 'Invoicing'),
@@ -52,6 +54,7 @@ class Permission(models.Model):
         ('payments_trail', 'Payments trail'),
         ('daily_sales', 'Daily sales'),
         ('view_all', 'View all'),
+        ('view_own', 'View own'),
     ]
 
     module = models.CharField(max_length=50, choices=MODULE_CHOICES)

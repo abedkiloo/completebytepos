@@ -526,6 +526,29 @@ MODULE_SETTING_DEFINITIONS: dict[str, list[dict[str, Any]]] = {
             2,
         ),
     ],
+    'payroll': [
+        _setting(
+            'staff_self_service',
+            'Employee payslip self-service',
+            'Lets staff download their own locked payslips from My payslips.',
+            True,
+            1,
+        ),
+        _setting(
+            'include_appraisal_bonus_default',
+            'Include appraisal bonus by default',
+            'New payroll settings default to pulling target-delivery bonus at calculate time.',
+            True,
+            2,
+        ),
+        _setting(
+            'show_bank_on_payslip',
+            'Show bank details on payslip',
+            'Prints employee bank name and account when present.',
+            True,
+            3,
+        ),
+    ],
     'suppliers': [
         _setting(
             'show_supplier_code',
