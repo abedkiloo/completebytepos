@@ -194,6 +194,11 @@ export default function StaffPayPanel({
     }
   };
 
+  const inheritedLines = useMemo(
+    () => (rolePackage?.lines || []).filter((l) => l.is_active),
+    [rolePackage]
+  );
+
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
@@ -202,11 +207,6 @@ export default function StaffPayPanel({
       </div>
     );
   }
-
-  const inheritedLines = useMemo(
-    () => (rolePackage?.lines || []).filter((l) => l.is_active),
-    [rolePackage]
-  );
 
   return (
     <div className="space-y-6">
