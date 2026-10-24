@@ -545,11 +545,22 @@ def sync_default_roles(created_by=None):
         payroll_perms = list(
             Permission.objects.filter(module='payroll').exclude(action='approve')
         )
-        emp_view = list(Permission.objects.filter(module='employees', action='view'))
-        payroll_admin.permissions.set(payroll_perms + emp_view)
+        emp_perms = list(
+            Permission.objects.filter(
+                module='employees',
+                action__in=['view', 'create', 'update'],
+            )
+        )
+        payroll_admin.permissions.set(payroll_perms + emp_perms)
     else:
         payroll_admin.permissions.add(
             *Permission.objects.filter(module='payroll').exclude(action='approve')
+        )
+        payroll_admin.permissions.add(
+            *Permission.objects.filter(
+                module='employees',
+                action__in=['view', 'create', 'update'],
+            )
         )
 
     # Deactivate legacy duplicate roles so the UI shows a clean trio.

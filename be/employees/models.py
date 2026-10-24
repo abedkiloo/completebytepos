@@ -23,6 +23,16 @@ class Employee(models.Model):
         ('other', 'Other'),
     ]
     
+    # Optional link to a login account (Users → make employee)
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='employee_record',
+        help_text='Login user linked to this employee (payslips, appraisals)',
+    )
+
     # Basic Information
     employee_id = models.CharField(max_length=50, unique=True, help_text='Unique employee ID')
     first_name = models.CharField(max_length=100)

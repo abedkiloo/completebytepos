@@ -21,6 +21,7 @@ import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
 import { PageShell, PageHeader } from '../page';
 import { cn } from '../../lib/cn';
+import StaffPayPanel from './StaffPayPanel';
 
 const STATUS_TONE = {
   draft: 'secondary',
@@ -163,6 +164,27 @@ export default function PayrollPage() {
     }
   };
 
+  const seedComponents = async () => {
+    setBusyId('seed');
+    try {
+      const res = await payrollAPI.seedComponents();
+      const created = res.data?.created ?? 0;
+      await loadComponents();
+      toast.success(
+        created > 0
+          ? `Added ${created} starter component${created === 1 ? '' : 's'}`
+          : 'Starter library already loaded'
+      );
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.detail ||
+          'Could not load starters — need payroll.manage permission'
+      );
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const openPdf = async (payslipId, mine = false) => {
     try {
       const res = mine
@@ -177,6 +199,7 @@ export default function PayrollPage() {
 
   const tabs = [
     { id: 'runs', label: 'Runs' },
+    { id: 'staff', label: 'Staff pay' },
     { id: 'components', label: 'Components' },
     { id: 'settings', label: 'Settings' },
     { id: 'mine', label: 'My payslips' },
@@ -405,38 +428,69 @@ export default function PayrollPage() {
         </div>
       ) : null}
 
+      {!loading && tab === 'staff' ? <StaffPayPanel components={components} /> : null}
+
       {!loading && tab === 'components' ? (
-        <div className="overflow-x-auto rounded-lg border border-border/60">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/30 text-left">
-                <th className="p-3">Code</th>
-                <th className="p-3">Name</th>
-                <th className="p-3">Kind</th>
-                <th className="p-3">Calc</th>
-                <th className="p-3">Statutory</th>
-                <th className="p-3">Active</th>
-              </tr>
-            </thead>
-            <tbody>
-              {components.map((c) => (
-                <tr key={c.id} className="border-b border-border/40">
-                  <td className="p-3 font-mono text-xs">{c.code}</td>
-                  <td className="p-3">{c.name}</td>
-                  <td className="p-3">{c.kind}</td>
-                  <td className="p-3">{c.calculation_type}</td>
-                  <td className="p-3">{c.is_statutory ? 'Yes' : '—'}</td>
-                  <td className="p-3">
-                    {c.is_active ? (
-                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                    ) : (
-                      <XCircle className="h-4 w-4 text-muted-foreground" />
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground max-w-xl">
+              Starters (basic, allowances, advances, appraisal bonus, dormant PAYE/NSSF/SHIF)
+              load automatically when you create or calculate a run — or load them here.
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              onClick={seedComponents}
+              disabled={busyId === 'seed'}
+            >
+              {busyId === 'seed' ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+              Load starter library
+            </Button>
+          </div>
+
+          {components.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border/80 p-10 text-center text-sm text-muted-foreground">
+              No pay components yet. Click <strong>Load starter library</strong> (needs
+              payroll manage), or create a payroll run — calculate will seed them.
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-border/60">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/30 text-left">
+                    <th className="p-3">Code</th>
+                    <th className="p-3">Name</th>
+                    <th className="p-3">Kind</th>
+                    <th className="p-3">Calc</th>
+                    <th className="p-3">Statutory</th>
+                    <th className="p-3">Active</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {components.map((c) => (
+                    <tr key={c.id} className="border-b border-border/40">
+                      <td className="p-3 font-mono text-xs">{c.code}</td>
+                      <td className="p-3">{c.name}</td>
+                      <td className="p-3">{c.kind}</td>
+                      <td className="p-3">{c.calculation_type}</td>
+                      <td className="p-3">{c.is_statutory ? 'Yes' : '—'}</td>
+                      <td className="p-3">
+                        {c.is_active ? (
+                          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                        ) : (
+                          <XCircle className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       ) : null}
 

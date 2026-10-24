@@ -18,12 +18,13 @@ class EmployeeSerializer(serializers.ModelSerializer):
     full_name = serializers.ReadOnlyField()
     is_active = serializers.ReadOnlyField()
     created_by_username = serializers.SerializerMethodField()
+    user_username = serializers.CharField(source='user.username', read_only=True, allow_null=True)
     
     class Meta:
         model = Employee
         fields = [
-            'id', 'employee_id', 'first_name', 'last_name', 'full_name',
-            'email', 'phone', 'position', 'department', 'hire_date',
+            'id', 'user', 'user_username', 'employee_id', 'first_name', 'last_name',
+            'full_name', 'email', 'phone', 'position', 'department', 'hire_date',
             'status', 'salary', 'bank_name', 'bank_account', 'tenant',
             'address', 'notes',
             'created_by', 'created_by_username', 'created_at', 'updated_at',
@@ -92,3 +93,87 @@ class EmployeeSerializer(serializers.ModelSerializer):
             if Employee.objects.filter(employee_id=value).exists():
                 raise serializers.ValidationError("An employee with this ID already exists.")
         return value
+
+    def validate_user(self, value):
+        if value is None:
+            return value
+        qs = Employee.objects.filter(user=value)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                'This login user is already linked to another employee.'
+            )
+        return value
+
+
+class FromUserEmployeeSerializer(serializers.Serializer):
+    """Create an employee from an existing login user (basic pay only)."""
+
+    user_id = serializers.IntegerField()
+    employee_id = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    position = serializers.CharField(max_length=100)
+    department = serializers.ChoiceField(
+        choices=Employee.DEPARTMENT_CHOICES, required=False, default='other'
+    )
+    hire_date = serializers.DateField()
+    salary = serializers.DecimalField(
+        max_digits=10, decimal_places=2, required=False, allow_null=True, min_value=Decimal('0')
+    )
+    status = serializers.ChoiceField(
+        choices=Employee.STATUS_CHOICES, required=False, default='active'
+    )
+    notes = serializers.CharField(required=False, allow_blank=True, default='')
+
+    def validate_user_id(self, value):
+        from django.contrib.auth.models import User
+
+        try:
+            user = User.objects.get(pk=value, is_active=True)
+        except User.DoesNotExist as exc:
+            raise serializers.ValidationError('User not found or inactive.') from exc
+        if Employee.objects.filter(user=user).exists():
+            raise serializers.ValidationError('This user is already an employee.')
+        self.context['linked_user'] = user
+        return value
+
+    def validate_employee_id(self, value):
+        value = (value or '').strip()
+        if value and Employee.objects.filter(employee_id=value).exists():
+            raise serializers.ValidationError('An employee with this ID already exists.')
+        return value
+
+    def create(self, validated_data):
+        user = self.context['linked_user']
+        emp_id = (validated_data.get('employee_id') or '').strip()
+        if not emp_id:
+            base = f'USR-{user.id}'
+            emp_id = base
+            n = 1
+            while Employee.objects.filter(employee_id=emp_id).exists():
+                n += 1
+                emp_id = f'{base}-{n}'
+
+        phone = ''
+        try:
+            phone = (user.profile.phone_number or '').strip()
+        except Exception:
+            phone = ''
+
+        email = (user.email or '').strip()
+        # Prefer linking by user; also copy email for payslip/self-service match.
+        return Employee.objects.create(
+            user=user,
+            employee_id=emp_id,
+            first_name=(user.first_name or user.username or 'Staff')[:100],
+            last_name=(user.last_name or 'User')[:100],
+            email=email,
+            phone=phone,
+            position=validated_data['position'].strip(),
+            department=validated_data.get('department') or 'other',
+            hire_date=validated_data['hire_date'],
+            status=validated_data.get('status') or 'active',
+            salary=validated_data.get('salary'),
+            notes=validated_data.get('notes') or '',
+            created_by=self.context.get('request_user'),
+        )

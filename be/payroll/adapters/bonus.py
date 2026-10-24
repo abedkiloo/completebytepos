@@ -18,7 +18,13 @@ def money(value) -> Decimal:
 
 
 def resolve_user_for_employee(employee) -> User | None:
-    """Match employee to a login user by email (case-insensitive)."""
+    """Prefer linked login user; fall back to email match."""
+    linked = getattr(employee, 'user', None)
+    if linked is not None and getattr(linked, 'is_active', False):
+        return linked
+    user_id = getattr(employee, 'user_id', None)
+    if user_id:
+        return User.objects.filter(id=user_id, is_active=True).first()
     email = (getattr(employee, 'email', None) or '').strip()
     if not email:
         return None

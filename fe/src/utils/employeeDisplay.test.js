@@ -5,8 +5,8 @@ import {
 } from './employeeDisplay';
 
 describe('employeeDisplay', () => {
-  test('salary defaults off', () => {
-    expect(employeesShowSalary({})).toBe(false);
+  test('salary defaults on for basic pay', () => {
+    expect(employeesShowSalary({})).toBe(true);
   });
 
   test('create defaults on', () => {

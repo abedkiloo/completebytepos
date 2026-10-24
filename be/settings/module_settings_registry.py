@@ -436,9 +436,9 @@ MODULE_SETTING_DEFINITIONS: dict[str, list[dict[str, Any]]] = {
         ),
         _setting(
             'show_salary',
-            'Show salary',
-            'Shows monthly salary on employee records (sensitive — off by default).',
-            False,
+            'Show basic salary',
+            'Shows monthly basic salary on employee records. Extra allowances stay optional under Payroll → Staff pay.',
+            True,
             2,
         ),
         _setting(

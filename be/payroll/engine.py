@@ -25,10 +25,16 @@ def resolve_component_amount(
     assignment_amount: Decimal | None = None,
     assignment_rate: Decimal | None = None,
 ) -> Decimal:
-    """Compute one component amount from type + overrides."""
+    """
+    Compute one component amount from type + overrides.
+
+    Per-employee ``assignment_amount`` always wins when set (fixed cash add/subtract
+    for that person, even if the template component is percent-based).
+    """
+    if assignment_amount is not None:
+        return money(assignment_amount)
+
     if component.calculation_type == PayComponent.CALC_FIXED:
-        if assignment_amount is not None:
-            return money(assignment_amount)
         return money(component.default_amount)
 
     rate = (
@@ -40,9 +46,6 @@ def resolve_component_amount(
         return money(basic * rate)
     if component.calculation_type == PayComponent.CALC_PERCENT_GROSS:
         return money(gross_so_far * rate)
-    # formula / adapter — amount supplied by caller
-    if assignment_amount is not None:
-        return money(assignment_amount)
     return money(component.default_amount)
 
 

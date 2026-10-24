@@ -7,6 +7,7 @@ jest.mock('../../services/api', () => ({
   payrollAPI: {
     listRuns: jest.fn(),
     listComponents: jest.fn(),
+    seedComponents: jest.fn(),
     getSettings: jest.fn(),
     myPayslips: jest.fn(),
     createRun: jest.fn(),

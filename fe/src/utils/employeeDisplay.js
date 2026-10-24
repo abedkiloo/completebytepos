@@ -5,7 +5,8 @@ export function employeesShowEmployeeId(settings) {
 }
 
 export function employeesShowSalary(settings) {
-  return isModuleFlagEnabled(settings, 'show_salary', false);
+  // Default on so HR can set basic monthly pay without opening Module Settings.
+  return isModuleFlagEnabled(settings, 'show_salary', true);
 }
 
 export function employeesShowDepartment(settings) {

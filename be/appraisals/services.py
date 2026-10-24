@@ -10,7 +10,7 @@ from typing import Any, Iterable
 
 from django.contrib.auth.models import User
 from django.db.models import DecimalField, F, Q, Sum, Value
-from django.db.models.functions import Coalesce, Greatest, Least, TruncDate, TruncMonth
+from django.db.models.functions import Coalesce, Greatest, Least, Lower, TruncDate, TruncMonth
 from django.utils import timezone
 
 from accounts.models import UserProfile
@@ -31,6 +31,8 @@ from .engine import (
 from .models import AppraisalSalaryIncrement
 from .policy import (
     PolicyError,
+    begin_template_at_date_cache,
+    end_template_at_date_cache,
     load_template,
     public_policy,
     show_on_home,
@@ -139,47 +141,15 @@ def applied_policy_payload(
     }
 
 
-def _net_sales_by_day(user_id: int, start: datetime, end: datetime) -> dict:
-    sales_qs = (
-        posted_sales()
-        .filter(_staff_q(user_id), occurred_at__gte=start, occurred_at__lt=end)
-        .annotate(day=TruncDate('occurred_at'))
-        .values('day')
-        .annotate(total=Sum('total'))
-    )
-    refund_qs = (
-        SaleRefund.objects.filter(
-            sale__status='completed',
-            sale__occurred_at__gte=start,
-            sale__occurred_at__lt=end,
-        )
-        .filter(
-            Q(sale__served_by_id=user_id)
-            | Q(sale__served_by__isnull=True, sale__cashier_id=user_id)
-        )
-        .annotate(day=TruncDate('sale__occurred_at'))
-        .values('day')
-        .annotate(total=Sum('amount'))
-    )
-    by_day: dict = defaultdict(lambda: Decimal('0'))
-    for row in sales_qs:
-        day = row['day']
-        if day is None:
-            continue
-        by_day[day] += row['total'] or Decimal('0')
-    for row in refund_qs:
-        day = row['day']
-        if day is None:
-            continue
-        by_day[day] -= row['total'] or Decimal('0')
-    return {day: max(Decimal('0'), amount) for day, amount in by_day.items()}
-
-
 def _collected_expr(zero):
     return Least(
         Greatest(F('amount_paid'), zero),
         Greatest(F('total'), zero),
     )
+
+
+def _net_sales_by_day(user_id: int, start: datetime, end: datetime) -> dict:
+    return _bulk_net_sales_by_day([user_id], start, end).get(user_id, {})
 
 
 def _collections_by_month(user_id: int, start: datetime, end: datetime) -> dict:
@@ -189,45 +159,139 @@ def _collections_by_month(user_id: int, start: datetime, end: datetime) -> dict:
     Uses ``min(amount_paid, total)`` so credit balances do not inflate collections.
     Fully refunded sales are excluded (same spirit as net sales).
     """
-    money_field = DecimalField(max_digits=14, decimal_places=2)
-    zero = Value(Decimal('0.00'), output_field=money_field)
-    rows = (
-        posted_sales()
-        .filter(_staff_q(user_id), occurred_at__gte=start, occurred_at__lt=end)
-        .exclude(refund_status='refunded')
-        .annotate(month=TruncMonth('occurred_at'))
-        .values('month')
-        .annotate(collected=Coalesce(Sum(_collected_expr(zero)), zero))
-    )
-    out: dict = {}
-    for row in rows:
-        month = row['month']
-        if month is None:
-            continue
-        key = (month.year, month.month)
-        out[key] = Decimal(str(row['collected'] or 0))
-    return out
+    return _bulk_collections_by_month([user_id], start, end).get(user_id, {})
 
 
 def _collections_by_day(user_id: int, start: datetime, end: datetime) -> dict:
     """Per-day collected cash on a staff member's posted sales (min(amount_paid, total))."""
+    return _bulk_collections_by_day([user_id], start, end).get(user_id, {})
+
+
+def _bulk_net_sales_by_day(
+    staff_ids: list[int], start: datetime, end: datetime
+) -> dict[int, dict]:
+    """One sales + one refunds aggregation for many staff → {user_id: {day: net}}."""
+    if not staff_ids:
+        return {}
+    by_staff: dict[int, dict] = {sid: defaultdict(lambda: Decimal('0')) for sid in staff_ids}
+    sales_qs = (
+        posted_sales()
+        .filter(occurred_at__gte=start, occurred_at__lt=end)
+        .annotate(staff_id=Coalesce('served_by_id', 'cashier_id'))
+        .filter(staff_id__in=staff_ids)
+        .annotate(day=TruncDate('occurred_at'))
+        .values('staff_id', 'day')
+        .annotate(total=Sum('total'))
+    )
+    for row in sales_qs:
+        sid, day = row['staff_id'], row['day']
+        if sid is None or day is None:
+            continue
+        by_staff[sid][day] += row['total'] or Decimal('0')
+    refund_qs = (
+        SaleRefund.objects.filter(
+            sale__status='completed',
+            sale__occurred_at__gte=start,
+            sale__occurred_at__lt=end,
+        )
+        .annotate(staff_id=Coalesce('sale__served_by_id', 'sale__cashier_id'))
+        .filter(staff_id__in=staff_ids)
+        .annotate(day=TruncDate('sale__occurred_at'))
+        .values('staff_id', 'day')
+        .annotate(total=Sum('amount'))
+    )
+    for row in refund_qs:
+        sid, day = row['staff_id'], row['day']
+        if sid is None or day is None:
+            continue
+        by_staff[sid][day] -= row['total'] or Decimal('0')
+    return {
+        sid: {day: max(Decimal('0'), amount) for day, amount in days.items()}
+        for sid, days in by_staff.items()
+    }
+
+
+def _bulk_collections_by_month(
+    staff_ids: list[int], start: datetime, end: datetime
+) -> dict[int, dict]:
+    if not staff_ids:
+        return {}
     money_field = DecimalField(max_digits=14, decimal_places=2)
     zero = Value(Decimal('0.00'), output_field=money_field)
+    out: dict[int, dict] = {sid: {} for sid in staff_ids}
     rows = (
         posted_sales()
-        .filter(_staff_q(user_id), occurred_at__gte=start, occurred_at__lt=end)
+        .filter(occurred_at__gte=start, occurred_at__lt=end)
         .exclude(refund_status='refunded')
-        .annotate(day=TruncDate('occurred_at'))
-        .values('day')
+        .annotate(staff_id=Coalesce('served_by_id', 'cashier_id'))
+        .filter(staff_id__in=staff_ids)
+        .annotate(month=TruncMonth('occurred_at'))
+        .values('staff_id', 'month')
         .annotate(collected=Coalesce(Sum(_collected_expr(zero)), zero))
     )
-    out: dict = {}
     for row in rows:
-        day = row['day']
-        if day is None:
+        sid, month = row['staff_id'], row['month']
+        if sid is None or month is None:
             continue
-        out[day] = Decimal(str(row['collected'] or 0))
+        out[sid][(month.year, month.month)] = Decimal(str(row['collected'] or 0))
     return out
+
+
+def _bulk_collections_by_day(
+    staff_ids: list[int], start: datetime, end: datetime
+) -> dict[int, dict]:
+    if not staff_ids:
+        return {}
+    money_field = DecimalField(max_digits=14, decimal_places=2)
+    zero = Value(Decimal('0.00'), output_field=money_field)
+    out: dict[int, dict] = {sid: {} for sid in staff_ids}
+    rows = (
+        posted_sales()
+        .filter(occurred_at__gte=start, occurred_at__lt=end)
+        .exclude(refund_status='refunded')
+        .annotate(staff_id=Coalesce('served_by_id', 'cashier_id'))
+        .filter(staff_id__in=staff_ids)
+        .annotate(day=TruncDate('occurred_at'))
+        .values('staff_id', 'day')
+        .annotate(collected=Coalesce(Sum(_collected_expr(zero)), zero))
+    )
+    for row in rows:
+        sid, day = row['staff_id'], row['day']
+        if sid is None or day is None:
+            continue
+        out[sid][day] = Decimal(str(row['collected'] or 0))
+    return out
+
+
+def _bulk_employees_by_user(users: Iterable[User]) -> dict[int, Any]:
+    """Map user.id → Employee matched by email (case-insensitive), one query."""
+    email_to_uid: dict[str, int] = {}
+    for user in users:
+        email = (getattr(user, 'email', '') or '').strip().lower()
+        if email and email not in email_to_uid:
+            email_to_uid[email] = user.id
+    if not email_to_uid:
+        return {}
+    try:
+        from employees.models import Employee
+
+        rows = (
+            Employee.objects.annotate(email_l=Lower('email'))
+            .filter(email_l__in=list(email_to_uid.keys()))
+            .order_by('id')
+        )
+    except Exception:
+        return {}
+    # Prefer highest id per email (matches .order_by('-id').first())
+    best: dict[str, Any] = {}
+    for emp in rows:
+        key = (emp.email or '').strip().lower()
+        best[key] = emp
+    return {
+        email_to_uid[email]: emp
+        for email, emp in best.items()
+        if email in email_to_uid
+    }
 
 
 def attach_day_collections(
@@ -270,15 +334,13 @@ def _month_days(year: int, month: int, today, *, include_future: bool) -> Iterab
         yield current
 
 
-def _join_date(user: User | None):
+def _join_date(user: User | None, *, employee=None):
     if user is None:
         return None
     try:
-        from employees.models import Employee
-
-        employee = _employee_for_user(user)
-        if employee and getattr(employee, 'hire_date', None):
-            return employee.hire_date
+        emp = _employee_for_user(user, employee=employee)
+        if emp and getattr(emp, 'hire_date', None):
+            return emp.hire_date
     except Exception:
         pass
     raw = getattr(user, 'date_joined', None)
@@ -289,25 +351,32 @@ def _join_date(user: User | None):
     return raw.date() if hasattr(raw, 'date') else raw
 
 
-def _employee_for_user(user: User | None):
+def _employee_for_user(user: User | None, *, employee=None):
+    if employee is not None:
+        return employee
     if user is None:
-        return None
-    email = (getattr(user, 'email', '') or '').strip()
-    if not email:
         return None
     try:
         from employees.models import Employee
 
+        linked = Employee.objects.filter(user=user).first()
+        if linked:
+            return linked
+        email = (getattr(user, 'email', '') or '').strip()
+        if not email:
+            return None
         return Employee.objects.filter(email__iexact=email).order_by('-id').first()
     except Exception:
         return None
 
 
-def _apply_employee_salary(user: User | None, template: dict[str, Any]) -> dict[str, Any]:
+def _apply_employee_salary(
+    user: User | None, template: dict[str, Any], *, employee=None
+) -> dict[str, Any]:
     applied = dict(template)
-    employee = _employee_for_user(user)
-    if employee is not None and employee.salary is not None:
-        applied['basic_pay'] = float(employee.salary)
+    emp = _employee_for_user(user, employee=employee)
+    if emp is not None and emp.salary is not None:
+        applied['basic_pay'] = float(emp.salary)
     return applied
 
 
@@ -550,7 +619,17 @@ def _build_year(
     }
 
 
-def staff_snapshot(user: User, *, year: int | None = None, today=None, template=None) -> dict[str, Any]:
+def staff_snapshot(
+    user: User,
+    *,
+    year: int | None = None,
+    today=None,
+    template=None,
+    daily_net=None,
+    collections_by_month=None,
+    collections_by_day=None,
+    employee=None,
+) -> dict[str, Any]:
     today = today or timezone.localdate()
     year = int(year or today.year)
     base = template or load_template()
@@ -573,13 +652,18 @@ def staff_snapshot(user: User, *, year: int | None = None, today=None, template=
             'show_on_home': False,
             'staff_facing': staff_facing(),
         }
-    applied = _apply_employee_salary(user, template_for_user(user, base))
-    hire_date = _join_date(user)
+    applied = _apply_employee_salary(
+        user, template_for_user(user, base), employee=employee
+    )
+    hire_date = _join_date(user, employee=employee)
     role_name = staff_role_name(user)
     start, end = _year_bounds(year)
-    daily_net = _net_sales_by_day(user.id, start, end)
-    collections_by_month = _collections_by_month(user.id, start, end)
-    collections_by_day = _collections_by_day(user.id, start, end)
+    if daily_net is None:
+        daily_net = _net_sales_by_day(user.id, start, end)
+    if collections_by_month is None:
+        collections_by_month = _collections_by_month(user.id, start, end)
+    if collections_by_day is None:
+        collections_by_day = _collections_by_day(user.id, start, end)
     if year < today.year:
         month_today = datetime(year, 12, 31).date()
     elif year > today.year:
@@ -589,7 +673,9 @@ def staff_snapshot(user: User, *, year: int | None = None, today=None, template=
     today_applied = _applied_for_day(
         applied, base_template=base, role_name=role_name, on_date=today
     )
-    today_applied = _apply_employee_salary(user, today_applied)
+    today_applied = _apply_employee_salary(
+        user, today_applied, employee=employee
+    )
     today_sales = daily_net.get(today, Decimal('0')) if today.year == year else Decimal('0')
     today_collected = (
         collections_by_day.get(today, Decimal('0')) if today.year == year else Decimal('0')
@@ -678,50 +764,73 @@ def team_snapshots(*, year: int | None = None, today=None, template=None) -> dic
             'profile', 'profile__custom_role'
         )
     }
+    scored = [
+        u
+        for u in sorted(users.values(), key=lambda u: _display_name(u).lower())
+        if user_has_personal_target(u)
+    ]
+    scored_ids = [u.id for u in scored]
+    # Batch: ~4 queries for the whole team instead of ~4 per person.
+    net_by_user = _bulk_net_sales_by_day(scored_ids, start, end)
+    coll_month_by_user = _bulk_collections_by_month(scored_ids, start, end)
+    coll_day_by_user = _bulk_collections_by_day(scored_ids, start, end)
+    employees_by_user = _bulk_employees_by_user(scored)
+
+    cache_token = begin_template_at_date_cache()
     results = []
-    for user in sorted(users.values(), key=lambda u: _display_name(u).lower()):
-        if not user_has_personal_target(user):
-            continue
-        snap = staff_snapshot(user, year=year, today=today, template=template)
-        results.append({
-            'staff': snap['staff'],
-            'today': snap['today'],
-            'month': {
-                'sales': snap['month']['sales'],
-                'expected_sales': snap['month'].get('expected_sales'),
-                'stars': snap['month']['stars'],
-                'bonus': snap['month']['bonus'],
-                'bonus_earned': snap['month'].get('bonus_earned'),
-                'bonus_qualified': snap['month'].get('bonus_qualified', True),
-                'bonus_block_reasons': snap['month'].get('bonus_block_reasons') or [],
-                'collection_ratio': snap['month'].get('collection_ratio'),
-                'collection_required_ratio': snap['month'].get(
-                    'collection_required_ratio'
-                ),
-                'collection_collected': snap['month'].get('collection_collected'),
-                'collection_sold': snap['month'].get('collection_sold'),
-                'collection_shortfall': snap['month'].get('collection_shortfall'),
-                'official_average': snap['month']['official_average'],
-                'four_star_month': snap['month']['four_star_month'],
-                'four_star_days': snap['month'].get('four_star_days'),
-                'next_bonus': snap['month'].get('next_bonus'),
-                'amount_to_next_bonus': snap['month'].get('amount_to_next_bonus'),
-                'progress_to_four_star': snap['month']['progress_to_four_star'],
-                'tone': snap['month']['tone'],
-            },
-            'year': {
-                'annual_average': snap['year']['annual_average'],
-                'ytd_average': snap['year']['ytd_average'],
-                'four_star_months': snap['year']['four_star_months'],
-                'four_star_months_required': snap['year']['four_star_months_required'],
-                'qualifies': snap['year']['qualifies'],
-                'projected_qualifies': snap['year']['projected_qualifies'],
-                'new_basic': snap['year']['new_basic'],
-                'progress_to_increment': snap['year']['progress_to_increment'],
-                'tone': snap['year']['tone'],
-            },
-            'annual_status': _annual_status(snap),
-        })
+    try:
+        for user in scored:
+            snap = staff_snapshot(
+                user,
+                year=year,
+                today=today,
+                template=template,
+                daily_net=net_by_user.get(user.id) or {},
+                collections_by_month=coll_month_by_user.get(user.id) or {},
+                collections_by_day=coll_day_by_user.get(user.id) or {},
+                employee=employees_by_user.get(user.id),
+            )
+            results.append({
+                'staff': snap['staff'],
+                'today': snap['today'],
+                'month': {
+                    'sales': snap['month']['sales'],
+                    'expected_sales': snap['month'].get('expected_sales'),
+                    'stars': snap['month']['stars'],
+                    'bonus': snap['month']['bonus'],
+                    'bonus_earned': snap['month'].get('bonus_earned'),
+                    'bonus_qualified': snap['month'].get('bonus_qualified', True),
+                    'bonus_block_reasons': snap['month'].get('bonus_block_reasons') or [],
+                    'collection_ratio': snap['month'].get('collection_ratio'),
+                    'collection_required_ratio': snap['month'].get(
+                        'collection_required_ratio'
+                    ),
+                    'collection_collected': snap['month'].get('collection_collected'),
+                    'collection_sold': snap['month'].get('collection_sold'),
+                    'collection_shortfall': snap['month'].get('collection_shortfall'),
+                    'official_average': snap['month']['official_average'],
+                    'four_star_month': snap['month']['four_star_month'],
+                    'four_star_days': snap['month'].get('four_star_days'),
+                    'next_bonus': snap['month'].get('next_bonus'),
+                    'amount_to_next_bonus': snap['month'].get('amount_to_next_bonus'),
+                    'progress_to_four_star': snap['month']['progress_to_four_star'],
+                    'tone': snap['month']['tone'],
+                },
+                'year': {
+                    'annual_average': snap['year']['annual_average'],
+                    'ytd_average': snap['year']['ytd_average'],
+                    'four_star_months': snap['year']['four_star_months'],
+                    'four_star_months_required': snap['year']['four_star_months_required'],
+                    'qualifies': snap['year']['qualifies'],
+                    'projected_qualifies': snap['year']['projected_qualifies'],
+                    'new_basic': snap['year']['new_basic'],
+                    'progress_to_increment': snap['year']['progress_to_increment'],
+                    'tone': snap['year']['tone'],
+                },
+                'annual_status': _annual_status(snap),
+            })
+    finally:
+        end_template_at_date_cache(cache_token)
     return {
         'year': year,
         'policy': public_policy(template),

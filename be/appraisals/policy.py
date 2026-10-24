@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from contextvars import ContextVar
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -453,8 +454,33 @@ def _normalize_versions(raw: Any) -> list[dict[str, Any]]:
     return versions
 
 
+# Request-scoped: team board reuses the same template × many dates × many staff.
+_template_at_date_cache: ContextVar[dict | None] = ContextVar(
+    'appraisal_template_at_date_cache', default=None
+)
+
+
+def begin_template_at_date_cache() -> object:
+    """Start a request-local template_at_date cache; returns a reset token."""
+    return _template_at_date_cache.set({})
+
+
+def end_template_at_date_cache(token) -> None:
+    _template_at_date_cache.reset(token)
+
+
 def template_at_date(template: dict[str, Any] | None, on_date) -> dict[str, Any]:
     """Return the scoring rules that were in force on on_date."""
+    cache = _template_at_date_cache.get()
+    cache_key = None
+    if cache is not None and template is not None and on_date is not None:
+        d = on_date.date() if isinstance(on_date, _dt) else on_date
+        if isinstance(d, _date):
+            cache_key = (id(template), d.isoformat())
+            hit = cache.get(cache_key)
+            if hit is not None:
+                return hit
+
     data = copy.deepcopy(template or load_template())
     if on_date is None:
         return data
@@ -464,6 +490,8 @@ def template_at_date(template: dict[str, Any] | None, on_date) -> dict[str, Any]
         return data
     active_from = _parse_iso_date(data.get('active_from'))
     if active_from is None or on_date >= active_from:
+        if cache is not None and cache_key is not None:
+            cache[cache_key] = data
         return data
     for row in reversed(list(data.get('versions') or [])):
         start = _parse_iso_date(row.get('effective_from'))
@@ -478,7 +506,11 @@ def template_at_date(template: dict[str, Any] | None, on_date) -> dict[str, Any]
         merged = copy.deepcopy(data)
         for key, value in snapshot.items():
             merged[key] = copy.deepcopy(value)
+        if cache is not None and cache_key is not None:
+            cache[cache_key] = merged
         return merged
+    if cache is not None and cache_key is not None:
+        cache[cache_key] = data
     return data
 
 

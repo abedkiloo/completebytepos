@@ -209,9 +209,24 @@ def calculate_run(run: PayrollRun, *, user=None, request=None) -> PayrollRun:
 
 
 def _calculate_employee(emp, *, run, settings, components) -> dict | None:
+    """
+    Shared component library + per-employee assignments.
+
+    - ``Employee.salary`` is the default basic.
+    - An active BASIC assignment with ``amount`` overrides basic for this person.
+    - Other assignments add earnings/deductions (or override component defaults/rates).
+    """
+    assignments = list(_active_assignments(emp, run.period_end))
     basic = money(emp.salary)
+    basic_source = 'employee.salary'
+    for assignment in assignments:
+        if assignment.component.code == 'BASIC' and assignment.amount is not None:
+            basic = money(assignment.amount)
+            basic_source = 'assignment'
+            break
+
     rows: list[dict] = []
-    meta: dict = {'adapters': {}}
+    meta: dict = {'adapters': {}, 'assignment_count': len(assignments)}
 
     # BASIC
     basic_comp = components.get('BASIC')
@@ -221,14 +236,16 @@ def _calculate_employee(emp, *, run, settings, components) -> dict | None:
                 'component': basic_comp,
                 'amount': basic,
                 'include_zero': True,
-                'meta': {'source': 'employee.salary'},
+                'meta': {'source': basic_source},
             }
         )
 
-    # Assignments (non-formula first; formula codes handled below)
+    # Per-employee extras / overrides (non-formula; BASIC already applied)
     formula_codes = {'BONUS_APPRAISAL', 'DED_LOAN', 'DED_ABSENCE'}
-    for assignment in _active_assignments(emp, run.period_end):
+    for assignment in assignments:
         comp = assignment.component
+        if comp.code == 'BASIC':
+            continue
         if comp.is_statutory and not settings.statutory_enabled:
             continue
         if comp.code in formula_codes:
@@ -238,8 +255,14 @@ def _calculate_employee(emp, *, run, settings, components) -> dict | None:
                 'component': comp,
                 'amount': assignment.amount,
                 'rate': assignment.rate,
-                'include_zero': False,
-                'meta': {'source': 'assignment', 'assignment_id': assignment.id},
+                # Keep zero-amount rows when explicitly assigned (turn off an allowance).
+                'include_zero': assignment.amount is not None,
+                'force': assignment.amount is not None and money(assignment.amount) > ZERO,
+                'meta': {
+                    'source': 'assignment',
+                    'assignment_id': assignment.id,
+                    'notes': assignment.notes or '',
+                },
             }
         )
 
@@ -396,9 +419,12 @@ def cancel_run(run: PayrollRun, *, user=None, request=None) -> PayrollRun:
 
 
 def employee_for_user(user):
-    """Resolve Employee for self-service via email match."""
+    """Resolve Employee for self-service: linked user first, then email."""
     if not user or not user.is_authenticated:
         return None
+    linked = Employee.objects.filter(user=user).first()
+    if linked:
+        return linked
     email = (user.email or '').strip()
     if not email:
         return None
