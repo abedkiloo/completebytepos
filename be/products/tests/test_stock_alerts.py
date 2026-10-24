@@ -4,6 +4,8 @@ from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.test import TestCase
+from rest_framework import status
+from rest_framework.test import APIClient
 
 from products.models import Category, Color, Product, ProductVariant, Size
 from products.services import ProductService
@@ -25,6 +27,7 @@ from settings.models import Tenant
 class StockAlertsTestCase(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='stock_alerts', password='x')
+        self.api = APIClient()
         self.tenant = Tenant.objects.create(
             name='Stock Alerts Tenant',
             code='STA',
@@ -310,6 +313,53 @@ class StockAlertsTestCase(TestCase):
         # Default kind is out_of_stock.
         default_items = list_stock_alert_items(kind=None)
         self.assertTrue(any(r['stock_quantity'] == 0 for r in default_items))
+
+    def test_products_low_stock_api_returns_variant_qty_not_parent_total(self):
+        """Dashboard/API must show the low variant's qty, not the parent sum."""
+        product, grey = self._variant_product()
+        grey.stock_quantity = 4
+        grey.save(update_fields=['stock_quantity'])
+        # Sibling still in stock — parent total would be misleading if shown.
+        ProductVariant.objects.filter(product=product, stock_quantity=0).update(
+            stock_quantity=866
+        )
+        product.stock_quantity = 870
+        product.save(update_fields=['stock_quantity'])
+
+        admin = User.objects.create_superuser('stock_alerts_admin', password='x')
+        self.api.force_authenticate(user=admin)
+        response = self.api.get('/api/products/low_stock/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        rows = response.data
+        self.assertTrue(any(r.get('variant_id') == grey.id for r in rows))
+        low_row = next(r for r in rows if r.get('variant_id') == grey.id)
+        self.assertEqual(low_row['stock_quantity'], 4)
+        self.assertEqual(low_row['sku'], grey.sku)
+        # Parent aggregate must not appear as its own low-stock row.
+        self.assertFalse(any(r.get('id') == f'product-{product.id}' for r in rows))
+        self.assertFalse(
+            any(
+                r.get('stock_quantity') == 870 and r.get('name') == product.name
+                for r in rows
+            )
+        )
+
+    def test_products_out_of_stock_api_only_empty_variants(self):
+        product, grey = self._variant_product()
+        self.assertEqual(grey.stock_quantity, 110)
+
+        admin = User.objects.create_superuser('stock_alerts_admin2', password='x')
+        self.api.force_authenticate(user=admin)
+        response = self.api.get('/api/products/out_of_stock/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        rows = response.data
+        oos_ids = {r.get('variant_id') for r in rows if r.get('kind') == 'variant'}
+        self.assertIn(
+            ProductVariant.objects.filter(product=product, stock_quantity=0).first().id,
+            oos_ids,
+        )
+        self.assertNotIn(grey.id, oos_ids)
+        self.assertFalse(any(r.get('id') == f'product-{product.id}' for r in rows))
 
     def test_variant_display_label_helpers(self):
         product, grey = self._variant_product()

@@ -38,7 +38,7 @@ jest.mock('../../utils/moduleFeatures', () => ({
 jest.mock('../../services/api', () => ({
   reportsAPI: { dashboard: jest.fn() },
   salesAPI: { dashboardSummary: jest.fn(), list: jest.fn() },
-  productsAPI: { list: jest.fn() },
+  productsAPI: { list: jest.fn(), lowStock: jest.fn() },
   authAPI: { me: jest.fn() },
   appraisalsAPI: { me: jest.fn() },
 }));
@@ -101,8 +101,16 @@ describe('Dashboard', () => {
         growth: { sales: 0, profit: 12 },
       },
     });
-    productsAPI.list.mockResolvedValue({
-      data: { results: [{ id: 4, name: 'Milk', sku: 'M-1', stock_quantity: 2 }] },
+    productsAPI.lowStock.mockResolvedValue({
+      data: [
+        {
+          id: 'product-4',
+          name: 'Milk',
+          sku: 'M-1',
+          stock_quantity: 2,
+          has_variants: false,
+        },
+      ],
     });
     salesAPI.dashboardSummary.mockResolvedValue({
       data: {
@@ -168,6 +176,7 @@ describe('Dashboard', () => {
     expect(screen.getByText('Debt')).toBeInTheDocument();
     expect(screen.queryByText('HOLD')).not.toBeInTheDocument();
     expect(screen.getAllByText(/Milk/).length).toBeGreaterThan(0);
+    expect(productsAPI.lowStock).toHaveBeenCalled();
     expect(screen.getAllByText(/2 orders today/).length).toBeGreaterThan(0);
     expect(screen.getByRole('link', { name: 'Open sales for Tue 2026-08-18' })).toHaveAttribute(
       'href',
@@ -234,7 +243,7 @@ describe('Dashboard', () => {
   it('tolerates failed loads and empty week days', async () => {
     authAPI.me.mockRejectedValue(new Error('nope'));
     reportsAPI.dashboard.mockRejectedValue(new Error('dash'));
-    productsAPI.list.mockRejectedValue(new Error('stock'));
+    productsAPI.lowStock.mockRejectedValue(new Error('stock'));
     salesAPI.list.mockRejectedValue(new Error('sales'));
     render(<Dashboard />);
     await waitFor(() => {
@@ -277,7 +286,19 @@ describe('Dashboard', () => {
     salesAPI.list.mockResolvedValue({
       data: [{ id: 9, status: 'completed', total: 40 }],
     });
-    productsAPI.list.mockResolvedValue({ data: [{ id: 4, name: 'Milk', sku: 'M-1', stock_quantity: 2 }] });
+    productsAPI.lowStock.mockResolvedValue({
+      data: [
+        {
+          id: 'variant-9',
+          name: "6'' carrot stand · Gold / Black",
+          sku: 'SKU-GOL',
+          stock_quantity: 4,
+          has_variants: true,
+          variant_label: 'Gold / Black',
+          variant_id: 9,
+        },
+      ],
+    });
     render(<Dashboard />);
     await waitFor(() => {
       expect(screen.getAllByText(/Start sale/).length).toBeGreaterThan(0);

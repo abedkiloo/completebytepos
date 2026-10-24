@@ -97,7 +97,7 @@ const Dashboard = () => {
         const [meRes, dashRes, stockRes, salesRes, appraisalRes] = await Promise.all([
           authAPI.me().catch(() => null),
           dashboardPromise.catch(() => null),
-          productsAPI.list({ low_stock: 'true', is_active: 'true' }).catch(() => null),
+          productsAPI.lowStock().catch(() => null),
           salesAPI.list({ limit: 6 }).catch(() => null),
           hasPermission(permissions, 'appraisals', 'view')
             ? appraisalsAPI.me().catch(() => null)
@@ -112,6 +112,8 @@ const Dashboard = () => {
         ) {
           setAppraisal(appraisalRes?.data || null);
         }
+        // Flat rows from /products/low_stock/: simple SKUs or per-variant lines
+        // (never a parent total for has_variants products).
         const products = stockRes?.data?.results || stockRes?.data || [];
         setLowStockProducts(Array.isArray(products) ? products.slice(0, 5) : []);
         const sales = salesRes?.data?.results || salesRes?.data || [];
@@ -585,7 +587,12 @@ const Dashboard = () => {
                       >
                         <div className="min-w-0">
                           <p className="truncate font-medium text-sm">{product.name}</p>
-                          <p className="text-xs text-muted-foreground">SKU {product.sku}</p>
+                          <p className="text-xs text-muted-foreground">
+                            SKU {product.sku || '—'}
+                            {product.variant_label
+                              ? ` · ${product.variant_label}`
+                              : ''}
+                          </p>
                         </div>
                         <Badge variant="destructive" className="tabular-nums">
                           {formatNumber(product.stock_quantity)} left

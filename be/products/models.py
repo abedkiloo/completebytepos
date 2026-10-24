@@ -212,10 +212,13 @@ class Product(models.Model):
 
     @property
     def is_low_stock(self):
-        """Check if product is low on stock"""
+        """Check if product is low on stock (above zero but at/below threshold)."""
         if not self.track_stock:
             return False
-        return self.stock_quantity <= self.low_stock_threshold
+        qty = int(self.stock_quantity or 0)
+        if qty <= 0:
+            return False
+        return qty <= int(self.low_stock_threshold or 0)
 
     @property
     def selling_price(self):
@@ -380,9 +383,16 @@ class ProductVariant(models.Model):
 
     @property
     def is_low_stock(self):
-        """Check if variant is low on stock"""
-        threshold = self.low_stock_threshold if self.low_stock_threshold is not None else self.product.low_stock_threshold
-        return self.stock_quantity <= threshold
+        """Check if variant is low on stock (above zero but at/below threshold)."""
+        qty = int(self.stock_quantity or 0)
+        if qty <= 0:
+            return False
+        threshold = (
+            self.low_stock_threshold
+            if self.low_stock_threshold is not None
+            else self.product.low_stock_threshold
+        )
+        return qty <= int(threshold or 0)
 
     def save(self, *args, **kwargs):
         # Auto-generate SKU if not provided (collision-safe for similar color names).

@@ -756,17 +756,26 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def low_stock(self, request):
-        """Get products with low stock"""
-        products = self.product_service.get_low_stock_products()
-        serializer = self.get_serializer(products, many=True)
-        return Response(serializer.data)
+        """
+        Low-stock alert rows: simple products + individual low variants.
+
+        Variant parents are never returned as a summed total — only the
+        matching variant line (qty and label).
+        """
+        from products.stock_alerts import list_stock_alert_items
+
+        return Response(list_stock_alert_items(kind='low_stock'))
 
     @action(detail=False, methods=['get'])
     def out_of_stock(self, request):
-        """Get products that are out of stock"""
-        products = self.product_service.get_out_of_stock_products()
-        serializer = self.get_serializer(products, many=True)
-        return Response(serializer.data)
+        """
+        Out-of-stock alert rows: simple products + individual empty variants.
+
+        Only variants with stock_quantity == 0 are listed for variant products.
+        """
+        from products.stock_alerts import list_stock_alert_items
+
+        return Response(list_stock_alert_items(kind='out_of_stock'))
 
     @action(detail=False, methods=['post'])
     def bulk_update(self, request):
