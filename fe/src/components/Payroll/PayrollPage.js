@@ -15,6 +15,7 @@ import {
 import { payrollAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
 import { toast } from '../../utils/toast';
+import { getStoredAuth, hasPermission } from '../../utils/roleAccess';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -23,6 +24,22 @@ import { PageShell, PageHeader } from '../page';
 import { cn } from '../../lib/cn';
 import StaffPayPanel from './StaffPayPanel';
 import RolePackagesPanel from './RolePackagesPanel';
+
+function payrollAccess() {
+  const { permissions, user, profile } = getStoredAuth();
+  const isSuper =
+    Boolean(user?.is_superuser) ||
+    profile?.role === 'super_admin' ||
+    profile?.is_super_admin ||
+    profile?.custom_role?.name === 'Super Admin';
+  const canAdmin =
+    isSuper ||
+    hasPermission(permissions, 'payroll', 'view') ||
+    hasPermission(permissions, 'payroll', 'manage');
+  const canOwn =
+    isSuper || canAdmin || hasPermission(permissions, 'payroll', 'view_own');
+  return { canAdmin, canOwn };
+}
 
 const STATUS_TONE = {
   draft: 'secondary',
@@ -45,7 +62,8 @@ function currentPeriod() {
 }
 
 export default function PayrollPage() {
-  const [tab, setTab] = useState('runs');
+  const { canAdmin, canOwn } = useMemo(() => payrollAccess(), []);
+  const [tab, setTab] = useState(canAdmin ? 'runs' : 'mine');
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [runs, setRuns] = useState([]);
@@ -58,6 +76,23 @@ export default function PayrollPage() {
   const period = useMemo(() => currentPeriod(), []);
   const [newYear, setNewYear] = useState(period.year);
   const [newMonth, setNewMonth] = useState(period.month);
+  const [newComp, setNewComp] = useState({
+    name: '',
+    code: '',
+    kind: 'earning',
+    calculation_type: 'fixed',
+    default_amount: '',
+    default_rate: '',
+    is_taxable: true,
+  });
+
+  const suggestCode = (name) =>
+    String(name || '')
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '_')
+      .replace(/^_|_$/g, '')
+      .slice(0, 40);
 
   const loadRuns = useCallback(async () => {
     const res = await payrollAPI.listRuns({ page_size: 50 });
@@ -82,13 +117,18 @@ export default function PayrollPage() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      await Promise.all([loadRuns(), loadComponents(), loadSettings(), loadMine()]);
+      const tasks = [];
+      if (canOwn) tasks.push(loadMine());
+      if (canAdmin) {
+        tasks.push(loadRuns(), loadComponents(), loadSettings());
+      }
+      await Promise.all(tasks);
     } catch (err) {
       toast.error(err?.response?.data?.detail || 'Failed to load payroll');
     } finally {
       setLoading(false);
     }
-  }, [loadRuns, loadComponents, loadSettings, loadMine]);
+  }, [canAdmin, canOwn, loadRuns, loadComponents, loadSettings, loadMine]);
 
   useEffect(() => {
     refresh();
@@ -186,6 +226,55 @@ export default function PayrollPage() {
     }
   };
 
+  const createComponent = async (e) => {
+    e?.preventDefault?.();
+    const name = (newComp.name || '').trim();
+    const code = (newComp.code || suggestCode(name) || '').trim().toUpperCase();
+    if (!name || !code) {
+      toast.error('Name and code are required');
+      return;
+    }
+    setBusyId('create-comp');
+    try {
+      const payload = {
+        name,
+        code,
+        kind: newComp.kind || 'earning',
+        calculation_type: newComp.calculation_type || 'fixed',
+        is_taxable: Boolean(newComp.is_taxable),
+        is_statutory: false,
+        is_active: true,
+        default_amount: newComp.default_amount === '' ? '0' : String(newComp.default_amount),
+        default_rate: newComp.default_rate === '' ? '0' : String(newComp.default_rate),
+      };
+      await payrollAPI.createComponent(payload);
+      setNewComp({
+        name: '',
+        code: '',
+        kind: 'earning',
+        calculation_type: 'fixed',
+        default_amount: '',
+        default_rate: '',
+        is_taxable: true,
+      });
+      await loadComponents();
+      toast.success(
+        `${code} added — set amount under Role packages or Staff pay, then recalculate`
+      );
+    } catch (err) {
+      const data = err?.response?.data;
+      const msg =
+        data?.code?.[0] ||
+        data?.name?.[0] ||
+        data?.detail ||
+        (typeof data === 'string' ? data : null) ||
+        'Could not create component — need payroll.manage';
+      toast.error(msg);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const toggleComponentActive = async (component) => {
     const next = !component.is_active;
     setBusyId(`comp-${component.id}`);
@@ -215,32 +304,61 @@ export default function PayrollPage() {
     }
   };
 
-  const openPdf = async (payslipId, mine = false) => {
+  const openPdf = async (payslipId, mine = false, periodLabel = '') => {
     try {
       const res = mine
         ? await payrollAPI.myPayslipPdf(payslipId)
         : await payrollAPI.payslipPdf(payslipId);
-      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
-      window.open(url, '_blank', 'noopener,noreferrer');
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const filename = `payslip_${periodLabel || payslipId}.pdf`.replace(/\s+/g, '_');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
     } catch (err) {
-      toast.error('Could not open payslip PDF');
+      toast.error('Could not download payslip PDF');
     }
   };
 
   const tabs = [
-    { id: 'runs', label: 'Runs' },
-    { id: 'packages', label: 'Role packages' },
-    { id: 'staff', label: 'Staff pay' },
-    { id: 'components', label: 'Components' },
-    { id: 'settings', label: 'Settings' },
-    { id: 'mine', label: 'My payslips' },
+    ...(canAdmin
+      ? [
+          { id: 'runs', label: 'Runs' },
+          { id: 'packages', label: 'Role packages' },
+          { id: 'staff', label: 'Staff pay' },
+          { id: 'components', label: 'Components' },
+          { id: 'settings', label: 'Settings' },
+        ]
+      : []),
+    ...(canOwn ? [{ id: 'mine', label: 'My payslips' }] : []),
   ];
+
+  if (!canOwn && !canAdmin) {
+    return (
+      <PageShell>
+        <PageHeader
+          title="Payslips"
+          description="You do not have access to payroll."
+          icon={Wallet}
+        />
+      </PageShell>
+    );
+  }
 
   return (
     <PageShell>
       <PageHeader
-        title="Payroll"
-        description="Monthly payroll runs, pay components, and payslips"
+        title={canAdmin ? 'Payroll' : 'My payslips'}
+        description={
+          canAdmin
+            ? 'Monthly payroll runs, pay components, and payslips'
+            : 'Download your locked payslips after payroll is approved for the period'
+        }
         icon={Wallet}
         actions={
           <Button type="button" variant="outline" size="sm" onClick={refresh} disabled={loading}>
@@ -250,19 +368,21 @@ export default function PayrollPage() {
         }
       />
 
-      <div className="mb-4 flex flex-wrap gap-2">
-        {tabs.map((t) => (
-          <Button
-            key={t.id}
-            type="button"
-            size="sm"
-            variant={tab === t.id ? 'default' : 'outline'}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-          </Button>
-        ))}
-      </div>
+      {tabs.length > 1 ? (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {tabs.map((t) => (
+            <Button
+              key={t.id}
+              type="button"
+              size="sm"
+              variant={tab === t.id ? 'default' : 'outline'}
+              onClick={() => setTab(t.id)}
+            >
+              {t.label}
+            </Button>
+          ))}
+        </div>
+      ) : null}
 
       {loading ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground py-12 justify-center">
@@ -271,7 +391,7 @@ export default function PayrollPage() {
         </div>
       ) : null}
 
-      {!loading && tab === 'runs' ? (
+      {!loading && canAdmin && tab === 'runs' ? (
         <div className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
           <section className="space-y-4">
             <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border/60 bg-background/60 p-4">
@@ -459,22 +579,26 @@ export default function PayrollPage() {
         </div>
       ) : null}
 
-      {!loading && tab === 'packages' ? (
+      {!loading && canAdmin && tab === 'packages' ? (
         <RolePackagesPanel components={components} />
       ) : null}
 
-      {!loading && tab === 'staff' ? <StaffPayPanel components={components} /> : null}
+      {!loading && canAdmin && tab === 'staff' ? (
+        <StaffPayPanel components={components} />
+      ) : null}
 
-      {!loading && tab === 'components' ? (
+      {!loading && canAdmin && tab === 'components' ? (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground max-w-xl">
-              Company pay library. Tick Active to use a component on calculate; untick to
-              disable it store-wide. Per-person amounts stay under Staff pay.
+              Add your own allowances (e.g. Food) or deductions here. Keep Active on,
+              assign amounts under Role packages or Staff pay, then recalculate the run
+              so they show on the payslip.
             </p>
             <Button
               type="button"
               size="sm"
+              variant="outline"
               onClick={seedComponents}
               disabled={busyId === 'seed'}
             >
@@ -487,10 +611,151 @@ export default function PayrollPage() {
             </Button>
           </div>
 
+          <form
+            onSubmit={createComponent}
+            className="rounded-lg border border-border/60 p-4 space-y-3"
+          >
+            <div className="text-sm font-medium">Add custom component</div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="sm:col-span-2 lg:col-span-1">
+                <Label htmlFor="comp_name">Name</Label>
+                <Input
+                  id="comp_name"
+                  value={newComp.name}
+                  placeholder="Food allowance"
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    setNewComp((prev) => ({
+                      ...prev,
+                      name,
+                      code:
+                        !prev.code || prev.code === suggestCode(prev.name)
+                          ? suggestCode(name)
+                          : prev.code,
+                    }));
+                  }}
+                />
+              </div>
+              <div>
+                <Label htmlFor="comp_code">Code</Label>
+                <Input
+                  id="comp_code"
+                  value={newComp.code}
+                  placeholder="FOOD_ALLOWANCE"
+                  className="font-mono text-xs uppercase"
+                  onChange={(e) =>
+                    setNewComp((prev) => ({
+                      ...prev,
+                      code: e.target.value.toUpperCase().replace(/\s+/g, '_'),
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <Label htmlFor="comp_kind">Kind</Label>
+                <select
+                  id="comp_kind"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={newComp.kind}
+                  onChange={(e) =>
+                    setNewComp((prev) => ({ ...prev, kind: e.target.value }))
+                  }
+                >
+                  <option value="earning">Earning / allowance</option>
+                  <option value="deduction">Deduction</option>
+                  <option value="employer">Employer contribution</option>
+                </select>
+              </div>
+              <div>
+                <Label htmlFor="comp_calc">Calculation</Label>
+                <select
+                  id="comp_calc"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={newComp.calculation_type}
+                  onChange={(e) =>
+                    setNewComp((prev) => ({
+                      ...prev,
+                      calculation_type: e.target.value,
+                    }))
+                  }
+                >
+                  <option value="fixed">Fixed amount</option>
+                  <option value="percent_basic">% of basic</option>
+                  <option value="percent_gross">% of gross</option>
+                </select>
+              </div>
+              {newComp.calculation_type === 'fixed' ? (
+                <div>
+                  <Label htmlFor="comp_amount">Default amount</Label>
+                  <Input
+                    id="comp_amount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={newComp.default_amount}
+                    placeholder="0"
+                    onChange={(e) =>
+                      setNewComp((prev) => ({
+                        ...prev,
+                        default_amount: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              ) : (
+                <div>
+                  <Label htmlFor="comp_rate">Rate (e.g. 0.05 = 5%)</Label>
+                  <Input
+                    id="comp_rate"
+                    type="number"
+                    min="0"
+                    step="0.0001"
+                    value={newComp.default_rate}
+                    placeholder="0.05"
+                    onChange={(e) =>
+                      setNewComp((prev) => ({
+                        ...prev,
+                        default_rate: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              )}
+              <div className="flex items-end">
+                <label className="inline-flex items-center gap-2 text-sm cursor-pointer select-none pb-2">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-input"
+                    checked={Boolean(newComp.is_taxable)}
+                    onChange={(e) =>
+                      setNewComp((prev) => ({
+                        ...prev,
+                        is_taxable: e.target.checked,
+                      }))
+                    }
+                  />
+                  Taxable
+                </label>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="submit" size="sm" disabled={busyId === 'create-comp'}>
+                {busyId === 'create-comp' ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="h-4 w-4" />
+                )}
+                Add to library
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Then set who gets it under Role packages or Staff pay.
+              </span>
+            </div>
+          </form>
+
           {components.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border/80 p-10 text-center text-sm text-muted-foreground">
-              No pay components yet. Click <strong>Load starter library</strong> (needs
-              payroll manage), or create a payroll run — calculate will seed them.
+              No components yet. Add Food allowance above, or load the starter library.
             </div>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-border/60">
@@ -553,7 +818,7 @@ export default function PayrollPage() {
         </div>
       ) : null}
 
-      {!loading && tab === 'settings' && settings ? (
+      {!loading && canAdmin && tab === 'settings' && settings ? (
         <div className="max-w-lg space-y-4 rounded-lg border border-border/60 p-4">
           <div>
             <Label htmlFor="currency">Currency</Label>
@@ -575,13 +840,18 @@ export default function PayrollPage() {
             />
           </div>
           <div>
-            <Label htmlFor="letterhead">Letterhead line</Label>
+            <Label htmlFor="letterhead">Payslip letterhead line</Label>
             <Input
               id="letterhead"
               value={settings.letterhead_line || ''}
               onChange={(e) => setSettings({ ...settings, letterhead_line: e.target.value })}
               placeholder="Optional line under store brand on payslips"
             />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Payslip PDFs are generated on download (not filed away). They use this
+              letterhead plus the store logo/name/header from System Settings. Employees
+              only see locked payslips after a run is approved.
+            </p>
           </div>
           <label className="flex items-center gap-2 text-sm">
             <input
@@ -610,41 +880,54 @@ export default function PayrollPage() {
         </div>
       ) : null}
 
-      {!loading && tab === 'mine' ? (
-        <div className="overflow-x-auto rounded-lg border border-border/60">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/30 text-left">
-                <th className="p-3">Period</th>
-                <th className="p-3">Gross</th>
-                <th className="p-3">Net</th>
-                <th className="p-3">PDF</th>
-              </tr>
-            </thead>
-            <tbody>
-              {myPayslips.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="p-8 text-center text-muted-foreground">
-                    No locked payslips linked to your account email yet.
-                  </td>
+      {!loading && canOwn && tab === 'mine' ? (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground max-w-2xl">
+            After payroll is approved and locked for a period, your payslip appears here.
+            Download builds a fresh PDF on request (not stored) with the company logo and
+            letterhead from store / payroll settings — same idea as receipts.
+          </p>
+          <div className="overflow-x-auto rounded-lg border border-border/60">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/30 text-left">
+                  <th className="p-3">Period</th>
+                  <th className="p-3">Gross</th>
+                  <th className="p-3">Net</th>
+                  <th className="p-3">PDF</th>
                 </tr>
-              ) : (
-                myPayslips.map((p) => (
-                  <tr key={p.id} className="border-b border-border/40">
-                    <td className="p-3">{p.period}</td>
-                    <td className="p-3">{formatCurrency(p.gross_pay)}</td>
-                    <td className="p-3">{formatCurrency(p.net_pay)}</td>
-                    <td className="p-3">
-                      <Button type="button" size="sm" variant="outline" onClick={() => openPdf(p.id, true)}>
-                        <FileText className="h-4 w-4" />
-                        Download
-                      </Button>
+              </thead>
+              <tbody>
+                {myPayslips.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="p-8 text-center text-muted-foreground">
+                      No locked payslips yet. Link your user to an employee record, then wait
+                      until payroll for the period is approved.
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  myPayslips.map((p) => (
+                    <tr key={p.id} className="border-b border-border/40">
+                      <td className="p-3">{p.period}</td>
+                      <td className="p-3">{formatCurrency(p.gross_pay)}</td>
+                      <td className="p-3">{formatCurrency(p.net_pay)}</td>
+                      <td className="p-3">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openPdf(p.id, true, p.period)}
+                        >
+                          <FileText className="h-4 w-4" />
+                          Download
+                        </Button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : null}
     </PageShell>

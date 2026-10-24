@@ -185,7 +185,10 @@ export const NAV_SECTIONS = [
         icon: Wallet,
         module: 'payroll',
         feature: ['payroll', 'payroll_runs'],
-        permission: ['payroll', 'view'],
+        anyPermission: [
+          ['payroll', 'view'],
+          ['payroll', 'view_own'],
+        ],
       },
     ],
   },

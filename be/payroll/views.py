@@ -418,7 +418,8 @@ class MyPayslipPdfView(APIView):
             f'{payslip.run.period_label}.pdf'
         )
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
-        response['Content-Disposition'] = f'inline; filename="{filename}"'
+        # Attachment so employees can save the branded payslip.
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
 
 

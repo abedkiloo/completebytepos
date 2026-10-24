@@ -51,6 +51,26 @@ class PayComponentSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
+    def validate_code(self, value):
+        code = (value or '').strip().upper().replace(' ', '_')
+        if not code:
+            raise serializers.ValidationError('Code is required.')
+        if len(code) > 40:
+            raise serializers.ValidationError('Code must be 40 characters or fewer.')
+        qs = PayComponent.objects.filter(code__iexact=code)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(f'Component code “{code}” already exists.')
+        return code
+
+    def create(self, validated_data):
+        # Custom allowances/deductions are never statutory by default.
+        validated_data.setdefault('is_statutory', False)
+        validated_data.setdefault('is_active', True)
+        validated_data.setdefault('calculation_type', PayComponent.CALC_FIXED)
+        return super().create(validated_data)
+
 
 class RolePayPackageLineSerializer(serializers.ModelSerializer):
     component_code = serializers.CharField(source='component.code', read_only=True)

@@ -345,6 +345,7 @@ export const payrollAPI = {
   getSettings: () => api.get('/payroll/settings/'),
   updateSettings: (data) => api.put('/payroll/settings/', data),
   listComponents: (params) => api.get('/payroll/components/', { params }),
+  createComponent: (data) => api.post('/payroll/components/', data),
   updateComponent: (id, data) => api.patch(`/payroll/components/${id}/`, data),
   seedComponents: () => api.post('/payroll/components/seed-starters/'),
   listAssignments: (params) => api.get('/payroll/assignments/', { params }),

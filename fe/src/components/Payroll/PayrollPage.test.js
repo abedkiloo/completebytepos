@@ -31,6 +31,12 @@ jest.mock('../../utils/toast', () => ({
 
 describe('PayrollPage', () => {
   beforeEach(() => {
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([{ module: 'payroll', action: 'view', name: 'payroll.view' }])
+    );
+    localStorage.setItem('user', JSON.stringify({ is_superuser: false }));
+    localStorage.setItem('profile', JSON.stringify({ role: 'admin' }));
     payrollAPI.listRuns.mockResolvedValue({ data: { results: [] } });
     payrollAPI.listComponents.mockResolvedValue({
       data: {

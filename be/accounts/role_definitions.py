@@ -242,6 +242,7 @@ ROLE_SCREEN_MATRIX = {
         'Customers (add walk-in / credit; no Payments trail)',
         'Products & categories (add / import — manager sets prices)',
         'Delivery (today’s route — admin can assign you like a driver)',
+        'My payslips (download after payroll is locked for the period)',
     ],
     ROLE_FIELD_AGENT: [
         'Field sales (customer → products → pin → place)',
@@ -318,6 +319,9 @@ def _manager_queryset():
     ) | Permission.objects.filter(
         module='appraisals',
         action__in=['view', 'view_all'],
+    ) | Permission.objects.filter(
+        module='payroll',
+        action='view_own',
     )
 
 
@@ -336,6 +340,9 @@ def _sales_queryset():
     ) | Permission.objects.filter(
         module='appraisals',
         action='view',
+    ) | Permission.objects.filter(
+        module='payroll',
+        action='view_own',
     )
 
 
@@ -353,9 +360,15 @@ def _field_agent_queryset():
 
 
 def _dispatcher_queryset():
-    return Permission.objects.filter(
-        module='dispatch',
-        action__in=['view', 'update'],
+    return (
+        Permission.objects.filter(
+            module='dispatch',
+            action__in=['view', 'update'],
+        )
+        | Permission.objects.filter(
+            module='payroll',
+            action='view_own',
+        )
     )
 
 
@@ -368,6 +381,10 @@ def _delivery_agent_queryset():
         | Permission.objects.filter(
             module='payments',
             action__in=['view', 'create'],
+        )
+        | Permission.objects.filter(
+            module='payroll',
+            action='view_own',
         )
     )
 
@@ -436,6 +453,23 @@ def grant_appraisals_to_sales_roles():
     manager = Role.objects.filter(name=ROLE_MANAGER).first()
     if manager and view_all:
         manager.permissions.add(*view, *view_all)
+    return granted
+
+
+def grant_payroll_view_own_to_all_roles():
+    """
+    Every role can open locked payslips for the linked employee (self-service).
+    Additive — does not grant run admin (view/manage/approve).
+    """
+    perm = Permission.objects.filter(module='payroll', action='view_own').first()
+    if not perm:
+        return 0
+    granted = 0
+    for role in Role.objects.filter(is_active=True):
+        if role.permissions.filter(pk=perm.pk).exists():
+            continue
+        role.permissions.add(perm)
+        granted += 1
     return granted
 
 
@@ -567,6 +601,7 @@ def sync_default_roles(created_by=None):
     Role.objects.filter(name__in=LEGACY_ROLE_NAMES).update(is_active=False)
     grant_daily_notes_to_sales_roles()
     grant_appraisals_to_sales_roles()
+    grant_payroll_view_own_to_all_roles()
 
     return {
         ROLE_SUPER_ADMIN: super_admin,

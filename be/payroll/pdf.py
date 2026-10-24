@@ -1,11 +1,15 @@
-"""Payslip PDF generation with store brand / letterhead."""
+"""Payslip PDF generation with store brand / letterhead.
+
+PDFs are not stored on disk — each download builds bytes from the locked
+payslip rows + current store/payroll branding (same pattern as receipts).
+"""
 
 from __future__ import annotations
 
 from io import BytesIO
 
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_LEFT, TA_RIGHT
+from reportlab.lib.enums import TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
@@ -21,8 +25,22 @@ from payroll.models import PayrollSettings, Payslip
 from utils.document_branding import brand_header_elements, branded_document_title
 
 
+def _payslip_letterhead(settings: PayrollSettings, tenant) -> str:
+    """Combine payroll letterhead with tenant registration/tax when configured."""
+    parts = []
+    if settings.letterhead_line:
+        parts.append(settings.letterhead_line.strip())
+    if tenant is not None:
+        if getattr(tenant, 'registration_number', None):
+            parts.append(f'Reg. No: {tenant.registration_number.strip()}')
+        if getattr(tenant, 'tax_id', None):
+            parts.append(f'Tax ID: {tenant.tax_id.strip()}')
+    return ' · '.join(p for p in parts if p)
+
+
 def build_payslip_pdf(payslip: Payslip) -> bytes:
-    settings = PayrollSettings.load(payslip.run.tenant)
+    tenant = getattr(payslip.run, 'tenant', None)
+    settings = PayrollSettings.load(tenant)
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -57,20 +75,14 @@ def build_payslip_pdf(payslip: Payslip) -> bytes:
     )
 
     story = []
-    story.extend(brand_header_elements('Payslip'))
-    if settings.letterhead_line:
-        story.append(
-            Paragraph(
-                settings.letterhead_line,
-                ParagraphStyle(
-                    'Letterhead',
-                    parent=body,
-                    alignment=TA_LEFT,
-                    textColor=colors.HexColor('#555555'),
-                    spaceAfter=6,
-                ),
-            )
+    # Store logo + System Settings header + Payroll / tenant letterhead for this company.
+    story.extend(
+        brand_header_elements(
+            'Payslip',
+            extra_letterhead=_payslip_letterhead(settings, tenant),
+            respect_logo_flag=True,
         )
+    )
     story.append(Spacer(1, 8))
 
     info = [
