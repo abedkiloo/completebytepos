@@ -152,3 +152,38 @@ class EmployeeViewsTestCase(SuperAdminAPITestCase):
         self.assertEqual(stats.status_code, status.HTTP_200_OK)
         self.assertEqual(stats.data['total_employees'], 1)
         self.assertEqual(Decimal(str(stats.data['total_salary'])), Decimal('20000.00'))
+
+    def test_edit_employee_assigns_job_role(self):
+        from django.contrib.auth.models import User
+
+        from accounts.models import Role, UserProfile
+        from accounts.role_definitions import ROLE_MANAGER, ensure_permissions, sync_default_roles
+
+        ensure_permissions()
+        sync_default_roles(created_by=self.admin)
+        manager = Role.objects.get(name=ROLE_MANAGER)
+        user = User.objects.create_user(
+            username='mercy_role', email='mercy@example.com', password='x'
+        )
+        UserProfile.objects.create(user=user, role='cashier', is_active=True)
+        emp = Employee.objects.create(
+            user=user,
+            employee_id='EMP-ROLE',
+            first_name='Mercy',
+            last_name='David',
+            position='Temp',
+            department='sales',
+            hire_date=date.today(),
+            status='active',
+            created_by=self.admin,
+        )
+        res = self.client.patch(
+            f'/api/employees/employees/{emp.id}/',
+            {'job_role_id': manager.id, 'position': manager.name},
+            format='json',
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK, res.data)
+        user.profile.refresh_from_db()
+        self.assertEqual(user.profile.custom_role_id, manager.id)
+        self.assertEqual(res.data['role_id'], manager.id)
+        self.assertEqual(res.data['role_name'], ROLE_MANAGER)

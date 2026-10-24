@@ -81,6 +81,7 @@ const EMPTY_FORM = {
   last_name: '',
   email: '',
   phone: '',
+  role_id: '',
   position: '',
   department: 'other',
   hire_date: '',
@@ -231,6 +232,7 @@ export default function Employees() {
       last_name: emp.last_name || '',
       email: emp.email || emp.user_email || '',
       phone: emp.phone || '',
+      role_id: emp.role_id != null ? String(emp.role_id) : '',
       position: emp.position || '',
       department: emp.department || 'other',
       hire_date: emp.hire_date || '',
@@ -240,6 +242,20 @@ export default function Employees() {
       notes: emp.notes || '',
     });
     setShowModal(true);
+  };
+
+  const hasLinkedUser = Boolean(
+    (editing && (editing.user || editing.user_username)) ||
+      (!editing && createMode === 'from_user' && selectedUserId)
+  );
+
+  const applyRoleSelection = (roleId) => {
+    const role = roles.find((r) => String(r.id) === String(roleId));
+    setFormData((prev) => ({
+      ...prev,
+      role_id: roleId,
+      position: role ? role.name : prev.position,
+    }));
   };
 
   const applySelectedUser = (userId) => {
@@ -263,6 +279,10 @@ export default function Employees() {
       position: formData.position.trim(),
       hire_date: formData.hire_date,
     };
+    if (hasLinkedUser) {
+      payload.job_role_id =
+        formData.role_id === '' ? null : Number(formData.role_id);
+    }
     if (showContact) {
       payload.email = formData.email.trim();
       payload.id_number = formData.id_number.trim();
@@ -288,9 +308,8 @@ export default function Employees() {
         toast.error('Select a login user to make an employee');
         return;
       }
-      const posErr = required(formData.position, 'Enter position, e.g. Cashier');
-      if (posErr) {
-        toast.error(posErr);
+      if (!formData.role_id && !formData.position.trim()) {
+        toast.error('Select a position / job role');
         return;
       }
       const hireErr = dateMessage(formData.hire_date, { label: 'hire date' });
@@ -335,9 +354,8 @@ export default function Employees() {
       toast.error(idErr);
       return;
     }
-    const posErr = required(formData.position, 'Enter position, e.g. Cashier');
-    if (posErr) {
-      toast.error(posErr);
+    if (!formData.role_id && !formData.position.trim()) {
+      toast.error('Select a position / job role');
       return;
     }
     const hireErr = dateMessage(formData.hire_date, { label: 'hire date' });
@@ -380,6 +398,8 @@ export default function Employees() {
           employee_id: formData.employee_id.trim() || undefined,
           id_number: formData.id_number.trim() || '',
           email: formData.email.trim() || undefined,
+          role_id: formData.role_id === '' ? null : Number(formData.role_id),
+          job_role_id: formData.role_id === '' ? null : Number(formData.role_id),
           position: formData.position.trim(),
           department: formData.department || 'other',
           hire_date: formData.hire_date,
@@ -784,12 +804,81 @@ export default function Employees() {
                 </Field>
               </div>
             ) : null}
-            <Field label="Position" required>
-              <Input
-                value={formData.position}
-                onChange={(e) => setFormData({ ...formData, position: e.target.value })}
-              />
-            </Field>
+            {hasLinkedUser ? (
+              <Field
+                label="Position / job role"
+                required
+                hint="Select Manager, Sales Personnel, etc. They inherit that role’s pay package."
+              >
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={formData.role_id}
+                  onChange={(e) => applyRoleSelection(e.target.value)}
+                  required
+                >
+                  <option value="">Select position…</option>
+                  {roles.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            ) : (
+              <Field
+                label="Position"
+                required
+                hint="To assign a pay-package role, create/link a login user for this employee first."
+              >
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={
+                    roles.some((r) => r.name === formData.position)
+                      ? formData.position
+                      : formData.position
+                        ? '__custom__'
+                        : ''
+                  }
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v === '__custom__') {
+                      setFormData((prev) => ({
+                        ...prev,
+                        role_id: '',
+                        position: prev.position && !roles.some((r) => r.name === prev.position)
+                          ? prev.position
+                          : '',
+                      }));
+                      return;
+                    }
+                    setFormData((prev) => ({
+                      ...prev,
+                      role_id: '',
+                      position: v,
+                    }));
+                  }}
+                  required
+                >
+                  <option value="">Select position…</option>
+                  {roles.map((r) => (
+                    <option key={r.id} value={r.name}>
+                      {r.name}
+                    </option>
+                  ))}
+                  <option value="__custom__">Other (type below)…</option>
+                </select>
+                {!roles.some((r) => r.name === formData.position) ? (
+                  <Input
+                    className="mt-2"
+                    value={formData.position}
+                    onChange={(e) =>
+                      setFormData({ ...formData, position: e.target.value })
+                    }
+                    placeholder="e.g. Sales Consultant"
+                  />
+                ) : null}
+              </Field>
+            )}
             <Field label="Hire date" required>
               <Input
                 type="date"

@@ -22,11 +22,16 @@ class EmployeeSerializer(serializers.ModelSerializer):
     role_id = serializers.SerializerMethodField()
     role_name = serializers.SerializerMethodField()
     user_email = serializers.SerializerMethodField()
+    # Writable job role (login custom_role) — use this on create/update.
+    job_role_id = serializers.IntegerField(
+        required=False, allow_null=True, write_only=True
+    )
 
     class Meta:
         model = Employee
         fields = [
             'id', 'user', 'user_username', 'user_email', 'role_id', 'role_name',
+            'job_role_id',
             'employee_id', 'id_number', 'first_name', 'last_name',
             'full_name', 'email', 'phone', 'position', 'department', 'hire_date',
             'status', 'salary', 'bank_name', 'bank_account', 'tenant',
@@ -56,10 +61,16 @@ class EmployeeSerializer(serializers.ModelSerializer):
         return None
 
     def _profile(self, obj):
-        user = getattr(obj, 'user', None)
-        if not user:
+        if not obj.user_id:
             return None
-        return getattr(user, 'profile', None)
+        from accounts.models import UserProfile
+
+        # Fresh fetch so role changes in the same request show up in the response.
+        return (
+            UserProfile.objects.select_related('custom_role')
+            .filter(user_id=obj.user_id)
+            .first()
+        )
 
     def get_role_id(self, obj):
         profile = self._profile(obj)
@@ -98,7 +109,78 @@ class EmployeeSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         from employees.module_settings import validate_employee_write
 
-        return validate_employee_write(attrs)
+        attrs = validate_employee_write(attrs)
+        # Accept job_role_id or legacy role_id from the client.
+        raw = serializers.empty
+        if 'job_role_id' in attrs:
+            raw = attrs.pop('job_role_id')
+        elif 'role_id' in self.initial_data and not isinstance(
+            self.fields.get('role_id'), serializers.SerializerMethodField
+        ):
+            raw = self.initial_data.get('role_id')
+        elif 'role_id' in self.initial_data:
+            # SerializerMethodField is read-only; still accept body key for UX.
+            raw = self.initial_data.get('role_id')
+
+        if raw is not serializers.empty:
+            if raw in ('', None):
+                attrs['_role_id'] = None
+            else:
+                try:
+                    role_pk = int(raw)
+                except (TypeError, ValueError) as exc:
+                    raise serializers.ValidationError(
+                        {'job_role_id': 'Select a valid job role.'}
+                    ) from exc
+                from accounts.models import Role
+
+                if not Role.objects.filter(pk=role_pk, is_active=True).exists():
+                    raise serializers.ValidationError(
+                        {'job_role_id': 'Role not found or inactive.'}
+                    )
+                attrs['_role_id'] = role_pk
+        return attrs
+
+    def _apply_role(self, employee, role_id):
+        """Set the linked login user's job role (pay package inheritance)."""
+        if employee.user_id is None:
+            if role_id is not None:
+                raise serializers.ValidationError(
+                    {
+                        'job_role_id': (
+                            'Link a login user to this employee before assigning '
+                            'a job role / pay package.'
+                        )
+                    }
+                )
+            return
+        from accounts.models import Role, UserProfile
+
+        profile, _ = UserProfile.objects.get_or_create(
+            user_id=employee.user_id,
+            defaults={'role': 'cashier', 'is_active': True},
+        )
+        if role_id is None:
+            profile.custom_role_id = None
+        else:
+            profile.custom_role_id = role_id
+        profile.save(update_fields=['custom_role_id'])
+
+    def create(self, validated_data):
+        validated_data.pop('job_role_id', None)
+        role_id = validated_data.pop('_role_id', None)
+        employee = super().create(validated_data)
+        if role_id is not None:
+            self._apply_role(employee, role_id)
+        return employee
+
+    def update(self, instance, validated_data):
+        validated_data.pop('job_role_id', None)
+        role_id = validated_data.pop('_role_id', serializers.empty)
+        employee = super().update(instance, validated_data)
+        if role_id is not serializers.empty:
+            self._apply_role(employee, role_id)
+        return employee
 
     def to_representation(self, instance):
         from employees.module_settings import apply_employee_representation_flags
@@ -142,6 +224,7 @@ class FromUserEmployeeSerializer(serializers.Serializer):
     employee_id = serializers.CharField(max_length=50, required=False, allow_blank=True)
     id_number = serializers.CharField(max_length=40, required=False, allow_blank=True, default='')
     email = serializers.EmailField(required=False, allow_blank=True)
+    role_id = serializers.IntegerField(required=False, allow_null=True)
     position = serializers.CharField(max_length=100)
     department = serializers.ChoiceField(
         choices=Employee.DEPARTMENT_CHOICES, required=False, default='other'
@@ -173,7 +256,18 @@ class FromUserEmployeeSerializer(serializers.Serializer):
             raise serializers.ValidationError('An employee with this ID already exists.')
         return value
 
+    def validate_role_id(self, value):
+        if value is None:
+            return value
+        from accounts.models import Role
+
+        if not Role.objects.filter(pk=value, is_active=True).exists():
+            raise serializers.ValidationError('Role not found or inactive.')
+        return value
+
     def create(self, validated_data):
+        from accounts.models import Role, UserProfile
+
         user = self.context['linked_user']
         emp_id = (validated_data.get('employee_id') or '').strip()
         if not emp_id:
@@ -191,8 +285,12 @@ class FromUserEmployeeSerializer(serializers.Serializer):
             phone = ''
 
         email = (validated_data.get('email') or user.email or '').strip()
-        # Prefer linking by user; also copy email for payslip/self-service match.
-        return Employee.objects.create(
+        role_id = validated_data.get('role_id')
+        position = validated_data['position'].strip()
+        if role_id and not position:
+            position = Role.objects.get(pk=role_id).name
+
+        employee = Employee.objects.create(
             user=user,
             employee_id=emp_id,
             id_number=(validated_data.get('id_number') or '').strip(),
@@ -200,7 +298,7 @@ class FromUserEmployeeSerializer(serializers.Serializer):
             last_name=(user.last_name or 'User')[:100],
             email=email,
             phone=phone,
-            position=validated_data['position'].strip(),
+            position=position,
             department=validated_data.get('department') or 'other',
             hire_date=validated_data.get('hire_date'),
             status=validated_data.get('status') or 'active',
@@ -208,3 +306,11 @@ class FromUserEmployeeSerializer(serializers.Serializer):
             notes=validated_data.get('notes') or '',
             created_by=self.context.get('request_user'),
         )
+        if role_id is not None:
+            profile, _ = UserProfile.objects.get_or_create(
+                user=user,
+                defaults={'role': 'cashier', 'is_active': True},
+            )
+            profile.custom_role = Role.objects.get(pk=role_id)
+            profile.save(update_fields=['custom_role'])
+        return employee
