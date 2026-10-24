@@ -185,6 +185,35 @@ export default function PayrollPage() {
     }
   };
 
+  const toggleComponentActive = async (component) => {
+    const next = !component.is_active;
+    setBusyId(`comp-${component.id}`);
+    // Optimistic UI
+    setComponents((prev) =>
+      prev.map((c) => (c.id === component.id ? { ...c, is_active: next } : c))
+    );
+    try {
+      await payrollAPI.updateComponent(component.id, { is_active: next });
+      toast.success(
+        next
+          ? `${component.code} enabled`
+          : `${component.code} disabled — skipped on next calculate`
+      );
+    } catch (err) {
+      setComponents((prev) =>
+        prev.map((c) =>
+          c.id === component.id ? { ...c, is_active: component.is_active } : c
+        )
+      );
+      toast.error(
+        err?.response?.data?.detail ||
+          'Could not update — need payroll.manage permission'
+      );
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const openPdf = async (payslipId, mine = false) => {
     try {
       const res = mine
@@ -434,8 +463,8 @@ export default function PayrollPage() {
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground max-w-xl">
-              Starters (basic, allowances, advances, appraisal bonus, dormant PAYE/NSSF/SHIF)
-              load automatically when you create or calculate a run — or load them here.
+              Company pay library. Tick Active to use a component on calculate; untick to
+              disable it store-wide. Per-person amounts stay under Staff pay.
             </p>
             <Button
               type="button"
@@ -471,22 +500,46 @@ export default function PayrollPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {components.map((c) => (
-                    <tr key={c.id} className="border-b border-border/40">
-                      <td className="p-3 font-mono text-xs">{c.code}</td>
-                      <td className="p-3">{c.name}</td>
-                      <td className="p-3">{c.kind}</td>
-                      <td className="p-3">{c.calculation_type}</td>
-                      <td className="p-3">{c.is_statutory ? 'Yes' : '—'}</td>
-                      <td className="p-3">
-                        {c.is_active ? (
-                          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                        ) : (
-                          <XCircle className="h-4 w-4 text-muted-foreground" />
+                  {components.map((c) => {
+                    const toggling = busyId === `comp-${c.id}`;
+                    return (
+                      <tr
+                        key={c.id}
+                        className={cn(
+                          'border-b border-border/40',
+                          !c.is_active && 'opacity-60'
                         )}
-                      </td>
-                    </tr>
-                  ))}
+                      >
+                        <td className="p-3 font-mono text-xs">{c.code}</td>
+                        <td className="p-3">{c.name}</td>
+                        <td className="p-3">{c.kind}</td>
+                        <td className="p-3">{c.calculation_type}</td>
+                        <td className="p-3">{c.is_statutory ? 'Yes' : '—'}</td>
+                        <td className="p-3">
+                          <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-input"
+                              checked={Boolean(c.is_active)}
+                              disabled={toggling}
+                              onChange={() => toggleComponentActive(c)}
+                              aria-label={`${c.is_active ? 'Disable' : 'Enable'} ${c.code}`}
+                            />
+                            {toggling ? (
+                              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                            ) : c.is_active ? (
+                              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                            ) : (
+                              <XCircle className="h-4 w-4 text-muted-foreground" />
+                            )}
+                            <span className="text-xs text-muted-foreground">
+                              {c.is_active ? 'On' : 'Off'}
+                            </span>
+                          </label>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
