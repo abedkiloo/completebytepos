@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Calculator,
   CheckCircle2,
-  FileText,
+  Download,
+  Eye,
   Loader2,
   Lock,
   Plus,
@@ -20,10 +21,34 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
 import { PageShell, PageHeader } from '../page';
 import { cn } from '../../lib/cn';
 import StaffPayPanel from './StaffPayPanel';
 import RolePackagesPanel from './RolePackagesPanel';
+
+function payslipSuggestedName(payslip, payslipId) {
+  const suggested =
+    (payslip && typeof payslip === 'object' && payslip.filename) ||
+    [
+      payslip?.employee_name_snapshot,
+      payslip?.period,
+      payslip?.employee_id_snapshot,
+    ]
+      .filter(Boolean)
+      .join('_')
+      .replace(/\s+/g, '_');
+  const raw = `${suggested || `payslip_${payslipId}`}`;
+  const withExt = raw.toLowerCase().endsWith('.pdf') ? raw : `${raw}.pdf`;
+  return withExt.replace(/\.pdf\.pdf$/i, '.pdf');
+}
 
 function payrollAccess() {
   const { permissions, user, profile } = getStoredAuth();
@@ -77,6 +102,7 @@ export default function PayrollPage() {
   const period = useMemo(() => currentPeriod(), []);
   const [newYear, setNewYear] = useState(period.year);
   const [newMonth, setNewMonth] = useState(period.month);
+  const [pdfPreview, setPdfPreview] = useState(null);
   const [newComp, setNewComp] = useState({
     name: '',
     code: '',
@@ -305,25 +331,59 @@ export default function PayrollPage() {
     }
   };
 
-  const openPdf = async (payslipId, mine = false, periodLabel = '') => {
+  const closePdfPreview = useCallback(() => {
+    setPdfPreview((prev) => {
+      if (prev?.url) URL.revokeObjectURL(prev.url);
+      return null;
+    });
+  }, []);
+
+  const previewPdf = async (payslip, mine = false) => {
+    const payslipId = typeof payslip === 'object' ? payslip?.id : payslip;
+    const filename = payslipSuggestedName(
+      typeof payslip === 'object' ? payslip : null,
+      payslipId
+    );
+    setBusyId(`pdf-${payslipId}`);
     try {
       const res = mine
         ? await payrollAPI.myPayslipPdf(payslipId)
         : await payrollAPI.payslipPdf(payslipId);
       const blob = new Blob([res.data], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
-      const filename = `payslip_${periodLabel || payslipId}.pdf`.replace(/\s+/g, '_');
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.rel = 'noopener';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      setPdfPreview((prev) => {
+        if (prev?.url) URL.revokeObjectURL(prev.url);
+        return {
+          url,
+          filename,
+          title:
+            payslip?.employee_name_snapshot ||
+            payslip?.period ||
+            `Payslip #${payslipId}`,
+          subtitle: [
+            payslip?.period,
+            payslip?.employee_id_snapshot,
+          ]
+            .filter(Boolean)
+            .join(' · '),
+        };
+      });
     } catch (err) {
-      toast.error('Could not download payslip PDF');
+      toast.error('Could not generate payslip preview');
+    } finally {
+      setBusyId(null);
     }
+  };
+
+  const downloadPreviewPdf = () => {
+    if (!pdfPreview?.url) return;
+    const a = document.createElement('a');
+    a.href = pdfPreview.url;
+    a.download = pdfPreview.filename || 'payslip.pdf';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   };
 
   const tabs = [
@@ -545,7 +605,7 @@ export default function PayrollPage() {
                         <th className="py-2 pr-3">Employee</th>
                         <th className="py-2 pr-3">Gross</th>
                         <th className="py-2 pr-3">Net</th>
-                        <th className="py-2">PDF</th>
+                        <th className="py-2">Preview</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -558,8 +618,19 @@ export default function PayrollPage() {
                           <td className="py-2 pr-3">{formatCurrency(p.gross_pay)}</td>
                           <td className="py-2 pr-3">{formatCurrency(p.net_pay)}</td>
                           <td className="py-2">
-                            <Button type="button" size="sm" variant="ghost" onClick={() => openPdf(p.id)}>
-                              <FileText className="h-4 w-4" />
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              disabled={busyId === `pdf-${p.id}`}
+                              onClick={() => previewPdf(p)}
+                              title="Preview payslip"
+                            >
+                              {busyId === `pdf-${p.id}` ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Eye className="h-4 w-4" />
+                              )}
                             </Button>
                           </td>
                         </tr>
@@ -858,7 +929,7 @@ export default function PayrollPage() {
               placeholder="Optional line under store brand on payslips"
             />
             <p className="mt-1 text-xs text-muted-foreground">
-              Payslip PDFs are generated on download (not filed away). They use this
+              Payslip PDFs are generated on preview/download (not filed away). They use this
               letterhead plus the store logo/name/header from System Settings. Employees
               only see locked payslips after a run is approved.
             </p>
@@ -894,8 +965,9 @@ export default function PayrollPage() {
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground max-w-2xl">
             After payroll is approved and locked for a period, your payslip appears here.
-            Download builds a fresh PDF on request (not stored) with the company logo and
-            letterhead from store / payroll settings — same idea as receipts.
+            Preview builds a fresh PDF on request (not stored) with the company logo and
+            letterhead from store / payroll settings — same idea as receipts. Download only
+            after you have checked it.
           </p>
           <div className="overflow-x-auto rounded-lg border border-border/60">
             <table className="w-full text-sm">
@@ -904,7 +976,7 @@ export default function PayrollPage() {
                   <th className="p-3">Period</th>
                   <th className="p-3">Gross</th>
                   <th className="p-3">Net</th>
-                  <th className="p-3">PDF</th>
+                  <th className="p-3">Preview</th>
                 </tr>
               </thead>
               <tbody>
@@ -926,10 +998,15 @@ export default function PayrollPage() {
                           type="button"
                           size="sm"
                           variant="outline"
-                          onClick={() => openPdf(p.id, true, p.period)}
+                          disabled={busyId === `pdf-${p.id}`}
+                          onClick={() => previewPdf(p, true)}
                         >
-                          <FileText className="h-4 w-4" />
-                          Download
+                          {busyId === `pdf-${p.id}` ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                          Preview
                         </Button>
                       </td>
                     </tr>
@@ -940,6 +1017,47 @@ export default function PayrollPage() {
           </div>
         </div>
       ) : null}
+
+      <Dialog
+        open={Boolean(pdfPreview)}
+        onOpenChange={(open) => {
+          if (!open) closePdfPreview();
+        }}
+      >
+        <DialogContent className="flex max-h-[92vh] w-[min(960px,96vw)] max-w-none flex-col gap-3 overflow-hidden sm:max-w-none">
+          <DialogHeader>
+            <DialogTitle>{pdfPreview?.title || 'Payslip preview'}</DialogTitle>
+            <DialogDescription>
+              {pdfPreview?.subtitle
+                ? `${pdfPreview.subtitle}. Generated on request — not stored on the server.`
+                : 'Generated on request — not stored on the server.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-[60vh] flex-1 overflow-hidden rounded-md border border-border/60 bg-muted/20">
+            {pdfPreview?.url ? (
+              <iframe
+                title={pdfPreview.filename || 'Payslip PDF'}
+                src={pdfPreview.url}
+                className="h-[min(70vh,720px)] w-full border-0"
+              />
+            ) : null}
+          </div>
+          <DialogFooter className="gap-2 sm:justify-between">
+            <p className="text-xs text-muted-foreground self-center truncate max-w-[50%]">
+              {pdfPreview?.filename}
+            </p>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={closePdfPreview}>
+                Close
+              </Button>
+              <Button type="button" onClick={downloadPreviewPdf}>
+                <Download className="h-4 w-4" />
+                Download
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageShell>
   );
 }

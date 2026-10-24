@@ -16,7 +16,7 @@ from payroll.models import (
     RolePayPackageLine,
     StatutoryRule,
 )
-from payroll.pdf import build_payslip_pdf
+from payroll.pdf import build_payslip_pdf, payslip_download_filename
 from payroll.reports import run_summary, year_overview
 from payroll.serializers import (
     EmployeePayAssignmentSerializer,
@@ -38,6 +38,7 @@ from payroll.services import (
     cancel_run,
     create_run,
     employee_for_user,
+    estimate_current_pay,
     reject_to_calculated,
     submit_run,
 )
@@ -490,13 +491,41 @@ class PayslipViewSet(viewsets.ReadOnlyModelViewSet):
     def pdf(self, request, pk=None):
         payslip = self.get_object()
         pdf_bytes = build_payslip_pdf(payslip)
-        filename = (
-            f'payslip_{payslip.employee_id_snapshot}_'
-            f'{payslip.run.period_label}.pdf'
-        )
+        filename = payslip_download_filename(payslip)
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = f'inline; filename="{filename}"'
         return response
+
+
+class MyPayView(APIView):
+    """Employee self-service — current pay estimate (package + personal edits)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        emp = employee_for_user(request.user)
+        if emp is None:
+            return Response(
+                {
+                    'detail': 'No employee record linked to your account email.',
+                    'linked': False,
+                },
+                status=status.HTTP_200_OK,
+            )
+        pay = estimate_current_pay(emp)
+        return Response(
+            {
+                'linked': True,
+                'employee': {
+                    'id': emp.id,
+                    'employee_id': emp.employee_id,
+                    'name': emp.full_name,
+                    'position': emp.position or '',
+                    'department': emp.department or '',
+                },
+                **pay,
+            }
+        )
 
 
 class MyPayslipsView(APIView):
@@ -559,13 +588,11 @@ class MyPayslipPdfView(APIView):
             return Response({'detail': 'Forbidden'}, status=403)
 
         pdf_bytes = build_payslip_pdf(payslip)
-        filename = (
-            f'payslip_{payslip.employee_id_snapshot}_'
-            f'{payslip.run.period_label}.pdf'
-        )
+        filename = payslip_download_filename(payslip)
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
-        # Attachment so employees can save the branded payslip.
-        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        # Inline so the SPA / app can preview in-browser; clients still download
+        # via blob + filename (PDFs are generated on request, not stored).
+        response['Content-Disposition'] = f'inline; filename="{filename}"'
         return response
 
 

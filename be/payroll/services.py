@@ -291,12 +291,28 @@ def estimate_current_pay(emp, *, on_date: date | None = None) -> dict:
     rows.extend(merged_rows)
     built = build_payslip_lines(basic=basic, component_rows=rows)
     role = _role_for_employee(emp)
+
+    def _lines(kind_rows):
+        out = []
+        for ln in kind_rows:
+            out.append(
+                {
+                    'code': ln.get('code'),
+                    'name': ln.get('name'),
+                    'kind': ln.get('kind'),
+                    'amount': str(ln.get('amount') or ZERO),
+                    'source': (ln.get('meta') or {}).get('source') or '',
+                }
+            )
+        return out
+
     return {
         'effective_basic': str(built['basic']),
         'basic_source': basic_source,
         'estimated_gross': str(built['gross']),
         'estimated_deductions': str(built['total_deductions']),
         'estimated_net': str(built['net']),
+        'currency': settings.currency or 'KES',
         'role_id': role.id if role else None,
         'role_name': role.name if role else None,
         'package_id': package.id if package else None,
@@ -306,6 +322,8 @@ def estimate_current_pay(emp, *, on_date: date | None = None) -> dict:
         ),
         'inherits_package': package is not None,
         'package_line_count': package_meta.get('package_line_count') or 0,
+        'earnings': _lines(built.get('earnings') or []),
+        'deductions': _lines(built.get('deductions') or []),
     }
 
 

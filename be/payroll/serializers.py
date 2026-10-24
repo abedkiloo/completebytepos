@@ -213,6 +213,7 @@ class PayslipSerializer(serializers.ModelSerializer):
     run_status = serializers.CharField(source='run.status', read_only=True)
     year = serializers.IntegerField(source='run.year', read_only=True)
     month = serializers.IntegerField(source='run.month', read_only=True)
+    filename = serializers.SerializerMethodField()
 
     class Meta:
         model = Payslip
@@ -239,12 +240,21 @@ class PayslipSerializer(serializers.ModelSerializer):
             'calculation_meta',
             'lines',
             'created_at',
+            'filename',
         ]
+
+    def get_filename(self, obj):
+        from payroll.pdf import payslip_download_filename
+
+        return payslip_download_filename(obj)
 
 
 class PayslipListSerializer(serializers.ModelSerializer):
     period = serializers.CharField(source='run.period_label', read_only=True)
     run_status = serializers.CharField(source='run.status', read_only=True)
+    year = serializers.IntegerField(source='run.year', read_only=True)
+    month = serializers.IntegerField(source='run.month', read_only=True)
+    filename = serializers.SerializerMethodField()
 
     class Meta:
         model = Payslip
@@ -253,6 +263,8 @@ class PayslipListSerializer(serializers.ModelSerializer):
             'run',
             'employee',
             'period',
+            'year',
+            'month',
             'run_status',
             'employee_id_snapshot',
             'employee_name_snapshot',
@@ -261,7 +273,13 @@ class PayslipListSerializer(serializers.ModelSerializer):
             'net_pay',
             'currency',
             'bonus_snapshot',
+            'filename',
         ]
+
+    def get_filename(self, obj):
+        from payroll.pdf import payslip_download_filename
+
+        return payslip_download_filename(obj)
 
 
 class PayrollRunSerializer(serializers.ModelSerializer):

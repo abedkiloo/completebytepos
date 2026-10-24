@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from payroll.views import (
     EmployeePayAssignmentViewSet,
+    MyPayView,
     MyPayslipPdfView,
     MyPayslipsView,
     PayComponentViewSet,
@@ -28,6 +29,7 @@ router.register(r'payslips', PayslipViewSet, basename='payroll-payslip')
 
 urlpatterns = [
     path('settings/', PayrollSettingsView.as_view(), name='payroll-settings'),
+    path('me/pay/', MyPayView.as_view(), name='payroll-my-pay'),
     path('me/payslips/', MyPayslipsView.as_view(), name='payroll-my-payslips'),
     path(
         'me/payslips/<int:pk>/pdf/',

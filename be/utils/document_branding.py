@@ -109,56 +109,70 @@ def brand_header_elements(
     logo_size=1.15 * inch,
     extra_letterhead: str = '',
     respect_logo_flag: bool = False,
+    compact: bool = False,
 ):
     """Logo, store name, tagline, contact, then the document title — used on every PDF.
 
     Uses System Settings store name / logo / phone / address / receipt header when set.
     ``extra_letterhead`` is for document-specific lines (e.g. Payroll letterhead).
+    ``compact`` shrinks type/spacing for receipt-like slips (e.g. payslips on A5).
     """
     styles = getSampleStyleSheet()
+    if compact:
+        name_size, name_lead = 10, 12
+        meta_size, meta_lead = 6.5, 8
+        title_size, title_lead = 9, 11
+        after_logo, after_title = 3, 4
+        space_meta = 1
+    else:
+        name_size, name_lead = 14, 18
+        meta_size, meta_lead = 8, 10
+        title_size, title_lead = 12, 15
+        after_logo, after_title = 6, 10
+        space_meta = 2
     name_style = ParagraphStyle(
         'BrandName',
         parent=styles['Heading1'],
-        fontSize=14,
-        leading=18,
+        fontSize=name_size,
+        leading=name_lead,
         alignment=TA_CENTER,
-        spaceAfter=2,
+        spaceAfter=space_meta,
         textColor=colors.HexColor('#1a4d7a'),
     )
     tag_style = ParagraphStyle(
         'BrandTagline',
         parent=styles['Normal'],
-        fontSize=8,
-        leading=10,
+        fontSize=meta_size,
+        leading=meta_lead,
         alignment=TA_CENTER,
         textColor=colors.HexColor('#5B2C8A'),
-        spaceAfter=2,
+        spaceAfter=space_meta,
     )
     contact_style = ParagraphStyle(
         'BrandContact',
         parent=styles['Normal'],
-        fontSize=8,
-        leading=10,
+        fontSize=meta_size,
+        leading=meta_lead,
         alignment=TA_CENTER,
         textColor=colors.HexColor('#333333'),
-        spaceAfter=4,
+        spaceAfter=space_meta + 1,
     )
     letter_style = ParagraphStyle(
         'BrandLetterhead',
         parent=styles['Normal'],
-        fontSize=8,
-        leading=10,
+        fontSize=meta_size,
+        leading=meta_lead,
         alignment=TA_CENTER,
         textColor=colors.HexColor('#555555'),
-        spaceAfter=4,
+        spaceAfter=space_meta + 1,
     )
     title_style = ParagraphStyle(
         'BrandDocTitle',
         parent=styles['Heading2'],
-        fontSize=12,
-        leading=15,
+        fontSize=title_size,
+        leading=title_lead,
         alignment=TA_CENTER,
-        spaceAfter=10,
+        spaceAfter=after_title,
         textColor=colors.HexColor('#1a1a1a'),
     )
     elements = []
@@ -168,7 +182,7 @@ def brand_header_elements(
             image = Image(logo, width=logo_size, height=logo_size)
             image.hAlign = 'CENTER'
             elements.append(image)
-            elements.append(Spacer(1, 6))
+            elements.append(Spacer(1, after_logo))
         except Exception:
             pass
     elements.append(Paragraph(brand_name_line(), name_style))
@@ -183,7 +197,7 @@ def brand_header_elements(
     extra = (extra_letterhead or '').strip()
     if extra:
         elements.append(Paragraph(extra.replace('\n', '<br/>'), letter_style))
-    elements.append(Spacer(1, 4))
+    elements.append(Spacer(1, 2 if compact else 4))
     title = str(document_title or '').strip()
     if title:
         elements.append(Paragraph(title, title_style))
