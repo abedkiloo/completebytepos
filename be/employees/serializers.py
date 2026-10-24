@@ -72,17 +72,27 @@ class EmployeeSerializer(serializers.ModelSerializer):
             .first()
         )
 
+    def _role_from_position(self, obj):
+        position = (obj.position or '').strip()
+        if not position:
+            return None
+        from accounts.models import Role
+
+        return Role.objects.filter(name__iexact=position, is_active=True).first()
+
     def get_role_id(self, obj):
         profile = self._profile(obj)
         if profile and profile.custom_role_id:
             return profile.custom_role_id
-        return None
+        role = self._role_from_position(obj)
+        return role.id if role else None
 
     def get_role_name(self, obj):
         profile = self._profile(obj)
         if profile and profile.custom_role_id:
             return profile.custom_role.name
-        return None
+        role = self._role_from_position(obj)
+        return role.name if role else None
 
     def get_user_email(self, obj):
         user = getattr(obj, 'user', None)

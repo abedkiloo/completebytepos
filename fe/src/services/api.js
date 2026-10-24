@@ -355,6 +355,8 @@ export const payrollAPI = {
   listPackages: (params) => api.get('/payroll/packages/', { params }),
   getPackage: (id) => api.get(`/payroll/packages/${id}/`),
   packageStaff: (id) => api.get(`/payroll/packages/${id}/staff/`),
+  packageStaffOverview: (params) =>
+    api.get('/payroll/packages/staff-overview/', { params }),
   createPackage: (data) => api.post('/payroll/packages/', data),
   updatePackage: (id, data) => api.patch(`/payroll/packages/${id}/`, data),
   addPackageLine: (id, data) => api.post(`/payroll/packages/${id}/lines/`, data),

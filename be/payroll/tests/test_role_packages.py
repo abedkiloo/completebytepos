@@ -106,4 +106,35 @@ class RolePayPackageTests(SuperAdminAPITestCase):
         self.assertEqual(staff.data['employee_count'], 1)
         self.assertEqual(staff.data['results'][0]['employee_id'], 'PKG-1')
         self.assertTrue(staff.data['results'][0]['inherits_package'])
-        self.assertEqual(staff.data['results'][0]['override_count'], 0)
+        self.assertIn('estimated_gross', staff.data['results'][0])
+
+    def test_staff_overview_includes_inactive_and_gross(self):
+        self.emp.status = 'inactive'
+        self.emp.save(update_fields=['status'])
+        overview = self.client.get('/api/payroll/packages/staff-overview/')
+        self.assertEqual(overview.status_code, 200, overview.data)
+        self.assertGreaterEqual(overview.data['employee_count'], 1)
+        row = next(r for r in overview.data['results'] if r['employee_id'] == 'PKG-1')
+        self.assertEqual(row['status'], 'inactive')
+        self.assertEqual(row['role_name'], ROLE_SALES)
+        self.assertIn('estimated_gross', row)
+
+    def test_position_title_matches_role_package(self):
+        """Position text 'Sales Personnel' picks up the Sales package without custom_role."""
+        from django.contrib.auth.models import User
+
+        from accounts.models import UserProfile
+
+        UserProfile.objects.filter(user=self.user).update(custom_role=None)
+        self.emp.position = ROLE_SALES
+        self.emp.save(update_fields=['position'])
+        overview = self.client.get(
+            f'/api/payroll/packages/staff-overview/?employee={self.emp.id}'
+        )
+        self.assertEqual(overview.status_code, 200, overview.data)
+        row = overview.data['results'][0]
+        self.assertEqual(row['role_name'], ROLE_SALES)
+        self.assertTrue(row['inherits_package'])
+        self.assertEqual(row['package_id'], self.package.id)
+        # Package transport 2500 + basic from employee.salary 20000
+        self.assertEqual(Decimal(row['estimated_gross']), Decimal('22500.00'))

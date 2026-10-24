@@ -209,8 +209,25 @@ def calculate_run(run: PayrollRun, *, user=None, request=None) -> PayrollRun:
     return run
 
 
+def _role_from_position(emp):
+    """Fallback: match Employee.position text to an active Role name (case-insensitive)."""
+    position = (getattr(emp, 'position', None) or '').strip()
+    if not position:
+        return None
+    try:
+        from accounts.models import Role
+
+        return Role.objects.filter(name__iexact=position, is_active=True).first()
+    except Exception:
+        return None
+
+
 def _role_for_employee(emp):
-    """Job role from linked login user (custom_role)."""
+    """
+    Job role for pay packages:
+    1) linked login user's custom_role
+    2) fallback — Employee.position matching a Role name (e.g. "Sales Personnel")
+    """
     user = getattr(emp, 'user', None)
     if user is None and getattr(emp, 'user_id', None):
         try:
@@ -220,14 +237,16 @@ def _role_for_employee(emp):
                 pk=emp.user_id
             )
         except Exception:
-            return None
-    if user is None:
-        return None
-    try:
-        profile = user.profile
-    except Exception:
-        return None
-    return getattr(profile, 'custom_role', None)
+            user = None
+    if user is not None:
+        try:
+            profile = user.profile
+            role = getattr(profile, 'custom_role', None)
+            if role is not None:
+                return role
+        except Exception:
+            pass
+    return _role_from_position(emp)
 
 
 def _package_for_employee(emp) -> RolePayPackage | None:
@@ -239,6 +258,55 @@ def _package_for_employee(emp) -> RolePayPackage | None:
         .prefetch_related('lines__component')
         .first()
     )
+
+
+def estimate_current_pay(emp, *, on_date: date | None = None) -> dict:
+    """
+    Current pay preview for an employee: role package + personal Staff-pay edits.
+
+    Does not run appraisal/loan/statutory adapters — those apply only on a payroll run.
+    """
+    on_date = on_date or date.today()
+    settings = PayrollSettings.load(getattr(emp, 'tenant', None))
+    components = _component_map()
+    package = _package_for_employee(emp)
+    assignments = list(_active_assignments(emp, on_date))
+    basic, basic_source = _resolve_basic(
+        emp, assignments=assignments, package=package
+    )
+    merged_rows, package_meta = _merged_pay_lines(
+        emp, period_end=on_date, settings=settings, components=components
+    )
+    rows: list[dict] = []
+    basic_comp = components.get('BASIC')
+    if basic_comp:
+        rows.append(
+            {
+                'component': basic_comp,
+                'amount': basic,
+                'include_zero': True,
+                'meta': {'source': basic_source},
+            }
+        )
+    rows.extend(merged_rows)
+    built = build_payslip_lines(basic=basic, component_rows=rows)
+    role = _role_for_employee(emp)
+    return {
+        'effective_basic': str(built['basic']),
+        'basic_source': basic_source,
+        'estimated_gross': str(built['gross']),
+        'estimated_deductions': str(built['total_deductions']),
+        'estimated_net': str(built['net']),
+        'role_id': role.id if role else None,
+        'role_name': role.name if role else None,
+        'package_id': package.id if package else None,
+        'package_name': package.display_name() if package else None,
+        'override_count': len(
+            [a for a in assignments if a.component.code != 'BASIC' or a.amount is not None]
+        ),
+        'inherits_package': package is not None,
+        'package_line_count': package_meta.get('package_line_count') or 0,
+    }
 
 
 def _merged_pay_lines(emp, *, period_end, settings, components) -> tuple[list, dict]:

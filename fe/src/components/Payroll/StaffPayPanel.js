@@ -30,6 +30,7 @@ export default function StaffPayPanel({
   );
   const [assignments, setAssignments] = useState([]);
   const [rolePackage, setRolePackage] = useState(null);
+  const [payPreview, setPayPreview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
@@ -76,14 +77,32 @@ export default function StaffPayPanel({
   }, []);
 
   const loadRolePackage = useCallback(async (emp) => {
-    if (!emp?.role_id) {
+    if (!emp) {
       setRolePackage(null);
       return;
     }
     try {
-      const res = await payrollAPI.listPackages({ role: emp.role_id, page_size: 5 });
-      const rows = unwrapList(res.data);
-      const match = rows.find((p) => p.is_active !== false) || rows[0] || null;
+      let match = null;
+      if (emp.role_id) {
+        const res = await payrollAPI.listPackages({ role: emp.role_id, page_size: 5 });
+        const rows = unwrapList(res.data);
+        match = rows.find((p) => p.is_active !== false) || rows[0] || null;
+      }
+      if (!match && (emp.position || emp.role_name)) {
+        const all = await payrollAPI.listPackages({ page_size: 100 });
+        const rows = unwrapList(all.data);
+        const needle = String(emp.role_name || emp.position || '')
+          .trim()
+          .toLowerCase();
+        match =
+          rows.find(
+            (p) =>
+              p.is_active !== false &&
+              String(p.role_name || p.name || '')
+                .trim()
+                .toLowerCase() === needle
+          ) || null;
+      }
       if (match?.id) {
         const full = await payrollAPI.getPackage(match.id);
         setRolePackage(full.data);
@@ -92,6 +111,20 @@ export default function StaffPayPanel({
       }
     } catch {
       setRolePackage(null);
+    }
+  }, []);
+
+  const loadPayPreview = useCallback(async (id) => {
+    if (!id) {
+      setPayPreview(null);
+      return;
+    }
+    try {
+      const res = await payrollAPI.packageStaffOverview({ employee: id });
+      const row = (res.data?.results || [])[0] || null;
+      setPayPreview(row);
+    } catch {
+      setPayPreview(null);
     }
   }, []);
 
@@ -119,7 +152,8 @@ export default function StaffPayPanel({
 
   useEffect(() => {
     loadAssignments(employeeId).catch(() => setAssignments([]));
-  }, [employeeId, loadAssignments]);
+    loadPayPreview(employeeId);
+  }, [employeeId, loadAssignments, loadPayPreview]);
 
   useEffect(() => {
     loadRolePackage(employee);
@@ -155,6 +189,7 @@ export default function StaffPayPanel({
       toast.success('Staff pay line saved');
       setForm({ component: '', amount: '', rate: '', notes: '' });
       await loadAssignments(employeeId);
+      await loadPayPreview(employeeId);
     } catch (err) {
       const detail =
         err?.response?.data?.detail ||
@@ -173,6 +208,7 @@ export default function StaffPayPanel({
         amount: amount === '' ? null : amount,
       });
       await loadAssignments(employeeId);
+      await loadPayPreview(employeeId);
       toast.success('Updated');
     } catch (err) {
       toast.error(err?.response?.data?.detail || 'Update failed');
@@ -186,6 +222,7 @@ export default function StaffPayPanel({
     try {
       await payrollAPI.deleteAssignment(id);
       await loadAssignments(employeeId);
+      await loadPayPreview(employeeId);
       toast.success('Removed');
     } catch (err) {
       toast.error(err?.response?.data?.detail || 'Delete failed');
@@ -236,18 +273,51 @@ export default function StaffPayPanel({
 
       {employee ? (
         <div className="rounded-lg border border-border/60 p-4 space-y-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-md border bg-muted/20 px-3 py-2">
+              <div className="text-xs uppercase text-muted-foreground">
+                Current basic
+              </div>
+              <div className="text-lg font-semibold tabular-nums">
+                {formatCurrency(
+                  payPreview?.effective_basic ?? employee.salary ?? 0
+                )}
+              </div>
+            </div>
+            <div className="rounded-md border bg-muted/20 px-3 py-2">
+              <div className="text-xs uppercase text-muted-foreground">
+                Current gross
+              </div>
+              <div className="text-lg font-semibold tabular-nums">
+                {formatCurrency(payPreview?.estimated_gross ?? 0)}
+              </div>
+            </div>
+            <div className="rounded-md border bg-muted/20 px-3 py-2">
+              <div className="text-xs uppercase text-muted-foreground">
+                Current net (est.)
+              </div>
+              <div className="text-lg font-semibold tabular-nums">
+                {formatCurrency(payPreview?.estimated_net ?? 0)}
+              </div>
+            </div>
+          </div>
+
           <div className="flex flex-wrap gap-4 text-sm">
             <div>
-              <span className="text-muted-foreground">Record basic </span>
+              <span className="text-muted-foreground">Record salary </span>
               <strong>{formatCurrency(employee.salary || 0)}</strong>
             </div>
             <div>
               <span className="text-muted-foreground">Role </span>
-              {employee.role_name || '—'}
+              {payPreview?.role_name || employee.role_name || '—'}
             </div>
             <div>
               <span className="text-muted-foreground">Position </span>
               {employee.position || '—'}
+            </div>
+            <div>
+              <span className="text-muted-foreground">Package </span>
+              {payPreview?.package_name || rolePackage?.display_name || rolePackage?.name || '—'}
             </div>
           </div>
 
@@ -258,7 +328,8 @@ export default function StaffPayPanel({
               </div>
               {inheritedLines.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  Role package exists but has no active lines yet.
+                  Role package exists but has no active lines yet. Set default basic
+                  and add allowances under Role packages.
                 </p>
               ) : (
                 <ul className="text-sm space-y-1">
@@ -279,13 +350,14 @@ export default function StaffPayPanel({
               )}
               <p className="text-xs text-muted-foreground">
                 Personal lines below override the same component for this employee
-                only.
+                only. Current gross above already includes role package + overrides.
               </p>
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
-              No role package linked — set a job role on their login user and create
-              a Role package, or add personal lines here.
+              No role package found for this person. Under Employees, set Position /
+              job role to <strong>Sales Personnel</strong> (or their role), and create
+              that Role package — or add personal lines here.
             </p>
           )}
 

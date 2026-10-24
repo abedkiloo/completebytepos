@@ -130,7 +130,7 @@ class RolePayPackageViewSet(viewsets.ModelViewSet):
         return RolePayPackageSerializer
 
     def get_permissions(self):
-        if self.action in ('list', 'retrieve', 'staff'):
+        if self.action in ('list', 'retrieve', 'staff', 'staff_overview'):
             return _perm('payroll', 'view')
         return _perm('payroll', 'manage')
 
@@ -191,33 +191,100 @@ class RolePayPackageViewSet(viewsets.ModelViewSet):
             RolePayPackageSerializer(package).data, status=status.HTTP_201_CREATED
         )
 
-    @action(detail=True, methods=['get'], url_path='staff')
-    def staff(self, request, pk=None):
+    @action(detail=False, methods=['get'], url_path='staff-overview')
+    def staff_overview(self, request):
         """
-        Employees on this package's role — they inherit the package automatically.
-        Personal Staff-pay lines are listed as overrides.
+        Every employee (any status) with current pay from role package + personal edits.
+        Optional ?role=<id> to filter by job role.
         """
         from decimal import Decimal
 
-        from django.db.models import Count, Q
+        from employees.models import Employee
+        from payroll.services import estimate_current_pay
+
+        role = request.query_params.get('role')
+        employee_id = request.query_params.get('employee')
+        qs = Employee.objects.select_related(
+            'user', 'user__profile', 'user__profile__custom_role'
+        ).order_by('employee_id')
+        if employee_id:
+            qs = qs.filter(pk=employee_id)
+        if role:
+            # Include staff whose login role OR position title matches this role.
+            from accounts.models import Role
+
+            role_obj = Role.objects.filter(pk=role).first()
+            role_name = role_obj.name if role_obj else None
+            from django.db.models import Q
+
+            role_q = Q(user__profile__custom_role_id=role)
+            if role_name:
+                role_q |= Q(
+                    user__profile__custom_role_id__isnull=True,
+                    position__iexact=role_name,
+                )
+            qs = qs.filter(role_q)
+
+        rows = []
+        gross_total = Decimal('0')
+        basic_total = Decimal('0')
+        for emp in qs:
+            pay = estimate_current_pay(emp)
+            basic_total += Decimal(pay['effective_basic'])
+            gross_total += Decimal(pay['estimated_gross'])
+            rows.append(
+                {
+                    'id': emp.id,
+                    'employee_id': emp.employee_id,
+                    'full_name': emp.full_name,
+                    'position': emp.position,
+                    'status': emp.status,
+                    'record_salary': (
+                        str(emp.salary) if emp.salary is not None else None
+                    ),
+                    **pay,
+                }
+            )
+        return Response(
+            {
+                'employee_count': len(rows),
+                'basic_total': str(basic_total),
+                'gross_total': str(gross_total),
+                'results': rows,
+            }
+        )
+
+    @action(detail=True, methods=['get'], url_path='staff')
+    def staff(self, request, pk=None):
+        """
+        Employees on this package's role (active or not) with current estimated pay.
+        """
+        from decimal import Decimal
 
         from employees.models import Employee
+        from payroll.services import estimate_current_pay
+
+        from django.db.models import Q
 
         package = self.get_object()
         role_id = package.role_id
+        role_name = package.role.name
+        # Login role match, or position title match when no custom_role is set.
         employees = (
             Employee.objects.filter(
-                status='active',
-                user__profile__custom_role_id=role_id,
-            )
-            .select_related('user', 'user__profile')
-            .annotate(
-                override_count=Count(
-                    'pay_assignments',
-                    filter=Q(pay_assignments__is_active=True),
+                Q(user__profile__custom_role_id=role_id)
+                | (
+                    Q(position__iexact=role_name)
+                    & (
+                        Q(user__isnull=True)
+                        | Q(user__profile__isnull=True)
+                        | Q(user__profile__custom_role_id__isnull=True)
+                    )
                 )
             )
+            .select_related('user', 'user__profile')
             .order_by('employee_id')
+            .distinct()
         )
         active_lines = [
             ln
@@ -225,33 +292,29 @@ class RolePayPackageViewSet(viewsets.ModelViewSet):
             if ln.is_active and ln.component.is_active
         ]
         package_allowances = sum(
-            (ln.amount or Decimal('0') for ln in active_lines if ln.component.kind == 'earning'),
+            (
+                ln.amount or Decimal('0')
+                for ln in active_lines
+                if ln.component.kind == 'earning' and ln.component.code != 'BASIC'
+            ),
             Decimal('0'),
         )
         rows = []
         salary_total = Decimal('0')
+        gross_total = Decimal('0')
         for emp in employees:
-            basic = emp.salary if emp.salary is not None else package.default_basic
-            basic = basic if basic is not None else Decimal('0')
-            salary_total += basic
+            pay = estimate_current_pay(emp)
+            salary_total += Decimal(pay['effective_basic'])
+            gross_total += Decimal(pay['estimated_gross'])
             rows.append(
                 {
                     'id': emp.id,
                     'employee_id': emp.employee_id,
                     'full_name': emp.full_name,
                     'position': emp.position,
+                    'status': emp.status,
                     'salary': str(emp.salary) if emp.salary is not None else None,
-                    'effective_basic': str(basic),
-                    'basic_source': (
-                        'employee.salary'
-                        if emp.salary is not None
-                        else (
-                            'role_package.default_basic'
-                            if package.default_basic is not None
-                            else 'none'
-                        )
-                    ),
-                    'override_count': emp.override_count,
+                    **pay,
                     'inherits_package': True,
                 }
             )
@@ -269,6 +332,7 @@ class RolePayPackageViewSet(viewsets.ModelViewSet):
                 ),
                 'employee_count': len(rows),
                 'salary_total': str(salary_total),
+                'gross_total': str(gross_total),
                 'results': rows,
             }
         )
