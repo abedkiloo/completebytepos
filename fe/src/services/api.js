@@ -326,7 +326,7 @@ export const employeesAPI = {
   create: (data) => api.post('/employees/employees/', data),
   update: (id, data) => api.put(`/employees/employees/${id}/`, data),
   delete: (id) => api.delete(`/employees/employees/${id}/`),
-  statistics: () => api.get('/employees/employees/statistics/'),
+  statistics: (params) => api.get('/employees/employees/statistics/', { params }),
   linkableUsers: (params) =>
     api.get('/employees/employees/linkable-users/', { params }),
   createFromUser: (data) => api.post('/employees/employees/from-user/', data),
@@ -354,6 +354,7 @@ export const payrollAPI = {
   deleteAssignment: (id) => api.delete(`/payroll/assignments/${id}/`),
   listPackages: (params) => api.get('/payroll/packages/', { params }),
   getPackage: (id) => api.get(`/payroll/packages/${id}/`),
+  packageStaff: (id) => api.get(`/payroll/packages/${id}/staff/`),
   createPackage: (data) => api.post('/payroll/packages/', data),
   updatePackage: (id, data) => api.patch(`/payroll/packages/${id}/`, data),
   addPackageLine: (id, data) => api.post(`/payroll/packages/${id}/lines/`, data),

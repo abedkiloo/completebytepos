@@ -85,7 +85,9 @@ export function employeeCommitRows(form = {}, { isEdit = false } = {}) {
   const name = `${form.first_name || ''} ${form.last_name || ''}`.trim();
   return compactCommitRows([
     { label: 'Employee', value: name || '—', emphasis: true },
-    { label: 'ID', value: form.employee_id || '—' },
+    { label: 'Staff code', value: form.employee_id || '—' },
+    form.id_number ? { label: 'ID number', value: form.id_number } : null,
+    form.email ? { label: 'Personal email', value: form.email } : null,
     { label: 'Position', value: form.position || '—' },
     { label: 'Action', value: isEdit ? 'Update employee' : 'Create employee' },
   ]);

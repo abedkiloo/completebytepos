@@ -60,8 +60,10 @@ def apply_employee_representation_flags(data: dict) -> dict:
         data.pop('department', None)
     if not employees_show_contact_details():
         data.pop('email', None)
+        data.pop('user_email', None)
         data.pop('phone', None)
         data.pop('address', None)
+        data.pop('id_number', None)
     if not employees_show_notes():
         data.pop('notes', None)
     if not employees_show_status():
@@ -80,6 +82,7 @@ def validate_employee_write(attrs: dict) -> dict:
         attrs.pop('email', None)
         attrs.pop('phone', None)
         attrs.pop('address', None)
+        attrs.pop('id_number', None)
     if not employees_show_notes():
         attrs.pop('notes', None)
     if not employees_show_status():

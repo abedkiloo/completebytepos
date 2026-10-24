@@ -19,11 +19,15 @@ class EmployeeSerializer(serializers.ModelSerializer):
     is_active = serializers.ReadOnlyField()
     created_by_username = serializers.SerializerMethodField()
     user_username = serializers.CharField(source='user.username', read_only=True, allow_null=True)
-    
+    role_id = serializers.SerializerMethodField()
+    role_name = serializers.SerializerMethodField()
+    user_email = serializers.SerializerMethodField()
+
     class Meta:
         model = Employee
         fields = [
-            'id', 'user', 'user_username', 'employee_id', 'first_name', 'last_name',
+            'id', 'user', 'user_username', 'user_email', 'role_id', 'role_name',
+            'employee_id', 'id_number', 'first_name', 'last_name',
             'full_name', 'email', 'phone', 'position', 'department', 'hire_date',
             'status', 'salary', 'bank_name', 'bank_account', 'tenant',
             'address', 'notes',
@@ -50,6 +54,30 @@ class EmployeeSerializer(serializers.ModelSerializer):
         if obj.created_by:
             return obj.created_by.username
         return None
+
+    def _profile(self, obj):
+        user = getattr(obj, 'user', None)
+        if not user:
+            return None
+        return getattr(user, 'profile', None)
+
+    def get_role_id(self, obj):
+        profile = self._profile(obj)
+        if profile and profile.custom_role_id:
+            return profile.custom_role_id
+        return None
+
+    def get_role_name(self, obj):
+        profile = self._profile(obj)
+        if profile and profile.custom_role_id:
+            return profile.custom_role.name
+        return None
+
+    def get_user_email(self, obj):
+        user = getattr(obj, 'user', None)
+        if user and user.email:
+            return user.email
+        return ''
 
     def validate_first_name(self, value):
         raise_field_error(
@@ -112,6 +140,8 @@ class FromUserEmployeeSerializer(serializers.Serializer):
 
     user_id = serializers.IntegerField()
     employee_id = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    id_number = serializers.CharField(max_length=40, required=False, allow_blank=True, default='')
+    email = serializers.EmailField(required=False, allow_blank=True)
     position = serializers.CharField(max_length=100)
     department = serializers.ChoiceField(
         choices=Employee.DEPARTMENT_CHOICES, required=False, default='other'
@@ -160,18 +190,19 @@ class FromUserEmployeeSerializer(serializers.Serializer):
         except Exception:
             phone = ''
 
-        email = (user.email or '').strip()
+        email = (validated_data.get('email') or user.email or '').strip()
         # Prefer linking by user; also copy email for payslip/self-service match.
         return Employee.objects.create(
             user=user,
             employee_id=emp_id,
+            id_number=(validated_data.get('id_number') or '').strip(),
             first_name=(user.first_name or user.username or 'Staff')[:100],
             last_name=(user.last_name or 'User')[:100],
             email=email,
             phone=phone,
             position=validated_data['position'].strip(),
             department=validated_data.get('department') or 'other',
-            hire_date=validated_data['hire_date'],
+            hire_date=validated_data.get('hire_date'),
             status=validated_data.get('status') or 'active',
             salary=validated_data.get('salary'),
             notes=validated_data.get('notes') or '',

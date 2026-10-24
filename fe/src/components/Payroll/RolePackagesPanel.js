@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Loader2, Plus, Trash2 } from 'lucide-react';
+import { Loader2, Pencil, Plus, Trash2, Users } from 'lucide-react';
 
 import { payrollAPI, rolesAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
@@ -17,13 +17,15 @@ function unwrapList(data) {
 }
 
 /**
- * Default pay package per job role. Staff pay overrides one person later.
+ * Default pay package per job role. Everyone on that role inherits it;
+ * Staff pay edits one person without changing the role package.
  */
-export default function RolePackagesPanel({ components = [] }) {
+export default function RolePackagesPanel({ components = [], onEditEmployee }) {
   const [roles, setRoles] = useState([]);
   const [packages, setPackages] = useState([]);
   const [selectedRoleId, setSelectedRoleId] = useState('');
   const [pkg, setPkg] = useState(null);
+  const [staffInfo, setStaffInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [defaultBasic, setDefaultBasic] = useState('');
@@ -64,8 +66,22 @@ export default function RolePackagesPanel({ components = [] }) {
     [packages]
   );
 
+  const loadStaff = useCallback(async (packageId) => {
+    if (!packageId) {
+      setStaffInfo(null);
+      return;
+    }
+    try {
+      const res = await payrollAPI.packageStaff(packageId);
+      setStaffInfo(res.data);
+    } catch {
+      setStaffInfo(null);
+    }
+  }, []);
+
   const selectRole = async (roleId) => {
     setSelectedRoleId(roleId);
+    setStaffInfo(null);
     const existing = packageForRole(roleId);
     if (existing) {
       try {
@@ -74,11 +90,13 @@ export default function RolePackagesPanel({ components = [] }) {
         setDefaultBasic(
           res.data.default_basic != null ? String(res.data.default_basic) : ''
         );
+        await loadStaff(res.data.id);
       } catch {
         setPkg(existing);
         setDefaultBasic(
           existing.default_basic != null ? String(existing.default_basic) : ''
         );
+        await loadStaff(existing.id);
       }
       return;
     }
@@ -103,7 +121,10 @@ export default function RolePackagesPanel({ components = [] }) {
       });
       setPkg(res.data);
       await refresh();
-      toast.success('Role package created');
+      await loadStaff(res.data.id);
+      toast.success(
+        'Role package created — every employee on this role inherits it on calculate'
+      );
       return res.data;
     } catch (err) {
       toast.error(err?.response?.data?.detail || err?.response?.data?.role?.[0] || 'Create failed');
@@ -123,8 +144,9 @@ export default function RolePackagesPanel({ components = [] }) {
         is_active: true,
       });
       setPkg(res.data);
-      toast.success('Package saved');
+      toast.success('Package saved — applies to all staff on this role');
       await refresh();
+      await loadStaff(res.data.id);
     } catch (err) {
       toast.error(err?.response?.data?.detail || 'Save failed');
     } finally {
@@ -149,8 +171,9 @@ export default function RolePackagesPanel({ components = [] }) {
       });
       setPkg(res.data);
       setLineForm({ component: '', amount: '', notes: '' });
-      toast.success('Line added to role package');
+      toast.success('Added for everyone on this role');
       await refresh();
+      await loadStaff(res.data.id);
     } catch (err) {
       toast.error(
         err?.response?.data?.detail ||
@@ -168,6 +191,7 @@ export default function RolePackagesPanel({ components = [] }) {
       await payrollAPI.updatePackageLine(line.id, { is_active: !line.is_active });
       const res = await payrollAPI.getPackage(pkg.id);
       setPkg(res.data);
+      await loadStaff(pkg.id);
     } catch (err) {
       toast.error(err?.response?.data?.detail || 'Update failed');
     } finally {
@@ -181,7 +205,8 @@ export default function RolePackagesPanel({ components = [] }) {
       await payrollAPI.deletePackageLine(lineId);
       const res = await payrollAPI.getPackage(pkg.id);
       setPkg(res.data);
-      toast.success('Removed from package');
+      toast.success('Removed from role package');
+      await loadStaff(pkg.id);
     } catch (err) {
       toast.error(err?.response?.data?.detail || 'Delete failed');
     } finally {
@@ -195,6 +220,7 @@ export default function RolePackagesPanel({ components = [] }) {
   );
 
   const availableLines = activeComponents.filter((c) => !usedComponentIds.has(c.id));
+  const selectedRole = roles.find((r) => String(r.id) === String(selectedRoleId));
 
   if (loading) {
     return (
@@ -208,9 +234,9 @@ export default function RolePackagesPanel({ components = [] }) {
   return (
     <div className="space-y-6">
       <p className="text-sm text-muted-foreground max-w-2xl">
-        Set one pay package per job role (e.g. Sales, Manager). Everyone on that role
-        gets these defaults when you calculate payroll. Change one person later under
-        Staff pay without editing the whole role.
+        Create a package for Sales, Manager, or any role. Every employee assigned to
+        that role automatically gets this package on payroll calculate. Open someone
+        below to edit only that person (overrides) without changing the role.
       </p>
 
       <div className="max-w-md space-y-2">
@@ -236,6 +262,44 @@ export default function RolePackagesPanel({ components = [] }) {
 
       {selectedRoleId ? (
         <div className="space-y-4 rounded-lg border border-border/60 p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold">
+              {selectedRole?.name || 'Role'} package
+            </h3>
+            {pkg ? (
+              <Badge variant="secondary">Active for role</Badge>
+            ) : (
+              <Badge variant="outline">Not created yet</Badge>
+            )}
+          </div>
+
+          {staffInfo ? (
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-md border bg-muted/20 px-3 py-2">
+                <div className="text-xs uppercase text-muted-foreground">Staff on role</div>
+                <div className="text-lg font-semibold tabular-nums">
+                  {staffInfo.employee_count}
+                </div>
+              </div>
+              <div className="rounded-md border bg-muted/20 px-3 py-2">
+                <div className="text-xs uppercase text-muted-foreground">
+                  Basic pay total
+                </div>
+                <div className="text-lg font-semibold tabular-nums">
+                  {formatCurrency(staffInfo.salary_total || 0)}
+                </div>
+              </div>
+              <div className="rounded-md border bg-muted/20 px-3 py-2">
+                <div className="text-xs uppercase text-muted-foreground">
+                  Package allowances
+                </div>
+                <div className="text-lg font-semibold tabular-nums">
+                  {formatCurrency(staffInfo.package_allowance_total || 0)}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           <div className="flex flex-wrap items-end gap-3">
             <div>
               <Label htmlFor="pkg-basic">Default basic (KES)</Label>
@@ -254,9 +318,6 @@ export default function RolePackagesPanel({ components = [] }) {
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {pkg ? 'Save package' : 'Create package'}
             </Button>
-            {pkg ? (
-              <Badge variant="secondary">{pkg.display_name || pkg.name}</Badge>
-            ) : null}
           </div>
 
           {pkg?.lines?.length ? (
@@ -311,7 +372,8 @@ export default function RolePackagesPanel({ components = [] }) {
             </table>
           ) : (
             <p className="text-sm text-muted-foreground">
-              No lines yet — add allowances or deductions for this role below.
+              No lines yet — add allowances or deductions for this role below. They
+              apply to every employee on the role until you override one person.
             </p>
           )}
 
@@ -356,10 +418,87 @@ export default function RolePackagesPanel({ components = [] }) {
             <div className="sm:col-span-2 lg:col-span-4">
               <Button type="submit" size="sm" disabled={busy || !availableLines.length}>
                 <Plus className="h-4 w-4" />
-                Add line
+                Add line for whole role
               </Button>
             </div>
           </form>
+
+          {pkg?.id ? (
+            <div className="space-y-3 border-t border-border/60 pt-4">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Users className="h-4 w-4" />
+                Staff who inherit this package
+              </div>
+              {!staffInfo || staffInfo.employee_count === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No active employees linked to users with the{' '}
+                  <strong>{selectedRole?.name}</strong> role yet. Assign the role on
+                  the user, link them as an employee, and they pick up this package
+                  automatically.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-muted-foreground">
+                        <th className="py-2 pr-2">Employee</th>
+                        <th className="py-2 pr-2">Effective basic</th>
+                        <th className="py-2 pr-2">Source</th>
+                        <th className="py-2 pr-2">Personal edits</th>
+                        <th className="py-2"> </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {staffInfo.results.map((emp) => (
+                        <tr key={emp.id} className="border-b border-border/40">
+                          <td className="py-2 pr-2">
+                            <div className="font-medium">{emp.full_name}</div>
+                            <div className="font-mono text-xs text-muted-foreground">
+                              {emp.employee_id}
+                              {emp.position ? ` · ${emp.position}` : ''}
+                            </div>
+                          </td>
+                          <td className="py-2 pr-2 tabular-nums">
+                            {formatCurrency(emp.effective_basic || 0)}
+                          </td>
+                          <td className="py-2 pr-2 text-xs text-muted-foreground">
+                            {emp.basic_source === 'employee.salary'
+                              ? 'Employee salary'
+                              : emp.basic_source === 'role_package.default_basic'
+                                ? 'Package default'
+                                : '—'}
+                          </td>
+                          <td className="py-2 pr-2">
+                            {emp.override_count > 0 ? (
+                              <Badge variant="secondary">
+                                {emp.override_count} override
+                                {emp.override_count === 1 ? '' : 's'}
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">
+                                Role package only
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => onEditEmployee?.(emp.id)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Edit individual
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

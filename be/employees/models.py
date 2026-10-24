@@ -34,10 +34,23 @@ class Employee(models.Model):
     )
 
     # Basic Information
-    employee_id = models.CharField(max_length=50, unique=True, help_text='Unique employee ID')
+    employee_id = models.CharField(
+        max_length=50,
+        unique=True,
+        help_text='Internal staff code (e.g. EMP-0042) — not national ID',
+    )
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
-    email = models.EmailField(validators=[EmailValidator()], blank=True)
+    email = models.EmailField(
+        validators=[EmailValidator()],
+        blank=True,
+        help_text='Personal / work email for payslips and contact',
+    )
+    id_number = models.CharField(
+        max_length=40,
+        blank=True,
+        help_text='National ID / passport number (personal identity document)',
+    )
     phone = models.CharField(max_length=20, blank=True)
     
     # Employment Details

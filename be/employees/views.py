@@ -67,7 +67,7 @@ class EmployeeViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         query_params = self.request.query_params
         
         # Extract all filter parameters
-        for param in ['search', 'status', 'department']:
+        for param in ['search', 'status', 'department', 'role']:
             if param in query_params:
                 filters[param] = query_params.get(param)
         
@@ -105,7 +105,7 @@ class EmployeeViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def statistics(self, request):
-        """Get employee statistics - thin view, business logic in service"""
+        """Get employee statistics for the current list filters (role/status/search)."""
         if not employees_enable_statistics():
             return self._feature_disabled_response('Employee statistics')
         try:

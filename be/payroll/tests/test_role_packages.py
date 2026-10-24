@@ -99,3 +99,11 @@ class RolePayPackageTests(SuperAdminAPITestCase):
         )
         self.assertEqual(line.status_code, 201, line.data)
         self.assertEqual(len(line.data['lines']), 1)
+
+    def test_package_staff_lists_role_employees(self):
+        staff = self.client.get(f'/api/payroll/packages/{self.package.id}/staff/')
+        self.assertEqual(staff.status_code, 200, staff.data)
+        self.assertEqual(staff.data['employee_count'], 1)
+        self.assertEqual(staff.data['results'][0]['employee_id'], 'PKG-1')
+        self.assertTrue(staff.data['results'][0]['inherits_package'])
+        self.assertEqual(staff.data['results'][0]['override_count'], 0)

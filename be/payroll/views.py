@@ -130,7 +130,7 @@ class RolePayPackageViewSet(viewsets.ModelViewSet):
         return RolePayPackageSerializer
 
     def get_permissions(self):
-        if self.action in ('list', 'retrieve'):
+        if self.action in ('list', 'retrieve', 'staff'):
             return _perm('payroll', 'view')
         return _perm('payroll', 'manage')
 
@@ -189,6 +189,88 @@ class RolePayPackageViewSet(viewsets.ModelViewSet):
         )
         return Response(
             RolePayPackageSerializer(package).data, status=status.HTTP_201_CREATED
+        )
+
+    @action(detail=True, methods=['get'], url_path='staff')
+    def staff(self, request, pk=None):
+        """
+        Employees on this package's role — they inherit the package automatically.
+        Personal Staff-pay lines are listed as overrides.
+        """
+        from decimal import Decimal
+
+        from django.db.models import Count, Q
+
+        from employees.models import Employee
+
+        package = self.get_object()
+        role_id = package.role_id
+        employees = (
+            Employee.objects.filter(
+                status='active',
+                user__profile__custom_role_id=role_id,
+            )
+            .select_related('user', 'user__profile')
+            .annotate(
+                override_count=Count(
+                    'pay_assignments',
+                    filter=Q(pay_assignments__is_active=True),
+                )
+            )
+            .order_by('employee_id')
+        )
+        active_lines = [
+            ln
+            for ln in package.lines.select_related('component').all()
+            if ln.is_active and ln.component.is_active
+        ]
+        package_allowances = sum(
+            (ln.amount or Decimal('0') for ln in active_lines if ln.component.kind == 'earning'),
+            Decimal('0'),
+        )
+        rows = []
+        salary_total = Decimal('0')
+        for emp in employees:
+            basic = emp.salary if emp.salary is not None else package.default_basic
+            basic = basic if basic is not None else Decimal('0')
+            salary_total += basic
+            rows.append(
+                {
+                    'id': emp.id,
+                    'employee_id': emp.employee_id,
+                    'full_name': emp.full_name,
+                    'position': emp.position,
+                    'salary': str(emp.salary) if emp.salary is not None else None,
+                    'effective_basic': str(basic),
+                    'basic_source': (
+                        'employee.salary'
+                        if emp.salary is not None
+                        else (
+                            'role_package.default_basic'
+                            if package.default_basic is not None
+                            else 'none'
+                        )
+                    ),
+                    'override_count': emp.override_count,
+                    'inherits_package': True,
+                }
+            )
+        return Response(
+            {
+                'package_id': package.id,
+                'role_id': role_id,
+                'role_name': package.role.name,
+                'package_line_count': len(active_lines),
+                'package_allowance_total': str(package_allowances),
+                'default_basic': (
+                    str(package.default_basic)
+                    if package.default_basic is not None
+                    else None
+                ),
+                'employee_count': len(rows),
+                'salary_total': str(salary_total),
+                'results': rows,
+            }
         )
 
 

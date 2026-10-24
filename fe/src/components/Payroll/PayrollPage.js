@@ -64,6 +64,7 @@ function currentPeriod() {
 export default function PayrollPage() {
   const { canAdmin, canOwn } = useMemo(() => payrollAccess(), []);
   const [tab, setTab] = useState(canAdmin ? 'runs' : 'mine');
+  const [staffFocusId, setStaffFocusId] = useState('');
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [runs, setRuns] = useState([]);
@@ -580,11 +581,20 @@ export default function PayrollPage() {
       ) : null}
 
       {!loading && canAdmin && tab === 'packages' ? (
-        <RolePackagesPanel components={components} />
+        <RolePackagesPanel
+          components={components}
+          onEditEmployee={(employeeId) => {
+            setStaffFocusId(String(employeeId));
+            setTab('staff');
+          }}
+        />
       ) : null}
 
       {!loading && canAdmin && tab === 'staff' ? (
-        <StaffPayPanel components={components} />
+        <StaffPayPanel
+          components={components}
+          initialEmployeeId={staffFocusId}
+        />
       ) : null}
 
       {!loading && canAdmin && tab === 'components' ? (

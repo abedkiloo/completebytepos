@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import {
+  Eye,
   Loader2,
   Pencil,
   Plus,
@@ -10,7 +11,7 @@ import {
   X,
 } from 'lucide-react';
 
-import { employeesAPI } from '../../services/api';
+import { employeesAPI, rolesAPI } from '../../services/api';
 import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { formatCurrency } from '../../utils/formatters';
 import { toast } from '../../utils/toast';
@@ -75,6 +76,7 @@ const STATUSES = [
 
 const EMPTY_FORM = {
   employee_id: '',
+  id_number: '',
   first_name: '',
   last_name: '',
   email: '',
@@ -105,10 +107,13 @@ export default function Employees() {
 
   const [employees, setEmployees] = useState([]);
   const [statistics, setStatistics] = useState(null);
+  const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearch = useDebouncedValue(searchQuery);
   const [statusFilter, setStatusFilter] = useState('');
+  const [roleFilter, setRoleFilter] = useState('');
+  const [detailEmp, setDetailEmp] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [createMode, setCreateMode] = useState('manual'); // manual | from_user
@@ -126,15 +131,22 @@ export default function Employees() {
   });
   const { ordering, setOrdering } = useListOrdering();
 
+  const listFilterParams = useCallback(() => {
+    const params = {};
+    if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
+    if (statusFilter) params.status = statusFilter;
+    if (roleFilter) params.role = roleFilter;
+    return params;
+  }, [debouncedSearch, statusFilter, roleFilter]);
+
   const loadEmployees = useCallback(async () => {
     setLoading(true);
     try {
       const params = withListOrdering({
         page: pagination.page,
         page_size: pagination.page_size,
+        ...listFilterParams(),
       }, ordering);
-      if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
-      if (statusFilter) params.status = statusFilter;
       const res = await employeesAPI.list(params);
       const data = res.data.results || res.data || [];
       setEmployees(Array.isArray(data) ? data : []);
@@ -148,11 +160,11 @@ export default function Employees() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, statusFilter, pagination.page, pagination.page_size, ordering]);
+  }, [listFilterParams, pagination.page, pagination.page_size, ordering]);
 
   useEffect(() => {
     setPagination((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
-  }, [debouncedSearch, statusFilter]);
+  }, [debouncedSearch, statusFilter, roleFilter]);
 
   const loadStatistics = useCallback(async () => {
     if (!showStats) {
@@ -160,17 +172,31 @@ export default function Employees() {
       return;
     }
     try {
-      const res = await employeesAPI.statistics();
+      const res = await employeesAPI.statistics(listFilterParams());
       setStatistics(res.data);
     } catch {
       setStatistics(null);
     }
-  }, [showStats]);
+  }, [showStats, listFilterParams]);
+
+  const loadRoles = useCallback(async () => {
+    try {
+      const res = await rolesAPI.list({ page_size: 100 });
+      const data = res.data?.results || res.data || [];
+      setRoles(Array.isArray(data) ? data.filter((r) => r.is_active !== false) : []);
+    } catch {
+      setRoles([]);
+    }
+  }, []);
 
   useEffect(() => {
     loadEmployees();
     loadStatistics();
   }, [loadEmployees, loadStatistics]);
+
+  useEffect(() => {
+    loadRoles();
+  }, [loadRoles]);
 
   const loadLinkableUsers = useCallback(async () => {
     try {
@@ -194,14 +220,16 @@ export default function Employees() {
   };
 
   const openEdit = (emp) => {
+    setDetailEmp(null);
     setEditing(emp);
     setCreateMode('manual');
     setSelectedUserId('');
     setFormData({
       employee_id: emp.employee_id || '',
+      id_number: emp.id_number || '',
       first_name: emp.first_name || '',
       last_name: emp.last_name || '',
-      email: emp.email || '',
+      email: emp.email || emp.user_email || '',
       phone: emp.phone || '',
       position: emp.position || '',
       department: emp.department || 'other',
@@ -237,6 +265,7 @@ export default function Employees() {
     };
     if (showContact) {
       payload.email = formData.email.trim();
+      payload.id_number = formData.id_number.trim();
       payload.phone = formData.phone.trim();
       payload.address = formData.address.trim();
     }
@@ -349,6 +378,8 @@ export default function Employees() {
         await employeesAPI.createFromUser({
           user_id: Number(selectedUserId),
           employee_id: formData.employee_id.trim() || undefined,
+          id_number: formData.id_number.trim() || '',
+          email: formData.email.trim() || undefined,
           position: formData.position.trim(),
           department: formData.department || 'other',
           hire_date: formData.hire_date,
@@ -410,7 +441,7 @@ export default function Employees() {
     <PageShell>
       <PageHeader
         title="Employees"
-        description="Staff pay records. Add someone new, or select a login user and make them an employee."
+        description="Staff records with pay. Filter by role to see that team’s headcount and salary total."
       >
         {canCreate && (
           <Button onClick={openCreate}>
@@ -421,10 +452,19 @@ export default function Employees() {
       </PageHeader>
 
       {showStats && statistics && (
-        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <StatCard label="Total" value={statistics.total_employees} />
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            label={roleFilter ? 'In this role' : 'Total staff'}
+            value={statistics.total_employees}
+          />
           <StatCard label="Active" value={statistics.active_employees} tone="success" />
           <StatCard label="Inactive" value={statistics.inactive_employees} />
+          {showSalary ? (
+            <StatCard
+              label={roleFilter ? 'Role salary total' : 'Salary total'}
+              value={formatCurrency(statistics.total_salary || 0)}
+            />
+          ) : null}
         </div>
       )}
 
@@ -434,7 +474,7 @@ export default function Employees() {
           <Input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search name, ID, email…"
+            placeholder="Search name, staff code, ID number, email…"
             className="h-10 pl-9"
           />
           {searchQuery && (
@@ -448,6 +488,19 @@ export default function Employees() {
             </button>
           )}
         </div>
+        <select
+          value={roleFilter}
+          onChange={(e) => setRoleFilter(e.target.value)}
+          className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          aria-label="Filter by role"
+        >
+          <option value="">All roles</option>
+          {roles.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </select>
         {showStatus && (
           <select
             value={statusFilter}
@@ -488,14 +541,22 @@ export default function Employees() {
                   Employee
                 </SortableHeadButton>
               </th>
-              {showEmployeeId && <th className="px-4 py-2.5 text-left font-medium">ID</th>}
+              {showEmployeeId && (
+                <th className="px-4 py-2.5 text-left font-medium" title="Internal staff code (not national ID)">
+                  Staff code
+                </th>
+              )}
+              {showContact && (
+                <th className="px-4 py-2.5 text-left font-medium" title="National ID / passport">
+                  ID number
+                </th>
+              )}
+              <th className="px-4 py-2.5 text-left font-medium">Role</th>
               <th className="px-4 py-2.5 text-left font-medium">Position</th>
               {showDepartment && <th className="px-4 py-2.5 text-left font-medium">Dept</th>}
-              {showSalary && <th className="px-4 py-2.5 text-right font-medium">Salary</th>}
+              {showSalary && <th className="px-4 py-2.5 text-right font-medium">Basic pay</th>}
               {showStatus && <th className="px-4 py-2.5 text-left font-medium">Status</th>}
-              {(canEdit || canDelete) && (
-                <th className="px-4 py-2.5 text-right font-medium">Actions</th>
-              )}
+              <th className="px-4 py-2.5 text-right font-medium">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -525,7 +586,11 @@ export default function Employees() {
               </tr>
             ) : (
               employees.map((emp) => (
-                <tr key={emp.id} className="hover:bg-muted/40">
+                <tr
+                  key={emp.id}
+                  className="hover:bg-muted/40 cursor-pointer"
+                  onClick={() => setDetailEmp(emp)}
+                >
                   <td className="px-4 py-3 font-medium">
                     {emp.full_name || `${emp.first_name} ${emp.last_name}`}
                     {emp.user_username ? (
@@ -533,13 +598,28 @@ export default function Employees() {
                         Login: {emp.user_username}
                       </div>
                     ) : null}
-                    {showContact && emp.phone && (
+                    {showContact && (emp.email || emp.user_email) ? (
+                      <div className="text-xs font-normal text-muted-foreground">
+                        {emp.email || emp.user_email}
+                      </div>
+                    ) : null}
+                    {showContact && emp.phone ? (
                       <div className="text-xs font-normal text-muted-foreground">{emp.phone}</div>
-                    )}
+                    ) : null}
                   </td>
                   {showEmployeeId && (
-                    <td className="px-4 py-3 font-mono text-xs">{emp.employee_id}</td>
+                    <td className="px-4 py-3 font-mono text-xs">
+                      {emp.employee_id || '—'}
+                    </td>
                   )}
+                  {showContact && (
+                    <td className="px-4 py-3 font-mono text-xs">
+                      {emp.id_number || '—'}
+                    </td>
+                  )}
+                  <td className="px-4 py-3 text-muted-foreground">
+                    {emp.role_name || '—'}
+                  </td>
                   <td className="px-4 py-3">{emp.position}</td>
                   {showDepartment && (
                     <td className="px-4 py-3 text-muted-foreground">
@@ -558,27 +638,33 @@ export default function Employees() {
                       </Badge>
                     </td>
                   )}
-                  {(canEdit || canDelete) && (
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-1">
-                        {canEdit && (
-                          <Button variant="ghost" size="sm" onClick={() => openEdit(emp)}>
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
-                        {canDelete && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive"
-                            onClick={() => setPendingDelete(emp)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
-                      </div>
-                    </td>
-                  )}
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setDetailEmp(emp)}
+                        aria-label="View details"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                      </Button>
+                      {canEdit && (
+                        <Button variant="ghost" size="sm" onClick={() => openEdit(emp)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      {canDelete && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive"
+                          onClick={() => setPendingDelete(emp)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               ))
             )}
@@ -664,8 +750,9 @@ export default function Employees() {
             ) : null}
 
             <Field
-              label="Employee ID"
+              label="Staff code"
               required={editing || createMode === 'manual'}
+              hint="Internal HR code (e.g. EMP-0042). Not the national ID."
             >
               <Input
                 value={formData.employee_id}
@@ -674,10 +761,29 @@ export default function Employees() {
                 placeholder={
                   createMode === 'from_user' && !editing
                     ? 'Optional — auto USR-{id} if blank'
-                    : undefined
+                    : 'e.g. EMP-0042'
                 }
               />
             </Field>
+            {showContact ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Personal email" hint="Used for payslip self-service match">
+                  <Input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="name@example.com"
+                  />
+                </Field>
+                <Field label="ID number" hint="National ID / passport">
+                  <Input
+                    value={formData.id_number}
+                    onChange={(e) => setFormData({ ...formData, id_number: e.target.value })}
+                    placeholder="e.g. 12345678"
+                  />
+                </Field>
+              </div>
+            ) : null}
             <Field label="Position" required>
               <Input
                 value={formData.position}
@@ -736,21 +842,12 @@ export default function Employees() {
             )}
             {showContact && (
               <>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="Email">
-                    <Input
-                      type="email"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    />
-                  </Field>
-                  <Field label="Phone">
-                    <Input
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    />
-                  </Field>
-                </div>
+                <Field label="Phone">
+                  <Input
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  />
+                </Field>
                 <Field label="Address">
                   <Input
                     value={formData.address}
@@ -778,6 +875,74 @@ export default function Employees() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!detailEmp} onOpenChange={(open) => !open && setDetailEmp(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {detailEmp
+                ? detailEmp.full_name ||
+                  `${detailEmp.first_name} ${detailEmp.last_name}`
+                : 'Employee'}
+            </DialogTitle>
+          </DialogHeader>
+          {detailEmp ? (
+            <div className="space-y-3 text-sm">
+              <DetailRow label="Staff code" value={detailEmp.employee_id} mono />
+              <DetailRow label="ID number" value={detailEmp.id_number || '—'} mono />
+              <DetailRow
+                label="Personal email"
+                value={detailEmp.email || detailEmp.user_email || '—'}
+              />
+              <DetailRow label="Phone" value={detailEmp.phone || '—'} />
+              <DetailRow label="Login user" value={detailEmp.user_username || '—'} />
+              <DetailRow label="Role" value={detailEmp.role_name || '—'} />
+              <DetailRow label="Position" value={detailEmp.position || '—'} />
+              <DetailRow
+                label="Department"
+                value={deptLabel[detailEmp.department] || detailEmp.department || '—'}
+              />
+              <DetailRow
+                label="Basic monthly pay"
+                value={
+                  detailEmp.salary != null ? formatCurrency(detailEmp.salary) : '—'
+                }
+              />
+              <DetailRow
+                label="Status"
+                value={
+                  STATUSES.find((s) => s.value === detailEmp.status)?.label ||
+                  detailEmp.status
+                }
+              />
+              <DetailRow label="Hire date" value={detailEmp.hire_date || '—'} />
+              {detailEmp.address ? (
+                <DetailRow label="Address" value={detailEmp.address} />
+              ) : null}
+              {detailEmp.notes ? (
+                <DetailRow label="Notes" value={detailEmp.notes} />
+              ) : null}
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDetailEmp(null)}>
+              Close
+            </Button>
+            {canEdit && detailEmp ? (
+              <Button
+                type="button"
+                onClick={() => {
+                  const emp = detailEmp;
+                  openEdit(emp);
+                }}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Edit
+              </Button>
+            ) : null}
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -813,7 +978,7 @@ function StatCard({ label, value, tone = 'default' }) {
       <div className="text-xs uppercase text-muted-foreground">{label}</div>
       <div
         className={cn(
-          'text-xl font-semibold tabular-nums',
+          'mt-1 text-xl font-semibold tabular-nums',
           tone === 'success' && 'text-success'
         )}
       >
@@ -823,7 +988,16 @@ function StatCard({ label, value, tone = 'default' }) {
   );
 }
 
-function Field({ label, required, children }) {
+function DetailRow({ label, value, mono = false }) {
+  return (
+    <div className="grid grid-cols-[8.5rem_1fr] gap-2">
+      <div className="text-muted-foreground">{label}</div>
+      <div className={cn(mono && 'font-mono text-xs')}>{value}</div>
+    </div>
+  );
+}
+
+function Field({ label, required, hint, children }) {
   return (
     <div className="space-y-1">
       <Label className="text-xs">
@@ -831,6 +1005,7 @@ function Field({ label, required, children }) {
         {required && <span className="text-destructive"> *</span>}
       </Label>
       {children}
+      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }

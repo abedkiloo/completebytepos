@@ -17,14 +17,19 @@ function unwrapList(data) {
 }
 
 /**
- * Shared pay-component library + per-employee overrides.
- * Base salary comes from the employee record; assignments add/change benefits
- * or deductions, or override basic for that person only.
+ * Per-employee overrides on top of the role package.
+ * Role package applies automatically; lines here win for this person only.
  */
-export default function StaffPayPanel({ components = [] }) {
+export default function StaffPayPanel({
+  components = [],
+  initialEmployeeId = '',
+}) {
   const [employees, setEmployees] = useState([]);
-  const [employeeId, setEmployeeId] = useState('');
+  const [employeeId, setEmployeeId] = useState(
+    initialEmployeeId ? String(initialEmployeeId) : ''
+  );
   const [assignments, setAssignments] = useState([]);
+  const [rolePackage, setRolePackage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
@@ -33,6 +38,12 @@ export default function StaffPayPanel({ components = [] }) {
     rate: '',
     notes: '',
   });
+
+  useEffect(() => {
+    if (initialEmployeeId) {
+      setEmployeeId(String(initialEmployeeId));
+    }
+  }, [initialEmployeeId]);
 
   const employee = useMemo(
     () => employees.find((e) => String(e.id) === String(employeeId)) || null,
@@ -64,6 +75,26 @@ export default function StaffPayPanel({ components = [] }) {
     setAssignments(unwrapList(res.data));
   }, []);
 
+  const loadRolePackage = useCallback(async (emp) => {
+    if (!emp?.role_id) {
+      setRolePackage(null);
+      return;
+    }
+    try {
+      const res = await payrollAPI.listPackages({ role: emp.role_id, page_size: 5 });
+      const rows = unwrapList(res.data);
+      const match = rows.find((p) => p.is_active !== false) || rows[0] || null;
+      if (match?.id) {
+        const full = await payrollAPI.getPackage(match.id);
+        setRolePackage(full.data);
+      } else {
+        setRolePackage(null);
+      }
+    } catch {
+      setRolePackage(null);
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -89,6 +120,10 @@ export default function StaffPayPanel({ components = [] }) {
   useEffect(() => {
     loadAssignments(employeeId).catch(() => setAssignments([]));
   }, [employeeId, loadAssignments]);
+
+  useEffect(() => {
+    loadRolePackage(employee);
+  }, [employee, loadRolePackage]);
 
   const assignedIds = useMemo(
     () => new Set(assignments.map((a) => a.component)),
@@ -168,12 +203,17 @@ export default function StaffPayPanel({ components = [] }) {
     );
   }
 
+  const inheritedLines = useMemo(
+    () => (rolePackage?.lines || []).filter((l) => l.is_active),
+    [rolePackage]
+  );
+
   return (
     <div className="space-y-6">
       <p className="text-sm text-muted-foreground max-w-2xl">
-        Most staff need nothing here — they already get their job role’s package
-        (Role packages) plus basic salary. Use this only to add, change, or remove
-        amounts for one person.
+        If this person has a job role with a package, they already inherit those
+        lines. Add or change amounts here only when this one employee should differ
+        from the role package.
       </p>
 
       <div className="max-w-md space-y-2">
@@ -188,6 +228,7 @@ export default function StaffPayPanel({ components = [] }) {
           {employees.map((emp) => (
             <option key={emp.id} value={emp.id}>
               {emp.employee_id} — {emp.full_name || `${emp.first_name} ${emp.last_name}`}
+              {emp.role_name ? ` (${emp.role_name})` : ''}
             </option>
           ))}
         </select>
@@ -201,14 +242,54 @@ export default function StaffPayPanel({ components = [] }) {
               <strong>{formatCurrency(employee.salary || 0)}</strong>
             </div>
             <div>
-              <span className="text-muted-foreground">Department </span>
-              {employee.department || '—'}
+              <span className="text-muted-foreground">Role </span>
+              {employee.role_name || '—'}
             </div>
             <div>
               <span className="text-muted-foreground">Position </span>
               {employee.position || '—'}
             </div>
           </div>
+
+          {rolePackage ? (
+            <div className="rounded-md border border-dashed bg-muted/20 p-3 space-y-2">
+              <div className="text-sm font-medium">
+                Inherited from {rolePackage.role_name || rolePackage.name} package
+              </div>
+              {inheritedLines.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Role package exists but has no active lines yet.
+                </p>
+              ) : (
+                <ul className="text-sm space-y-1">
+                  {inheritedLines.map((line) => (
+                    <li key={line.id} className="flex flex-wrap gap-2">
+                      <span>{line.component_name}</span>
+                      <span className="text-muted-foreground">
+                        {line.amount != null
+                          ? formatCurrency(line.amount)
+                          : 'template default'}
+                      </span>
+                      <Badge variant="outline" className="text-[10px]">
+                        role
+                      </Badge>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Personal lines below override the same component for this employee
+                only.
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No role package linked — set a job role on their login user and create
+              a Role package, or add personal lines here.
+            </p>
+          )}
+
+          <div className="text-sm font-medium">Personal overrides (this employee)</div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -225,7 +306,7 @@ export default function StaffPayPanel({ components = [] }) {
                 {assignments.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="py-6 text-center text-muted-foreground">
-                      No personal lines yet — uses template defaults + record basic only.
+                      No personal overrides — full role package applies as-is.
                     </td>
                   </tr>
                 ) : (
