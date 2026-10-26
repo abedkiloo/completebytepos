@@ -215,7 +215,7 @@ export default function CustomerDetailDialog({
 
   const handleEditSubmit = (e) => {
     e?.preventDefault?.();
-    const errors = validateCustomerForm(formData);
+    const errors = validateCustomerForm(formData, { requireGender: false });
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) {
       toast.error(Object.values(errors)[0]);

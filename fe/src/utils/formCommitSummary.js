@@ -94,9 +94,12 @@ export function employeeCommitRows(form = {}, { isEdit = false } = {}) {
 }
 
 export function customerCommitRows(form = {}, { isEdit = false } = {}) {
+  const genderLabel =
+    form.gender === 'male' ? 'Male' : form.gender === 'female' ? 'Female' : '';
   return compactCommitRows([
     { label: 'Duka', value: form.name || '—', emphasis: true },
     form.owner_name ? { label: "Owner's name", value: form.owner_name } : null,
+    genderLabel ? { label: 'Gender', value: genderLabel } : null,
     form.phone ? { label: 'Phone', value: form.phone } : null,
     form.email ? { label: 'Email', value: form.email } : null,
     form.city ? { label: 'City', value: form.city } : null,

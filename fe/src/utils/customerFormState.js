@@ -7,10 +7,16 @@ export const KENYA_LOCATION_DEFAULTS = {
   ward: 'Landimawe',
 };
 
+export const CUSTOMER_GENDER_OPTIONS = [
+  { value: 'male', label: 'Male' },
+  { value: 'female', label: 'Female' },
+];
+
 export const EMPTY_CUSTOMER_FORM = {
   name: '',
   owner_name: '',
   customer_type: 'business',
+  gender: '',
   email: '',
   phone: '',
   address: '',
@@ -32,6 +38,7 @@ export function customerFormFromRecord(customer) {
     name: customer.name || '',
     owner_name: customer.owner_name || '',
     customer_type: customer.customer_type || 'business',
+    gender: customer.gender || '',
     email: customer.email || '',
     phone: customer.phone || '',
     address: customer.address || '',
@@ -55,6 +62,7 @@ export function customerSavePayload(formData) {
   return {
     name: String(formData.name || '').trim(),
     customer_type: formData.customer_type,
+    gender: String(formData.gender || '').trim().toLowerCase(),
     email: String(formData.email || '').trim(),
     phone: String(formData.phone || '').trim(),
     owner_name: String(formData.owner_name || '').trim(),
@@ -72,13 +80,20 @@ export function customerSavePayload(formData) {
   };
 }
 
-export function validateCustomerForm(formData) {
+export function validateCustomerForm(formData, { requireGender = false } = {}) {
   const errors = {};
   const nameErr = personNameMessage(formData.name, {
     label: 'duka name',
     example: 'Wambua Hardware',
   });
   if (nameErr) errors.name = nameErr;
+
+  const gender = String(formData.gender || '').trim().toLowerCase();
+  if (requireGender && !gender) {
+    errors.gender = 'Select whether this customer is male or female.';
+  } else if (gender && !['male', 'female'].includes(gender)) {
+    errors.gender = 'Choose Male or Female.';
+  }
 
   const emailErr = emailMessage(formData.email);
   if (emailErr) errors.email = emailErr;

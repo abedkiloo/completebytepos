@@ -1,5 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
+import {
+  Bar,
+  BarChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { reportsAPI } from '../../services/api';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import {
@@ -27,6 +35,13 @@ import { ArrowLeft, BarChart3 } from 'lucide-react';
 import { R } from './reportUI';
 import ReportExportButtons from './ReportExportButtons';
 
+const TOP_PRODUCT_LIMITS = [5, 10, 15, 20, 25, 50];
+const DEFAULT_TOP_PRODUCTS = 10;
+const PRODUCT_CHART_COLOURS = {
+  quantity: '#10b981',
+  revenue: '#2563eb',
+};
+
 const Reports = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -40,6 +55,7 @@ const Reports = () => {
   const [loading, setLoading] = useState(false);
   const [reportData, setReportData] = useState(null);
   const [periodPreset, setPeriodPreset] = useState(DEFAULT_REPORT_PERIOD);
+  const [topProductLimit, setTopProductLimit] = useState(DEFAULT_TOP_PRODUCTS);
   const [filters, setFilters] = useState(() => ({
     ...periodToDateFilters(DEFAULT_REPORT_PERIOD),
     year: new Date().getFullYear(),
@@ -79,7 +95,7 @@ const Reports = () => {
           response = await reportsAPI.customer(params);
           break;
         case 'products':
-          response = await reportsAPI.products(params);
+          response = await reportsAPI.products({ ...params, limit: topProductLimit });
           break;
         case 'expense':
           response = await reportsAPI.expense(params);
@@ -105,7 +121,7 @@ const Reports = () => {
     } finally {
       setLoading(false);
     }
-  }, [reportParam, filters, reportSettings]);
+  }, [reportParam, filters, reportSettings, topProductLimit]);
 
   useEffect(() => {
     if (reportParam === 'daily-sales') {
@@ -594,16 +610,106 @@ const Reports = () => {
   };
 
   const renderProductsReport = () => {
-    const { products } = reportData;
+    const allProducts = reportData?.products || [];
+    const topRows = (reportData?.top?.length ? reportData.top : allProducts).slice(0, topProductLimit);
+    const chartData = topRows.map((product) => {
+      const rawName = product.product__name || 'Unnamed';
+      return {
+        name: rawName.length > 22 ? `${rawName.slice(0, 22)}…` : rawName,
+        fullName: rawName,
+        quantity: Number(product.quantity_sold) || 0,
+        revenue: Number(product.revenue) || 0,
+      };
+    });
+    const chartHeight = Math.max(220, topRows.length * 36);
+
     return (
       <>
-        {products && products.length > 0 ? (
+        <div className={R.section}>
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h3 className="m-0">Top {topProductLimit} products</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                How the best sellers performed in this period — change how many to show.
+              </p>
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <span className="text-muted-foreground">Show top</span>
+              <select
+                aria-label="Top products count"
+                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                value={topProductLimit}
+                onChange={(e) => setTopProductLimit(Number(e.target.value) || DEFAULT_TOP_PRODUCTS)}
+              >
+                {TOP_PRODUCT_LIMITS.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {topRows.length > 0 ? (
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Units sold
+                </p>
+                <ResponsiveContainer width="100%" height={chartHeight}>
+                  <BarChart
+                    data={chartData}
+                    layout="vertical"
+                    margin={{ top: 4, right: 16, left: 4, bottom: 4 }}
+                  >
+                    <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => formatNumber(v)} />
+                    <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 11 }} />
+                    <Tooltip
+                      formatter={(value) => [formatNumber(value), 'Units']}
+                      labelFormatter={(_, payload) => payload?.[0]?.payload?.fullName || ''}
+                    />
+                    <Bar dataKey="quantity" fill={PRODUCT_CHART_COLOURS.quantity} radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Revenue
+                </p>
+                <ResponsiveContainer width="100%" height={chartHeight}>
+                  <BarChart
+                    data={chartData}
+                    layout="vertical"
+                    margin={{ top: 4, right: 16, left: 4, bottom: 4 }}
+                  >
+                    <XAxis
+                      type="number"
+                      tick={{ fontSize: 11 }}
+                      tickFormatter={(v) => formatCompactCurrency(v)}
+                    />
+                    <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 11 }} />
+                    <Tooltip
+                      formatter={(value) => [formatCurrency(value), 'Revenue']}
+                      labelFormatter={(_, payload) => payload?.[0]?.payload?.fullName || ''}
+                    />
+                    <Bar dataKey="revenue" fill={PRODUCT_CHART_COLOURS.revenue} radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          ) : (
+            <div className={R.empty}>No product sales data available</div>
+          )}
+        </div>
+
+        {topRows.length > 0 ? (
           <div className={R.section}>
-            <h3>Product Sales Performance</h3>
+            <h3>Product sales detail</h3>
             <div className={R.tableWrap}>
               <table className={R.table}>
                 <thead>
                   <tr>
+                    <th>#</th>
                     <th>Product Name</th>
                     <th>SKU</th>
                     <th>Category</th>
@@ -613,8 +719,9 @@ const Reports = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {products.map((product, idx) => (
-                    <tr key={idx}>
+                  {topRows.map((product, idx) => (
+                    <tr key={product.product__id || idx}>
+                      <td>{idx + 1}</td>
                       <td>{product.product__name}</td>
                       <td>{product.product__sku}</td>
                       <td>{product.product__category__name || 'N/A'}</td>
@@ -626,10 +733,14 @@ const Reports = () => {
                 </tbody>
               </table>
             </div>
+            {allProducts.length > topRows.length ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Showing top {topRows.length} of {formatNumber(allProducts.length)} products by revenue.
+                Raise the limit above to include more.
+              </p>
+            ) : null}
           </div>
-        ) : (
-          <div className={R.empty}>No product sales data available</div>
-        )}
+        ) : null}
       </>
     );
   };

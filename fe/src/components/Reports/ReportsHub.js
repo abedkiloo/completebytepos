@@ -147,23 +147,26 @@ const CHART_COLOURS = [
 // Hook: load a report endpoint with period support
 // --------------------------------------------------------------------------
 
-function useReport(fetcher, period) {
+function useReport(fetcher, period, extraParams = {}) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const extraKey = JSON.stringify(extraParams || {});
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetcher({ period, use_checkpoint_baseline: 1 });
+      const res = await fetcher({ period, use_checkpoint_baseline: 1, ...extraParams });
       setData(res.data);
     } catch (err) {
       setError(err?.response?.data?.detail || err.message || 'Failed to load report');
     } finally {
       setLoading(false);
     }
-  }, [fetcher, period]);
+    // extraParams serialized so callers can pass inline objects safely
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetcher, period, extraKey]);
 
   useEffect(() => {
     load();
@@ -171,6 +174,9 @@ function useReport(fetcher, period) {
 
   return { data, loading, error, reload: load };
 }
+
+const TOP_PRODUCT_LIMITS = [5, 10, 15, 20, 25, 50];
+const DEFAULT_TOP_PRODUCTS = 10;
 
 function chartHeight(extra = 0) {
   return 160 + extra;
@@ -272,28 +278,48 @@ function SalesOverviewTile({ period, onOpen, showDiscount, showTax }) {
 }
 
 function TopProductsTile({ period, onOpen }) {
-  const { data, loading, error } = useReport(reportsAPI.topProducts, period);
+  const [limit, setLimit] = useState(DEFAULT_TOP_PRODUCTS);
+  const { data, loading, error } = useReport(reportsAPI.topProducts, period, { limit });
 
   const items = data?.items || [];
   const chartData = useMemo(
     () =>
-      items.slice(0, 6).map((row) => ({
+      items.map((row) => ({
         name: row.name?.length > 18 ? `${row.name.slice(0, 18)}…` : row.name,
         quantity: row.quantity_sold,
         revenue: row.revenue,
       })),
     [items]
   );
+  const barHeight = chartHeight(Math.max(0, (items.length - 4) * 22));
 
   return (
     <ReportCard
       icon={ShoppingCart}
       title="Top products"
-      description="Best-selling SKUs by quantity moved — export PDF or Excel."
+      description="Best-selling SKUs by quantity moved — change how many to show."
       onOpen={onOpen}
       exportSlug="top-products"
-      exportParams={{ period }}
+      exportParams={{ period, limit }}
     >
+      <div className="mb-2 flex items-center justify-end gap-2 text-xs">
+        <label htmlFor="hub-top-products-limit" className="text-muted-foreground">
+          Show top
+        </label>
+        <select
+          id="hub-top-products-limit"
+          aria-label="Top products count"
+          className="h-8 rounded-md border border-input bg-background px-2"
+          value={limit}
+          onChange={(e) => setLimit(Number(e.target.value) || DEFAULT_TOP_PRODUCTS)}
+        >
+          {TOP_PRODUCT_LIMITS.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+      </div>
       {loading ? (
         <Skeleton className="h-52 w-full" />
       ) : error ? (
@@ -302,7 +328,7 @@ function TopProductsTile({ period, onOpen }) {
         <EmptyChart message="No sales recorded in this period" />
       ) : (
         <>
-          <ResponsiveContainer width="100%" height={chartHeight(30)}>
+          <ResponsiveContainer width="100%" height={barHeight}>
             <BarChart
               data={chartData}
               layout="vertical"

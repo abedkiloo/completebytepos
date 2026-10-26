@@ -55,7 +55,7 @@ class CustomerModuleSettingsAPITests(ManagerAPITestCase):
         SettingsService.set('customers', 'enable_customer_create', False)
         response = self.client.post(
             '/api/sales/customers/',
-            {'name': 'New One'},
+            {'gender': 'female', 'name': 'New One'},
             format='json',
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

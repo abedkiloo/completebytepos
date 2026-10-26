@@ -16,6 +16,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { cn } from '../../lib/cn';
 import { formBannerMessage } from '../../utils/formFeedback';
+import { CUSTOMER_GENDER_OPTIONS } from '../../utils/customerFormState';
 
 export default function CustomerFormDialog({
   open,
@@ -75,6 +76,24 @@ export default function CustomerFormDialog({
                   value={formData.owner_name}
                   onChange={(e) => onChange('owner_name', e.target.value)}
                   placeholder="e.g. Jane Wambua"
+                />
+              </Field>
+
+              <Field
+                label="Gender"
+                htmlFor="cust-gender"
+                required={!editing}
+                error={formErrors.gender}
+                hint={
+                  editing && !formData.gender
+                    ? 'Left blank for older records — optional to fill in now.'
+                    : undefined
+                }
+              >
+                <SegmentedControl
+                  value={formData.gender || ''}
+                  onChange={(v) => onChange('gender', v)}
+                  options={CUSTOMER_GENDER_OPTIONS}
                 />
               </Field>
 

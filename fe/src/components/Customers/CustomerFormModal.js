@@ -3,10 +3,11 @@ import { customersAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import CommitConfirm from '../Shared/CommitConfirm';
 import { customerCommitRows } from '../../utils/formCommitSummary';
-import { emailMessage, personNameMessage, phoneMessage } from '../../utils/formValidation';
 import {
+  CUSTOMER_GENDER_OPTIONS,
   EMPTY_CUSTOMER_FORM,
   customerSavePayload,
+  validateCustomerForm,
 } from '../../utils/customerFormState';
 import { applyCustomerFormFieldUpdate } from '../../utils/customerFormFieldUpdate';
 import TypicalGoodsFields from './TypicalGoodsFields';
@@ -58,21 +59,7 @@ const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
     // Clear previous errors
     setFormErrors({});
     
-    // Client-side validation
-    const errors = {};
-    const nameErr = personNameMessage(formData.name, {
-      label: 'duka name',
-      example: 'Wambua Hardware',
-    });
-    if (nameErr) errors.name = nameErr;
-
-    const emailErr = emailMessage(formData.email);
-    if (emailErr) errors.email = emailErr;
-
-    const phoneErr = phoneMessage(formData.phone);
-    if (phoneErr) errors.phone = phoneErr;
-    
-    // If there are client-side errors, show them and return
+    const errors = validateCustomerForm(formData, { requireGender: true });
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
       reportFormError(null, Object.values(errors)[0], 5000);
@@ -181,6 +168,26 @@ const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
                 onChange={(e) => setFormData({ ...formData, owner_name: e.target.value })}
                 placeholder="e.g. Jane Wambua"
               />
+            </div>
+            <div className="form-group">
+              <label>Gender *</label>
+              <div className="inline-flex rounded-md border bg-background">
+                {CUSTOMER_GENDER_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => updateField('gender', opt.value)}
+                    className={`h-10 px-4 text-sm font-medium transition-colors first:rounded-l-md last:rounded-r-md ${
+                      formData.gender === opt.value
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-foreground hover:bg-accent'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              {formErrors.gender && <span className="error-text">{formErrors.gender}</span>}
             </div>
             <div className="form-group">
               <label>Phone</label>

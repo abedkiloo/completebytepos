@@ -51,7 +51,7 @@ class CustomerKenyaLocationAPITests(SuperAdminAPITestCase):
     def test_desk_create_gets_default_admin_location(self):
         response = self.client.post(
             '/api/sales/customers/',
-            {'name': 'Desk Duka', 'customer_type': 'business', 'phone': '0712345678'},
+            {'gender': 'female', 'name': 'Desk Duka', 'customer_type': 'business', 'phone': '0712345678'},
             format='json',
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
@@ -64,7 +64,7 @@ class CustomerKenyaLocationAPITests(SuperAdminAPITestCase):
     def test_create_with_only_name_still_succeeds(self):
         response = self.client.post(
             '/api/sales/customers/',
-            {'name': 'Bare Minimum Duka', 'customer_type': 'business'},
+            {'gender': 'female', 'name': 'Bare Minimum Duka', 'customer_type': 'business'},
             format='json',
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
@@ -73,8 +73,7 @@ class CustomerKenyaLocationAPITests(SuperAdminAPITestCase):
     def test_create_with_county_only_succeeds(self):
         response = self.client.post(
             '/api/sales/customers/',
-            {
-                'name': 'County Only Duka',
+            {'gender': 'female', 'name': 'County Only Duka',
                 'customer_type': 'business',
                 'phone': '0712345680',
                 'county': 'Mombasa',
@@ -89,8 +88,7 @@ class CustomerKenyaLocationAPITests(SuperAdminAPITestCase):
     def test_create_with_explicit_location(self):
         response = self.client.post(
             '/api/sales/customers/',
-            {
-                'name': 'Coast Duka',
+            {'gender': 'female', 'name': 'Coast Duka',
                 'customer_type': 'business',
                 'phone': '0712345679',
                 'county': 'Mombasa',

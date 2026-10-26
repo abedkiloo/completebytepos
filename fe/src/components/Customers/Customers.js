@@ -238,7 +238,7 @@ const Customers = () => {
 
   const handleSubmit = async (e) => {
     e?.preventDefault?.();
-    const errors = validateCustomerForm(formData);
+    const errors = validateCustomerForm(formData, { requireGender: !editingCustomer });
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) {
       const msg = Object.values(errors)[0];

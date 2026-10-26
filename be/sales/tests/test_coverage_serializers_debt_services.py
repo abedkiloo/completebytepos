@@ -86,8 +86,7 @@ class CustomerSerializerGapTests(TestCase):
             ser.validate_location_accuracy('bad')
 
         # Create with city hint → Kenya defaults when incomplete
-        create = CustomerSerializer(data={
-            'name': 'Gap Cust',
+        create = CustomerSerializer(data={'gender': 'female', 'name': 'Gap Cust',
             'city': 'Nairobi',
             'phone': '0700111222',
             'email': 'gap@t.com',

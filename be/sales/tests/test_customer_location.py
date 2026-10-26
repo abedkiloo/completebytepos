@@ -16,7 +16,7 @@ class CustomerLocationPingTests(SuperAdminAPITestCase):
         """Web/desk create must not force GPS — location is an app field flow."""
         response = self.client.post(
             '/api/sales/customers/',
-            {'name': 'Desk Duka', 'customer_type': 'business', 'phone': '0712345678'},
+            {'gender': 'female', 'name': 'Desk Duka', 'customer_type': 'business', 'phone': '0712345678'},
             format='json',
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
@@ -27,8 +27,7 @@ class CustomerLocationPingTests(SuperAdminAPITestCase):
     def test_create_with_location_saves_default_site(self, _dispatch):
         response = self.client.post(
             '/api/sales/customers/',
-            {
-                'name': 'Field Duka',
+            {'gender': 'female', 'name': 'Field Duka',
                 'customer_type': 'business',
                 'phone': '0712345678',
                 'latitude': -1.2921,
@@ -50,8 +49,7 @@ class CustomerLocationPingTests(SuperAdminAPITestCase):
         """Phone GPS often sends >7 decimal places; must not 400 on max_digits."""
         response = self.client.post(
             '/api/sales/customers/',
-            {
-                'name': 'Precise GPS Duka',
+            {'gender': 'female', 'name': 'Precise GPS Duka',
                 'customer_type': 'business',
                 'phone': '0722200022',
                 'latitude': -1.262148765432109,
@@ -74,8 +72,7 @@ class CustomerLocationPingTests(SuperAdminAPITestCase):
     def test_create_queues_welcome_sms_when_phone_set(self, _dispatch):
         response = self.client.post(
             '/api/sales/customers/',
-            {
-                'name': 'Wambua Hardware',
+            {'gender': 'female', 'name': 'Wambua Hardware',
                 'customer_type': 'business',
                 'phone': '0712345678',
                 'latitude': -1.29,

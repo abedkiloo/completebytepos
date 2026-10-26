@@ -43,7 +43,7 @@ class CustomerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer
         fields = [
-            'id', 'customer_code', 'name', 'customer_type',
+            'id', 'customer_code', 'name', 'customer_type', 'gender',
             'email', 'phone', 'latitude', 'longitude', 'location_accuracy',
             'address', 'city', 'county', 'sub_county', 'ward', 'country',
             'tax_id', 'notes', 'owner_name', 'contact_person', 'typical_goods', 'is_active',
@@ -92,6 +92,14 @@ class CustomerSerializer(serializers.ModelSerializer):
         )
         if name_error:
             raise serializers.ValidationError({'name': name_error})
+
+        # Gender is required for new customers; existing blank records stay valid.
+        if self.instance is None:
+            gender = attrs.get('gender', '')
+            if not str(gender or '').strip():
+                raise serializers.ValidationError({
+                    'gender': 'Select whether this customer is male or female.',
+                })
 
         phone = attrs.get('phone', serializers.empty)
         if phone is serializers.empty and self.instance is not None:
@@ -181,6 +189,15 @@ class CustomerSerializer(serializers.ModelSerializer):
             return ''
         return str(value).strip()
 
+    def validate_gender(self, value):
+        if value is None or value == '':
+            return ''
+        normalized = str(value).strip().lower()
+        allowed = {choice[0] for choice in Customer.GENDER_CHOICES}
+        if normalized not in allowed:
+            raise serializers.ValidationError('Choose Male or Female.')
+        return normalized
+
     def validate_contact_person(self, value):
         if value is None:
             return ''
@@ -222,7 +239,7 @@ class CustomerListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer
         fields = [
-            'id', 'customer_code', 'name', 'customer_type',
+            'id', 'customer_code', 'name', 'customer_type', 'gender',
             'email', 'phone', 'latitude', 'longitude',
             'city', 'county', 'sub_county', 'ward', 'country',
             'is_active', 'total_outstanding', 'wallet_balance',

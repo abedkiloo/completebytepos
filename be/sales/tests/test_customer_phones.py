@@ -18,8 +18,7 @@ class CustomerPhoneUniquenessTests(SuperAdminAPITestCase):
         )
         res = self.client.post(
             '/api/sales/customers/',
-            {
-                'name': 'Second Duka',
+            {'gender': 'female', 'name': 'Second Duka',
                 'customer_type': 'business',
                 'phone': '0712345678',
                 'latitude': -1.29,
@@ -38,8 +37,7 @@ class CustomerPhoneUniquenessTests(SuperAdminAPITestCase):
         )
         res = self.client.post(
             '/api/sales/customers/',
-            {
-                'name': 'Fresh Duka',
+            {'gender': 'female', 'name': 'Fresh Duka',
                 'customer_type': 'business',
                 'phone': '0700111222',
                 'latitude': -1.29,

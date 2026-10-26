@@ -72,8 +72,7 @@ class AuditTrailContractTests(ManagerAPITestCase):
     def test_customer_create_is_audited(self):
         response = self.client.post(
             '/api/sales/customers/',
-            {
-                'name': 'Audit Customer',
+            {'gender': 'female', 'name': 'Audit Customer',
                 'phone': '0700111222',
                 'customer_type': 'individual',
                 'is_active': True,

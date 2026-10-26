@@ -183,8 +183,23 @@ class ReportsViewsTestCase(ManagerAPITestCase):
         response = self.client.get('/api/reports/top_products/', {'period': 'month'})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['period'], 'month')
+        self.assertEqual(response.data.get('limit'), 10)
         items = response.data.get('items', [])
         self.assertTrue(any(i['sku'] == 'RPT-PROD-001' for i in items))
+
+    def test_top_products_respects_limit(self):
+        response = self.client.get('/api/reports/top_products/', {'period': 'month', 'limit': 5})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data.get('limit'), 5)
+        self.assertLessEqual(len(response.data.get('items', [])), 5)
+
+    def test_products_report_includes_top_slice(self):
+        response = self.client.get('/api/reports/products/', {'limit': 5})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data.get('limit'), 5)
+        self.assertIn('top', response.data)
+        self.assertIn('products', response.data)
+        self.assertLessEqual(len(response.data['top']), 5)
 
     def test_inventory_health_snapshot(self):
         response = self.client.get('/api/reports/inventory_health/', {'period': 'month'})

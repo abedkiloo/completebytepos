@@ -12,6 +12,10 @@ class Customer(models.Model):
         ('individual', 'Individual'),
         ('business', 'Business'),
     ]
+    GENDER_CHOICES = [
+        ('male', 'Male'),
+        ('female', 'Female'),
+    ]
     ENGAGEMENT_TIER_CHOICES = [
         ('prospect', 'Registered only'),
         ('buyer', 'Has bought from Omuwenga'),
@@ -36,6 +40,13 @@ class Customer(models.Model):
         help_text='Primary branch for this customer (optional - customers can be shared)'
     )
     customer_type = models.CharField(max_length=20, choices=CUSTOMER_TYPE_CHOICES, default='individual')
+    gender = models.CharField(
+        max_length=10,
+        choices=GENDER_CHOICES,
+        blank=True,
+        default='',
+        help_text='Owner/contact gender. Required for new customers; older records may be blank.',
+    )
     email = models.EmailField(blank=True, validators=[EmailValidator()])
     phone = models.CharField(max_length=20, blank=True, db_index=True)
     latitude = models.DecimalField(

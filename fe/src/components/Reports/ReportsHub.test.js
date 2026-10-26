@@ -76,7 +76,9 @@ describe('ReportsHub period picker', () => {
     expect(screen.getByRole('tab', { name: 'This month' })).toHaveAttribute('aria-selected', 'true');
 
     await waitFor(() => {
-      expect(reportsAPI.salesOverview).toHaveBeenCalledWith({ period: 'month' });
+      expect(reportsAPI.salesOverview).toHaveBeenCalledWith(
+        expect.objectContaining({ period: 'month' })
+      );
     });
   });
 
@@ -95,11 +97,21 @@ describe('ReportsHub period picker', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Today' }));
 
     await waitFor(() => {
-      expect(reportsAPI.salesOverview).toHaveBeenCalledWith({ period: 'today' });
-      expect(reportsAPI.topProducts).toHaveBeenCalledWith({ period: 'today' });
-      expect(reportsAPI.cashAndPayments).toHaveBeenCalledWith({ period: 'today' });
-      expect(reportsAPI.inventoryHealth).toHaveBeenCalledWith({ period: 'today' });
-      expect(reportsAPI.customerOutstanding).toHaveBeenCalledWith({ period: 'today' });
+      expect(reportsAPI.salesOverview).toHaveBeenCalledWith(
+        expect.objectContaining({ period: 'today' })
+      );
+      expect(reportsAPI.topProducts).toHaveBeenCalledWith(
+        expect.objectContaining({ period: 'today', limit: 10 })
+      );
+      expect(reportsAPI.cashAndPayments).toHaveBeenCalledWith(
+        expect.objectContaining({ period: 'today' })
+      );
+      expect(reportsAPI.inventoryHealth).toHaveBeenCalledWith(
+        expect.objectContaining({ period: 'today' })
+      );
+      expect(reportsAPI.customerOutstanding).toHaveBeenCalledWith(
+        expect.objectContaining({ period: 'today' })
+      );
     });
   });
 

@@ -63,6 +63,15 @@ def _customer_wallet_outstanding(wallet_balance):
     return 0.0
 
 
+def _parse_top_limit(raw, *, default=10, minimum=1, maximum=50):
+    """Clamp a ``limit`` query param for top-N product charts."""
+    try:
+        value = int(raw) if raw is not None and str(raw).strip() != '' else default
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(maximum, value))
+
+
 REPORTS_PERMS = RequirePermPerAction('reports', {
     'dashboard': 'view',
     'sales': 'view',
@@ -187,7 +196,11 @@ class ReportViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'])
     @gated_report_action('products')
     def products(self, request):
-        """Product sales report"""
+        """Product sales report.
+
+        Full ranked list in ``products``. ``top`` is the first ``limit`` rows
+        (default 10, max 50) for charts.
+        """
         date_from, date_to = request_date_bounds(request)
 
         queryset = posted_sale_items()
@@ -207,9 +220,14 @@ class ReportViewSet(viewsets.ViewSet):
             revenue=Sum('subtotal'),
             avg_price=Sum('subtotal') / Sum('quantity')
         ).order_by('-revenue')
+
+        limit = _parse_top_limit(request.query_params.get('limit'), default=10)
+        rows = list(product_sales)
         
         return Response({
-            'products': list(product_sales),
+            'limit': limit,
+            'top': rows[:limit],
+            'products': rows,
         })
 
     @action(detail=False, methods=['get'])
@@ -788,10 +806,11 @@ class ReportViewSet(viewsets.ViewSet):
     def top_products(self, request):
         """Best-selling products in the chosen period.
 
-        Returns top 10 by quantity + total revenue contribution, ready for a
-        horizontal bar chart.
+        Returns top N (default 10, max 50 via ``limit``) by quantity + revenue,
+        ready for a horizontal bar chart.
         """
         start, end, label = resolve_period(request)
+        limit = _parse_top_limit(request.query_params.get('limit'), default=10)
         qs = posted_sale_items().select_related('product', 'product__category')
         if start:
             qs = qs.filter(sale__occurred_at__gte=start)
@@ -805,7 +824,7 @@ class ReportViewSet(viewsets.ViewSet):
                 revenue=Sum('subtotal'),
                 line_count=Count('id'),
             )
-            .order_by('-quantity_sold')[:10]
+            .order_by('-quantity_sold')[:limit]
         )
 
         items = [
@@ -823,6 +842,7 @@ class ReportViewSet(viewsets.ViewSet):
 
         return Response({
             'period': label,
+            'limit': limit,
             'items': items,
         })
 

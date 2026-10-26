@@ -28,7 +28,7 @@ class CustomerPhonePrefixAPITests(ManagerAPITestCase):
     def test_create_prefixes_local_kenyan_number(self):
         response = self.client.post(
             '/api/sales/customers/',
-            {'name': 'Jane Doe', 'phone': '0712345678'},
+            {'gender': 'female', 'name': 'Jane Doe', 'phone': '0712345678'},
             format='json',
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
@@ -39,7 +39,7 @@ class CustomerPhonePrefixAPITests(ManagerAPITestCase):
     def test_create_keeps_existing_254_prefix(self):
         response = self.client.post(
             '/api/sales/customers/',
-            {'name': 'John Doe', 'phone': '+254722000111'},
+            {'gender': 'female', 'name': 'John Doe', 'phone': '+254722000111'},
             format='json',
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
@@ -48,7 +48,7 @@ class CustomerPhonePrefixAPITests(ManagerAPITestCase):
     def test_create_rejects_invalid_phone(self):
         response = self.client.post(
             '/api/sales/customers/',
-            {'name': 'Bad Phone', 'phone': '123'},
+            {'gender': 'female', 'name': 'Bad Phone', 'phone': '123'},
             format='json',
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -57,7 +57,7 @@ class CustomerPhonePrefixAPITests(ManagerAPITestCase):
     def test_create_allows_blank_phone(self):
         response = self.client.post(
             '/api/sales/customers/',
-            {'name': 'No Phone'},
+            {'gender': 'female', 'name': 'No Phone'},
             format='json',
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
@@ -66,8 +66,7 @@ class CustomerPhonePrefixAPITests(ManagerAPITestCase):
     def test_create_stores_duka_contact_and_typical_goods(self):
         response = self.client.post(
             '/api/sales/customers/',
-            {
-                'name': 'Wambua Hardware',
+            {'gender': 'female', 'name': 'Wambua Hardware',
                 'phone': '0712345678',
                 'owner_name': 'John Wambua',
                 'contact_person': 'Ann',
@@ -87,8 +86,7 @@ class CustomerPhonePrefixAPITests(ManagerAPITestCase):
     def test_typical_goods_rejects_overlong_item(self):
         response = self.client.post(
             '/api/sales/customers/',
-            {
-                'name': 'Long Goods Duka',
+            {'gender': 'female', 'name': 'Long Goods Duka',
                 'typical_goods': ['x' * 81],
             },
             format='json',
