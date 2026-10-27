@@ -19,7 +19,7 @@ import {
 } from '../../utils/customerFormState';
 import { applyCustomerFormFieldUpdate } from '../../utils/customerFormFieldUpdate';
 import {
-  customersEnableEdit,
+  canEditCustomer,
   customersShowCustomerType,
   customersShowNotes,
   customersShowStatus,
@@ -70,7 +70,9 @@ export default function CustomerDetailDialog({
   const { permissions } = getStoredAuth();
   const { settings: customerModuleSettings } = useModuleSettings('customers');
   const { settings: storeSettings } = useStoreSettings();
-  const canEdit = customersEnableEdit(customerModuleSettings);
+  const canEdit = canEditCustomer(customerModuleSettings, permissions, {
+    isManagerOrAdmin: isManagerOrAdminFromStorage(),
+  });
   const showCustomerType = customersShowCustomerType(customerModuleSettings);
   const showTaxId = customersShowTaxId(customerModuleSettings);
   const showNotes = customersShowNotes(customerModuleSettings);

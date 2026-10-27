@@ -2,9 +2,11 @@ import {
   customersShowCustomerCode,
   customersShowOutstandingBalance,
   customersEnableCreate,
+  customersEnableEdit,
   customersShowStatus,
   customersAllowQuickAddAtPos,
   canQuickAddCustomerAtPos,
+  canEditCustomer,
 } from './customerDisplay';
 
 describe('customerDisplay', () => {
@@ -12,7 +14,20 @@ describe('customerDisplay', () => {
     expect(customersShowCustomerCode({})).toBe(true);
     expect(customersShowOutstandingBalance({})).toBe(true);
     expect(customersEnableCreate({})).toBe(true);
+    expect(customersEnableEdit({})).toBe(true);
     expect(customersAllowQuickAddAtPos({})).toBe(true);
+  });
+
+  test('canEditCustomer requires store flag plus create or update (or manager)', () => {
+    expect(canEditCustomer({ enable_customer_edit: false }, [{ module: 'customers', action: 'update' }])).toBe(false);
+    expect(canEditCustomer({ enable_customer_edit: true }, [])).toBe(false);
+    expect(
+      canEditCustomer({ enable_customer_edit: true }, [{ module: 'customers', action: 'create' }])
+    ).toBe(true);
+    expect(
+      canEditCustomer({ enable_customer_edit: true }, [{ name: 'customers.update' }])
+    ).toBe(true);
+    expect(canEditCustomer({ enable_customer_edit: true }, [], { isManagerOrAdmin: true })).toBe(true);
   });
 
   test('show_customer_status respects store hide_entity_status_toggles', () => {

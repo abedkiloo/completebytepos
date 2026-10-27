@@ -2,6 +2,8 @@
 
 from rest_framework import status
 
+from accounts.models import Permission, Role, UserProfile
+from django.contrib.auth.models import User
 from sales.models import Customer
 from utils.tests.api_test_base import SuperAdminAPITestCase
 
@@ -69,3 +71,38 @@ class CustomerGenderAPITests(SuperAdminAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         customer.refresh_from_db()
         self.assertEqual(customer.gender, 'male')
+
+
+class CustomerAppEditPermissionTests(SuperAdminAPITestCase):
+    def test_create_permission_alone_can_edit_customer(self):
+        """App field staff with create (no update) may still patch dukas."""
+        role = Role.objects.create(
+            name='App Create Only',
+            is_system_role=False,
+            is_active=True,
+        )
+        role.permissions.set(
+            Permission.objects.filter(
+                module='customers',
+                action__in=['view', 'create'],
+            )
+        )
+        user = User.objects.create_user(username='app_create_only', password='pass')
+        UserProfile.objects.create(
+            user=user,
+            role='cashier',
+            custom_role=role,
+            is_active=True,
+        )
+        self.client.force_authenticate(user=user)
+
+        customer = Customer.objects.create(name='Editable From App', phone='0700555011')
+        response = self.client.patch(
+            f'/api/sales/customers/{customer.id}/',
+            {'name': 'Editable From App', 'phone': '0700555099'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        customer.refresh_from_db()
+        self.assertTrue(customer.phone.endswith('700555099'), customer.phone)
+        self.assertEqual(customer.name, 'Editable From App')

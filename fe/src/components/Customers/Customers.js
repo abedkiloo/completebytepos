@@ -51,13 +51,14 @@ import {
   customersShowWalletBalance,
   customersEnableWalletPayment,
   customersEnableCreate,
-  customersEnableEdit,
+  canEditCustomer,
   customersEnableDelete,
   customersShowCustomerType,
   customersShowTaxId,
   customersShowNotes,
   customersShowStatus,
 } from '../../utils/customerDisplay';
+import { getStoredAuth, isManagerOrAdminFromStorage } from '../../utils/roleAccess';
 import { getWalletDebtAmount } from '../../utils/walletDisplay';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 import {
@@ -75,12 +76,15 @@ const Customers = () => {
   const { settings: customerModuleSettings } = useModuleSettings('customers');
   const { settings: storeSettings } = useStoreSettings();
 
+  const { permissions } = getStoredAuth();
   const showCustomerCode = customersShowCustomerCode(customerModuleSettings);
   const showOutstanding = customersShowOutstandingBalance(customerModuleSettings);
   const showWallet = customersShowWalletBalance(customerModuleSettings);
   const canRecordWalletPayment = customersEnableWalletPayment(customerModuleSettings);
   const canCreate = customersEnableCreate(customerModuleSettings);
-  const canEdit = customersEnableEdit(customerModuleSettings);
+  const canEdit = canEditCustomer(customerModuleSettings, permissions, {
+    isManagerOrAdmin: isManagerOrAdminFromStorage(),
+  });
   const canDelete = customersEnableDelete(customerModuleSettings);
   const showCustomerType = customersShowCustomerType(customerModuleSettings);
   const showTaxId = customersShowTaxId(customerModuleSettings);

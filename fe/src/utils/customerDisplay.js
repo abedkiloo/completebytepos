@@ -24,6 +24,22 @@ export function customersEnableEdit(settings) {
   return isModuleFlagEnabled(settings, 'enable_customer_edit', true);
 }
 
+/**
+ * Web + app: edit when the store allows it and the user can create or update customers.
+ * Matches mobile `canEditCustomers` and BE update (create OR update).
+ */
+export function canEditCustomer(settings, permissions = [], { isManagerOrAdmin = false } = {}) {
+  if (!customersEnableEdit(settings)) return false;
+  if (isManagerOrAdmin) return true;
+  if (!Array.isArray(permissions)) return false;
+  return permissions.some(
+    (p) =>
+      p.name === 'customers.update' ||
+      p.name === 'customers.create' ||
+      (p.module === 'customers' && (p.action === 'update' || p.action === 'create'))
+  );
+}
+
 export function customersEnableDelete(settings) {
   return isModuleFlagEnabled(settings, 'enable_customer_delete', true);
 }

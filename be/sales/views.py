@@ -26,7 +26,7 @@ from inventory.models import StockMovement
 from settings.utils import get_current_branch, get_current_tenant, is_branch_support_enabled
 from .services import SaleService, InvoiceService, PaymentService, CustomerService
 from .module_settings import sales_validate_stock_before_sale
-from accounts.permissions import RequirePerm, RequirePermPerAction
+from accounts.permissions import RequireAny, RequirePerm, RequirePermPerAction
 from utils.audit_mixin import AuditedModelViewSetMixin
 from utils.validation_errors import validation_error_message
 from utils.pdf_generator import create_invoice_pdf
@@ -1040,6 +1040,18 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         'engagement_tier',
         'buyer_segment',
     ]
+
+    def get_permissions(self):
+        # Field staff who can register dukas may also edit them from the app.
+        if getattr(self, 'action', None) in ('update', 'partial_update'):
+            return [
+                IsAuthenticated(),
+                RequireAny(
+                    RequirePerm('customers', 'update'),
+                    RequirePerm('customers', 'create'),
+                )(),
+            ]
+        return super().get_permissions()
 
     @staticmethod
     def _feature_disabled_response(feature_label: str):

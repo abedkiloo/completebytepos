@@ -521,6 +521,14 @@ def sync_default_roles(created_by=None):
     )
     if sales_created:
         sales.permissions.set(_sales_queryset())
+    else:
+        # Additive: keep customer create/update so the app can edit dukas.
+        sales.permissions.add(
+            *Permission.objects.filter(
+                module='customers',
+                action__in=['view', 'create', 'update'],
+            )
+        )
 
     field_agent, agent_created = Role.objects.update_or_create(
         name=ROLE_FIELD_AGENT,
@@ -537,6 +545,13 @@ def sync_default_roles(created_by=None):
         # Additive: existing Field Sales roles need daily tracker after upgrade.
         field_agent.permissions.add(
             *Permission.objects.filter(module='sales', action='daily_sales')
+        )
+        # Additive: keep customer create/update so the app can edit dukas.
+        field_agent.permissions.add(
+            *Permission.objects.filter(
+                module='customers',
+                action__in=['view', 'create', 'update'],
+            )
         )
 
     dispatcher, dispatcher_created = Role.objects.update_or_create(
