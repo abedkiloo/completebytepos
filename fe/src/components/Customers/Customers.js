@@ -238,7 +238,8 @@ const Customers = () => {
 
   const handleSubmit = async (e) => {
     e?.preventDefault?.();
-    const errors = validateCustomerForm(formData, { requireGender: !editingCustomer });
+    // Gender optional until the mobile build with gender is released (then re-enable on create).
+    const errors = validateCustomerForm(formData, { requireGender: false });
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) {
       const msg = Object.values(errors)[0];

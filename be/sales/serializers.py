@@ -93,14 +93,8 @@ class CustomerSerializer(serializers.ModelSerializer):
         if name_error:
             raise serializers.ValidationError({'name': name_error})
 
-        # Gender is required for new customers; existing blank records stay valid.
-        if self.instance is None:
-            gender = attrs.get('gender', '')
-            if not str(gender or '').strip():
-                raise serializers.ValidationError({
-                    'gender': 'Select whether this customer is male or female.',
-                })
-
+        # Gender is optional for now so older mobile builds (without the field)
+        # can still register. Enforce on create once that app build is released.
         phone = attrs.get('phone', serializers.empty)
         if phone is serializers.empty and self.instance is not None:
             phone = self.instance.phone

@@ -59,7 +59,7 @@ const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
     // Clear previous errors
     setFormErrors({});
     
-    const errors = validateCustomerForm(formData, { requireGender: true });
+    const errors = validateCustomerForm(formData, { requireGender: false });
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
       reportFormError(null, Object.values(errors)[0], 5000);
@@ -170,7 +170,7 @@ const CustomerFormModal = ({ isOpen, onClose, onCustomerCreated }) => {
               />
             </div>
             <div className="form-group">
-              <label>Gender *</label>
+              <label>Gender</label>
               <div className="inline-flex rounded-md border bg-background">
                 {CUSTOMER_GENDER_OPTIONS.map((opt) => (
                   <button

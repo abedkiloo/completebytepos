@@ -7,14 +7,15 @@ from utils.tests.api_test_base import SuperAdminAPITestCase
 
 
 class CustomerGenderAPITests(SuperAdminAPITestCase):
-    def test_create_requires_gender(self):
+    def test_create_allows_missing_gender_for_older_app_builds(self):
+        """Until the gender UI build is released, blank/missing gender is OK."""
         response = self.client.post(
             '/api/sales/customers/',
             {'name': 'No Gender Duka', 'customer_type': 'business'},
             format='json',
         )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
-        self.assertIn('gender', response.data)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data.get('gender') or '', '')
 
     def test_create_accepts_male_or_female(self):
         phones = {'male': '0700111001', 'female': '0700111002'}

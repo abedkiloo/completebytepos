@@ -82,13 +82,9 @@ export default function CustomerFormDialog({
               <Field
                 label="Gender"
                 htmlFor="cust-gender"
-                required={!editing}
+                required={false}
                 error={formErrors.gender}
-                hint={
-                  editing && !formData.gender
-                    ? 'Left blank for older records — optional to fill in now.'
-                    : undefined
-                }
+                hint="Optional for now — older app builds may leave this blank."
               >
                 <SegmentedControl
                   value={formData.gender || ''}

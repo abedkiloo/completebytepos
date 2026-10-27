@@ -25,9 +25,9 @@ describe('customerFormState', () => {
     expect(validateCustomerForm({ name: '' }).name).toBeTruthy();
   });
 
-  it('requires gender only when registering a new customer', () => {
+  it('treats gender as optional unless requireGender is explicitly enabled', () => {
+    expect(validateCustomerForm({ name: 'Wambua Hardware' }).gender).toBeFalsy();
     expect(validateCustomerForm({ name: 'Wambua Hardware' }, { requireGender: true }).gender).toBeTruthy();
-    expect(validateCustomerForm({ name: 'Wambua Hardware', gender: '' }, { requireGender: false }).gender).toBeFalsy();
     expect(
       validateCustomerForm({ name: 'Wambua Hardware', gender: 'male' }, { requireGender: true }).gender
     ).toBeFalsy();
