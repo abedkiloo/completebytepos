@@ -22,6 +22,7 @@ REPORT_ACTION_GATES: dict[str, tuple[str, str]] = {
     'profit_loss': ('enable_financial_reports', 'Financial reports'),
     'trading_profit': ('enable_financial_reports', 'Financial reports'),
     'trading_profit_cogs': ('enable_financial_reports', 'Financial reports'),
+    'trading_profit_breakdown': ('enable_financial_reports', 'Financial reports'),
     'annual': ('enable_financial_reports', 'Financial reports'),
     'invoice': ('enable_invoice_reports', 'Invoice reports'),
     'customer_outstanding': ('enable_invoice_reports', 'Invoice reports'),

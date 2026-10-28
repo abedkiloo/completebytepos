@@ -637,3 +637,479 @@ def trading_profit_cogs_for_request(request) -> dict[str, Any]:
         'period': period if period in ('week', 'month', 'year', 'today') else (label or 'custom'),
         **breakdown,
     }
+
+
+BREAKDOWN_ROW_LIMIT = 200
+
+# Metrics the UI can drill into from trading-profit rows.
+BREAKDOWN_METRICS = frozenset({
+    'gross_sales',
+    'refunds',
+    'net_sales',
+    'cogs',
+    'gross_profit',
+    'expenses',
+    'expenses_excluded',
+    'other_income',
+    'net_profit',
+    'collected_on_sales',
+    'debt_collections',
+    'cash_in_period',
+    'unpaid_on_sales',
+    'cash_gross_profit',
+    'cash_net_profit',
+})
+
+
+def _iso_dt(value) -> str | None:
+    if value is None:
+        return None
+    if hasattr(value, 'isoformat'):
+        return value.isoformat()
+    return str(value)
+
+
+def _sale_row(sale, *, amount_key: str = 'total') -> dict[str, Any]:
+    unpaid = max(_d(sale.total) - _d(sale.amount_paid), Decimal('0'))
+    collected = min(_d(sale.amount_paid), _d(sale.total))
+    amount = {
+        'total': _d(sale.total),
+        'collected': collected,
+        'unpaid': unpaid,
+    }.get(amount_key, _d(sale.total))
+    lines = []
+    for item in sale.items.all():
+        line_total = (
+            item.subtotal
+            if item.subtotal is not None
+            else _d(item.quantity) * _d(item.unit_price)
+        )
+        lines.append({
+            'product_name': getattr(item.product, 'name', None) or 'Item',
+            'quantity': float(_d(item.quantity)),
+            'unit_price': _money(item.unit_price),
+            'line_total': _money(line_total),
+        })
+    occurred = _as_date(sale.occurred_at) or ''
+    return {
+        'id': sale.id,
+        'label': sale.sale_number or f'Sale #{sale.id}',
+        'sublabel': f'{occurred} · {sale.payment_method or "—"} · paid {_money(sale.amount_paid)}',
+        'amount': _money(amount),
+        'sale_total': _money(sale.total),
+        'amount_paid': _money(sale.amount_paid),
+        'unpaid': _money(unpaid),
+        'occurred_at': _iso_dt(sale.occurred_at),
+        'lines': lines,
+    }
+
+
+def _component(label: str, value, *, op: str = '') -> dict[str, Any]:
+    return {'label': label, 'value': _money(value), 'op': op}
+
+
+def compute_metric_breakdown(
+    *,
+    metric: str,
+    start,
+    end,
+    row_limit: int = BREAKDOWN_ROW_LIMIT,
+) -> dict[str, Any]:
+    """
+    Drill-down for one trading-profit line: formula steps + contributing rows.
+
+    ``metric=cogs`` reuses the detailed COGS sale/line builder.
+    """
+    metric = (metric or '').strip().lower()
+    if metric not in BREAKDOWN_METRICS:
+        raise ValueError(
+            f'Unknown metric "{metric}". Choose one of: '
+            + ', '.join(sorted(BREAKDOWN_METRICS))
+        )
+
+    summary = compute_trading_profit(start=start, end=end)
+    sales_qs, refund_qs = _period_sales_and_refunds(start=start, end=end)
+    base = {
+        'metric': metric,
+        'date_from': start.isoformat() if start else None,
+        'date_to': end.isoformat() if end else None,
+        'total': summary.get(metric if metric != 'net_profit' else 'net_profit'),
+        'components': [],
+        'rows': [],
+        'row_count': 0,
+        'rows_shown': 0,
+        'truncated': False,
+        'cogs': None,
+    }
+
+    if metric == 'cogs':
+        cogs = compute_cogs_breakdown(start=start, end=end, sale_limit=row_limit)
+        return {
+            **base,
+            'title': 'COGS (cost of goods sold)',
+            'explanation': cogs.get('explanation') or '',
+            'formula': 'COGS sold − cost restored on refunds',
+            'total': cogs.get('cogs'),
+            'components': [
+                _component('COGS sold', cogs.get('cogs_sold') or 0),
+                _component('Refunded cost', cogs.get('cogs_refunded') or 0, op='−'),
+                _component('Net COGS', cogs.get('cogs') or 0, op='='),
+            ],
+            'cogs': cogs,
+            'row_count': cogs.get('sale_count') or 0,
+            'rows_shown': cogs.get('sales_shown') or 0,
+            'truncated': bool(cogs.get('truncated')),
+        }
+
+    if metric == 'gross_sales':
+        total_count = sales_qs.count()
+        sales = list(
+            sales_qs.select_related('customer')
+            .prefetch_related('items__product')
+            .order_by('-occurred_at', '-id')[:row_limit]
+        )
+        rows = [_sale_row(s, amount_key='total') for s in sales]
+        return {
+            **base,
+            'title': 'Gross sales',
+            'explanation': (
+                'Sum of completed sale totals in this period (business date). '
+                'Each sale below shows its line items.'
+            ),
+            'formula': 'Sum of sale totals',
+            'total': summary['gross_sales'],
+            'rows': rows,
+            'row_count': total_count,
+            'rows_shown': len(rows),
+            'truncated': total_count > row_limit,
+        }
+
+    if metric == 'refunds':
+        total_count = refund_qs.count()
+        refunds = list(
+            refund_qs.select_related('sale')
+            .order_by('-created_at', '-id')[:row_limit]
+        )
+        rows = []
+        for refund in refunds:
+            sale = refund.sale
+            rows.append({
+                'id': refund.id,
+                'label': getattr(refund, 'refund_number', None) or f'Refund #{refund.id}',
+                'sublabel': (
+                    f'On {sale.sale_number if sale else "sale"} · '
+                    f'{_as_date(refund.created_at) or ""}'
+                ),
+                'amount': _money(refund.amount),
+                'lines': [],
+            })
+        return {
+            **base,
+            'title': 'Refunds / voids',
+            'explanation': (
+                'Approved refunds and voids applied in this period. '
+                'They reduce gross sales to net sales.'
+            ),
+            'formula': 'Sum of refund amounts',
+            'total': summary['refunds'],
+            'rows': rows,
+            'row_count': total_count,
+            'rows_shown': len(rows),
+            'truncated': total_count > row_limit,
+        }
+
+    if metric == 'net_sales':
+        return {
+            **base,
+            'title': 'Net sales',
+            'explanation': 'Gross sales after refunds and voids in the period.',
+            'formula': 'Gross sales − refunds / voids',
+            'total': summary['net_sales'],
+            'components': [
+                _component('Gross sales', summary['gross_sales']),
+                _component('Refunds / voids', summary['refunds'], op='−'),
+                _component('Net sales', summary['net_sales'], op='='),
+            ],
+            'rows': [],
+            'row_count': 0,
+            'rows_shown': 0,
+            'truncated': False,
+        }
+
+    if metric == 'gross_profit':
+        return {
+            **base,
+            'title': 'Gross profit',
+            'explanation': (
+                'Net sales minus the cost of goods sold for those sales. '
+                'Open Net sales or COGS for the underlying documents.'
+            ),
+            'formula': 'Net sales − COGS',
+            'total': summary['gross_profit'],
+            'components': [
+                _component('Net sales', summary['net_sales']),
+                _component('COGS', summary['cogs'], op='−'),
+                _component('Gross profit', summary['gross_profit'], op='='),
+            ],
+        }
+
+    if metric in ('expenses', 'expenses_excluded'):
+        included = metric == 'expenses'
+        expenses_qs = _trading_expenses_qs(start=start, end=end, included=included)
+        total_count = expenses_qs.count()
+        expenses = list(
+            expenses_qs.select_related('category')
+            .order_by('-expense_date', '-id')[:row_limit]
+        )
+        rows = [
+            {
+                'id': exp.id,
+                'label': exp.expense_number or f'Expense #{exp.id}',
+                'sublabel': (
+                    f'{exp.expense_date} · '
+                    f'{getattr(exp.category, "name", None) or "Uncategorised"} · '
+                    f'{(exp.description or "")[:80]}'
+                ),
+                'amount': _money(exp.amount),
+                'lines': [],
+            }
+            for exp in expenses
+        ]
+        return {
+            **base,
+            'title': 'Expenses (in trading profit)' if included else 'Excluded expenses',
+            'explanation': (
+                'Approved expenses whose category is included in trading profit.'
+                if included
+                else 'Approved expenses on categories marked excluded from trading profit '
+                     '(e.g. owner drawings). Shown for visibility only.'
+            ),
+            'formula': 'Sum of approved expense amounts',
+            'total': summary['expenses'] if included else summary['expenses_excluded'],
+            'rows': rows,
+            'row_count': total_count,
+            'rows_shown': len(rows),
+            'truncated': total_count > row_limit,
+        }
+
+    if metric == 'other_income':
+        start_d = _as_date(start)
+        end_d = _as_date(end)
+        income_qs = Income.objects.filter(status='approved')
+        if start_d is not None:
+            income_qs = income_qs.filter(income_date__gte=start_d)
+        if end_d is not None:
+            income_qs = income_qs.filter(income_date__lte=end_d)
+        total_count = income_qs.count()
+        incomes = list(
+            income_qs.select_related('category')
+            .order_by('-income_date', '-id')[:row_limit]
+        )
+        rows = [
+            {
+                'id': inc.id,
+                'label': getattr(inc, 'income_number', None) or f'Income #{inc.id}',
+                'sublabel': (
+                    f'{inc.income_date} · '
+                    f'{getattr(inc.category, "name", None) or "Uncategorised"} · '
+                    f'{(inc.description or "")[:80]}'
+                ),
+                'amount': _money(inc.amount),
+                'lines': [],
+            }
+            for inc in incomes
+        ]
+        return {
+            **base,
+            'title': 'Other income',
+            'explanation': 'Approved other income in the period (added to trading profit).',
+            'formula': 'Sum of approved other income',
+            'total': summary['other_income'],
+            'rows': rows,
+            'row_count': total_count,
+            'rows_shown': len(rows),
+            'truncated': total_count > row_limit,
+        }
+
+    if metric == 'net_profit':
+        return {
+            **base,
+            'title': 'Trading profit',
+            'explanation': (
+                'Accrual trading profit: full net sales (including unpaid), '
+                'minus COGS and included expenses, plus other income.'
+            ),
+            'formula': 'Net sales − COGS − expenses + other income',
+            'total': summary['net_profit'],
+            'components': [
+                _component('Net sales', summary['net_sales']),
+                _component('COGS', summary['cogs'], op='−'),
+                _component('Expenses', summary['expenses'], op='−'),
+                _component('Other income', summary['other_income'], op='+'),
+                _component('Trading profit', summary['net_profit'], op='='),
+            ],
+        }
+
+    if metric == 'collected_on_sales':
+        total_count = sales_qs.count()
+        sales = list(
+            sales_qs.select_related('customer')
+            .prefetch_related('items__product')
+            .order_by('-occurred_at', '-id')[:row_limit]
+        )
+        rows = [_sale_row(s, amount_key='collected') for s in sales]
+        return {
+            **base,
+            'title': 'Collected on these sales',
+            'explanation': (
+                'Cash/M-PESA/etc. taken on sales in this period, capped at each sale total. '
+                'Does not include later debt collections.'
+            ),
+            'formula': 'Sum of min(amount paid, sale total) on period sales',
+            'total': summary['collected_on_sales'],
+            'rows': rows,
+            'row_count': total_count,
+            'rows_shown': len(rows),
+            'truncated': total_count > row_limit,
+        }
+
+    if metric == 'unpaid_on_sales':
+        unpaid_qs = sales_qs.annotate(
+            _unpaid=ExpressionWrapper(
+                Greatest(F('total') - F('amount_paid'), _ZERO),
+                output_field=_DEC,
+            )
+        ).filter(_unpaid__gt=0)
+        total_count = unpaid_qs.count()
+        sales = list(
+            unpaid_qs.select_related('customer')
+            .prefetch_related('items__product')
+            .order_by('-occurred_at', '-id')[:row_limit]
+        )
+        rows = [_sale_row(s, amount_key='unpaid') for s in sales]
+        return {
+            **base,
+            'title': 'Still unpaid on these sales',
+            'explanation': (
+                'Amount still owed on period sales (sale total − amount paid). '
+                'Counted in accrual trading profit, not in cash trading profit.'
+            ),
+            'formula': 'Sum of max(sale total − amount paid, 0)',
+            'total': summary['unpaid_on_sales'],
+            'rows': rows,
+            'row_count': total_count,
+            'rows_shown': len(rows),
+            'truncated': total_count > row_limit,
+        }
+
+    if metric == 'debt_collections':
+        settlements_qs = CustomerWalletTransaction.objects.filter(
+            source_type='debt_settlement',
+            transaction_type='credit',
+        )
+        if start is not None:
+            settlements_qs = settlements_qs.filter(created_at__gte=start)
+        if end is not None:
+            settlements_qs = settlements_qs.filter(created_at__lte=end)
+        total_count = settlements_qs.count()
+        txns = list(
+            settlements_qs.select_related('customer', 'sale')
+            .order_by('-created_at', '-id')[:row_limit]
+        )
+        rows = []
+        for txn in txns:
+            customer_name = getattr(txn.customer, 'name', None) or 'Customer'
+            sale_ref = txn.sale.sale_number if txn.sale_id and txn.sale else ''
+            rows.append({
+                'id': txn.id,
+                'label': customer_name,
+                'sublabel': (
+                    f'{_as_date(txn.created_at) or ""}'
+                    + (f' · {sale_ref}' if sale_ref else '')
+                    + (f' · {(txn.notes or "")[:60]}' if txn.notes else '')
+                ),
+                'amount': _money(txn.amount),
+                'lines': [],
+            })
+        return {
+            **base,
+            'title': 'Debt collections this period',
+            'explanation': (
+                'Payments received against customer debt in this period '
+                '(may clear older sales).'
+            ),
+            'formula': 'Sum of debt settlement credits',
+            'total': summary['debt_collections'],
+            'rows': rows,
+            'row_count': total_count,
+            'rows_shown': len(rows),
+            'truncated': total_count > row_limit,
+        }
+
+    if metric == 'cash_in_period':
+        return {
+            **base,
+            'title': 'Cash in',
+            'explanation': (
+                'Money collected on period sales plus debt collections received '
+                'in the period.'
+            ),
+            'formula': 'Collected on these sales + debt collections',
+            'total': summary['cash_in_period'],
+            'components': [
+                _component('Collected on these sales', summary['collected_on_sales']),
+                _component('Debt collections', summary['debt_collections'], op='+'),
+                _component('Cash in', summary['cash_in_period'], op='='),
+            ],
+        }
+
+    if metric == 'cash_gross_profit':
+        return {
+            **base,
+            'title': 'Cash gross profit',
+            'explanation': 'Cash in for the period minus the same COGS as accrual trading profit.',
+            'formula': 'Cash in − COGS',
+            'total': summary['cash_gross_profit'],
+            'components': [
+                _component('Cash in', summary['cash_in_period']),
+                _component('COGS', summary['cogs'], op='−'),
+                _component('Cash gross profit', summary['cash_gross_profit'], op='='),
+            ],
+        }
+
+    # cash_net_profit
+    return {
+        **base,
+        'title': 'Cash trading profit',
+        'explanation': (
+            'Cash in minus COGS and expenses, plus other income. '
+            'Uses the same costs as accrual trading profit.'
+        ),
+        'formula': 'Cash in − COGS − expenses + other income',
+        'total': summary['cash_net_profit'],
+        'components': [
+            _component('Cash in', summary['cash_in_period']),
+            _component('COGS', summary['cogs'], op='−'),
+            _component('Expenses', summary['expenses'], op='−'),
+            _component('Other income', summary['other_income'], op='+'),
+            _component('Cash trading profit', summary['cash_net_profit'], op='='),
+        ],
+    }
+
+
+def trading_profit_breakdown_for_request(request) -> dict[str, Any]:
+    from django.core.exceptions import ValidationError
+
+    start, end, period, label = _resolve_bounds(request)
+    params = getattr(request, 'query_params', request.GET)
+    metric = (params.get('metric') or '').strip().lower()
+    if not metric:
+        raise ValidationError({'metric': 'Query param metric is required.'})
+    try:
+        breakdown = compute_metric_breakdown(metric=metric, start=start, end=end)
+    except ValueError as exc:
+        raise ValidationError({'metric': str(exc)}) from exc
+    return {
+        'period': period if period in ('week', 'month', 'year', 'today') else (label or 'custom'),
+        **breakdown,
+    }

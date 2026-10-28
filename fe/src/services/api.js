@@ -574,6 +574,8 @@ export const reportsAPI = {
   profitLoss: (params) => api.get('/reports/profit_loss/', { params }),
   tradingProfit: (params) => api.get('/reports/trading_profit/', { params }),
   tradingProfitCogs: (params) => api.get('/reports/trading_profit/cogs/', { params }),
+  tradingProfitBreakdown: (params) =>
+    api.get('/reports/trading_profit/breakdown/', { params }),
   annual: (params) => api.get('/reports/annual/', { params }),
   // New operational tiles for the redesigned Reports hub. Each accepts a
   // ?period=today|week|month query param.

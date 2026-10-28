@@ -95,6 +95,7 @@ REPORTS_PERMS = RequirePermPerAction('reports', {
     'stock_valuation': 'view',
     'trading_profit': 'profit',
     'trading_profit_cogs': 'profit',
+    'trading_profit_breakdown': 'profit',
 })
 
 
@@ -1097,4 +1098,25 @@ class ReportViewSet(viewsets.ViewSet):
         from reports.trading_profit import trading_profit_cogs_for_request
 
         return Response(trading_profit_cogs_for_request(request))
+
+    @action(detail=False, methods=['get'], url_path='trading_profit/breakdown')
+    @gated_report_action('trading_profit')
+    def trading_profit_breakdown(self, request):
+        """
+        Drill-down for any trading-profit line (gross sales, refunds, COGS,
+        expenses, cash in, etc.).
+
+        Query: ``metric=<name>`` plus the same period / date_from / date_to as
+        ``trading_profit``.
+        """
+        from django.core.exceptions import ValidationError
+        from reports.trading_profit import trading_profit_breakdown_for_request
+
+        try:
+            return Response(trading_profit_breakdown_for_request(request))
+        except ValidationError as exc:
+            return Response(
+                {'error': exc.message_dict if hasattr(exc, 'message_dict') else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 

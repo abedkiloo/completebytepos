@@ -243,6 +243,53 @@ class TradingProfitAPITests(ManagerAPITestCase):
         self.assertTrue(sale['lines'])
         self.assertEqual(sale['lines'][0]['line_cogs'], 80.0)
 
+    def test_metric_breakdown_gross_sales_and_gross_profit(self):
+        self._seed_period_data()
+        admin = self._admin_client()
+        gross = admin.get(
+            '/api/reports/trading_profit/breakdown/',
+            {'period': 'month', 'metric': 'gross_sales'},
+        )
+        self.assertEqual(gross.status_code, status.HTTP_200_OK, gross.data)
+        self.assertEqual(gross.data['metric'], 'gross_sales')
+        self.assertEqual(gross.data['total'], 200.0)
+        self.assertGreaterEqual(len(gross.data['rows']), 1)
+        self.assertEqual(gross.data['rows'][0]['label'], 'S-TP-1')
+        self.assertTrue(gross.data['rows'][0]['lines'])
+
+        profit = admin.get(
+            '/api/reports/trading_profit/breakdown/',
+            {'period': 'month', 'metric': 'gross_profit'},
+        )
+        self.assertEqual(profit.status_code, status.HTTP_200_OK, profit.data)
+        self.assertEqual(profit.data['metric'], 'gross_profit')
+        labels = [c['label'] for c in profit.data['components']]
+        self.assertIn('Net sales', labels)
+        self.assertIn('COGS', labels)
+        self.assertIn('Gross profit', labels)
+
+        expenses = admin.get(
+            '/api/reports/trading_profit/breakdown/',
+            {'period': 'month', 'metric': 'expenses'},
+        )
+        self.assertEqual(expenses.status_code, status.HTTP_200_OK, expenses.data)
+        self.assertEqual(expenses.data['total'], 30.0)
+        self.assertGreaterEqual(len(expenses.data['rows']), 1)
+
+        cogs = admin.get(
+            '/api/reports/trading_profit/breakdown/',
+            {'period': 'month', 'metric': 'cogs'},
+        )
+        self.assertEqual(cogs.status_code, status.HTTP_200_OK, cogs.data)
+        self.assertEqual(cogs.data['total'], 40.0)
+        self.assertIsNotNone(cogs.data['cogs'])
+
+        bad = admin.get(
+            '/api/reports/trading_profit/breakdown/',
+            {'period': 'month', 'metric': 'not_a_line'},
+        )
+        self.assertEqual(bad.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_excluded_category_expense_not_in_trading_profit(self):
         self._seed_period_data()
         drawings = ExpenseCategory.objects.create(
