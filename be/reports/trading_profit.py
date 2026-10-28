@@ -27,8 +27,10 @@ _LINE_COST = ExpressionWrapper(
     F('quantity') * F('unit_cost'),
     output_field=_DEC,
 )
+# Net of admin-return / refund restores so superseded slices cannot inflate COGS.
 _ALLOC_COST = ExpressionWrapper(
-    F('quantity') * F('unit_cost'),
+    Greatest(F('quantity') - Coalesce(F('qty_returned'), Value(0)), Value(0))
+    * F('unit_cost'),
     output_field=_DEC,
 )
 _REFUND_LINE_COST = ExpressionWrapper(

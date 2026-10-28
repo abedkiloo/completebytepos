@@ -322,10 +322,19 @@ def reverse_sale_wallet_effects(sale: Sale, *, user, reason: str) -> None:
 
 
 def unpost_posted_sale(sale: Sale, *, user, reason: str) -> None:
-    """Undo stock, wallet, and journals so the sale can be edited as a holding."""
+    """Undo stock, wallet, and journals so the sale can be edited as a holding.
+
+    Mirrors refund stock restore: FIFO layers return via allocation slices and
+    return movements stamp ``SaleItem.unit_cost`` (not live catalog cost). Prior
+    ``sale`` movements are retagged so COGS/reports never double-count after
+    re-approval. Layer allocations are cleared so the next complete drains cleanly.
+    """
     from inventory.models import StockMovement
     from accounting.reversal import reverse_source_documents
+    from sales.models import SaleItemLayerAllocation
+    from sales.refunds import SaleRefundService
 
+    notes = f'Admin returned sale {sale.sale_number} for correction: {reason}'.strip()
     for item in sale.items.select_related('product', 'variant'):
         product = item.product
         if not product or not product.track_stock:
@@ -334,19 +343,32 @@ def unpost_posted_sale(sale: Sale, *, user, reason: str) -> None:
         qty = int(item.quantity or 0) - int(refunded)
         if qty <= 0:
             continue
-        unit_cost = product.cost or Decimal('0')
-        StockMovement.objects.create(
-            branch=sale.branch,
-            product=product,
-            variant=item.variant,
-            movement_type='return',
+        SaleRefundService._return_stock(
+            sale=sale,
+            sale_item=item,
             quantity=qty,
-            unit_cost=unit_cost,
-            total_cost=qty * unit_cost,
-            reference=sale.sale_number,
+            branch=sale.branch,
             user=user,
-            notes=f'Admin returned sale {sale.sale_number} for correction',
+            reference=sale.sale_number,
+            notes=notes,
         )
+
+    # Soft-void prior sale drains so trading-profit movement fallbacks and
+    # stock ledgers keep a clear correction trail without double COGS.
+    if sale.sale_number:
+        void_tag = timezone.now().strftime('%Y%m%d%H%M%S')
+        void_ref = f'{sale.sale_number}#corrected-{void_tag}'
+        StockMovement.objects.filter(
+            movement_type='sale',
+            reference=sale.sale_number,
+        ).update(
+            reference=void_ref,
+            notes=f'{notes} (superseded sale drain)',
+        )
+
+    # Allocations already restored qty_returned; drop them so re-complete can
+    # stamp fresh FIFO slices against the corrected cart.
+    SaleItemLayerAllocation.objects.filter(sale_item__sale=sale).delete()
 
     reverse_source_documents('sale', sale.pk, reason=reason, user=user)
     reverse_sale_wallet_effects(sale, user=user, reason=reason)
@@ -690,31 +712,31 @@ def complete_queued_sale(sale: Sale, user, payload: dict | None = None) -> Sale:
     )
 
     # Drain stock against existing sale lines (prices already locked at checkout).
+    # Always refresh unit_cost from the validated FIFO plan when available so
+    # qty/line corrections after admin return stamp accurate COGS on re-approve.
     for sale_item in sale.items.select_related('product', 'variant'):
         if not sale_item.product.track_stock:
             continue
+        matched = next(
+            (
+                row for row in validated_items
+                if row['product'].id == sale_item.product_id
+                and (
+                    (row['variant'].id if row['variant'] else None)
+                    == sale_item.variant_id
+                )
+                and int(row['quantity']) == int(sale_item.quantity)
+                and row['unit_price'] == sale_item.unit_price
+            ),
+            None,
+        )
         unit_cost = sale_item.unit_cost
-        # Null or 0 stamps are missing — refresh before drain so COGS books stay clean.
         missing_stamp = unit_cost is None or Decimal(str(unit_cost)) <= 0
-        if missing_stamp:
-            matched = next(
-                (
-                    row for row in validated_items
-                    if row['product'].id == sale_item.product_id
-                    and (
-                        (row['variant'].id if row['variant'] else None)
-                        == sale_item.variant_id
-                    )
-                    and int(row['quantity']) == int(sale_item.quantity)
-                    and row['unit_price'] == sale_item.unit_price
-                ),
-                None,
-            )
-            unit_cost = (
-                matched['unit_cost']
-                if matched
-                else sellable_unit_cost(sale_item.product, sale_item.variant)
-            )
+        if matched is not None:
+            unit_cost = matched['unit_cost']
+        elif missing_stamp:
+            unit_cost = sellable_unit_cost(sale_item.product, sale_item.variant)
+        if unit_cost != sale_item.unit_cost:
             SaleItem.objects.filter(pk=sale_item.pk).update(unit_cost=unit_cost)
             sale_item.unit_cost = unit_cost
         service._create_sale_stock_movements(
