@@ -694,7 +694,9 @@ def complete_queued_sale(sale: Sale, user, payload: dict | None = None) -> Sale:
         if not sale_item.product.track_stock:
             continue
         unit_cost = sale_item.unit_cost
-        if unit_cost is None:
+        # Null or 0 stamps are missing — refresh before drain so COGS books stay clean.
+        missing_stamp = unit_cost is None or Decimal(str(unit_cost)) <= 0
+        if missing_stamp:
             matched = next(
                 (
                     row for row in validated_items
