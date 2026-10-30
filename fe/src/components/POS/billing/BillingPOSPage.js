@@ -161,22 +161,38 @@ export default function BillingPOSPage() {
     );
   }
 
+  const isRectify = Boolean(state.returnedSaleNotice);
+
   return (
     <>
-    <div className="flex h-[100dvh] flex-col overflow-hidden bg-slate-50">
+    <div
+      className={cn(
+        'flex h-[100dvh] flex-col overflow-hidden',
+        isRectify ? 'bg-amber-50/70' : 'bg-slate-50',
+      )}
+      data-testid={isRectify ? 'billing-rectify-workspace' : 'billing-pos-workspace'}
+    >
         {/* Top bar */}
-        <div className="flex flex-col gap-2 border-b bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+        <div
+          className={cn(
+            'flex flex-col gap-2 border-b px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4',
+            isRectify ? 'border-amber-200 bg-amber-100/80' : 'bg-white',
+          )}
+        >
           <div className="flex min-w-0 items-center gap-2">
             <BrandMark className="h-8 w-8" name={storeName} />
             <div className="min-w-0">
-            <h1 className="truncate text-lg font-semibold text-slate-900">{storeName}</h1>
+            <h1 className="truncate text-lg font-semibold text-slate-900">
+              {isRectify ? 'Rectify sale' : storeName}
+            </h1>
             <p className="truncate text-xs text-muted-foreground">
-              {state.returnedSaleNotice ? (
+              {isRectify ? (
                 <>
-                  Correcting{' '}
-                  <span className="font-mono text-amber-800">
+                  Editing{' '}
+                  <span className="font-mono text-amber-900">
                     {state.returnedSaleNotice.saleNumber}
                   </span>
+                  {' · '}cart and payment are live below
                 </>
               ) : (
                 <>
@@ -206,7 +222,7 @@ export default function BillingPOSPage() {
               state.clearCart();
             }}
           >
-            New sale
+            {isRectify ? 'Leave correction' : 'New sale'}
           </Button>
         </div>
         {state.returnedSaleNotice ? (
@@ -760,7 +776,7 @@ export default function BillingPOSPage() {
       />
 
       <PosCartRecoveryDialog
-        open={Boolean(state.cartRecovery)}
+        open={Boolean(state.cartRecovery) && !state.cartRecovery?.autoContinue}
         source={state.cartRecovery?.source || 'holding'}
         itemCount={state.cartRecovery?.itemCount || 0}
         label={state.cartRecovery?.label}

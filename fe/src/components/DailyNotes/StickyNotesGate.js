@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { AlertTriangle, ChevronDown, Loader2, NotebookPen } from 'lucide-react';
 
 import { Button } from '../ui/button';
@@ -30,6 +30,7 @@ import { cn } from '../../lib/cn';
  */
 export default function StickyNotesGate() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = getStoredAuth();
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -37,6 +38,8 @@ export default function StickyNotesGate() {
   const [dismissedGeneral, setDismissedGeneral] = useState(false);
   const [releasedIds, setReleasedIds] = useState([]);
   const [expandedIds, setExpandedIds] = useState([]);
+  // Full-screen gate must not cover Terminal while staff fix a returned sale.
+  const onPosCorrection = String(location.pathname || '').startsWith('/pos');
 
   const loadBlocking = useCallback(async () => {
     setLoading(true);
@@ -81,7 +84,9 @@ export default function StickyNotesGate() {
       toast.warning('Open POS to update this sale.');
       return;
     }
+    // Release this note from the inbox and leave the gate so POS is editable.
     setReleasedIds((prev) => (prev.includes(note.id) ? prev : [...prev, note.id]));
+    setExpandedIds([]);
     navigate(path);
   };
 
@@ -97,12 +102,15 @@ export default function StickyNotesGate() {
   const showInbox = hasInboxNotes(visibleNotes) && (stickyBlocking || !dismissedGeneral);
 
   useLayoutEffect(() => {
-    setStickyNotesOverlay({ loading, open: Boolean(!loading && showInbox) });
-  }, [loading, showInbox]);
+    setStickyNotesOverlay({
+      loading,
+      open: Boolean(!loading && showInbox && !onPosCorrection),
+    });
+  }, [loading, showInbox, onPosCorrection]);
 
   useEffect(() => () => setStickyNotesOverlay({ loading: false, open: false }), []);
 
-  if (loading || !showInbox) {
+  if (loading || !showInbox || onPosCorrection) {
     return null;
   }
 

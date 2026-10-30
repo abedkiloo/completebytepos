@@ -7,6 +7,7 @@ import { toast } from '../../utils/toast';
 import { resetLoginOverlayQueue } from '../../utils/loginOverlayQueue';
 
 const mockNavigate = jest.fn();
+const mockLocation = { pathname: '/' };
 
 jest.mock('../../services/api', () => ({
   dailyNotesAPI: {
@@ -21,6 +22,7 @@ jest.mock('../../utils/roleAccess', () => ({
 
 jest.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
+  useLocation: () => mockLocation,
 }));
 
 jest.mock('../../utils/toast', () => ({
@@ -35,6 +37,7 @@ async function expandNote(id) {
 describe('StickyNotesGate', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockLocation.pathname = '/';
     resetLoginOverlayQueue();
     getStoredAuth.mockReturnValue({ user: { id: 20 } });
   });
@@ -153,6 +156,35 @@ describe('StickyNotesGate', () => {
     await waitFor(() =>
       expect(screen.queryByTestId('sticky-notes-gate')).not.toBeInTheDocument()
     );
+  });
+
+  test('hides the gate while staff are on Terminal POS so editing is not blocked', async () => {
+    mockLocation.pathname = '/pos/billing';
+    dailyNotesAPI.blocking.mockResolvedValue({
+      data: [
+        {
+          id: 8,
+          title: 'Approval rejected: sale completion',
+          content:
+            'Bea returned sale S-1.\n---\nsale_id: 99\nref: reject/sale/99/',
+          is_sticky: true,
+          is_done: false,
+          assigned_to: 20,
+        },
+        {
+          id: 9,
+          title: 'Approval rejected: sale completion',
+          content:
+            'Bea returned sale S-2.\n---\nsale_id: 100\nref: reject/sale/100/',
+          is_sticky: true,
+          is_done: false,
+          assigned_to: 20,
+        },
+      ],
+    });
+    render(<StickyNotesGate />);
+    await waitFor(() => expect(dailyNotesAPI.blocking).toHaveBeenCalled());
+    expect(screen.queryByTestId('sticky-notes-gate')).not.toBeInTheDocument();
   });
 
   test('ticks an assigned general note from the login inbox', async () => {

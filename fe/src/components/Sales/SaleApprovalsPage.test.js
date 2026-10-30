@@ -280,6 +280,8 @@ describe('SaleApprovalsPage', () => {
     expect(screen.getByText(/Waiting on the salesperson/i)).toBeInTheDocument();
     expect(screen.getByText('Red Shuka')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('open-correction-in-terminal'));
-    expect(mockNavigate).toHaveBeenCalledWith('/pos/billing?sale=42');
+    await waitFor(() =>
+      expect(mockNavigate).toHaveBeenCalledWith('/pos/billing?sale=42'),
+    );
   });
 });

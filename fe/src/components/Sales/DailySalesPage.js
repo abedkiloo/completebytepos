@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Banknote,
   Calendar,
@@ -218,6 +218,7 @@ function PaidDebtMixBar({ paidPct, debtPct, paidLabel, debtLabel, className = ''
 }
 
 export default function DailySalesPage() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialDate = searchParams.get('date') || getTodayDateString();
 
@@ -334,7 +335,22 @@ export default function DailySalesPage() {
     loadDailySales();
   }, [loadDailySales]);
 
+  const openSaleForCorrection = (order) => {
+    setShowReceiptModal(false);
+    setSelectedSale(null);
+    navigate(`/pos/billing?sale=${order.id}`);
+  };
+
   const handleViewReceipt = async (order) => {
+    // Returned sales need the rectify Terminal — not a receipt popup that blocks edits.
+    if (
+      order?.payment_status === 'needs_correction'
+      || order?.needs_salesperson_action
+      || order?.status === 'holding'
+    ) {
+      openSaleForCorrection(order);
+      return;
+    }
     try {
       const res = await salesAPI.get(order.id);
       setSelectedSale(res.data);
@@ -951,9 +967,7 @@ export default function DailySalesPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => {
-                              window.location.assign(`/pos/billing?sale=${order.id}`);
-                            }}
+                            onClick={() => openSaleForCorrection(order)}
                           >
                             Fix on Terminal
                           </Button>

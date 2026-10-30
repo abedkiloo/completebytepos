@@ -176,7 +176,7 @@ describe('BillingPOSPage invoice layout', () => {
     expect(useBillingPOSState).toHaveBeenCalledWith({ resumeSaleId: '99' });
   });
 
-  it('shows Correction Mode panel on Terminal POS for returned sales', () => {
+  it('shows compact Rectify chrome on Terminal POS for returned sales', () => {
     useBillingPOSState.mockReturnValue(
       buildMockState({
         returnedSaleNotice: { saleNumber: 'S-RET', comment: 'Wrong prices' },
@@ -192,10 +192,11 @@ describe('BillingPOSPage invoice layout', () => {
       })
     );
     render(<BillingPOSPage />);
-    expect(screen.getByTestId('returned-sale-banner')).toHaveTextContent(
-      /Correction Mode · S-RET/
-    );
+    expect(screen.getByTestId('billing-rectify-workspace')).toBeInTheDocument();
+    expect(screen.getByTestId('returned-sale-banner')).toHaveTextContent(/Rectify · S-RET/);
     expect(screen.getByTestId('returned-sale-banner')).toHaveTextContent('Wrong prices');
+    expect(screen.queryByTestId('correction-details')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('correction-details-toggle'));
     expect(screen.getByTestId('correction-customer-card')).toHaveTextContent('Jane');
     expect(screen.getByTestId('correction-customer-card')).toHaveTextContent('0700111222');
     expect(screen.getByTestId('correction-totals-compare')).toHaveTextContent(/Was → Now/);

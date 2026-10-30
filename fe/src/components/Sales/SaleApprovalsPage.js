@@ -616,8 +616,11 @@ export default function SaleApprovalsPage() {
               onOpenInTerminal={
                 saleNeedsSalespersonAction(selectedSale)
                   ? () => {
+                      const saleId = selectedSale.id;
                       setSelected(null);
-                      navigate(`/pos/billing?sale=${selectedSale.id}`);
+                      window.setTimeout(() => {
+                        navigate(`/pos/billing?sale=${saleId}`);
+                      }, 0);
                     }
                   : undefined
               }

@@ -14,6 +14,7 @@ const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({
   MemoryRouter: ({ children }) => <>{children}</>,
   useNavigate: () => mockNavigate,
+  useLocation: () => ({ pathname: '/' }),
 }));
 
 jest.mock('../../services/api', () => ({

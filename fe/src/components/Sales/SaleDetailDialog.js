@@ -171,8 +171,11 @@ export default function SaleDetailDialog({
               className="border-amber-400 bg-white"
               data-testid="sale-detail-fix-on-terminal"
               onClick={() => {
+                // Close the receipt pane first so it cannot sit on top of Terminal.
                 onOpenChange(false);
-                navigate(`/pos/billing?sale=${sale.id}`);
+                window.setTimeout(() => {
+                  navigate(`/pos/billing?sale=${sale.id}`);
+                }, 0);
               }}
             >
               <ExternalLink className="mr-1 h-3.5 w-3.5" />
