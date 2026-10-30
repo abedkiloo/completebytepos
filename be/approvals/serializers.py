@@ -103,3 +103,4 @@ class RejectChangeSerializer(serializers.Serializer):
 
 class ResubmitChangeSerializer(serializers.Serializer):
     reason = serializers.CharField(required=False, allow_blank=True, default='')
+    confirm_unchanged = serializers.BooleanField(required=False, default=False)

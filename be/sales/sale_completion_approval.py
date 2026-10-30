@@ -31,6 +31,10 @@ CORRECTION_FINGERPRINT_KEY = 'correction_fingerprint'
 UNEDITED_RETURN_MESSAGE = (
     'Update this sale before sending it back for approval.'
 )
+UNEDITED_RETURN_CONFIRM_HINT = (
+    'Nothing changed since this sale was returned. '
+    'Confirm you are sure the original sale is already correct, then send it again.'
+)
 ADMIN_OVERRIDE_REQUIRED = (
     'Only an admin can return an approved sale for correction.'
 )
@@ -276,11 +280,19 @@ def returned_sale_was_edited(sale: Sale) -> bool:
     return stored != current
 
 
-def assert_returned_sale_was_edited(sale: Sale) -> None:
+def assert_returned_sale_was_edited(
+    sale: Sale,
+    *,
+    confirm_unchanged: bool = False,
+) -> None:
+    """Block unedited resubmits unless the cashier explicitly confirms no change."""
     if not sale_needs_salesperson_action(sale):
         return
-    if not returned_sale_was_edited(sale):
-        raise ValidationError(UNEDITED_RETURN_MESSAGE)
+    if returned_sale_was_edited(sale):
+        return
+    if confirm_unchanged:
+        return
+    raise ValidationError(UNEDITED_RETURN_MESSAGE)
 
 
 def record_rejected_sale_complete_change(
@@ -580,11 +592,17 @@ def payment_payload_from_inputs(
     return payload
 
 
-def queue_sale_complete(request, sale: Sale, *, payment_payload: dict | None = None) -> PendingChange:
+def queue_sale_complete(
+    request,
+    sale: Sale,
+    *,
+    payment_payload: dict | None = None,
+    confirm_unchanged: bool = False,
+) -> PendingChange:
     existing = pending_sale_complete_change(sale)
     if existing:
         return existing
-    assert_returned_sale_was_edited(sale)
+    assert_returned_sale_was_edited(sale, confirm_unchanged=confirm_unchanged)
     payload = payment_payload or {}
     change = submit_change(
         request=request,

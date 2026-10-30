@@ -10,6 +10,7 @@ export function buildSaleCommitSummary({
   paymentReference = '',
   kind: kindOverride,
   queuedForApproval = false,
+  unchangedCorrection = false,
 } = {}) {
   const tot = Number(total) || 0;
   const paid = Number(received) || 0;
@@ -31,17 +32,28 @@ export function buildSaleCommitSummary({
     paymentReference: String(paymentReference || '').trim(),
     kind,
     queuedForApproval: Boolean(queuedForApproval),
+    unchangedCorrection: Boolean(unchangedCorrection),
   };
 }
 
-export function saleCommitConfirmLabel(kind, queuedForApproval = false) {
+export function saleCommitConfirmLabel(
+  kind,
+  queuedForApproval = false,
+  unchangedCorrection = false,
+) {
+  if (unchangedCorrection) return 'Yes — send without changes';
   if (queuedForApproval || kind === 'approval') return 'Send for approval';
   if (kind === 'pay_later') return 'Confirm — pay later';
   if (kind === 'partial') return 'Confirm sale & debt';
   return 'Confirm & complete sale';
 }
 
-export function saleCommitTitle(kind, queuedForApproval = false) {
+export function saleCommitTitle(
+  kind,
+  queuedForApproval = false,
+  unchangedCorrection = false,
+) {
+  if (unchangedCorrection) return 'Send this sale back unchanged?';
   if (queuedForApproval || kind === 'approval') return 'Send this sale for approval?';
   if (kind === 'pay_later') return 'Confirm pay-later sale?';
   if (kind === 'partial') return 'Confirm partial payment?';

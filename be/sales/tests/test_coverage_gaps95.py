@@ -156,6 +156,8 @@ class SaleCompletionApprovalGapTests(TestCase):
         with self.assertRaises(ValidationError) as ctx:
             assert_returned_sale_was_edited(unedited)
         self.assertIn(UNEDITED_RETURN_MESSAGE, str(ctx.exception))
+        # Explicit cashier confirm allows sending the sale back unchanged.
+        assert_returned_sale_was_edited(unedited, confirm_unchanged=True)
 
         unedited.total = Decimal('49')
         unedited.save(update_fields=['total'])

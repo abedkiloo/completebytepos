@@ -45,6 +45,7 @@ import {
   evaluateBillingAmountPaid,
   isRegisteredPosCustomer,
 } from '../../../utils/posCheckoutValidation';
+import { correctionLooksUnchanged } from '../../../utils/correctionUnchanged';
 import { dispatchSaleCorrectionSubmitted } from '../../../utils/saleCorrectionEvents';
 
 const HOLDING_SYNC_MS = 600;
@@ -720,6 +721,16 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
       selectedCustomer && !isWalkInCustomer(selectedCustomer)
         ? selectedCustomer.name
         : null;
+    const itemCount = cart.reduce((n, i) => n + (Number(i.quantity) || 0), 0);
+    const unchangedCorrection = Boolean(
+      returnedSaleNotice
+      && correctionLooksUnchanged(correctionSnapshot, {
+        total,
+        paid: amountPaidValue,
+        itemCount,
+        paymentMethod,
+      }),
+    );
     setPendingCheckout({
       holdingId: id,
       paid: amountPaidValue,
@@ -728,13 +739,15 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
         ? paymentRef
         : '',
       partialPayment,
+      confirmUnchanged: unchangedCorrection,
       summary: buildSaleCommitSummary({
         total,
         received: amountPaidValue,
         paymentMethod,
-        itemCount: cart.reduce((n, i) => n + (Number(i.quantity) || 0), 0),
+        itemCount,
         customerName,
         paymentReference: paymentRef,
+        unchangedCorrection,
       }),
     });
     setShowSaleCommitConfirm(true);
@@ -751,6 +764,8 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
     requireCustomer,
     selectedCustomer,
     total,
+    returnedSaleNotice,
+    correctionSnapshot,
   ]);
 
   const confirmCheckout = useCallback(async () => {
@@ -761,6 +776,7 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
       paymentMethod: method,
       paymentReference: reference,
       partialPayment: allowPartial,
+      confirmUnchanged,
     } = pendingCheckout;
     const wasCorrection = Boolean(returnedSaleNotice);
 
@@ -773,6 +789,7 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
         allow_partial_payment: allowPartial,
         excess_payment_choice: 'change',
         client_channel: 'web',
+        confirm_unchanged: Boolean(confirmUnchanged),
       });
       const sale = {
         ...res.data,

@@ -38,6 +38,7 @@ import {
 } from '../../../utils/posCheckoutValidation';
 import { evaluatePartialPaymentToggle } from '../../../utils/billingPartialPayment';
 import { buildSaleCommitSummary } from '../../../utils/saleCommitSummary';
+import { correctionLooksUnchanged } from '../../../utils/correctionUnchanged';
 import { dispatchSaleCorrectionSubmitted } from '../../../utils/saleCorrectionEvents';
 import { prependCustomerToList } from '../../../utils/walkInCustomer';
 import {
@@ -909,6 +910,7 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
             allow_partial_payment: payload.allow_partial_payment,
             excess_payment_choice: payload.excess_payment_choice,
             client_channel: 'web',
+            confirm_unchanged: Boolean(pendingSaleData?.unchangedCorrection),
           });
         } else {
           res = await salesAPI.create(payload);
@@ -1086,15 +1088,25 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
         selectedCustomer && selectedCustomer.id !== 'walk-in'
           ? selectedCustomer.name
           : null;
+      const itemCount = cart.reduce((n, i) => n + (Number(i.quantity) || 0), 0);
       setPendingSaleData(
         buildSaleCommitSummary({
           total,
           received,
           paymentMethod,
-          itemCount: cart.reduce((n, i) => n + (Number(i.quantity) || 0), 0),
+          itemCount,
           customerName,
           paymentReference: paymentRef,
           queuedForApproval: sendForApproval,
+          unchangedCorrection: Boolean(
+            returnedSaleNotice
+            && correctionLooksUnchanged(correctionSnapshot, {
+              total,
+              paid: received,
+              itemCount,
+              paymentMethod,
+            }),
+          ),
         })
       );
       setShowSaleCommitConfirm(true);
@@ -1105,15 +1117,27 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
       selectedCustomer && selectedCustomer.id !== 'walk-in'
         ? selectedCustomer.name
         : null;
+    const itemCount = cart.reduce((n, i) => n + (Number(i.quantity) || 0), 0);
+    const received =
+      paymentMethod === 'wallet' ? total : parseFloat(receivedAmount) || 0;
     setPendingSaleData(
       buildSaleCommitSummary({
         total,
-        received: paymentMethod === 'wallet' ? total : parseFloat(receivedAmount) || 0,
+        received,
         paymentMethod,
-        itemCount: cart.reduce((n, i) => n + (Number(i.quantity) || 0), 0),
+        itemCount,
         customerName,
         paymentReference: paymentRef,
         queuedForApproval: sendForApproval,
+        unchangedCorrection: Boolean(
+          returnedSaleNotice
+          && correctionLooksUnchanged(correctionSnapshot, {
+            total,
+            paid: received,
+            itemCount,
+            paymentMethod,
+          }),
+        ),
       })
     );
     setShowSaleCommitConfirm(true);
@@ -1127,6 +1151,8 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
     receivedAmount,
     total,
     selectedCustomer,
+    returnedSaleNotice,
+    correctionSnapshot,
     allowPartialPayment,
     paymentOnAccount,
     allowExcessToWallet,

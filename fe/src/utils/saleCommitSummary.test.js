@@ -25,6 +25,7 @@ describe('saleCommitSummary', () => {
       paymentReference: '',
       kind: 'full',
       queuedForApproval: false,
+      unchangedCorrection: false,
     });
     expect(saleCommitTitle('full')).toBe('Confirm sale?');
     expect(saleCommitConfirmLabel('full')).toBe('Confirm & complete sale');
@@ -51,6 +52,7 @@ describe('saleCommitSummary', () => {
       paymentReference: '',
       kind: 'full',
       queuedForApproval: false,
+      unchangedCorrection: false,
     });
     expect(
       buildSaleCommitSummary({
@@ -72,12 +74,22 @@ describe('saleCommitSummary', () => {
       paymentReference: 'REF',
       kind: 'full',
       queuedForApproval: false,
+      unchangedCorrection: false,
     });
   });
 
   test('queuedForApproval uses send-for-approval labels', () => {
     expect(saleCommitConfirmLabel('full', true)).toBe('Send for approval');
     expect(saleCommitTitle('partial', true)).toBe('Send this sale for approval?');
+    expect(saleCommitConfirmLabel('full', true, true)).toBe('Yes — send without changes');
+    expect(saleCommitTitle('full', true, true)).toBe('Send this sale back unchanged?');
+    expect(
+      buildSaleCommitSummary({
+        total: 100,
+        received: 100,
+        unchangedCorrection: true,
+      }).unchangedCorrection
+    ).toBe(true);
     expect(buildSaleCommitSummary({ queuedForApproval: true }).queuedForApproval).toBe(true);
   });
 

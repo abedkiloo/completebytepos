@@ -724,6 +724,8 @@ class CheckoutHoldingSerializer(serializers.Serializer):
     use_wallet = serializers.BooleanField(default=False)
     wallet_amount = serializers.DecimalField(max_digits=10, decimal_places=2, default=0, required=False)
     client_channel = serializers.CharField(required=False, allow_blank=True, max_length=16)
+    # Returned sale with no edits: cashier must explicitly confirm it was already correct.
+    confirm_unchanged = serializers.BooleanField(required=False, default=False)
 
     def validate(self, attrs):
         from sales.module_settings import apply_sale_module_settings

@@ -591,12 +591,12 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
                     {
                         'product_id': self.product.id,
                         'quantity': '1',
-                        'unit_price': '90.00',
+                        'unit_price': '100.00',
                     }
                 ],
                 'payment_method': 'mpesa',
                 'payment_reference': 'QHXCUST01',
-                'amount_paid': '90.00',
+                'amount_paid': '100.00',
                 'client_channel': 'web',
             },
             format='json',
@@ -614,11 +614,11 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
                     {
                         'product_id': self.product.id,
                         'quantity': '1',
-                        'unit_price': '95.00',
+                        'unit_price': '110.00',
                     }
                 ],
                 'payment_method': 'mpesa',
-                'amount_paid': '95.00',
+                'amount_paid': '110.00',
                 'client_channel': 'web',
             },
             format='json',
@@ -1019,6 +1019,9 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
             {
                 'holding_id': sale_id,
                 'items': [{'product_id': self.product.id, 'quantity': '2', 'unit_price': '100.00'}],
+                # Correction sync keeps tender when omitted — send the new total paid.
+                'amount_paid': '200.00',
+                'payment_method': 'cash',
                 'client_channel': 'web',
             },
             format='json',
@@ -1090,6 +1093,8 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
                         'unit_price': '100.00',
                     }
                 ],
+                'amount_paid': '200.00',
+                'payment_method': 'cash',
                 'client_channel': 'web',
             },
             format='json',
@@ -1133,6 +1138,28 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
         self.assertIn(
             'Update this sale',
             str(blocked.data.get('error') or blocked.data),
+        )
+
+        confirmed = self.client.post(
+            f'/api/sales/{sale_id}/checkout/',
+            {
+                'payment_method': 'cash',
+                'amount_paid': '100.00',
+                'allow_partial_payment': False,
+                'confirm_unchanged': True,
+            },
+            format='json',
+        )
+        self.assertIn(confirmed.status_code, (status.HTTP_200_OK, status.HTTP_201_CREATED), confirmed.data)
+        self.assertEqual(confirmed.data['status'], 'pending_approval')
+
+        # Re-open a fresh returned sale for the edit path below.
+        created = self.client.post('/api/sales/', self._sale_payload(), format='json')
+        sale_id = created.data['id']
+        self._manager_client().post(
+            f'/api/sales/{sale_id}/reject-complete/',
+            {'rejection_reason': 'Wrong prices'},
+            format='json',
         )
 
         edited = self.client.post(

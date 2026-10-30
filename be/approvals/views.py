@@ -292,6 +292,7 @@ class PendingChangeViewSet(viewsets.ReadOnlyModelViewSet):
                 request.user,
                 reason=body.validated_data.get('reason') or '',
                 request=request,
+                confirm_unchanged=bool(body.validated_data.get('confirm_unchanged')),
             )
         except DjangoValidationError as exc:
             if hasattr(exc, 'message_dict'):

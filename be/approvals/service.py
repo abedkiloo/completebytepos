@@ -416,6 +416,8 @@ def resubmit_change(
     maker,
     reason: str = '',
     request=None,
+    *,
+    confirm_unchanged: bool = False,
 ) -> PendingChange:
     """Return a rejected request to the checker queue."""
     if change.status != PendingChange.STATUS_REJECTED:
@@ -425,7 +427,7 @@ def resubmit_change(
             raise ValidationError('You can only resubmit your own requests.')
 
     extra = str(reason or '').strip()
-    _guard_sale_complete_resubmit(change)
+    _guard_sale_complete_resubmit(change, confirm_unchanged=confirm_unchanged)
 
     def _requeue(item: PendingChange) -> None:
         if extra:
@@ -464,7 +466,11 @@ def resubmit_change(
     return change
 
 
-def _guard_sale_complete_resubmit(change: PendingChange) -> None:
+def _guard_sale_complete_resubmit(
+    change: PendingChange,
+    *,
+    confirm_unchanged: bool = False,
+) -> None:
     if change.action_type != ACTION_SALE_COMPLETE:
         return
     from sales.models import Sale
@@ -481,7 +487,7 @@ def _guard_sale_complete_resubmit(change: PendingChange) -> None:
     existing = pending_sale_complete_change(sale)
     if existing and existing.pk != change.pk:
         raise ValidationError('This sale is already waiting for approval.')
-    assert_returned_sale_was_edited(sale)
+    assert_returned_sale_was_edited(sale, confirm_unchanged=confirm_unchanged)
 
 
 def _on_sale_complete_resubmitted(change: PendingChange) -> None:

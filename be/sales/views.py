@@ -677,20 +677,18 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 .first()
             )
 
-        customer = self.sale_service.resolve_customer(data.get('customer_id'))
+        # Holding updates (especially returned corrections) may keep an inactive customer.
+        customer = self.sale_service.resolve_customer(
+            data.get('customer_id'),
+            require_active=existing_holding is None,
+        )
         if data.get('customer_id') and customer is None:
-            # Updating a draft/correction: keep the sale's customer even if inactive.
             if (
                 existing_holding
                 and existing_holding.customer_id
                 and int(existing_holding.customer_id) == int(data['customer_id'])
             ):
                 customer = existing_holding.customer
-            else:
-                customer = self.sale_service.resolve_customer(
-                    data.get('customer_id'),
-                    require_active=False,
-                )
             if customer is None:
                 return Response(
                     {'error': 'Customer not found'},
@@ -781,6 +779,9 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 wallet_amount=Decimal(str(serializer.validated_data.get('wallet_amount', 0))),
                 client_channel=resolve_client_channel(request, serializer.validated_data),
                 request=request,
+                confirm_unchanged=bool(
+                    serializer.validated_data.get('confirm_unchanged')
+                ),
             )
         except ValidationError as e:
             return Response(

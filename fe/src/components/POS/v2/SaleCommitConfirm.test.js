@@ -34,6 +34,30 @@ describe('SaleCommitConfirm', () => {
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
+  test('asks for explicit confirm when a returned sale is unchanged', () => {
+    const onConfirm = jest.fn();
+    render(
+      <SaleCommitConfirm
+        open
+        onOpenChange={jest.fn()}
+        summary={{
+          ...base,
+          kind: 'full',
+          queuedForApproval: true,
+          unchangedCorrection: true,
+        }}
+        submitting={false}
+        onConfirm={onConfirm}
+      />
+    );
+    expect(screen.getByText(/Send this sale back unchanged/i)).toBeInTheDocument();
+    expect(screen.getByTestId('unchanged-correction-warning')).toHaveTextContent(
+      /sure you want to send this sale back/i
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Yes — send without changes/i }));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
   test('shows change for overpayment and payment reference', () => {
     render(
       <SaleCommitConfirm

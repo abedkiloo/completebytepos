@@ -31,7 +31,8 @@ export function SaleCommitConfirm({
 }) {
   if (!summary) return null;
   const kind = summary.kind || 'full';
-  const title = saleCommitTitle(kind, summary.queuedForApproval);
+  const unchanged = Boolean(summary.unchangedCorrection);
+  const title = saleCommitTitle(kind, summary.queuedForApproval, unchanged);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -48,11 +49,23 @@ export function SaleCommitConfirm({
             />
           </DialogTitle>
           <DialogDescription>
-            {summary.queuedForApproval
-              ? 'Record payment and any remaining debt. A manager will approve before stock, books, and the receipt go live.'
-              : 'Review the payment summary, then confirm to save this sale. This cannot be undone from the register.'}
+            {unchanged
+              ? 'Nothing changed since this sale was returned for correction. Confirm only if you are sure the original sale was already correct.'
+              : summary.queuedForApproval
+                ? 'Record payment and any remaining debt. A manager will approve before stock, books, and the receipt go live.'
+                : 'Review the payment summary, then confirm to save this sale. This cannot be undone from the register.'}
           </DialogDescription>
         </DialogHeader>
+
+        {unchanged ? (
+          <div
+            className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950"
+            data-testid="unchanged-correction-warning"
+          >
+            Are you sure you want to send this sale back for approval without
+            any edits?
+          </div>
+        ) : null}
 
         <dl className="grid grid-cols-2 gap-y-2 rounded-md border bg-muted/40 px-4 py-3 text-sm">
           {summary.itemCount > 0 ? (
@@ -106,7 +119,13 @@ export function SaleCommitConfirm({
             Cancel
           </Button>
           <Button onClick={onConfirm} disabled={submitting}>
-            {submitting ? 'Saving…' : saleCommitConfirmLabel(kind, summary.queuedForApproval)}
+            {submitting
+              ? 'Saving…'
+              : saleCommitConfirmLabel(
+                  kind,
+                  summary.queuedForApproval,
+                  unchanged,
+                )}
           </Button>
         </DialogFooter>
       </DialogContent>

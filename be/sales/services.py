@@ -679,6 +679,7 @@ class SaleService(BaseService):
         payment_reference: str = '',
         client_channel: Optional[str] = None,
         request=None,
+        confirm_unchanged: bool = False,
     ) -> Sale:
         """Finalise a holding sale: stock, journal entry, status=completed."""
         if holding.status != 'holding':
@@ -705,7 +706,10 @@ class SaleService(BaseService):
             sale_must_requeue_after_correction,
         )
 
-        assert_returned_sale_was_edited(holding)
+        assert_returned_sale_was_edited(
+            holding,
+            confirm_unchanged=confirm_unchanged,
+        )
 
         validated_items = self.validate_sale_items(
             items_data,
@@ -791,6 +795,7 @@ class SaleService(BaseService):
                     client_channel=client_channel or '',
                     wallet_amount_locked=payment_result['wallet_amount_used'],
                 ),
+                confirm_unchanged=confirm_unchanged,
             )
             return holding
 
