@@ -38,6 +38,7 @@ import {
 } from '../../../utils/posCheckoutValidation';
 import { evaluatePartialPaymentToggle } from '../../../utils/billingPartialPayment';
 import { buildSaleCommitSummary } from '../../../utils/saleCommitSummary';
+import { dispatchSaleCorrectionSubmitted } from '../../../utils/saleCorrectionEvents';
 import { prependCustomerToList } from '../../../utils/walkInCustomer';
 import {
   salesShowDiscount,
@@ -860,6 +861,7 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
   const submitSale = useCallback(
     async ({ allowPartial = false, excessChoice = 'change' } = {}) => {
       if (submitting) return;
+      const wasCorrection = Boolean(returnedSaleNotice);
       setSubmitting(true);
       try {
         const payload = buildSalePayload({
@@ -934,6 +936,9 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
           );
         } else {
           toast.success(saleCheckoutSuccessToast(sale));
+        }
+        if (wasCorrection) {
+          dispatchSaleCorrectionSubmitted({ saleId: sale.id });
         }
       } catch (err) {
         toast.error(

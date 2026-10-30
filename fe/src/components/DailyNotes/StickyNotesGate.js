@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AlertTriangle, ChevronDown, Loader2, NotebookPen } from 'lucide-react';
 
@@ -21,12 +21,18 @@ import {
 } from '../../utils/approvalReturn';
 import { formatDisplayDate, carriedOverLabel } from '../../utils/dailyNotesTasks';
 import { setStickyNotesOverlay } from '../../utils/loginOverlayQueue';
+import {
+  SALE_CORRECTION_SUBMITTED_EVENT,
+} from '../../utils/saleCorrectionEvents';
 import { cn } from '../../lib/cn';
 
 /**
- * On login, show notes assigned to the current user as compact expandable strips.
- * Must-tick notes must be ticked before the rest of the app can be used.
- * Returned-sale notes cannot be ticked — staff open the sale and send it back.
+ * Blocking sticky inbox for returned sales and must-tick notes.
+ *
+ * Returned-sale flow:
+ * 1. Open sale → gate hides so Terminal Rectify is editable
+ * 2. Submit for approval → sticky for that sale clears on the server
+ * 3. Gate reloads; if more returned sales remain, it blocks the app again
  */
 export default function StickyNotesGate() {
   const navigate = useNavigate();
@@ -36,10 +42,11 @@ export default function StickyNotesGate() {
   const [loading, setLoading] = useState(true);
   const [togglingId, setTogglingId] = useState(null);
   const [dismissedGeneral, setDismissedGeneral] = useState(false);
-  const [releasedIds, setReleasedIds] = useState([]);
   const [expandedIds, setExpandedIds] = useState([]);
-  // Full-screen gate must not cover Terminal while staff fix a returned sale.
-  const onPosCorrection = String(location.pathname || '').startsWith('/pos');
+  /** True only while Terminal is open for a returned-sale fix. */
+  const [suppressForFix, setSuppressForFix] = useState(false);
+  /** Set once staff actually land on Terminal for a fix; leaving then re-blocks. */
+  const reachedBillingFixRef = useRef(false);
 
   const loadBlocking = useCallback(async () => {
     setLoading(true);
@@ -48,7 +55,6 @@ export default function StickyNotesGate() {
       const rows = Array.isArray(res.data) ? res.data : [];
       setNotes(rows.filter((n) => !n.is_done));
       setDismissedGeneral(false);
-      setReleasedIds([]);
       setExpandedIds([]);
     } catch {
       setNotes([]);
@@ -60,6 +66,39 @@ export default function StickyNotesGate() {
   useEffect(() => {
     loadBlocking();
   }, [loadBlocking, user?.id]);
+
+  // Suppress while fixing on Terminal; restore sticky gate only after leaving Terminal.
+  useEffect(() => {
+    const onBilling = String(location.pathname || '').startsWith('/pos/billing');
+    const params = new URLSearchParams(location.search || '');
+    const openingSale = Boolean(params.get('sale'));
+
+    if (onBilling && (openingSale || suppressForFix)) {
+      reachedBillingFixRef.current = true;
+      if (openingSale) {
+        setSuppressForFix(true);
+      }
+      return undefined;
+    }
+
+    if (reachedBillingFixRef.current && !onBilling) {
+      reachedBillingFixRef.current = false;
+      setSuppressForFix(false);
+      loadBlocking();
+    }
+    return undefined;
+  }, [location.pathname, location.search, suppressForFix, loadBlocking]);
+
+  // After a correction is submitted, re-check. Remaining returned sales stay sticky.
+  useEffect(() => {
+    const onSubmitted = () => {
+      reachedBillingFixRef.current = false;
+      setSuppressForFix(false);
+      loadBlocking();
+    };
+    window.addEventListener(SALE_CORRECTION_SUBMITTED_EVENT, onSubmitted);
+    return () => window.removeEventListener(SALE_CORRECTION_SUBMITTED_EVENT, onSubmitted);
+  }, [loadBlocking]);
 
   const handleToggle = async (note) => {
     if (noticeRequiresSaleFix(note) || !canToggleDailyNote(note, user?.id, true)) return;
@@ -84,9 +123,8 @@ export default function StickyNotesGate() {
       toast.warning('Open POS to update this sale.');
       return;
     }
-    // Release this note from the inbox and leave the gate so POS is editable.
-    setReleasedIds((prev) => (prev.includes(note.id) ? prev : [...prev, note.id]));
     setExpandedIds([]);
+    setSuppressForFix(true);
     navigate(path);
   };
 
@@ -96,21 +134,19 @@ export default function StickyNotesGate() {
     );
   };
 
-  const visibleNotes = notes.filter((n) => !releasedIds.includes(n.id));
-  const stickyBlocking = hasBlockingStickyNotes(visibleNotes);
-  const returnedSaleOpen = visibleNotes.some((n) => noticeRequiresSaleFix(n));
-  const showInbox = hasInboxNotes(visibleNotes) && (stickyBlocking || !dismissedGeneral);
+  const stickyBlocking = hasBlockingStickyNotes(notes);
+  const returnedSaleOpen = notes.some((n) => noticeRequiresSaleFix(n));
+  const returnedCount = notes.filter((n) => noticeRequiresSaleFix(n)).length;
+  const showInbox = hasInboxNotes(notes) && (stickyBlocking || !dismissedGeneral);
+  const gateOpen = Boolean(!loading && showInbox && !suppressForFix);
 
   useLayoutEffect(() => {
-    setStickyNotesOverlay({
-      loading,
-      open: Boolean(!loading && showInbox && !onPosCorrection),
-    });
-  }, [loading, showInbox, onPosCorrection]);
+    setStickyNotesOverlay({ loading, open: gateOpen });
+  }, [loading, gateOpen]);
 
   useEffect(() => () => setStickyNotesOverlay({ loading: false, open: false }), []);
 
-  if (loading || !showInbox || onPosCorrection) {
+  if (!gateOpen) {
     return null;
   }
 
@@ -132,20 +168,22 @@ export default function StickyNotesGate() {
             )}
             {stickyBlocking
               ? returnedSaleOpen
-                ? 'Returned sale — open and send back'
+                ? returnedCount > 1
+                  ? `${returnedCount} returned sales — open and send back`
+                  : 'Returned sale — open and send back'
                 : 'Notes that must be ticked'
               : 'Notes for you'}
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             {stickyBlocking
               ? returnedSaleOpen
-                ? 'Open each sale below, fix it, then send it back.'
+                ? 'Open a sale to edit it. After you send it back, any remaining sales stay here until fixed.'
                 : 'Tap a note to open it, then mark it done.'
               : 'Tap a note to read it. Mark done when finished, or continue.'}
           </p>
         </div>
         <ul className="min-h-0 flex-1 divide-y overflow-y-auto" data-testid="sticky-notes-gate-list">
-          {visibleNotes.map((note) => {
+          {notes.map((note) => {
             const saleFix = noticeRequiresSaleFix(note);
             const expanded = expandedIds.includes(note.id);
             const title = note.title || noteKindLabel(note);

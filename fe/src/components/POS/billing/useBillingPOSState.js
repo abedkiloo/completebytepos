@@ -45,6 +45,7 @@ import {
   evaluateBillingAmountPaid,
   isRegisteredPosCustomer,
 } from '../../../utils/posCheckoutValidation';
+import { dispatchSaleCorrectionSubmitted } from '../../../utils/saleCorrectionEvents';
 
 const HOLDING_SYNC_MS = 600;
 
@@ -735,6 +736,7 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
       paymentReference: reference,
       partialPayment: allowPartial,
     } = pendingCheckout;
+    const wasCorrection = Boolean(returnedSaleNotice);
 
     setSubmitting(true);
     try {
@@ -775,6 +777,9 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
                 : 'Sale completed',
         })
       );
+      if (wasCorrection) {
+        dispatchSaleCorrectionSubmitted({ saleId: sale.id });
+      }
     } catch (err) {
       const msg = formatApiError(err, 'Checkout failed');
       toast.error(msg);
@@ -785,7 +790,7 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
     } finally {
       setSubmitting(false);
     }
-  }, [submitting, pendingCheckout]);
+  }, [submitting, pendingCheckout, returnedSaleNotice]);
 
   const cancelSaleCommitConfirm = useCallback(() => {
     if (submitting) return;

@@ -1,13 +1,16 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import StickyNotesGate from './StickyNotesGate';
 import { dailyNotesAPI } from '../../services/api';
 import { getStoredAuth } from '../../utils/roleAccess';
 import { toast } from '../../utils/toast';
 import { resetLoginOverlayQueue } from '../../utils/loginOverlayQueue';
+import {
+  SALE_CORRECTION_SUBMITTED_EVENT,
+} from '../../utils/saleCorrectionEvents';
 
 const mockNavigate = jest.fn();
-const mockLocation = { pathname: '/' };
+const mockLocation = { pathname: '/', search: '' };
 
 jest.mock('../../services/api', () => ({
   dailyNotesAPI: {
@@ -29,6 +32,18 @@ jest.mock('../../utils/toast', () => ({
   toast: { error: jest.fn(), warning: jest.fn() },
 }));
 
+const returnedSaleNote = (id, saleId, titleSuffix = '') => ({
+  id,
+  title: `Approval rejected: sale completion${titleSuffix}`,
+  content:
+    `Bea returned sale S-${saleId}.\nTheir comment:\nWrong prices\n---\nsource: pending_change\nid: ${id}\nsale_id: ${saleId}\nref: reject/sale/${saleId}/`,
+  is_sticky: true,
+  is_done: false,
+  note_date: '2026-09-24',
+  author_name: 'Bea',
+  assigned_to: 20,
+});
+
 async function expandNote(id) {
   fireEvent.click(await screen.findByTestId(`sticky-note-expand-${id}`));
   expect(await screen.findByTestId(`sticky-note-body-${id}`)).toBeInTheDocument();
@@ -38,6 +53,7 @@ describe('StickyNotesGate', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockLocation.pathname = '/';
+    mockLocation.search = '';
     resetLoginOverlayQueue();
     getStoredAuth.mockReturnValue({ user: { id: 20 } });
   });
@@ -130,19 +146,7 @@ describe('StickyNotesGate', () => {
 
   test('opens a returned sale instead of ticking the note', async () => {
     dailyNotesAPI.blocking.mockResolvedValue({
-      data: [
-        {
-          id: 8,
-          title: 'Approval rejected: sale completion',
-          content:
-            'Bea returned sale S-1.\nTheir comment:\nWrong prices\n---\nsource: pending_change\nid: 51\nsale_id: 99\nref: reject/sale/99/',
-          is_sticky: true,
-          is_done: false,
-          note_date: '2026-09-24',
-          author_name: 'Bea',
-          assigned_to: 20,
-        },
-      ],
+      data: [returnedSaleNote(8, 99)],
     });
     render(<StickyNotesGate />);
     expect(await screen.findByText(/Returned sale — open and send back/i)).toBeInTheDocument();
@@ -158,32 +162,75 @@ describe('StickyNotesGate', () => {
     );
   });
 
-  test('hides the gate while staff are on Terminal POS so editing is not blocked', async () => {
+  test('keeps blocking on Terminal until a returned sale is opened', async () => {
     mockLocation.pathname = '/pos/billing';
+    mockLocation.search = '';
     dailyNotesAPI.blocking.mockResolvedValue({
       data: [
-        {
-          id: 8,
-          title: 'Approval rejected: sale completion',
-          content:
-            'Bea returned sale S-1.\n---\nsale_id: 99\nref: reject/sale/99/',
-          is_sticky: true,
-          is_done: false,
-          assigned_to: 20,
-        },
-        {
-          id: 9,
-          title: 'Approval rejected: sale completion',
-          content:
-            'Bea returned sale S-2.\n---\nsale_id: 100\nref: reject/sale/100/',
-          is_sticky: true,
-          is_done: false,
-          assigned_to: 20,
-        },
+        returnedSaleNote(8, 99),
+        returnedSaleNote(9, 100),
       ],
     });
     render(<StickyNotesGate />);
+    expect(await screen.findByTestId('sticky-notes-gate')).toBeInTheDocument();
+    expect(screen.getByText(/2 returned sales — open and send back/i)).toBeInTheDocument();
+  });
+
+  test('hides the gate when Terminal opens with ?sale= so editing is unblocked', async () => {
+    mockLocation.pathname = '/pos/billing';
+    mockLocation.search = '?sale=99';
+    dailyNotesAPI.blocking.mockResolvedValue({
+      data: [returnedSaleNote(8, 99), returnedSaleNote(9, 100)],
+    });
+    render(<StickyNotesGate />);
     await waitFor(() => expect(dailyNotesAPI.blocking).toHaveBeenCalled());
+    expect(screen.queryByTestId('sticky-notes-gate')).not.toBeInTheDocument();
+  });
+
+  test('after correction submit, re-blocks when more returned sales remain', async () => {
+    dailyNotesAPI.blocking
+      .mockResolvedValueOnce({
+        data: [returnedSaleNote(8, 99), returnedSaleNote(9, 100)],
+      })
+      .mockResolvedValueOnce({
+        data: [returnedSaleNote(9, 100)],
+      });
+
+    render(<StickyNotesGate />);
+    expect(await screen.findByText(/2 returned sales/i)).toBeInTheDocument();
+
+    await expandNote(8);
+    fireEvent.click(screen.getByTestId('sticky-note-open-sale-8'));
+    await waitFor(() =>
+      expect(screen.queryByTestId('sticky-notes-gate')).not.toBeInTheDocument()
+    );
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(SALE_CORRECTION_SUBMITTED_EVENT));
+    });
+
+    expect(await screen.findByTestId('sticky-notes-gate')).toBeInTheDocument();
+    expect(screen.getByText(/Returned sale — open and send back/i)).toBeInTheDocument();
+    expect(dailyNotesAPI.blocking).toHaveBeenCalledTimes(2);
+  });
+
+  test('after correction submit, allows the system when no returned sales remain', async () => {
+    dailyNotesAPI.blocking
+      .mockResolvedValueOnce({ data: [returnedSaleNote(8, 99)] })
+      .mockResolvedValueOnce({ data: [] });
+
+    render(<StickyNotesGate />);
+    await expandNote(8);
+    fireEvent.click(screen.getByTestId('sticky-note-open-sale-8'));
+    await waitFor(() =>
+      expect(screen.queryByTestId('sticky-notes-gate')).not.toBeInTheDocument()
+    );
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(SALE_CORRECTION_SUBMITTED_EVENT));
+    });
+
+    await waitFor(() => expect(dailyNotesAPI.blocking).toHaveBeenCalledTimes(2));
     expect(screen.queryByTestId('sticky-notes-gate')).not.toBeInTheDocument();
   });
 
