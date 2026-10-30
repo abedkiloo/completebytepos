@@ -9,6 +9,13 @@ export const DEBT_COLLECTION_ACTION = 'debt_collection';
 export const SALE_COMPLETE_ACTION = 'sale_complete';
 export const SALES_DESK_QUEUE_ACTIONS = [SALE_COMPLETE_ACTION, DEBT_COLLECTION_ACTION];
 
+/** Query params so Pending Approvals badge/list skip the sales desk queues. */
+export function pendingApprovalsExcludeParams() {
+  return {
+    exclude_action_type: SALES_DESK_QUEUE_ACTIONS.join(','),
+  };
+}
+
 export function userCanApproveDebtCollections(permissions = []) {
   return hasPermission(permissions, 'debt_management', 'approve');
 }
@@ -19,6 +26,14 @@ export function userCanOpenSaleApprovals(permissions = []) {
 
 export function pendingDebtCollectionParams() {
   return { action_type: DEBT_COLLECTION_ACTION };
+}
+
+/** Visible Pending Approvals badge = non-sales-desk changes + pending expenses. */
+export function pendingApprovalsBadgeCount({
+  otherChangesCount = 0,
+  expensesCount = 0,
+} = {}) {
+  return (Number(otherChangesCount) || 0) + (Number(expensesCount) || 0);
 }
 
 export function isSalesDeskQueueAction(actionType) {

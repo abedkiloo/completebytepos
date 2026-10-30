@@ -98,8 +98,33 @@ class PendingChangeViewSet(viewsets.ReadOnlyModelViewSet):
         """All rows awaiting checker action."""
         self._require_checker(request)
         qs = self.get_queryset().filter(status=PendingChange.STATUS_PENDING)
+        exclude_types = self._parse_exclude_action_types(request)
+        if exclude_types:
+            qs = qs.exclude(action_type__in=exclude_types)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
+
+    @staticmethod
+    def _parse_exclude_action_types(request):
+        """
+        Expand ``exclude_action_type`` from repeated params and/or CSV values.
+
+        Axios often sends ``?exclude_action_type=sale_complete,debt_collection``.
+        ``QueryDict.getlist`` then returns a single CSV string — that must be split
+        or sales-desk rows keep inflating the Pending Approvals badge while the
+        Waiting list (which filters in the browser) stays empty.
+        """
+        raw = request.query_params.getlist('exclude_action_type')
+        if not raw:
+            single = (request.query_params.get('exclude_action_type') or '').strip()
+            raw = [single] if single else []
+        exclude_types = []
+        for item in raw:
+            exclude_types.extend(
+                part.strip() for part in str(item).split(',') if part and part.strip()
+            )
+        # Preserve order, drop duplicates.
+        return list(dict.fromkeys(exclude_types))
 
     @action(detail=False, methods=['get'], url_path='pending-count')
     def pending_count(self, request):
@@ -114,13 +139,9 @@ class PendingChangeViewSet(viewsets.ReadOnlyModelViewSet):
         action_type = request.query_params.get('action_type')
         if action_type:
             qs = qs.filter(action_type=action_type)
-        raw_exclude = request.query_params.getlist('exclude_action_type')
-        if not raw_exclude:
-            csv = (request.query_params.get('exclude_action_type') or '').strip()
-            if csv:
-                raw_exclude = [p.strip() for p in csv.split(',') if p.strip()]
-        if raw_exclude:
-            qs = qs.exclude(action_type__in=raw_exclude)
+        exclude_types = self._parse_exclude_action_types(request)
+        if exclude_types:
+            qs = qs.exclude(action_type__in=exclude_types)
         return Response({'count': qs.count()})
 
     @action(detail=False, methods=['get'], url_path='my-submissions')

@@ -9,7 +9,12 @@ import {
   expensesAPI,
   salesAPI,
 } from '../services/api';
-import { pendingDebtCollectionParams, saleApprovalsBadgeCount } from './saleApprovalsQueue';
+import {
+  pendingApprovalsBadgeCount,
+  pendingApprovalsExcludeParams,
+  pendingDebtCollectionParams,
+  saleApprovalsBadgeCount,
+} from './saleApprovalsQueue';
 
 export const NAV_BADGES_REFRESH_EVENT = 'navBadgesRefresh';
 
@@ -61,16 +66,19 @@ export async function fetchNavBadgeCounts({
   const approvalsPromise = mayFetchApprovals
     ? Promise.all([
         pendingChangesAPI
-          .pendingCount({
-            exclude_action_type: 'sale_complete,debt_collection',
-          })
+          .pendingCount(pendingApprovalsExcludeParams())
           .then(readCount)
           .catch(() => 0),
         expensesAPI
           .list({ status: 'pending', show_all: 'true', page_size: 1 })
           .then(readCount)
           .catch(() => 0),
-      ]).then(([changes, expenses]) => changes + expenses)
+      ]).then(([changes, expenses]) =>
+        pendingApprovalsBadgeCount({
+          otherChangesCount: changes,
+          expensesCount: expenses,
+        })
+      )
     : Promise.resolve(0);
 
   const debtorsPromise = mayFetchDebtors

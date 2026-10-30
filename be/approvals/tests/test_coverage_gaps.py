@@ -1608,7 +1608,32 @@ class ViewsApproveRejectErrorTests(ManagerAPITestCase):
             {'exclude_action_type': f'{ACTION_SALE_COMPLETE},{ACTION_PRODUCT_PRICE}'},
         )
         self.assertEqual(csv_resp.status_code, status.HTTP_200_OK)
-        self.assertLessEqual(csv_resp.data['count'], 2)
+        self.assertEqual(csv_resp.data['count'], 0)
+
+        # Axios-style single CSV value must not leave sale_complete on the badge.
+        sale_only = self.client.get(
+            '/api/approvals/pending-changes/pending-count/',
+            {
+                'exclude_action_type': f'{ACTION_SALE_COMPLETE},debt_collection',
+            },
+        )
+        self.assertEqual(sale_only.status_code, status.HTTP_200_OK)
+        self.assertEqual(sale_only.data['count'], 1)
+        self.assertEqual(
+            PendingChange.objects.filter(status=PendingChange.STATUS_PENDING).count(),
+            2,
+        )
+
+        # Waiting list uses the same CSV exclude so badge and list stay in parity.
+        pending_list = self.client.get(
+            '/api/approvals/pending-changes/pending/',
+            {
+                'exclude_action_type': f'{ACTION_SALE_COMPLETE},debt_collection',
+            },
+        )
+        self.assertEqual(pending_list.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(pending_list.data), 1)
+        self.assertEqual(pending_list.data[0]['action_type'], ACTION_PRODUCT_PRICE)
 
 
 class PermissionsExtendedTests(TestCase):

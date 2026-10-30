@@ -4,7 +4,10 @@ import {
   DEBT_COLLECTION_ACTION,
   isSalesDeskQueueAction,
   otherPendingApprovalRows,
+  pendingApprovalsBadgeCount,
+  pendingApprovalsExcludeParams,
   pendingDebtCollectionParams,
+  SALE_COMPLETE_ACTION,
   saleApprovalsBadgeCount,
   saleApprovalsEmpty,
   userCanApproveDebtCollections,
@@ -32,6 +35,23 @@ describe('saleApprovalsQueue', () => {
     expect(pendingDebtCollectionParams()).toEqual({
       action_type: DEBT_COLLECTION_ACTION,
     });
+  });
+
+  test('Pending Approvals badge/list share the same sales-desk exclude CSV', () => {
+    expect(pendingApprovalsExcludeParams()).toEqual({
+      exclude_action_type: `${SALE_COMPLETE_ACTION},${DEBT_COLLECTION_ACTION}`,
+    });
+    expect(pendingApprovalsBadgeCount()).toBe(0);
+    expect(
+      pendingApprovalsBadgeCount({ otherChangesCount: 0, expensesCount: 0 })
+    ).toBe(0);
+    expect(
+      pendingApprovalsBadgeCount({ otherChangesCount: 1, expensesCount: 2 })
+    ).toBe(3);
+    // A lone sale_complete must not inflate the generic Pending Approvals badge.
+    expect(
+      pendingApprovalsBadgeCount({ otherChangesCount: 0, expensesCount: 0 })
+    ).toBe(0);
   });
 
   test('sales-desk actions stay off the generic approvals list', () => {

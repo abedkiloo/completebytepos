@@ -83,6 +83,7 @@ describe('navBadges', () => {
     expect(pendingChangesAPI.pendingCount).toHaveBeenCalledWith({
       exclude_action_type: 'sale_complete,debt_collection',
     });
+    // Badge must stay in parity with Waiting: sales-desk actions are excluded.
     expect(expensesAPI.list).toHaveBeenCalledWith({
       status: 'pending',
       show_all: 'true',

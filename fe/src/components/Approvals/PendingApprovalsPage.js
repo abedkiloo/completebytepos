@@ -29,7 +29,10 @@ import {
   expenseApprovalDetails,
   formatApprovalValue,
 } from '../../utils/approvalDisplay';
-import { otherPendingApprovalRows } from '../../utils/saleApprovalsQueue';
+import {
+  otherPendingApprovalRows,
+  pendingApprovalsExcludeParams,
+} from '../../utils/saleApprovalsQueue';
 import { backfillRejectionSuccessMessage } from '../../utils/recordPastSaleBackfill';
 import { getActionHelp } from '../../utils/actionHelp';
 import HelpHint from '../Shared/HelpHint';
@@ -443,7 +446,8 @@ export default function PendingApprovalsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     const [changesResult, expensesResult] = await Promise.allSettled([
-      pendingChangesAPI.pending(),
+      // Same exclude as the nav badge so Waiting stays in parity with the count.
+      pendingChangesAPI.pending(pendingApprovalsExcludeParams()),
       expensesAPI.list({
         status: 'pending',
         show_all: 'true',
