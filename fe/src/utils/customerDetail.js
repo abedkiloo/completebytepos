@@ -5,15 +5,18 @@
 export function formatDebtTrail(entry) {
   if (!entry) return '';
   const parts = [];
+  const isCorrection = entry.source_type === 'other';
   if (entry.previous_debt != null) {
     parts.push(`Previous debt ${entry.previous_debt}`);
   }
-  if (entry.sale_paid != null && entry.sale_total != null) {
+  if (!isCorrection && entry.sale_paid != null && entry.sale_total != null) {
     parts.push(`Sale ${entry.sale_total} · paid ${entry.sale_paid}`);
-  } else if (entry.payment_amount != null) {
+  } else if (!isCorrection && entry.payment_amount != null) {
     parts.push(`Paid ${entry.payment_amount}`);
+  } else if (isCorrection && entry.amount != null) {
+    parts.push(`Adjustment ${entry.amount}`);
   }
-  if (entry.debt_added != null) {
+  if (!isCorrection && entry.debt_added != null) {
     parts.push(`Debt added ${entry.debt_added}`);
   }
   if (entry.new_debt != null) {
@@ -37,7 +40,15 @@ export function formatSettlementMeta(entry) {
   return parts.join(' · ');
 }
 
-export function ledgerSourceLabel(sourceType) {
+/** True when a wallet row was invalidated by return-for-correction / clear / unvoid. */
+export function isCorrectionLedgerNote(notes) {
+  return /reversed|cleared|superseded|for correction/i.test(String(notes || ''));
+}
+
+export function ledgerSourceLabel(sourceType, notes = '') {
+  if (sourceType === 'other') {
+    return isCorrectionLedgerNote(notes) ? 'Correction' : 'Adjustment';
+  }
   const labels = {
     debt: 'Sale debt',
     debt_settlement: 'Debt payment',
@@ -45,12 +56,11 @@ export function ledgerSourceLabel(sourceType) {
     overpayment: 'Overpayment credit',
     refund: 'Refund',
     manual: 'Manual adjustment',
-    other: 'Other',
   };
   return labels[sourceType] || sourceType || 'Transaction';
 }
 
-/** Active debt repayment row (clearable by admin). */
+/** Active debt repayment row (collections received). */
 export function isDebtRepaymentRow(entry) {
   return Boolean(entry && entry.source_type === 'debt_settlement');
 }

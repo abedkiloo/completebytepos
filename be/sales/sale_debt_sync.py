@@ -9,14 +9,10 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Sum
 
-from sales.models import CustomerWalletTransaction, DebtSettlementAllocation, Sale
-
-SETTLEMENT_CLEAR_NOT_ALLOWED = 'Only an active debt payment can be cleared.'
-SETTLEMENT_CLEAR_ADMIN_ONLY = 'Only an Admin or Super Admin can clear a debt payment.'
+from sales.models import CustomerWalletTransaction, Sale
 
 
 def sale_unpaid_balance(sale: Sale) -> Decimal:
@@ -38,19 +34,20 @@ def active_sale_debt_amount(sale: Sale) -> Decimal:
 
 
 def _invalidate_active_debt_rows(sale: Sale, *, reason: str) -> int:
-    count = 0
-    for txn in CustomerWalletTransaction.objects.filter(sale=sale, source_type='debt'):
-        marker = f'[SUPERSEDED] {reason}'.strip()
-        prior = (txn.notes or '').strip()
-        txn.source_type = 'other'
-        txn.notes = f'{prior} {marker}'.strip() if prior else marker
-        txn.save(update_fields=['source_type', 'notes'])
-        count += 1
-    return count
+    """Remove stale active debt rows so a fresh debt can be posted."""
+    del reason
+    deleted, _ = CustomerWalletTransaction.objects.filter(
+        sale=sale, source_type='debt',
+    ).delete()
+    return int(deleted)
 
 
 def debt_already_cleared_from_wallet(sale: Sale) -> bool:
-    """True when a correction reverse undid debt but an older debt row is still 'active'."""
+    """True when a leftover ``other`` reverse exists after an older active debt row.
+
+    Legacy shape only — new corrections delete wallet rows instead of marking
+    them ``other``. Kept so heal still finds pre-purge corruption.
+    """
     latest_debt = (
         CustomerWalletTransaction.objects.filter(
             sale=sale,
@@ -74,6 +71,62 @@ def debt_already_cleared_from_wallet(sale: Sale) -> bool:
         .first()
     )
     return latest_reverse is not None
+
+
+@transaction.atomic
+def rebuild_customer_wallet_from_active_ledger(customer_id: int) -> Decimal:
+    """Replay non-``other`` wallet rows and rewrite ``wallet_balance`` / balance_after."""
+    from sales.models import Customer
+
+    customer = Customer.objects.select_for_update().get(pk=customer_id)
+    balance = Decimal('0.00')
+    rows = list(
+        CustomerWalletTransaction.objects.filter(customer_id=customer_id)
+        .exclude(source_type='other')
+        .order_by('id')
+    )
+    for txn in rows:
+        amount = Decimal(str(txn.amount or 0)).quantize(Decimal('0.01'))
+        if txn.transaction_type == 'credit':
+            balance += amount
+        else:
+            balance -= amount
+        balance = balance.quantize(Decimal('0.01'))
+        if Decimal(str(txn.balance_after or 0)) != balance:
+            txn.balance_after = balance
+            txn.save(update_fields=['balance_after'])
+    customer.wallet_balance = balance
+    customer.save(update_fields=['wallet_balance', 'updated_at'])
+    return balance
+
+
+@transaction.atomic
+def purge_other_wallet_transactions(*, customer_id: int | None = None) -> dict:
+    """Delete ``source_type=other`` rows and rebuild wallets for affected customers.
+
+    These rows were left by return-for-correction / unvoid and polluted debt
+    ledgers (shown as payments). After purge, unpaid POS debt is re-synced.
+    """
+    from sales.debt_management import ensure_wallet_matches_unpaid_sales
+    from sales.models import Customer
+
+    qs = CustomerWalletTransaction.objects.filter(source_type='other')
+    if customer_id is not None:
+        qs = qs.filter(customer_id=customer_id)
+    customer_ids = list(qs.values_list('customer_id', flat=True).distinct())
+    deleted, _ = qs.delete()
+    rebuilt = []
+    for cid in customer_ids:
+        balance = rebuild_customer_wallet_from_active_ledger(cid)
+        customer = Customer.objects.get(pk=cid)
+        ensure_wallet_matches_unpaid_sales(customer)
+        customer.refresh_from_db()
+        rebuilt.append({'customer_id': cid, 'wallet_balance': str(customer.wallet_balance), 'replayed': str(balance)})
+    return {
+        'deleted': int(deleted),
+        'customers': len(customer_ids),
+        'rebuilt': rebuilt,
+    }
 
 
 def _underpaid_sales_with_live_debt(customer_id: int) -> list[Sale]:
@@ -103,71 +156,6 @@ def _underpaid_sales_with_live_debt(customer_id: int) -> list[Sale]:
             continue
         targets.append(sale)
     return targets
-
-
-@transaction.atomic
-def reverse_debt_settlement(txn: CustomerWalletTransaction, *, user, reason: str = '') -> CustomerWalletTransaction:
-    """Admin-only: undo a debt repayment and put the unpaid amount back on sales.
-
-    Rolls back FIFO ``DebtSettlementAllocation`` bumps to ``sale.amount_paid``,
-    reverses the wallet credit, and marks the original settlement as ``other``
-    so it no longer counts as a collection.
-    """
-    from approvals.permissions import user_has_admin_checker_override
-
-    if not user_has_admin_checker_override(user):
-        raise ValidationError(SETTLEMENT_CLEAR_ADMIN_ONLY)
-    if (
-        txn.source_type != 'debt_settlement'
-        or txn.transaction_type != 'credit'
-    ):
-        raise ValidationError(SETTLEMENT_CLEAR_NOT_ALLOWED)
-
-    amount = Decimal(str(txn.amount or 0)).quantize(Decimal('0.01'))
-    if amount <= 0:
-        raise ValidationError(SETTLEMENT_CLEAR_NOT_ALLOWED)
-
-    reason = (reason or '').strip() or 'Admin cleared erroneous debt payment'
-    customer = txn.customer
-    customer.refresh_from_db()
-
-    allocations = list(
-        DebtSettlementAllocation.objects.filter(wallet_transaction=txn).select_related('sale')
-    )
-    for alloc in allocations:
-        sale = alloc.sale
-        chunk = Decimal(str(alloc.amount or 0)).quantize(Decimal('0.01'))
-        if chunk <= 0:
-            continue
-        paid = Decimal(str(sale.amount_paid or 0)).quantize(Decimal('0.01'))
-        sale.amount_paid = max(Decimal('0.00'), paid - chunk)
-        sale.save(update_fields=['amount_paid', 'updated_at'])
-    DebtSettlementAllocation.objects.filter(wallet_transaction=txn).delete()
-
-    # Credit raised balance; clearing restores prior debt (may go more negative).
-    customer.wallet_balance = (
-        Decimal(str(customer.wallet_balance or 0)) - amount
-    ).quantize(Decimal('0.01'))
-    customer.save(update_fields=['wallet_balance', 'updated_at'])
-
-    reverse = CustomerWalletTransaction.objects.create(
-        customer=customer,
-        transaction_type='debit',
-        source_type='other',
-        amount=amount,
-        balance_after=customer.wallet_balance,
-        reference=txn.reference or '',
-        payment_method=txn.payment_method or '',
-        notes=f'[CLEARED debt payment] {reason}'.strip(),
-        created_by=user,
-    )
-
-    marker = f'[CLEARED] {reason}'.strip()
-    prior = (txn.notes or '').strip()
-    txn.source_type = 'other'
-    txn.notes = f'{prior} {marker}'.strip() if prior else marker
-    txn.save(update_fields=['source_type', 'notes'])
-    return reverse
 
 
 @transaction.atomic

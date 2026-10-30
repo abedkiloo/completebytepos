@@ -70,8 +70,10 @@ def debt_flow_for_txn(
             sale_paid = paid
     elif source_type == 'payment' and transaction_type == 'debit':
         payment_amount = amount  # wallet credit used toward a sale
-    elif transaction_type == 'credit':
+    elif source_type in ('overpayment', 'refund', 'manual') and transaction_type == 'credit':
         payment_amount = amount
+    # source_type ``other`` is correction / reverse rows — never label as a payment.
+    # Callers show previous/new debt only so "Other" does not look like a repayment.
 
     return {
         'balance_before': str(balance_before),
@@ -273,8 +275,10 @@ def get_customer_detail(
         allowed={'name', 'saved', 'created_at', 'source_type'},
         default=('-created_at', '-id'),
     )
+    # ``other`` rows are correction noise — hide them; purge command removes them.
     ledger_qs = (
         CustomerWalletTransaction.objects.filter(customer_id=customer.id)
+        .exclude(source_type='other')
         .select_related('sale', 'created_by')
         .order_by(*ledger_fields)
     )

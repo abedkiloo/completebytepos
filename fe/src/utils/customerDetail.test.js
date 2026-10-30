@@ -2,6 +2,7 @@ import {
   customerDetailPath,
   formatDebtTrail,
   formatSettlementMeta,
+  isCorrectionLedgerNote,
   isDebtRepaymentRow,
   ledgerSourceLabel,
   standingLabel,
@@ -33,11 +34,26 @@ describe('customerDetail helpers', () => {
   it('labels ledger sources and standing', () => {
     expect(ledgerSourceLabel('debt_settlement')).toBe('Debt payment');
     expect(ledgerSourceLabel('debt')).toBe('Sale debt');
+    expect(ledgerSourceLabel('other', '[REVERSED for correction] Wrong pay')).toBe('Correction');
+    expect(ledgerSourceLabel('other', 'Manual tweak')).toBe('Adjustment');
+    expect(isCorrectionLedgerNote('[CLEARED] bad payment')).toBe(true);
     expect(isDebtRepaymentRow({ source_type: 'debt_settlement' })).toBe(true);
     expect(isDebtRepaymentRow({ source_type: 'debt' })).toBe(false);
     expect(standingLabel('debt')).toBe('Has debt');
     expect(standingLabel('credit')).toBe('Has credit');
     expect(standingLabel('good')).toBe('Clear');
+  });
+
+  it('does not call correction rows a payment in the debt trail', () => {
+    expect(
+      formatDebtTrail({
+        source_type: 'other',
+        previous_debt: '26800.00',
+        amount: '8100.00',
+        payment_amount: '8100.00',
+        new_debt: '18700.00',
+      })
+    ).toBe('Previous debt 26800.00 · Adjustment 8100.00 · New debt 18700.00');
   });
 
   it('builds detail paths with optional ledger tab', () => {

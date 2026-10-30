@@ -120,30 +120,15 @@ def _reapply_refund_wallet_effects(sale: Sale, *, user, reason: str) -> None:
     for txn in refund_txns:
         amount = txn.amount or Decimal('0')
         if amount <= 0:
+            txn.delete()
             continue
         if txn.transaction_type == 'credit':
             customer.wallet_balance -= amount
-            reverse_type = 'debit'
         else:
             customer.wallet_balance += amount
-            reverse_type = 'credit'
         customer.save(update_fields=['wallet_balance', 'updated_at'])
-        CustomerWalletTransaction.objects.create(
-            customer=customer,
-            transaction_type=reverse_type,
-            source_type='other',
-            amount=amount,
-            balance_after=customer.wallet_balance,
-            sale=sale,
-            reference=sale.sale_number,
-            notes=f'Unvoid of sale {sale.sale_number}: {reason}',
-            created_by=user,
-        )
-        marker = f'[REVERSED by unvoid] {reason}'.strip()
-        prior = (txn.notes or '').strip()
-        txn.source_type = 'other'
-        txn.notes = f'{prior} {marker}'.strip() if prior else marker
-        txn.save(update_fields=['source_type', 'notes'])
+        # Delete — do not leave source_type=other residue on the debt ledger.
+        txn.delete()
 
     # If the sale still has unpaid balance and no active debt row, re-post debt.
     customer.refresh_from_db()

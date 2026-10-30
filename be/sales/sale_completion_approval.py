@@ -327,12 +327,13 @@ def record_rejected_sale_complete_change(
 def reverse_sale_wallet_effects(sale: Sale, *, user, reason: str) -> None:
     """Undo wallet payment / debt / overpayment for a sale returned for correction.
 
-    Creates a reverse ledger row and **invalidates** the originals (source_type
-    flipped to ``other``) so re-completion can post fresh debt for the new
-    unpaid total. Leaving active ``debt`` rows behind used to skip re-apply.
+    Adjusts the wallet and **deletes** the original rows so re-completion can
+    post fresh debt. Do not leave ``source_type=other`` residue — those rows
+    polluted customer debt ledgers and looked like repayments.
     """
     from sales.models import CustomerWalletTransaction
 
+    del user, reason  # kept for call-site compatibility / audit at higher layer
     customer = sale.customer
     if customer is None:
         return
@@ -348,31 +349,14 @@ def reverse_sale_wallet_effects(sale: Sale, *, user, reason: str) -> None:
     for txn in originals:
         amount = txn.amount or Decimal('0')
         if amount <= 0:
+            txn.delete()
             continue
         if txn.transaction_type == 'debit':
             customer.wallet_balance += amount
-            reverse_type = 'credit'
         else:
             customer.wallet_balance -= amount
-            reverse_type = 'debit'
         customer.save(update_fields=['wallet_balance', 'updated_at'])
-        CustomerWalletTransaction.objects.create(
-            customer=customer,
-            transaction_type=reverse_type,
-            source_type='other',
-            amount=amount,
-            balance_after=customer.wallet_balance,
-            sale=sale,
-            reference=sale.sale_number,
-            notes=f'Admin returned sale {sale.sale_number} for correction: {reason}',
-            created_by=user,
-        )
-        # Drop the original out of active payment/debt so re-complete can post again.
-        marker = f'[REVERSED for correction] {reason}'.strip()
-        prior = (txn.notes or '').strip()
-        txn.source_type = 'other'
-        txn.notes = f'{prior} {marker}'.strip() if prior else marker
-        txn.save(update_fields=['source_type', 'notes'])
+        txn.delete()
 
 
 def unpost_posted_sale(sale: Sale, *, user, reason: str) -> None:

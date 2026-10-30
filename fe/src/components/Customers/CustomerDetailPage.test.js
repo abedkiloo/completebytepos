@@ -37,7 +37,6 @@ jest.mock('../../services/api', () => ({
     detail: jest.fn(),
     update: jest.fn(),
     get: jest.fn(),
-    clearWalletSettlement: jest.fn(),
   },
   salesAPI: {
     get: jest.fn(),
@@ -46,10 +45,8 @@ jest.mock('../../services/api', () => ({
   },
 }));
 
-let mockIsAdmin = true;
-
 jest.mock('../../utils/saleCompletionApproval', () => ({
-  userHasAdminSaleOverride: () => mockIsAdmin,
+  userHasAdminSaleOverride: () => true,
 }));
 
 jest.mock('../../utils/roleAccess', () => ({
@@ -223,13 +220,9 @@ const DETAIL = {
 describe('CustomerDetailPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockIsAdmin = true;
     mockSearchParams = new URLSearchParams();
     customersAPI.detail.mockResolvedValue({ data: DETAIL });
     customersAPI.get.mockResolvedValue({ data: DETAIL.customer });
-    customersAPI.clearWalletSettlement.mockResolvedValue({
-      data: { message: 'cleared', wallet_balance: '-600.00' },
-    });
   });
 
   it('loads profile, orders, and debt KPIs', async () => {
@@ -267,27 +260,11 @@ describe('CustomerDetailPage', () => {
     expect(await screen.findByText(/Customer not found/i)).toBeInTheDocument();
   });
 
-  it('shows debt repayments darker and lets admin clear them', async () => {
-    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+  it('shows debt repayments in a darker row', async () => {
     render(<CustomerDetailPage />);
     await screen.findByRole('heading', { name: 'Jane Doe' });
     fireEvent.click(screen.getByRole('button', { name: /Debt & payments/i }));
     expect(await screen.findByTestId('debt-repayment-row-2')).toHaveClass('bg-muted/60');
-    fireEvent.click(screen.getByTestId('clear-debt-repayment-2'));
-    await waitFor(() => {
-      expect(customersAPI.clearWalletSettlement).toHaveBeenCalledWith('7', 2, {
-        reason: 'Admin cleared erroneous debt payment',
-      });
-    });
-    confirmSpy.mockRestore();
-  });
-
-  it('hides clear repayment for non-admins', async () => {
-    mockIsAdmin = false;
-    render(<CustomerDetailPage />);
-    await screen.findByRole('heading', { name: 'Jane Doe' });
-    fireEvent.click(screen.getByRole('button', { name: /Debt & payments/i }));
-    expect(await screen.findByText('Debt payment')).toBeInTheDocument();
     expect(screen.queryByTestId('clear-debt-repayment-2')).not.toBeInTheDocument();
   });
 });

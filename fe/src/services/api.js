@@ -462,8 +462,6 @@ export const customersAPI = {
     api.get(`/sales/customers/${id}/wallet-transactions/`, { params }),
   receiveWalletPayment: (id, data) =>
     api.post(`/sales/customers/${id}/receive-wallet-payment/`, data),
-  clearWalletSettlement: (id, txnId, data) =>
-    api.post(`/sales/customers/${id}/wallet-transactions/${txnId}/clear-settlement/`, data),
   debtSummary: () => api.get('/sales/customers/debt-summary/', { timeout: 30000 }),
   debtors: (params) => api.get('/sales/customers/debtors/', { params, timeout: 30000 }),
   debtorCount: () => api.get('/sales/customers/debtor-count/'),

@@ -1486,6 +1486,7 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         limit = min(int(request.query_params.get('limit', 50)), 100)
         transactions = (
             CustomerWalletTransaction.objects.filter(customer=customer)
+            .exclude(source_type='other')
             .select_related('sale', 'created_by')
             .order_by('-created_at')[:limit]
         )
@@ -1569,54 +1570,6 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 'wallet_balance': str(customer.wallet_balance),
             },
             status=status.HTTP_201_CREATED,
-        )
-
-    @transaction.atomic
-    @action(
-        detail=True,
-        methods=['post'],
-        url_path=r'wallet-transactions/(?P<txn_id>[^/.]+)/clear-settlement',
-    )
-    def clear_wallet_settlement(self, request, pk=None, txn_id=None):
-        """Admin-only: clear an erroneous debt repayment from the customer ledger."""
-        from sales.customer_module_settings import customers_show_wallet_balance
-        from sales.models import CustomerWalletTransaction
-        from sales.sale_debt_sync import reverse_debt_settlement
-
-        if not customers_show_wallet_balance():
-            return self._feature_disabled_response('Wallet balance')
-        customer = self.get_object()
-        try:
-            txn = CustomerWalletTransaction.objects.select_related('customer').get(
-                pk=txn_id,
-                customer_id=customer.pk,
-            )
-        except (CustomerWalletTransaction.DoesNotExist, ValueError, TypeError):
-            return Response(
-                {'error': 'Debt payment not found for this customer.'},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-        reason = (
-            request.data.get('reason')
-            or request.data.get('rejection_reason')
-            or ''
-        )
-        try:
-            reverse = reverse_debt_settlement(
-                txn, user=request.user, reason=str(reason),
-            )
-        except ValidationError as exc:
-            return Response(
-                {'error': validation_error_message(exc)},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        customer.refresh_from_db()
-        return Response(
-            {
-                'message': 'Debt payment cleared. Customer debt was restored.',
-                'wallet_balance': str(customer.wallet_balance),
-                'reversal_id': reverse.pk,
-            }
         )
 
 

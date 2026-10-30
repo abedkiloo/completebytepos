@@ -4,18 +4,16 @@ from decimal import Decimal
 from io import StringIO
 
 from django.contrib.auth.models import User
-from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.test import TestCase
 
 from sales.customer_detail import get_customer_detail
 from sales.debt_management import list_debtors
-from sales.models import Customer, CustomerWalletTransaction, DebtSettlementAllocation, Sale
+from sales.models import Customer, CustomerWalletTransaction, Sale
 from sales.sale_debt_sync import (
-    SETTLEMENT_CLEAR_ADMIN_ONLY,
     apply_settlement_to_underpaid_sales,
+    purge_other_wallet_transactions,
     reconcile_sale_payments_with_wallet,
-    reverse_debt_settlement,
     sync_sale_customer_debt,
 )
 from sales.services import CustomerService
@@ -179,91 +177,54 @@ class SettlementUpdatesSaleAmountPaidTests(TestCase):
         self.assertEqual(results, [])
 
 
-class ReverseDebtSettlementTests(TestCase):
-    def setUp(self):
-        from accounts.models import UserProfile
-        from accounts.role_definitions import (
-            ROLE_MANAGER,
-            ROLE_SUPER_ADMIN,
-            ensure_permissions,
-            sync_default_roles,
+class PurgeOtherWalletTests(TestCase):
+    def test_purge_removes_other_and_rebuilds_wallet(self):
+        user = User.objects.create_user('purge_other', password='x')
+        customer = Customer.objects.create(
+            name='Polluted',
+            phone='0700555666',
+            wallet_balance=Decimal('-18700.00'),
         )
-
-        ensure_permissions()
-        roles = sync_default_roles()
-        self.manager = User.objects.create_user('settle_mgr', password='x')
-        UserProfile.objects.create(
-            user=self.manager, role='manager', custom_role=roles[ROLE_MANAGER], is_active=True,
-        )
-        self.admin = User.objects.create_user('settle_admin', password='x')
-        UserProfile.objects.create(
-            user=self.admin,
-            role='super_admin',
-            custom_role=roles[ROLE_SUPER_ADMIN],
-            is_active=True,
-        )
-        self.customer = Customer.objects.create(
-            name='Clear Pay',
-            phone='0700333444',
-            wallet_balance=Decimal('-1000.00'),
-        )
-        self.sale = Sale.objects.create(
-            sale_number='SALE-CLEAR-PAY',
+        sale = Sale.objects.create(
+            sale_number='SALE-OTHER-MESS',
             status='completed',
             sale_type='pos',
-            customer=self.customer,
-            subtotal=Decimal('1000.00'),
-            total=Decimal('1000.00'),
+            customer=customer,
+            subtotal=Decimal('26800.00'),
+            total=Decimal('26800.00'),
             amount_paid=Decimal('0'),
             payment_method='cash',
-            cashier=self.admin,
+            cashier=user,
         )
         CustomerWalletTransaction.objects.create(
-            customer=self.customer,
+            customer=customer,
             transaction_type='debit',
             source_type='debt',
-            amount=Decimal('1000.00'),
-            balance_after=Decimal('-1000.00'),
-            sale=self.sale,
-            reference=self.sale.sale_number,
-            created_by=self.admin,
+            amount=Decimal('26800.00'),
+            balance_after=Decimal('-26800.00'),
+            sale=sale,
+            created_by=user,
         )
-
-    def test_admin_clears_erroneous_repayment(self):
-        txn = CustomerService().record_wallet_payment(
-            self.customer,
-            Decimal('400.00'),
-            payment_method='cash',
-            user=self.admin,
+        # Erroneous correction residue that lowered debt without a real payment.
+        CustomerWalletTransaction.objects.create(
+            customer=customer,
+            transaction_type='credit',
+            source_type='other',
+            amount=Decimal('8100.00'),
+            balance_after=Decimal('-18700.00'),
+            sale=sale,
+            notes='[REVERSED for correction] bad pay',
+            created_by=user,
         )
-        self.customer.refresh_from_db()
-        self.sale.refresh_from_db()
-        self.assertEqual(self.customer.wallet_balance, Decimal('-600.00'))
-        self.assertEqual(self.sale.amount_paid, Decimal('400.00'))
-        self.assertTrue(
-            DebtSettlementAllocation.objects.filter(wallet_transaction=txn).exists()
-        )
-
-        with self.assertRaises(ValidationError) as ctx:
-            reverse_debt_settlement(txn, user=self.manager, reason='mistake')
-        self.assertIn(SETTLEMENT_CLEAR_ADMIN_ONLY, str(ctx.exception))
-
-        reverse_debt_settlement(txn, user=self.admin, reason='Wrong collection')
-        self.customer.refresh_from_db()
-        self.sale.refresh_from_db()
-        txn.refresh_from_db()
-        self.assertEqual(self.customer.wallet_balance, Decimal('-1000.00'))
-        self.assertEqual(self.sale.amount_paid, Decimal('0.00'))
-        self.assertEqual(txn.source_type, 'other')
-        self.assertIn('CLEARED', txn.notes)
+        result = purge_other_wallet_transactions(customer_id=customer.id)
+        self.assertEqual(result['deleted'], 1)
+        customer.refresh_from_db()
         self.assertFalse(
-            DebtSettlementAllocation.objects.filter(wallet_transaction=txn).exists()
-        )
-        self.assertTrue(
             CustomerWalletTransaction.objects.filter(
-                customer=self.customer,
-                transaction_type='debit',
-                source_type='other',
-                amount=Decimal('400.00'),
+                customer=customer, source_type='other',
             ).exists()
         )
+        # Debt replayed to full unpaid balance (ensure_wallet may re-sync).
+        self.assertEqual(customer.wallet_balance, Decimal('-26800.00'))
+        detail = get_customer_detail(customer_id=customer.id)
+        self.assertFalse(any(row['source_type'] == 'other' for row in detail['ledger']))

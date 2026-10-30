@@ -127,6 +127,18 @@ class CustomerDetailMathTests(ManagerAPITestCase):
         self.assertEqual(overpay['payment_amount'], '20.00')
         self.assertEqual(overpay['previous_debt'], '0.00')
 
+    def test_other_credit_is_not_labelled_as_a_payment(self):
+        """Correction reverses must not look like debt repayments on the ledger."""
+        flow = debt_flow_for_txn(
+            transaction_type='credit',
+            source_type='other',
+            amount=Decimal('8100.00'),
+            balance_after=Decimal('-18700.00'),
+        )
+        self.assertEqual(flow['previous_debt'], '26800.00')
+        self.assertEqual(flow['new_debt'], '18700.00')
+        self.assertIsNone(flow['payment_amount'])
+
     def test_credit_standing_when_wallet_positive(self):
         customer = Customer.objects.create(
             name='Credit Cust',
