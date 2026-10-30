@@ -126,6 +126,8 @@ SALES_PERMS = RequirePermPerAction('sales', {
     'cancel_holding': 'update',
     'refund': 'refund',
     'rollback': 'rollback',
+    # Unvoid is Admin/Super Admin only (enforced in the action).
+    'unvoid': 'approve',
     'backfill': 'create',
     'backfill_preflight': 'create',
     'backfill_import_csv': 'create',
@@ -216,6 +218,9 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             'complete',
             'reject_complete',
             'correct_date',
+            'unvoid',
+            'refund',
+            'rollback',
         ):
             filters['include_holding'] = True
             filters['include_pending_approval'] = True
@@ -966,38 +971,21 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     @transaction.atomic
     def refund(self, request, pk=None):
-        """Void/refund a completed sale. Non-admins always queue for admin approval."""
+        """Void/refund a completed sale. Admin / Super Admin only."""
         from approvals.permissions import user_has_admin_checker_override
-        from approvals.refund_integration import queue_sale_refund
-        from approvals.serializers import PendingChangeSerializer
+
+        if not user_has_admin_checker_override(request.user):
+            return Response(
+                {
+                    'error': 'Only an Admin or Super Admin can void or refund a sale.',
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         sale = self.get_object()
         serializer = SaleRefundCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-
-        if not user_has_admin_checker_override(request.user):
-            try:
-                pending = queue_sale_refund(
-                    request,
-                    sale,
-                    full=data.get('full', False),
-                    items=data.get('items'),
-                    reason=data['reason'],
-                )
-            except ValidationError as e:
-                payload = getattr(e, 'message_dict', None) or {'error': validation_error_message(e)}
-                return Response(payload, status=status.HTTP_400_BAD_REQUEST)
-            return Response(
-                {
-                    'message': (
-                        'Void/refund submitted for admin approval — '
-                        'stock and accounts stay unchanged until it is approved.'
-                    ),
-                    'pending_change': PendingChangeSerializer(pending).data,
-                },
-                status=status.HTTP_202_ACCEPTED,
-            )
 
         try:
             refund = self.refund_service.create_refund(
@@ -1023,30 +1011,20 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     @transaction.atomic
     def rollback(self, request, pk=None):
-        """Request or apply a full sale reversal. Non-admins queue for admin approval."""
+        """Full sale reversal. Admin / Super Admin only."""
         from approvals.permissions import user_has_admin_checker_override
-        from approvals.rollback_integration import queue_sale_rollback
-        from approvals.serializers import PendingChangeSerializer
         from sales.rollback import rollback_sale
+
+        if not user_has_admin_checker_override(request.user):
+            return Response(
+                {
+                    'error': 'Only an Admin or Super Admin can roll back a sale.',
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         sale = self.get_object()
         reason = (request.data.get('reason') or '').strip()
-        if not user_has_admin_checker_override(request.user):
-            try:
-                pending = queue_sale_rollback(request, sale, reason=reason)
-            except ValidationError as e:
-                payload = getattr(e, 'message_dict', None) or {'error': validation_error_message(e)}
-                return Response(payload, status=status.HTTP_400_BAD_REQUEST)
-            return Response(
-                {
-                    'message': (
-                        'Rollback submitted for admin approval — '
-                        'stock and accounts stay unchanged until it is approved.'
-                    ),
-                    'pending_change': PendingChangeSerializer(pending).data,
-                },
-                status=status.HTTP_202_ACCEPTED,
-            )
 
         try:
             refund = rollback_sale(sale=sale, reason=reason, user=request.user)
@@ -1062,6 +1040,47 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             SaleRefundSerializer(refund).data,
             status=status.HTTP_201_CREATED,
         )
+
+    @action(detail=True, methods=['post'])
+    @transaction.atomic
+    def unvoid(self, request, pk=None):
+        """Restore a full void/rollback, or reopen a cancelled sale. Admin only."""
+        from approvals.permissions import user_has_admin_checker_override
+        from sales.unvoid import sale_is_uncancellable, sale_is_unvoidable, uncancel_sale, unvoid_sale
+        from utils.audit_events import log_sale_unvoided
+
+        if not user_has_admin_checker_override(request.user):
+            return Response(
+                {
+                    'error': 'Only an Admin or Super Admin can unvoid or uncancel a sale.',
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        sale = self.get_object()
+        reason = (request.data.get('reason') or '').strip()
+        try:
+            if sale_is_unvoidable(sale):
+                restored = unvoid_sale(sale=sale, reason=reason, user=request.user)
+                action_kind = 'unvoid'
+            elif sale_is_uncancellable(sale):
+                restored = uncancel_sale(sale=sale, reason=reason, user=request.user)
+                action_kind = 'uncancel'
+            else:
+                return Response(
+                    {
+                        'error': (
+                            'This sale is not fully voided or cancelled, so it cannot be restored here.'
+                        ),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        except ValidationError as e:
+            payload = getattr(e, 'message_dict', None) or {'error': validation_error_message(e)}
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+        log_sale_unvoided(request, restored, kind=action_kind, reason=reason)
+        return Response(SaleSerializer(restored).data)
 
     @action(detail=True, methods=['post'], url_path='cancel-holding')
     @transaction.atomic

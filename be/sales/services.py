@@ -101,15 +101,6 @@ class SaleService(BaseService):
                     except (ValueError, TypeError):
                         queryset = queryset.none()
 
-        # Date filters — business date (when the sale happened)
-        date_from = inclusive_start_datetime(filters.get('date_from'))
-        if date_from:
-            queryset = queryset.filter(occurred_at__gte=date_from)
-
-        date_to = inclusive_end_datetime(filters.get('date_to'))
-        if date_to:
-            queryset = queryset.filter(occurred_at__lte=date_to)
-
         # Payment method filter
         payment_method = filters.get('payment_method')
         if payment_method:
@@ -139,8 +130,7 @@ class SaleService(BaseService):
         elif sale_origin == 'shop':
             queryset = queryset.exclude(entry_source='field')
 
-        # Status filter — default hides ordinary drafts and waiting sales from history.
-        # Returned-for-correction holdings stay visible so the sale does not vanish.
+        # Status first so voided/cancelled date filters use void/cancel day, not sale day.
         from sales.sale_completion_approval import (
             annotate_sale_approval_state,
             awaiting_approval_queue_q,
@@ -150,11 +140,50 @@ class SaleService(BaseService):
         queryset = annotate_sale_approval_state(queryset)
         queryset = annotate_sale_rollback_pending(queryset)
         status = filters.get('status')
+        date_from = inclusive_start_datetime(filters.get('date_from'))
+        date_to = inclusive_end_datetime(filters.get('date_to'))
+
         if status == 'pending_approval':
+            if date_from:
+                queryset = queryset.filter(occurred_at__gte=date_from)
+            if date_to:
+                queryset = queryset.filter(occurred_at__lte=date_to)
             queryset = queryset.filter(awaiting_approval_queue_q())
+        elif status == 'voided':
+            # Fully voided / rolled-back sales stay status=completed with refund_status.
+            # Date range = when the void/refund was recorded (past sales voided today match).
+            queryset = queryset.filter(status='completed', refund_status='refunded')
+            if date_from:
+                queryset = queryset.filter(refunds__created_at__gte=date_from)
+            if date_to:
+                queryset = queryset.filter(refunds__created_at__lte=date_to)
+            if date_from or date_to:
+                queryset = queryset.distinct()
+        elif status == 'cancelled':
+            queryset = queryset.filter(status='cancelled')
+            # Cancelled drafts never posted — filter by when the row was last updated.
+            if date_from:
+                queryset = queryset.filter(updated_at__gte=date_from)
+            if date_to:
+                queryset = queryset.filter(updated_at__lte=date_to)
+        elif status == 'completed':
+            # History "Completed" tab hides fully voided rows (see Voided tab).
+            queryset = queryset.filter(status='completed').exclude(refund_status='refunded')
+            if date_from:
+                queryset = queryset.filter(occurred_at__gte=date_from)
+            if date_to:
+                queryset = queryset.filter(occurred_at__lte=date_to)
         elif status:
             queryset = queryset.filter(status=status)
+            if date_from:
+                queryset = queryset.filter(occurred_at__gte=date_from)
+            if date_to:
+                queryset = queryset.filter(occurred_at__lte=date_to)
         else:
+            if date_from:
+                queryset = queryset.filter(occurred_at__gte=date_from)
+            if date_to:
+                queryset = queryset.filter(occurred_at__lte=date_to)
             if filters.get('include_holding') not in (True, 'true', '1', 1):
                 # Keep holdings that need salesperson action; hide ordinary drafts.
                 queryset = queryset.exclude(

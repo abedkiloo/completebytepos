@@ -9,13 +9,19 @@ import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { toast } from '../../utils/toast';
 import {
   getStoredAuth,
-  isManagerOrAdminFromStorage,
   userSeesAllSalesFromStorage,
 } from '../../utils/roleAccess';
 import { useSellerOptions } from '../../hooks/useSellerOptions';
 import { canViewDailySalesFromStorage } from '../../utils/dailySalesAccess';
-import { userCanRefundSales, saleIsRefundable, handleSaleRefundResponse, userCanRollbackSales, saleIsRollbackable } from '../../utils/saleRefund';
-import { saleCancellationPendingToastMessage } from '../../utils/makerChecker';
+import {
+  userCanRefundSales,
+  userCanUnvoidSales,
+  saleIsRefundable,
+  saleIsUnvoidable,
+  handleSaleRefundResponse,
+  userCanRollbackSales,
+  saleIsRollbackable,
+} from '../../utils/saleRefund';
 import { DEFAULT_BRAND_LOGO } from '../../utils/storeBranding';
 import {
   SALE_AWAITING_APPROVAL_MESSAGE,
@@ -66,11 +72,11 @@ const Sales = () => {
   const [rollbackSale, setRollbackSale] = useState(null);
   const [rollbackSubmitting, setRollbackSubmitting] = useState(false);
   const { permissions } = getStoredAuth();
-  const canRefund = userCanRefundSales(permissions, {
-    isManagerOrAdmin: isManagerOrAdminFromStorage(),
-  });
+  const isAdmin = userHasAdminSaleOverride();
+  const canRefund = userCanRefundSales(permissions, { isAdmin });
   const canRollback = userCanRollbackSales(permissions);
-  const canReturnForCorrection = userHasAdminSaleOverride();
+  const canUnvoid = userCanUnvoidSales(permissions, { isAdmin });
+  const canReturnForCorrection = isAdmin;
   const canViewDaily = canViewDailySalesFromStorage();
   const canFilterBySeller = userSeesAllSalesFromStorage();
   const sellerOptions = useSellerOptions(canFilterBySeller);
@@ -116,6 +122,9 @@ const Sales = () => {
       if (filters.search) params.search = filters.search;
       if (filters.cashier_id) params.cashier_id = filters.cashier_id;
       if (historyTab === 'pending') params.status = 'pending_approval';
+      else if (historyTab === 'cancelled') params.status = 'cancelled';
+      else if (historyTab === 'voided') params.status = 'voided';
+      else if (historyTab === 'completed') params.status = 'completed';
       const response = await salesAPI.list(params);
       const data = response.data;
       
@@ -174,7 +183,7 @@ const Sales = () => {
       const res = await salesAPI.refund(refundSale.id, payload);
       const outcome = handleSaleRefundResponse(res, {
         onApplied: (data) => toast.success(`Void recorded as ${data.refund_number}`),
-        onPending: () => toast.success(saleCancellationPendingToastMessage()),
+        onPending: () => toast.error('Void was queued unexpectedly'),
       });
       setRefundSale(null);
       if (outcome === 'applied' && selectedSale?.id === refundSale.id) {
@@ -212,7 +221,7 @@ const Sales = () => {
       const res = await salesAPI.rollback(rollbackSale.id, payload);
       handleSaleRefundResponse(res, {
         onApplied: (data) => toast.success(`Sale rolled back as ${data.refund_number}`),
-        onPending: () => toast.success(saleCancellationPendingToastMessage()),
+        onPending: () => toast.error('Rollback was queued unexpectedly'),
       });
       setRollbackSale(null);
       if (selectedSale?.id === rollbackSale.id) {
@@ -226,6 +235,35 @@ const Sales = () => {
       toast.error(typeof msg === 'string' ? msg : 'Rollback failed');
     } finally {
       setRollbackSubmitting(false);
+    }
+  };
+
+  const handleUnvoid = async (sale) => {
+    const reason = window.prompt(
+      sale?.status === 'cancelled'
+        ? 'Why are you restoring this cancelled sale?'
+        : 'Why are you unvoiding this sale? Customer debt and stock will be restored.'
+    );
+    if (reason == null) return;
+    if (!String(reason).trim()) {
+      toast.warning('A reason is required');
+      return;
+    }
+    try {
+      const res = await salesAPI.unvoid(sale.id, { reason: String(reason).trim() });
+      toast.success(
+        sale.status === 'cancelled'
+          ? 'Sale restored to holding — fix it on Terminal if needed.'
+          : 'Sale unvoided — stock and customer debt restored.'
+      );
+      if (selectedSale?.id === sale.id) {
+        setSelectedSale(res.data);
+      }
+      loadSales();
+    } catch (error) {
+      const data = error.response?.data;
+      const msg = data?.reason?.[0] || data?.error || data?.detail || error.message;
+      toast.error(typeof msg === 'string' ? msg : 'Could not restore this sale');
     }
   };
 
@@ -422,33 +460,38 @@ const Sales = () => {
           </Button>
         </PageHeader>
 
-        <div className="mb-3 flex gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant={historyTab === 'completed' ? 'default' : 'outline'}
-            onClick={() => {
-              setHistoryTab('completed');
-              setPagination((prev) => ({ ...prev, page: 1 }));
-            }}
-          >
-            Completed
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={historyTab === 'pending' ? 'default' : 'outline'}
-            onClick={() => {
-              setHistoryTab('pending');
-              setPagination((prev) => ({ ...prev, page: 1 }));
-            }}
-          >
-            Awaiting approval
-          </Button>
+        <div className="mb-3 flex flex-wrap gap-2">
+          {[
+            { id: 'completed', label: 'Completed' },
+            { id: 'pending', label: 'Awaiting approval' },
+            { id: 'voided', label: 'Voided' },
+            { id: 'cancelled', label: 'Cancelled' },
+          ].map((tab) => (
+            <Button
+              key={tab.id}
+              type="button"
+              size="sm"
+              variant={historyTab === tab.id ? 'default' : 'outline'}
+              onClick={() => {
+                setHistoryTab(tab.id);
+                setPagination((prev) => ({ ...prev, page: 1 }));
+              }}
+            >
+              {tab.label}
+            </Button>
+          ))}
         </div>
 
         <FilterBar>
-          <FilterField label="From">
+          <FilterField
+            label={
+              historyTab === 'voided'
+                ? 'Voided from'
+                : historyTab === 'cancelled'
+                  ? 'Cancelled from'
+                  : 'From'
+            }
+          >
             <Input
               type="date"
               name="date_from"
@@ -456,7 +499,15 @@ const Sales = () => {
               onChange={handleFilterChange}
             />
           </FilterField>
-          <FilterField label="To">
+          <FilterField
+            label={
+              historyTab === 'voided'
+                ? 'Voided to'
+                : historyTab === 'cancelled'
+                  ? 'Cancelled to'
+                  : 'To'
+            }
+          >
             <Input
               type="date"
               name="date_to"
@@ -464,6 +515,26 @@ const Sales = () => {
               onChange={handleFilterChange}
             />
           </FilterField>
+          {historyTab === 'voided' || historyTab === 'cancelled' ? (
+            <FilterField label=" ">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  const today = new Date();
+                  const y = today.getFullYear();
+                  const m = String(today.getMonth() + 1).padStart(2, '0');
+                  const d = String(today.getDate()).padStart(2, '0');
+                  const key = `${y}-${m}-${d}`;
+                  setFilters((prev) => ({ ...prev, date_from: key, date_to: key }));
+                  setPagination((prev) => ({ ...prev, page: 1 }));
+                }}
+              >
+                {historyTab === 'voided' ? 'Voided today' : 'Cancelled today'}
+              </Button>
+            </FilterField>
+          ) : null}
           <FilterField label="Payment">
             <SearchableSelect
               name="payment_method"
@@ -609,6 +680,16 @@ const Sales = () => {
                             <HelpHint actionKey="sale_refund" />
                           </span>
                         )}
+                        {canUnvoid && saleIsUnvoidable(sale) && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleUnvoid(sale)}
+                          >
+                            <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                            {sale.status === 'cancelled' ? 'Uncancel' : 'Unvoid'}
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="sm"
@@ -642,6 +723,7 @@ const Sales = () => {
           onOpenChange={setShowReceiptModal}
           canRefund={canRefund}
           canRollback={canRollback}
+          canUnvoid={canUnvoid}
           canReturnForCorrection={canReturnForCorrection}
           onReturned={() => {
             setShowReceiptModal(false);
@@ -654,6 +736,9 @@ const Sales = () => {
           onRollback={(sale) => {
             setShowReceiptModal(false);
             openRollbackDialog(sale);
+          }}
+          onUnvoid={(sale) => {
+            handleUnvoid(sale);
           }}
           onPrint={handlePrintReceipt}
           onUpdated={(updated) => {
@@ -686,9 +771,9 @@ const Sales = () => {
           open={refundSubmitting || rollbackSubmitting}
           label={
             refundSubmitting
-              ? 'Submitting void for approval…'
+              ? 'Recording void…'
               : rollbackSubmitting
-                ? 'Submitting rollback for approval…'
+                ? 'Recording rollback…'
                 : 'Loading…'
           }
         />

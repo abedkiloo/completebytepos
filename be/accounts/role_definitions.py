@@ -65,8 +65,8 @@ PERMISSIONS_DATA = [
     ('sales', 'create', 'Create sales'),
     ('sales', 'update', 'Update sales'),
     ('sales', 'delete', 'Delete sales'),
-    ('sales', 'refund', 'Refund completed sales'),
-    ('sales', 'rollback', 'Request sale rollbacks (takes effect after admin approval)'),
+    ('sales', 'refund', 'Void/refund completed sales (Admin only)'),
+    ('sales', 'rollback', 'Roll back a mistaken sale (Admin only; managers restore with Unvoid)'),
     ('sales', 'approve', 'Approve and complete sales submitted by cashiers'),
     ('sales', 'export', 'Export sales'),
     ('sales', 'daily_sales', 'View daily sales tracker (paid vs debt by day)'),
@@ -309,8 +309,9 @@ def _manager_queryset():
         # Daily Sales Tracker + store-wide sales totals are opt-in checkboxes.
         .exclude(module='sales', action='daily_sales')
         .exclude(module='sales', action='view_all')
-        # Sale rollback and journal correction stay admin unless explicitly checked.
+        # Void/refund/rollback stay admin — managers restore mistaken voids via Unvoid.
         .exclude(module='sales', action='rollback')
+        .exclude(module='sales', action='refund')
         .exclude(module='accounting', action='correct')
         # Trading profit report stays admin unless explicitly checked on the role.
         .exclude(module='reports', action='profit')
@@ -509,6 +510,11 @@ def sync_default_roles(created_by=None):
     )
     if manager_created:
         manager.permissions.set(_manager_queryset())
+    else:
+        # Strip void/refund from existing Manager packs (admins keep it on Admin roles).
+        manager.permissions.remove(
+            *Permission.objects.filter(module='sales', action='refund')
+        )
 
     sales, sales_created = Role.objects.update_or_create(
         name=ROLE_SALES,

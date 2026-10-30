@@ -4,14 +4,27 @@
 
 import { hasPermission } from './roleAccess';
 
-export function userCanRefundSales(permissions, { isManagerOrAdmin = false } = {}) {
-  if (isManagerOrAdmin) return true;
+/** Void/refund: Admin/Super Admin only. */
+export function userCanRefundSales(permissions, { isAdmin = false } = {}) {
+  if (isAdmin) return true;
   return hasPermission(permissions, 'sales', 'refund');
 }
 
 /** Admin correction — only the explicit checkbox, never inferred from manager role. */
 export function userCanRollbackSales(permissions) {
   return hasPermission(permissions, 'sales', 'rollback');
+}
+
+/** Unvoid / uncancel: Admin/Super Admin only. */
+export function userCanUnvoidSales(permissions, { isAdmin = false } = {}) {
+  if (isAdmin) return true;
+  return false;
+}
+
+export function saleIsUnvoidable(sale) {
+  if (!sale) return false;
+  if (sale.status === 'cancelled') return true;
+  return sale.status === 'completed' && sale.refund_status === 'refunded';
 }
 
 export function saleIsRollbackable(sale) {

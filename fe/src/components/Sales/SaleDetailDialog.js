@@ -15,7 +15,7 @@ import {
   DialogTitle,
 } from '../ui/dialog';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
-import { saleIsRefundable, saleIsRollbackable } from '../../utils/saleRefund';
+import { saleIsRefundable, saleIsRollbackable, saleIsUnvoidable } from '../../utils/saleRefund';
 import HelpHint from '../Shared/HelpHint';
 import {
   saleAmountRefunded,
@@ -55,6 +55,8 @@ export default function SaleDetailDialog({
   canRefund = false,
   onRollback,
   canRollback = false,
+  canUnvoid = false,
+  onUnvoid,
   onPrint,
   canReturnForCorrection = false,
   onReturned,
@@ -471,6 +473,12 @@ export default function SaleDetailDialog({
                 </Button>
                 <HelpHint actionKey="sale_refund" />
               </span>
+            ) : null}
+            {canUnvoid && saleIsUnvoidable(sale) && onUnvoid ? (
+              <Button variant="outline" onClick={() => onUnvoid(sale)}>
+                <RotateCcw className="mr-1 h-4 w-4" />
+                {sale.status === 'cancelled' ? 'Uncancel' : 'Unvoid'}
+              </Button>
             ) : null}
             {canReturn ? (
               <span className="inline-flex items-center">

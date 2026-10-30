@@ -18,7 +18,7 @@ import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { toast } from '../../utils/toast';
 import { getStoredAuth, hasPermission, isManagerOrAdminFromStorage } from '../../utils/roleAccess';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
-import { userCanRefundSales, userCanRollbackSales, handleSaleRefundResponse } from '../../utils/saleRefund';
+import { userCanRefundSales, userCanUnvoidSales, userCanRollbackSales, handleSaleRefundResponse } from '../../utils/saleRefund';
 import { userHasAdminSaleOverride } from '../../utils/saleCompletionApproval';
 import { saleCancellationPendingToastMessage } from '../../utils/makerChecker';
 import {
@@ -118,11 +118,11 @@ export default function CustomerDetailPage() {
   const showStatus = customersShowStatus(customerModuleSettings, storeSettings);
   const canViewDebt = hasPermission(permissions, 'debt_management', 'view');
   const canCollect = hasPermission(permissions, 'debt_management', 'update');
-  const canRefund = userCanRefundSales(permissions, {
-    isManagerOrAdmin: isManagerOrAdminFromStorage(),
-  });
+  const isAdmin = userHasAdminSaleOverride();
+  const canRefund = userCanRefundSales(permissions, { isAdmin });
   const canRollback = userCanRollbackSales(permissions);
-  const canReturnForCorrection = userHasAdminSaleOverride();
+  const canUnvoid = userCanUnvoidSales(permissions, { isAdmin });
+  const canReturnForCorrection = isAdmin;
 
   const load = useCallback(async () => {
     if (!customerId) return;
@@ -632,10 +632,35 @@ export default function CustomerDetailPage() {
         onOpenChange={setSaleDetailOpen}
         canRefund={canRefund}
         canRollback={canRollback}
+        canUnvoid={canUnvoid}
         canReturnForCorrection={canReturnForCorrection}
         onReturned={() => {
           setSaleDetailOpen(false);
           load();
+        }}
+        onUnvoid={async (sale) => {
+          const reason = window.prompt(
+            sale?.status === 'cancelled'
+              ? 'Why are you restoring this cancelled sale?'
+              : 'Why are you unvoiding this sale? Customer debt and stock will be restored.'
+          );
+          if (reason == null || !String(reason).trim()) {
+            if (reason != null) toast.warning('A reason is required');
+            return;
+          }
+          try {
+            const res = await salesAPI.unvoid(sale.id, { reason: String(reason).trim() });
+            toast.success(
+              sale.status === 'cancelled'
+                ? 'Sale restored to holding.'
+                : 'Sale unvoided — stock and customer debt restored.'
+            );
+            setSelectedSale(res.data);
+            load();
+          } catch (error) {
+            const data = error.response?.data;
+            toast.error(data?.error || data?.reason?.[0] || error.message || 'Could not restore sale');
+          }
         }}
         onRefund={(sale) => {
           setSaleDetailOpen(false);

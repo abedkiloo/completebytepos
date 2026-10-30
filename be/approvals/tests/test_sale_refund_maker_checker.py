@@ -1,4 +1,4 @@
-"""Void/refund always queues for admin approval before stock and books change."""
+"""Void/refund is Admin/Super Admin only; managers restore mistaken voids with Unvoid."""
 
 from decimal import Decimal
 
@@ -8,15 +8,14 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.models import Role, UserProfile
 from accounts.role_definitions import ROLE_SUPER_ADMIN, sync_default_roles
-from approvals.models import PendingChange
 from approvals.registry import ACTION_SALE_REFUND
 from products.models import Category, Product
 from sales.models import Sale, SaleItem, SaleRefund
-from settings.test_utils import disable_maker_checker, enable_maker_checker
+from settings.test_utils import disable_maker_checker
 from utils.tests.api_test_base import ManagerAPITestCase
 
 
-class SaleRefundAdminApprovalAPITests(ManagerAPITestCase):
+class SaleRefundAdminOnlyAPITests(ManagerAPITestCase):
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
@@ -50,115 +49,26 @@ class SaleRefundAdminApprovalAPITests(ManagerAPITestCase):
 
     def setUp(self):
         super().setUp()
-        # Void/refund must still queue when the global toggle is off.
         disable_maker_checker()
         self.stock_before = self.product.stock_quantity
 
-    def test_refund_queues_even_when_maker_checker_off(self):
+    def test_manager_cannot_void(self):
         resp = self.client.post(
             f'/api/sales/{self.sale.id}/refund/',
             {'reason': 'Customer changed mind', 'full': True},
             format='json',
         )
-        self.assertEqual(resp.status_code, status.HTTP_202_ACCEPTED, resp.data)
-        self.assertIn('pending_change', resp.data)
-        change = PendingChange.objects.get(action_type=ACTION_SALE_REFUND)
-        self.assertEqual(change.entity_id, str(self.sale.id))
-        self.assertEqual(change.status, PendingChange.STATUS_PENDING)
-
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN, resp.data)
         self.sale.refresh_from_db()
         self.assertEqual(self.sale.refund_status, 'none')
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock_quantity, self.stock_before)
         self.assertFalse(SaleRefund.objects.filter(sale=self.sale).exists())
 
-    def test_refund_queues_when_maker_checker_on(self):
-        enable_maker_checker()
-        resp = self.client.post(
-            f'/api/sales/{self.sale.id}/refund/',
-            {'reason': 'Wrong item', 'full': True},
-            format='json',
-        )
-        self.assertEqual(resp.status_code, status.HTTP_202_ACCEPTED, resp.data)
-        self.assertTrue(PendingChange.objects.filter(action_type=ACTION_SALE_REFUND).exists())
-
-    def test_maker_cannot_self_approve_refund(self):
-        self.client.post(
-            f'/api/sales/{self.sale.id}/refund/',
-            {'reason': 'Wrong item', 'full': True},
-            format='json',
-        )
-        change = PendingChange.objects.get(action_type=ACTION_SALE_REFUND)
-        deny = self.client.post(f'/api/approvals/pending-changes/{change.id}/approve/')
-        self.assertEqual(deny.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_manager_cannot_approve_refund_even_with_settings_approve(self):
-        from accounts.models import Permission
-        from accounts.role_definitions import ROLE_MANAGER, ensure_permissions
-
-        ensure_permissions()
-        Role.objects.get(name=ROLE_MANAGER).permissions.add(
-            Permission.objects.get(module='settings', action='approve')
-        )
+    def test_manager_cannot_check_refund_action(self):
         from approvals.permissions import user_can_check
 
         self.assertFalse(user_can_check(self.manager_user, ACTION_SALE_REFUND))
-
-        self.client.post(
-            f'/api/sales/{self.sale.id}/refund/',
-            {'reason': 'Manager request', 'full': True},
-            format='json',
-        )
-        change = PendingChange.objects.get(action_type=ACTION_SALE_REFUND)
-        deny = self.client.post(f'/api/approvals/pending-changes/{change.id}/approve/')
-        self.assertIn(deny.status_code, (status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN))
-        self.sale.refresh_from_db()
-        self.assertEqual(self.sale.refund_status, 'none')
-        self.product.refresh_from_db()
-        self.assertEqual(self.product.stock_quantity, self.stock_before)
-
-    def test_admin_approval_applies_refund(self):
-        queued = self.client.post(
-            f'/api/sales/{self.sale.id}/refund/',
-            {'reason': 'Duplicate lines', 'full': True},
-            format='json',
-        )
-        self.assertEqual(queued.status_code, status.HTTP_202_ACCEPTED, queued.data)
-        change = PendingChange.objects.get(action_type=ACTION_SALE_REFUND)
-
-        checker = User.objects.create_user('refund_checker', password='x', is_staff=True)
-        UserProfile.objects.create(
-            user=checker,
-            role='super_admin',
-            custom_role=Role.objects.get(name=ROLE_SUPER_ADMIN),
-            is_active=True,
-        )
-        checker_client = self.client.__class__()
-        checker_token = RefreshToken.for_user(checker)
-        checker_client.credentials(HTTP_AUTHORIZATION=f'Bearer {checker_token.access_token}')
-
-        approved = checker_client.post(f'/api/approvals/pending-changes/{change.id}/approve/')
-        self.assertEqual(approved.status_code, status.HTTP_200_OK, approved.data)
-
-        self.sale.refresh_from_db()
-        self.assertEqual(self.sale.refund_status, 'refunded')
-        self.product.refresh_from_db()
-        self.assertEqual(self.product.stock_quantity, self.stock_before + 2)
-        self.assertTrue(SaleRefund.objects.filter(sale=self.sale).exists())
-
-    def test_duplicate_pending_refund_blocked(self):
-        first = self.client.post(
-            f'/api/sales/{self.sale.id}/refund/',
-            {'reason': 'First request', 'full': True},
-            format='json',
-        )
-        self.assertEqual(first.status_code, status.HTTP_202_ACCEPTED)
-        second = self.client.post(
-            f'/api/sales/{self.sale.id}/refund/',
-            {'reason': 'Second request', 'full': True},
-            format='json',
-        )
-        self.assertEqual(second.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_super_admin_applies_refund_immediately(self):
         admin = User.objects.create_user('refund_admin', password='x', is_staff=True)
@@ -180,4 +90,6 @@ class SaleRefundAdminApprovalAPITests(ManagerAPITestCase):
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED, resp.data)
         self.sale.refresh_from_db()
         self.assertEqual(self.sale.refund_status, 'refunded')
-        self.assertFalse(PendingChange.objects.filter(action_type=ACTION_SALE_REFUND).exists())
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, self.stock_before + 2)
+        self.assertTrue(SaleRefund.objects.filter(sale=self.sale).exists())

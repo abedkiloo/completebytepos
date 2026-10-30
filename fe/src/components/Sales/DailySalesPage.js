@@ -24,14 +24,13 @@ import { toast } from '../../utils/toast';
 import {
   getStoredAuth,
   hasPermission,
-  isManagerOrAdminFromStorage,
   userSeesAllSalesFromStorage,
 } from '../../utils/roleAccess';
 import {
   canViewDailySalesFromStorage,
   dailySalesCustomerPath,
 } from '../../utils/dailySalesAccess';
-import { userCanRefundSales, handleSaleRefundResponse, userCanRollbackSales } from '../../utils/saleRefund';
+import { userCanRefundSales, userCanUnvoidSales, handleSaleRefundResponse, userCanRollbackSales } from '../../utils/saleRefund';
 import { userHasAdminSaleOverride } from '../../utils/saleCompletionApproval';
 import { saleCancellationPendingToastMessage } from '../../utils/makerChecker';
 import CenterScreenLoader from '../Shared/CenterScreenLoader';
@@ -253,11 +252,11 @@ export default function DailySalesPage() {
 
   const { permissions } = getStoredAuth();
   const allowed = canViewDailySalesFromStorage();
-  const canRefund = userCanRefundSales(permissions, {
-    isManagerOrAdmin: isManagerOrAdminFromStorage(),
-  });
+  const isAdmin = userHasAdminSaleOverride();
+  const canRefund = userCanRefundSales(permissions, { isAdmin });
   const canRollback = userCanRollbackSales(permissions);
-  const canReturnForCorrection = userHasAdminSaleOverride();
+  const canUnvoid = userCanUnvoidSales(permissions, { isAdmin });
+  const canReturnForCorrection = isAdmin;
   const canCollect = hasPermission(permissions, 'customers', 'update');
   const canFilterBySeller = userSeesAllSalesFromStorage();
   const sellerOptions = useSellerOptions(allowed && canFilterBySeller);
@@ -1019,10 +1018,35 @@ export default function DailySalesPage() {
         onOpenChange={setShowReceiptModal}
         canRefund={canRefund}
         canRollback={canRollback}
+        canUnvoid={canUnvoid}
         canReturnForCorrection={canReturnForCorrection}
         onReturned={() => {
           setShowReceiptModal(false);
           loadDailySales();
+        }}
+        onUnvoid={async (sale) => {
+          const reason = window.prompt(
+            sale?.status === 'cancelled'
+              ? 'Why are you restoring this cancelled sale?'
+              : 'Why are you unvoiding this sale? Customer debt and stock will be restored.'
+          );
+          if (reason == null || !String(reason).trim()) {
+            if (reason != null) toast.warning('A reason is required');
+            return;
+          }
+          try {
+            const res = await salesAPI.unvoid(sale.id, { reason: String(reason).trim() });
+            toast.success(
+              sale.status === 'cancelled'
+                ? 'Sale restored to holding.'
+                : 'Sale unvoided — stock and customer debt restored.'
+            );
+            setSelectedSale(res.data);
+            loadDailySales();
+          } catch (error) {
+            const data = error.response?.data;
+            toast.error(data?.error || data?.reason?.[0] || error.message || 'Could not restore sale');
+          }
         }}
         onRefund={(sale) => {
           setShowReceiptModal(false);

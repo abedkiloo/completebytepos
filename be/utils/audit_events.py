@@ -84,6 +84,21 @@ def log_sale_rolled_back(request, sale, refund):
     )
 
 
+def log_sale_unvoided(request, sale, *, kind='unvoid', reason=''):
+    log_domain_event(
+        request,
+        kind if kind in ('unvoid', 'uncancel') else 'unvoid',
+        sale,
+        module='sales',
+        changes={
+            'sale_number': getattr(sale, 'sale_number', ''),
+            'sale_status': getattr(sale, 'status', ''),
+            'sale_refund_status': getattr(sale, 'refund_status', ''),
+            'reason': (reason or '')[:500],
+        },
+    )
+
+
 def log_holding_cancelled(request, holding):
     log_domain_event(
         request,

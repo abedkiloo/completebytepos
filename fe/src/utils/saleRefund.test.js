@@ -1,8 +1,10 @@
 import {
   userCanRefundSales,
   userCanRollbackSales,
+  userCanUnvoidSales,
   saleIsRefundable,
   saleIsRollbackable,
+  saleIsUnvoidable,
   buildFullRefundPayload,
   buildRollbackPayload,
   buildPartialRefundPayload,
@@ -12,11 +14,23 @@ import {
 
 describe('saleRefund', () => {
   const refundPerm = [{ module: 'sales', action: 'refund', name: 'sales.refund' }];
+  const approvePerm = [{ module: 'sales', action: 'approve', name: 'sales.approve' }];
 
-  it('checks refund permission', () => {
+  it('checks refund permission — managers no longer get an automatic pass', () => {
     expect(userCanRefundSales(refundPerm)).toBe(true);
-    expect(userCanRefundSales([], { isManagerOrAdmin: true })).toBe(true);
+    expect(userCanRefundSales([], { isAdmin: true })).toBe(true);
+    expect(userCanRefundSales([], { isManagerOrAdmin: true })).toBe(false);
     expect(userCanRefundSales([])).toBe(false);
+  });
+
+  it('allows only admins to unvoid / uncancel', () => {
+    expect(userCanUnvoidSales(approvePerm)).toBe(false);
+    expect(userCanUnvoidSales([], { canApproveSales: true })).toBe(false);
+    expect(userCanUnvoidSales([], { isAdmin: true })).toBe(true);
+    expect(userCanUnvoidSales([])).toBe(false);
+    expect(saleIsUnvoidable({ status: 'completed', refund_status: 'refunded' })).toBe(true);
+    expect(saleIsUnvoidable({ status: 'cancelled' })).toBe(true);
+    expect(saleIsUnvoidable({ status: 'completed', refund_status: 'none' })).toBe(false);
   });
 
   it('checks rollback only from the explicit permission', () => {

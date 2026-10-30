@@ -584,16 +584,12 @@ class DebtAndInvoiceQueryPushTests(ManagerAPITestCase):
         self.assertEqual(refund.status_code, status.HTTP_400_BAD_REQUEST)
 
         with patch('approvals.permissions.user_has_admin_checker_override', return_value=False):
-            with patch(
-                'approvals.refund_integration.queue_sale_refund',
-                side_effect=ValidationError({'reason': 'blocked'}),
-            ):
-                queued_bad = self.client.post(
-                    f'/api/sales/{sale.id}/refund/',
-                    {'reason': 'Want money back please', 'full': True},
-                    format='json',
-                )
-        self.assertEqual(queued_bad.status_code, status.HTTP_400_BAD_REQUEST)
+            queued_bad = self.client.post(
+                f'/api/sales/{sale.id}/refund/',
+                {'reason': 'Want money back please', 'full': True},
+                format='json',
+            )
+        self.assertEqual(queued_bad.status_code, status.HTTP_403_FORBIDDEN)
 
 
 class SaleViewHelpersPushTests(TestCase):
