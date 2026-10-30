@@ -373,29 +373,7 @@ export default function CustomerDetailDialog({
         onReturned={() => {
           setSaleDetailOpen(false);
         }}
-        onUnvoid={async (sale) => {
-          const reason = window.prompt(
-            sale?.status === 'cancelled'
-              ? 'Why are you restoring this cancelled sale?'
-              : 'Why are you unvoiding this sale? Customer debt and stock will be restored.'
-          );
-          if (reason == null || !String(reason).trim()) {
-            if (reason != null) toast.warning('A reason is required');
-            return;
-          }
-          try {
-            const res = await salesAPI.unvoid(sale.id, { reason: String(reason).trim() });
-            toast.success(
-              sale.status === 'cancelled'
-                ? 'Sale restored to holding.'
-                : 'Sale unvoided — stock and customer debt restored.'
-            );
-            setSelectedSale(res.data);
-          } catch (error) {
-            const data = error.response?.data;
-            toast.error(data?.error || data?.reason?.[0] || error.message || 'Could not restore sale');
-          }
-        }}
+        onUnvoided={(updated) => setSelectedSale(updated)}
         onRefund={openRefundDialog}
         onRollback={openRollbackDialog}
         showCustomerName={false}

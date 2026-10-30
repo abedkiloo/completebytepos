@@ -274,7 +274,7 @@ class UnvoidTests(ManagerAPITestCase):
         self.assertFalse(SaleRefund.objects.filter(pk=refund.pk).exists())
         self.assertLess(self.customer.wallet_balance, balance_after_void)
 
-    def test_manager_cannot_unvoid_endpoint(self):
+    def test_manager_cannot_unvoid_without_permission(self):
         SaleRefundService().create_refund(
             self.sale,
             reason='mistaken void',
@@ -289,6 +289,29 @@ class UnvoidTests(ManagerAPITestCase):
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
         self.sale.refresh_from_db()
         self.assertEqual(self.sale.refund_status, 'refunded')
+
+    def test_manager_unvoid_when_permission_granted(self):
+        from accounts.models import Permission
+        from accounts.role_definitions import ROLE_MANAGER, ensure_permissions
+
+        ensure_permissions()
+        Role.objects.get(name=ROLE_MANAGER).permissions.add(
+            Permission.objects.get(module='sales', action='unvoid')
+        )
+        SaleRefundService().create_refund(
+            self.sale,
+            reason='mistaken void',
+            user=self.manager_user,
+            full=True,
+        )
+        res = self.client.post(
+            f'/api/sales/{self.sale.id}/unvoid/',
+            {'reason': 'fix debt'},
+            format='json',
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK, res.data)
+        self.sale.refresh_from_db()
+        self.assertEqual(self.sale.refund_status, 'none')
 
     def test_admin_unvoid_endpoint(self):
         SaleRefundService().create_refund(

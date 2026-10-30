@@ -23,9 +23,10 @@ describe('saleRefund', () => {
     expect(userCanRefundSales([])).toBe(false);
   });
 
-  it('allows only admins to unvoid / uncancel', () => {
+  it('checks unvoid permission (grantable) or admin override', () => {
+    const unvoidPerm = [{ module: 'sales', action: 'unvoid', name: 'sales.unvoid' }];
     expect(userCanUnvoidSales(approvePerm)).toBe(false);
-    expect(userCanUnvoidSales([], { canApproveSales: true })).toBe(false);
+    expect(userCanUnvoidSales(unvoidPerm)).toBe(true);
     expect(userCanUnvoidSales([], { isAdmin: true })).toBe(true);
     expect(userCanUnvoidSales([])).toBe(false);
     expect(saleIsUnvoidable({ status: 'completed', refund_status: 'refunded' })).toBe(true);

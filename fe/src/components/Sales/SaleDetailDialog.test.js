@@ -8,7 +8,7 @@ jest.mock('../../hooks/useStoreSettings', () => ({
 }));
 
 jest.mock('../../services/api', () => ({
-  salesAPI: { rejectComplete: jest.fn(), correctDate: jest.fn() },
+  salesAPI: { rejectComplete: jest.fn(), correctDate: jest.fn(), unvoid: jest.fn() },
 }));
 
 const mockNavigate = jest.fn();
@@ -203,6 +203,31 @@ describe('SaleDetailDialog', () => {
     );
 
     expect(screen.queryByRole('button', { name: /^Void \/ refund$/i })).not.toBeInTheDocument();
+  });
+
+  it('shows inline reason under Uncancel instead of a browser prompt', async () => {
+    salesAPI.unvoid.mockResolvedValue({
+      data: { ...sale, status: 'holding', refund_status: 'none' },
+    });
+    const onUnvoided = jest.fn();
+    renderDialog(
+      <SaleDetailDialog
+        sale={{ ...sale, status: 'cancelled', refund_status: 'none' }}
+        open
+        onOpenChange={() => {}}
+        canUnvoid
+        onUnvoided={onUnvoided}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /^Uncancel$/i }));
+    expect(screen.getByTestId('sale-unvoid-panel')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/^Reason$/i), {
+      target: { value: 'Still needed' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Confirm uncancel/i }));
+    await waitFor(() => expect(salesAPI.unvoid).toHaveBeenCalledWith(1, { reason: 'Still needed' }));
+    expect(onUnvoided).toHaveBeenCalled();
   });
 
   it('hides admin block when showAdminDetails is false', () => {

@@ -126,8 +126,7 @@ SALES_PERMS = RequirePermPerAction('sales', {
     'cancel_holding': 'update',
     'refund': 'refund',
     'rollback': 'rollback',
-    # Unvoid is Admin/Super Admin only (enforced in the action).
-    'unvoid': 'approve',
+    'unvoid': 'unvoid',
     'backfill': 'create',
     'backfill_preflight': 'create',
     'backfill_import_csv': 'create',
@@ -1044,18 +1043,9 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     @transaction.atomic
     def unvoid(self, request, pk=None):
-        """Restore a full void/rollback, or reopen a cancelled sale. Admin only."""
-        from approvals.permissions import user_has_admin_checker_override
+        """Restore a full void/rollback, or reopen a cancelled sale (needs sales.unvoid)."""
         from sales.unvoid import sale_is_uncancellable, sale_is_unvoidable, uncancel_sale, unvoid_sale
         from utils.audit_events import log_sale_unvoided
-
-        if not user_has_admin_checker_override(request.user):
-            return Response(
-                {
-                    'error': 'Only an Admin or Super Admin can unvoid or uncancel a sale.',
-                },
-                status=status.HTTP_403_FORBIDDEN,
-            )
 
         sale = self.get_object()
         reason = (request.data.get('reason') or '').strip()

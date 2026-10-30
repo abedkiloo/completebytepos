@@ -55,6 +55,12 @@ class Permission(models.Model):
         ('daily_sales', 'Daily sales'),
         ('view_all', 'View all'),
         ('view_own', 'View own'),
+        ('refund', 'Void / refund'),
+        ('rollback', 'Roll back'),
+        ('unvoid', 'Unvoid / uncancel'),
+        ('correct', 'Correct'),
+        ('profit', 'Trading profit'),
+        ('history', 'History'),
     ]
 
     module = models.CharField(max_length=50, choices=MODULE_CHOICES)

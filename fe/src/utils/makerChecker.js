@@ -52,13 +52,13 @@ const REASON_CONTEXT_COPY = {
     label: 'Reason for void / refund',
     placeholder: 'Why is this sale being voided or refunded?',
     summary:
-      'Use Void / refund for a customer return. Only an Admin or Super Admin can void or unvoid. Unvoid restores stock and customer debt for a mistaken void.',
+      'Use Void / refund for a customer return. Needs the Void/refund permission. Unvoid (separate permission) restores stock and customer debt for a mistaken void.',
   },
   sale_rollback: {
     label: 'Reason for sale rollback',
     placeholder: 'e.g. Wrong customer, duplicate checkout, cashier error',
     summary:
-      'Use Roll back only when this sale should never have been recorded (duplicate till, wrong customer). Only an Admin or Super Admin can roll back or unvoid a mistaken rollback.',
+      'Use Roll back only when this sale should never have been recorded (duplicate till, wrong customer). Needs the Roll back permission. Restore a mistaken rollback with Unvoid if that permission is granted.',
   },
   sale_backfill: {
     label: 'Reason for late entry',

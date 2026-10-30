@@ -56,7 +56,7 @@ export default function SaleDetailDialog({
   onRollback,
   canRollback = false,
   canUnvoid = false,
-  onUnvoid,
+  onUnvoided,
   onPrint,
   canReturnForCorrection = false,
   onReturned,
@@ -71,12 +71,17 @@ export default function SaleDetailDialog({
   const [showReturn, setShowReturn] = useState(false);
   const [returnReason, setReturnReason] = useState('');
   const [returning, setReturning] = useState(false);
+  const [showUnvoid, setShowUnvoid] = useState(false);
+  const [unvoidReason, setUnvoidReason] = useState('');
+  const [unvoiding, setUnvoiding] = useState(false);
   const [saleDate, setSaleDate] = useState(() => saleDateInputValue(sale?.occurred_at || sale?.created_at));
   const [savingDate, setSavingDate] = useState(false);
 
   useEffect(() => {
     setShowReturn(false);
     setReturnReason('');
+    setShowUnvoid(false);
+    setUnvoidReason('');
     setSaleDate(saleDateInputValue(sale?.occurred_at || sale?.created_at));
   }, [sale?.id, sale?.occurred_at, sale?.created_at]);
 
@@ -99,6 +104,9 @@ export default function SaleDetailDialog({
   const originalSaleDate = saleDateInputValue(sale.occurred_at || sale.created_at);
   const saleDateChanged = Boolean(saleDate) && saleDate !== originalSaleDate;
 
+  const isCancelledRestore = sale?.status === 'cancelled';
+  const unvoidLabel = isCancelledRestore ? 'Uncancel' : 'Unvoid';
+
   const returnForCorrection = async () => {
     if (!returnReason.trim()) {
       toast.warning('Please say why you are returning this sale');
@@ -119,6 +127,37 @@ export default function SaleDetailDialog({
       );
     } finally {
       setReturning(false);
+    }
+  };
+
+  const confirmUnvoid = async () => {
+    if (!unvoidReason.trim()) {
+      toast.warning(
+        isCancelledRestore
+          ? 'Please say why you are restoring this cancelled sale'
+          : 'Please say why you are unvoiding this sale'
+      );
+      return;
+    }
+    setUnvoiding(true);
+    try {
+      const res = await salesAPI.unvoid(sale.id, { reason: unvoidReason.trim() });
+      toast.success(
+        isCancelledRestore
+          ? 'Sale restored to holding — fix it on Terminal if needed.'
+          : 'Sale unvoided — stock and customer debt restored.'
+      );
+      onUnvoided?.(res.data);
+      onUpdated?.(res.data);
+      setShowUnvoid(false);
+      setUnvoidReason('');
+    } catch (err) {
+      const data = err.response?.data;
+      toast.error(
+        data?.error || data?.reason?.[0] || data?.detail || 'Could not restore this sale'
+      );
+    } finally {
+      setUnvoiding(false);
     }
   };
 
@@ -454,6 +493,37 @@ export default function SaleDetailDialog({
           </div>
         ) : null}
 
+        {canUnvoid && saleIsUnvoidable(sale) && showUnvoid ? (
+          <div
+            className="space-y-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm"
+            data-testid="sale-unvoid-panel"
+          >
+            <p className="font-semibold">
+              {isCancelledRestore ? 'Restore this cancelled sale' : 'Unvoid this sale'}
+            </p>
+            <p className="text-muted-foreground">
+              {isCancelledRestore
+                ? 'The sale goes back on hold so it can be fixed or re-sent for approval.'
+                : 'Stock and customer debt from this void will be restored.'}
+            </p>
+            <Label htmlFor={`unvoid-sale-${sale.id}`}>Reason</Label>
+            <Input
+              id={`unvoid-sale-${sale.id}`}
+              value={unvoidReason}
+              onChange={(event) => setUnvoidReason(event.target.value)}
+              placeholder={
+                isCancelledRestore
+                  ? 'Why are you restoring this cancelled sale?'
+                  : 'Why are you unvoiding this sale?'
+              }
+              autoFocus
+            />
+            <Button size="sm" onClick={confirmUnvoid} disabled={unvoiding}>
+              {unvoiding ? 'Restoring…' : `Confirm ${unvoidLabel.toLowerCase()}`}
+            </Button>
+          </div>
+        ) : null}
+
         <DialogFooter className="flex-wrap gap-2 sm:justify-between">
           <div className="flex flex-wrap items-center gap-1">
             {canRollback && saleIsRollbackable(sale) && onRollback ? (
@@ -474,17 +544,27 @@ export default function SaleDetailDialog({
                 <HelpHint actionKey="sale_refund" />
               </span>
             ) : null}
-            {canUnvoid && saleIsUnvoidable(sale) && onUnvoid ? (
-              <Button variant="outline" onClick={() => onUnvoid(sale)}>
+            {canUnvoid && saleIsUnvoidable(sale) ? (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowReturn(false);
+                  setShowUnvoid((open) => !open);
+                }}
+                disabled={unvoiding}
+              >
                 <RotateCcw className="mr-1 h-4 w-4" />
-                {sale.status === 'cancelled' ? 'Uncancel' : 'Unvoid'}
+                {unvoidLabel}
               </Button>
             ) : null}
             {canReturn ? (
               <span className="inline-flex items-center">
                 <Button
                   variant="destructive"
-                  onClick={() => setShowReturn((open) => !open)}
+                  onClick={() => {
+                    setShowUnvoid(false);
+                    setShowReturn((open) => !open);
+                  }}
                   disabled={returning}
                 >
                   <RotateCcw className="mr-1 h-4 w-4" />

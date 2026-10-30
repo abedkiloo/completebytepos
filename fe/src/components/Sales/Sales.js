@@ -238,35 +238,6 @@ const Sales = () => {
     }
   };
 
-  const handleUnvoid = async (sale) => {
-    const reason = window.prompt(
-      sale?.status === 'cancelled'
-        ? 'Why are you restoring this cancelled sale?'
-        : 'Why are you unvoiding this sale? Customer debt and stock will be restored.'
-    );
-    if (reason == null) return;
-    if (!String(reason).trim()) {
-      toast.warning('A reason is required');
-      return;
-    }
-    try {
-      const res = await salesAPI.unvoid(sale.id, { reason: String(reason).trim() });
-      toast.success(
-        sale.status === 'cancelled'
-          ? 'Sale restored to holding — fix it on Terminal if needed.'
-          : 'Sale unvoided — stock and customer debt restored.'
-      );
-      if (selectedSale?.id === sale.id) {
-        setSelectedSale(res.data);
-      }
-      loadSales();
-    } catch (error) {
-      const data = error.response?.data;
-      const msg = data?.reason?.[0] || data?.error || data?.detail || error.message;
-      toast.error(typeof msg === 'string' ? msg : 'Could not restore this sale');
-    }
-  };
-
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
     setFilters(prev => ({
@@ -684,7 +655,7 @@ const Sales = () => {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleUnvoid(sale)}
+                            onClick={() => handleViewSale(sale)}
                           >
                             <RotateCcw className="mr-1 h-3.5 w-3.5" />
                             {sale.status === 'cancelled' ? 'Uncancel' : 'Unvoid'}
@@ -737,8 +708,9 @@ const Sales = () => {
             setShowReceiptModal(false);
             openRollbackDialog(sale);
           }}
-          onUnvoid={(sale) => {
-            handleUnvoid(sale);
+          onUnvoided={(updated) => {
+            setSelectedSale(updated);
+            loadSales();
           }}
           onPrint={handlePrintReceipt}
           onUpdated={(updated) => {

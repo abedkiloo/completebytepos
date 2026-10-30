@@ -84,11 +84,13 @@ class DefaultRolePermissionTests(TestCase):
         self.assertTrue(self._has(self.manager_role, 'sales', 'approve'))
         self.assertTrue(self._has(self.super_role, 'sales', 'approve'))
 
-    def test_manager_lacks_void_and_rollback(self):
+    def test_manager_lacks_void_rollback_and_unvoid(self):
         self.assertFalse(self._has(self.manager_role, 'sales', 'refund'))
         self.assertFalse(self._has(self.manager_role, 'sales', 'rollback'))
+        self.assertFalse(self._has(self.manager_role, 'sales', 'unvoid'))
         self.assertTrue(self._has(self.super_role, 'sales', 'refund'))
         self.assertTrue(self._has(self.super_role, 'sales', 'rollback'))
+        self.assertTrue(self._has(self.super_role, 'sales', 'unvoid'))
 
     def test_daily_sales_is_opt_in_for_manager_and_sales(self):
         """Daily Sales Tracker is checkable — not on default Manager or Sales packs."""

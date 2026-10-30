@@ -65,8 +65,9 @@ PERMISSIONS_DATA = [
     ('sales', 'create', 'Create sales'),
     ('sales', 'update', 'Update sales'),
     ('sales', 'delete', 'Delete sales'),
-    ('sales', 'refund', 'Void/refund completed sales (Admin only)'),
-    ('sales', 'rollback', 'Roll back a mistaken sale (Admin only; managers restore with Unvoid)'),
+    ('sales', 'refund', 'Void/refund completed sales'),
+    ('sales', 'rollback', 'Roll back a mistaken sale (full reversal)'),
+    ('sales', 'unvoid', 'Unvoid or uncancel a sale (restore stock and customer debt)'),
     ('sales', 'approve', 'Approve and complete sales submitted by cashiers'),
     ('sales', 'export', 'Export sales'),
     ('sales', 'daily_sales', 'View daily sales tracker (paid vs debt by day)'),
@@ -309,9 +310,10 @@ def _manager_queryset():
         # Daily Sales Tracker + store-wide sales totals are opt-in checkboxes.
         .exclude(module='sales', action='daily_sales')
         .exclude(module='sales', action='view_all')
-        # Void/refund/rollback stay admin — managers restore mistaken voids via Unvoid.
+        # Void/refund/rollback/unvoid stay off Manager unless explicitly checked.
         .exclude(module='sales', action='rollback')
         .exclude(module='sales', action='refund')
+        .exclude(module='sales', action='unvoid')
         .exclude(module='accounting', action='correct')
         # Trading profit report stays admin unless explicitly checked on the role.
         .exclude(module='reports', action='profit')
@@ -511,9 +513,12 @@ def sync_default_roles(created_by=None):
     if manager_created:
         manager.permissions.set(_manager_queryset())
     else:
-        # Strip void/refund from existing Manager packs (admins keep it on Admin roles).
+        # Strip void/refund/unvoid from existing Manager packs unless an admin re-checks them.
         manager.permissions.remove(
-            *Permission.objects.filter(module='sales', action='refund')
+            *Permission.objects.filter(
+                module='sales',
+                action__in=['refund', 'unvoid'],
+            )
         )
 
     sales, sales_created = Role.objects.update_or_create(

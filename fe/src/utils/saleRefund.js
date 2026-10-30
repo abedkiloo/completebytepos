@@ -15,10 +15,10 @@ export function userCanRollbackSales(permissions) {
   return hasPermission(permissions, 'sales', 'rollback');
 }
 
-/** Unvoid / uncancel: Admin/Super Admin only. */
+/** Unvoid / uncancel — grantable ``sales.unvoid`` (Super Admin has it by default). */
 export function userCanUnvoidSales(permissions, { isAdmin = false } = {}) {
   if (isAdmin) return true;
-  return false;
+  return hasPermission(permissions, 'sales', 'unvoid');
 }
 
 export function saleIsUnvoidable(sale) {
