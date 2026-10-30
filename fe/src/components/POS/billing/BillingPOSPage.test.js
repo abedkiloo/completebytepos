@@ -97,6 +97,7 @@ function buildMockState(overrides = {}) {
     addToCart: jest.fn(),
     updateQty: jest.fn(),
     setQty: jest.fn(),
+    setLinePrice: jest.fn(),
     removeLine: jest.fn(),
     clearCart: jest.fn(),
     checkout: jest.fn(),
@@ -189,12 +190,29 @@ describe('BillingPOSPage invoice layout', () => {
         selectedCustomer: { id: 5, name: 'Jane', phone: '0700111222' },
         amountPaid: '40',
         total: 200,
+        cart: [
+          {
+            id: 1,
+            name: 'Zipper',
+            price: 200,
+            quantity: 1,
+            mrp: 250,
+          },
+        ],
+        itemCount: 1,
+        subtotal: 200,
       })
     );
     render(<BillingPOSPage />);
     expect(screen.getByTestId('billing-rectify-workspace')).toBeInTheDocument();
     expect(screen.getByTestId('returned-sale-banner')).toHaveTextContent(/Rectify · S-RET/);
     expect(screen.getByTestId('returned-sale-banner')).toHaveTextContent('Wrong prices');
+    expect(screen.getByTestId('correction-sale-lines')).toHaveTextContent(/Lines on this sale/);
+    expect(screen.getByTestId('correction-sale-lines')).toHaveTextContent('Zipper');
+    expect(screen.queryByText(/^Cart$/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Add or replace a product/i)).toBeInTheDocument();
+    expect(screen.getByText(/Payment & send back/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Send back for approval/i })).toBeInTheDocument();
     expect(screen.queryByTestId('correction-details')).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId('correction-details-toggle'));
     expect(screen.getByTestId('correction-customer-card')).toHaveTextContent('Jane');

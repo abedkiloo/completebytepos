@@ -561,6 +561,71 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
         self.assertEqual(sale.amount_paid, Decimal('75.00'))
         self.assertEqual(sale.payment_method, 'mpesa')
 
+    def test_returned_holding_sync_keeps_inactive_customer(self):
+        from sales.models import Customer
+
+        customer = Customer.objects.create(
+            name='Hope Tent', phone='0700123456', is_active=True,
+        )
+        payload = self._sale_payload()
+        payload['customer_id'] = customer.id
+        created = self.client.post('/api/sales/', payload, format='json')
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED, created.data)
+        sale_id = created.data['id']
+        self._manager_client().post(f'/api/sales/{sale_id}/complete/', {}, format='json')
+        admin = self._admin_client()
+        admin.post(
+            f'/api/sales/{sale_id}/reject-complete/',
+            {'rejection_reason': 'Wrong price'},
+            format='json',
+        )
+        customer.is_active = False
+        customer.save(update_fields=['is_active'])
+
+        edited = self.client.post(
+            '/api/sales/holding/',
+            {
+                'holding_id': sale_id,
+                'customer_id': customer.id,
+                'items': [
+                    {
+                        'product_id': self.product.id,
+                        'quantity': '1',
+                        'unit_price': '90.00',
+                    }
+                ],
+                'payment_method': 'mpesa',
+                'payment_reference': 'QHXCUST01',
+                'amount_paid': '90.00',
+                'client_channel': 'web',
+            },
+            format='json',
+        )
+        self.assertEqual(edited.status_code, status.HTTP_200_OK, edited.data)
+        self.assertEqual(edited.data['customer'], customer.id)
+        self.assertEqual(edited.data['customer_name'], 'Hope Tent')
+
+        # Omitting customer_id on a correction sync must not wipe the customer.
+        edited_omit = self.client.post(
+            '/api/sales/holding/',
+            {
+                'holding_id': sale_id,
+                'items': [
+                    {
+                        'product_id': self.product.id,
+                        'quantity': '1',
+                        'unit_price': '95.00',
+                    }
+                ],
+                'payment_method': 'mpesa',
+                'amount_paid': '95.00',
+                'client_channel': 'web',
+            },
+            format='json',
+        )
+        self.assertEqual(edited_omit.status_code, status.HTTP_200_OK, edited_omit.data)
+        self.assertEqual(Sale.objects.get(pk=sale_id).customer_id, customer.id)
+
     def test_salesperson_create_is_pending_stock_unchanged(self):
         response = self.client.post('/api/sales/', self._sale_payload(), format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)

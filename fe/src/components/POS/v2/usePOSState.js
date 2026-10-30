@@ -442,11 +442,17 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
         if (holding.payment_reference) {
           setPaymentReference(String(holding.payment_reference));
         }
-        if (holding.customer) {
-          const fromList = customers.find((c) => c.id === holding.customer);
+        const holdingCustomerId =
+          holding.customer != null && typeof holding.customer === 'object'
+            ? holding.customer.id
+            : holding.customer;
+        if (holdingCustomerId != null && holdingCustomerId !== '') {
+          const fromList = customers.find(
+            (c) => String(c.id) === String(holdingCustomerId),
+          );
           setSelectedCustomer({
             ...(fromList || {}),
-            id: holding.customer,
+            id: holdingCustomerId,
             name: holding.customer_name || fromList?.name || 'Customer',
             phone: holding.customer_phone || fromList?.phone || '',
             wallet_balance:
@@ -460,7 +466,7 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
           Number.isFinite(paid) &&
             Number.isFinite(totalDue) &&
             paid + 1e-9 < totalDue &&
-            Boolean(holding.customer)
+            Boolean(holdingCustomerId)
         );
         setHoldingId(holding.id);
         const comment = String(holding.rejection_reason || '').trim();
@@ -477,6 +483,7 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
               0,
             ),
             paymentMethod: holding.payment_method || 'cash',
+            customerId: holdingCustomerId ?? null,
           });
         } else {
           setReturnedSaleNotice(null);
@@ -872,10 +879,19 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
         });
         let res;
         if (holdingId) {
+          let customerId = customerIdForSale(selectedCustomer);
+          if (
+            (customerId == null || customerId === '')
+            && returnedSaleNotice
+            && correctionSnapshot?.customerId != null
+            && correctionSnapshot.customerId !== ''
+          ) {
+            customerId = correctionSnapshot.customerId;
+          }
           const holdingPayload = {
             holding_id: holdingId,
             items: buildHoldingItemsFromCart(cart),
-            customer_id: customerIdForSale(selectedCustomer),
+            customer_id: customerId,
             tax_amount: parseFloat(taxAmount.toFixed(2)),
             discount_amount: parseFloat(discountAmount.toFixed(2)),
             client_channel: 'web',
@@ -960,6 +976,7 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
       taxAmount,
       discountAmount,
       returnedSaleNotice,
+      correctionSnapshot,
     ]
   );
 

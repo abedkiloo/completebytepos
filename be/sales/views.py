@@ -668,12 +668,44 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
+        holding_id = data.get('holding_id')
+        existing_holding = None
+        if holding_id:
+            existing_holding = (
+                self.sale_service.model.objects.filter(id=holding_id, status='holding')
+                .select_related('customer')
+                .first()
+            )
+
         customer = self.sale_service.resolve_customer(data.get('customer_id'))
         if data.get('customer_id') and customer is None:
-            return Response(
-                {'error': 'Customer not found'},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            # Updating a draft/correction: keep the sale's customer even if inactive.
+            if (
+                existing_holding
+                and existing_holding.customer_id
+                and int(existing_holding.customer_id) == int(data['customer_id'])
+            ):
+                customer = existing_holding.customer
+            else:
+                customer = self.sale_service.resolve_customer(
+                    data.get('customer_id'),
+                    require_active=False,
+                )
+            if customer is None:
+                return Response(
+                    {'error': 'Customer not found'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+        elif (
+            data.get('customer_id') is None
+            and existing_holding is not None
+            and existing_holding.customer_id
+        ):
+            from sales.sale_completion_approval import sale_needs_salesperson_action
+
+            # Correction syncs often omit customer_id — never wipe the returned sale's customer.
+            if sale_needs_salesperson_action(existing_holding):
+                customer = existing_holding.customer
 
         try:
             branch = self.sale_service.resolve_sale_branch(request, data.get('branch_id'))

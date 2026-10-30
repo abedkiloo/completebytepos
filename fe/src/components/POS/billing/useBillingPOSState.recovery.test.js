@@ -174,6 +174,7 @@ describe('useBillingPOSState cart recovery', () => {
       paid: 40,
       itemCount: 3,
       paymentMethod: 'mpesa',
+      customerId: 12,
     });
   });
 

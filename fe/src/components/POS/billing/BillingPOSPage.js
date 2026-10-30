@@ -76,6 +76,7 @@ import {
 import CorrectionModePanel, {
   CorrectionTotalsCompare,
 } from '../CorrectionModePanel';
+import CorrectionSaleLines from '../CorrectionSaleLines';
 
 export default function BillingPOSPage() {
   const [searchParams] = useSearchParams();
@@ -188,11 +189,11 @@ export default function BillingPOSPage() {
             <p className="truncate text-xs text-muted-foreground">
               {isRectify ? (
                 <>
-                  Editing{' '}
+                  Fix lines and payment on{' '}
                   <span className="font-mono text-amber-900">
                     {state.returnedSaleNotice.saleNumber}
                   </span>
-                  {' · '}cart and payment are live below
+                  , then send back for approval
                 </>
               ) : (
                 <>
@@ -237,17 +238,35 @@ export default function BillingPOSPage() {
           {/* Left: search + cart */}
           <div className={BILLING_LEFT_COLUMN_CLASS}>
             {/* Scan / search */}
-            <div className="rounded-xl border bg-white p-4 shadow-sm">
-              <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
-                <ScanBarcode className="h-4 w-4 text-primary" />
-                Scan / Search Product
+            <div
+              className={cn(
+                'rounded-xl border p-4 shadow-sm',
+                isRectify
+                  ? 'border-amber-200/80 bg-amber-50/50'
+                  : 'bg-white',
+              )}
+            >
+              <div
+                className={cn(
+                  'mb-2 flex items-center gap-2 text-sm font-medium',
+                  isRectify ? 'text-amber-950' : 'text-slate-700',
+                )}
+              >
+                <ScanBarcode
+                  className={cn('h-4 w-4', isRectify ? 'text-amber-800' : 'text-primary')}
+                />
+                {isRectify ? 'Add or replace a product' : 'Scan / Search Product'}
               </div>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   ref={searchRef}
                   autoFocus
-                  placeholder="Scan barcode or type product name…"
+                  placeholder={
+                    isRectify
+                      ? 'Search to add another line on this sale…'
+                      : 'Scan barcode or type product name…'
+                  }
                   value={state.searchQuery}
                   onChange={(e) => state.setSearchQuery(e.target.value)}
                   onKeyDown={(e) => {
@@ -260,7 +279,7 @@ export default function BillingPOSPage() {
                       state.addToCart(first);
                     }
                   }}
-                  className="h-11 pl-10"
+                  className={cn('h-11 pl-10', isRectify && 'border-amber-200 bg-white')}
                 />
               </div>
               {state.searchQuery && (
@@ -319,7 +338,22 @@ export default function BillingPOSPage() {
               )}
             </div>
 
-            {/* Cart table */}
+            {isRectify ? (
+              <CorrectionSaleLines
+                cart={state.cart}
+                itemCount={state.itemCount}
+                subtotal={state.subtotal}
+                saleNumber={state.returnedSaleNotice?.saleNumber}
+                validateStock={state.validateStock}
+                mayEditPricing={mayEditPricing}
+                onUpdateQty={state.updateQty}
+                onSetQty={state.setQty}
+                onSetLinePrice={state.setLinePrice}
+                onRemoveLine={state.removeLine}
+                onClearLines={state.clearCart}
+              />
+            ) : (
+            /* Cart table */
             <div className="flex flex-1 flex-col rounded-xl border bg-white shadow-sm">
               <div className="flex items-center justify-between border-b px-4 py-3">
                 <div className="flex items-center gap-2 font-medium">
@@ -452,18 +486,24 @@ export default function BillingPOSPage() {
                 </table>
               </div>
             </div>
+            )}
           </div>
 
           {/* Right: customer + invoice */}
           <div className={BILLING_RIGHT_COLUMN_CLASS}>
             {/* Customer */}
-            <div className="rounded-xl border bg-white p-4 shadow-sm">
+            <div
+              className={cn(
+                'rounded-xl border p-4 shadow-sm',
+                isRectify ? 'border-amber-200/70 bg-amber-50/30' : 'bg-white',
+              )}
+            >
               <div className="mb-3 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm font-medium">
-                  <User className="h-4 w-4 text-primary" />
-                  Customer
+                  <User className={cn('h-4 w-4', isRectify ? 'text-amber-800' : 'text-primary')} />
+                  {isRectify ? 'Customer on this sale' : 'Customer'}
                 </div>
-                {canAddCustomer && (
+                {canAddCustomer && !isRectify && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -544,17 +584,22 @@ export default function BillingPOSPage() {
                   ))}
                 </ul>
               )}
-              {!state.isWalkInCustomer(state.selectedCustomer) && (
+              {!isRectify && !state.isWalkInCustomer(state.selectedCustomer) && (
                 <CustomerRecentSales customerId={state.selectedCustomer?.id} />
               )}
             </div>
 
             {/* Invoice details */}
             <div
-              className={BILLING_INVOICE_CARD_CLASS}
+              className={cn(
+                BILLING_INVOICE_CARD_CLASS,
+                isRectify && 'border-amber-200/70 bg-amber-50/20',
+              )}
               data-testid="billing-invoice-details"
             >
-              <h2 className="mb-4 text-sm font-semibold text-slate-800">Invoice Details</h2>
+              <h2 className="mb-4 text-sm font-semibold text-slate-800">
+                {isRectify ? 'Payment & send back' : 'Invoice Details'}
+              </h2>
 
               {state.showDiscount && (
               <div className="mb-4">
@@ -753,7 +798,9 @@ export default function BillingPOSPage() {
                 )}
                 {isMpesa && collectNow && isLiveMpesaPrompt(mpesaMode)
                   ? `Send M-Pesa prompt · ${formatCurrency(paidCheck.paid || state.total)}`
-                  : 'Checkout · view receipt'}
+                  : isRectify
+                    ? `Send back for approval · ${formatCurrency(state.total)}`
+                    : 'Checkout · view receipt'}
               </Button>
             </div>
           </div>

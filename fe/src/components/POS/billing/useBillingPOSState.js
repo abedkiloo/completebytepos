@@ -248,18 +248,32 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
     );
     setCart(lines);
 
-    if (holding.customer) {
+    const holdingCustomerId =
+      holding.customer != null && typeof holding.customer === 'object'
+        ? holding.customer.id
+        : holding.customer;
+    if (holdingCustomerId != null && holdingCustomerId !== '') {
       setSelectedCustomer((prev) => {
         const next = {
-          id: holding.customer,
-          name: holding.customer_name || prev?.name || 'Customer',
-          phone: holding.customer_phone || prev?.phone || '',
+          id: holdingCustomerId,
+          name:
+            holding.customer_name
+            || (typeof holding.customer === 'object' ? holding.customer.name : null)
+            || prev?.name
+            || 'Customer',
+          phone:
+            holding.customer_phone
+            || (typeof holding.customer === 'object' ? holding.customer.phone : null)
+            || prev?.phone
+            || '',
           wallet_balance:
             holding.customer_wallet_balance != null
               ? holding.customer_wallet_balance
-              : prev?.wallet_balance,
+              : typeof holding.customer === 'object' && holding.customer.wallet_balance != null
+                ? holding.customer.wallet_balance
+                : prev?.wallet_balance,
         };
-        if (prev && String(prev.id) === String(holding.customer)) {
+        if (prev && String(prev.id) === String(holdingCustomerId)) {
           return {
             ...prev,
             ...next,
@@ -294,6 +308,7 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
         paid: Number.isFinite(paid) ? paid : 0,
         itemCount,
         paymentMethod: holding.payment_method || 'cash',
+        customerId: holdingCustomerId ?? null,
       });
     } else {
       setReturnedSaleNotice(null);
@@ -430,10 +445,20 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
 
   const buildHoldingPayload = useCallback(
     () => {
+      let customerId = customerIdForSale(selectedCustomer);
+      // Correction Mode: never drop the returned sale's customer on sync.
+      if (
+        (customerId == null || customerId === '')
+        && returnedSaleNotice
+        && correctionSnapshot?.customerId != null
+        && correctionSnapshot.customerId !== ''
+      ) {
+        customerId = correctionSnapshot.customerId;
+      }
       const payload = {
         holding_id: holdingId,
         items: buildHoldingItemsFromCart(cart),
-        customer_id: customerIdForSale(selectedCustomer),
+        customer_id: customerId,
         tax_amount: parseFloat(taxAmount.toFixed(2)),
         discount_amount: parseFloat(discountAmount.toFixed(2)),
         client_channel: 'web',
@@ -453,6 +478,7 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
       taxAmount,
       discountAmount,
       returnedSaleNotice,
+      correctionSnapshot,
       paymentMethod,
       paymentReference,
       amountPaid,

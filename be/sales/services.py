@@ -1030,11 +1030,19 @@ class SaleService(BaseService):
             'change': change
         }
 
-    def resolve_customer(self, customer_id: Optional[int]) -> Optional[Customer]:
+    def resolve_customer(
+        self,
+        customer_id: Optional[int],
+        *,
+        require_active: bool = True,
+    ) -> Optional[Customer]:
         if not customer_id:
             return None
         try:
-            return Customer.objects.get(id=customer_id, is_active=True)
+            qs = Customer.objects.all()
+            if require_active:
+                qs = qs.filter(is_active=True)
+            return qs.get(id=customer_id)
         except Customer.DoesNotExist:
             logger.warning('Customer %s not found for sale', customer_id)
             return None

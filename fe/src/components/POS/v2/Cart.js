@@ -41,23 +41,47 @@ export function Cart({
   onRemove,
   onClear,
   validateStock = true,
+  correctionMode = false,
 }) {
   if (items.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center text-muted-foreground">
         <ShoppingCart className="h-10 w-10 opacity-40" />
         <div>
-          <p className="font-medium text-foreground">Cart is empty</p>
-          <p className="mt-1 text-sm">Tap a product on the left to add it.</p>
+          <p className="font-medium text-foreground">
+            {correctionMode ? 'No lines on this sale' : 'Cart is empty'}
+          </p>
+          <p className="mt-1 text-sm">
+            {correctionMode
+              ? 'Add a product to correct this sale.'
+              : 'Tap a product on the left to add it.'}
+          </p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center justify-between border-b px-3 py-1.5">
-        <span className="text-sm font-medium text-muted-foreground">
+    <div
+      className={cn(
+        'flex h-full min-h-0 flex-col',
+        correctionMode && 'bg-amber-50/40',
+      )}
+      data-testid={correctionMode ? 'retail-correction-lines' : 'retail-cart'}
+    >
+      <div
+        className={cn(
+          'flex items-center justify-between border-b px-3 py-1.5',
+          correctionMode && 'border-amber-200/80 bg-amber-100/60',
+        )}
+      >
+        <span
+          className={cn(
+            'text-sm font-medium',
+            correctionMode ? 'text-amber-950' : 'text-muted-foreground',
+          )}
+        >
+          {correctionMode ? 'Lines on this sale · ' : ''}
           {items.length} {items.length === 1 ? 'line' : 'lines'} ·{' '}
           {items.reduce((s, i) => s + i.quantity, 0)} items
         </span>
@@ -68,7 +92,7 @@ export function Cart({
           className="h-8 text-muted-foreground hover:text-destructive"
         >
           <Trash2 className="h-3.5 w-3.5" />
-          Clear
+          {correctionMode ? 'Clear lines' : 'Clear'}
         </Button>
       </div>
 

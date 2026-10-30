@@ -370,6 +370,7 @@ export default function POSPage() {
             <Cart
               items={state.cart}
               validateStock={state.validateStock}
+              correctionMode={Boolean(state.returnedSaleNotice)}
               onAdjust={state.adjustItemQuantity}
               onSetQuantity={state.setItemQuantity}
               onSetPrice={state.setItemPrice}
