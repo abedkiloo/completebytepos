@@ -23,6 +23,7 @@ class PendingChangeSerializer(serializers.ModelSerializer):
     )
     business_date = serializers.SerializerMethodField()
     past_dated = serializers.SerializerMethodField()
+    posted_correction = serializers.SerializerMethodField()
     details = serializers.SerializerMethodField()
 
     def _details_cache(self):
@@ -60,6 +61,13 @@ class PendingChangeSerializer(serializers.ModelSerializer):
             obj, sales_by_id=self._sales_by_id(),
         )
 
+    def get_posted_correction(self, obj):
+        from approvals.permissions import change_is_posted_sale_correction
+
+        return obj.status == PendingChange.STATUS_PENDING and change_is_posted_sale_correction(
+            obj
+        )
+
     class Meta:
         model = PendingChange
         list_serializer_class = PendingChangeListSerializer
@@ -84,6 +92,7 @@ class PendingChangeSerializer(serializers.ModelSerializer):
             'apply_payload',
             'business_date',
             'past_dated',
+            'posted_correction',
             'details',
         ]
         read_only_fields = fields

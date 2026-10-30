@@ -48,7 +48,7 @@ from utils.tests.api_test_base import ManagerAPITestCase, SalesAPITestCase
 
 
 class ResubmittedPaymentTests(TestCase):
-    def test_partial_payment_is_kept_on_resubmit(self):
+    def test_unpaid_holding_does_not_reinflate_old_payload_amount(self):
         cashier = User.objects.create_user('partial_till', password='x')
         sale = Sale.objects.create(
             sale_number='S-PARTIAL-RESUB',
@@ -71,7 +71,34 @@ class ResubmittedPaymentTests(TestCase):
         )
         restore_queued_sale_for_approval(sale, change)
         change.refresh_from_db()
-        self.assertEqual(change.apply_payload['amount_paid'], '50')
+        # Holding amount_paid is authoritative — never reinflate unpaid from old payload.
+        self.assertEqual(change.apply_payload['amount_paid'], '0')
+        self.assertTrue(change.apply_payload['allow_partial'])
+
+    def test_partial_payment_on_holding_is_kept_on_resubmit(self):
+        cashier = User.objects.create_user('paid_partial_till', password='x')
+        sale = Sale.objects.create(
+            sale_number='S-PAID-PARTIAL-RESUB',
+            status='holding',
+            cashier=cashier,
+            subtotal=Decimal('300'),
+            total=Decimal('300'),
+            payment_method='cash',
+            amount_paid=Decimal('40'),
+        )
+        change = PendingChange.objects.create(
+            action_type=ACTION_SALE_COMPLETE,
+            entity_type='sales.Sale',
+            entity_id=str(sale.pk),
+            reason=QUEUE_REASON,
+            status=PendingChange.STATUS_REJECTED,
+            made_by=cashier,
+            original_values={'status': 'pending_approval', 'total': '300'},
+            apply_payload={'amount_paid': '300', 'allow_partial': True},
+        )
+        restore_queued_sale_for_approval(sale, change)
+        change.refresh_from_db()
+        self.assertEqual(change.apply_payload['amount_paid'], '40')
         self.assertTrue(change.apply_payload['allow_partial'])
 
 
@@ -1389,7 +1416,10 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
         self.assertEqual(queued.status_code, status.HTTP_201_CREATED, queued.data)
         self.assertEqual(queued.data['status'], 'pending_approval')
 
-        approve = manager.post(f'/api/sales/{sale_id}/complete/', {}, format='json')
+        # Posted corrections need Admin validation — managers can only approve first-time queues.
+        blocked = manager.post(f'/api/sales/{sale_id}/complete/', {}, format='json')
+        self.assertEqual(blocked.status_code, status.HTTP_400_BAD_REQUEST)
+        approve = admin.post(f'/api/sales/{sale_id}/complete/', {}, format='json')
         self.assertEqual(approve.status_code, status.HTTP_200_OK)
         self.assertEqual(approve.data['status'], 'completed')
         self.product.refresh_from_db()
@@ -1514,7 +1544,9 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
             format='json',
         )
         self.assertEqual(queued.status_code, status.HTTP_201_CREATED, queued.data)
-        reapproved = manager.post(f'/api/sales/{sale_id}/complete/', {}, format='json')
+        blocked = manager.post(f'/api/sales/{sale_id}/complete/', {}, format='json')
+        self.assertEqual(blocked.status_code, status.HTTP_400_BAD_REQUEST)
+        reapproved = admin.post(f'/api/sales/{sale_id}/complete/', {}, format='json')
         self.assertEqual(reapproved.status_code, status.HTTP_200_OK, reapproved.data)
 
         sale = Sale.objects.get(pk=sale_id)
@@ -1525,3 +1557,102 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
         self.assertEqual(customer.wallet_balance, Decimal('-160.00'))
         debt = CustomerWalletTransaction.objects.get(sale=sale, source_type='debt')
         self.assertEqual(debt.amount, Decimal('160.00'))
+
+    def test_admin_clear_payment_on_return_marks_sale_unpaid(self):
+        """Erroneous full payment: admin clears tender so holding opens unpaid."""
+        from sales.models import Customer, CustomerWalletTransaction
+        from sales.sale_completion_approval import stored_correction_fingerprint
+
+        customer = Customer.objects.create(name='False Paid', phone='0700999002')
+        payload = self._sale_payload(amount='100.00')
+        payload['customer_id'] = customer.id
+        created = self.client.post('/api/sales/', payload, format='json')
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED, created.data)
+        sale_id = created.data['id']
+
+        manager = self._manager_client()
+        approved = manager.post(f'/api/sales/{sale_id}/complete/', {}, format='json')
+        self.assertEqual(approved.status_code, status.HTTP_200_OK, approved.data)
+        sale = Sale.objects.get(pk=sale_id)
+        self.assertEqual(sale.amount_paid, Decimal('100.00'))
+        self.assertEqual(sale.status, 'completed')
+
+        admin = self._admin_client()
+        manager_blocked = manager.post(
+            f'/api/sales/{sale_id}/reject-complete/',
+            {
+                'rejection_reason': 'Was never paid',
+                'clear_payment': True,
+            },
+            format='json',
+        )
+        self.assertIn(
+            manager_blocked.status_code,
+            (status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND),
+        )
+
+        returned = admin.post(
+            f'/api/sales/{sale_id}/reject-complete/',
+            {
+                'rejection_reason': 'Was never paid — clear till payment',
+                'clear_payment': True,
+            },
+            format='json',
+        )
+        self.assertEqual(returned.status_code, status.HTTP_200_OK, returned.data)
+        sale.refresh_from_db()
+        self.assertEqual(sale.status, 'holding')
+        self.assertEqual(sale.amount_paid, Decimal('0'))
+        self.assertEqual(sale.change, Decimal('0'))
+        self.assertEqual(sale.payment_reference, '')
+        fingerprint = stored_correction_fingerprint(sale)
+        self.assertIsNotNone(fingerprint)
+        self.assertEqual(fingerprint['amount_paid'], '100.00')
+        customer.refresh_from_db()
+        self.assertEqual(customer.wallet_balance, Decimal('0.00'))
+
+        queued = self.client.post(
+            f'/api/sales/{sale_id}/checkout/',
+            {
+                'payment_method': 'cash',
+                'amount_paid': '0',
+                'allow_partial_payment': True,
+                'customer_id': customer.id,
+            },
+            format='json',
+        )
+        self.assertEqual(queued.status_code, status.HTTP_201_CREATED, queued.data)
+        self.assertEqual(queued.data['status'], 'pending_approval')
+
+        blocked = manager.post(f'/api/sales/{sale_id}/complete/', {}, format='json')
+        self.assertEqual(blocked.status_code, status.HTTP_400_BAD_REQUEST)
+        reapproved = admin.post(f'/api/sales/{sale_id}/complete/', {}, format='json')
+        self.assertEqual(reapproved.status_code, status.HTTP_200_OK, reapproved.data)
+
+        sale.refresh_from_db()
+        self.assertEqual(sale.status, 'completed')
+        self.assertEqual(sale.amount_paid, Decimal('0'))
+        customer.refresh_from_db()
+        self.assertEqual(customer.wallet_balance, Decimal('-100.00'))
+        debt = CustomerWalletTransaction.objects.get(sale=sale, source_type='debt')
+        self.assertEqual(debt.amount, Decimal('100.00'))
+
+    def test_admin_return_without_clear_payment_keeps_tender(self):
+        payload = self._sale_payload(amount='100.00')
+        created = self.client.post('/api/sales/', payload, format='json')
+        sale_id = created.data['id']
+        manager = self._manager_client()
+        self.assertEqual(
+            manager.post(f'/api/sales/{sale_id}/complete/', {}, format='json').status_code,
+            status.HTTP_200_OK,
+        )
+        admin = self._admin_client()
+        returned = admin.post(
+            f'/api/sales/{sale_id}/reject-complete/',
+            {'rejection_reason': 'Wrong qty only', 'clear_payment': False},
+            format='json',
+        )
+        self.assertEqual(returned.status_code, status.HTTP_200_OK, returned.data)
+        sale = Sale.objects.get(pk=sale_id)
+        self.assertEqual(sale.status, 'holding')
+        self.assertEqual(sale.amount_paid, Decimal('100.00'))

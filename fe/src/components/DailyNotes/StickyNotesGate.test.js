@@ -94,8 +94,34 @@ describe('StickyNotesGate', () => {
     await expandNote(5);
     expect(screen.getByText(/Explain the short/)).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('sticky-note-tick-5'));
+    expect(dailyNotesAPI.toggleDone).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('sticky-note-tick-confirm-5'));
     await waitFor(() => expect(dailyNotesAPI.toggleDone).toHaveBeenCalledWith(5));
     await waitFor(() => expect(screen.queryByTestId('sticky-notes-gate')).not.toBeInTheDocument());
+  });
+
+  test('expanding a note does not mark it done', async () => {
+    dailyNotesAPI.blocking.mockResolvedValue({
+      data: [
+        {
+          id: 5,
+          title: 'Till variance',
+          content: 'Explain the short before selling.',
+          is_sticky: true,
+          is_done: false,
+          assigned_to: 20,
+        },
+      ],
+    });
+    render(<StickyNotesGate />);
+    await expandNote(5);
+    expect(screen.getByText(/Explain the short/)).toBeInTheDocument();
+    expect(dailyNotesAPI.toggleDone).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('sticky-note-tick-5'));
+    expect(dailyNotesAPI.toggleDone).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('sticky-note-tick-cancel-5'));
+    expect(screen.getByTestId('sticky-note-tick-5')).toBeInTheDocument();
+    expect(dailyNotesAPI.toggleDone).not.toHaveBeenCalled();
   });
 
   test('hides after load failure and generic tick error', async () => {
@@ -113,6 +139,7 @@ describe('StickyNotesGate', () => {
     render(<StickyNotesGate />);
     await expandNote(9);
     fireEvent.click(screen.getByTestId('sticky-note-tick-9'));
+    fireEvent.click(screen.getByTestId('sticky-note-tick-confirm-9'));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Could not tick this note'));
     fireEvent.click(screen.getByRole('button', { name: /Refresh/i }));
     await waitFor(() => expect(dailyNotesAPI.blocking).toHaveBeenCalledTimes(2));
@@ -252,6 +279,8 @@ describe('StickyNotesGate', () => {
     render(<StickyNotesGate />);
     await expandNote(12);
     fireEvent.click(screen.getByTestId('sticky-note-tick-12'));
+    expect(dailyNotesAPI.toggleDone).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('sticky-note-tick-confirm-12'));
     await waitFor(() => expect(dailyNotesAPI.toggleDone).toHaveBeenCalledWith(12));
   });
 });

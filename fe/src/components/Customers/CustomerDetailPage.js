@@ -24,6 +24,7 @@ import { saleCancellationPendingToastMessage } from '../../utils/makerChecker';
 import {
   formatDebtTrail,
   formatSettlementMeta,
+  isDebtRepaymentRow,
   ledgerSourceLabel,
   standingLabel,
 } from '../../utils/customerDetail';
@@ -105,6 +106,7 @@ export default function CustomerDetailPage() {
   const [formErrors, setFormErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [showCommitConfirm, setShowCommitConfirm] = useState(false);
+  const [clearingSettlementId, setClearingSettlementId] = useState(null);
 
   const { permissions } = getStoredAuth();
   const { settings: customerModuleSettings } = useModuleSettings('customers');
@@ -148,6 +150,31 @@ export default function CustomerDetailPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const clearDebtRepayment = async (entry) => {
+    if (!isAdmin || !isDebtRepaymentRow(entry) || !customerId) return;
+    const amountLabel = formatCurrency(entry.amount);
+    if (
+      !window.confirm(
+        `Clear this debt payment of ${amountLabel}? The payment is removed and the customer debt is put back.`,
+      )
+    ) {
+      return;
+    }
+    setClearingSettlementId(entry.id);
+    try {
+      await customersAPI.clearWalletSettlement(customerId, entry.id, {
+        reason: 'Admin cleared erroneous debt payment',
+      });
+      toast.success('Debt payment cleared. Customer debt restored.');
+      await load();
+      dispatchNavBadgesRefresh();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not clear this debt payment');
+    } finally {
+      setClearingSettlementId(null);
+    }
+  };
 
   const setTab = (next) => {
     setSearchParams((prev) => {
@@ -506,10 +533,17 @@ export default function CustomerDetailPage() {
                     <DataTableHead>Debt flow</DataTableHead>
                     <DataTableHead align="right">Amount</DataTableHead>
                     <DataTableHead align="right">Balance</DataTableHead>
+                    {isAdmin ? <DataTableHead align="right"> </DataTableHead> : null}
                   </DataTableHeader>
                   <DataTableBody>
-                    {ledger.map((entry) => (
-                      <DataTableRow key={entry.id}>
+                    {ledger.map((entry) => {
+                      const isRepayment = isDebtRepaymentRow(entry);
+                      return (
+                      <DataTableRow
+                        key={entry.id}
+                        className={isRepayment ? 'bg-muted/60 hover:bg-muted/80' : undefined}
+                        data-testid={isRepayment ? `debt-repayment-row-${entry.id}` : undefined}
+                      >
                         <DataTableCell className="text-sm text-muted-foreground whitespace-nowrap">
                           {formatDateTime(entry.created_at)}
                         </DataTableCell>
@@ -524,21 +558,49 @@ export default function CustomerDetailPage() {
                           )}
                         </DataTableCell>
                         <DataTableCell className="text-sm text-muted-foreground max-w-xs">
-                          {entry.source_type === 'debt_settlement'
+                          {isRepayment
                             ? formatSettlementMeta(entry) || '—'
                             : '—'}
                         </DataTableCell>
                         <DataTableCell className="text-sm text-muted-foreground max-w-md">
                           {formatDebtTrail(entry)}
                         </DataTableCell>
-                        <DataTableCell align="right" className="tabular-nums font-medium">
+                        <DataTableCell
+                          align="right"
+                          className={
+                            isRepayment
+                              ? 'tabular-nums font-semibold text-foreground'
+                              : 'tabular-nums font-medium'
+                          }
+                        >
                           {formatCurrency(entry.amount)}
                         </DataTableCell>
                         <DataTableCell align="right" className="tabular-nums text-sm">
                           {formatCurrency(entry.balance_after)}
                         </DataTableCell>
+                        {isAdmin ? (
+                          <DataTableCell align="right">
+                            {isRepayment ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-8"
+                                disabled={clearingSettlementId === entry.id}
+                                data-testid={`clear-debt-repayment-${entry.id}`}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  clearDebtRepayment(entry);
+                                }}
+                              >
+                                {clearingSettlementId === entry.id ? 'Clearing…' : 'Clear'}
+                              </Button>
+                            ) : null}
+                          </DataTableCell>
+                        ) : null}
                       </DataTableRow>
-                    ))}
+                      );
+                    })}
                   </DataTableBody>
                 </DataTable>
               )}

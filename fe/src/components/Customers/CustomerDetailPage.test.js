@@ -4,22 +4,40 @@ import { customersAPI, salesAPI } from '../../services/api';
 
 const mockNavigate = jest.fn();
 
-jest.mock('react-router-dom', () => ({
-  useNavigate: () => mockNavigate,
-  useParams: () => ({ customerId: '7' }),
-  useSearchParams: () => [new URLSearchParams(), jest.fn()],
-  Link: ({ to, children, ...props }) => (
-    <a href={typeof to === 'string' ? to : '#'} {...props}>
-      {children}
-    </a>
-  ),
-}));
+let mockSearchParams = new URLSearchParams();
+
+jest.mock('react-router-dom', () => {
+  const React = require('react');
+  return {
+    useNavigate: () => mockNavigate,
+    useParams: () => ({ customerId: '7' }),
+    useSearchParams: () => {
+      const [params, setParams] = React.useState(() => mockSearchParams);
+      return [
+        params,
+        (updater) => {
+          setParams((prev) => {
+            const next = typeof updater === 'function' ? updater(prev) : updater;
+            mockSearchParams = next;
+            return next;
+          });
+        },
+      ];
+    },
+    Link: ({ to, children, ...props }) => (
+      <a href={typeof to === 'string' ? to : '#'} {...props}>
+        {children}
+      </a>
+    ),
+  };
+});
 
 jest.mock('../../services/api', () => ({
   customersAPI: {
     detail: jest.fn(),
     update: jest.fn(),
     get: jest.fn(),
+    clearWalletSettlement: jest.fn(),
   },
   salesAPI: {
     get: jest.fn(),
@@ -28,11 +46,19 @@ jest.mock('../../services/api', () => ({
   },
 }));
 
+let mockIsAdmin = true;
+
+jest.mock('../../utils/saleCompletionApproval', () => ({
+  userHasAdminSaleOverride: () => mockIsAdmin,
+}));
+
 jest.mock('../../utils/roleAccess', () => ({
   getStoredAuth: () => ({
     permissions: [
       { module: 'customers', action: 'view', name: 'customers.view' },
       { module: 'customers', action: 'update', name: 'customers.update' },
+      { module: 'debt_management', action: 'view', name: 'debt_management.view' },
+      { module: 'debt_management', action: 'update', name: 'debt_management.update' },
     ],
   }),
   hasPermission: () => true,
@@ -71,6 +97,7 @@ jest.mock('../../utils/navBadges', () => ({
 jest.mock('../../utils/saleRefund', () => ({
   userCanRefundSales: () => true,
   userCanRollbackSales: () => false,
+  userCanUnvoidSales: () => false,
   handleSaleRefundResponse: jest.fn(),
 }));
 
@@ -114,8 +141,10 @@ jest.mock('../page', () => ({
   ),
   DataTableHead: ({ children }) => <th>{children}</th>,
   DataTableBody: ({ children }) => <tbody>{children}</tbody>,
-  DataTableRow: ({ children, onClick }) => (
-    <tr onClick={onClick}>{children}</tr>
+  DataTableRow: ({ children, onClick, className, ...rest }) => (
+    <tr onClick={onClick} className={className} {...rest}>
+      {children}
+    </tr>
   ),
   DataTableCell: ({ children }) => <td>{children}</td>,
   ListPaginationRail: ({ children }) => <div>{children}</div>,
@@ -194,8 +223,13 @@ const DETAIL = {
 describe('CustomerDetailPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockIsAdmin = true;
+    mockSearchParams = new URLSearchParams();
     customersAPI.detail.mockResolvedValue({ data: DETAIL });
     customersAPI.get.mockResolvedValue({ data: DETAIL.customer });
+    customersAPI.clearWalletSettlement.mockResolvedValue({
+      data: { message: 'cleared', wallet_balance: '-600.00' },
+    });
   });
 
   it('loads profile, orders, and debt KPIs', async () => {
@@ -231,5 +265,29 @@ describe('CustomerDetailPage', () => {
     customersAPI.detail.mockRejectedValue({ response: { data: { error: 'missing' } } });
     render(<CustomerDetailPage />);
     expect(await screen.findByText(/Customer not found/i)).toBeInTheDocument();
+  });
+
+  it('shows debt repayments darker and lets admin clear them', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+    render(<CustomerDetailPage />);
+    await screen.findByRole('heading', { name: 'Jane Doe' });
+    fireEvent.click(screen.getByRole('button', { name: /Debt & payments/i }));
+    expect(await screen.findByTestId('debt-repayment-row-2')).toHaveClass('bg-muted/60');
+    fireEvent.click(screen.getByTestId('clear-debt-repayment-2'));
+    await waitFor(() => {
+      expect(customersAPI.clearWalletSettlement).toHaveBeenCalledWith('7', 2, {
+        reason: 'Admin cleared erroneous debt payment',
+      });
+    });
+    confirmSpy.mockRestore();
+  });
+
+  it('hides clear repayment for non-admins', async () => {
+    mockIsAdmin = false;
+    render(<CustomerDetailPage />);
+    await screen.findByRole('heading', { name: 'Jane Doe' });
+    fireEvent.click(screen.getByRole('button', { name: /Debt & payments/i }));
+    expect(await screen.findByText('Debt payment')).toBeInTheDocument();
+    expect(screen.queryByTestId('clear-debt-repayment-2')).not.toBeInTheDocument();
   });
 });

@@ -32,6 +32,22 @@ export function isSaleCancellationAction(actionType) {
   return actionType === 'sale_refund' || actionType === 'sale_rollback';
 }
 
+export const POSTED_CORRECTION_ADMIN_ONLY_MESSAGE =
+  'This sale was already posted and returned for correction. Only an Admin or Super Admin can approve or return it.';
+
+/** Posted corrections re-queue for admin validation (mirrors BE change_is_posted_sale_correction). */
+export function isPostedSaleCorrection(change) {
+  if (!change || change.action_type !== 'sale_complete') return false;
+  if (change.posted_correction === true) return true;
+  const returnedFrom =
+    change.original_values?.returned_from_status || change.original_values?.status;
+  return String(returnedFrom || '').trim() === 'completed';
+}
+
+export function postedCorrectionBlocksUser(change, auth = getStoredAuth()) {
+  return isPostedSaleCorrection(change) && !userMayApproveSaleCancellation(auth);
+}
+
 function pad(n) {
   return String(n).padStart(2, '0');
 }

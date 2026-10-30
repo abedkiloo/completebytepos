@@ -167,10 +167,33 @@ def user_may_approve_dated_item(user, *dates) -> bool:
     return user_may_approve_past_items(user) or not is_past_dated(*dates)
 
 
+POSTED_CORRECTION_ADMIN_ONLY_MESSAGE = (
+    'This sale was already posted and returned for correction. '
+    'Only an Admin or Super Admin can approve or return it.'
+)
+
+
+def change_is_posted_sale_correction(change) -> bool:
+    """True when approving would re-post a sale that was already live once."""
+    if not change or change.action_type != ACTION_SALE_COMPLETE:
+        return False
+    from sales.models import Sale
+    from sales.sale_completion_approval import sale_was_returned_from_completed
+
+    try:
+        sale_id = int(change.entity_id)
+    except (TypeError, ValueError):
+        return False
+    sale = Sale.objects.filter(pk=sale_id).first()
+    return bool(sale and sale_was_returned_from_completed(sale))
+
+
 def user_may_approve_change(user, change) -> bool:
     if not user_can_check(user, change.action_type):
         return False
     if change_is_past_dated(change) and not user_may_approve_past_items(user):
+        return False
+    if change_is_posted_sale_correction(change) and not user_has_admin_checker_override(user):
         return False
     if change.made_by_id and change.made_by_id == user.id:
         return user_has_admin_checker_override(user)

@@ -2,6 +2,7 @@ import {
   customerDetailPath,
   formatDebtTrail,
   formatSettlementMeta,
+  isDebtRepaymentRow,
   ledgerSourceLabel,
   standingLabel,
 } from './customerDetail';
@@ -32,6 +33,8 @@ describe('customerDetail helpers', () => {
   it('labels ledger sources and standing', () => {
     expect(ledgerSourceLabel('debt_settlement')).toBe('Debt payment');
     expect(ledgerSourceLabel('debt')).toBe('Sale debt');
+    expect(isDebtRepaymentRow({ source_type: 'debt_settlement' })).toBe(true);
+    expect(isDebtRepaymentRow({ source_type: 'debt' })).toBe(false);
     expect(standingLabel('debt')).toBe('Has debt');
     expect(standingLabel('credit')).toBe('Has credit');
     expect(standingLabel('good')).toBe('Clear');

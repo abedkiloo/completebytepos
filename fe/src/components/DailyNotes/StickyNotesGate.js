@@ -41,6 +41,7 @@ export default function StickyNotesGate() {
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [togglingId, setTogglingId] = useState(null);
+  const [confirmTickId, setConfirmTickId] = useState(null);
   const [dismissedGeneral, setDismissedGeneral] = useState(false);
   const [expandedIds, setExpandedIds] = useState([]);
   /** True only while Terminal is open for a returned-sale fix. */
@@ -56,6 +57,7 @@ export default function StickyNotesGate() {
       setNotes(rows.filter((n) => !n.is_done));
       setDismissedGeneral(false);
       setExpandedIds([]);
+      setConfirmTickId(null);
     } catch {
       setNotes([]);
     } finally {
@@ -102,11 +104,17 @@ export default function StickyNotesGate() {
 
   const handleToggle = async (note) => {
     if (noticeRequiresSaleFix(note) || !canToggleDailyNote(note, user?.id, true)) return;
+    // Require an explicit confirm so expanding / reading a note never marks it done.
+    if (confirmTickId !== note.id) {
+      setConfirmTickId(note.id);
+      return;
+    }
     setTogglingId(note.id);
     try {
       const res = await dailyNotesAPI.toggleDone(note.id);
       setNotes((prev) => prev.map((n) => (n.id === note.id ? res.data : n)).filter((n) => !n.is_done));
       setExpandedIds((prev) => prev.filter((id) => id !== note.id));
+      setConfirmTickId(null);
     } catch (error) {
       toast.error(error.response?.data?.error || 'Could not tick this note');
     } finally {
@@ -129,6 +137,7 @@ export default function StickyNotesGate() {
   };
 
   const toggleExpanded = (noteId) => {
+    setConfirmTickId((prev) => (prev === noteId ? null : prev));
     setExpandedIds((prev) =>
       prev.includes(noteId) ? prev.filter((id) => id !== noteId) : [...prev, noteId]
     );
@@ -259,6 +268,28 @@ export default function StickyNotesGate() {
                         >
                           Open sale
                         </Button>
+                      ) : confirmTickId === note.id ? (
+                        <>
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={togglingId === note.id}
+                            data-testid={`sticky-note-tick-confirm-${note.id}`}
+                            onClick={() => handleToggle(note)}
+                          >
+                            {togglingId === note.id ? 'Saving…' : 'Confirm done'}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            disabled={togglingId === note.id}
+                            data-testid={`sticky-note-tick-cancel-${note.id}`}
+                            onClick={() => setConfirmTickId(null)}
+                          >
+                            Cancel
+                          </Button>
+                        </>
                       ) : (
                         <Button
                           type="button"
@@ -267,7 +298,7 @@ export default function StickyNotesGate() {
                           data-testid={`sticky-note-tick-${note.id}`}
                           onClick={() => handleToggle(note)}
                         >
-                          {togglingId === note.id ? 'Saving…' : 'Mark done'}
+                          Mark done
                         </Button>
                       )}
                       <Button

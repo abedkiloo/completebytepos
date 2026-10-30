@@ -436,9 +436,13 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
         setDiscount(parseFloat(holding.discount_amount) || 0);
         setDiscountType('flat');
         if (holding.payment_method) setPaymentMethod(holding.payment_method);
+        // Only prefill Amount paid when money was actually taken — unpaid
+        // corrections must start blank so Confirm is not clicked by mistake.
         const paid = parseFloat(holding.amount_paid);
-        if (Number.isFinite(paid) && paid >= 0) {
+        if (Number.isFinite(paid) && paid > 0) {
           setReceivedAmount(String(paid));
+        } else {
+          setReceivedAmount('');
         }
         if (holding.payment_reference) {
           setPaymentReference(String(holding.payment_reference));

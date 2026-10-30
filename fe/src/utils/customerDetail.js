@@ -50,6 +50,11 @@ export function ledgerSourceLabel(sourceType) {
   return labels[sourceType] || sourceType || 'Transaction';
 }
 
+/** Active debt repayment row (clearable by admin). */
+export function isDebtRepaymentRow(entry) {
+  return Boolean(entry && entry.source_type === 'debt_settlement');
+}
+
 export function standingLabel(standing) {
   if (standing === 'debt') return 'Has debt';
   if (standing === 'credit') return 'Has credit';

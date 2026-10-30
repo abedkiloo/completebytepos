@@ -46,7 +46,9 @@ import {
   isPastDated,
   pastDatedBlocksUser,
   pendingChangeDates,
+  POSTED_CORRECTION_ADMIN_ONLY_MESSAGE,
   userMayApprovePastItems,
+  userMayApproveSaleCancellation,
 } from '../../utils/pastDatedApproval';
 import { cn } from '../../lib/cn';
 
@@ -95,7 +97,9 @@ function SaleReviewBody({ sale, onOpenInTerminal }) {
   const managerComment = saleRejectionReason(sale);
   const saleDates = [sale.occurred_at || sale.created_at];
   const pastDated = isPastDated(...saleDates);
-  const adminOnly = pastDatedBlocksUser(saleDates);
+  const pastAdminOnly = pastDatedBlocksUser(saleDates);
+  const postedCorrectionAdminOnly =
+    Boolean(sale.is_posted_correction) && !userMayApproveSaleCancellation();
   const itemCount = saleDisplayItemCount(sale);
   const customerPhone = (sale.customer_phone || '').trim();
 
@@ -138,7 +142,15 @@ function SaleReviewBody({ sale, onOpenInTerminal }) {
           ) : null}
         </div>
       ) : null}
-      {pastDated ? <PastDatedNotice dates={saleDates} blocked={adminOnly} /> : null}
+      {pastDated ? <PastDatedNotice dates={saleDates} blocked={pastAdminOnly} /> : null}
+      {postedCorrectionAdminOnly ? (
+        <p
+          className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
+          data-testid="posted-correction-notice"
+        >
+          {POSTED_CORRECTION_ADMIN_ONLY_MESSAGE}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -150,8 +162,11 @@ function SaleReviewActions({ sale, onResolved, onClose }) {
   const [sendCustomerSms, setSendCustomerSms] = useState(false);
   const returned = saleNeedsSalespersonAction(sale);
   const saleDates = [sale.occurred_at || sale.created_at];
-  const adminOnly = pastDatedBlocksUser(saleDates);
+  const pastAdminOnly = pastDatedBlocksUser(saleDates);
   const isPostedCorrection = Boolean(sale.is_posted_correction);
+  const postedCorrectionAdminOnly =
+    isPostedCorrection && !userMayApproveSaleCancellation();
+  const adminOnly = pastAdminOnly || postedCorrectionAdminOnly;
 
   const approve = async () => {
     setBusy(true);
@@ -197,7 +212,16 @@ function SaleReviewActions({ sale, onResolved, onClose }) {
     }
   };
 
-  if (returned || adminOnly) return null;
+  if (returned || adminOnly) {
+    if (postedCorrectionAdminOnly) {
+      return (
+        <p className="text-sm text-muted-foreground" data-testid="posted-correction-admin-only">
+          {POSTED_CORRECTION_ADMIN_ONLY_MESSAGE}
+        </p>
+      );
+    }
+    return null;
+  }
 
   return (
     <>

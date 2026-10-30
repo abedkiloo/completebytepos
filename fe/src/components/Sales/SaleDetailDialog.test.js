@@ -292,6 +292,7 @@ describe('SaleDetailDialog', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: /Return for correction/i }));
+    expect(screen.getByTestId('clear-payment-on-return')).toBeChecked();
     fireEvent.change(screen.getByLabelText(/Reason/i), {
       target: { value: 'Wrong customer' },
     });
@@ -299,10 +300,40 @@ describe('SaleDetailDialog', () => {
     await waitFor(() => {
       expect(salesAPI.rejectComplete).toHaveBeenCalledWith(1, {
         rejection_reason: 'Wrong customer',
+        clear_payment: true,
       });
     });
     expect(onReturned).toHaveBeenCalled();
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('lets admin return without clearing payment when unchecked', async () => {
+    salesAPI.rejectComplete.mockResolvedValue({
+      data: { id: 1, status: 'holding', needs_salesperson_action: true },
+    });
+    renderDialog(
+      <SaleDetailDialog
+        sale={{ ...sale, status: 'completed', refund_status: 'none', amount_paid: '600' }}
+        open
+        onOpenChange={jest.fn()}
+        canReturnForCorrection
+        onReturned={jest.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Return for correction/i }));
+    fireEvent.click(screen.getByTestId('clear-payment-on-return'));
+    expect(screen.getByTestId('clear-payment-on-return')).not.toBeChecked();
+    fireEvent.change(screen.getByLabelText(/Reason/i), {
+      target: { value: 'Wrong quantity' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Confirm return/i }));
+    await waitFor(() => {
+      expect(salesAPI.rejectComplete).toHaveBeenCalledWith(1, {
+        rejection_reason: 'Wrong quantity',
+        clear_payment: false,
+      });
+    });
   });
 
   it('lets a manager save a new sale date', async () => {

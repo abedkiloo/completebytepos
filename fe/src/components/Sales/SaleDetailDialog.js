@@ -70,6 +70,7 @@ export default function SaleDetailDialog({
   const logoUrl = resolveReceiptLogoUrl(settings);
   const [showReturn, setShowReturn] = useState(false);
   const [returnReason, setReturnReason] = useState('');
+  const [clearPayment, setClearPayment] = useState(false);
   const [returning, setReturning] = useState(false);
   const [showUnvoid, setShowUnvoid] = useState(false);
   const [unvoidReason, setUnvoidReason] = useState('');
@@ -80,10 +81,11 @@ export default function SaleDetailDialog({
   useEffect(() => {
     setShowReturn(false);
     setReturnReason('');
+    setClearPayment(Number(sale?.amount_paid || 0) > 0);
     setShowUnvoid(false);
     setUnvoidReason('');
     setSaleDate(saleDateInputValue(sale?.occurred_at || sale?.created_at));
-  }, [sale?.id, sale?.occurred_at, sale?.created_at]);
+  }, [sale?.id, sale?.occurred_at, sale?.created_at, sale?.amount_paid]);
 
   if (!sale) return null;
 
@@ -116,8 +118,13 @@ export default function SaleDetailDialog({
     try {
       const res = await salesAPI.rejectComplete(sale.id, {
         rejection_reason: returnReason.trim(),
+        clear_payment: Boolean(clearPayment),
       });
-      toast.success('Sale returned to the salesperson for correction.');
+      toast.success(
+        clearPayment
+          ? 'Sale returned unpaid — payment cleared. Salesperson must resend for admin approval.'
+          : 'Sale returned to the salesperson for correction.',
+      );
       onReturned?.(res.data);
       onOpenChange(false);
     } catch (err) {
@@ -482,6 +489,26 @@ export default function SaleDetailDialog({
               onChange={(event) => setReturnReason(event.target.value)}
               placeholder="Why should this sale be corrected?"
             />
+            <label
+              className="flex items-start gap-2 text-sm"
+              htmlFor={`clear-payment-${sale.id}`}
+            >
+              <input
+                id={`clear-payment-${sale.id}`}
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 shrink-0"
+                checked={clearPayment}
+                onChange={(event) => setClearPayment(event.target.checked)}
+                data-testid="clear-payment-on-return"
+              />
+              <span>
+                <span className="font-medium">Clear payment — sale was not paid</span>
+                <span className="mt-0.5 block text-muted-foreground">
+                  Removes the recorded amount paid and customer payment effects. Terminal
+                  opens unpaid so it is not confirmed as paid by mistake.
+                </span>
+              </span>
+            </label>
             <Button
               size="sm"
               variant="destructive"

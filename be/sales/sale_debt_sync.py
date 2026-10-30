@@ -9,10 +9,14 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Sum
 
-from sales.models import CustomerWalletTransaction, Sale
+from sales.models import CustomerWalletTransaction, DebtSettlementAllocation, Sale
+
+SETTLEMENT_CLEAR_NOT_ALLOWED = 'Only an active debt payment can be cleared.'
+SETTLEMENT_CLEAR_ADMIN_ONLY = 'Only an Admin or Super Admin can clear a debt payment.'
 
 
 def sale_unpaid_balance(sale: Sale) -> Decimal:
@@ -99,6 +103,71 @@ def _underpaid_sales_with_live_debt(customer_id: int) -> list[Sale]:
             continue
         targets.append(sale)
     return targets
+
+
+@transaction.atomic
+def reverse_debt_settlement(txn: CustomerWalletTransaction, *, user, reason: str = '') -> CustomerWalletTransaction:
+    """Admin-only: undo a debt repayment and put the unpaid amount back on sales.
+
+    Rolls back FIFO ``DebtSettlementAllocation`` bumps to ``sale.amount_paid``,
+    reverses the wallet credit, and marks the original settlement as ``other``
+    so it no longer counts as a collection.
+    """
+    from approvals.permissions import user_has_admin_checker_override
+
+    if not user_has_admin_checker_override(user):
+        raise ValidationError(SETTLEMENT_CLEAR_ADMIN_ONLY)
+    if (
+        txn.source_type != 'debt_settlement'
+        or txn.transaction_type != 'credit'
+    ):
+        raise ValidationError(SETTLEMENT_CLEAR_NOT_ALLOWED)
+
+    amount = Decimal(str(txn.amount or 0)).quantize(Decimal('0.01'))
+    if amount <= 0:
+        raise ValidationError(SETTLEMENT_CLEAR_NOT_ALLOWED)
+
+    reason = (reason or '').strip() or 'Admin cleared erroneous debt payment'
+    customer = txn.customer
+    customer.refresh_from_db()
+
+    allocations = list(
+        DebtSettlementAllocation.objects.filter(wallet_transaction=txn).select_related('sale')
+    )
+    for alloc in allocations:
+        sale = alloc.sale
+        chunk = Decimal(str(alloc.amount or 0)).quantize(Decimal('0.01'))
+        if chunk <= 0:
+            continue
+        paid = Decimal(str(sale.amount_paid or 0)).quantize(Decimal('0.01'))
+        sale.amount_paid = max(Decimal('0.00'), paid - chunk)
+        sale.save(update_fields=['amount_paid', 'updated_at'])
+    DebtSettlementAllocation.objects.filter(wallet_transaction=txn).delete()
+
+    # Credit raised balance; clearing restores prior debt (may go more negative).
+    customer.wallet_balance = (
+        Decimal(str(customer.wallet_balance or 0)) - amount
+    ).quantize(Decimal('0.01'))
+    customer.save(update_fields=['wallet_balance', 'updated_at'])
+
+    reverse = CustomerWalletTransaction.objects.create(
+        customer=customer,
+        transaction_type='debit',
+        source_type='other',
+        amount=amount,
+        balance_after=customer.wallet_balance,
+        reference=txn.reference or '',
+        payment_method=txn.payment_method or '',
+        notes=f'[CLEARED debt payment] {reason}'.strip(),
+        created_by=user,
+    )
+
+    marker = f'[CLEARED] {reason}'.strip()
+    prior = (txn.notes or '').strip()
+    txn.source_type = 'other'
+    txn.notes = f'{prior} {marker}'.strip() if prior else marker
+    txn.save(update_fields=['source_type', 'notes'])
+    return reverse
 
 
 @transaction.atomic

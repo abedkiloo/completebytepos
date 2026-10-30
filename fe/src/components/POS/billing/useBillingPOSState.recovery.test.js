@@ -178,6 +178,55 @@ describe('useBillingPOSState cart recovery', () => {
     });
   });
 
+  it('leaves Amount paid blank when the returned sale was unpaid', async () => {
+    salesAPI.get.mockResolvedValueOnce({
+      data: {
+        id: 88,
+        status: 'holding',
+        needs_salesperson_action: true,
+        rejection_reason: 'Was not paid — mark as account',
+        sale_number: 'S-UNPAID',
+        subtotal: '200.00',
+        tax_amount: '0',
+        discount_amount: '0',
+        total: '200.00',
+        amount_paid: '0.00',
+        payment_method: 'cash',
+        customer: 12,
+        customer_name: 'Jane Buyer',
+        items: [
+          {
+            product_id: 7,
+            product: {
+              id: 7,
+              name: 'Bottled Water',
+              price: 50,
+              stock_quantity: 100,
+              track_stock: true,
+            },
+            product_name: 'Bottled Water',
+            quantity: 4,
+            unit_price: '50.00',
+          },
+        ],
+      },
+    });
+
+    const { result } = renderHook(() => useBillingPOSState({ resumeSaleId: '88' }));
+
+    await waitFor(() => {
+      expect(result.current.cart).toHaveLength(1);
+    });
+    expect(result.current.amountPaid).toBe('');
+    expect(result.current.correctionSnapshot).toEqual({
+      total: 200,
+      paid: 0,
+      itemCount: 4,
+      paymentMethod: 'cash',
+      customerId: 12,
+    });
+  });
+
   it('loads returned sale lines even when on-hand stock is zero', async () => {
     salesAPI.get.mockResolvedValueOnce({
       data: {

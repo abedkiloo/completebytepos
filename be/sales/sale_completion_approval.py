@@ -451,9 +451,36 @@ def notify_sale_returned_for_correction(sale: Sale, checker, reason: str) -> Non
     complete_manager_queue_notes(source=SOURCE_SALE_COMPLETE, record_id=sale.pk)
 
 
+def _truthy_flag(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def clear_sale_tender_fields(sale: Sale) -> None:
+    """Zero till payment so the sale reads as unpaid after an admin correction."""
+    sale.amount_paid = Decimal('0')
+    sale.change = Decimal('0')
+    sale.payment_reference = ''
+    sale.save(update_fields=['amount_paid', 'change', 'payment_reference', 'updated_at'])
+
+
 @transaction.atomic
-def admin_return_sale_for_correction(sale: Sale, *, user, reason: str) -> Sale:
-    """Admin-only: send an approved or posted sale back to the seller for editing."""
+def admin_return_sale_for_correction(
+    sale: Sale,
+    *,
+    user,
+    reason: str,
+    clear_payment: bool = False,
+) -> Sale:
+    """Admin-only: send an approved or posted sale back to the seller for editing.
+
+    ``clear_payment`` removes an erroneous till payment (amount paid → 0) after
+    books/wallet are reversed, so Terminal opens unpaid and the customer is not
+    left looking paid. The correction fingerprint still records the old tender.
+    """
     from approvals.permissions import user_has_admin_checker_override
 
     if not user_has_admin_checker_override(user):
@@ -484,12 +511,15 @@ def admin_return_sale_for_correction(sale: Sale, *, user, reason: str) -> Sale:
     fingerprint_source_status = previous
     sale.status = 'holding'
     sale.save(update_fields=['status', 'updated_at'])
+    # Fingerprint while the old tender is still on the sale, then clear if asked.
     record_rejected_sale_complete_change(
         sale,
         checker=user,
         reason=reason,
         previous_status=fingerprint_source_status,
     )
+    if clear_payment:
+        clear_sale_tender_fields(sale)
     notify_sale_returned_for_correction(sale, user, reason)
     return sale
 
@@ -656,15 +686,14 @@ def return_queued_sale_for_correction(sale: Sale) -> Sale:
 
 
 def _resubmitted_amount_paid(sale: Sale, change: PendingChange, existing: dict) -> Decimal:
-    """Saving the returned cart zeroes ``sale.amount_paid``; keep what was taken at the till."""
-    current = Decimal(str(sale.amount_paid or 0))
-    if current > 0:
-        return current
-    submitted = Decimal(str(existing.get('amount_paid') or 0))
-    original_total = Decimal(str((change.original_values or {}).get('total') or 0))
-    if submitted > 0 and original_total > 0 and submitted >= original_total:
-        return max(submitted, Decimal(str(sale.total or 0)))
-    return submitted
+    """Use the till amount on the holding after correction — never reinflate unpaid.
+
+    Older logic fell back to the previous ``apply_payload`` amount when the holding
+    showed ``0``, which made unpaid / debt-only corrections look fully paid again
+    after resubmit. The salesperson's current ``sale.amount_paid`` is authoritative.
+    """
+    del change, existing  # kept for call-site compatibility
+    return max(Decimal('0'), Decimal(str(sale.amount_paid or 0)))
 
 
 def restore_queued_sale_for_approval(sale: Sale, change: PendingChange | None = None) -> Sale:

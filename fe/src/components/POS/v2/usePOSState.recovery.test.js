@@ -197,6 +197,41 @@ describe('usePOSState local cart recovery', () => {
     expect(result.current.paymentReference).toBe('QHX7K2L9M1');
   });
 
+  it('leaves Amount paid blank when the returned sale was unpaid', async () => {
+    salesAPI.get.mockResolvedValueOnce({
+      data: {
+        id: 88,
+        status: 'holding',
+        needs_salesperson_action: true,
+        rejection_reason: 'Was not paid',
+        sale_number: 'S-UNPAID',
+        subtotal: '200.00',
+        tax_amount: '0',
+        discount_amount: '0',
+        total: '200.00',
+        amount_paid: '0',
+        payment_method: 'cash',
+        customer: null,
+        items: [
+          {
+            product_id: 5,
+            product: { id: 5, name: 'Milk', price: 100, stock_quantity: 20, track_stock: true },
+            product_name: 'Milk',
+            quantity: 2,
+            unit_price: '100.00',
+          },
+        ],
+      },
+    });
+
+    const { result } = renderHook(() => usePOSState({ resumeSaleId: '88' }));
+
+    await waitFor(() => {
+      expect(result.current.cart).toHaveLength(1);
+    });
+    expect(result.current.receivedAmount).toBe('');
+  });
+
   it('loads returned sale lines even when on-hand stock is zero', async () => {
     salesAPI.get.mockResolvedValueOnce({
       data: {

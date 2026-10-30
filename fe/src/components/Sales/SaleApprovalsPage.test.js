@@ -197,7 +197,31 @@ describe('SaleApprovalsPage', () => {
     await waitFor(() => expect(salesAPI.complete).toHaveBeenCalledWith(42));
   });
 
+  test('manager cannot approve a posted correction', async () => {
+    salesAPI.list.mockResolvedValue({
+      data: {
+        results: [
+          {
+            ...waitingSale(new Date().toISOString()),
+            is_posted_correction: true,
+            approval_details: {
+              sections: [{ title: 'Money', facts: [{ label: 'Total', value: '2300', kind: 'money' }] }],
+            },
+          },
+        ],
+      },
+    });
+    render(<SaleApprovalsPage />);
+    await openSaleRow();
+    expect(await screen.findByTestId('posted-correction-notice')).toHaveTextContent(
+      /Only an Admin or Super Admin/i,
+    );
+    expect(screen.queryByRole('button', { name: /Approve/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('correction-sms-switch')).not.toBeInTheDocument();
+  });
+
   test('posted correction shows SMS opt-in off by default', async () => {
+    mockProfile = { role: 'super_admin', custom_role: { name: 'Super Admin' } };
     salesAPI.list.mockResolvedValue({
       data: {
         results: [
@@ -222,6 +246,7 @@ describe('SaleApprovalsPage', () => {
   });
 
   test('posted correction can opt in to customer SMS update', async () => {
+    mockProfile = { role: 'super_admin', custom_role: { name: 'Super Admin' } };
     salesAPI.list.mockResolvedValue({
       data: {
         results: [

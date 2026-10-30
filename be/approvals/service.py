@@ -16,10 +16,13 @@ from django.utils import timezone
 from approvals.models import PendingChange
 from approvals.permissions import (
     PAST_DATED_ADMIN_ONLY_MESSAGE,
+    POSTED_CORRECTION_ADMIN_ONLY_MESSAGE,
     change_is_past_dated,
+    change_is_posted_sale_correction,
     is_emergency_stock_mode,
     is_maker_checker_enabled,
     user_can_check,
+    user_has_admin_checker_override,
     user_may_approve_change,
     user_may_approve_past_items,
 )
@@ -264,6 +267,11 @@ def _require_past_dated_admin(checker, change: PendingChange) -> None:
         raise ValidationError(PAST_DATED_ADMIN_ONLY_MESSAGE)
 
 
+def _require_posted_correction_admin(checker, change: PendingChange) -> None:
+    if change_is_posted_sale_correction(change) and not user_has_admin_checker_override(checker):
+        raise ValidationError(POSTED_CORRECTION_ADMIN_ONLY_MESSAGE)
+
+
 @transaction.atomic
 def approve_change(
     change: PendingChange,
@@ -275,6 +283,7 @@ def approve_change(
     if change.status != PendingChange.STATUS_PENDING:
         raise ValidationError('Only pending changes can be approved.')
     _require_past_dated_admin(checker, change)
+    _require_posted_correction_admin(checker, change)
     if not user_may_approve_change(checker, change):
         raise ValidationError('You are not allowed to approve this change.')
 
@@ -366,6 +375,7 @@ def reject_change(
     if change.status != PendingChange.STATUS_PENDING:
         raise ValidationError('Only pending changes can be rejected.')
     _require_past_dated_admin(checker, change)
+    _require_posted_correction_admin(checker, change)
     if not user_may_approve_change(checker, change):
         raise ValidationError('You are not allowed to reject this change.')
     if not rejection_reason or not str(rejection_reason).strip():

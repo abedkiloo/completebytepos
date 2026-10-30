@@ -852,11 +852,19 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             else:
                 from approvals.permissions import (
                     PAST_DATED_ADMIN_ONLY_MESSAGE,
+                    POSTED_CORRECTION_ADMIN_ONLY_MESSAGE,
+                    user_has_admin_checker_override,
                     user_may_approve_dated_item,
                 )
+                from sales.sale_completion_approval import sale_was_returned_from_completed
 
                 if not user_may_approve_dated_item(request.user, sale.occurred_at):
                     raise ValidationError(PAST_DATED_ADMIN_ONLY_MESSAGE)
+                if (
+                    sale_was_returned_from_completed(sale)
+                    and not user_has_admin_checker_override(request.user)
+                ):
+                    raise ValidationError(POSTED_CORRECTION_ADMIN_ONLY_MESSAGE)
                 approve_queued_sale(
                     sale, request.user, notify_customer=notify_customer,
                 )
@@ -891,10 +899,16 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         )
         try:
             if sale.status in ('awaiting_payment', 'completed'):
-                from sales.sale_completion_approval import admin_return_sale_for_correction
+                from sales.sale_completion_approval import (
+                    _truthy_flag,
+                    admin_return_sale_for_correction,
+                )
 
                 admin_return_sale_for_correction(
-                    sale, user=request.user, reason=str(reason)
+                    sale,
+                    user=request.user,
+                    reason=str(reason),
+                    clear_payment=_truthy_flag(request.data.get('clear_payment')),
                 )
                 sale.refresh_from_db()
                 return Response(SaleSerializer(sale).data)
@@ -910,11 +924,19 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             else:
                 from approvals.permissions import (
                     PAST_DATED_ADMIN_ONLY_MESSAGE,
+                    POSTED_CORRECTION_ADMIN_ONLY_MESSAGE,
+                    user_has_admin_checker_override,
                     user_may_approve_dated_item,
                 )
+                from sales.sale_completion_approval import sale_was_returned_from_completed
 
                 if not user_may_approve_dated_item(request.user, sale.occurred_at):
                     raise ValidationError(PAST_DATED_ADMIN_ONLY_MESSAGE)
+                if (
+                    sale_was_returned_from_completed(sale)
+                    and not user_has_admin_checker_override(request.user)
+                ):
+                    raise ValidationError(POSTED_CORRECTION_ADMIN_ONLY_MESSAGE)
                 if not str(reason).strip():
                     raise ValidationError(
                         {'rejection_reason': 'Rejection reason is required.'}
@@ -1547,6 +1569,54 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 'wallet_balance': str(customer.wallet_balance),
             },
             status=status.HTTP_201_CREATED,
+        )
+
+    @transaction.atomic
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path=r'wallet-transactions/(?P<txn_id>[^/.]+)/clear-settlement',
+    )
+    def clear_wallet_settlement(self, request, pk=None, txn_id=None):
+        """Admin-only: clear an erroneous debt repayment from the customer ledger."""
+        from sales.customer_module_settings import customers_show_wallet_balance
+        from sales.models import CustomerWalletTransaction
+        from sales.sale_debt_sync import reverse_debt_settlement
+
+        if not customers_show_wallet_balance():
+            return self._feature_disabled_response('Wallet balance')
+        customer = self.get_object()
+        try:
+            txn = CustomerWalletTransaction.objects.select_related('customer').get(
+                pk=txn_id,
+                customer_id=customer.pk,
+            )
+        except (CustomerWalletTransaction.DoesNotExist, ValueError, TypeError):
+            return Response(
+                {'error': 'Debt payment not found for this customer.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        reason = (
+            request.data.get('reason')
+            or request.data.get('rejection_reason')
+            or ''
+        )
+        try:
+            reverse = reverse_debt_settlement(
+                txn, user=request.user, reason=str(reason),
+            )
+        except ValidationError as exc:
+            return Response(
+                {'error': validation_error_message(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        customer.refresh_from_db()
+        return Response(
+            {
+                'message': 'Debt payment cleared. Customer debt was restored.',
+                'wallet_balance': str(customer.wallet_balance),
+                'reversal_id': reverse.pk,
+            }
         )
 
 

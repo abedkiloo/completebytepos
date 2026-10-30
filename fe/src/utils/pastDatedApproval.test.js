@@ -2,8 +2,10 @@ import {
   businessDayKey,
   earliestBusinessDay,
   isPastDated,
+  isPostedSaleCorrection,
   isSaleCancellationAction,
   pastDatedBlocksUser,
+  postedCorrectionBlocksUser,
   userMayApprovePastItems,
   userMayApproveSaleCancellation,
 } from './pastDatedApproval';
@@ -55,5 +57,23 @@ describe('pastDatedApproval', () => {
     expect(pastDatedBlocksUser(yesterday, manager)).toBe(true);
     expect(pastDatedBlocksUser(yesterday, admin)).toBe(false);
     expect(pastDatedBlocksUser([dayOffset(0).toISOString()], manager)).toBe(false);
+  });
+
+  it('blocks managers from approving posted sale corrections', () => {
+    const posted = {
+      action_type: 'sale_complete',
+      posted_correction: true,
+      original_values: { returned_from_status: 'completed' },
+    };
+    const firstTime = {
+      action_type: 'sale_complete',
+      posted_correction: false,
+      original_values: { returned_from_status: 'pending_approval' },
+    };
+    expect(isPostedSaleCorrection(posted)).toBe(true);
+    expect(isPostedSaleCorrection(firstTime)).toBe(false);
+    expect(postedCorrectionBlocksUser(posted, manager)).toBe(true);
+    expect(postedCorrectionBlocksUser(posted, admin)).toBe(false);
+    expect(postedCorrectionBlocksUser(firstTime, manager)).toBe(false);
   });
 });

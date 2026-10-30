@@ -46,6 +46,8 @@ import {
   isSaleCancellationAction,
   pastDatedBlocksUser,
   pendingChangeDates,
+  postedCorrectionBlocksUser,
+  POSTED_CORRECTION_ADMIN_ONLY_MESSAGE,
   userMayApprovePastItems,
   userMayApproveSaleCancellation,
 } from '../../utils/pastDatedApproval';
@@ -92,7 +94,8 @@ function ChangeReviewBody({ row }) {
   const extremeRequired = needsExtremePriceConfirm(row);
   const dates = pendingChangeDates(row);
   const pastDated = Boolean(row.past_dated) || isPastDated(...dates);
-  const adminOnly = pastDated && !userMayApprovePastItems();
+  const pastAdminOnly = pastDated && !userMayApprovePastItems();
+  const postedCorrectionBlocked = postedCorrectionBlocksUser(row);
 
   return (
     <div className="space-y-4">
@@ -131,7 +134,15 @@ function ChangeReviewBody({ row }) {
         </p>
       ) : null}
 
-      {pastDated ? <PastDatedNotice dates={dates} blocked={adminOnly} /> : null}
+      {pastDated ? <PastDatedNotice dates={dates} blocked={pastAdminOnly} /> : null}
+      {postedCorrectionBlocked ? (
+        <p
+          className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
+          data-testid="posted-correction-notice"
+        >
+          {POSTED_CORRECTION_ADMIN_ONLY_MESSAGE}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -147,8 +158,11 @@ function ChangeReviewActions({ row, onResolved, onClose }) {
   const pastDated = Boolean(row.past_dated) || isPastDated(...dates);
   const saleCancelAdminOnly =
     isSaleCancellationAction(row.action_type) && !userMayApproveSaleCancellation();
+  const postedCorrectionAdminOnly = postedCorrectionBlocksUser(row);
   const adminOnly =
-    saleCancelAdminOnly || (pastDated && !userMayApprovePastItems());
+    saleCancelAdminOnly ||
+    postedCorrectionAdminOnly ||
+    (pastDated && !userMayApprovePastItems());
 
   const requestApprove = () => {
     if (extremeRequired && !extremeConfirm) {
@@ -209,6 +223,13 @@ function ChangeReviewActions({ row, onResolved, onClose }) {
       return (
         <p className="text-sm text-muted-foreground">
           Only an Admin or Super Admin can approve or return sale voids and rollbacks.
+        </p>
+      );
+    }
+    if (postedCorrectionAdminOnly) {
+      return (
+        <p className="text-sm text-muted-foreground" data-testid="posted-correction-admin-only">
+          {POSTED_CORRECTION_ADMIN_ONLY_MESSAGE}
         </p>
       );
     }
