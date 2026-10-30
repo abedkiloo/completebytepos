@@ -176,16 +176,28 @@ describe('BillingPOSPage invoice layout', () => {
     expect(useBillingPOSState).toHaveBeenCalledWith({ resumeSaleId: '99' });
   });
 
-  it('shows the returned-sale banner on Terminal POS', () => {
+  it('shows Correction Mode panel on Terminal POS for returned sales', () => {
     useBillingPOSState.mockReturnValue(
       buildMockState({
         returnedSaleNotice: { saleNumber: 'S-RET', comment: 'Wrong prices' },
+        correctionSnapshot: {
+          total: 200,
+          paid: 40,
+          itemCount: 3,
+          paymentMethod: 'mpesa',
+        },
+        selectedCustomer: { id: 5, name: 'Jane', phone: '0700111222' },
+        amountPaid: '40',
+        total: 200,
       })
     );
     render(<BillingPOSPage />);
     expect(screen.getByTestId('returned-sale-banner')).toHaveTextContent(
-      'Manager returned sale S-RET'
+      /Correction Mode · S-RET/
     );
     expect(screen.getByTestId('returned-sale-banner')).toHaveTextContent('Wrong prices');
+    expect(screen.getByTestId('correction-customer-card')).toHaveTextContent('Jane');
+    expect(screen.getByTestId('correction-customer-card')).toHaveTextContent('0700111222');
+    expect(screen.getByTestId('correction-totals-compare')).toHaveTextContent(/Was → Now/);
   });
 });

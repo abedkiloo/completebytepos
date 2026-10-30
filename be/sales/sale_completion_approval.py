@@ -146,6 +146,48 @@ def sale_must_requeue_after_correction(sale: Sale) -> bool:
     return sale_needs_salesperson_action(sale)
 
 
+def sale_was_returned_from_completed(sale: Sale) -> bool:
+    """True when this sale was already live and later returned for correction.
+
+    First-time pending approvals (and manager rejects before completion) are
+    False — the customer has not received a sale SMS yet. Posted corrections
+    leave soft-voided ``#corrected`` stock movements and/or a rejected
+    sale_complete change with ``returned_from_status=completed``.
+    """
+    sale_number = (getattr(sale, 'sale_number', None) or '').strip()
+    if sale_number:
+        from inventory.models import StockMovement
+
+        if StockMovement.objects.filter(
+            movement_type='sale',
+            reference__startswith=f'{sale_number}#corrected',
+        ).exists():
+            return True
+
+    change = latest_rejected_sale_complete_change(sale)
+    if change is None:
+        return False
+    original = change.original_values or {}
+    returned_from = (
+        original.get('returned_from_status')
+        or original.get('status')
+        or ''
+    )
+    return str(returned_from).strip() == 'completed'
+
+
+def payload_requests_customer_sms(payload: dict | None) -> bool:
+    """Truthy ``notify_customer`` / ``send_customer_sms`` from an approve payload."""
+    if not payload:
+        return False
+    raw = payload.get('notify_customer', payload.get('send_customer_sms'))
+    if isinstance(raw, bool):
+        return raw
+    if raw is None:
+        return False
+    return str(raw).strip().lower() in ('1', 'true', 'yes', 'on')
+
+
 def sale_rejection_reason(sale: Sale) -> str:
     if not sale_needs_salesperson_action(sale):
         return ''
@@ -639,12 +681,19 @@ def restore_queued_sale_for_approval(sale: Sale, change: PendingChange | None = 
     return sale
 
 
-def approve_queued_sale(sale: Sale, user=None) -> Sale:
+def approve_queued_sale(
+    sale: Sale,
+    user=None,
+    *,
+    notify_customer: bool | None = None,
+) -> Sale:
     """Complete a cashier sale after the manager confirms it."""
     if sale.status != 'pending_approval':
         raise ValidationError('This sale is not waiting for approval.')
     pending = pending_sale_complete_change(sale)
     payload = dict(pending.apply_payload or {}) if pending else {}
+    if notify_customer is not None:
+        payload['notify_customer'] = bool(notify_customer)
     complete_queued_sale(sale, user, payload)
     sale.refresh_from_db()
     notify_cashier_sale_approved(sale, user)
@@ -765,7 +814,15 @@ def complete_queued_sale(sale: Sale, user, payload: dict | None = None) -> Sale:
         'updated_at',
     ])
 
-    service._apply_sale_payment(customer, sale, user, payment_result)
+    # Posted corrections already texted the customer on first completion —
+    # only re-SMS when the approver explicitly opts in.
+    if sale_was_returned_from_completed(sale):
+        notify_customer = payload_requests_customer_sms(payload)
+    else:
+        notify_customer = True
+    service._apply_sale_payment(
+        customer, sale, user, payment_result, notify_customer=notify_customer,
+    )
 
     invoice_data = _invoice_validated_data(sale, payload)
     if invoice_data is not None:

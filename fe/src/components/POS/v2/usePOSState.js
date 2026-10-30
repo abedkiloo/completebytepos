@@ -181,6 +181,7 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
   const [holdingId, setHoldingId] = useState(null);
   const [serverHoldingChecked, setServerHoldingChecked] = useState(false);
   const [returnedSaleNotice, setReturnedSaleNotice] = useState(null);
+  const [correctionSnapshot, setCorrectionSnapshot] = useState(null);
   const draftCheckedRef = useRef(false);
   const resumeSaleIdNum = Number.parseInt(resumeSaleId, 10);
   const resumeSalePk =
@@ -441,12 +442,17 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
           setPaymentReference(String(holding.payment_reference));
         }
         if (holding.customer) {
-          setSelectedCustomer(
-            customers.find((c) => c.id === holding.customer) || {
-              id: holding.customer,
-              name: holding.customer_name || 'Customer',
-            }
-          );
+          const fromList = customers.find((c) => c.id === holding.customer);
+          setSelectedCustomer({
+            ...(fromList || {}),
+            id: holding.customer,
+            name: holding.customer_name || fromList?.name || 'Customer',
+            phone: holding.customer_phone || fromList?.phone || '',
+            wallet_balance:
+              holding.customer_wallet_balance != null
+                ? holding.customer_wallet_balance
+                : fromList?.wallet_balance,
+          });
         }
         const totalDue = parseFloat(holding.total);
         setPaymentOnAccount(
@@ -462,8 +468,18 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
             saleNumber: holding.sale_number || `#${holding.id}`,
             comment,
           });
+          setCorrectionSnapshot({
+            total: Number.isFinite(totalDue) ? totalDue : 0,
+            paid: Number.isFinite(paid) ? paid : 0,
+            itemCount: (holding.items || []).reduce(
+              (n, item) => n + (Number(item.quantity) || 0),
+              0,
+            ),
+            paymentMethod: holding.payment_method || 'cash',
+          });
         } else {
           setReturnedSaleNotice(null);
+          setCorrectionSnapshot(null);
         }
         setCartRecovery(null);
       } finally {
@@ -694,6 +710,9 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
   const clearCart = useCallback(() => {
     if (cartDraftKey) clearRetailCartDraft(cartDraftKey);
     setCart([]);
+    setReturnedSaleNotice(null);
+    setCorrectionSnapshot(null);
+    setHoldingId(null);
   }, [cartDraftKey]);
 
   // ------------------------------------------------------------------
@@ -759,6 +778,7 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
     setCart([]);
     setHoldingId(null);
     setReturnedSaleNotice(null);
+    setCorrectionSnapshot(null);
     setReceivedAmount('');
     setPaymentOnAccount(false);
     setPaymentOnAccountCustomerPrompt(false);
@@ -850,14 +870,20 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
         });
         let res;
         if (holdingId) {
-          await salesAPI.saveHolding({
+          const holdingPayload = {
             holding_id: holdingId,
             items: buildHoldingItemsFromCart(cart),
             customer_id: customerIdForSale(selectedCustomer),
             tax_amount: parseFloat(taxAmount.toFixed(2)),
             discount_amount: parseFloat(discountAmount.toFixed(2)),
             client_channel: 'web',
-          });
+          };
+          if (returnedSaleNotice) {
+            holdingPayload.payment_method = payload.payment_method;
+            holdingPayload.payment_reference = payload.payment_reference || '';
+            holdingPayload.amount_paid = payload.amount_paid;
+          }
+          await salesAPI.saveHolding(holdingPayload);
           res = await salesAPI.checkout(holdingId, {
             payment_method: payload.payment_method,
             payment_reference: payload.payment_reference,
@@ -917,7 +943,19 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
         setSubmitting(false);
       }
     },
-    [submitting, buildSalePayload, pendingSaleData, receivedAmount, resetAfterSale, holdingId, cart, selectedCustomer, taxAmount, discountAmount]
+    [
+      submitting,
+      buildSalePayload,
+      pendingSaleData,
+      receivedAmount,
+      resetAfterSale,
+      holdingId,
+      cart,
+      selectedCustomer,
+      taxAmount,
+      discountAmount,
+      returnedSaleNotice,
+    ]
   );
 
   /**
@@ -1154,6 +1192,7 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
     continueCartRecovery,
     startNewSaleFromRecovery,
     returnedSaleNotice,
+    correctionSnapshot,
 
     // reloads
     reloadProducts: loadProducts,

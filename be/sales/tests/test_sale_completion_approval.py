@@ -1,6 +1,7 @@
 """Cashier sales wait for manager approval before stock, books, or receipts."""
 
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
@@ -21,7 +22,8 @@ from products.models import Category, Product
 from accounting.models import Transaction
 from accounting.services import create_sale_journal_entry
 from reports.views import sale_report_queryset
-from sales.models import Sale
+from sales.models import Customer, Sale
+from sales.services import SaleService
 from sales.sale_completion_approval import (
     QUEUE_REASON,
     UNEDITED_RETURN_MESSAGE,
@@ -30,6 +32,7 @@ from sales.sale_completion_approval import (
     complete_queued_sale,
     notify_cashier_sale_approved,
     notify_cashier_sale_rejected,
+    payload_requests_customer_sms,
     payment_payload_from_inputs,
     pending_sale_complete_change,
     queue_sale_complete,
@@ -38,6 +41,7 @@ from sales.sale_completion_approval import (
     sale_completion_should_wait,
     sale_needs_salesperson_action,
     sale_rejection_reason,
+    sale_was_returned_from_completed,
     user_can_complete_sales,
 )
 from utils.tests.api_test_base import ManagerAPITestCase, SalesAPITestCase
@@ -107,6 +111,104 @@ class SaleCompletionHelperTests(TestCase):
 
     def test_checker_module_is_sales(self):
         self.assertEqual(CHECKER_MODULE_BY_ACTION[ACTION_SALE_COMPLETE], 'sales')
+
+    def test_posted_correction_detection_and_sms_opt_in_flag(self):
+        sale = Sale.objects.create(
+            sale_number='S-CORR-SMS',
+            status='pending_approval',
+            subtotal=Decimal('100'),
+            total=Decimal('100'),
+            payment_method='cash',
+            amount_paid=Decimal('100'),
+        )
+        self.assertFalse(sale_was_returned_from_completed(sale))
+        self.assertFalse(payload_requests_customer_sms(None))
+        self.assertFalse(payload_requests_customer_sms({}))
+        self.assertTrue(payload_requests_customer_sms({'notify_customer': True}))
+        self.assertTrue(payload_requests_customer_sms({'send_customer_sms': 'yes'}))
+        self.assertFalse(payload_requests_customer_sms({'notify_customer': '0'}))
+
+        PendingChange.objects.create(
+            action_type=ACTION_SALE_COMPLETE,
+            entity_type='sales.Sale',
+            entity_id=str(sale.pk),
+            entity_repr=sale.sale_number,
+            reason='qty fix',
+            status=PendingChange.STATUS_REJECTED,
+            original_values={
+                'status': 'completed',
+                'returned_from_status': 'completed',
+            },
+        )
+        self.assertTrue(sale_was_returned_from_completed(sale))
+
+        only_pending_reject = Sale.objects.create(
+            sale_number='S-FIRST-SMS',
+            status='holding',
+            subtotal=Decimal('20'),
+            total=Decimal('20'),
+            payment_method='cash',
+            amount_paid=Decimal('20'),
+        )
+        PendingChange.objects.create(
+            action_type=ACTION_SALE_COMPLETE,
+            entity_type='sales.Sale',
+            entity_id=str(only_pending_reject.pk),
+            entity_repr=only_pending_reject.sale_number,
+            reason='typo',
+            status=PendingChange.STATUS_REJECTED,
+            original_values={
+                'status': 'pending_approval',
+                'returned_from_status': 'pending_approval',
+            },
+        )
+        self.assertFalse(sale_was_returned_from_completed(only_pending_reject))
+
+    def test_apply_payment_skips_sms_after_posted_correction_unless_opt_in(self):
+        cashier = User.objects.create_user('sms_corr_till', password='x')
+        customer = Customer.objects.create(
+            name='SMS Corr', phone='0700111222', is_active=True,
+        )
+        sale = Sale.objects.create(
+            sale_number='S-SMS-OPT',
+            status='completed',
+            cashier=cashier,
+            customer=customer,
+            subtotal=Decimal('40'),
+            total=Decimal('40'),
+            payment_method='cash',
+            amount_paid=Decimal('40'),
+        )
+        PendingChange.objects.create(
+            action_type=ACTION_SALE_COMPLETE,
+            entity_type='sales.Sale',
+            entity_id=str(sale.pk),
+            entity_repr=sale.sale_number,
+            reason='qty fix',
+            status=PendingChange.STATUS_REJECTED,
+            original_values={
+                'status': 'completed',
+                'returned_from_status': 'completed',
+            },
+        )
+        payment = {
+            'wallet_amount_used': Decimal('0'),
+            'wallet_credit_added': Decimal('0'),
+            'change': Decimal('0'),
+            'pending_debt': Decimal('0'),
+            'amount_paid_recorded': Decimal('40'),
+        }
+        service = SaleService()
+        with patch(
+            'messaging.customer_notify.notify_customer_sale_completed'
+        ) as notify:
+            service._apply_sale_payment(customer, sale, cashier, payment)
+            notify.assert_not_called()
+
+            service._apply_sale_payment(
+                customer, sale, cashier, payment, notify_customer=True,
+            )
+            notify.assert_called_once()
 
     def test_cancel_queued_sale_ignores_completed(self):
         sale = Sale.objects.create(
@@ -393,6 +495,71 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
         self._manager_client().post(f"/api/sales/{created.data['id']}/complete/", {}, format='json')
         detail = self._manager_client().get(f"/api/sales/{created.data['id']}/")
         self.assertIsNone(detail.data['approval_details'])
+
+    def test_returned_holding_exposes_approval_details_and_customer_phone(self):
+        from sales.models import Customer
+
+        customer = Customer.objects.create(
+            name='Corr Phone', phone='0700999888', is_active=True,
+        )
+        payload = self._sale_payload()
+        payload['customer_id'] = customer.id
+        created = self.client.post('/api/sales/', payload, format='json')
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED, created.data)
+        sale_id = created.data['id']
+        self._manager_client().post(f'/api/sales/{sale_id}/complete/', {}, format='json')
+        admin = self._admin_client()
+        returned = admin.post(
+            f'/api/sales/{sale_id}/reject-complete/',
+            {'rejection_reason': 'Fix qty'},
+            format='json',
+        )
+        self.assertEqual(returned.status_code, status.HTTP_200_OK, returned.data)
+        detail = self.client.get(f'/api/sales/{sale_id}/')
+        self.assertEqual(detail.status_code, status.HTTP_200_OK, detail.data)
+        self.assertEqual(detail.data['status'], 'holding')
+        self.assertTrue(detail.data['needs_salesperson_action'])
+        self.assertEqual(detail.data['customer_phone'], '0700999888')
+        self.assertIsNotNone(detail.data['approval_details'])
+        sections = {s['title']: s for s in detail.data['approval_details']['sections']}
+        self.assertIn('Items', sections)
+        self.assertIn('Money', sections)
+
+    def test_returned_holding_sync_preserves_amount_paid(self):
+        created = self.client.post('/api/sales/', self._sale_payload(), format='json')
+        sale_id = created.data['id']
+        self._manager_client().post(f'/api/sales/{sale_id}/complete/', {}, format='json')
+        admin = self._admin_client()
+        admin.post(
+            f'/api/sales/{sale_id}/reject-complete/',
+            {'rejection_reason': 'Keep tender'},
+            format='json',
+        )
+        edited = self.client.post(
+            '/api/sales/holding/',
+            {
+                'holding_id': sale_id,
+                'items': [
+                    {
+                        'product_id': self.product.id,
+                        'quantity': '1',
+                        'unit_price': '100.00',
+                    }
+                ],
+                'payment_method': 'mpesa',
+                'payment_reference': 'QHXKEEP01',
+                'amount_paid': '75.00',
+                'client_channel': 'web',
+            },
+            format='json',
+        )
+        self.assertEqual(edited.status_code, status.HTTP_200_OK, edited.data)
+        self.assertEqual(Decimal(edited.data['amount_paid']), Decimal('75.00'))
+        self.assertEqual(edited.data['payment_method'], 'mpesa')
+        self.assertEqual(edited.data['payment_reference'], 'QHXKEEP01')
+        sale = Sale.objects.get(pk=sale_id)
+        self.assertEqual(sale.amount_paid, Decimal('75.00'))
+        self.assertEqual(sale.payment_method, 'mpesa')
 
     def test_salesperson_create_is_pending_stock_unchanged(self):
         response = self.client.post('/api/sales/', self._sale_payload(), format='json')

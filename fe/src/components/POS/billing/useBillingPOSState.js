@@ -81,6 +81,8 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
   const [cartRecovery, setCartRecovery] = useState(null);
   const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [returnedSaleNotice, setReturnedSaleNotice] = useState(null);
+  /** Snapshot of totals when a returned sale was first loaded into Correction Mode. */
+  const [correctionSnapshot, setCorrectionSnapshot] = useState(null);
 
   const resumeSaleIdNum = Number.parseInt(resumeSaleId, 10);
   const resumeSalePk =
@@ -247,13 +249,24 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
 
     if (holding.customer) {
       setSelectedCustomer((prev) => {
-        if (prev && String(prev.id) === String(holding.customer)) {
-          return prev;
-        }
-        return {
+        const next = {
           id: holding.customer,
-          name: holding.customer_name || 'Customer',
+          name: holding.customer_name || prev?.name || 'Customer',
+          phone: holding.customer_phone || prev?.phone || '',
+          wallet_balance:
+            holding.customer_wallet_balance != null
+              ? holding.customer_wallet_balance
+              : prev?.wallet_balance,
         };
+        if (prev && String(prev.id) === String(holding.customer)) {
+          return {
+            ...prev,
+            ...next,
+            name: next.name || prev.name,
+            phone: next.phone || prev.phone || '',
+          };
+        }
+        return next;
       });
     } else {
       setSelectedCustomer(WALK_IN_CUSTOMER);
@@ -271,8 +284,19 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
         saleNumber: holding.sale_number || `#${holding.id}`,
         comment,
       });
+      const itemCount = (holding.items || []).reduce(
+        (n, item) => n + (Number(item.quantity) || 0),
+        0,
+      );
+      setCorrectionSnapshot({
+        total: Number.isFinite(totalDue) ? totalDue : 0,
+        paid: Number.isFinite(paid) ? paid : 0,
+        itemCount,
+        paymentMethod: holding.payment_method || 'cash',
+      });
     } else {
       setReturnedSaleNotice(null);
+      setCorrectionSnapshot(null);
     }
   }, [validateStock]);
 
@@ -404,15 +428,34 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
   }, [searchQuery, searchProducts]);
 
   const buildHoldingPayload = useCallback(
-    () => ({
-      holding_id: holdingId,
-      items: buildHoldingItemsFromCart(cart),
-      customer_id: customerIdForSale(selectedCustomer),
-      tax_amount: parseFloat(taxAmount.toFixed(2)),
-      discount_amount: parseFloat(discountAmount.toFixed(2)),
-      client_channel: 'web',
-    }),
-    [holdingId, cart, selectedCustomer, taxAmount, discountAmount]
+    () => {
+      const payload = {
+        holding_id: holdingId,
+        items: buildHoldingItemsFromCart(cart),
+        customer_id: customerIdForSale(selectedCustomer),
+        tax_amount: parseFloat(taxAmount.toFixed(2)),
+        discount_amount: parseFloat(discountAmount.toFixed(2)),
+        client_channel: 'web',
+      };
+      if (returnedSaleNotice) {
+        const paid = parseFloat(amountPaid);
+        payload.payment_method = paymentMethod;
+        payload.payment_reference = paymentReference || '';
+        payload.amount_paid = Number.isFinite(paid) && paid >= 0 ? paid : 0;
+      }
+      return payload;
+    },
+    [
+      holdingId,
+      cart,
+      selectedCustomer,
+      taxAmount,
+      discountAmount,
+      returnedSaleNotice,
+      paymentMethod,
+      paymentReference,
+      amountPaid,
+    ]
   );
 
   const syncHolding = useCallback(async () => {
@@ -562,7 +605,9 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
     setHoldingId(null);
     setHoldingNumber('');
     setAmountPaid('');
+    setPaymentReference('');
     setReturnedSaleNotice(null);
+    setCorrectionSnapshot(null);
     setSelectedCustomer(WALK_IN_CUSTOMER);
     setCustomerQuery('');
   }, [holdingId]);
@@ -716,6 +761,8 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
       setTaxPct(0);
       setSelectedCustomer(WALK_IN_CUSTOMER);
       setCustomerQuery('');
+      setReturnedSaleNotice(null);
+      setCorrectionSnapshot(null);
       setPendingCheckout(null);
       setShowSaleCommitConfirm(false);
       toast.success(
@@ -821,5 +868,6 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
     continueCartRecovery,
     startNewSaleFromRecovery,
     returnedSaleNotice,
+    correctionSnapshot,
   };
 }

@@ -73,6 +73,9 @@ import {
   BILLING_RIGHT_COLUMN_CLASS,
   BILLING_TOTALS_SECTION_CLASS,
 } from './billingInvoiceLayout';
+import CorrectionModePanel, {
+  CorrectionTotalsCompare,
+} from '../CorrectionModePanel';
 
 export default function BillingPOSPage() {
   const [searchParams] = useSearchParams();
@@ -168,9 +171,20 @@ export default function BillingPOSPage() {
             <div className="min-w-0">
             <h1 className="truncate text-lg font-semibold text-slate-900">{storeName}</h1>
             <p className="truncate text-xs text-muted-foreground">
-              Draft invoice saved automatically
-              {state.holdingNumber && (
-                <span className="ml-2 font-mono text-primary">{state.holdingNumber}</span>
+              {state.returnedSaleNotice ? (
+                <>
+                  Correcting{' '}
+                  <span className="font-mono text-amber-800">
+                    {state.returnedSaleNotice.saleNumber}
+                  </span>
+                </>
+              ) : (
+                <>
+                  Draft invoice saved automatically
+                  {state.holdingNumber && (
+                    <span className="ml-2 font-mono text-primary">{state.holdingNumber}</span>
+                  )}
+                </>
               )}
               {state.syncingHolding && (
                 <span className="ml-2 text-amber-600">· saving…</span>
@@ -178,25 +192,29 @@ export default function BillingPOSPage() {
             </p>
             </div>
           </div>
-          <Button variant="outline" size="sm" className="w-full shrink-0 sm:w-auto" onClick={state.clearCart}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full shrink-0 sm:w-auto"
+            onClick={() => {
+              if (state.returnedSaleNotice) {
+                const ok = window.confirm(
+                  'Abandon this correction and start a new sale? The returned sale stays in your queue until you fix and send it again.',
+                );
+                if (!ok) return;
+              }
+              state.clearCart();
+            }}
+          >
             New sale
           </Button>
         </div>
         {state.returnedSaleNotice ? (
-          <div
-            className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 sm:px-4"
-            data-testid="returned-sale-banner"
-          >
-            <p className="font-medium">
-              Manager returned sale {state.returnedSaleNotice.saleNumber}
-            </p>
-            {state.returnedSaleNotice.comment ? (
-              <p className="mt-1 whitespace-pre-wrap">{state.returnedSaleNotice.comment}</p>
-            ) : null}
-            <p className="mt-1 text-xs text-amber-900/80">
-              Update this sale, then send it back for approval.
-            </p>
-          </div>
+          <CorrectionModePanel
+            notice={state.returnedSaleNotice}
+            customer={state.selectedCustomer}
+            originalSnapshot={state.correctionSnapshot}
+          />
         ) : null}
 
         <div className="grid min-h-0 min-w-0 flex-1 gap-4 overflow-hidden p-2 sm:p-4 lg:grid-cols-[1fr_minmax(300px,380px)]">
@@ -673,6 +691,14 @@ export default function BillingPOSPage() {
                     />
                   </div>
               </section>
+
+              {state.returnedSaleNotice && state.correctionSnapshot ? (
+                <CorrectionTotalsCompare
+                  originalSnapshot={state.correctionSnapshot}
+                  currentTotal={state.total}
+                  currentPaid={parseFloat(state.amountPaid) || 0}
+                />
+              ) : null}
 
               <dl className={BILLING_TOTALS_SECTION_CLASS}>
                 <div className="flex justify-between">

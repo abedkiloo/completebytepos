@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { RotateCcw } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ExternalLink, RotateCcw } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
@@ -61,6 +62,7 @@ export default function SaleDetailDialog({
   showCustomerName = true,
   showAdminDetails = true,
 }) {
+  const navigate = useNavigate();
   const { settings } = useStoreSettings();
   const storeName = resolveStoreName(settings);
   const logoUrl = resolveReceiptLogoUrl(settings);
@@ -153,15 +155,29 @@ export default function SaleDetailDialog({
         </DialogHeader>
 
         {returnedToSalesperson ? (
-          <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm">
-            <p className="font-semibold text-amber-950">Needs salesperson action</p>
+          <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm">
+            <p className="font-semibold text-amber-950">Needs correction</p>
             <p className="text-amber-900">
-              This sale was returned. Fix it on POS and send it again. A sticky Daily note was also
-              sent.
+              This sale was returned. Open Correction Mode on Terminal, fix the cart or payment,
+              then send it again. A sticky Daily note was also sent.
             </p>
             {managerComment ? (
               <p className="mt-1 text-amber-900">Manager comment: {managerComment}</p>
             ) : null}
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="border-amber-400 bg-white"
+              data-testid="sale-detail-fix-on-terminal"
+              onClick={() => {
+                onOpenChange(false);
+                navigate(`/pos/billing?sale=${sale.id}`);
+              }}
+            >
+              <ExternalLink className="mr-1 h-3.5 w-3.5" />
+              Fix on Terminal
+            </Button>
           </div>
         ) : saleIsAwaitingApproval(sale) ? (
           <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
@@ -197,6 +213,14 @@ export default function SaleDetailDialog({
             {showCustomerName && sale.customer_name ? (
               <p>
                 <strong>Customer:</strong> {sale.customer_name}
+                {sale.customer_phone ? (
+                  <span className="text-muted-foreground"> · {sale.customer_phone}</span>
+                ) : null}
+              </p>
+            ) : null}
+            {!showCustomerName && sale.customer_phone ? (
+              <p>
+                <strong>Phone:</strong> {sale.customer_phone}
               </p>
             ) : null}
             <p>

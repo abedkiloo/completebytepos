@@ -125,7 +125,10 @@ describe('useBillingPOSState cart recovery', () => {
         amount_paid: '40.00',
         payment_method: 'mpesa',
         payment_reference: 'QHX7K2L9M1',
-        customer: null,
+        customer: 12,
+        customer_name: 'Jane Buyer',
+        customer_phone: '0700111222',
+        customer_wallet_balance: '150.00',
         items: [
           {
             product_id: 7,
@@ -160,6 +163,18 @@ describe('useBillingPOSState cart recovery', () => {
     expect(result.current.amountPaid).toBe('40');
     expect(result.current.paymentMethod).toBe('mpesa');
     expect(result.current.paymentReference).toBe('QHX7K2L9M1');
+    expect(result.current.selectedCustomer).toMatchObject({
+      id: 12,
+      name: 'Jane Buyer',
+      phone: '0700111222',
+      wallet_balance: '150.00',
+    });
+    expect(result.current.correctionSnapshot).toEqual({
+      total: 200,
+      paid: 40,
+      itemCount: 3,
+      paymentMethod: 'mpesa',
+    });
   });
 
   it('loads returned sale lines even when on-hand stock is zero', async () => {

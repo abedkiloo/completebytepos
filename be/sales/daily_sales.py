@@ -121,6 +121,12 @@ def serialize_daily_order(sale: Sale) -> Dict[str, Any]:
         full = staff.get_full_name().strip()
         served_by_name = full or staff.username
 
+    from sales.sale_completion_approval import sale_needs_salesperson_action
+
+    needs_correction = (
+        sale.status == 'holding' and sale_needs_salesperson_action(sale)
+    )
+
     return {
         'id': sale.id,
         'sale_number': sale.sale_number,
@@ -131,11 +137,17 @@ def serialize_daily_order(sale: Sale) -> Dict[str, Any]:
         'served_by_name': served_by_name,
         'sale_type': sale.sale_type,
         'status': sale.status,
+        'needs_salesperson_action': needs_correction,
+        'rejection_reason': (
+            (getattr(sale, '_sale_rejection_reason', None) or '')
+            if needs_correction
+            else ''
+        ),
         'total': str(total.quantize(Decimal('0.01'))),
         'amount_paid': str(amount_paid.quantize(Decimal('0.01'))),
         'paid_amount': str(paid_amount.quantize(Decimal('0.01'))),
         'debt_amount': str(debt_amount.quantize(Decimal('0.01'))),
-        'payment_status': payment_status,
+        'payment_status': 'needs_correction' if needs_correction else payment_status,
         'payment_method': sale.payment_method,
         'payment_reference': sale.payment_reference or '',
         'item_count': _daily_item_count(sale),
@@ -196,6 +208,9 @@ def get_daily_sales_report(
         'pending_approval_paid': str(Decimal(str(pending['paid'] or 0)).quantize(Decimal('0.01'))),
     }
 
+    # Placeholder — filled after annotate when building the orders table.
+    pending_summary['needs_correction_count'] = 0
+
     # Summary from slim rows only (no item prefetch / full model hydrate).
     summary_rows = base_qs.values(
         'id', 'total', 'amount_paid', 'payment_method', 'entry_source'
@@ -252,8 +267,26 @@ def get_daily_sales_report(
 
     total_cash_in = total_paid_upfront + Decimal(str(total_debt_collected))
 
-    # Apply order filtering for the table view
-    orders_qs = base_qs
+    # Apply order filtering for the table view. Include returned-for-correction
+    # holdings so admin return does not make the sale disappear from Daily.
+    from sales.sale_completion_approval import annotate_sale_approval_state
+
+    day_annotated = annotate_sale_approval_state(day_qs)
+    needs_correction_qs = day_annotated.filter(
+        status='holding',
+        _has_rejected_sale_complete=True,
+        _has_pending_sale_complete=False,
+    )
+    needs_correction_count = needs_correction_qs.count()
+    pending_summary['needs_correction_count'] = int(needs_correction_count)
+
+    if payment_status == 'needs_correction':
+        orders_qs = needs_correction_qs
+    else:
+        orders_qs = base_qs
+        if payment_status not in ('paid', 'debt', 'partial'):
+            # Default / all: completed plus sales waiting for a fix.
+            orders_qs = (base_qs | needs_correction_qs).distinct()
 
     if search:
         st = str(search).strip()
@@ -278,11 +311,13 @@ def get_daily_sales_report(
     # full_debt: amount_paid == 0
     # partial: amount_paid > 0 and amount_paid < total
     if payment_status == 'paid':
-        orders_qs = orders_qs.filter(amount_paid__gte=F('total'))
+        orders_qs = orders_qs.filter(status='completed', amount_paid__gte=F('total'))
     elif payment_status == 'debt':
-        orders_qs = orders_qs.filter(amount_paid__lt=F('total'))
+        orders_qs = orders_qs.filter(status='completed', amount_paid__lt=F('total'))
     elif payment_status == 'partial':
-        orders_qs = orders_qs.filter(amount_paid__gt=0, amount_paid__lt=F('total'))
+        orders_qs = orders_qs.filter(
+            status='completed', amount_paid__gt=0, amount_paid__lt=F('total'),
+        )
 
     # Ordering
     from utils.list_ordering import mapped_ordering
@@ -301,7 +336,8 @@ def get_daily_sales_report(
         default='-occurred_at',
     )
     orders_qs = (
-        orders_qs.select_related('customer', 'cashier', 'served_by', 'branch')
+        annotate_sale_approval_state(orders_qs)
+        .select_related('customer', 'cashier', 'served_by', 'branch')
         .prefetch_related(*DAILY_ORDER_PREFETCH)
         .order_by(*order_fields)
     )

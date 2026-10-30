@@ -34,6 +34,9 @@ import ReceiptDialog from './ReceiptDialog';
 import VariantSelector from '../VariantSelector';
 import PosCartRecoveryDialog from '../PosCartRecoveryDialog';
 import { buildCartRecoveryPreview } from '../../../utils/posCartRecovery';
+import CorrectionModePanel, {
+  CorrectionTotalsCompare,
+} from '../CorrectionModePanel';
 import PartialPaymentCustomerDialog from '../billing/PartialPaymentCustomerDialog';
 import CustomerFormModal from '../../Customers/CustomerFormModal';
 import BranchSelector from '../../BranchSelector/BranchSelector';
@@ -334,21 +337,22 @@ export default function POSPage() {
         >
           <div className="border-b px-3 py-2">
             {state.returnedSaleNotice ? (
-              <div
-                className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-2 text-sm text-amber-950"
-                data-testid="returned-sale-banner"
-              >
-                <p className="font-medium">
-                  Manager returned sale {state.returnedSaleNotice.saleNumber}
-                </p>
-                {state.returnedSaleNotice.comment ? (
-                  <p className="mt-1 whitespace-pre-wrap">
-                    {state.returnedSaleNotice.comment}
-                  </p>
+              <div className="mb-2">
+                <CorrectionModePanel
+                  notice={state.returnedSaleNotice}
+                  customer={state.selectedCustomer}
+                  originalSnapshot={state.correctionSnapshot}
+                  className="rounded-md border"
+                />
+                {state.correctionSnapshot ? (
+                  <div className="mt-2">
+                    <CorrectionTotalsCompare
+                      originalSnapshot={state.correctionSnapshot}
+                      currentTotal={state.total}
+                      currentPaid={parseFloat(state.receivedAmount) || 0}
+                    />
+                  </div>
                 ) : null}
-                <p className="mt-1 text-xs text-amber-900/80">
-                  Update this sale, then send it back for approval.
-                </p>
               </div>
             ) : null}
             <CustomerPicker

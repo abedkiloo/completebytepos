@@ -96,7 +96,7 @@ describe('saleItemDisplay', () => {
         total: '100',
         amount_paid: '0',
       })
-    ).toBe('Needs salesperson action');
+    ).toBe('Needs correction');
     expect(saleFinalStatusLabel({ status: 'completed', refund_status: 'none', total: '100', amount_paid: '100' })).toBe(
       'Paid in full'
     );

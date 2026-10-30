@@ -64,7 +64,7 @@ export function saleHasRefundActivity(sale) {
 /** Human-readable final sale state for lists and receipts. */
 export function saleFinalStatusLabel(sale) {
   const status = String(sale?.status || '').toLowerCase();
-  if (sale?.needs_salesperson_action) return 'Needs salesperson action';
+  if (sale?.needs_salesperson_action) return 'Needs correction';
   if (status === 'pending_approval') return 'Awaiting approval';
   if (status === 'awaiting_payment') return 'Collect payment';
   if (status === 'holding') return 'On hold';

@@ -686,6 +686,7 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         try:
             from sales.client_channel import resolve_client_channel
 
+            amount_paid_raw = data.get('amount_paid')
             holding = self.sale_service.save_holding_sale(
                 request.user,
                 data.get('items', []),
@@ -696,6 +697,13 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 notes=data.get('notes', ''),
                 holding_id=data.get('holding_id'),
                 client_channel=resolve_client_channel(request, data),
+                payment_method=data.get('payment_method') or None,
+                payment_reference=data.get('payment_reference'),
+                amount_paid=(
+                    Decimal(str(amount_paid_raw))
+                    if amount_paid_raw is not None and amount_paid_raw != ''
+                    else None
+                ),
             )
         except ValidationError as e:
             return Response(
@@ -775,6 +783,7 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         from approvals.service import approve_change
         from sales.sale_completion_approval import (
             approve_queued_sale,
+            payload_requests_customer_sms,
             pending_sale_complete_change,
         )
 
@@ -784,9 +793,23 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 {'error': 'This sale is not waiting for approval.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # Opt-in only for posted corrections — first approvals always SMS.
+        notify_raw = request.data.get(
+            'notify_customer', request.data.get('send_customer_sms'),
+        )
+        notify_customer = (
+            payload_requests_customer_sms({'notify_customer': notify_raw})
+            if notify_raw is not None
+            else None
+        )
         try:
             change = pending_sale_complete_change(sale)
             if change:
+                if notify_customer is not None:
+                    payload = dict(change.apply_payload or {})
+                    payload['notify_customer'] = notify_customer
+                    change.apply_payload = payload
+                    change.save(update_fields=['apply_payload'])
                 approve_change(change, request.user, request=request)
                 sale.refresh_from_db()
             else:
@@ -797,7 +820,9 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
                 if not user_may_approve_dated_item(request.user, sale.occurred_at):
                     raise ValidationError(PAST_DATED_ADMIN_ONLY_MESSAGE)
-                approve_queued_sale(sale, request.user)
+                approve_queued_sale(
+                    sale, request.user, notify_customer=notify_customer,
+                )
                 sale.refresh_from_db()
                 if sale.status == 'completed':
                     from utils.audit_events import log_sale_completed

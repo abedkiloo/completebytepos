@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Navigate } from 'react-router-dom';
-import { Check, CheckCircle2, ChevronRight, Loader2, X } from 'lucide-react';
+import { Navigate, useNavigate } from 'react-router-dom';
+import { Check, CheckCircle2, ChevronRight, ExternalLink, Loader2, X } from 'lucide-react';
 import { pendingChangesAPI, salesAPI } from '../../services/api';
 import { PageShell, PageHeader, PageLoading, EmptyState } from '../page';
 import { Card, CardContent } from '../ui/card';
@@ -8,6 +8,7 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import { Switch } from '../ui/switch';
 import {
   Dialog,
   DialogContent,
@@ -89,13 +90,14 @@ function ApprovalListRow({ title, subtitle, badge, amount, meta, selected, onOpe
   );
 }
 
-function SaleReviewBody({ sale }) {
+function SaleReviewBody({ sale, onOpenInTerminal }) {
   const returned = saleNeedsSalespersonAction(sale);
   const managerComment = saleRejectionReason(sale);
   const saleDates = [sale.occurred_at || sale.created_at];
   const pastDated = isPastDated(...saleDates);
   const adminOnly = pastDatedBlocksUser(saleDates);
   const itemCount = saleDisplayItemCount(sale);
+  const customerPhone = (sale.customer_phone || '').trim();
 
   return (
     <div className="space-y-4">
@@ -108,11 +110,12 @@ function SaleReviewBody({ sale }) {
         <span className="text-muted-foreground">
           {itemCount} line{itemCount === 1 ? '' : 's'}
           {sale.customer_name ? ` · ${sale.customer_name}` : ''}
+          {customerPhone ? ` · ${customerPhone}` : ''}
         </span>
       </div>
       <ApprovalDetails details={sale.approval_details} />
       {returned ? (
-        <div className="space-y-1 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm">
+        <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm">
           <p className="font-medium text-amber-950">
             Waiting on the salesperson to fix this sale and send it again.
           </p>
@@ -120,6 +123,19 @@ function SaleReviewBody({ sale }) {
             <p className="text-amber-900">Manager comment: {managerComment}</p>
           ) : null}
           <p className="text-xs text-amber-800">A sticky Daily note was also sent to them.</p>
+          {onOpenInTerminal ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="mt-1 border-amber-400 bg-white"
+              onClick={onOpenInTerminal}
+              data-testid="open-correction-in-terminal"
+            >
+              <ExternalLink className="mr-1 h-3.5 w-3.5" />
+              Open in Terminal
+            </Button>
+          ) : null}
         </div>
       ) : null}
       {pastDated ? <PastDatedNotice dates={saleDates} blocked={adminOnly} /> : null}
@@ -131,15 +147,25 @@ function SaleReviewActions({ sale, onResolved, onClose }) {
   const [rejectReason, setRejectReason] = useState('');
   const [showReject, setShowReject] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [sendCustomerSms, setSendCustomerSms] = useState(false);
   const returned = saleNeedsSalespersonAction(sale);
   const saleDates = [sale.occurred_at || sale.created_at];
   const adminOnly = pastDatedBlocksUser(saleDates);
+  const isPostedCorrection = Boolean(sale.is_posted_correction);
 
   const approve = async () => {
     setBusy(true);
     try {
-      await salesAPI.complete(sale.id);
-      toast.success(`Sale ${sale.sale_number} approved. Stock, books, and the receipt are live.`);
+      if (isPostedCorrection) {
+        await salesAPI.complete(sale.id, { notify_customer: sendCustomerSms });
+      } else {
+        await salesAPI.complete(sale.id);
+      }
+      toast.success(
+        isPostedCorrection && sendCustomerSms
+          ? `Sale ${sale.sale_number} approved. Customer SMS update queued.`
+          : `Sale ${sale.sale_number} approved. Stock, books, and the receipt are live.`,
+      );
       onClose();
       onResolved();
       dispatchNavBadgesRefresh();
@@ -195,16 +221,38 @@ function SaleReviewActions({ sale, onResolved, onClose }) {
           </div>
         </div>
       ) : (
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" onClick={approve} disabled={busy}>
-            {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}
-            Approve
-          </Button>
-          <HelpHint actionKey="sale_complete" />
-          <Button size="sm" variant="outline" onClick={() => setShowReject(true)} disabled={busy}>
-            <X className="mr-1 h-4 w-4" />
-            Reject
-          </Button>
+        <div className="w-full space-y-3">
+          {isPostedCorrection ? (
+            <div className="flex items-start justify-between gap-3 rounded-md border border-border/70 bg-muted/30 px-3 py-2">
+              <div className="min-w-0 space-y-0.5">
+                <Label htmlFor={`sms-update-${sale.id}`} className="text-sm font-medium">
+                  Send SMS update to customer
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Off by default — they already got a receipt SMS. Turn on only if the
+                  corrected totals should be texted again.
+                </p>
+              </div>
+              <Switch
+                id={`sms-update-${sale.id}`}
+                checked={sendCustomerSms}
+                onCheckedChange={setSendCustomerSms}
+                disabled={busy}
+                data-testid="correction-sms-switch"
+              />
+            </div>
+          ) : null}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" onClick={approve} disabled={busy}>
+              {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}
+              Approve
+            </Button>
+            <HelpHint actionKey="sale_complete" />
+            <Button size="sm" variant="outline" onClick={() => setShowReject(true)} disabled={busy}>
+              <X className="mr-1 h-4 w-4" />
+              Reject
+            </Button>
+          </div>
         </div>
       )}
     </>
@@ -329,6 +377,7 @@ function ListSection({ title, children }) {
 }
 
 export default function SaleApprovalsPage() {
+  const navigate = useNavigate();
   const { permissions } = getStoredAuth();
   const allowed = userCanOpenSaleApprovals(permissions);
   const canSales = userCanApproveSales(permissions);
@@ -561,7 +610,19 @@ export default function SaleApprovalsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          {selectedSale ? <SaleReviewBody sale={selectedSale} /> : null}
+          {selectedSale ? (
+            <SaleReviewBody
+              sale={selectedSale}
+              onOpenInTerminal={
+                saleNeedsSalespersonAction(selectedSale)
+                  ? () => {
+                      setSelected(null);
+                      navigate(`/pos/billing?sale=${selectedSale.id}`);
+                    }
+                  : undefined
+              }
+            />
+          ) : null}
           {selectedCollection ? <CollectionReviewBody change={selectedCollection} /> : null}
 
           <DialogFooter className="flex-col items-stretch gap-2 sm:flex-col sm:space-x-0">

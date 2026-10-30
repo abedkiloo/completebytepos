@@ -4,8 +4,10 @@ import SaleApprovalsPage from './SaleApprovalsPage';
 import { pendingChangesAPI, salesAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 
+const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({
   Navigate: () => null,
+  useNavigate: () => mockNavigate,
 }));
 
 let mockProfile = { role: 'manager', custom_role: { name: 'Manager' } };
@@ -193,5 +195,91 @@ describe('SaleApprovalsPage', () => {
     await openSaleRow();
     fireEvent.click(screen.getByRole('button', { name: /Approve/i }));
     await waitFor(() => expect(salesAPI.complete).toHaveBeenCalledWith(42));
+  });
+
+  test('posted correction shows SMS opt-in off by default', async () => {
+    salesAPI.list.mockResolvedValue({
+      data: {
+        results: [
+          {
+            ...waitingSale(new Date().toISOString()),
+            is_posted_correction: true,
+            approval_details: {
+              sections: [{ title: 'Money', facts: [{ label: 'Total', value: '2300', kind: 'money' }] }],
+            },
+          },
+        ],
+      },
+    });
+    render(<SaleApprovalsPage />);
+    await openSaleRow();
+    expect(screen.getByTestId('correction-sms-switch')).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByText(/Send SMS update to customer/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Approve/i }));
+    await waitFor(() =>
+      expect(salesAPI.complete).toHaveBeenCalledWith(42, { notify_customer: false }),
+    );
+  });
+
+  test('posted correction can opt in to customer SMS update', async () => {
+    salesAPI.list.mockResolvedValue({
+      data: {
+        results: [
+          {
+            ...waitingSale(new Date().toISOString()),
+            is_posted_correction: true,
+            approval_details: {
+              sections: [{ title: 'Money', facts: [{ label: 'Total', value: '2300', kind: 'money' }] }],
+            },
+          },
+        ],
+      },
+    });
+    render(<SaleApprovalsPage />);
+    await openSaleRow();
+    fireEvent.click(screen.getByTestId('correction-sms-switch'));
+    fireEvent.click(screen.getByRole('button', { name: /Approve/i }));
+    await waitFor(() =>
+      expect(salesAPI.complete).toHaveBeenCalledWith(42, { notify_customer: true }),
+    );
+  });
+
+  test('returned sale shows Open in Terminal', async () => {
+    mockNavigate.mockClear();
+    salesAPI.list.mockResolvedValue({
+      data: {
+        results: [
+          {
+            ...waitingSale(new Date().toISOString()),
+            status: 'holding',
+            needs_salesperson_action: true,
+            rejection_reason: 'Wrong qty',
+            customer_phone: '0700111222',
+            approval_details: {
+              sections: [
+                {
+                  title: 'Items',
+                  lines: [
+                    {
+                      name: 'Red Shuka',
+                      variant: '',
+                      quantity: '1',
+                      unit_price: '2300.00',
+                      subtotal: '2300.00',
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    render(<SaleApprovalsPage />);
+    await openSaleRow();
+    expect(screen.getByText(/Waiting on the salesperson/i)).toBeInTheDocument();
+    expect(screen.getByText('Red Shuka')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('open-correction-in-terminal'));
+    expect(mockNavigate).toHaveBeenCalledWith('/pos/billing?sale=42');
   });
 });

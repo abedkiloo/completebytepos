@@ -109,10 +109,36 @@ def _sale_customer_label(sale) -> str:
     if sale is None:
         return 'the customer'
     name = (getattr(sale, 'customer_name', None) or '').strip()
+    customer = getattr(sale, 'customer', None)
     if not name:
-        customer = getattr(sale, 'customer', None)
         name = (getattr(customer, 'name', None) or '').strip() if customer else ''
-    return name or 'walk-in customer'
+    phone = ''
+    if customer is not None:
+        phone = (getattr(customer, 'phone', None) or '').strip()
+    if not phone:
+        phone = (getattr(sale, 'customer_phone', None) or '').strip()
+    label = name or 'walk-in customer'
+    if phone:
+        return f'{label} ({phone})'
+    return label
+
+
+def _sale_correction_summary(sale) -> str:
+    """One-line money/items snapshot for sticky return notes."""
+    if sale is None:
+        return ''
+    try:
+        items = list(getattr(sale, 'items', None).all()) if getattr(sale, 'items', None) else []
+    except Exception:
+        items = []
+    item_count = sum(int(getattr(i, 'quantity', 0) or 0) for i in items)
+    total = getattr(sale, 'total', None) or 0
+    paid = getattr(sale, 'amount_paid', None) or 0
+    method = (getattr(sale, 'payment_method', None) or '').strip() or 'cash'
+    return (
+        f'{item_count} item{"s" if item_count != 1 else ""} · '
+        f'total {total} · paid {paid} · {method}'
+    )
 
 
 def build_rejection_notice(
@@ -143,12 +169,15 @@ def build_rejection_notice(
     if action_type == 'sale_complete':
         number = item if item != 'your request' else 'this sale'
         customer = _sale_customer_label(sale)
+        snapshot = _sale_correction_summary(sale)
+        snapshot_line = f'{snapshot}\n' if snapshot else ''
         content = (
             f'{checker_name} returned sale {number} for {customer}.\n'
+            f'{snapshot_line}'
             f'Their comment:\n{reason}\n\n'
-            'The sale is back on your POS cart. Open that sale, resolve the '
-            'comment, then send it back for approval from POS. Ticking this '
-            'note is not enough.\n'
+            'Open that sale on Terminal POS (Correction Mode), fix the cart '
+            'or payment, then send it back for approval. Ticking this note '
+            'is not enough.\n'
             '---\n'
             f'{footer}'
         )

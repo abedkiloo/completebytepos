@@ -139,7 +139,8 @@ class SaleService(BaseService):
         elif sale_origin == 'shop':
             queryset = queryset.exclude(entry_source='field')
 
-        # Status filter — default hides register drafts and waiting sales from history.
+        # Status filter — default hides ordinary drafts and waiting sales from history.
+        # Returned-for-correction holdings stay visible so the sale does not vanish.
         from sales.sale_completion_approval import (
             annotate_sale_approval_state,
             awaiting_approval_queue_q,
@@ -154,13 +155,13 @@ class SaleService(BaseService):
         elif status:
             queryset = queryset.filter(status=status)
         else:
-            excluded = []
             if filters.get('include_holding') not in (True, 'true', '1', 1):
-                excluded.append('holding')
+                # Keep holdings that need salesperson action; hide ordinary drafts.
+                queryset = queryset.exclude(
+                    Q(status='holding') & Q(_has_rejected_sale_complete=False)
+                )
             if filters.get('include_pending_approval') not in (True, 'true', '1', 1):
-                excluded.append('pending_approval')
-            if excluded:
-                queryset = queryset.exclude(status__in=excluded)
+                queryset = queryset.exclude(status='pending_approval')
 
         # Own sales only unless admin / sales.view_all.
         # Managers with sales.approve see every cashier's waiting sales.
@@ -573,12 +574,16 @@ class SaleService(BaseService):
         notes: str = '',
         holding_id: Optional[int] = None,
         client_channel: Optional[str] = None,
+        payment_method: Optional[str] = None,
+        payment_reference: Optional[str] = None,
+        amount_paid: Optional[Decimal] = None,
     ) -> Sale:
         """
         Create or update a holding (draft) sale. Does NOT move stock or post
         accounting entries — those happen in ``complete_holding_sale``.
         """
         from accounts.sensitive_edits import clamp_holding_financial_adjustments
+        from sales.sale_completion_approval import sale_needs_salesperson_action
 
         tax_amount, discount_amount = clamp_holding_financial_adjustments(
             user, tax_amount, discount_amount
@@ -603,6 +608,7 @@ class SaleService(BaseService):
             holding = self.get_active_holding(user, branch)
 
         if holding:
+            correcting = sale_needs_salesperson_action(holding)
             holding.items.all().delete()
             holding.customer = customer
             holding.branch = branch or holding.branch
@@ -610,8 +616,18 @@ class SaleService(BaseService):
             holding.tax_amount = tax_amount
             holding.discount_amount = discount_amount
             holding.total = max(Decimal('0'), total)
-            holding.amount_paid = Decimal('0')
-            holding.change = Decimal('0')
+            if correcting:
+                # Keep tender context while the salesperson fixes a returned sale.
+                if payment_method:
+                    holding.payment_method = payment_method
+                if payment_reference is not None:
+                    holding.payment_reference = payment_reference or ''
+                if amount_paid is not None:
+                    holding.amount_paid = max(Decimal('0'), Decimal(str(amount_paid)))
+                holding.change = Decimal('0')
+            else:
+                holding.amount_paid = Decimal('0')
+                holding.change = Decimal('0')
             holding.notes = notes or holding.notes
             if client_channel:
                 holding.client_channel = client_channel
@@ -1120,6 +1136,8 @@ class SaleService(BaseService):
         sale: Sale,
         user,
         payment_result: Dict[str, Any],
+        *,
+        notify_customer: Optional[bool] = None,
     ) -> None:
         if not customer:
             sale.amount_paid = payment_result['amount_paid_recorded']
@@ -1235,15 +1253,23 @@ class SaleService(BaseService):
 
         # One customer SMS on final sale (includes balance if they still owe).
         # Debt from this sale is covered here — no separate "debt increase" SMS.
+        # Posted corrections default to no SMS (customer already got one); pass
+        # notify_customer=True only when the approver opts in to send an update.
         if sale.status == 'completed':
-            try:
-                from messaging.customer_notify import notify_customer_sale_completed
+            should_notify = notify_customer
+            if should_notify is None:
+                from sales.sale_completion_approval import sale_was_returned_from_completed
 
-                notify_customer_sale_completed(sale, user=user)
-            except Exception:
-                logger.exception(
-                    'Sale completion SMS failed for %s', sale.sale_number
-                )
+                should_notify = not sale_was_returned_from_completed(sale)
+            if should_notify:
+                try:
+                    from messaging.customer_notify import notify_customer_sale_completed
+
+                    notify_customer_sale_completed(sale, user=user)
+                except Exception:
+                    logger.exception(
+                        'Sale completion SMS failed for %s', sale.sale_number
+                    )
 
     def _maybe_create_invoice_for_sale(
         self,

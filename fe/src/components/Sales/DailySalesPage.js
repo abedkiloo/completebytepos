@@ -157,6 +157,7 @@ function paymentStatusTone(status) {
   if (status === 'paid') return 'success';
   if (status === 'partial') return 'warning';
   if (status === 'debt') return 'destructive';
+  if (status === 'needs_correction') return 'warning';
   return 'secondary';
 }
 
@@ -164,6 +165,7 @@ function paymentStatusLabel(status) {
   if (status === 'paid') return 'Paid';
   if (status === 'partial') return 'Partial';
   if (status === 'debt') return 'Debt';
+  if (status === 'needs_correction') return 'Needs correction';
   return status || '—';
 }
 
@@ -837,7 +839,7 @@ export default function DailySalesPage() {
                 const rowTone =
                   payStatus === 'debt'
                     ? 'bg-rose-50/70 dark:bg-rose-950/20'
-                    : payStatus === 'partial'
+                    : payStatus === 'partial' || payStatus === 'needs_correction'
                       ? 'bg-amber-50/60 dark:bg-amber-950/15'
                       : '';
 
@@ -945,6 +947,17 @@ export default function DailySalesPage() {
 
                     <DataTableCell align="right">
                       <div className="flex flex-wrap justify-end gap-1">
+                        {payStatus === 'needs_correction' || order.needs_salesperson_action ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              window.location.assign(`/pos/billing?sale=${order.id}`);
+                            }}
+                          >
+                            Fix on Terminal
+                          </Button>
+                        ) : null}
                         <Button
                           variant="ghost"
                           size="sm"

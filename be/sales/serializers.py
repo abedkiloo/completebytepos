@@ -468,6 +468,14 @@ class SaleSerializer(serializers.ModelSerializer):
     items = SaleItemSerializer(many=True, read_only=True)
     cashier_name = serializers.CharField(source='cashier.username', read_only=True)
     customer_name = serializers.CharField(source='customer.name', read_only=True)
+    customer_phone = serializers.CharField(source='customer.phone', read_only=True, allow_null=True)
+    customer_wallet_balance = serializers.DecimalField(
+        source='customer.wallet_balance',
+        max_digits=12,
+        decimal_places=2,
+        read_only=True,
+        allow_null=True,
+    )
     served_by_name = serializers.SerializerMethodField()
     is_late_entry = serializers.SerializerMethodField()
     backfill_receipt_photo_url = serializers.SerializerMethodField()
@@ -479,6 +487,7 @@ class SaleSerializer(serializers.ModelSerializer):
     can_correct_date = serializers.SerializerMethodField()
     needs_salesperson_action = serializers.SerializerMethodField()
     rejection_reason = serializers.SerializerMethodField()
+    is_posted_correction = serializers.SerializerMethodField()
     approval_details = serializers.SerializerMethodField()
     activity = serializers.SerializerMethodField()
     is_field_sale = serializers.BooleanField(read_only=True)
@@ -489,6 +498,7 @@ class SaleSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'sale_number', 'sale_type', 'status', 'refund_status', 'cashier', 'cashier_name',
             'served_by', 'served_by_name', 'customer', 'customer_name',
+            'customer_phone', 'customer_wallet_balance',
             'subtotal', 'tax_amount', 'discount_amount', 'total',
             'delivery_method', 'delivery_cost',
             'shipping_address', 'shipping_location',
@@ -498,6 +508,7 @@ class SaleSerializer(serializers.ModelSerializer):
             'backfill_receipt_photo_url',
             'items', 'item_count', 'amount_refunded', 'refundable_remaining', 'can_refund',
             'can_rollback', 'can_correct_date', 'needs_salesperson_action', 'rejection_reason',
+            'is_posted_correction',
             'approval_details', 'activity',
             'created_at', 'updated_at'
         ]
@@ -570,12 +581,26 @@ class SaleSerializer(serializers.ModelSerializer):
 
         return sale_rejection_reason(obj)
 
+    def get_is_posted_correction(self, obj):
+        """True when re-approving a sale that was already live (SMS opt-in only)."""
+        from sales.sale_completion_approval import sale_was_returned_from_completed
+
+        return sale_was_returned_from_completed(obj)
+
     def get_approval_details(self, obj):
-        """Full sale breakdown for the manager's approval card (pending sales only)."""
-        if obj.status != 'pending_approval':
+        """Full sale breakdown for approval / returned-correction review cards."""
+        from sales.sale_completion_approval import (
+            pending_sale_complete_change,
+            sale_needs_salesperson_action,
+        )
+
+        if obj.status == 'pending_approval':
+            pass
+        elif obj.status == 'holding' and sale_needs_salesperson_action(obj):
+            pass
+        else:
             return None
         from approvals.details import sale_sections
-        from sales.sale_completion_approval import pending_sale_complete_change
 
         cache = self.context.get('sale_approval_cache')
         change = None
@@ -646,11 +671,17 @@ class SaleListSerializer(SaleSerializer):
         list_serializer_class = SaleApprovalListSerializer
 
     def get_approval_details(self, obj):
-        # Pending queue needs the full breakdown on list so checkers can decide
-        # without a second round-trip. Completed history stays lightweight.
-        if getattr(obj, 'status', None) != 'pending_approval':
-            return None
-        return super().get_approval_details(obj)
+        # Pending queue + returned holdings need the full breakdown on list so
+        # checkers can decide without a second round-trip.
+        status = getattr(obj, 'status', None)
+        if status == 'pending_approval':
+            return super().get_approval_details(obj)
+        if status == 'holding':
+            from sales.sale_completion_approval import sale_needs_salesperson_action
+
+            if sale_needs_salesperson_action(obj):
+                return super().get_approval_details(obj)
+        return None
 
     def get_activity(self, obj):
         return None
@@ -666,6 +697,12 @@ class HoldingSaleSerializer(serializers.Serializer):
     holding_id = serializers.IntegerField(required=False, allow_null=True)
     branch_id = serializers.IntegerField(required=False, allow_null=True)
     client_channel = serializers.CharField(required=False, allow_blank=True, max_length=16)
+    # Preserved on returned-for-correction holdings so refresh does not wipe tender.
+    payment_method = serializers.CharField(required=False, allow_blank=True, max_length=32)
+    payment_reference = serializers.CharField(required=False, allow_blank=True, max_length=128)
+    amount_paid = serializers.DecimalField(
+        max_digits=10, decimal_places=2, required=False, allow_null=True,
+    )
 
     def validate(self, attrs):
         from sales.module_settings import apply_sale_module_settings

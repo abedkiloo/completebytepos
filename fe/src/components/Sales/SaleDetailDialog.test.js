@@ -11,6 +11,15 @@ jest.mock('../../services/api', () => ({
   salesAPI: { rejectComplete: jest.fn(), correctDate: jest.fn() },
 }));
 
+const mockNavigate = jest.fn();
+jest.mock('react-router-dom', () => ({
+  useNavigate: () => mockNavigate,
+}));
+
+function renderDialog(ui) {
+  return render(ui);
+}
+
 const sale = {
   id: 1,
   sale_number: 'S-100',
@@ -57,7 +66,7 @@ const sale = {
 
 describe('SaleDetailDialog', () => {
   it('renders nothing when sale is missing without violating hooks', () => {
-    const { container } = render(
+    const { container } = renderDialog(
       <SaleDetailDialog sale={null} open onOpenChange={() => {}} />
     );
     expect(container.querySelector('[role="dialog"]')).not.toBeInTheDocument();
@@ -65,7 +74,7 @@ describe('SaleDetailDialog', () => {
   });
 
   it('shows a clean receipt with remaining items only; admin block has refund info', () => {
-    render(
+    renderDialog(
       <SaleDetailDialog sale={sale} open onOpenChange={() => {}} showCustomerName />
     );
 
@@ -89,7 +98,7 @@ describe('SaleDetailDialog', () => {
   });
 
   it('shows accountability activity when the sale payload includes it', () => {
-    render(
+    renderDialog(
       <SaleDetailDialog
         sale={{
           ...sale,
@@ -128,7 +137,7 @@ describe('SaleDetailDialog', () => {
   });
 
   it('omits fully returned lines from the receipt', () => {
-    render(
+    renderDialog(
       <SaleDetailDialog
         sale={{
           ...sale,
@@ -154,7 +163,7 @@ describe('SaleDetailDialog', () => {
   });
 
   it('flags duplicate lines and hides customer name when requested', () => {
-    render(
+    renderDialog(
       <SaleDetailDialog sale={sale} open onOpenChange={() => {}} showCustomerName={false} />
     );
 
@@ -164,7 +173,7 @@ describe('SaleDetailDialog', () => {
 
   it('shows void/refund only when permitted and sale is refundable', () => {
     const onRefund = jest.fn();
-    render(
+    renderDialog(
       <SaleDetailDialog
         sale={sale}
         open
@@ -179,7 +188,7 @@ describe('SaleDetailDialog', () => {
   });
 
   it('hides void/refund for fully refunded sales', () => {
-    render(
+    renderDialog(
       <SaleDetailDialog
         sale={{
           ...sale,
@@ -197,7 +206,7 @@ describe('SaleDetailDialog', () => {
   });
 
   it('hides admin block when showAdminDetails is false', () => {
-    render(
+    renderDialog(
       <SaleDetailDialog
         sale={sale}
         open
@@ -211,7 +220,7 @@ describe('SaleDetailDialog', () => {
   });
 
   it('shows salesperson action copy when a sale was returned', () => {
-    render(
+    renderDialog(
       <SaleDetailDialog
         sale={{
           ...sale,
@@ -225,13 +234,13 @@ describe('SaleDetailDialog', () => {
       />
     );
 
-    expect(screen.getAllByText('Needs salesperson action').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Needs correction').length).toBeGreaterThan(0);
     expect(screen.getByText(/Manager comment: Wrong prices/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Print receipt/i })).not.toBeInTheDocument();
   });
 
   it('has no separate collect-payment step (money is taken before approval)', () => {
-    render(
+    renderDialog(
       <SaleDetailDialog
         sale={{ ...sale, status: 'pending_approval', refund_status: 'none' }}
         open
@@ -247,7 +256,7 @@ describe('SaleDetailDialog', () => {
     });
     const onReturned = jest.fn();
     const onOpenChange = jest.fn();
-    render(
+    renderDialog(
       <SaleDetailDialog
         sale={{ ...sale, status: 'completed', refund_status: 'none' }}
         open
@@ -276,7 +285,7 @@ describe('SaleDetailDialog', () => {
       data: { ...sale, occurred_at: '2026-10-01T10:00:00Z', can_correct_date: true },
     });
     const onUpdated = jest.fn();
-    render(
+    renderDialog(
       <SaleDetailDialog
         sale={{
           ...sale,
