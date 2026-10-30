@@ -11,6 +11,7 @@ jest.mock('../../services/api', () => ({
     updateComponent: jest.fn(),
     getSettings: jest.fn(),
     myPayslips: jest.fn(),
+    myPay: jest.fn(),
     createRun: jest.fn(),
     calculateRun: jest.fn(),
     submitRun: jest.fn(),
@@ -63,6 +64,19 @@ describe('PayrollPage', () => {
       },
     });
     payrollAPI.myPayslips.mockResolvedValue({ data: [] });
+    payrollAPI.myPay.mockResolvedValue({ data: { linked: false } });
+  });
+
+  test('view_own manager sees empty payslip message not blank page', async () => {
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([{ module: 'payroll', action: 'view_own', name: 'payroll.view_own' }])
+    );
+    localStorage.setItem('user', JSON.stringify({ is_superuser: false }));
+    localStorage.setItem('profile', JSON.stringify({ role: 'manager' }));
+    render(<PayrollPage />);
+    expect(await screen.findByText(/Payroll has not been run yet/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /New run/i })).not.toBeInTheDocument();
   });
 
   test('renders payroll header and tabs', async () => {

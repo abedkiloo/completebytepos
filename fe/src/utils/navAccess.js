@@ -161,7 +161,20 @@ export function canSeeNavItem(item, sectionId, ctx) {
   }
 
   if (item.module && !isModuleEnabled(item.module)) return false;
-  if (item.feature && !isFeatureEnabled(item.feature[0], item.feature[1])) {
+
+  // Payroll self-service (view_own): show My payslips when the payroll module is
+  // on, even if the admin-only "payroll_runs" feature toggle is off.
+  const payrollSelfServiceOnly =
+    item.to === '/payroll' &&
+    !isSuperAdmin &&
+    hasPermission(permissions, 'payroll', 'view_own') &&
+    !hasPermission(permissions, 'payroll', 'view') &&
+    !hasPermission(permissions, 'payroll', 'manage');
+  if (
+    item.feature &&
+    !payrollSelfServiceOnly &&
+    !isFeatureEnabled(item.feature[0], item.feature[1])
+  ) {
     return false;
   }
 

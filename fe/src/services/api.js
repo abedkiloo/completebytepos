@@ -376,6 +376,7 @@ export const payrollAPI = {
   getPayslip: (id) => api.get(`/payroll/payslips/${id}/`),
   payslipPdf: (id) =>
     api.get(`/payroll/payslips/${id}/pdf/`, { responseType: 'blob' }),
+  myPay: () => api.get('/payroll/me/pay/'),
   myPayslips: (params) => api.get('/payroll/me/payslips/', { params }),
   myPayslipPdf: (id) =>
     api.get(`/payroll/me/payslips/${id}/pdf/`, { responseType: 'blob' }),

@@ -29,7 +29,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../ui/dialog';
-import { PageShell, PageHeader } from '../page';
+import { PageShell, PageHeader, EmptyState } from '../page';
 import { cn } from '../../lib/cn';
 import StaffPayPanel from './StaffPayPanel';
 import RolePackagesPanel from './RolePackagesPanel';
@@ -96,6 +96,8 @@ export default function PayrollPage() {
   const [components, setComponents] = useState([]);
   const [settings, setSettings] = useState(null);
   const [myPayslips, setMyPayslips] = useState([]);
+  const [myPay, setMyPay] = useState(null);
+  const [mineError, setMineError] = useState('');
   const [selectedRun, setSelectedRun] = useState(null);
   const [payslips, setPayslips] = useState([]);
   const [summary, setSummary] = useState(null);
@@ -137,15 +139,42 @@ export default function PayrollPage() {
   }, []);
 
   const loadMine = useCallback(async () => {
-    const res = await payrollAPI.myPayslips();
-    setMyPayslips(unwrapList(res.data.results || res.data));
+    setMineError('');
+    try {
+      const [slipsRes, payRes] = await Promise.all([
+        payrollAPI.myPayslips(),
+        payrollAPI.myPay(),
+      ]);
+      setMyPayslips(unwrapList(slipsRes.data.results || slipsRes.data));
+      setMyPay(payRes?.data || null);
+    } catch (err) {
+      setMyPayslips([]);
+      setMyPay(null);
+      setMineError(
+        err?.response?.data?.detail ||
+          err?.response?.data?.error ||
+          'Could not load your payslips.'
+      );
+      throw err;
+    }
   }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const tasks = [];
-      if (canOwn) tasks.push(loadMine());
+      if (canOwn) {
+        tasks.push(
+          loadMine().catch((err) => {
+            // Stay on this page — never bounce self-service users to the home dashboard.
+            toast.error(
+              err?.response?.data?.detail ||
+                err?.response?.data?.error ||
+                'Could not load your payslips'
+            );
+          })
+        );
+      }
       if (canAdmin) {
         tasks.push(loadRuns(), loadComponents(), loadSettings());
       }
@@ -962,59 +991,83 @@ export default function PayrollPage() {
       ) : null}
 
       {!loading && canOwn && tab === 'mine' ? (
-        <div className="space-y-3">
-          <p className="text-sm text-muted-foreground max-w-2xl">
-            After payroll is approved and locked for a period, your payslip appears here.
-            Preview builds a fresh PDF on request (not stored) with the company logo and
-            letterhead from store / payroll settings — same idea as receipts. Download only
-            after you have checked it.
-          </p>
-          <div className="overflow-x-auto rounded-lg border border-border/60">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/30 text-left">
-                  <th className="p-3">Period</th>
-                  <th className="p-3">Gross</th>
-                  <th className="p-3">Net</th>
-                  <th className="p-3">Preview</th>
-                </tr>
-              </thead>
-              <tbody>
-                {myPayslips.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="p-8 text-center text-muted-foreground">
-                      No locked payslips yet. Link your user to an employee record, then wait
-                      until payroll for the period is approved.
-                    </td>
-                  </tr>
-                ) : (
-                  myPayslips.map((p) => (
-                    <tr key={p.id} className="border-b border-border/40">
-                      <td className="p-3">{p.period}</td>
-                      <td className="p-3">{formatCurrency(p.gross_pay)}</td>
-                      <td className="p-3">{formatCurrency(p.net_pay)}</td>
-                      <td className="p-3">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={busyId === `pdf-${p.id}`}
-                          onClick={() => previewPdf(p, true)}
-                        >
-                          {busyId === `pdf-${p.id}` ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Eye className="h-4 w-4" />
-                          )}
-                          Preview
-                        </Button>
-                      </td>
+        <div className="space-y-4">
+          {myPay?.linked ? (
+            <div className="rounded-lg border border-border/60 bg-muted/20 px-4 py-3 text-sm">
+              <p className="font-medium">
+                {myPay.employee?.first_name || myPay.employee?.employee_id
+                  ? `${myPay.employee?.first_name || ''} ${myPay.employee?.last_name || ''}`.trim() ||
+                    myPay.employee?.employee_id
+                  : 'Your pay package'}
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                Estimated gross {formatCurrency(myPay.estimated_gross)} · basic{' '}
+                {formatCurrency(myPay.effective_basic)}
+                {myPay.package_name ? ` · ${myPay.package_name}` : ''}
+              </p>
+            </div>
+          ) : null}
+
+          {myPayslips.length === 0 ? (
+            <EmptyState
+              icon={Wallet}
+              title={
+                mineError
+                  ? 'Payslips unavailable'
+                  : 'Payroll has not been run yet'
+              }
+              description={
+                mineError ||
+                (myPay && myPay.linked === false
+                  ? 'Your login is not linked to an employee record, so payslips cannot appear here. Ask an admin to link your user under Employees.'
+                  : 'No locked payslip is ready yet. After admin runs payroll for the month and approves it, your payslip will show on this page — you will not be sent to the main dashboard.')
+              }
+            />
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground max-w-2xl">
+                Locked payslips for periods that have been approved. Preview builds a fresh
+                PDF on request (not stored) with the company logo and letterhead.
+              </p>
+              <div className="overflow-x-auto rounded-lg border border-border/60">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/30 text-left">
+                      <th className="p-3">Period</th>
+                      <th className="p-3">Gross</th>
+                      <th className="p-3">Net</th>
+                      <th className="p-3">Preview</th>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                  </thead>
+                  <tbody>
+                    {myPayslips.map((p) => (
+                      <tr key={p.id} className="border-b border-border/40">
+                        <td className="p-3">{p.period}</td>
+                        <td className="p-3">{formatCurrency(p.gross_pay)}</td>
+                        <td className="p-3">{formatCurrency(p.net_pay)}</td>
+                        <td className="p-3">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={busyId === `pdf-${p.id}`}
+                            onClick={() => previewPdf(p, true)}
+                          >
+                            {busyId === `pdf-${p.id}` ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Eye className="h-4 w-4" />
+                            )}
+                            Preview
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </div>
       ) : null}
 
