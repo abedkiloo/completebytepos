@@ -217,6 +217,9 @@ export default function PayrollPage() {
       const res = await fn(runId);
       toast.success(`${label} succeeded`);
       await loadRuns();
+      if (canOwn) {
+        await loadMine().catch(() => {});
+      }
       if (selectedRun?.id === runId) {
         await openRun(res.data);
       }
@@ -466,7 +469,12 @@ export default function PayrollPage() {
               type="button"
               size="sm"
               variant={tab === t.id ? 'default' : 'outline'}
-              onClick={() => setTab(t.id)}
+              onClick={() => {
+                setTab(t.id);
+                if (t.id === 'mine' && canOwn) {
+                  loadMine().catch(() => {});
+                }
+              }}
             >
               {t.label}
             </Button>
@@ -1020,20 +1028,22 @@ export default function PayrollPage() {
                 mineError ||
                 (myPay && myPay.linked === false
                   ? 'Your login is not linked to an employee record, so payslips cannot appear here. Ask an admin to link your user under Employees.'
-                  : 'No locked payslip is ready yet. After admin runs payroll for the month and approves it, your payslip will show on this page — you will not be sent to the main dashboard.')
+                  : 'No payslip yet. After payroll is calculated for the month, your slip shows here (draft runs stay hidden until Calculate).')
               }
             />
           ) : (
             <>
               <p className="text-sm text-muted-foreground max-w-2xl">
-                Locked payslips for periods that have been approved. Preview builds a fresh
-                PDF on request (not stored) with the company logo and letterhead.
+                Your payslips appear after payroll is calculated. Status updates when the run
+                is submitted or locked. Preview builds a fresh PDF with the company logo and
+                letterhead.
               </p>
               <div className="overflow-x-auto rounded-lg border border-border/60">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b bg-muted/30 text-left">
                       <th className="p-3">Period</th>
+                      <th className="p-3">Status</th>
                       <th className="p-3">Gross</th>
                       <th className="p-3">Net</th>
                       <th className="p-3">Preview</th>
@@ -1043,6 +1053,11 @@ export default function PayrollPage() {
                     {myPayslips.map((p) => (
                       <tr key={p.id} className="border-b border-border/40">
                         <td className="p-3">{p.period}</td>
+                        <td className="p-3">
+                          <Badge variant={STATUS_TONE[p.run_status] || 'secondary'}>
+                            {(p.run_status || '—').replace(/_/g, ' ')}
+                          </Badge>
+                        </td>
                         <td className="p-3">{formatCurrency(p.gross_pay)}</td>
                         <td className="p-3">{formatCurrency(p.net_pay)}</td>
                         <td className="p-3">

@@ -30,6 +30,14 @@ from utils.audit import log_audit
 
 ZERO = Decimal('0.00')
 
+# Employee self-service sees payslips once a run has been calculated.
+# Draft / cancelled runs stay hidden until HR calculates (or after cancel).
+EMPLOYEE_VISIBLE_RUN_STATUSES = (
+    PayrollRun.STATUS_CALCULATED,
+    PayrollRun.STATUS_PENDING_APPROVAL,
+    PayrollRun.STATUS_LOCKED,
+)
+
 
 class PayrollError(Exception):
     """Domain error with a user-facing message."""

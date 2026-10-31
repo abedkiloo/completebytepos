@@ -157,14 +157,20 @@ class EmployeePayslipSelfServiceTests(SuperAdminAPITestCase):
         self.staff_client = APIClient()
         self.staff_client.force_authenticate(user=self.staff_user)
 
-    def test_draft_payslip_hidden_until_locked(self):
+    def test_draft_payslip_hidden_until_calculated(self):
         draft = create_run(year=2026, month=8, user=self.admin)
-        calculate_run(draft, user=self.admin)
         res = self.staff_client.get('/api/payroll/me/payslips/')
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         periods = {row['period'] for row in res.data}
         self.assertIn(self.run.period_label, periods)
         self.assertNotIn(draft.period_label, periods)
+
+        calculate_run(draft, user=self.admin)
+        res = self.staff_client.get('/api/payroll/me/payslips/')
+        periods = {row['period'] for row in res.data}
+        self.assertIn(draft.period_label, periods)
+        calculated = next(row for row in res.data if row['period'] == draft.period_label)
+        self.assertEqual(calculated['run_status'], 'calculated')
 
     def test_employee_lists_and_downloads_branded_pdf(self):
         res = self.staff_client.get('/api/payroll/me/payslips/')

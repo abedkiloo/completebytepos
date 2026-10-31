@@ -113,7 +113,8 @@ def purge_other_wallet_transactions(*, customer_id: int | None = None) -> dict:
     qs = CustomerWalletTransaction.objects.filter(source_type='other')
     if customer_id is not None:
         qs = qs.filter(customer_id=customer_id)
-    customer_ids = list(qs.values_list('customer_id', flat=True).distinct())
+    # Model Meta.ordering can defeat DISTINCT on customer_id — use set().
+    customer_ids = sorted({int(cid) for cid in qs.values_list('customer_id', flat=True)})
     deleted, _ = qs.delete()
     rebuilt = []
     for cid in customer_ids:

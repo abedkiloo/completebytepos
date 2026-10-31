@@ -32,6 +32,7 @@ from payroll.serializers import (
     StatutoryRuleSerializer,
 )
 from payroll.services import (
+    EMPLOYEE_VISIBLE_RUN_STATUSES,
     PayrollError,
     approve_and_lock,
     calculate_run,
@@ -520,6 +521,8 @@ class MyPayView(APIView):
                     'id': emp.id,
                     'employee_id': emp.employee_id,
                     'name': emp.full_name,
+                    'first_name': emp.first_name or '',
+                    'last_name': emp.last_name or '',
                     'position': emp.position or '',
                     'department': emp.department or '',
                 },
@@ -529,7 +532,7 @@ class MyPayView(APIView):
 
 
 class MyPayslipsView(APIView):
-    """Employee self-service — locked payslips matched by user email."""
+    """Employee self-service — own payslips once the run is calculated."""
 
     permission_classes = [IsAuthenticated]
 
@@ -546,7 +549,8 @@ class MyPayslipsView(APIView):
             emp_id = request.query_params.get('employee')
             if can_view and emp_id:
                 qs = Payslip.objects.filter(
-                    employee_id=emp_id, run__status=PayrollRun.STATUS_LOCKED
+                    employee_id=emp_id,
+                    run__status__in=EMPLOYEE_VISIBLE_RUN_STATUSES,
                 )
             else:
                 return Response(
@@ -558,7 +562,8 @@ class MyPayslipsView(APIView):
                 )
         else:
             qs = Payslip.objects.filter(
-                employee=emp, run__status=PayrollRun.STATUS_LOCKED
+                employee=emp,
+                run__status__in=EMPLOYEE_VISIBLE_RUN_STATUSES,
             )
         qs = qs.select_related('run').order_by('-run__year', '-run__month')
         return Response(PayslipListSerializer(qs, many=True).data)
@@ -572,7 +577,7 @@ class MyPayslipPdfView(APIView):
         payslip = (
             Payslip.objects.select_related('run')
             .prefetch_related('lines')
-            .filter(pk=pk, run__status=PayrollRun.STATUS_LOCKED)
+            .filter(pk=pk, run__status__in=EMPLOYEE_VISIBLE_RUN_STATUSES)
             .first()
         )
         if payslip is None:
