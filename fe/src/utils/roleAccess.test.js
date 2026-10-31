@@ -165,6 +165,19 @@ describe('roleAccess', () => {
     expect(canAccessRoute(PERSONA.MANAGER, '/users')).toBe(false);
   });
 
+  test('manager with payroll.view_own can open payslips (not bounced to dashboard)', () => {
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([{ module: 'payroll', action: 'view_own', name: 'payroll.view_own' }])
+    );
+    expect(canAccessRoute(PERSONA.MANAGER, '/payroll')).toBe(true);
+  });
+
+  test('manager without payroll permission cannot open /payroll', () => {
+    localStorage.setItem('permissions', JSON.stringify([]));
+    expect(canAccessRoute(PERSONA.MANAGER, '/payroll')).toBe(false);
+  });
+
   test('resolvePersona treats django superuser as super admin', () => {
     expect(
       resolvePersona({

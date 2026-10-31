@@ -52,6 +52,7 @@ export const APP_ROUTE_PREFIXES = [
   '/suppliers',
   '/employees',
   '/appraisals',
+  '/payroll',
   '/daily-notes',
   '/normal-sale',
   '/module-settings',
