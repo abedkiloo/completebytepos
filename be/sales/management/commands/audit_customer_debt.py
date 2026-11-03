@@ -13,17 +13,22 @@ Apply — clear residue on cancelled/voided sales, purge ``other`` rows,
 rebuild wallet, resync underpaid completed POS sales:
 
   python manage.py audit_customer_debt --customer-id 42 --apply
+
+Known-good restore (after cleanup wiped the wrong amount), e.g. Olive shop 29500:
+
+  python manage.py audit_customer_debt --customer-id 1 --set-debt 29500
+  python manage.py audit_customer_debt --customer-id 1 --set-debt 29500 --apply
 """
 
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Count, Q, Sum
 
 from sales.debt_management import debt_amount_from_balance, underpaid_pos_sales_for_customer
-from sales.models import Customer, CustomerWalletTransaction, Sale
+from sales.models import Customer, CustomerWalletTransaction, DebtSettlementAllocation, Sale
 from sales.sale_completion_approval import reverse_sale_wallet_effects
 from sales.sale_debt_sync import (
     active_sale_debt_amount,
@@ -52,17 +57,28 @@ class Command(BaseCommand):
         parser.add_argument('--customer-id', type=int, help='Customer primary key.')
         parser.add_argument('--name', type=str, help='Case-insensitive name contains.')
         parser.add_argument(
+            '--set-debt',
+            type=str,
+            default=None,
+            help=(
+                'Target owed amount (positive), e.g. 29500. Dry-run shows the gap; '
+                'with --apply posts a manual wallet adjustment to hit that debt.'
+            ),
+        )
+        parser.add_argument(
             '--apply',
             action='store_true',
             help=(
                 'Clear wallet residue on cancelled/voided sales, purge other rows, '
-                'rebuild wallet, resync unpaid POS debt.'
+                'rebuild wallet, resync unpaid POS debt. With --set-debt, also '
+                'posts the balancing manual adjustment.'
             ),
         )
 
     def handle(self, *args, **options):
         customer = self._resolve_customer(options)
         apply = bool(options['apply'])
+        target_debt = self._parse_target_debt(options.get('set_debt'))
 
         self.stdout.write(
             f'\n{"APPLY" if apply else "AUDIT"}  '
@@ -105,35 +121,45 @@ class Command(BaseCommand):
                 )
             )
 
-        # --- Active underpaid completed POS ---
-        sales = list(underpaid_pos_sales_for_customer(customer.id))
-        completed = (
+        # --- All completed non-voided POS sales (forensics) ---
+        all_completed = list(
             Sale.objects.filter(customer_id=customer.id, status='completed')
             .exclude(refund_status='refunded')
-            .count()
+            .exclude(sale_type='normal')
+            .order_by('id')
         )
+        sales = list(underpaid_pos_sales_for_customer(customer.id))
         self.stdout.write(
-            f'\nCompleted sales (non-voided): {completed}  '
-            f'underpaid POS: {len(sales)}'
+            f'\nCompleted POS sales (non-voided): {len(all_completed)}  '
+            f'underpaid: {len(sales)}'
         )
 
         unpaid_sum = Decimal('0.00')
         active_sum = Decimal('0.00')
         mismatches = []
-        for sale in sales:
+        for sale in all_completed:
             unpaid = sale_unpaid_balance(sale)
             active = active_sale_debt_amount(sale)
             stale = debt_already_cleared_from_wallet(sale)
-            unpaid_sum += unpaid
-            active_sum += active
+            settled = _q(
+                DebtSettlementAllocation.objects.filter(sale=sale).aggregate(
+                    total=Sum('amount')
+                )['total']
+            )
+            if unpaid > 0:
+                unpaid_sum += unpaid
+                active_sum += active
             mark = ''
-            if unpaid != active or stale:
+            if unpaid > 0 and (unpaid != active or stale):
                 mark = '  << MISMATCH'
+                mismatches.append(sale)
+            elif unpaid == 0 and active > 0:
+                mark = '  << PAID BUT DEBT ROW LEFT'
                 mismatches.append(sale)
             self.stdout.write(
                 f'  {sale.sale_number}  total={_q(sale.total)}  '
-                f'paid={_q(sale.amount_paid)}  unpaid={unpaid}  '
-                f'active_debt={active}'
+                f'paid={_q(sale.amount_paid)}  settled_alloc={settled}  '
+                f'unpaid={unpaid}  active_debt={active}'
                 f'{"  stale_other_reverse" if stale else ""}'
                 f'{mark}'
             )
@@ -211,6 +237,15 @@ class Command(BaseCommand):
             f'vs unpaid sales total={expected_debt}'
         )
 
+        if target_debt is not None:
+            gap_to_target = _q(target_debt) - shown_debt
+            self.stdout.write(
+                f'\nTarget debt (--set-debt)={_q(target_debt)}  '
+                f'gap_to_add={gap_to_target}  '
+                f'(wallet would move {_q(customer.wallet_balance)} → '
+                f'{_q(-abs(target_debt))})'
+            )
+
         ok = (
             gap_store == 0
             and other_n == 0
@@ -218,6 +253,7 @@ class Command(BaseCommand):
             and not residue_sales
             and not orphan_debt
             and shown_debt == expected_debt
+            and (target_debt is None or shown_debt == _q(target_debt))
         )
         if ok:
             self.stdout.write(self.style.SUCCESS('\nLooks consistent — no repair needed.'))
@@ -231,6 +267,11 @@ class Command(BaseCommand):
                 f'orphan_debt={len(orphan_debt)}  '
                 f'wallet_vs_ledger={gap_store}  '
                 f'debt_vs_unpaid={shown_debt - expected_debt}'
+                + (
+                    f'  vs_target={shown_debt - _q(target_debt)}'
+                    if target_debt is not None
+                    else ''
+                )
             )
         )
 
@@ -240,6 +281,13 @@ class Command(BaseCommand):
                 f'  python manage.py audit_customer_debt '
                 f'--customer-id {customer.id} --apply\n'
             )
+            if target_debt is not None and shown_debt != _q(target_debt):
+                self.stdout.write(
+                    'To force the known-good owed amount after cleanup:\n'
+                    f'  python manage.py audit_customer_debt '
+                    f'--customer-id {customer.id} '
+                    f'--set-debt {target_debt} --apply\n'
+                )
             return
 
         self.stdout.write('\nApplying repair…')
@@ -311,6 +359,12 @@ class Command(BaseCommand):
 
         final = rebuild_customer_wallet_from_active_ledger(customer.id)
         customer.refresh_from_db()
+
+        if target_debt is not None:
+            self._apply_set_debt(customer, _q(target_debt))
+            final = rebuild_customer_wallet_from_active_ledger(customer.id)
+            customer.refresh_from_db()
+
         self.stdout.write(
             self.style.SUCCESS(
                 f'\nDone. wallet_balance={_q(customer.wallet_balance)}  '
@@ -318,6 +372,53 @@ class Command(BaseCommand):
                 f'debt={debt_amount_from_balance(customer.wallet_balance)}  '
                 f'cancelled_cleared={cleared}  sales_synced={fixed}'
             )
+        )
+
+    def _parse_target_debt(self, raw) -> Decimal | None:
+        if raw is None or raw == '':
+            return None
+        try:
+            value = Decimal(str(raw).replace(',', '').strip()).quantize(Decimal('0.01'))
+        except (InvalidOperation, ValueError) as exc:
+            raise CommandError(f'Invalid --set-debt amount: {raw!r}') from exc
+        if value < 0:
+            raise CommandError('--set-debt must be a positive owed amount (e.g. 29500).')
+        return value
+
+    def _apply_set_debt(self, customer: Customer, target_debt: Decimal) -> None:
+        """Post a manual wallet row so shown debt equals target_debt."""
+        customer.refresh_from_db()
+        target_balance = (-abs(target_debt)).quantize(Decimal('0.01'))
+        current = _q(customer.wallet_balance)
+        delta = (target_balance - current).quantize(Decimal('0.01'))
+        if delta == 0:
+            self.stdout.write(f'  set-debt: already at debt={target_debt}')
+            return
+        if delta < 0:
+            # More owed — debit
+            amount = abs(delta)
+            txn_type = 'debit'
+        else:
+            amount = delta
+            txn_type = 'credit'
+        customer.wallet_balance = target_balance
+        customer.save(update_fields=['wallet_balance', 'updated_at'])
+        CustomerWalletTransaction.objects.create(
+            customer=customer,
+            transaction_type=txn_type,
+            source_type='manual',
+            amount=amount,
+            balance_after=customer.wallet_balance,
+            notes=(
+                f'audit_customer_debt --set-debt {target_debt} '
+                f'(was debt={debt_amount_from_balance(current)})'
+            ),
+            reference='set-debt',
+        )
+        self.stdout.write(
+            f'  set-debt: {txn_type} {amount}  '
+            f'wallet {current} → {target_balance}  '
+            f'(owed={target_debt})'
         )
 
     def _orphan_debt_rows(self, customer_id: int):

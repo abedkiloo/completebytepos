@@ -354,3 +354,62 @@ class PurgeOtherWalletTests(TestCase):
             ).exists()
         )
         self.assertIn('cancelled_cleared=1', out.getvalue())
+
+    def test_audit_set_debt_restores_known_good_balance(self):
+        from io import StringIO
+        from django.core.management import call_command
+
+        user = User.objects.create_user('audit_set', password='x')
+        customer = Customer.objects.create(
+            name='Set Debt Cust',
+            phone='0700111000',
+            wallet_balance=Decimal('-15700.00'),
+        )
+        sale = Sale.objects.create(
+            sale_number='SALE-SET-DEBT',
+            status='completed',
+            sale_type='pos',
+            customer=customer,
+            subtotal=Decimal('15700.00'),
+            total=Decimal('15700.00'),
+            amount_paid=Decimal('0'),
+            payment_method='cash',
+            cashier=user,
+        )
+        CustomerWalletTransaction.objects.create(
+            customer=customer,
+            transaction_type='debit',
+            source_type='debt',
+            amount=Decimal('15700.00'),
+            balance_after=Decimal('-15700.00'),
+            sale=sale,
+            created_by=user,
+        )
+        dry = StringIO()
+        call_command(
+            'audit_customer_debt',
+            '--customer-id', str(customer.id),
+            '--set-debt', '29500',
+            stdout=dry,
+        )
+        self.assertIn('Target debt', dry.getvalue())
+        self.assertIn('gap_to_add=13800.00', dry.getvalue())
+
+        out = StringIO()
+        call_command(
+            'audit_customer_debt',
+            '--customer-id', str(customer.id),
+            '--set-debt', '29500',
+            '--apply',
+            stdout=out,
+        )
+        customer.refresh_from_db()
+        self.assertEqual(customer.wallet_balance, Decimal('-29500.00'))
+        self.assertTrue(
+            CustomerWalletTransaction.objects.filter(
+                customer=customer,
+                source_type='manual',
+                reference='set-debt',
+                amount=Decimal('13800.00'),
+            ).exists()
+        )
