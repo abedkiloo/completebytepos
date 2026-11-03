@@ -30,7 +30,6 @@ from django.db.models import Count, Q, Sum
 
 from sales.debt_management import debt_amount_from_balance, underpaid_pos_sales_for_customer
 from sales.models import Customer, CustomerWalletTransaction, DebtSettlementAllocation, Sale
-from sales.sale_completion_approval import reverse_sale_wallet_effects
 from sales.sale_debt_sync import (
     active_sale_debt_amount,
     debt_already_cleared_from_wallet,
@@ -97,6 +96,9 @@ class Command(BaseCommand):
             )
         if not ledger:
             self.stdout.write('  (no wallet rows)')
+
+        pay_debt = self._payments_vs_debts(customer.id)
+        self._print_payments_vs_debts(pay_debt, customer)
 
         replayed = self._replay_balance(customer.id)
         stored = _q(customer.wallet_balance)
@@ -311,40 +313,28 @@ class Command(BaseCommand):
         cleared_sale_ids = set()
         for sale in residue_sales:
             before = active_sale_debt_amount(sale)
-            reverse_sale_wallet_effects(
-                sale,
-                user=None,
-                reason=f'audit_customer_debt clear {sale.status}/{sale.refund_status}',
-            )
-            # Also drop any other residue still tied to this inactive sale.
-            CustomerWalletTransaction.objects.filter(
-                sale=sale, source_type='other',
-            ).delete()
+            # Drop ALL wallet rows for inactive sales, then rebuild once.
+            # Do not per-row adjust wallet here — voided sales often already have
+            # a matching refund credit; adjusting again would double-count.
+            deleted, _ = CustomerWalletTransaction.objects.filter(sale=sale).delete()
             cleared += 1
             cleared_sale_ids.add(sale.pk)
             self.stdout.write(
                 f'  cleared residue on {sale.sale_number}  '
-                f'(had debt={before})'
+                f'(had debt={before}, deleted_rows={deleted})'
             )
 
-        # Re-read orphans after residue clear (those sales are already cleaned).
+        # Orphans: delete rows only; rebuild will fix wallet_balance.
         remaining_orphans = [
             r for r in self._orphan_debt_rows(customer.id)
             if r.sale_id not in cleared_sale_ids
         ]
         if remaining_orphans:
-            customer.refresh_from_db()
-            for txn in remaining_orphans:
-                amount = _q(txn.amount)
-                if txn.transaction_type == 'debit':
-                    customer.wallet_balance += amount
-                else:
-                    customer.wallet_balance -= amount
-                customer.save(update_fields=['wallet_balance', 'updated_at'])
-                txn.delete()
-            self.stdout.write(
-                f'  cleared {len(remaining_orphans)} orphan debt row(s)'
-            )
+            n = len(remaining_orphans)
+            CustomerWalletTransaction.objects.filter(
+                pk__in=[r.pk for r in remaining_orphans]
+            ).delete()
+            self.stdout.write(f'  cleared {n} orphan debt row(s)')
 
         purge = purge_other_wallet_transactions(customer_id=customer.id)
         self.stdout.write(
@@ -354,8 +344,9 @@ class Command(BaseCommand):
         balance = rebuild_customer_wallet_from_active_ledger(customer.id)
         self.stdout.write(f'  ledger rebuild wallet_balance={balance}')
 
+        # Sync underpaid mismatches AND fully-paid sales that still have debt rows.
         fixed = 0
-        for sale in underpaid_pos_sales_for_customer(customer.id):
+        for sale in mismatches:
             unpaid = sale_unpaid_balance(sale)
             active = active_sale_debt_amount(sale)
             if unpaid == active and not debt_already_cleared_from_wallet(sale):
@@ -388,6 +379,107 @@ class Command(BaseCommand):
                 f'cancelled_cleared={cleared}  sales_synced={fixed}'
             )
         )
+
+    def _payments_vs_debts(self, customer_id: int) -> dict:
+        """
+        Align check: total charges (debits) − total payments (credits) = net owed.
+
+        Ignores source_type=other (cleanup junk). Includes debt, settlements,
+        till wallet payment, refund, overpayment, manual.
+        """
+        qs = CustomerWalletTransaction.objects.filter(
+            customer_id=customer_id,
+        ).exclude(source_type='other')
+
+        by_source: dict[str, dict] = {}
+        total_debits = Decimal('0.00')
+        total_credits = Decimal('0.00')
+        for row in qs.values('source_type', 'transaction_type').annotate(
+            total=Sum('amount'), n=Count('id'),
+        ):
+            src = row['source_type'] or 'unknown'
+            bucket = by_source.setdefault(
+                src, {'debits': Decimal('0.00'), 'credits': Decimal('0.00'), 'n': 0}
+            )
+            amt = _q(row['total'])
+            bucket['n'] += int(row['n'] or 0)
+            if row['transaction_type'] == 'credit':
+                bucket['credits'] += amt
+                total_credits += amt
+            else:
+                bucket['debits'] += amt
+                total_debits += amt
+
+        # Sale-side check (completed, non-voided POS): totals vs amount_paid.
+        sales = Sale.objects.filter(
+            customer_id=customer_id, status='completed',
+        ).exclude(refund_status='refunded').exclude(sale_type='normal')
+        sale_total = _q(sales.aggregate(t=Sum('total'))['t'])
+        sale_paid = _q(sales.aggregate(t=Sum('amount_paid'))['t'])
+        sale_unpaid = max(sale_total - sale_paid, Decimal('0.00'))
+
+        net_owed = (total_debits - total_credits).quantize(Decimal('0.01'))
+        return {
+            'by_source': by_source,
+            'total_debits': _q(total_debits),
+            'total_credits': _q(total_credits),
+            'net_owed': net_owed,
+            'sale_total': sale_total,
+            'sale_paid': sale_paid,
+            'sale_unpaid': sale_unpaid,
+        }
+
+    def _print_payments_vs_debts(self, data: dict, customer: Customer):
+        shown = debt_amount_from_balance(customer.wallet_balance)
+        credit = (
+            _q(customer.wallet_balance)
+            if _q(customer.wallet_balance) > 0
+            else Decimal('0.00')
+        )
+        net = data['net_owed']
+        # Positive net_owed ⇒ customer owes; negative ⇒ store owes customer (credit).
+        # When balance is -15700, net_owed should be +15700.
+        wallet_match = net == shown and _q(customer.wallet_balance) <= 0
+        if _q(customer.wallet_balance) > 0:
+            wallet_match = net == -credit
+
+        self.stdout.write('\n======== PAYMENTS vs DEBTS ========')
+        self.stdout.write('Charges (increase what they owe):')
+        for src in sorted(data['by_source'].keys()):
+            d = data['by_source'][src]['debits']
+            if d:
+                self.stdout.write(f'  + {src:16}  {d}')
+        self.stdout.write(f'  TOTAL CHARGES (debits)     = {data["total_debits"]}')
+
+        self.stdout.write('Payments / credits (reduce what they owe):')
+        for src in sorted(data['by_source'].keys()):
+            c = data['by_source'][src]['credits']
+            if c:
+                self.stdout.write(f'  − {src:16}  {c}')
+        self.stdout.write(f'  TOTAL PAYMENTS (credits)  = {data["total_credits"]}')
+
+        self.stdout.write(
+            f'\n  Formula:  charges − payments = {data["total_debits"]} − '
+            f'{data["total_credits"]} = {net}\n'
+            f'  Shown wallet owed                     = {shown}\n'
+            f'  Aligned? wallet owed == charges−payments ?  '
+            f'{"YES" if wallet_match else "NO"}'
+        )
+        if not wallet_match:
+            self.stdout.write(
+                self.style.WARNING(
+                    f'  Gap (charges−payments) − shown owed = {net - shown}'
+                )
+            )
+
+        self.stdout.write(
+            f'\n  Sale side (completed POS): total={data["sale_total"]}  '
+            f'amount_paid={data["sale_paid"]}  unpaid={data["sale_unpaid"]}\n'
+            f'  Sale unpaid vs shown owed: '
+            f'{"YES" if data["sale_unpaid"] == shown else "NO"}'
+            f'  (gap={shown - data["sale_unpaid"]})'
+        )
+        self.stdout.write('======== END PAYMENTS vs DEBTS ========')
 
     def _print_discrepancy_trail(
         self,

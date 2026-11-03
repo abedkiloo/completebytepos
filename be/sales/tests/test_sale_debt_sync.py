@@ -393,6 +393,8 @@ class PurgeOtherWalletTests(TestCase):
             stdout=dry,
         )
         self.assertIn('DISCREPANCY TRAIL', dry.getvalue())
+        self.assertIn('PAYMENTS vs DEBTS', dry.getvalue())
+        self.assertIn('charges − payments', dry.getvalue())
         self.assertIn('WALLET TRAIL', dry.getvalue())
         self.assertIn('Known-good target', dry.getvalue())
         self.assertIn('13800.00', dry.getvalue())
