@@ -292,19 +292,9 @@ def sync_sale_customer_debt(
         _invalidate_active_debt_rows(sale, reason=reason)
         if not stale_on_ledger_only:
             # Debt is still on the wallet — undo it before posting the new unpaid.
+            # Do not leave source_type=other residue (pollutes employee/customer ledgers).
             customer.wallet_balance += active
             customer.save(update_fields=['wallet_balance', 'updated_at'])
-            CustomerWalletTransaction.objects.create(
-                customer=customer,
-                transaction_type='credit',
-                source_type='other',
-                amount=active,
-                balance_after=customer.wallet_balance,
-                sale=sale,
-                reference=sale.sale_number,
-                notes=f'{reason} (cleared active debt {active})',
-                created_by=user,
-            )
 
     if unpaid > 0:
         customer.wallet_balance -= unpaid

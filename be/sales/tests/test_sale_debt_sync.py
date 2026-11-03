@@ -228,3 +228,54 @@ class PurgeOtherWalletTests(TestCase):
         self.assertEqual(customer.wallet_balance, Decimal('-26800.00'))
         detail = get_customer_detail(customer_id=customer.id)
         self.assertFalse(any(row['source_type'] == 'other' for row in detail['ledger']))
+
+    def test_audit_customer_debt_command_apply(self):
+        from io import StringIO
+        from django.core.management import call_command
+
+        user = User.objects.create_user('audit_debt', password='x')
+        customer = Customer.objects.create(
+            name='Audit Target',
+            phone='0700777888',
+            wallet_balance=Decimal('-1000.00'),
+        )
+        sale = Sale.objects.create(
+            sale_number='SALE-AUDIT-DEBT',
+            status='completed',
+            sale_type='pos',
+            customer=customer,
+            subtotal=Decimal('5000.00'),
+            total=Decimal('5000.00'),
+            amount_paid=Decimal('0'),
+            payment_method='cash',
+            cashier=user,
+        )
+        CustomerWalletTransaction.objects.create(
+            customer=customer,
+            transaction_type='debit',
+            source_type='debt',
+            amount=Decimal('5000.00'),
+            balance_after=Decimal('-5000.00'),
+            sale=sale,
+            created_by=user,
+        )
+        CustomerWalletTransaction.objects.create(
+            customer=customer,
+            transaction_type='credit',
+            source_type='other',
+            amount=Decimal('4000.00'),
+            balance_after=Decimal('-1000.00'),
+            sale=sale,
+            notes='[REVERSED for correction]',
+            created_by=user,
+        )
+        out = StringIO()
+        call_command(
+            'audit_customer_debt',
+            '--customer-id', str(customer.id),
+            '--apply',
+            stdout=out,
+        )
+        customer.refresh_from_db()
+        self.assertEqual(customer.wallet_balance, Decimal('-5000.00'))
+        self.assertIn('Done', out.getvalue())
