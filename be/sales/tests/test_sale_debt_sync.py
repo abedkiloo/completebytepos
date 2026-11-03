@@ -279,3 +279,78 @@ class PurgeOtherWalletTests(TestCase):
         customer.refresh_from_db()
         self.assertEqual(customer.wallet_balance, Decimal('-5000.00'))
         self.assertIn('Done', out.getvalue())
+
+    def test_audit_clears_cancelled_sale_debt_residue(self):
+        from io import StringIO
+        from django.core.management import call_command
+
+        user = User.objects.create_user('audit_cancel', password='x')
+        customer = Customer.objects.create(
+            name='Cancel Residue',
+            phone='0700999000',
+            wallet_balance=Decimal('-8000.00'),
+        )
+        live = Sale.objects.create(
+            sale_number='SALE-LIVE-OK',
+            status='completed',
+            sale_type='pos',
+            customer=customer,
+            subtotal=Decimal('5000.00'),
+            total=Decimal('5000.00'),
+            amount_paid=Decimal('0'),
+            payment_method='cash',
+            cashier=user,
+        )
+        cancelled = Sale.objects.create(
+            sale_number='SALE-CANCELLED-DEBT',
+            status='cancelled',
+            sale_type='pos',
+            customer=customer,
+            subtotal=Decimal('3000.00'),
+            total=Decimal('3000.00'),
+            amount_paid=Decimal('0'),
+            payment_method='cash',
+            cashier=user,
+        )
+        CustomerWalletTransaction.objects.create(
+            customer=customer,
+            transaction_type='debit',
+            source_type='debt',
+            amount=Decimal('5000.00'),
+            balance_after=Decimal('-5000.00'),
+            sale=live,
+            created_by=user,
+        )
+        CustomerWalletTransaction.objects.create(
+            customer=customer,
+            transaction_type='debit',
+            source_type='debt',
+            amount=Decimal('3000.00'),
+            balance_after=Decimal('-8000.00'),
+            sale=cancelled,
+            created_by=user,
+        )
+        dry = StringIO()
+        call_command(
+            'audit_customer_debt',
+            '--customer-id', str(customer.id),
+            stdout=dry,
+        )
+        self.assertIn('SALE-CANCELLED-DEBT', dry.getvalue())
+        self.assertIn('RESIDUE', dry.getvalue())
+
+        out = StringIO()
+        call_command(
+            'audit_customer_debt',
+            '--customer-id', str(customer.id),
+            '--apply',
+            stdout=out,
+        )
+        customer.refresh_from_db()
+        self.assertEqual(customer.wallet_balance, Decimal('-5000.00'))
+        self.assertFalse(
+            CustomerWalletTransaction.objects.filter(
+                sale=cancelled, source_type='debt',
+            ).exists()
+        )
+        self.assertIn('cancelled_cleared=1', out.getvalue())

@@ -1,13 +1,16 @@
 """
 Investigate (and optionally repair) one customer's debt math.
 
-Dry-run — find by id or name, print sales vs wallet vs ledger:
+Includes cancelled / fully voided sales that still leave debt on the wallet
+(common reason a customer "never balances").
+
+Dry-run:
 
   python manage.py audit_customer_debt --customer-id 42
   python manage.py audit_customer_debt --name "Olive"
 
-Apply — purge leftover ``other`` rows, rebuild wallet from real ledger,
-resync underpaid POS sales:
+Apply — clear residue on cancelled/voided sales, purge ``other`` rows,
+rebuild wallet, resync underpaid completed POS sales:
 
   python manage.py audit_customer_debt --customer-id 42 --apply
 """
@@ -20,7 +23,8 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Count, Q, Sum
 
 from sales.debt_management import debt_amount_from_balance, underpaid_pos_sales_for_customer
-from sales.models import Customer, CustomerWalletTransaction
+from sales.models import Customer, CustomerWalletTransaction, Sale
+from sales.sale_completion_approval import reverse_sale_wallet_effects
 from sales.sale_debt_sync import (
     active_sale_debt_amount,
     debt_already_cleared_from_wallet,
@@ -35,8 +39,14 @@ def _q(value) -> Decimal:
     return Decimal(str(value or 0)).quantize(Decimal('0.01'))
 
 
+INACTIVE_SALE_Q = Q(status='cancelled') | Q(refund_status='refunded')
+
+
 class Command(BaseCommand):
-    help = 'Audit one customer debt ledger vs unpaid sales; optional --apply repair.'
+    help = (
+        'Audit one customer debt vs unpaid + cancelled/voided sales; '
+        'optional --apply repair.'
+    )
 
     def add_arguments(self, parser):
         parser.add_argument('--customer-id', type=int, help='Customer primary key.')
@@ -44,7 +54,10 @@ class Command(BaseCommand):
         parser.add_argument(
             '--apply',
             action='store_true',
-            help='Purge other rows, rebuild wallet, resync unpaid POS debt.',
+            help=(
+                'Clear wallet residue on cancelled/voided sales, purge other rows, '
+                'rebuild wallet, resync unpaid POS debt.'
+            ),
         )
 
     def handle(self, *args, **options):
@@ -92,8 +105,7 @@ class Command(BaseCommand):
                 )
             )
 
-        from sales.models import Sale
-
+        # --- Active underpaid completed POS ---
         sales = list(underpaid_pos_sales_for_customer(customer.id))
         completed = (
             Sale.objects.filter(customer_id=customer.id, status='completed')
@@ -101,7 +113,7 @@ class Command(BaseCommand):
             .count()
         )
         self.stdout.write(
-            f'\nCompleted sales (non-refunded): {completed}  '
+            f'\nCompleted sales (non-voided): {completed}  '
             f'underpaid POS: {len(sales)}'
         )
 
@@ -126,6 +138,57 @@ class Command(BaseCommand):
                 f'{mark}'
             )
 
+        # --- Cancelled / voided sales (should carry NO debt) ---
+        inactive = list(
+            Sale.objects.filter(customer_id=customer.id)
+            .filter(INACTIVE_SALE_Q)
+            .order_by('id')
+        )
+        residue_sales = []
+        residue_debt_total = Decimal('0.00')
+        self.stdout.write(
+            f'\nCancelled / voided sales: {len(inactive)}'
+        )
+        if not inactive:
+            self.stdout.write('  (none)')
+        for sale in inactive:
+            debt = active_sale_debt_amount(sale)
+            wallet_n = CustomerWalletTransaction.objects.filter(
+                sale=sale,
+                source_type__in=('payment', 'overpayment', 'debt'),
+            ).count()
+            kind = (
+                'voided'
+                if (getattr(sale, 'refund_status', 'none') or 'none') == 'refunded'
+                else sale.status
+            )
+            mark = ''
+            if debt > 0 or wallet_n > 0:
+                mark = '  << RESIDUE (should be cleared)'
+                residue_sales.append(sale)
+                residue_debt_total += debt
+            self.stdout.write(
+                f'  {sale.sale_number}  [{kind}]  total={_q(sale.total)}  '
+                f'paid={_q(sale.amount_paid)}  leftover_debt={debt}  '
+                f'wallet_rows={wallet_n}{mark}'
+            )
+
+        # Debt rows whose sale is missing or inactive (orphans)
+        orphan_debt = self._orphan_debt_rows(customer.id)
+        orphan_total = sum((_q(r.amount) for r in orphan_debt), Decimal('0.00'))
+        if orphan_debt:
+            self.stdout.write(
+                self.style.WARNING(
+                    f'\nOrphan debt rows (sale missing/inactive): '
+                    f'n={len(orphan_debt)}  total={orphan_total}'
+                )
+            )
+            for r in orphan_debt[:20]:
+                self.stdout.write(
+                    f'  txn={r.id}  sale_id={r.sale_id}  amount={_q(r.amount)}  '
+                    f'{r.reference or ""}'
+                )
+
         settlements = CustomerWalletTransaction.objects.filter(
             customer_id=customer.id,
             source_type='debt_settlement',
@@ -137,7 +200,8 @@ class Command(BaseCommand):
         )
         self.stdout.write(
             f'Sum unpaid underpaid sales={_q(unpaid_sum)}  '
-            f'sum active debt rows={_q(active_sum)}'
+            f'sum active debt rows={_q(active_sum)}  '
+            f'cancelled/void residue debt={_q(residue_debt_total)}'
         )
 
         expected_debt = max(_q(unpaid_sum), Decimal('0.00'))
@@ -151,6 +215,8 @@ class Command(BaseCommand):
             gap_store == 0
             and other_n == 0
             and not mismatches
+            and not residue_sales
+            and not orphan_debt
             and shown_debt == expected_debt
         )
         if ok:
@@ -161,6 +227,8 @@ class Command(BaseCommand):
             self.style.WARNING(
                 f'\nIssues found: other_rows={other_n}  '
                 f'sale_mismatches={len(mismatches)}  '
+                f'cancelled_void_residue={len(residue_sales)}  '
+                f'orphan_debt={len(orphan_debt)}  '
                 f'wallet_vs_ledger={gap_store}  '
                 f'debt_vs_unpaid={shown_debt - expected_debt}'
             )
@@ -175,12 +243,51 @@ class Command(BaseCommand):
             return
 
         self.stdout.write('\nApplying repair…')
+
+        cleared = 0
+        cleared_sale_ids = set()
+        for sale in residue_sales:
+            before = active_sale_debt_amount(sale)
+            reverse_sale_wallet_effects(
+                sale,
+                user=None,
+                reason=f'audit_customer_debt clear {sale.status}/{sale.refund_status}',
+            )
+            # Also drop any other residue still tied to this inactive sale.
+            CustomerWalletTransaction.objects.filter(
+                sale=sale, source_type='other',
+            ).delete()
+            cleared += 1
+            cleared_sale_ids.add(sale.pk)
+            self.stdout.write(
+                f'  cleared residue on {sale.sale_number}  '
+                f'(had debt={before})'
+            )
+
+        # Re-read orphans after residue clear (those sales are already cleaned).
+        remaining_orphans = [
+            r for r in self._orphan_debt_rows(customer.id)
+            if r.sale_id not in cleared_sale_ids
+        ]
+        if remaining_orphans:
+            customer.refresh_from_db()
+            for txn in remaining_orphans:
+                amount = _q(txn.amount)
+                if txn.transaction_type == 'debit':
+                    customer.wallet_balance += amount
+                else:
+                    customer.wallet_balance -= amount
+                customer.save(update_fields=['wallet_balance', 'updated_at'])
+                txn.delete()
+            self.stdout.write(
+                f'  cleared {len(remaining_orphans)} orphan debt row(s)'
+            )
+
         purge = purge_other_wallet_transactions(customer_id=customer.id)
         self.stdout.write(
             f'  purged other={purge["deleted"]}  '
             f'rebuilt_customers={purge["customers"]}'
         )
-        # Always rebuild even if no other rows (fixes stale wallet_balance).
         balance = rebuild_customer_wallet_from_active_ledger(customer.id)
         self.stdout.write(f'  ledger rebuild wallet_balance={balance}')
 
@@ -202,7 +309,6 @@ class Command(BaseCommand):
                 f'wallet {result.get("wallet_before")} → {result.get("wallet_after")}'
             )
 
-        # Final rebuild so wallet_balance matches the cleaned ledger.
         final = rebuild_customer_wallet_from_active_ledger(customer.id)
         customer.refresh_from_db()
         self.stdout.write(
@@ -210,9 +316,31 @@ class Command(BaseCommand):
                 f'\nDone. wallet_balance={_q(customer.wallet_balance)}  '
                 f'(replay={final})  '
                 f'debt={debt_amount_from_balance(customer.wallet_balance)}  '
-                f'sales_synced={fixed}'
+                f'cancelled_cleared={cleared}  sales_synced={fixed}'
             )
         )
+
+    def _orphan_debt_rows(self, customer_id: int):
+        """Debt/payment rows whose sale is gone, cancelled, or fully voided."""
+        rows = list(
+            CustomerWalletTransaction.objects.filter(
+                customer_id=customer_id,
+                source_type__in=('debt', 'payment', 'overpayment'),
+                sale_id__isnull=False,
+            ).select_related('sale')
+        )
+        orphans = []
+        for row in rows:
+            sale = row.sale
+            if sale is None:
+                orphans.append(row)
+                continue
+            if sale.status == 'cancelled':
+                orphans.append(row)
+                continue
+            if (getattr(sale, 'refund_status', 'none') or 'none') == 'refunded':
+                orphans.append(row)
+        return orphans
 
     def _resolve_customer(self, options) -> Customer:
         cid = options.get('customer_id')
