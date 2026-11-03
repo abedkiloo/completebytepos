@@ -392,8 +392,10 @@ class PurgeOtherWalletTests(TestCase):
             '--set-debt', '29500',
             stdout=dry,
         )
-        self.assertIn('Target debt', dry.getvalue())
-        self.assertIn('gap_to_add=13800.00', dry.getvalue())
+        self.assertIn('DISCREPANCY TRAIL', dry.getvalue())
+        self.assertIn('WALLET TRAIL', dry.getvalue())
+        self.assertIn('Known-good target', dry.getvalue())
+        self.assertIn('13800.00', dry.getvalue())
 
         out = StringIO()
         call_command(

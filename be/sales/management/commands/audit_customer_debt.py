@@ -4,19 +4,20 @@ Investigate (and optionally repair) one customer's debt math.
 Includes cancelled / fully voided sales that still leave debt on the wallet
 (common reason a customer "never balances").
 
-Dry-run:
+See the discrepancy (dry-run — prints DISCREPANCY TRAIL + WALLET TRAIL):
 
-  python manage.py audit_customer_debt --customer-id 42
+  python manage.py audit_customer_debt --customer-id 1
+  python manage.py audit_customer_debt --customer-id 1 --set-debt 29500
   python manage.py audit_customer_debt --name "Olive"
 
-Apply — clear residue on cancelled/voided sales, purge ``other`` rows,
-rebuild wallet, resync underpaid completed POS sales:
+Docker:
 
-  python manage.py audit_customer_debt --customer-id 42 --apply
+  docker compose exec backend python manage.py audit_customer_debt --customer-id 1
+  docker compose exec backend python manage.py audit_customer_debt --customer-id 1 --set-debt 29500
 
-Known-good restore (after cleanup wiped the wrong amount), e.g. Olive shop 29500:
+Apply repair / restore known-good owed amount:
 
-  python manage.py audit_customer_debt --customer-id 1 --set-debt 29500
+  python manage.py audit_customer_debt --customer-id 1 --apply
   python manage.py audit_customer_debt --customer-id 1 --set-debt 29500 --apply
 """
 
@@ -232,19 +233,24 @@ class Command(BaseCommand):
 
         expected_debt = max(_q(unpaid_sum), Decimal('0.00'))
         shown_debt = debt_amount_from_balance(customer.wallet_balance)
-        self.stdout.write(
-            f'Shown wallet debt={shown_debt}  '
-            f'vs unpaid sales total={expected_debt}'
-        )
+        debt_vs_unpaid = shown_debt - expected_debt
+        active_vs_unpaid = _q(active_sum) - expected_debt
 
-        if target_debt is not None:
-            gap_to_target = _q(target_debt) - shown_debt
-            self.stdout.write(
-                f'\nTarget debt (--set-debt)={_q(target_debt)}  '
-                f'gap_to_add={gap_to_target}  '
-                f'(wallet would move {_q(customer.wallet_balance)} → '
-                f'{_q(-abs(target_debt))})'
-            )
+        self._print_discrepancy_trail(
+            customer=customer,
+            shown_debt=shown_debt,
+            expected_debt=expected_debt,
+            active_sum=_q(active_sum),
+            settle_total=settle_total,
+            residue_debt=_q(residue_debt_total),
+            orphan_total=_q(orphan_total),
+            other_n=other_n,
+            gap_store=gap_store,
+            mismatches=mismatches,
+            residue_sales=residue_sales,
+            target_debt=target_debt,
+        )
+        self._print_wallet_trail(customer.id)
 
         ok = (
             gap_store == 0
@@ -266,7 +272,8 @@ class Command(BaseCommand):
                 f'cancelled_void_residue={len(residue_sales)}  '
                 f'orphan_debt={len(orphan_debt)}  '
                 f'wallet_vs_ledger={gap_store}  '
-                f'debt_vs_unpaid={shown_debt - expected_debt}'
+                f'debt_vs_unpaid={debt_vs_unpaid}  '
+                f'active_debt_vs_unpaid={active_vs_unpaid}'
                 + (
                     f'  vs_target={shown_debt - _q(target_debt)}'
                     if target_debt is not None
@@ -277,16 +284,24 @@ class Command(BaseCommand):
 
         if not apply:
             self.stdout.write(
-                '\nDRY-RUN only. To repair this customer:\n'
+                '\nDRY-RUN only — nothing written.\n'
+                'See DISCREPANCY TRAIL above for the gaps.\n'
+                '\nRepair from ledger / cancelled residue:\n'
                 f'  python manage.py audit_customer_debt '
                 f'--customer-id {customer.id} --apply\n'
             )
             if target_debt is not None and shown_debt != _q(target_debt):
                 self.stdout.write(
-                    'To force the known-good owed amount after cleanup:\n'
+                    'Restore known-good owed amount (e.g. 29500):\n'
                     f'  python manage.py audit_customer_debt '
                     f'--customer-id {customer.id} '
                     f'--set-debt {target_debt} --apply\n'
+                )
+            elif target_debt is None:
+                self.stdout.write(
+                    'To compare against a known owed amount:\n'
+                    f'  python manage.py audit_customer_debt '
+                    f'--customer-id {customer.id} --set-debt 29500\n'
                 )
             return
 
@@ -373,6 +388,123 @@ class Command(BaseCommand):
                 f'cancelled_cleared={cleared}  sales_synced={fixed}'
             )
         )
+
+    def _print_discrepancy_trail(
+        self,
+        *,
+        customer,
+        shown_debt,
+        expected_debt,
+        active_sum,
+        settle_total,
+        residue_debt,
+        orphan_total,
+        other_n,
+        gap_store,
+        mismatches,
+        residue_sales,
+        target_debt,
+    ):
+        """Human-readable trail of where the numbers disagree."""
+        self.stdout.write('\n======== DISCREPANCY TRAIL ========')
+        self.stdout.write(
+            f'Customer: id={customer.id}  {customer.name}\n'
+            f'  A  Shown on Debt screen (wallet owed)     = {shown_debt}\n'
+            f'  B  Sum unpaid on underpaid POS sales      = {expected_debt}\n'
+            f'  C  Sum active debt ledger rows            = {active_sum}\n'
+            f'  D  Sum debt_settlement credits            = {settle_total}\n'
+            f'  E  Debt still on cancelled/voided sales   = {residue_debt}\n'
+            f'  F  Orphan debt rows total                 = {orphan_total}\n'
+            f'  G  source_type=other row count            = {other_n}\n'
+            f'  H  Stored wallet vs ledger replay gap     = {gap_store}'
+        )
+        lines = []
+        if shown_debt != expected_debt:
+            lines.append(
+                f'  • Screen owed (A) vs unpaid sales (B): '
+                f'gap = {shown_debt - expected_debt}'
+            )
+        if active_sum != expected_debt:
+            lines.append(
+                f'  • Active debt rows (C) vs unpaid sales (B): '
+                f'gap = {active_sum - expected_debt}'
+            )
+        if residue_debt > 0:
+            lines.append(
+                f'  • Cancelled/voided sales still have debt (E={residue_debt}) '
+                f'— should be 0'
+            )
+        if orphan_total > 0:
+            lines.append(
+                f'  • Orphan debt rows (F={orphan_total}) — sale gone/cancelled'
+            )
+        if other_n:
+            lines.append(
+                f'  • {other_n} other-row(s) (G) — cleanup residue'
+            )
+        if gap_store != 0:
+            lines.append(
+                f'  • Wallet balance does not match ledger replay (H={gap_store})'
+            )
+        for sale in mismatches:
+            unpaid = sale_unpaid_balance(sale)
+            active = active_sale_debt_amount(sale)
+            lines.append(
+                f'  • Sale {sale.sale_number}: unpaid={unpaid}  '
+                f'active_debt={active}  gap={active - unpaid}'
+            )
+        for sale in residue_sales:
+            lines.append(
+                f'  • Inactive {sale.sale_number} '
+                f'[{sale.status}/{sale.refund_status}] still has wallet residue'
+            )
+        if target_debt is not None:
+            gap_to_target = _q(target_debt) - shown_debt
+            lines.append(
+                f'  • Known-good target (--set-debt {_q(target_debt)}): '
+                f'screen is short/over by {gap_to_target} '
+                f'(need wallet {_q(customer.wallet_balance)} → '
+                f'{_q(-abs(target_debt))})'
+            )
+        if lines:
+            self.stdout.write('Gaps:')
+            for line in lines:
+                self.stdout.write(self.style.WARNING(line))
+        else:
+            self.stdout.write(self.style.SUCCESS('Gaps: none — A/B/C align.'))
+        self.stdout.write('======== END TRAIL ========')
+
+    def _print_wallet_trail(self, customer_id: int, limit: int = 25):
+        """Newest wallet rows — chronological audit of what hit the balance."""
+        rows = list(
+            CustomerWalletTransaction.objects.filter(customer_id=customer_id)
+            .select_related('sale')
+            .order_by('-id')[:limit]
+        )
+        self.stdout.write(
+            f'\n======== WALLET TRAIL (newest {len(rows)}) ========'
+        )
+        if not rows:
+            self.stdout.write('  (no wallet rows)')
+            self.stdout.write('======== END WALLET TRAIL ========')
+            return
+        for txn in rows:
+            sale_no = ''
+            if txn.sale_id and txn.sale:
+                sale_no = txn.sale.sale_number
+            elif txn.reference:
+                sale_no = txn.reference
+            when = ''
+            if getattr(txn, 'created_at', None):
+                when = txn.created_at.strftime('%Y-%m-%d %H:%M')
+            note = (txn.notes or '')[:60]
+            self.stdout.write(
+                f'  #{txn.id}  {when}  {txn.transaction_type:6}  '
+                f'{txn.source_type:16}  amt={_q(txn.amount)}  '
+                f'after={_q(txn.balance_after)}  '
+                f'{sale_no}  {note}'
+            )
+        self.stdout.write('======== END WALLET TRAIL ========')
 
     def _parse_target_debt(self, raw) -> Decimal | None:
         if raw is None or raw == '':
