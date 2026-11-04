@@ -2,6 +2,8 @@
  * Daily task list helpers (sorting, labels, completion).
  */
 
+import { sortByPriorityThen } from './dailyNotesPriority';
+
 function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -16,7 +18,7 @@ export function sortDailyTasks(tasks = []) {
     if (Boolean(a.is_done) !== Boolean(b.is_done)) {
       return Number(a.is_done) - Number(b.is_done);
     }
-    return taskCreatedTime(b) - taskCreatedTime(a);
+    return sortByPriorityThen(a, b, () => taskCreatedTime(b) - taskCreatedTime(a));
   });
 }
 

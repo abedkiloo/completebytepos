@@ -38,6 +38,7 @@ import {
 import DailyNoteForm from './DailyNoteForm';
 import DailyTaskForm from './DailyTaskForm';
 import DailyNotesBoard from './DailyNotesBoard';
+import PriorityBadge from './PriorityBadge';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -470,11 +471,14 @@ const DailyNotes = () => {
                             />
                           )}
                         <div className="min-w-0">
-                          <p
-                            className={`font-medium ${task.is_done ? 'text-muted-foreground line-through' : ''}`}
-                          >
-                            {task.title}
-                          </p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p
+                              className={`font-medium ${task.is_done ? 'text-muted-foreground line-through' : ''}`}
+                            >
+                              {task.title}
+                            </p>
+                            <PriorityBadge priority={task.priority} />
+                          </div>
                           {task.description ? (
                             <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
                               {task.description}

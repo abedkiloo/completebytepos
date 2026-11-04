@@ -105,6 +105,7 @@ def create_notes_for_assignees(
     is_sticky=False,
     is_done=False,
     in_progress=False,
+    priority=None,
     assigned_to=None,
     assigned_role=None,
     assign_to_all=False,
@@ -124,6 +125,7 @@ def create_notes_for_assignees(
         is_sticky: Must-tick gate for assignee.
         is_done: When ``True``, marks done at creation time.
         in_progress: Board column hint when not done.
+        priority: ``high`` / ``medium`` / ``low``; defaults to medium.
         assigned_to: Single assignee override.
         assigned_role: Role fan-out when set.
         assign_to_all: Broadcast to all active staff when ``True``.
@@ -131,6 +133,7 @@ def create_notes_for_assignees(
     Returns:
         List of created ``DailyNote`` instances (empty when no targets).
     """
+    from daily_notes.models import PRIORITY_MEDIUM
     if assign_to_all:
         targets = active_staff_users()
         role = None
@@ -160,6 +163,7 @@ def create_notes_for_assignees(
             note_date=note_date,
             title=title,
             content=content,
+            priority=priority or PRIORITY_MEDIUM,
             is_sticky=is_sticky,
             in_progress=False if is_done else bool(in_progress),
             author=author,
@@ -291,9 +295,20 @@ class DailyNoteService:
         from daily_notes.approval_notice import complete_stale_approval_notices
 
         complete_stale_approval_notices(user=None if view_all else user)
+        from daily_notes.models import priority_sort_case
+
         qs = _scoped_queryset(DailyNote, user=user, view_all=view_all)
         qs = _apply_common_filters(qs, date_field='note_date', filters=filters, view_all=view_all)
-        return qs.order_by('-is_sticky', 'is_done', '-note_date', '-created_at')
+        priority_filter = (filters or {}).get('priority')
+        if priority_filter in ('high', 'medium', 'low'):
+            qs = qs.filter(priority=priority_filter)
+        return qs.order_by(
+            '-is_sticky',
+            priority_sort_case(),
+            'is_done',
+            '-note_date',
+            '-created_at',
+        )
 
     def blocking_for_user(self, *, user, limit: int = 50):
         """
@@ -363,7 +378,12 @@ class DailyTaskService:
         complete_stale_sale_notice_tasks(user=None if view_all else user)
         qs = _scoped_task_queryset(user=user, view_all=view_all)
         qs = _apply_common_filters(qs, date_field='task_date', filters=filters, view_all=view_all)
-        return qs.order_by('is_done', '-created_at')
+        from daily_notes.models import priority_sort_case
+
+        priority_filter = (filters or {}).get('priority')
+        if priority_filter in ('high', 'medium', 'low'):
+            qs = qs.filter(priority=priority_filter)
+        return qs.order_by(priority_sort_case(), 'is_done', '-created_at')
 
     def pending_for_user(self, *, user, limit: int = 50, cleanup_stale: bool = True):
         """

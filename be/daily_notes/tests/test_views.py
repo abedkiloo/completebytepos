@@ -80,6 +80,37 @@ class DailyNotesAccessTests(ManagerAPITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
+    def test_note_priority_create_edit_and_filter(self):
+        created = self.client.post(
+            '/api/daily-notes/notes/',
+            {
+                'note_date': str(date.today()),
+                'title': 'Urgent till',
+                'content': 'Cash short — recount now',
+                'priority': 'high',
+            },
+            format='json',
+        )
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED, created.data)
+        self.assertEqual(created.data['priority'], 'high')
+        note_id = created.data['id']
+
+        patched = self.client.patch(
+            f'/api/daily-notes/notes/{note_id}/',
+            {'priority': 'low'},
+            format='json',
+        )
+        self.assertEqual(patched.status_code, status.HTTP_200_OK, patched.data)
+        self.assertEqual(patched.data['priority'], 'low')
+
+        listed = self.client.get(
+            '/api/daily-notes/notes/',
+            {'note_date': str(date.today()), 'priority': 'low'},
+        )
+        self.assertEqual(listed.status_code, status.HTTP_200_OK)
+        rows = listed.data.get('results', listed.data)
+        self.assertTrue(any(row['id'] == note_id for row in rows))
+
     def test_manager_retrieves_and_updates_own_note(self):
         response = self.client.get(f'/api/daily-notes/notes/{self.manager_note.id}/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)

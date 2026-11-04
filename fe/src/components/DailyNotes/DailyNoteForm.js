@@ -8,6 +8,8 @@ import {
   reportFormWarning,
 } from '../../utils/formFeedback';
 import FormBanner from '../form/FormBanner';
+import PriorityPicker from './PriorityPicker';
+import { PRIORITY_MEDIUM, normalizePriority } from '../../utils/dailyNotesPriority';
 
 const DailyNoteForm = ({
   note,
@@ -21,6 +23,7 @@ const DailyNoteForm = ({
     note_date: defaultDate || new Date().toISOString().slice(0, 10),
     title: '',
     content: '',
+    priority: PRIORITY_MEDIUM,
     is_sticky: false,
     assigned_to: '',
     assigned_role: '',
@@ -39,6 +42,7 @@ const DailyNoteForm = ({
         note_date: note.note_date,
         title: note.title || '',
         content: note.content || '',
+        priority: normalizePriority(note.priority),
         is_sticky: Boolean(note.is_sticky),
         assigned_to: note.assigned_to ? String(note.assigned_to) : '',
         assigned_role: note.assigned_role ? String(note.assigned_role) : '',
@@ -152,6 +156,7 @@ const DailyNoteForm = ({
         note_date: formData.note_date,
         title: formData.title.trim(),
         content: formData.content.trim(),
+        priority: normalizePriority(formData.priority),
         is_sticky: Boolean(formData.is_sticky),
         checklist_items: checklistItems,
       };
@@ -238,6 +243,11 @@ const DailyNoteForm = ({
                 maxLength={200}
               />
             </div>
+            <PriorityPicker
+              value={formData.priority}
+              onChange={(priority) => setFormData((prev) => ({ ...prev, priority }))}
+              disabled={loading}
+            />
             <div className="form-group">
               <label>Note *</label>
               <textarea

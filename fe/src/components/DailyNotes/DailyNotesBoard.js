@@ -17,7 +17,9 @@ import {
   rejectedSaleFixPath,
 } from '../../utils/approvalReturn';
 import { carriedOverLabel } from '../../utils/dailyNotesTasks';
+import { priorityMeta } from '../../utils/dailyNotesPriority';
 import { cn } from '../../lib/cn';
+import PriorityBadge from './PriorityBadge';
 
 export default function DailyNotesBoard({
   notes,
@@ -73,12 +75,14 @@ export default function DailyNotesBoard({
                 cards.map((note) => {
                   const expanded = expandedIds.includes(note.id);
                   const carried = carriedOverLabel(note);
+                  const prio = priorityMeta(note.priority);
                   return (
                     <li
                       key={note.id}
-                      className="rounded-lg border bg-background shadow-sm"
+                      className="overflow-hidden rounded-lg border bg-background shadow-sm"
                       data-testid={`daily-note-strip-${note.id}`}
                     >
+                      <div className={cn('h-1 w-full', prio.barClassName)} aria-hidden />
                       <button
                         type="button"
                         className="flex w-full items-start gap-2 px-3 py-2.5 text-left hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -103,6 +107,7 @@ export default function DailyNotesBoard({
                             {note.title || 'Untitled note'}
                           </p>
                           <div className="mt-1 flex flex-wrap items-center gap-1">
+                            <PriorityBadge priority={note.priority} />
                             <Badge variant={isStickyNote(note) ? 'destructive' : 'secondary'}>
                               {noteKindLabel(note)}
                             </Badge>

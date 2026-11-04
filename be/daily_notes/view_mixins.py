@@ -52,6 +52,8 @@ class DailyAuthorScopedViewSetMixin(AuditedModelViewSetMixin):
             filters['kind'] = params.get('kind')
         if 'is_sticky' in params:
             filters['is_sticky'] = params.get('is_sticky')
+        if 'priority' in params:
+            filters['priority'] = params.get('priority')
         return filters
 
     def get_serializer_context(self):

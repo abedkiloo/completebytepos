@@ -11,18 +11,61 @@ from django.contrib.auth.models import User
 from django.db import models
 from django.utils import timezone
 
+PRIORITY_HIGH = 'high'
+PRIORITY_MEDIUM = 'medium'
+PRIORITY_LOW = 'low'
+PRIORITY_CHOICES = [
+    (PRIORITY_HIGH, 'Highest'),
+    (PRIORITY_MEDIUM, 'Medium'),
+    (PRIORITY_LOW, 'Less'),
+]
+# Sort key: highest first (0), then medium (1), then less (2).
+PRIORITY_ORDER = {
+    PRIORITY_HIGH: 0,
+    PRIORITY_MEDIUM: 1,
+    PRIORITY_LOW: 2,
+}
+
+
+def priority_sort_case(field_name: str = 'priority'):
+    """
+    Django ``Case`` expression sorting highest → medium → less.
+
+    Args:
+        field_name: Model field holding priority choice (max 32 chars).
+
+    Returns:
+        ``Case`` annotated as IntegerField (0–2).
+    """
+    from django.db.models import Case, IntegerField, Value, When
+
+    return Case(
+        When(**{field_name: PRIORITY_HIGH}, then=Value(0)),
+        When(**{field_name: PRIORITY_MEDIUM}, then=Value(1)),
+        When(**{field_name: PRIORITY_LOW}, then=Value(2)),
+        default=Value(1),
+        output_field=IntegerField(),
+    )
+
 
 class DailyNote(models.Model):
     """
     Staff journal entry for a calendar day with optional assignment.
 
     Sticky notes block POS until the assignee marks them done. ``title`` max
-    200 chars; ``content`` is required text.
+    200 chars; ``content`` is required text. ``priority`` is high/medium/low.
     """
 
     note_date = models.DateField(db_index=True)
     title = models.CharField(max_length=200, blank=True)
     content = models.TextField()
+    priority = models.CharField(
+        max_length=16,
+        choices=PRIORITY_CHOICES,
+        default=PRIORITY_MEDIUM,
+        db_index=True,
+        help_text='Highest, medium, or less — drives board colour and sort order.',
+    )
     is_sticky = models.BooleanField(
         default=False,
         help_text='When true, the assignee must tick this note before using the rest of the system.',
@@ -74,12 +117,16 @@ class DailyNote(models.Model):
                 fields=['assigned_to', 'is_sticky', 'is_done'],
                 name='daily_notes_assigne_f2f248_idx',
             ),
+            models.Index(
+                fields=['priority', 'is_done'],
+                name='daily_notes_priority_done_idx',
+            ),
         ]
 
     def __str__(self):
         label = self.title or self.content[:40]
         kind = 'must-tick' if self.is_sticky else 'note'
-        return f'{self.note_date} — {label} ({kind})'
+        return f'{self.note_date} — {label} ({kind}, {self.priority})'
 
     def mark_done(self, *, done: bool, at=None):
         """
@@ -183,6 +230,13 @@ class DailyTask(models.Model):
     task_date = models.DateField(db_index=True)
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
+    priority = models.CharField(
+        max_length=16,
+        choices=PRIORITY_CHOICES,
+        default=PRIORITY_MEDIUM,
+        db_index=True,
+        help_text='Highest, medium, or less — colour and sort for the day list.',
+    )
     is_done = models.BooleanField(default=False)
     completed_at = models.DateTimeField(null=True, blank=True)
     author = models.ForeignKey(
@@ -214,11 +268,15 @@ class DailyTask(models.Model):
                 fields=['assigned_to', 'is_done'],
                 name='daily_notes_assigne_e51852_idx',
             ),
+            models.Index(
+                fields=['priority', 'is_done'],
+                name='daily_notes_task_priority_idx',
+            ),
         ]
 
     def __str__(self):
         status = 'done' if self.is_done else 'open'
-        return f'{self.task_date} — {self.title} ({status})'
+        return f'{self.task_date} — {self.title} ({status}, {self.priority})'
 
     def mark_done(self, *, done: bool, at=None):
         """

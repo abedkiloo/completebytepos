@@ -4,12 +4,15 @@ import { toast } from '../../utils/toast';
 import { dateMessage, required } from '../../utils/formValidation';
 import { clearFormBanner, reportFormError } from '../../utils/formFeedback';
 import FormBanner from '../form/FormBanner';
+import PriorityPicker from './PriorityPicker';
+import { PRIORITY_MEDIUM, normalizePriority } from '../../utils/dailyNotesPriority';
 
 const DailyTaskForm = ({ task, defaultDate, canAssignToOthers = false, onClose, onSave }) => {
   const [formData, setFormData] = useState({
     task_date: defaultDate || new Date().toISOString().slice(0, 10),
     title: '',
     description: '',
+    priority: PRIORITY_MEDIUM,
     is_done: false,
     assigned_to: '',
   });
@@ -24,6 +27,7 @@ const DailyTaskForm = ({ task, defaultDate, canAssignToOthers = false, onClose, 
         task_date: task.task_date,
         title: task.title || '',
         description: task.description || '',
+        priority: normalizePriority(task.priority),
         is_done: Boolean(task.is_done),
         assigned_to: task.assigned_to ? String(task.assigned_to) : '',
       });
@@ -81,6 +85,7 @@ const DailyTaskForm = ({ task, defaultDate, canAssignToOthers = false, onClose, 
         task_date: formData.task_date,
         title: formData.title.trim(),
         description: formData.description.trim(),
+        priority: normalizePriority(formData.priority),
         is_done: formData.is_done,
       };
       if (canAssignToOthers && formData.assigned_to) {
@@ -167,6 +172,11 @@ const DailyTaskForm = ({ task, defaultDate, canAssignToOthers = false, onClose, 
                 required
               />
             </div>
+            <PriorityPicker
+              value={formData.priority}
+              onChange={(priority) => setFormData((prev) => ({ ...prev, priority }))}
+              disabled={loading}
+            />
             <div className="form-group">
               <label>Details (optional)</label>
               <textarea

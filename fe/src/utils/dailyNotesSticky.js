@@ -4,6 +4,7 @@
  */
 
 import { noticeRequiresSaleFix } from './approvalReturn';
+import { sortByPriorityThen } from './dailyNotesPriority';
 
 export function isStickyNote(note) {
   return Boolean(note?.is_sticky);
@@ -87,6 +88,8 @@ export function sortDailyNotes(notes = []) {
     if (stickyDelta) return stickyDelta;
     const doneDelta = Number(isNoteDone(a)) - Number(isNoteDone(b));
     if (doneDelta) return doneDelta;
-    return String(b.created_at || '').localeCompare(String(a.created_at || ''));
+    return sortByPriorityThen(a, b, () =>
+      String(b.created_at || '').localeCompare(String(a.created_at || '')),
+    );
   });
 }
