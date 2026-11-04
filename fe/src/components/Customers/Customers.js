@@ -124,9 +124,12 @@ const Customers = () => {
   const [filterCounty, setFilterCounty] = useState('');
   const [filterSubCounty, setFilterSubCounty] = useState('');
   const [filterWard, setFilterWard] = useState('');
-  const [needsLocationFix, setNeedsLocationFix] = useState(false);
+  /** '' | 'valid' | 'invalid' — catalog match quality before drilling by level */
+  const [locationStatus, setLocationStatus] = useState('');
   const { counties: kenyaCounties, loading: kenyaLoading } = useKenyaAdminUnits();
   const todayStr = getTodayDateString();
+  const needsLocationFix = locationStatus === 'invalid';
+  const locationOkOnly = locationStatus === 'valid';
 
   const countyFilterOptions = useMemo(
     () =>
@@ -188,7 +191,9 @@ const Customers = () => {
       if (filterCounty) params.county = filterCounty;
       if (filterSubCounty) params.sub_county = filterSubCounty;
       if (filterWard) params.ward = filterWard;
-      if (needsLocationFix) params.location_status = 'invalid';
+      if (locationStatus === 'invalid' || locationStatus === 'valid') {
+        params.location_status = locationStatus;
+      }
       const response = await customersAPI.list(params);
       if (signal?.aborted) return;
       const data = response.data.results || response.data || [];
@@ -211,7 +216,7 @@ const Customers = () => {
     filterCounty,
     filterSubCounty,
     filterWard,
-    needsLocationFix,
+    locationStatus,
     pagination.page,
     pagination.page_size,
     ordering,
@@ -227,7 +232,7 @@ const Customers = () => {
     filterCounty,
     filterSubCounty,
     filterWard,
-    needsLocationFix,
+    locationStatus,
   ]);
 
   useEffect(() => {
@@ -545,6 +550,39 @@ const Customers = () => {
           role="group"
           aria-label="Location filters"
         >
+          <div
+            className="flex flex-wrap items-center gap-1.5 pb-0.5"
+            role="group"
+            aria-label="Location quality"
+          >
+            <Button
+              type="button"
+              size="sm"
+              variant={locationOkOnly ? 'default' : 'outline'}
+              onClick={() =>
+                setLocationStatus((prev) => (prev === 'valid' ? '' : 'valid'))
+              }
+              aria-pressed={locationOkOnly}
+              title="Only customers whose county, sub-county, and ward match our list — then pick a level"
+              data-testid="customers-location-ok"
+            >
+              <MapPin className="h-4 w-4" />
+              Location OK
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={needsLocationFix ? 'default' : 'outline'}
+              onClick={() =>
+                setLocationStatus((prev) => (prev === 'invalid' ? '' : 'invalid'))
+              }
+              aria-pressed={needsLocationFix}
+              title="Show customers whose county, sub-county, or ward is blank or not in our location list"
+              data-testid="customers-needs-location-fix"
+            >
+              Needs location fix
+            </Button>
+          </div>
           <div className="w-full min-w-[10rem] max-w-[14rem]">
             <label className="mb-1 block text-xs text-muted-foreground" htmlFor="customers-filter-county">
               County
@@ -552,8 +590,9 @@ const Customers = () => {
             <SearchableSelect
               name="customers-filter-county"
               value={filterCounty}
-              onChange={(value) => {
-                setFilterCounty(value || '');
+              onChange={(event) => {
+                const next = event?.target?.value ?? '';
+                setFilterCounty(next);
                 setFilterSubCounty('');
                 setFilterWard('');
               }}
@@ -573,8 +612,9 @@ const Customers = () => {
             <SearchableSelect
               name="customers-filter-sub-county"
               value={filterSubCounty}
-              onChange={(value) => {
-                setFilterSubCounty(value || '');
+              onChange={(event) => {
+                const next = event?.target?.value ?? '';
+                setFilterSubCounty(next);
                 setFilterWard('');
               }}
               options={[{ value: '', label: 'All sub-counties' }, ...subCountyFilterOptions]}
@@ -590,25 +630,14 @@ const Customers = () => {
             <SearchableSelect
               name="customers-filter-ward"
               value={filterWard}
-              onChange={(value) => setFilterWard(value || '')}
+              onChange={(event) => setFilterWard(event?.target?.value ?? '')}
               options={[{ value: '', label: 'All wards' }, ...wardFilterOptions]}
               placeholder={filterSubCounty ? 'All wards' : 'Pick a sub-county first'}
               disabled={!filterCounty || !filterSubCounty || kenyaLoading}
               searchable
             />
           </div>
-          <Button
-            type="button"
-            variant={needsLocationFix ? 'default' : 'outline'}
-            onClick={() => setNeedsLocationFix((prev) => !prev)}
-            aria-pressed={needsLocationFix}
-            title="Show customers whose county, sub-county, or ward is blank or not in our location list"
-            data-testid="customers-needs-location-fix"
-          >
-            <MapPin className="h-4 w-4" />
-            Needs location fix
-          </Button>
-          {(filterCounty || filterSubCounty || filterWard || needsLocationFix) && (
+          {(filterCounty || filterSubCounty || filterWard || locationStatus) && (
             <Button
               type="button"
               variant="ghost"
@@ -616,7 +645,7 @@ const Customers = () => {
                 setFilterCounty('');
                 setFilterSubCounty('');
                 setFilterWard('');
-                setNeedsLocationFix(false);
+                setLocationStatus('');
               }}
               aria-label="Clear location filters"
             >
@@ -625,6 +654,33 @@ const Customers = () => {
             </Button>
           )}
         </div>
+
+        {locationOkOnly && (
+          <div
+            className="flex items-center gap-2 rounded-lg border bg-muted/40 px-4 py-3 text-sm"
+            data-testid="customers-location-ok-banner"
+          >
+            <MapPin className="h-4 w-4 text-muted-foreground" />
+            <span>
+              Showing customers with a correct location. Pick county → sub-county → ward to narrow
+              {filterWard
+                ? ` to ${filterWard}, ${filterSubCounty}, ${filterCounty}`
+                : filterSubCounty
+                  ? ` to ${filterSubCounty}, ${filterCounty}`
+                  : filterCounty
+                    ? ` to ${filterCounty}`
+                    : ''}
+              .
+              {!loading ? (
+                <>
+                  {' '}
+                  <strong className="tabular-nums">{pagination.count.toLocaleString()}</strong>{' '}
+                  {pagination.count === 1 ? 'customer' : 'customers'}.
+                </>
+              ) : null}
+            </span>
+          </div>
+        )}
 
         {needsLocationFix && (
           <div
@@ -730,6 +786,7 @@ const Customers = () => {
                         buyerSegment={buyerSegment}
                         addedOn={addedOn}
                         needsLocationFix={needsLocationFix}
+                        locationOkOnly={locationOkOnly}
                         filterCounty={filterCounty}
                       />
                     </td>
@@ -1012,6 +1069,7 @@ function EmptyState({
   buyerSegment = '',
   addedOn = '',
   needsLocationFix = false,
+  locationOkOnly = false,
   filterCounty = '',
 }) {
   if (searchQuery) {
@@ -1032,6 +1090,21 @@ function EmptyState({
         <p className="text-sm">
           Everyone{filterCounty ? ` in ${filterCounty}` : ''} already has a county, sub-county, and
           ward from our list.
+        </p>
+      </div>
+    );
+  }
+
+  if (locationOkOnly) {
+    return (
+      <div className="flex flex-col items-center gap-2 text-muted-foreground">
+        <MapPin className="h-8 w-8 opacity-50" />
+        <p className="font-medium text-foreground">
+          No customers with a fixed location
+          {filterCounty ? ` in ${filterCounty}` : ''}
+        </p>
+        <p className="text-sm">
+          Try another county, sub-county, or ward — or clear Location OK to see everyone.
         </p>
       </div>
     );
