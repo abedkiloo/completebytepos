@@ -1238,13 +1238,27 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='kenya-locations')
     def kenya_locations(self, request):
-        """County → sub-county → ward tree for customer registration forms."""
+        """
+        County → sub-county → ward tree for customer registration and filters.
+
+        Returns:
+            Payload from ``admin_units_payload`` (defaults + counties map).
+        """
         from sales.kenya_admin import admin_units_payload
 
         return Response(admin_units_payload())
 
     def get_queryset(self):
+        """
+        Customer list/detail queryset with branch, search, and location filters.
+
+        List query params (in addition to existing search/engagement filters):
+            county, sub_county, ward — Kenya admin units (canonical match).
+            location_status — ``valid`` | ``invalid`` (blank/mismatched catalog).
+        """
         from django.db.models import Sum
+
+        from sales.customer_location_filters import apply_customer_location_filters
 
         queryset = Customer.objects.all().select_related('branch')
         if getattr(self, 'action', None) == 'list':
@@ -1302,6 +1316,7 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 # If search fails, return empty queryset rather than crashing
                 queryset = queryset.none()
 
+        queryset = apply_customer_location_filters(queryset, self.request.query_params)
         return queryset
 
     @action(

@@ -226,8 +226,16 @@ class CustomerSerializer(serializers.ModelSerializer):
 
 
 class CustomerListSerializer(serializers.ModelSerializer):
-    """Lightweight serializer for customer lists"""
+    """
+    Lightweight serializer for customer lists.
+
+    Includes Kenya admin location fields plus ``location_valid`` /
+    ``location_issue`` so the UI can highlight rows that need a location fix.
+    """
+
     total_outstanding = serializers.SerializerMethodField()
+    location_valid = serializers.BooleanField(read_only=True, required=False)
+    location_issue = serializers.CharField(read_only=True, required=False)
     wallet_balance = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
 
     class Meta:
@@ -236,6 +244,7 @@ class CustomerListSerializer(serializers.ModelSerializer):
             'id', 'customer_code', 'name', 'customer_type', 'gender',
             'email', 'phone', 'latitude', 'longitude',
             'city', 'county', 'sub_county', 'ward', 'country',
+            'location_valid', 'location_issue',
             'is_active', 'total_outstanding', 'wallet_balance',
             'engagement_tier', 'buyer_segment', 'purchase_count',
             'lifetime_sales_value', 'last_purchased_at',
@@ -247,9 +256,12 @@ class CustomerListSerializer(serializers.ModelSerializer):
         return obj.total_outstanding
 
     def to_representation(self, instance):
+        from sales.customer_location_filters import annotate_location_issue
         from sales.customer_module_settings import apply_customer_representation_flags
 
-        return apply_customer_representation_flags(super().to_representation(instance))
+        data = super().to_representation(instance)
+        data.update(annotate_location_issue(instance))
+        return apply_customer_representation_flags(data)
 
 
 class CustomerWalletTransactionSerializer(serializers.ModelSerializer):

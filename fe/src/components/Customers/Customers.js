@@ -70,6 +70,28 @@ import {
 import { CustomerClassificationBadges } from './ClassificationBadge';
 import { CustomerWalletBalance } from './CustomerWalletBalance';
 import ReceiveWalletPaymentDialog from './ReceiveWalletPaymentDialog';
+import SearchableSelect from '../Shared/SearchableSelect';
+import {
+  kenyaSubCounties,
+  kenyaWards,
+  useKenyaAdminUnits,
+} from '../../hooks/useKenyaAdminUnits';
+
+const LOCATION_ISSUE_LABELS = {
+  missing: 'Missing location',
+  invalid_county: 'Unknown county',
+  invalid_sub_county: 'Sub-county mismatch',
+  invalid_ward: 'Ward mismatch',
+};
+
+function formatCustomerLocation(customer) {
+  const parts = [customer.ward, customer.sub_county, customer.county || customer.city]
+    .map((part) => (part || '').trim())
+    .filter(Boolean);
+  if (parts.length === 0) return '';
+  // Prefer ward · sub-county · county when all present; drop duplicates.
+  return [...new Set(parts)].join(' · ');
+}
 
 const Customers = () => {
   const navigate = useNavigate();
@@ -99,7 +121,36 @@ const Customers = () => {
   const [addedOn, setAddedOn] = useState('');
   const [engagementTier, setEngagementTier] = useState('');
   const [buyerSegment, setBuyerSegment] = useState('');
+  const [filterCounty, setFilterCounty] = useState('');
+  const [filterSubCounty, setFilterSubCounty] = useState('');
+  const [filterWard, setFilterWard] = useState('');
+  const [needsLocationFix, setNeedsLocationFix] = useState(false);
+  const { counties: kenyaCounties, loading: kenyaLoading } = useKenyaAdminUnits();
   const todayStr = getTodayDateString();
+
+  const countyFilterOptions = useMemo(
+    () =>
+      Object.keys(kenyaCounties)
+        .sort((a, b) => a.localeCompare(b))
+        .map((name) => ({ value: name, label: name })),
+    [kenyaCounties]
+  );
+  const subCountyFilterOptions = useMemo(
+    () =>
+      kenyaSubCounties(kenyaCounties, filterCounty).map((name) => ({
+        value: name,
+        label: name,
+      })),
+    [kenyaCounties, filterCounty]
+  );
+  const wardFilterOptions = useMemo(
+    () =>
+      kenyaWards(kenyaCounties, filterCounty, filterSubCounty).map((name) => ({
+        value: name,
+        label: name,
+      })),
+    [kenyaCounties, filterCounty, filterSubCounty]
+  );
 
   // --- Editor / delete confirm state ---
   const [showModal, setShowModal] = useState(false);
@@ -134,6 +185,10 @@ const Customers = () => {
       if (buyerSegment && engagementTier !== 'prospect') {
         params.buyer_segment = buyerSegment;
       }
+      if (filterCounty) params.county = filterCounty;
+      if (filterSubCounty) params.sub_county = filterSubCounty;
+      if (filterWard) params.ward = filterWard;
+      if (needsLocationFix) params.location_status = 'invalid';
       const response = await customersAPI.list(params);
       if (signal?.aborted) return;
       const data = response.data.results || response.data || [];
@@ -153,6 +208,10 @@ const Customers = () => {
     addedOn,
     engagementTier,
     buyerSegment,
+    filterCounty,
+    filterSubCounty,
+    filterWard,
+    needsLocationFix,
     pagination.page,
     pagination.page_size,
     ordering,
@@ -160,7 +219,16 @@ const Customers = () => {
 
   useEffect(() => {
     setPagination((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
-  }, [debouncedSearch, addedOn, engagementTier, buyerSegment]);
+  }, [
+    debouncedSearch,
+    addedOn,
+    engagementTier,
+    buyerSegment,
+    filterCounty,
+    filterSubCounty,
+    filterWard,
+    needsLocationFix,
+  ]);
 
   useEffect(() => {
     if (engagementTier === 'prospect' && buyerSegment) {
@@ -472,6 +540,113 @@ const Customers = () => {
           </div>
         </div>
 
+        <div
+          className="flex flex-wrap items-end gap-2"
+          role="group"
+          aria-label="Location filters"
+        >
+          <div className="w-full min-w-[10rem] max-w-[14rem]">
+            <label className="mb-1 block text-xs text-muted-foreground" htmlFor="customers-filter-county">
+              County
+            </label>
+            <SearchableSelect
+              name="customers-filter-county"
+              value={filterCounty}
+              onChange={(value) => {
+                setFilterCounty(value || '');
+                setFilterSubCounty('');
+                setFilterWard('');
+              }}
+              options={[{ value: '', label: 'All counties' }, ...countyFilterOptions]}
+              placeholder={kenyaLoading ? 'Loading…' : 'All counties'}
+              disabled={kenyaLoading}
+              searchable
+            />
+          </div>
+          <div className="w-full min-w-[10rem] max-w-[14rem]">
+            <label
+              className="mb-1 block text-xs text-muted-foreground"
+              htmlFor="customers-filter-sub-county"
+            >
+              Sub-county
+            </label>
+            <SearchableSelect
+              name="customers-filter-sub-county"
+              value={filterSubCounty}
+              onChange={(value) => {
+                setFilterSubCounty(value || '');
+                setFilterWard('');
+              }}
+              options={[{ value: '', label: 'All sub-counties' }, ...subCountyFilterOptions]}
+              placeholder={filterCounty ? 'All sub-counties' : 'Pick a county first'}
+              disabled={!filterCounty || kenyaLoading}
+              searchable
+            />
+          </div>
+          <div className="w-full min-w-[10rem] max-w-[14rem]">
+            <label className="mb-1 block text-xs text-muted-foreground" htmlFor="customers-filter-ward">
+              Ward
+            </label>
+            <SearchableSelect
+              name="customers-filter-ward"
+              value={filterWard}
+              onChange={(value) => setFilterWard(value || '')}
+              options={[{ value: '', label: 'All wards' }, ...wardFilterOptions]}
+              placeholder={filterSubCounty ? 'All wards' : 'Pick a sub-county first'}
+              disabled={!filterCounty || !filterSubCounty || kenyaLoading}
+              searchable
+            />
+          </div>
+          <Button
+            type="button"
+            variant={needsLocationFix ? 'default' : 'outline'}
+            onClick={() => setNeedsLocationFix((prev) => !prev)}
+            aria-pressed={needsLocationFix}
+            title="Show customers whose county, sub-county, or ward is blank or not in our location list"
+            data-testid="customers-needs-location-fix"
+          >
+            <MapPin className="h-4 w-4" />
+            Needs location fix
+          </Button>
+          {(filterCounty || filterSubCounty || filterWard || needsLocationFix) && (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setFilterCounty('');
+                setFilterSubCounty('');
+                setFilterWard('');
+                setNeedsLocationFix(false);
+              }}
+              aria-label="Clear location filters"
+            >
+              <X className="h-4 w-4" />
+              Clear location
+            </Button>
+          )}
+        </div>
+
+        {needsLocationFix && (
+          <div
+            className="flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm"
+            data-testid="customers-location-fix-banner"
+          >
+            <MapPin className="h-4 w-4 text-warning" />
+            <span>
+              Showing customers with blank or mismatched location. Open <strong>Edit</strong> and
+              pick the correct county, sub-county, and ward from our list.
+              {!loading ? (
+                <>
+                  {' '}
+                  <strong className="tabular-nums">{pagination.count.toLocaleString()}</strong>{' '}
+                  {pagination.count === 1 ? 'customer' : 'customers'} need attention
+                  {filterCounty ? ` in ${filterCounty}` : ''}.
+                </>
+              ) : null}
+            </span>
+          </div>
+        )}
+
         {addedOn && (
           <div
             className="flex items-center gap-2 rounded-lg border bg-muted/40 px-4 py-3 text-sm"
@@ -519,7 +694,7 @@ const Customers = () => {
                     </SortableHeadButton>
                   </th>
                   <th className="px-4 py-2.5 text-left font-medium">Contact</th>
-                  <th className="px-4 py-2.5 text-left font-medium">City</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Location</th>
                   {showOutstanding && (
                     <th className="px-4 py-2.5 text-right font-medium">Invoice balance</th>
                   )}
@@ -554,6 +729,8 @@ const Customers = () => {
                         engagementTier={engagementTier}
                         buyerSegment={buyerSegment}
                         addedOn={addedOn}
+                        needsLocationFix={needsLocationFix}
+                        filterCounty={filterCounty}
                       />
                     </td>
                   </tr>
@@ -570,6 +747,7 @@ const Customers = () => {
                       canEdit={canEdit}
                       canDelete={canDelete}
                       canRecordWalletPayment={canRecordWalletPayment}
+                      highlightLocationIssues={needsLocationFix}
                       onView={() => navigate(customerDetailPath(customer.id))}
                       onEdit={() => openEdit(customer)}
                       onDelete={() => setPendingDelete(customer)}
@@ -679,6 +857,7 @@ function CustomerRow({
   canEdit,
   canDelete,
   canRecordWalletPayment,
+  highlightLocationIssues = false,
   onView,
   onEdit,
   onDelete,
@@ -688,11 +867,16 @@ function CustomerRow({
   const walletDebt = getWalletDebtAmount(customer.wallet_balance);
   const showPaymentAction = canRecordWalletPayment && walletDebt > 0;
   const hasRowActions = canEdit || canDelete || showPaymentAction;
+  const locationLabel = formatCustomerLocation(customer);
+  const locationIssue = customer.location_issue || '';
+  const locationInvalid = customer.location_valid === false;
+  const issueLabel = LOCATION_ISSUE_LABELS[locationIssue] || (locationInvalid ? 'Fix location' : '');
   return (
     <tr
       className={cn(
         'cursor-pointer transition-colors hover:bg-muted/40',
-        showStatus && !customer.is_active && 'opacity-60'
+        showStatus && !customer.is_active && 'opacity-60',
+        highlightLocationIssues && locationInvalid && 'bg-warning/5'
       )}
       onClick={onView}
     >
@@ -733,11 +917,22 @@ function CustomerRow({
         </div>
       </td>
       <td className="px-4 py-3 text-muted-foreground">
-        {customer.city ? (
-          <span className="inline-flex items-center gap-1">
-            <MapPin className="h-3 w-3 text-muted-foreground" />
-            {customer.city}
-          </span>
+        {locationLabel || issueLabel ? (
+          <div className="flex flex-col gap-1">
+            {locationLabel ? (
+              <span className="inline-flex items-start gap-1 text-sm text-foreground">
+                <MapPin className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
+                <span>{locationLabel}</span>
+              </span>
+            ) : (
+              <span className="text-muted-foreground">—</span>
+            )}
+            {issueLabel ? (
+              <Badge variant="outline" className="w-fit border-warning/50 text-warning">
+                {issueLabel}
+              </Badge>
+            ) : null}
+          </div>
         ) : (
           '—'
         )}
@@ -816,6 +1011,8 @@ function EmptyState({
   engagementTier = '',
   buyerSegment = '',
   addedOn = '',
+  needsLocationFix = false,
+  filterCounty = '',
 }) {
   if (searchQuery) {
     return (
@@ -823,6 +1020,29 @@ function EmptyState({
         <UsersIcon className="h-8 w-8 opacity-50" />
         <p className="font-medium text-foreground">No customers match “{searchQuery}”</p>
         <p className="text-sm">Try a different name, phone, or email.</p>
+      </div>
+    );
+  }
+
+  if (needsLocationFix) {
+    return (
+      <div className="flex flex-col items-center gap-2 text-muted-foreground">
+        <MapPin className="h-8 w-8 opacity-50" />
+        <p className="font-medium text-foreground">No customers need a location fix</p>
+        <p className="text-sm">
+          Everyone{filterCounty ? ` in ${filterCounty}` : ''} already has a county, sub-county, and
+          ward from our list.
+        </p>
+      </div>
+    );
+  }
+
+  if (filterCounty) {
+    return (
+      <div className="flex flex-col items-center gap-2 text-muted-foreground">
+        <MapPin className="h-8 w-8 opacity-50" />
+        <p className="font-medium text-foreground">No customers in {filterCounty}</p>
+        <p className="text-sm">Clear or change the location filters to see more customers.</p>
       </div>
     );
   }

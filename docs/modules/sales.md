@@ -27,6 +27,9 @@ POS/billing domain: customers (duka identity, wallet/debt), holdings → approva
 - Returned sales must be edited before resubmit.
 - Unit price must not go below catalog selling price.
 - All money is `Decimal`. Customer search covers name/owner/contact/code/email/phone.
+- Customer list location filters: `county`, `sub_county`, `ward`, and
+  `location_status=valid|invalid` (blank or not in `kenya_admin_units.json`).
+  List payload includes `location_valid` / `location_issue` for cleanup UI.
 
 ## Audit
 

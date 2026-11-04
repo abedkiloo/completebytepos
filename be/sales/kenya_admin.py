@@ -175,3 +175,70 @@ def admin_units_payload() -> dict:
         },
         'counties': load_admin_tree(),
     }
+
+
+# Issue codes for customers whose admin location does not match kenya_admin_units.json
+LOCATION_OK = ''
+LOCATION_MISSING = 'missing'
+LOCATION_INVALID_COUNTY = 'invalid_county'
+LOCATION_INVALID_SUB_COUNTY = 'invalid_sub_county'
+LOCATION_INVALID_WARD = 'invalid_ward'
+
+
+def classify_admin_location(
+    county: str | None,
+    sub_county: str | None,
+    ward: str | None,
+) -> tuple[bool, str]:
+    """
+    Classify whether a stored county/sub-county/ward triple is in our catalog.
+
+    Args:
+        county: Stored county name (may be blank or free-text typo).
+        sub_county: Stored sub-county name.
+        ward: Stored ward name.
+
+    Returns:
+        ``(True, '')`` when all three resolve in the Kenya admin tree.
+        ``(False, issue_code)`` otherwise, where ``issue_code`` is one of
+        ``missing``, ``invalid_county``, ``invalid_sub_county``,
+        ``invalid_ward``. Blank at any level is ``missing`` (not a cascade
+        guess). No upper bound on string length beyond model CharField caps.
+    """
+    county_s = (county or '').strip()
+    sub_s = (sub_county or '').strip()
+    ward_s = (ward or '').strip()
+    if not county_s or not sub_s or not ward_s:
+        return False, LOCATION_MISSING
+
+    canonical_county = resolve_county(county_s)
+    if not canonical_county:
+        return False, LOCATION_INVALID_COUNTY
+
+    canonical_sub = resolve_sub_county(canonical_county, sub_s)
+    if not canonical_sub:
+        return False, LOCATION_INVALID_SUB_COUNTY
+
+    canonical_ward = resolve_ward(canonical_county, canonical_sub, ward_s)
+    if not canonical_ward:
+        return False, LOCATION_INVALID_WARD
+
+    return True, LOCATION_OK
+
+
+def location_issue_label(issue_code: str) -> str:
+    """
+    Human label for a ``classify_admin_location`` issue code.
+
+    Args:
+        issue_code: One of the LOCATION_* constants, or empty for OK.
+
+    Returns:
+        Short UI string; empty string when ``issue_code`` is blank/OK.
+    """
+    return {
+        LOCATION_MISSING: 'Missing county, sub-county, or ward',
+        LOCATION_INVALID_COUNTY: 'County not in our list',
+        LOCATION_INVALID_SUB_COUNTY: 'Sub-county does not match county',
+        LOCATION_INVALID_WARD: 'Ward does not match sub-county',
+    }.get(issue_code or '', '')
