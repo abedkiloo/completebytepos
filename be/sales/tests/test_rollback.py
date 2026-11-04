@@ -160,7 +160,8 @@ class SaleRollbackPermissionTests(ManagerAPITestCase):
             subtotal=Decimal('10'),
         )
 
-    def test_manager_denied_until_permission_checked(self):
+    def test_manager_denied_even_with_permission_checked(self):
+        """Rollback is Admin / Super Admin only (hard gate beyond RBAC)."""
         url = f'/api/sales/{self.sale.id}/rollback/'
         denied = self.client.post(url, {'reason': 'mistake'}, format='json')
         self.assertEqual(denied.status_code, status.HTTP_403_FORBIDDEN)
@@ -170,9 +171,9 @@ class SaleRollbackPermissionTests(ManagerAPITestCase):
         role = Role.objects.get(name=ROLE_MANAGER)
         role.permissions.add(perm)
 
-        allowed = self.client.post(url, {'reason': 'mistake'}, format='json')
-        self.assertEqual(allowed.status_code, status.HTTP_202_ACCEPTED, allowed.data)
-        self.assertIn('pending_change', allowed.data)
+        still_denied = self.client.post(url, {'reason': 'mistake'}, format='json')
+        self.assertEqual(still_denied.status_code, status.HTTP_403_FORBIDDEN, still_denied.data)
+        self.assertIn('Admin', still_denied.data.get('error', ''))
         self.sale.refresh_from_db()
         self.assertEqual(self.sale.refund_status, 'none')
 

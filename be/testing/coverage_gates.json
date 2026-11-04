@@ -1,6 +1,6 @@
 {
-  "minimum_percent": 95,
-  "comment": "Add packages here as service/API tests reach 95%. Run: ./run_tests_coverage.sh --gates",
+  "minimum_percent": 98,
+  "comment": "Per-module gates at 98%. Run: USE_SQLITE=true ./run_tests_coverage.sh --gates",
   "packages": [
     {
       "name": "accounts",
@@ -20,8 +20,7 @@
     },
     {
       "name": "inventory_checkpoints",
-      "include": ["inventory/checkpoint_services.py"],
-      "minimum_percent": 98
+      "include": ["inventory/checkpoint_services.py"]
     },
     {
       "name": "expenses",
@@ -56,24 +55,38 @@
       "include": ["bankaccounts/services.py"]
     },
     {
-      "name": "reports",
-      "include": ["reports/export.py", "reports/week_summary.py", "reports/services.py", "reports/sale_scope.py"],
-      "minimum_percent": 98
+      "name": "reports_core",
+      "include": ["reports/export.py", "reports/week_summary.py", "reports/services.py", "reports/sale_scope.py"]
+    },
+    {
+      "name": "reports_trading_cogs",
+      "include": [
+        "reports/trading_profit.py",
+        "reports/cogs_export.py",
+        "reports/sales_export.py",
+        "reports/sales_goods.py",
+        "reports/module_settings.py"
+      ]
     },
     {
       "name": "sales_history_export",
-      "include": ["sales/history_export.py"],
-      "minimum_percent": 98
+      "include": ["sales/history_export.py"]
+    },
+    {
+      "name": "sales_package_gates",
+      "include": [
+        "sales/module_settings.py",
+        "sales/customer_module_settings.py",
+        "sales/customer_location_filters.py"
+      ]
     },
     {
       "name": "sale_completion_approval",
-      "include": ["sales/sale_completion_approval.py"],
-      "minimum_percent": 98
+      "include": ["sales/sale_completion_approval.py"]
     },
     {
       "name": "approval_notice",
-      "include": ["daily_notes/approval_notice.py"],
-      "minimum_percent": 98
+      "include": ["daily_notes/approval_notice.py"]
     },
     {
       "name": "daily_notes",
@@ -85,8 +98,14 @@
         "daily_notes/views.py",
         "daily_notes/view_mixins.py",
         "daily_notes/models.py"
-      ],
-      "minimum_percent": 98
+      ]
+    },
+    {
+      "name": "settings_catalog",
+      "include": [
+        "settings/module_registry.py",
+        "settings/module_features.py"
+      ]
     },
     {
       "name": "agents",
@@ -100,20 +119,15 @@
         "agents/order_serializers.py",
         "agents/order_views.py",
         "agents/push.py"
-      ],
-      "minimum_percent": 98
+      ]
     },
     {
       "name": "dispatch",
-      "include": [
-        "dispatch/views.py"
-      ],
-      "minimum_percent": 98
+      "include": ["dispatch/views.py"]
     },
     {
       "name": "delivery_assignees",
-      "include": ["delivery/assignees.py"],
-      "minimum_percent": 98
+      "include": ["delivery/assignees.py"]
     },
     {
       "name": "delivery_maps",
@@ -123,11 +137,8 @@
         "delivery/maps/polyline.py",
         "delivery/maps/google_routes.py",
         "delivery/maps/geometry.py"
-      ],
-      "minimum_percent": 98
+      ]
     }
   ],
-  "ramp_up": [
-    "sales/customer_module_settings.py"
-  ]
+  "ramp_up": []
 }

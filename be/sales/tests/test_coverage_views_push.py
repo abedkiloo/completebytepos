@@ -210,17 +210,18 @@ class InvoicePaymentViewPushTests(ManagerAPITestCase):
             )
         self.assertIn(resp.status_code, (200, 400))
 
-        with patch('inventory.stock_layers.layers_enabled', return_value=False):
-            with patch(
-                'accounting.services.create_sale_refund_journal_entry',
-                side_effect=RuntimeError('je'),
-            ):
-                refund = self.client.post(
-                    f'/api/sales/{sale.id}/refund/',
-                    {'reason': 'Customer changed mind fully', 'full': True},
-                    format='json',
-                )
-        self.assertIn(refund.status_code, (200, 201, 202, 400))
+        with patch('approvals.permissions.user_has_admin_checker_override', return_value=True):
+            with patch('inventory.stock_layers.layers_enabled', return_value=False):
+                with patch(
+                    'accounting.services.create_sale_refund_journal_entry',
+                    side_effect=RuntimeError('je'),
+                ):
+                    refund = self.client.post(
+                        f'/api/sales/{sale.id}/refund/',
+                        {'reason': 'Customer changed mind fully', 'full': True},
+                        format='json',
+                    )
+        self.assertIn(refund.status_code, (200, 201, 202, 400, 403))
 
 
 class SaleCompletionApprovalUnitPushTests(TestCase):
@@ -571,6 +572,13 @@ class DebtAndInvoiceQueryPushTests(ManagerAPITestCase):
                 )
         self.assertEqual(bad.status_code, status.HTTP_400_BAD_REQUEST)
 
+        from accounts.models import Permission, Role
+        from accounts.role_definitions import ROLE_MANAGER, ensure_permissions
+
+        ensure_permissions()
+        Role.objects.get(name=ROLE_MANAGER).permissions.add(
+            Permission.objects.get(module='sales', action='refund')
+        )
         with patch('approvals.permissions.user_has_admin_checker_override', return_value=True):
             with patch(
                 'sales.refunds.SaleRefundService.create_refund',
@@ -814,8 +822,9 @@ class SaleViewSetExtraPushTests(ManagerAPITestCase):
         with patch('sales.sale_completion_approval.pending_sale_complete_change', return_value=None):
             with patch('approvals.permissions.user_may_approve_dated_item', return_value=True):
                 with patch('sales.sale_completion_approval.approve_queued_sale') as approve:
-                    approve.side_effect = lambda s, u: setattr(s, 'status', 'completed') or s.save(
-                        update_fields=['status']
+                    approve.side_effect = (
+                        lambda s, u, notify_customer=None: setattr(s, 'status', 'completed')
+                        or s.save(update_fields=['status'])
                     )
                     done = self.client.post(f'/api/sales/{pending.id}/complete/')
         self.assertIn(done.status_code, (200, 400))

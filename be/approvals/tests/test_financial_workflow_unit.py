@@ -84,6 +84,16 @@ class FinancialWorkflowUnitTests(TestCase):
         self.assertEqual(expense.status, 'pending')
         self.assertIn('status', fields)
 
+    def test_apply_pending_status_skips_objects_without_status(self):
+        class NoStatus:
+            pass
+
+        self.assertEqual(apply_pending_status_on_create(NoStatus()), [])
+
+    def test_validate_checker_not_maker_noop_without_ids(self):
+        validate_checker_not_maker(None, 1)
+        validate_checker_not_maker(User.objects.create_user('noop_chk', password='x'), None)
+
     def test_validate_locked_record_update_blocks_approved(self):
         expense = Expense(
             description='x',

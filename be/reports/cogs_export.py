@@ -242,7 +242,9 @@ def _by_product_rows(cogs: dict[str, Any]) -> list[list[Any]]:
         }
     )
     for sale in cogs.get('sales') or []:
-        for line in (sale or {}).get('lines') or []:
+        if not isinstance(sale, dict):
+            continue
+        for line in sale.get('lines') or []:
             if not isinstance(line, dict):
                 continue
             if line.get('source') == 'legacy_movement':
@@ -297,8 +299,10 @@ def _concern_rows(cogs: dict[str, Any]) -> list[list[Any]]:
     """Lines still at zero cost — must be fixed for absolute costing."""
     rows = []
     for sale in cogs.get('sales') or []:
-        for line in (sale or {}).get('lines') or []:
-            if not line.get('cost_missing'):
+        if not isinstance(sale, dict):
+            continue
+        for line in sale.get('lines') or []:
+            if not isinstance(line, dict) or not line.get('cost_missing'):
                 continue
             rows.append(
                 [
@@ -348,6 +352,8 @@ def _refund_rows(cogs: dict[str, Any]) -> list[list[Any]]:
             )
             continue
         for line in lines:
+            if not isinstance(line, dict):
+                continue
             rows.append(
                 [
                     refund.get('sale_number') or '',
@@ -394,8 +400,9 @@ def _summary_rows(cogs: dict[str, Any], goods_rows: list[list[Any]]) -> list[lis
     missing = sum(
         1
         for sale in cogs.get('sales') or []
-        for line in (sale or {}).get('lines') or []
-        if line.get('cost_missing')
+        if isinstance(sale, dict)
+        for line in sale.get('lines') or []
+        if isinstance(line, dict) and line.get('cost_missing')
     )
     return [
         ['Brand', brand_name_line()],

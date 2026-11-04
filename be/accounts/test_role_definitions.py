@@ -6,6 +6,7 @@ from accounts.role_definitions import (
     ROLE_DISPATCHER,
     ROLE_FIELD_AGENT,
     ROLE_MANAGER,
+    ROLE_PAYROLL_ADMIN,
     ROLE_SALES,
     ROLE_SUPER_ADMIN,
     ensure_permissions,
@@ -19,7 +20,7 @@ class RoleDefinitionsTestCase(TestCase):
         self.assertGreaterEqual(created, 1)
         self.assertTrue(Permission.objects.filter(module='pos', action='view').exists())
 
-    def test_sync_default_roles_six_active_roles(self):
+    def test_sync_default_roles_seven_active_roles(self):
         ensure_permissions()
         roles = sync_default_roles()
         self.assertEqual(
@@ -31,6 +32,7 @@ class RoleDefinitionsTestCase(TestCase):
                 ROLE_FIELD_AGENT,
                 ROLE_DISPATCHER,
                 ROLE_DELIVERY_AGENT,
+                ROLE_PAYROLL_ADMIN,
             },
         )
         super_admin = roles[ROLE_SUPER_ADMIN]

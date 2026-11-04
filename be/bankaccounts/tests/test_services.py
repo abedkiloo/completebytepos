@@ -85,6 +85,10 @@ class BankTransactionServiceTests(TestCase):
             created_by=self.user,
         )
 
+    def test_build_queryset_without_filters_returns_all(self):
+        self.assertEqual(self.service.build_queryset().count(), 0)
+        self.assertEqual(self.service.build_queryset({}).count(), 0)
+
     def test_build_queryset_invalid_account_returns_empty(self):
         qs = self.service.build_queryset({'account': 'not-a-number'})
         self.assertEqual(qs.count(), 0)

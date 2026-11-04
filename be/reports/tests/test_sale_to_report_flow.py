@@ -90,7 +90,13 @@ class SaleToReportFlowTests(SalesAPITestCase):
         self.assertEqual(overview['items_sold'], items)
 
         dashboard = self._report('dashboard/')
-        self.assertEqual(dashboard['today'], {'sales_count': count, 'total': float(revenue)})
+        today = dashboard['today']
+        self.assertEqual(today['sales_count'], count)
+        self.assertEqual(today['total'], float(revenue))
+        self.assertEqual(today['total_paid'], float(revenue))
+        self.assertEqual(today['total_debt'], 0.0)
+        self.assertEqual(today['paid_orders_count'], count)
+        self.assertEqual(today['debt_orders_count'], 0)
         self.assertEqual(dashboard['month']['total'], float(revenue))
 
         self.assertEqual(
@@ -189,19 +195,12 @@ class SaleToReportFlowTests(SalesAPITestCase):
         self._assert_stock_value(17, 7)
 
         salt_line = sale.items.get(product=self.salt)
-        refund = self._client(self.manager).post(f'/api/sales/{sale.id}/refund/', {
+        # Void/refund is Admin/Super Admin only (even when maker-checker is on).
+        refund = self._client(self.admin).post(f'/api/sales/{sale.id}/refund/', {
             'items': [{'sale_item_id': salt_line.id, 'quantity': 1}],
             'reason': 'Damaged bag', 'refund_method': 'cash',
         }, format='json')
-        self.assertEqual(refund.status_code, 202, refund.data)
-        self.assertEqual(self._stock(), (17, 7))
-        self.assertEqual(self._report('dashboard/')['sales_returns'], {'total': 0.0, 'count': 0})
-
-        change_id = refund.data['pending_change']['id']
-        checked = self._client(self.admin).post(
-            f'/api/approvals/pending-changes/{change_id}/approve/', {}, format='json',
-        )
-        self.assertEqual(checked.status_code, 200, checked.data)
+        self.assertIn(refund.status_code, (200, 201), refund.data)
         self.assertEqual(self._stock(), (17, 8))
         self.assertTrue(
             StockMovement.objects.filter(movement_type='return', product=self.salt, quantity=1).exists()

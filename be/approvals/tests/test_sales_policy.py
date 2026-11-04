@@ -57,3 +57,37 @@ class SalesPolicyUnitTests(TestCase):
         req = Mock(user=None, data={}, META={})
         with self.assertRaises(Exception):
             queue_completed_sale_edit(req, sale, {'notes': 'n'}, reason='r')
+
+    def test_queue_completed_sale_edit_guard_branches(self):
+        from django.core.exceptions import ValidationError
+        from unittest.mock import Mock
+
+        _enable_maker_checker(enabled=True)
+        store = StoreSettings.load()
+        store.maker_checker_sales_controls = True
+        store.save(update_fields=['maker_checker_sales_controls'])
+        holding = Sale.objects.create(
+            sale_number='POL-HOLD',
+            total=10,
+            subtotal=10,
+            status='holding',
+            payment_method='cash',
+            amount_paid=0,
+        )
+        completed = Sale.objects.create(
+            sale_number='POL-DONE',
+            total=10,
+            subtotal=10,
+            status='completed',
+            payment_method='cash',
+            amount_paid=10,
+        )
+        req = Mock(user=None, data={}, META={})
+        with self.assertRaises(ValidationError):
+            queue_completed_sale_edit(req, holding, {'notes': 'n'}, reason='r')
+        with self.assertRaises(ValidationError):
+            queue_completed_sale_edit(req, completed, {'total': 99}, reason='r')
+        with self.assertRaises(ValidationError):
+            queue_completed_sale_edit(req, completed, {'notes': 'n'}, reason='  ')
+        with self.assertRaises(ValidationError):
+            queue_completed_sale_edit(req, completed, {}, reason='ok')

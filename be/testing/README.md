@@ -17,17 +17,17 @@ be/
 
 ```bash
 cd be
-USE_SQLITE=true ./run_tests_coverage.sh           # full report
-USE_SQLITE=true ./run_tests_coverage.sh --gates   # enforce 95% on gated modules
+USE_SQLITE=true ./run_tests_coverage.sh           # full report; fails on whole-tree fail_under
+USE_SQLITE=true ./run_tests_coverage.sh --gates   # enforce 98% on gated packages (CI bar)
 ```
 
 ## Gate philosophy
 
 | Layer | Target | What to test |
 |-------|--------|----------------|
-| `services.py`, `catalog_rules.py`, `user_write.py`, `config/` | **95%** | Business rules, pure helpers |
-| Serializers | **90%** | Validation, `create`/`update` |
-| Views | **75%+** | API contracts via `APITestCase` |
+| Gated packages in `coverage_gates.json` | **98%** | Services, exports, module settings, core views/serializers listed |
+| Whole tree (`.coveragerc` `fail_under`) | aspirational floor | Reported always; with `--gates`, package gates decide pass/fail |
 | Migrations, admin, populate commands | Excluded | — |
 
-Views should stay thin; push logic into services and test there.
+Views should stay thin; push logic into services and test there. When adding a
+sellable module feature, add/extend a gate package and tests in the same change.

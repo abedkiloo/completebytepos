@@ -290,6 +290,55 @@ class TradingProfitAPITests(ManagerAPITestCase):
         )
         self.assertEqual(bad.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_metric_breakdown_remaining_cash_and_income_lines(self):
+        self._seed_period_data()
+        from income.models import Income, IncomeCategory
+
+        Income.objects.create(
+            category=IncomeCategory.objects.create(name='TP Other', is_active=True),
+            amount=Decimal('15'),
+            income_date=timezone.localdate(),
+            status='approved',
+            description='Misc',
+            created_by=self.manager_user,
+        )
+        Sale.objects.create(
+            sale_number='S-TP-UNPAID',
+            status='completed',
+            subtotal=Decimal('100'),
+            total=Decimal('100'),
+            tax_amount=Decimal('0'),
+            payment_method='cash',
+            amount_paid=Decimal('40'),
+            cashier=self.manager_user,
+            occurred_at=timezone.now(),
+        )
+        admin = self._admin_client()
+        for metric in (
+            'refunds',
+            'net_sales',
+            'other_income',
+            'net_profit',
+            'collected_on_sales',
+            'unpaid_on_sales',
+            'debt_collections',
+            'cash_in_period',
+            'cash_gross_profit',
+            'cash_net_profit',
+            'expenses_excluded',
+        ):
+            resp = admin.get(
+                '/api/reports/trading_profit/breakdown/',
+                {'period': 'month', 'metric': metric},
+            )
+            self.assertEqual(resp.status_code, status.HTTP_200_OK, (metric, resp.data))
+            self.assertEqual(resp.data['metric'], metric)
+        missing = admin.get(
+            '/api/reports/trading_profit/breakdown/',
+            {'period': 'month'},
+        )
+        self.assertEqual(missing.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_excluded_category_expense_not_in_trading_profit(self):
         self._seed_period_data()
         drawings = ExpenseCategory.objects.create(

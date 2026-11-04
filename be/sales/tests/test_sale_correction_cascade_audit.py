@@ -207,7 +207,8 @@ class SaleCorrectionCascadeAuditTests(SalesAPITestCase):
             format='json',
         )
         self.assertEqual(queued.status_code, status.HTTP_201_CREATED, queued.data)
-        approve = self._manager().post(f'/api/sales/{sale_id}/complete/', {}, format='json')
+        # Posted-then-returned corrections require Admin re-approval.
+        approve = self._admin().post(f'/api/sales/{sale_id}/complete/', {}, format='json')
         self.assertEqual(approve.status_code, status.HTTP_200_OK, approve.data)
         return Sale.objects.get(pk=sale_id)
 

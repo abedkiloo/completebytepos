@@ -595,6 +595,9 @@ class SaleSerializer(serializers.ModelSerializer):
 
     def get_is_posted_correction(self, obj):
         """True when re-approving a sale that was already live (SMS opt-in only)."""
+        cache = self.context.get('sale_approval_cache')
+        if cache is not None:
+            return obj.pk in cache.posted_correction_sale_ids
         from sales.sale_completion_approval import sale_was_returned_from_completed
 
         return sale_was_returned_from_completed(obj)
@@ -666,7 +669,7 @@ class SaleApprovalListSerializer(serializers.ListSerializer):
         from approvals.details_cache import build_sale_approval_cache
 
         sales = list(data)
-        if any(getattr(s, 'status', None) == 'pending_approval' for s in sales):
+        if sales:
             self.child.context['sale_approval_cache'] = build_sale_approval_cache(sales)
         return super().to_representation(sales)
 

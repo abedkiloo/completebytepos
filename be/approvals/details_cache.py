@@ -36,6 +36,8 @@ class DetailsCache:
     branches: dict[int, Any] = field(default_factory=dict)
     # sale_id → latest pending sale_complete change (for till-queue details)
     pending_complete_by_sale_id: dict[int, PendingChange] = field(default_factory=dict)
+    # sale_ids already posted then returned for correction (avoids N+1 on list)
+    posted_correction_sale_ids: set[int] = field(default_factory=set)
 
 
 def _as_int(value) -> int | None:
@@ -188,22 +190,75 @@ def build_details_cache(changes: Iterable[PendingChange]) -> DetailsCache:
 
 
 def build_sale_approval_cache(sales: Iterable) -> DetailsCache:
-    """Batch pending sale_complete payloads for the till approval list."""
-    sales = [s for s in sales if getattr(s, 'status', None) == 'pending_approval']
+    """Batch pending sale_complete payloads + posted-correction flags for lists."""
+    sales = list(sales)
     cache = DetailsCache()
     if not sales:
         return cache
-    entity_ids = [str(s.pk) for s in sales]
+
+    pending_sales = [
+        s for s in sales if getattr(s, 'status', None) == 'pending_approval'
+    ]
+    if pending_sales:
+        entity_ids = [str(s.pk) for s in pending_sales]
+        for change in (
+            PendingChange.objects.filter(
+                action_type=ACTION_SALE_COMPLETE,
+                entity_type='sales.Sale',
+                entity_id__in=entity_ids,
+                status=PendingChange.STATUS_PENDING,
+            ).order_by('-id')
+        ):
+            sale_id = _as_int(change.entity_id)
+            if sale_id is None or sale_id in cache.pending_complete_by_sale_id:
+                continue
+            cache.pending_complete_by_sale_id[sale_id] = change
+
+    sale_by_number = {
+        (getattr(s, 'sale_number', None) or '').strip(): s.pk
+        for s in sales
+        if (getattr(s, 'sale_number', None) or '').strip()
+    }
+    if sale_by_number:
+        from django.db.models import Q
+
+        from inventory.models import StockMovement
+
+        ref_q = Q()
+        for number in sale_by_number:
+            ref_q |= Q(reference__startswith=f'{number}#corrected')
+        for reference in (
+            StockMovement.objects.filter(movement_type='sale')
+            .filter(ref_q)
+            .values_list('reference', flat=True)
+            .distinct()
+        ):
+            for number, sale_id in sale_by_number.items():
+                if str(reference).startswith(f'{number}#corrected'):
+                    cache.posted_correction_sale_ids.add(sale_id)
+
+    all_ids = [str(s.pk) for s in sales]
+    seen_rejected: set[int] = set()
     for change in (
         PendingChange.objects.filter(
             action_type=ACTION_SALE_COMPLETE,
             entity_type='sales.Sale',
-            entity_id__in=entity_ids,
-            status=PendingChange.STATUS_PENDING,
+            entity_id__in=all_ids,
+            status=PendingChange.STATUS_REJECTED,
         ).order_by('-id')
     ):
         sale_id = _as_int(change.entity_id)
-        if sale_id is None or sale_id in cache.pending_complete_by_sale_id:
+        if sale_id is None or sale_id in seen_rejected:
             continue
-        cache.pending_complete_by_sale_id[sale_id] = change
+        seen_rejected.add(sale_id)
+        if sale_id in cache.posted_correction_sale_ids:
+            continue
+        original = change.original_values or {}
+        returned_from = (
+            original.get('returned_from_status')
+            or original.get('status')
+            or ''
+        )
+        if str(returned_from).strip() == 'completed':
+            cache.posted_correction_sale_ids.add(sale_id)
     return cache

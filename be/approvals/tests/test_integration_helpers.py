@@ -169,6 +169,31 @@ class CategoryIntegrationUnitTests(TestCase):
                 _request({'reason': 'x'}, User.objects.create_user('no_mc', password='x')),
                 category,
             )
+        with self.assertRaises(ValidationError):
+            queue_category_delete(
+                _request({'reason': 'x'}, User.objects.create_user('no_mc_del', password='x')),
+                category,
+            )
+
+    def test_queue_variant_delete_requires_mc_enabled(self):
+        _enable_maker_checker(enabled=False)
+        category = Category.objects.create(name='Var Off Cat', is_active=True)
+        product = Product.objects.create(
+            name='Var Off',
+            sku='VAR-OFF',
+            category=category,
+            price=Decimal('1'),
+            stock_quantity=1,
+            is_active=True,
+        )
+        variant = product.variants.create(
+            sku='VAR-OFF-1', price=Decimal('1'), stock_quantity=1, is_active=True,
+        )
+        with self.assertRaises(ValidationError):
+            queue_variant_delete(
+                _request({'reason': 'x'}, User.objects.create_user('no_mc_v', password='x')),
+                variant,
+            )
 
 
 class CategoryIntegrationQueueTests(TestCase):
@@ -235,6 +260,17 @@ class SettingsIntegrationQueueTests(TestCase):
                 reason='toggle',
             )
         )
+
+    def test_sensitive_store_keys_skips_unvalidated(self):
+        from approvals.settings_integration import sensitive_store_keys_that_changed
+
+        store = StoreSettings.load()
+        changed = sensitive_store_keys_that_changed(
+            store,
+            validated={},
+            submitted_keys={'receipt_footer_text'},
+        )
+        self.assertEqual(changed, set())
 
     def test_queue_store_settings_returns_none_when_mc_off(self):
         _enable_maker_checker(enabled=False)

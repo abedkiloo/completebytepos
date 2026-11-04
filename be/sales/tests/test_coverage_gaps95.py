@@ -523,3 +523,84 @@ class VisibilityDebtPermissionTests(TestCase):
             self.assertTrue(user_sees_all_debt(self.cashier))
         with patch.object(self.profile, 'has_permission', side_effect=RuntimeError('perm')):
             self.assertFalse(user_sees_all_debt(self.cashier))
+
+
+class SaleCompletionApprovalEdgeGapTests(TestCase):
+    """Hit remaining sale_completion_approval branches for the 98% gate."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.role_definitions import ROLE_SUPER_ADMIN
+
+        ensure_permissions()
+        roles = sync_default_roles()
+        cls.manager = User.objects.create_user('sca_edge_mgr', password='x')
+        UserProfile.objects.create(
+            user=cls.manager, role='manager', custom_role=roles[ROLE_MANAGER], is_active=True,
+        )
+        cls.admin = User.objects.create_superuser('sca_edge_admin', 'sca_edge@t.com', 'x')
+        UserProfile.objects.create(
+            user=cls.admin, role='super_admin',
+            custom_role=roles[ROLE_SUPER_ADMIN], is_active=True,
+        )
+        cat = Category.objects.create(name='SCA Edge', is_active=True)
+        cls.product = Product.objects.create(
+            name='SCA Edge Item', sku='SCA-EDGE-1', category=cat,
+            price=Decimal('20'), cost=Decimal('8'), stock_quantity=10,
+            track_stock=True, is_active=True,
+        )
+
+    def test_normalize_fingerprint_and_truthy_and_notify(self):
+        from sales.sale_completion_approval import (
+            _normalize_correction_fingerprint,
+            _truthy_flag,
+            payload_requests_customer_sms,
+        )
+
+        self.assertEqual(_normalize_correction_fingerprint('x'), {})
+        self.assertFalse(_truthy_flag(None))
+        self.assertTrue(_truthy_flag('YES'))
+        self.assertTrue(payload_requests_customer_sms({'notify_customer': '1'}))
+
+        sale = Sale.objects.create(
+            cashier=self.manager, status='holding',
+            subtotal=Decimal('20'), total=Decimal('20'), amount_paid=Decimal('0'),
+            payment_method='cash',
+        )
+        self.assertIsNone(stored_correction_fingerprint(sale))
+        self.assertTrue(returned_sale_was_edited(sale))
+
+        pending = Sale.objects.create(
+            cashier=self.manager, status='pending_approval',
+            subtotal=Decimal('20'), total=Decimal('20'), amount_paid=Decimal('20'),
+            payment_method='cash', sale_number='SCA-EDGE-P',
+        )
+        SaleItem.objects.create(
+            sale=pending, product=self.product, quantity=1,
+            unit_price=Decimal('20'), subtotal=Decimal('20'), unit_cost=None,
+        )
+        with patch('sales.sale_completion_approval.complete_queued_sale', return_value=pending):
+            with patch('sales.sale_completion_approval.notify_cashier_sale_approved'):
+                with patch('daily_notes.approval_notice.complete_manager_queue_notes'):
+                    approve_queued_sale(pending, self.manager, notify_customer=True)
+
+        holding = Sale.objects.create(
+            cashier=self.manager, status='holding',
+            subtotal=Decimal('20'), total=Decimal('20'), amount_paid=Decimal('0'),
+            payment_method='cash',
+        )
+        with self.assertRaises(ValidationError):
+            admin_return_sale_for_correction(
+                holding, user=self.admin, reason='not allowed status',
+            )
+
+        completed = Sale.objects.create(
+            cashier=self.manager, status='completed',
+            subtotal=Decimal('20'), total=Decimal('20'), amount_paid=Decimal('20'),
+            payment_method='cash', sale_number='SCA-EDGE-C',
+            refund_status='refunded',
+        )
+        with self.assertRaises(ValidationError):
+            admin_return_sale_for_correction(
+                completed, user=self.admin, reason='already refunded',
+            )

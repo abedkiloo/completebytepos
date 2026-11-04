@@ -281,14 +281,13 @@ class SaleRefundAPITests(ManagerAPITestCase):
         disable_maker_checker()
         super().tearDown()
 
-    def test_manager_refund_queues_for_admin_approval(self):
+    def test_manager_refund_forbidden_admin_only(self):
         resp = self.client.post(
             f'/api/sales/{self.sale.id}/refund/',
             {'reason': 'Wrong item sold', 'full': True},
             format='json',
         )
-        self.assertEqual(resp.status_code, status.HTTP_202_ACCEPTED, resp.data)
-        self.assertIn('pending_change', resp.data)
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN, resp.data)
         self.sale.refresh_from_db()
         self.assertEqual(self.sale.refund_status, 'none')
 
