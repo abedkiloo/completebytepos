@@ -46,6 +46,7 @@ def _build_backfill_summary(validated_data: Dict[str, Any]) -> dict:
             served_label = user.get_full_name().strip() or user.username
 
     total_hint = validated_data.get('_preview_total')
+    notify = validated_data.get('notify_customer', validated_data.get('send_customer_sms'))
     return {
         'occurred_at': occurred_at.isoformat() if occurred_at else '',
         'sale_type': validated_data.get('sale_type', 'pos'),
@@ -55,6 +56,7 @@ def _build_backfill_summary(validated_data: Dict[str, Any]) -> dict:
         'served_by': served_label,
         'lines': _summarize_items(validated_data.get('items')),
         'total': str(total_hint) if total_hint is not None else '—',
+        'notify_customer': bool(notify) if notify is not None else False,
     }
 
 

@@ -1295,19 +1295,29 @@ class SaleService(BaseService):
 
         # One customer SMS on final sale (includes balance if they still owe).
         # Debt from this sale is covered here — no separate "debt increase" SMS.
-        # Posted corrections default to no SMS (customer already got one); pass
-        # notify_customer=True only when the approver opts in to send an update.
+        # Defaults when notify_customer is omitted:
+        #   - late/backfill: off (operator must opt in)
+        #   - posted corrections: off (customer already got one)
+        #   - first live completion: on
         if sale.status == 'completed':
+            is_late_entry = getattr(sale, 'entry_source', '') == 'backfill'
             should_notify = notify_customer
             if should_notify is None:
-                from sales.sale_completion_approval import sale_was_returned_from_completed
+                if is_late_entry:
+                    should_notify = False
+                else:
+                    from sales.sale_completion_approval import sale_was_returned_from_completed
 
-                should_notify = not sale_was_returned_from_completed(sale)
+                    should_notify = not sale_was_returned_from_completed(sale)
             if should_notify:
                 try:
                     from messaging.customer_notify import notify_customer_sale_completed
 
-                    notify_customer_sale_completed(sale, user=user)
+                    notify_customer_sale_completed(
+                        sale,
+                        user=user,
+                        force_late_entry=is_late_entry,
+                    )
                 except Exception:
                     logger.exception(
                         'Sale completion SMS failed for %s', sale.sale_number
@@ -1545,7 +1555,22 @@ class SaleService(BaseService):
                 customer.refresh_from_db()
                 result['wallet_balance'] = customer.wallet_balance
             return result
-        self._apply_sale_payment(customer, sale, user, payment_result)
+
+        notify_flag = None
+        if (
+            'notify_customer' in validated_data
+            or 'send_customer_sms' in validated_data
+        ):
+            from sales.sale_completion_approval import payload_requests_customer_sms
+
+            notify_flag = payload_requests_customer_sms(validated_data)
+        self._apply_sale_payment(
+            customer,
+            sale,
+            user,
+            payment_result,
+            notify_customer=notify_flag,
+        )
 
         invoice = self._maybe_create_invoice_for_sale(
             sale,

@@ -30,6 +30,9 @@ POS/billing domain: customers (duka identity, wallet/debt), holdings → approva
 - Customer list location filters: `county`, `sub_county`, `ward`, and
   `location_status=valid|invalid` (blank or not in `kenya_admin_units.json`).
   List payload includes `location_valid` / `location_issue` for cleanup UI.
+- Late/backfill sales: customer SMS is **off by default**; pass
+  `notify_customer=true` on `/api/sales/backfill/` (Record past sale toggle)
+  to opt in. Live POS completions still SMS by default.
 
 ## Audit
 

@@ -303,6 +303,8 @@ def _backfill_sections(change: PendingChange, cache=None) -> list[dict]:
     paid = _dec(payload.get('amount_paid'))
     method = payload.get('payment_method') or 'cash'
 
+    notify_raw = payload.get('notify_customer', payload.get('send_customer_sms'))
+    notify_yes = str(notify_raw).lower() in ('true', '1', 'yes') if notify_raw is not None else False
     header = _section('Past sale', facts=_facts(
         _fact('Sale date', payload.get('occurred_at'), 'datetime'),
         _fact('Sale type', SALE_TYPE_LABELS.get(payload.get('sale_type'), payload.get('sale_type'))),
@@ -311,6 +313,10 @@ def _backfill_sections(change: PendingChange, cache=None) -> list[dict]:
           else [_fact('Customer', payload.get('customer_name'))]),
         _fact('Notes', payload.get('notes')),
         _fact('Reason', payload.get('backfill_reason')),
+        _fact(
+            'Customer SMS',
+            'Yes — send receipt SMS' if notify_yes else 'No — do not text customer',
+        ),
     ))
     money = _section('Money', facts=_facts(
         _fact('Items total', total, 'money'),

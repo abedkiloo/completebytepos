@@ -88,16 +88,29 @@ def _queue_customer_sms(*, customer, body: str, template_key: str, created_by=No
     return msg
 
 
-def notify_customer_sale_completed(sale, *, user=None) -> MessageOutbox | None:
+def notify_customer_sale_completed(
+    sale,
+    *,
+    user=None,
+    force_late_entry: bool = False,
+) -> MessageOutbox | None:
     """
-    Queue sale-complete SMS after checkout (skipped for backfill sales).
+    Queue sale-complete SMS after checkout.
+
+    Late/backfill sales (``entry_source='backfill'``) are skipped unless
+    ``force_late_entry=True`` — callers must opt in (Record past sale /
+    ``notify_customer`` on ``_apply_sale_payment``).
 
     Args:
         sale: Completed sale with optional customer and line items.
         user: Stored as ``created_by`` on outbox.
+        force_late_entry: When True, allow SMS for backfill/late sales.
+            Default False preserves historical “never text late sales”
+            unless the operator explicitly chose to send.
 
     Returns:
-        Outbox row when queued, else ``None`` (no customer/phone or errors swallowed).
+        Outbox row when queued, else ``None`` (no customer/phone, skipped
+        late entry, or errors swallowed).
 
     Side effects:
         Creates outbox; sends on transaction commit via ``dispatch_outbox``.
@@ -106,7 +119,7 @@ def notify_customer_sale_completed(sale, *, user=None) -> MessageOutbox | None:
         customer = getattr(sale, 'customer', None)
         if customer is None:
             return None
-        if getattr(sale, 'entry_source', '') == 'backfill':
+        if getattr(sale, 'entry_source', '') == 'backfill' and not force_late_entry:
             return None
         customer.refresh_from_db(fields=['wallet_balance', 'phone', 'name', 'owner_name', 'contact_person'])
         paid = Decimal(str(sale.amount_paid or 0))

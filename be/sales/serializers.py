@@ -952,13 +952,20 @@ class SaleCreateSerializer(serializers.Serializer):
 
 
 class SaleBackfillCreateSerializer(SaleCreateSerializer):
-    """Record a sale that happened offline, with a historical business date."""
+    """
+    Record a sale that happened offline, with a historical business date.
+
+    ``notify_customer`` defaults to False (omit SMS for late entries unless
+    the operator opts in). Stored on the pending apply payload when
+    maker-checker is on.
+    """
 
     occurred_at = serializers.DateTimeField()
     backfill_reason = serializers.CharField()
     served_by_id = serializers.IntegerField(required=False, allow_null=True)
     acknowledge_stock_warnings = serializers.BooleanField(required=False, default=False)
     resubmit_of = serializers.IntegerField(required=False, allow_null=True)
+    notify_customer = serializers.BooleanField(required=False, default=False)
 
     def validate_backfill_reason(self, value):
         from sales.backfill_policy import validate_backfill_reason
@@ -974,6 +981,7 @@ class SaleBackfillCreateSerializer(SaleCreateSerializer):
     def validate(self, attrs):
         attrs = super().validate(attrs)
         attrs['_backfill'] = True
+        attrs.setdefault('notify_customer', False)
         return attrs
 
 

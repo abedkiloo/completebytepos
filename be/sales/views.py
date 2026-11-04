@@ -60,6 +60,18 @@ def _parse_backfill_request_data(request):
         ).lower() in ('true', '1', 'yes')
     if 'create_invoice' in data:
         data['create_invoice'] = str(data['create_invoice']).lower() in ('true', '1', 'yes')
+    if 'notify_customer' in data:
+        data['notify_customer'] = str(data['notify_customer']).lower() in (
+            'true',
+            '1',
+            'yes',
+        )
+    elif 'send_customer_sms' in data:
+        data['notify_customer'] = str(data['send_customer_sms']).lower() in (
+            'true',
+            '1',
+            'yes',
+        )
     return data
 
 

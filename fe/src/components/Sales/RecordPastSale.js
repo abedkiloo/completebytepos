@@ -18,6 +18,7 @@ import SearchableSelect from '../Shared/SearchableSelect';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import { Switch } from '../ui/switch';
 import { PageHeader, PageShell } from '../page';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import VariantSelector from '../POS/VariantSelector';
@@ -77,6 +78,7 @@ function SinglePastSaleForm({
   const [paymentReference, setPaymentReference] = useState('');
   const [amountPaid, setAmountPaid] = useState('');
   const [allowPartial, setAllowPartial] = useState(false);
+  const [notifyCustomer, setNotifyCustomer] = useState(false);
   const [lines, setLines] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [productSearch, setProductSearch] = useState('');
@@ -171,6 +173,7 @@ function SinglePastSaleForm({
         setPaymentReference(prefill.paymentReference);
         setAmountPaid(prefill.amountPaid);
         setAllowPartial(prefill.allowPartial);
+        setNotifyCustomer(Boolean(prefill.notifyCustomer));
         setDiscountAmount(prefill.discountAmount);
         setServedById(
           servedByIdForPrefill({
@@ -430,6 +433,7 @@ function SinglePastSaleForm({
         lines,
         discountAmount: showDiscount ? discountAmount : '0',
         resubmitPendingId,
+        notifyCustomer: Boolean(customerId) && notifyCustomer,
       });
 
       const res = await salesAPI.backfill(payload, receiptPhoto);
@@ -478,6 +482,13 @@ function SinglePastSaleForm({
     },
     { label: 'Method', value: paymentMethod },
     allowPartial ? { label: 'Partial', value: 'Yes — balance on account' } : null,
+    {
+      label: 'Customer SMS',
+      value:
+        customerId && notifyCustomer
+          ? 'Yes — send receipt SMS'
+          : 'No — do not text customer',
+    },
   ].filter(Boolean);
 
   return (
@@ -847,6 +858,24 @@ function SinglePastSaleForm({
           />
           Allow partial payment / balance on customer account
         </label>
+        <div className="flex items-start justify-between gap-3 rounded-md border border-border/70 bg-muted/30 px-3 py-2 sm:col-span-2">
+          <div className="min-w-0 space-y-0.5">
+            <Label htmlFor="past-sale-customer-sms" className="text-sm font-medium">
+              Send SMS receipt to customer
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              Off by default for late sales. Turn on only if this customer should get a text for
+              this past sale{customerId ? '' : ' (select a customer first)'}.
+            </p>
+          </div>
+          <Switch
+            id="past-sale-customer-sms"
+            checked={Boolean(customerId) && notifyCustomer}
+            onCheckedChange={setNotifyCustomer}
+            disabled={!customerId}
+            data-testid="past-sale-sms-switch"
+          />
+        </div>
       </section>
 
       <div className="flex justify-end gap-2">

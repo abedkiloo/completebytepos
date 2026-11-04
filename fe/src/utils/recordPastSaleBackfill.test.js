@@ -316,6 +316,13 @@ describe('recordPastSaleBackfill', () => {
       expect(payload.discount_amount).toBe(0);
     });
 
+    it('defaults notify_customer to false and can opt in', () => {
+      expect(buildBackfillSubmitPayload(base).notify_customer).toBe(false);
+      expect(
+        buildBackfillSubmitPayload({ ...base, notifyCustomer: true }).notify_customer
+      ).toBe(true);
+    });
+
     it('parses customer id and keeps variant ids', () => {
       const payload = buildBackfillSubmitPayload({
         ...base,
