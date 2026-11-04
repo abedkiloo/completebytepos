@@ -27,6 +27,9 @@ export const REPORT_EXPORT_PATHS = {
   'stock-valuation': '/reports/stock_valuation/',
   'customer-outstanding': '/reports/customer_outstanding/',
   'sales-history': '/sales/export/',
+  'trading-profit': '/reports/trading_profit/',
+  'trading-profit-cogs': '/reports/trading_profit/cogs/',
+  'trading-profit-breakdown': '/reports/trading_profit/breakdown/',
 };
 
 export const EXPORT_FORMATS = [

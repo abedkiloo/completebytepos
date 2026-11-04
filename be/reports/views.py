@@ -135,6 +135,17 @@ def gated_report_action(action_name):
             response = view_method(self, request, *args, **kwargs)
             if isinstance(response, Response) and isinstance(response.data, dict):
                 response.data = apply_report_response_flags(response.data)
+                if action_name == 'trading_profit':
+                    from reports.cogs_export import maybe_export_cogs_workbook
+
+                    cogs_file = maybe_export_cogs_workbook(
+                        request,
+                        response.data,
+                        title=reports_action_label(action_name),
+                        slug='trading_profit_cogs',
+                    )
+                    if cogs_file is not None:
+                        return cogs_file
                 csv_body = None
                 if action_name == 'sales_by_person':
                     csv_body = SalesPersonReportService.to_csv(response.data)

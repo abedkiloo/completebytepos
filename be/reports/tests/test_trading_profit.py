@@ -890,3 +890,52 @@ class TradingProfitAPITests(ManagerAPITestCase):
         self.assertEqual(period, 'custom')
         payload = trading_profit_for_request(_Req())
         self.assertIn('summary', payload)
+
+    def test_cogs_breakdown_includes_qty_revenue_and_margin(self):
+        self._seed_period_data()
+        admin = self._admin_client()
+        resp = admin.get('/api/reports/trading_profit/cogs/', {'period': 'month'})
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
+        sale = next(s for s in resp.data['sales'] if s['sale_number'] == 'S-TP-1')
+        line = sale['lines'][0]
+        self.assertEqual(line['quantity'], 2.0)
+        self.assertEqual(line['unit_price'], 100.0)
+        self.assertEqual(line['line_sale'], 200.0)
+        self.assertEqual(line['line_cogs'], 80.0)
+        self.assertEqual(line['line_gross_profit'], 120.0)
+        self.assertEqual(line['margin_pct'], 60.0)
+        self.assertEqual(sale['gross_profit'], 120.0)
+
+    def test_cogs_excel_export_has_goods_sold_sheet(self):
+        from io import BytesIO
+
+        from openpyxl import load_workbook
+
+        self._seed_period_data()
+        admin = self._admin_client()
+        resp = admin.get(
+            '/api/reports/trading_profit/breakdown/',
+            {'period': 'month', 'metric': 'cogs', 'format': 'xlsx'},
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIn(
+            'spreadsheetml',
+            resp.get('Content-Type', ''),
+        )
+        wb = load_workbook(BytesIO(resp.content))
+        self.assertIn('Goods Sold', wb.sheetnames)
+        self.assertIn('Summary', wb.sheetnames)
+        self.assertIn('Sale Totals', wb.sheetnames)
+        self.assertIn('By Product', wb.sheetnames)
+        goods = wb['Goods Sold']
+        headers = [cell.value for cell in goods[1]]
+        self.assertEqual(headers[0], 'Sale number')
+        self.assertEqual(headers[2], 'Goods sold')
+        self.assertEqual(headers[4], 'Quantity')
+        self.assertEqual(headers[8], 'Line COGS')
+        # Seeded sale line: TP Item × 2
+        values = [[cell.value for cell in row] for row in goods.iter_rows(min_row=2)]
+        match = next(r for r in values if r[0] == 'S-TP-1')
+        self.assertEqual(match[2], 'TP Item')
+        self.assertEqual(match[4], 2.0)
+        self.assertEqual(match[8], 80.0)

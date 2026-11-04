@@ -21,6 +21,8 @@ from sales.models import (
 )
 
 COGS_BREAKDOWN_SALE_LIMIT = 200
+# Full workbook export for analyst review (UI still caps at COGS_BREAKDOWN_SALE_LIMIT).
+COGS_EXPORT_SALE_LIMIT = 10_000
 
 _DEC = dj_fields.DecimalField(max_digits=14, decimal_places=2)
 _LINE_COST = ExpressionWrapper(
@@ -411,10 +413,16 @@ def compute_cogs_breakdown(*, start, end, sale_limit: int = COGS_BREAKDOWN_SALE_
 
         lines = []
         sale_cogs = Decimal('0')
+        sale_line_revenue = Decimal('0')
         for item in sale_items:
             qty = _d(item.quantity)
             product_name = getattr(item.product, 'name', None) or 'Item'
             sku = getattr(item.product, 'sku', None) or ''
+            unit_price = _d(item.unit_price) if item.unit_price is not None else Decimal('0')
+            if item.subtotal is not None:
+                line_sale = _d(item.subtotal)
+            else:
+                line_sale = (unit_price * qty).quantize(Decimal('0.01'))
 
             if not _unit_cost_missing(item.unit_cost):
                 uc = _d(item.unit_cost)
@@ -452,6 +460,13 @@ def compute_cogs_breakdown(*, start, end, sale_limit: int = COGS_BREAKDOWN_SALE_
                         source = 'legacy_pending'
 
             sale_cogs += line_cogs
+            sale_line_revenue += line_sale
+            line_gp = line_sale - line_cogs
+            margin_pct = None
+            if line_sale > 0:
+                margin_pct = float(
+                    (line_gp / line_sale * Decimal('100')).quantize(Decimal('0.01'))
+                )
             cost_missing = line_cogs <= 0 and source in (
                 'unit_cost', 'legacy_pending', 'catalog',
             )
@@ -460,8 +475,12 @@ def compute_cogs_breakdown(*, start, end, sale_limit: int = COGS_BREAKDOWN_SALE_
                     'product_name': product_name,
                     'sku': sku,
                     'quantity': float(qty),
+                    'unit_price': _money(unit_price),
+                    'line_sale': _money(line_sale),
                     'unit_cost': _money(display_uc) if display_uc is not None else None,
                     'line_cogs': _money(line_cogs),
+                    'line_gross_profit': _money(line_gp),
+                    'margin_pct': margin_pct,
                     'source': source,
                     'cost_missing': cost_missing,
                 }
@@ -481,9 +500,14 @@ def compute_cogs_breakdown(*, start, end, sale_limit: int = COGS_BREAKDOWN_SALE_
                         'product_name': 'Legacy stock movements (no line unit cost)',
                         'sku': '',
                         'quantity': None,
+                        'unit_price': None,
+                        'line_sale': None,
                         'unit_cost': None,
                         'line_cogs': _money(legacy_total),
+                        'line_gross_profit': None,
+                        'margin_pct': None,
                         'source': 'legacy_movement',
+                        'cost_missing': False,
                     }
                 )
 
@@ -510,13 +534,32 @@ def compute_cogs_breakdown(*, start, end, sale_limit: int = COGS_BREAKDOWN_SALE_
                 'Prefer fixing product/size costs so checkout stamps the right cost.'
             )
 
+        sale_total = _d(sale.total)
+        sale_gp = sale_total - sale_cogs
+        sale_margin = None
+        if sale_total > 0:
+            sale_margin = float(
+                (sale_gp / sale_total * Decimal('100')).quantize(Decimal('0.01'))
+            )
+        # Header total can include tax/fees; line revenue is goods only.
+        revenue_gap = sale_total - sale_line_revenue
         sales_payload.append(
             {
                 'sale_id': sale.id,
                 'sale_number': sale.sale_number,
                 'occurred_at': sale.occurred_at.isoformat() if sale.occurred_at else None,
-                'sale_total': _money(sale.total),
+                'payment_method': sale.payment_method or '',
+                'cashier': (
+                    getattr(sale.cashier, 'get_full_name', lambda: '')()
+                    or getattr(sale.cashier, 'username', '')
+                    or ''
+                ),
+                'sale_total': _money(sale_total),
+                'line_revenue': _money(sale_line_revenue),
+                'revenue_gap': _money(revenue_gap),
                 'cogs': _money(sale_cogs),
+                'gross_profit': _money(sale_gp),
+                'margin_pct': sale_margin,
                 'lines': lines,
                 'concerns': concerns,
             }
@@ -630,9 +673,44 @@ def trading_profit_for_request(request) -> dict[str, Any]:
     }
 
 
+def _cogs_sale_limit_for_request(request, *, default: int = COGS_BREAKDOWN_SALE_LIMIT) -> int:
+    """
+    Raise the per-sale row cap when the client asks for a file export.
+
+    Args:
+        request: DRF/Django request with optional ``format`` query param.
+        default: UI JSON cap when not exporting. Range 1–COGS_EXPORT_SALE_LIMIT.
+
+    Returns:
+        Sale row limit in ``[1, COGS_EXPORT_SALE_LIMIT]``.
+    """
+    from reports.export import UnsupportedExportFormat, normalize_export_format
+
+    params = getattr(request, 'query_params', request.GET)
+    raw = params.get('format') if params is not None else None
+    try:
+        fmt = normalize_export_format(raw)
+    except UnsupportedExportFormat:
+        fmt = None
+    if fmt in ('xlsx', 'csv', 'pdf'):
+        return COGS_EXPORT_SALE_LIMIT
+    return max(1, min(int(default), COGS_EXPORT_SALE_LIMIT))
+
+
 def trading_profit_cogs_for_request(request) -> dict[str, Any]:
+    """
+    Build the COGS drill-down payload for the current request period.
+
+    Args:
+        request: Authenticated report request; optional ``format`` raises sale limit.
+
+    Returns:
+        Dict with period bounds plus ``compute_cogs_breakdown`` fields
+        (``sales`` length ≤ sale limit; ``truncated`` when more exist).
+    """
     start, end, period, label = _resolve_bounds(request)
-    breakdown = compute_cogs_breakdown(start=start, end=end)
+    sale_limit = _cogs_sale_limit_for_request(request)
+    breakdown = compute_cogs_breakdown(start=start, end=end, sale_limit=sale_limit)
     return {
         'period': period if period in ('week', 'month', 'year', 'today') else (label or 'custom'),
         **breakdown,
@@ -1098,6 +1176,18 @@ def compute_metric_breakdown(
 
 
 def trading_profit_breakdown_for_request(request) -> dict[str, Any]:
+    """
+    Build a trading-profit metric drill-down for the request period.
+
+    Args:
+        request: Must include ``metric``; optional ``format`` raises COGS row cap.
+
+    Returns:
+        Metric breakdown dict (``cogs`` nested when ``metric=cogs``).
+
+    Raises:
+        ValidationError: Missing/unknown ``metric``.
+    """
     from django.core.exceptions import ValidationError
 
     start, end, period, label = _resolve_bounds(request)
@@ -1105,8 +1195,18 @@ def trading_profit_breakdown_for_request(request) -> dict[str, Any]:
     metric = (params.get('metric') or '').strip().lower()
     if not metric:
         raise ValidationError({'metric': 'Query param metric is required.'})
+    row_limit = (
+        _cogs_sale_limit_for_request(request)
+        if metric == 'cogs'
+        else BREAKDOWN_ROW_LIMIT
+    )
     try:
-        breakdown = compute_metric_breakdown(metric=metric, start=start, end=end)
+        breakdown = compute_metric_breakdown(
+            metric=metric,
+            start=start,
+            end=end,
+            row_limit=row_limit,
+        )
     except ValueError as exc:
         raise ValidationError({'metric': str(exc)}) from exc
     return {

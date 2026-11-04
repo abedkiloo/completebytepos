@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, TrendingDown, TrendingUp } from 'lucide-react';
+import { ArrowLeft, FileSpreadsheet, TrendingDown, TrendingUp } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { reportsAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
@@ -9,6 +9,7 @@ import {
   formatDateForApi,
   periodToDateFilters,
 } from '../../utils/reportPeriods';
+import { toast } from '../../utils/toast';
 import { PageShell, PageHeader, PageLoading, EmptyState, FilterBar, FilterField } from '../page';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -20,7 +21,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../ui/dialog';
+import CenterScreenLoader from '../Shared/CenterScreenLoader';
 import PeriodPills from './PeriodPills';
+import ReportExportButtons from './ReportExportButtons';
 
 const PROFIT_PERIODS = [
   { id: 'week', label: 'This week' },
@@ -108,18 +111,55 @@ function Row({
   );
 }
 
-function BreakdownDialog({ open, onOpenChange, loading, error, data }) {
+function BreakdownDialog({ open, onOpenChange, loading, error, data, exportParams = {} }) {
+  const [exportBusy, setExportBusy] = useState(false);
   const cogs = data?.cogs;
   const components = data?.components || [];
   const rows = data?.rows || [];
   const cogsSales = cogs?.sales || [];
   const cogsRefunds = cogs?.refunds || [];
+  const canDownloadCogs = Boolean(cogs) && !loading && !error;
+
+  const downloadCogsExcel = async () => {
+    if (!canDownloadCogs || exportBusy) return;
+    setExportBusy(true);
+    try {
+      await reportsAPI.exportFile(
+        'trading-profit-breakdown',
+        { ...exportParams, metric: 'cogs' },
+        'xlsx'
+      );
+      toast.success('COGS Excel downloaded');
+    } catch (err) {
+      toast.error(err?.message || 'Could not download COGS Excel');
+    } finally {
+      setExportBusy(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+        <CenterScreenLoader open={exportBusy} label="Building COGS Excel…" />
         <DialogHeader>
-          <DialogTitle>{data?.title || 'How this was calculated'}</DialogTitle>
+          <div className="flex flex-wrap items-start justify-between gap-3 pr-6">
+            <DialogTitle>{data?.title || 'How this was calculated'}</DialogTitle>
+            {canDownloadCogs ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0 print:hidden"
+                disabled={exportBusy}
+                onClick={downloadCogsExcel}
+                aria-label="Download COGS Excel"
+                data-testid="cogs-download-excel"
+              >
+                <FileSpreadsheet className="h-4 w-4" />
+                {exportBusy ? 'Downloading…' : 'Download Excel'}
+              </Button>
+            ) : null}
+          </div>
           <DialogDescription>
             {data?.formula
               ? `${data.formula}${data.explanation ? ` — ${data.explanation}` : ''}`
@@ -216,8 +256,13 @@ function BreakdownDialog({ open, onOpenChange, loading, error, data }) {
                                 : ''}
                               {line.cost_missing ? ' · cost missing' : ''}
                             </span>
-                            <span className="tabular-nums">
-                              {formatCurrency(line.line_cogs)}
+                            <span className="tabular-nums text-right">
+                              {line.line_sale != null ? (
+                                <span className="block text-[10px] text-muted-foreground">
+                                  Sale {formatCurrency(line.line_sale)}
+                                </span>
+                              ) : null}
+                              <span>COGS {formatCurrency(line.line_cogs)}</span>
                             </span>
                           </li>
                         ))}
@@ -333,6 +378,7 @@ export default function TradingProfitReportView() {
   const [drillLoading, setDrillLoading] = useState(false);
   const [drillError, setDrillError] = useState('');
   const [drillData, setDrillData] = useState(null);
+  const [cogsExportBusy, setCogsExportBusy] = useState(false);
 
   const reportParams = useMemo(
     () =>
@@ -393,6 +439,23 @@ export default function TradingProfitReportView() {
       );
     } finally {
       setDrillLoading(false);
+    }
+  };
+
+  const downloadCogsExcel = async () => {
+    if (cogsExportBusy) return;
+    setCogsExportBusy(true);
+    try {
+      await reportsAPI.exportFile(
+        'trading-profit-breakdown',
+        { ...reportParams, metric: 'cogs' },
+        'xlsx'
+      );
+      toast.success('COGS Excel downloaded');
+    } catch (err) {
+      toast.error(err?.message || 'Could not download COGS Excel');
+    } finally {
+      setCogsExportBusy(false);
     }
   };
 
@@ -463,11 +526,28 @@ export default function TradingProfitReportView() {
         title="Trading profit"
         description="Trading profit (accrual, includes unpaid) and cash trading profit (money collected) — this week, month, year, or any past date range. Click any figure to see how it was calculated."
       >
-        <Button variant="outline" size="sm" onClick={() => navigate('/reports')}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <ReportExportButtons slug="trading-profit" params={reportParams} disabled={loading} />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="print:hidden"
+            disabled={loading || cogsExportBusy}
+            onClick={downloadCogsExcel}
+            aria-label="Download COGS Excel"
+            data-testid="trading-profit-cogs-excel"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            {cogsExportBusy ? 'COGS Excel…' : 'COGS Excel'}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => navigate('/reports')}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back
+          </Button>
+        </div>
       </PageHeader>
+      <CenterScreenLoader open={cogsExportBusy} label="Building COGS Excel…" />
 
       <div className="mb-4 space-y-3">
         <PeriodPills
@@ -815,6 +895,7 @@ export default function TradingProfitReportView() {
         loading={drillLoading}
         error={drillError}
         data={drillData}
+        exportParams={reportParams}
       />
     </PageShell>
   );
