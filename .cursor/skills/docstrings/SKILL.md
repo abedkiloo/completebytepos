@@ -162,3 +162,11 @@ When documenting a Django app end-to-end, also update:
 5. Note coverage gaps (missing tests / missing audit / thin docstrings) under **Gaps**.
 6. Update the wave table in `docs/modules/README.md`.
 7. Run the app’s tests if doc-only changes touch executable examples.
+
+## Packaging (modules & packages)
+
+This product is sold in modules/packages. When a docstring pass or feature change
+adds a capability, also follow
+`.cursor/skills/module-packaging/SKILL.md` (catalog ModuleFeature / ModuleSetting,
+API + nav gates). Document the toggle under **Gaps** or **Public APIs** in
+`docs/modules/<app>.md` when the module is configurable.

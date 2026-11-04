@@ -11,9 +11,11 @@ class ModuleSettings(models.Model):
     typed ``ModuleSetting`` key/value rows and ``ModuleFeature`` toggles.
     """
 
+    # Keep in sync with settings.module_registry.MODULE_DEFINITIONS (+ legacy rollups).
     MODULE_CHOICES = [
         ('products', 'Products Management'),
         ('sales', 'Sales'),
+        ('daily_notes', 'Daily notes'),
         ('customers', 'Customer Management'),
         ('suppliers', 'Supplier Management'),
         ('employees', 'Employee Management'),

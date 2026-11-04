@@ -646,6 +646,19 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        from sales.module_settings import sales_history_export_enabled
+
+        if not sales_history_export_enabled():
+            return Response(
+                {
+                    'error': (
+                        'Sales history export is disabled for this package. '
+                        'Enable Sales → Sales history export in Module Settings.'
+                    )
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         queryset = self.get_queryset()
         from reports.sales_export import maybe_export_sales_workbook
         from sales.history_export import build_sales_history_report

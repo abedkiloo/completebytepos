@@ -261,6 +261,8 @@ export const NAV_SECTIONS = [
         label: 'Trading profit',
         icon: TrendingUp,
         match: 'report=trading-profit',
+        module: 'reports',
+        feature: ['reports', 'trading_profit'],
         permission: ['reports', 'profit'],
       },
       { to: '/audit-log', label: 'Audit log', icon: ScrollText, managerOnly: true, permission: ['reports', 'view'] },

@@ -13,6 +13,7 @@ import {
 } from '../../utils/roleAccess';
 import { useSellerOptions } from '../../hooks/useSellerOptions';
 import { canViewDailySalesFromStorage } from '../../utils/dailySalesAccess';
+import { isModuleFeatureEnabled } from '../../utils/moduleFeatures';
 import {
   userCanRefundSales,
   userCanUnvoidSales,
@@ -408,7 +409,9 @@ const Sales = () => {
               : 'Review completed transactions, reprint receipts, and download PDF or Excel for the current filters.'
           }
         >
-          <ReportExportButtons slug="sales-history" params={exportParams} />
+          {isModuleFeatureEnabled('sales', 'history_export', true) ? (
+            <ReportExportButtons slug="sales-history" params={exportParams} />
+          ) : null}
           {canViewDaily ? (
             <Button variant="outline" asChild>
               <Link to="/sales/daily">

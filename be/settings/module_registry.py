@@ -101,12 +101,24 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
             _f('billing_pos', 'Terminal POS', 'Invoices, credit, and held carts.', 2),
             _f('normal_sale', 'Normal sale', 'Full sale with delivery fields.', 3, enabled=False),
             _f('sales_history', 'Sales history', 'Search past transactions.', 4),
-            _f('receipt_printing', 'Receipt printing', 'Print or reprint receipts.', 5),
+            _f(
+                'history_export',
+                'Sales history export',
+                'PDF / Excel / CSV download of sales with goods sold (package add-on).',
+                5,
+            ),
+            _f('receipt_printing', 'Receipt printing', 'Print or reprint receipts.', 6),
             _f(
                 'daily_sales',
                 'Daily sales tracker',
                 'Day-by-day paid vs debt tracker. Toggle off in Module Settings without rebuilding apps.',
-                6,
+                7,
+            ),
+            _f(
+                'late_sale_sms',
+                'Late sale SMS opt-in',
+                'Allow cashier to send customer SMS when recording a past (backfill) sale.',
+                8,
             ),
         ],
     },
@@ -119,6 +131,15 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
         'sort_order': 15,
         'features': [
             _f('note_management', 'Daily journal', 'Create and browse dated staff notes.', 1),
+            _f('daily_tasks', 'Daily tasks', 'Standalone day tasks alongside notes.', 2),
+            _f('checklists', 'Note checklists', 'Optional checklist rows on notes.', 3),
+            _f(
+                'note_priority',
+                'Priority levels',
+                'Highest / medium / less icons and colours on notes and tasks.',
+                4,
+            ),
+            _f('sticky_notes', 'Must-tick notes', 'Blocking sticky notes for assignees.', 5),
         ],
     },
     {
@@ -132,6 +153,12 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
             _f('customer_management', 'Customer records', '', 1),
             _f('customer_history', 'Purchase history', '', 2),
             _f('customer_reports', 'Customer reports', '', 3, enabled=False),
+            _f(
+                'location_filters',
+                'Kenya location filters',
+                'County / sub-county / ward filters and invalid-location cleanup.',
+                4,
+            ),
         ],
     },
     {
@@ -331,6 +358,12 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
             _f('product_reports', 'Product reports', '', 2),
             _f('inventory_reports', 'Inventory reports', '', 3),
             _f('financial_reports', 'Financial reports', '', 4),
+            _f(
+                'trading_profit',
+                'Trading profit & COGS',
+                'Trading profit desk, COGS drill-down, and COGS Excel export.',
+                5,
+            ),
         ],
     },
     # --- People ---

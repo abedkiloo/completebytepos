@@ -6,6 +6,7 @@ import { clearFormBanner, reportFormError } from '../../utils/formFeedback';
 import FormBanner from '../form/FormBanner';
 import PriorityPicker from './PriorityPicker';
 import { PRIORITY_MEDIUM, normalizePriority } from '../../utils/dailyNotesPriority';
+import { isModuleFeatureEnabled } from '../../utils/moduleFeatures';
 
 const DailyTaskForm = ({ task, defaultDate, canAssignToOthers = false, onClose, onSave }) => {
   const [formData, setFormData] = useState({
@@ -172,11 +173,13 @@ const DailyTaskForm = ({ task, defaultDate, canAssignToOthers = false, onClose, 
                 required
               />
             </div>
-            <PriorityPicker
-              value={formData.priority}
-              onChange={(priority) => setFormData((prev) => ({ ...prev, priority }))}
-              disabled={loading}
-            />
+            {isModuleFeatureEnabled('daily_notes', 'note_priority', true) ? (
+              <PriorityPicker
+                value={formData.priority}
+                onChange={(priority) => setFormData((prev) => ({ ...prev, priority }))}
+                disabled={loading}
+              />
+            ) : null}
             <div className="form-group">
               <label>Details (optional)</label>
               <textarea

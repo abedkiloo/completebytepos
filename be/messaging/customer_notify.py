@@ -119,8 +119,13 @@ def notify_customer_sale_completed(
         customer = getattr(sale, 'customer', None)
         if customer is None:
             return None
-        if getattr(sale, 'entry_source', '') == 'backfill' and not force_late_entry:
-            return None
+        if getattr(sale, 'entry_source', '') == 'backfill':
+            if not force_late_entry:
+                return None
+            from sales.module_settings import sales_late_sale_sms_enabled
+
+            if not sales_late_sale_sms_enabled():
+                return None
         customer.refresh_from_db(fields=['wallet_balance', 'phone', 'name', 'owner_name', 'contact_person'])
         paid = Decimal(str(sale.amount_paid or 0))
         total = Decimal(str(sale.total or 0))

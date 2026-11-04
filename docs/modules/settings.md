@@ -28,7 +28,20 @@ Prefix: `/api/settings/` — modules, module-features, tenants, branches, store-
 
 Features/tenants/branches use audited mixin; module toggle/preset/store patches use `log_domain_event`.
 
+## Packaging rule
+
+Sold as **modules and packages**. Catalog truth: `settings/module_registry.py`.
+Typed store knobs: `module_settings_registry.py`. Agent checklist:
+`CompleteBytePOS/.cursor/skills/module-packaging/SKILL.md`.
+
+- **Module** = SKU on/off (`ModuleSettings`).
+- **ModuleFeature** = sellable capability inside a module.
+- **ModuleSetting** = how this store runs an installed capability.
+- Enforce on API + nav; missing rows default **enabled** (fail-open).
+
 ## Gaps
 
 - Dual config systems (`ModuleSettings` vs `ModuleSetting`) can drift.
 - `fresh-install` / `setup-status` are unauthenticated — ops exposure risk.
+- Legacy `ModuleFeature.MODULE_FEATURES` dict in models can lag the registry —
+  seed from registry via `init_modules`.

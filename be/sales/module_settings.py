@@ -1,10 +1,11 @@
-"""Sales / checkout module flags via SettingsService."""
+"""Sales / checkout module flags via SettingsService + catalog features."""
 
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from rest_framework import serializers
 
+from settings.module_features import is_module_feature_enabled
 from settings.settings_service import SettingsService
 
 MODULE = 'sales'
@@ -36,6 +37,16 @@ def sales_allow_partial_payment() -> bool:
 
 def sales_allow_excess_to_wallet() -> bool:
     return _enabled('allow_excess_to_wallet', True)
+
+
+def sales_history_export_enabled() -> bool:
+    """Catalog feature: sales history PDF/Excel/CSV with goods sold."""
+    return is_module_feature_enabled(MODULE, 'history_export')
+
+
+def sales_late_sale_sms_enabled() -> bool:
+    """Catalog feature: opt-in SMS when recording a past (backfill) sale."""
+    return is_module_feature_enabled(MODULE, 'late_sale_sms')
 
 
 def sales_validate_stock_before_sale() -> bool:

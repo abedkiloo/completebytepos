@@ -1,5 +1,6 @@
-"""Customers module flags via SettingsService."""
+"""Customers module flags via SettingsService + catalog features."""
 
+from settings.module_features import is_module_feature_enabled
 from settings.settings_service import SettingsService
 
 MODULE = 'customers'
@@ -57,6 +58,11 @@ def customers_allow_quick_add_at_pos() -> bool:
 
 def customers_enable_wallet_payment() -> bool:
     return _enabled('enable_wallet_payment', True)
+
+
+def customers_location_filters_enabled() -> bool:
+    """Catalog feature: Kenya county / sub-county / ward filters."""
+    return is_module_feature_enabled(MODULE, 'location_filters')
 
 
 def apply_customer_representation_flags(data: dict) -> dict:

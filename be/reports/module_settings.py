@@ -1,5 +1,6 @@
-"""Reports / analytics module flags via SettingsService."""
+"""Reports / analytics module flags via SettingsService + catalog features."""
 
+from settings.module_features import is_module_feature_enabled
 from settings.settings_service import SettingsService
 
 MODULE = 'reports'
@@ -56,6 +57,18 @@ def reports_enable_financial_reports() -> bool:
     return _enabled('enable_financial_reports', True)
 
 
+def reports_trading_profit_enabled() -> bool:
+    """
+    Catalog feature + financial reports setting.
+
+    Trading profit / COGS export require both the package feature and the
+    store financial-reports ModuleSetting.
+    """
+    if not reports_enable_financial_reports():
+        return False
+    return is_module_feature_enabled(MODULE, 'trading_profit')
+
+
 def reports_enable_invoice_reports() -> bool:
     return _enabled('enable_invoice_reports', True)
 
@@ -92,7 +105,15 @@ def reports_action_enabled(action_name: str) -> bool:
     gate = REPORT_ACTION_GATES.get(action_name)
     if not gate:
         return True
-    return _enabled(gate[0], True)
+    if not _enabled(gate[0], True):
+        return False
+    if action_name in (
+        'trading_profit',
+        'trading_profit_cogs',
+        'trading_profit_breakdown',
+    ):
+        return is_module_feature_enabled(MODULE, 'trading_profit')
+    return True
 
 
 def reports_action_label(action_name: str) -> str:

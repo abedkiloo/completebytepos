@@ -45,6 +45,7 @@ import { withListOrdering } from '../../utils/listOrdering';
 import { SortableHeadButton } from '../page/ListSortBar';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
+import { isModuleFeatureEnabled } from '../../utils/moduleFeatures';
 import {
   customersShowCustomerCode,
   customersShowOutstandingBalance,
@@ -97,6 +98,11 @@ const Customers = () => {
   const navigate = useNavigate();
   const { settings: customerModuleSettings } = useModuleSettings('customers');
   const { settings: storeSettings } = useStoreSettings();
+  const locationFiltersEnabled = isModuleFeatureEnabled(
+    'customers',
+    'location_filters',
+    true,
+  );
 
   const { permissions } = getStoredAuth();
   const showCustomerCode = customersShowCustomerCode(customerModuleSettings);
@@ -188,11 +194,13 @@ const Customers = () => {
       if (buyerSegment && engagementTier !== 'prospect') {
         params.buyer_segment = buyerSegment;
       }
-      if (filterCounty) params.county = filterCounty;
-      if (filterSubCounty) params.sub_county = filterSubCounty;
-      if (filterWard) params.ward = filterWard;
-      if (locationStatus === 'invalid' || locationStatus === 'valid') {
-        params.location_status = locationStatus;
+      if (locationFiltersEnabled) {
+        if (filterCounty) params.county = filterCounty;
+        if (filterSubCounty) params.sub_county = filterSubCounty;
+        if (filterWard) params.ward = filterWard;
+        if (locationStatus === 'invalid' || locationStatus === 'valid') {
+          params.location_status = locationStatus;
+        }
       }
       const response = await customersAPI.list(params);
       if (signal?.aborted) return;
@@ -213,6 +221,7 @@ const Customers = () => {
     addedOn,
     engagementTier,
     buyerSegment,
+    locationFiltersEnabled,
     filterCounty,
     filterSubCounty,
     filterWard,
@@ -229,6 +238,7 @@ const Customers = () => {
     addedOn,
     engagementTier,
     buyerSegment,
+    locationFiltersEnabled,
     filterCounty,
     filterSubCounty,
     filterWard,
@@ -545,6 +555,7 @@ const Customers = () => {
           </div>
         </div>
 
+        {locationFiltersEnabled ? (
         <div
           className="flex flex-wrap items-end gap-2"
           role="group"
@@ -654,8 +665,9 @@ const Customers = () => {
             </Button>
           )}
         </div>
+        ) : null}
 
-        {locationOkOnly && (
+        {locationFiltersEnabled && locationOkOnly && (
           <div
             className="flex items-center gap-2 rounded-lg border bg-muted/40 px-4 py-3 text-sm"
             data-testid="customers-location-ok-banner"
@@ -682,7 +694,7 @@ const Customers = () => {
           </div>
         )}
 
-        {needsLocationFix && (
+        {locationFiltersEnabled && needsLocationFix && (
           <div
             className="flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm"
             data-testid="customers-location-fix-banner"

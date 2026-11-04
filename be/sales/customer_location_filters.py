@@ -91,6 +91,8 @@ def apply_customer_location_filters(
     """
     Narrow customers by county / sub-county / ward and/or location validity.
 
+    No-op when the ``customers.location_filters`` package feature is off.
+
     Args:
         queryset: Base ``Customer`` queryset.
         params: Request query params (dict-like). Supported keys:
@@ -109,6 +111,11 @@ def apply_customer_location_filters(
         Filter strings are stripped; empty string clears that level. No page
         size change — pagination stays on the ViewSet.
     """
+    from sales.customer_module_settings import customers_location_filters_enabled
+
+    if not customers_location_filters_enabled():
+        return queryset
+
     get = params.get if hasattr(params, 'get') else lambda _k, _d=None: None
 
     county_raw = (get('county') or '').strip()

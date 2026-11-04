@@ -10,6 +10,7 @@ import {
 import FormBanner from '../form/FormBanner';
 import PriorityPicker from './PriorityPicker';
 import { PRIORITY_MEDIUM, normalizePriority } from '../../utils/dailyNotesPriority';
+import { isModuleFeatureEnabled } from '../../utils/moduleFeatures';
 
 const DailyNoteForm = ({
   note,
@@ -243,11 +244,13 @@ const DailyNoteForm = ({
                 maxLength={200}
               />
             </div>
-            <PriorityPicker
-              value={formData.priority}
-              onChange={(priority) => setFormData((prev) => ({ ...prev, priority }))}
-              disabled={loading}
-            />
+            {isModuleFeatureEnabled('daily_notes', 'note_priority', true) ? (
+              <PriorityPicker
+                value={formData.priority}
+                onChange={(priority) => setFormData((prev) => ({ ...prev, priority }))}
+                disabled={loading}
+              />
+            ) : null}
             <div className="form-group">
               <label>Note *</label>
               <textarea

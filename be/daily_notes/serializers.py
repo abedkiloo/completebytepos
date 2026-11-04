@@ -282,6 +282,13 @@ class DailyNoteSerializer(serializers.ModelSerializer):
             instance.is_done = is_done
 
     def create(self, validated_data):
+        from daily_notes.models import PRIORITY_MEDIUM
+        from daily_notes.module_settings import (
+            daily_notes_checklists_enabled,
+            daily_notes_priority_enabled,
+            daily_notes_sticky_enabled,
+        )
+
         is_done = validated_data.pop('is_done', False)
         board_column = validated_data.pop('board_column', None)
         in_progress = validated_data.pop('in_progress', False)
@@ -289,6 +296,12 @@ class DailyNoteSerializer(serializers.ModelSerializer):
         assigned_role = validated_data.pop('assigned_role', None)
         assign_to_all = validated_data.pop('assign_to_all', False)
         checklist_items = validated_data.pop('checklist_items', None)
+        if not daily_notes_priority_enabled():
+            validated_data['priority'] = PRIORITY_MEDIUM
+        if not daily_notes_sticky_enabled():
+            validated_data['is_sticky'] = False
+        if not daily_notes_checklists_enabled():
+            checklist_items = None
         notes = create_notes_for_assignees(
             author=validated_data['author'],
             note_date=validated_data['note_date'],
@@ -331,11 +344,25 @@ class DailyNoteSerializer(serializers.ModelSerializer):
         return data
 
     def update(self, instance, validated_data):
+        from daily_notes.models import PRIORITY_MEDIUM
+        from daily_notes.module_settings import (
+            daily_notes_checklists_enabled,
+            daily_notes_priority_enabled,
+            daily_notes_sticky_enabled,
+        )
+
         validated_data.pop('assign_to_all', None)
         board_column = validated_data.pop('board_column', None)
         is_done = validated_data.pop('is_done', None)
         assigned_to = validated_data.pop('assigned_to', serializers.empty)
         checklist_items = validated_data.pop('checklist_items', serializers.empty)
+        if not daily_notes_priority_enabled():
+            validated_data.pop('priority', None)
+            instance.priority = PRIORITY_MEDIUM
+        if not daily_notes_sticky_enabled() and 'is_sticky' in validated_data:
+            validated_data['is_sticky'] = False
+        if not daily_notes_checklists_enabled():
+            checklist_items = serializers.empty
         for key, value in validated_data.items():
             setattr(instance, key, value)
         if assigned_to is not serializers.empty:
@@ -450,11 +477,16 @@ class DailyTaskSerializer(serializers.ModelSerializer):
             instance.is_done = is_done
 
     def create(self, validated_data):
+        from daily_notes.models import PRIORITY_MEDIUM
+        from daily_notes.module_settings import daily_notes_priority_enabled
+
         is_done = validated_data.pop('is_done', False)
         assigned_to = validated_data.pop('assigned_to', None)
         author = validated_data['author']
         if assigned_to is None:
             assigned_to = author
+        if not daily_notes_priority_enabled():
+            validated_data['priority'] = PRIORITY_MEDIUM
         instance = DailyTask(**validated_data, assigned_to=assigned_to)
         if is_done:
             instance.mark_done(done=True, at=timezone.now())
@@ -465,8 +497,14 @@ class DailyTaskSerializer(serializers.ModelSerializer):
         return instance
 
     def update(self, instance, validated_data):
+        from daily_notes.models import PRIORITY_MEDIUM
+        from daily_notes.module_settings import daily_notes_priority_enabled
+
         is_done = validated_data.pop('is_done', None)
         assigned_to = validated_data.pop('assigned_to', None)
+        if not daily_notes_priority_enabled():
+            validated_data.pop('priority', None)
+            instance.priority = PRIORITY_MEDIUM
         for key, value in validated_data.items():
             setattr(instance, key, value)
         if assigned_to is not None:

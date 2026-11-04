@@ -1,4 +1,5 @@
 import { isModuleFlagEnabled } from './moduleSettingsCache';
+import { isModuleFeatureEnabled } from './moduleFeatures';
 
 export function reportsEnableDashboardSummary(settings) {
   return isModuleFlagEnabled(settings, 'enable_dashboard_summary', true);
@@ -87,6 +88,10 @@ export function reportsLegacyReportEnabled(settings, reportId) {
     case 'tax':
     case 'profit-loss':
     case 'trading-profit':
+      return (
+        reportsEnableFinancialReports(settings) &&
+        isModuleFeatureEnabled('reports', 'trading_profit', true)
+      );
     case 'annual':
       return reportsEnableFinancialReports(settings);
     default:

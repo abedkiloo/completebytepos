@@ -20,6 +20,7 @@ import { carriedOverLabel } from '../../utils/dailyNotesTasks';
 import { priorityMeta } from '../../utils/dailyNotesPriority';
 import { cn } from '../../lib/cn';
 import PriorityBadge from './PriorityBadge';
+import { isModuleFeatureEnabled } from '../../utils/moduleFeatures';
 
 export default function DailyNotesBoard({
   notes,
@@ -75,6 +76,11 @@ export default function DailyNotesBoard({
                 cards.map((note) => {
                   const expanded = expandedIds.includes(note.id);
                   const carried = carriedOverLabel(note);
+                  const showPriority = isModuleFeatureEnabled(
+                    'daily_notes',
+                    'note_priority',
+                    true,
+                  );
                   const prio = priorityMeta(note.priority);
                   return (
                     <li
@@ -82,7 +88,9 @@ export default function DailyNotesBoard({
                       className="overflow-hidden rounded-lg border bg-background shadow-sm"
                       data-testid={`daily-note-strip-${note.id}`}
                     >
-                      <div className={cn('h-1 w-full', prio.barClassName)} aria-hidden />
+                      {showPriority ? (
+                        <div className={cn('h-1 w-full', prio.barClassName)} aria-hidden />
+                      ) : null}
                       <button
                         type="button"
                         className="flex w-full items-start gap-2 px-3 py-2.5 text-left hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -107,7 +115,9 @@ export default function DailyNotesBoard({
                             {note.title || 'Untitled note'}
                           </p>
                           <div className="mt-1 flex flex-wrap items-center gap-1">
-                            <PriorityBadge priority={note.priority} />
+                            {showPriority ? (
+                              <PriorityBadge priority={note.priority} />
+                            ) : null}
                             <Badge variant={isStickyNote(note) ? 'destructive' : 'secondary'}>
                               {noteKindLabel(note)}
                             </Badge>
