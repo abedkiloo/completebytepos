@@ -6,7 +6,7 @@ from rest_framework import serializers
 from config.media_urls import absolute_media_url
 from products.models import Category, Product
 
-from .models import BlogPost
+from .models import BlogPost, WebsiteEnquiry
 
 
 def _image_url(serializer, field):
@@ -179,3 +179,60 @@ class PublicProductSerializer(serializers.ModelSerializer):
         if not obj.track_stock:
             return True
         return obj.stock_quantity > 0
+
+
+class PublicEnquirySerializer(serializers.ModelSerializer):
+    product_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
+
+    class Meta:
+        model = WebsiteEnquiry
+        fields = [
+            'id', 'name', 'phone', 'business', 'location', 'interest',
+            'message', 'product_id', 'status',
+        ]
+        read_only_fields = ['id', 'status']
+
+    def validate_name(self, value):
+        value = (value or '').strip()
+        if len(value) < 2:
+            raise serializers.ValidationError('Enter your name.')
+        return value
+
+    def validate_phone(self, value):
+        raw = (value or '').strip()
+        digits = ''.join(ch for ch in raw if ch.isdigit())
+        if len(digits) < 9 or len(digits) > 15:
+            raise serializers.ValidationError('Enter a phone number we can call.')
+        return raw
+
+    def validate(self, attrs):
+        if not (attrs.get('message') or '').strip() and not (attrs.get('interest') or '').strip():
+            raise serializers.ValidationError('Tell us which fitting you need.')
+        return attrs
+
+    def create(self, validated_data):
+        product_id = validated_data.pop('product_id', None)
+        if product_id:
+            validated_data['product'] = Product.objects.filter(pk=product_id, is_active=True).first()
+        for key in ('business', 'location', 'interest', 'message'):
+            if key in validated_data and isinstance(validated_data[key], str):
+                validated_data[key] = validated_data[key].strip()
+        return WebsiteEnquiry.objects.create(**validated_data)
+
+
+class WebsiteEnquiryAdminSerializer(serializers.ModelSerializer):
+    product_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = WebsiteEnquiry
+        fields = [
+            'id', 'name', 'phone', 'business', 'location', 'interest',
+            'message', 'product', 'product_name', 'status', 'created_at',
+        ]
+        read_only_fields = [
+            'id', 'name', 'phone', 'business', 'location', 'interest',
+            'message', 'product', 'product_name', 'created_at',
+        ]
+
+    def get_product_name(self, obj):
+        return obj.product.name if obj.product_id else ''

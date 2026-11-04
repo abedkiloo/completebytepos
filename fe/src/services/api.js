@@ -307,6 +307,8 @@ export const cmsAPI = {
   createPost: (data) => api.post('/cms/blog-posts/', data),
   updatePost: (id, data) => api.patch(`/cms/blog-posts/${id}/`, data),
   deletePost: (id) => api.delete(`/cms/blog-posts/${id}/`),
+  listEnquiries: (params) => api.get('/cms/enquiries/', { params }),
+  updateEnquiry: (id, data) => api.patch(`/cms/enquiries/${id}/`, data),
 };
 
 export const dailyTasksAPI = {

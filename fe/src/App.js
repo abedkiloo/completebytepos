@@ -60,6 +60,7 @@ const ModuleSettings = lazy(() => import('./components/ModuleSettings/ModuleSett
 const Invoices = lazy(() => import('./components/Invoices/Invoices'));
 const Branches = lazy(() => import('./components/Branches/Branches'));
 const BlogPosts = lazy(() => import('./components/Website/BlogPosts'));
+const WebsiteEnquiries = lazy(() => import('./components/Website/WebsiteEnquiries'));
 const SystemSettings = lazy(() => import('./components/Settings/SystemSettings'));
 const SmsTemplatesPage = lazy(() => import('./components/Settings/SmsTemplatesPage'));
 const Installation = lazy(() => import('./components/Installation/Installation'));
@@ -224,6 +225,7 @@ function App() {
                 <Route path="/invoices" element={<Invoices />} />
                 <Route path="/branches" element={<Branches />} />
                 <Route path="/website/blog" element={<BlogPosts />} />
+                <Route path="/website/enquiries" element={<WebsiteEnquiries />} />
               </Route>
             </Route>
           </Routes>

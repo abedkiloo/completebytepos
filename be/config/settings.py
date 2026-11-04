@@ -310,9 +310,17 @@ _default_cors_origins = [
 # Marketing website (static site) that reads /api/public/website/.
 WEBSITE_PUBLIC_ORIGINS = env_csv_or_lines(
     'WEBSITE_PUBLIC_ORIGINS',
-    ['http://localhost:8080', 'http://127.0.0.1:8080'],
+    [
+
+
+        'https://omuwenga.com',
+        'http://omuwenga.com',
+    ],
 )
 WEBSITE_SHOW_PRICES = env_bool('WEBSITE_SHOW_PRICES', False)
+# One shared secret for the marketing site. Required on /api/public/website/.
+# Send it as X-Website-Key or Authorization: Bearer. Empty refuses every caller.
+WEBSITE_API_KEY = env_str('WEBSITE_API_KEY', '')
 
 CORS_ALLOWED_ORIGINS = merge_unique_list(
     env_csv_or_lines('CORS_ALLOWED_ORIGINS', _default_cors_origins),
@@ -322,7 +330,7 @@ CORS_ALLOWED_ORIGINS = merge_unique_list(
 
 _extra_cors_headers = env_csv_or_lines(
     'CORS_EXTRA_ALLOWED_HEADERS',
-    ['x-branch-id', 'X-Branch-ID', 'ngrok-skip-browser-warning'],
+    ['x-branch-id', 'X-Branch-ID', 'x-website-key', 'X-Website-Key', 'ngrok-skip-browser-warning'],
 )
 try:
     from corsheaders.defaults import default_headers

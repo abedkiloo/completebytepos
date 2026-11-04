@@ -1,4 +1,4 @@
-"""Public website content (blog) served to the marketing site."""
+"""Public website content (blog and enquiries) served to the marketing site."""
 
 from __future__ import annotations
 
@@ -104,3 +104,41 @@ class BlogPost(models.Model):
         plain = re.sub(r'[#*_>\[\]()`-]', '', self.body or '')
         plain = ' '.join(plain.split())
         return plain[:157] + '…' if len(plain) > 160 else plain
+
+
+class WebsiteEnquiry(models.Model):
+    """A request sent from the public website, for the shop to review."""
+
+    STATUS_NEW = 'new'
+    STATUS_REVIEWED = 'reviewed'
+    STATUS_CLOSED = 'closed'
+    STATUS_CHOICES = [
+        (STATUS_NEW, 'New'),
+        (STATUS_REVIEWED, 'Reviewed'),
+        (STATUS_CLOSED, 'Closed'),
+    ]
+
+    name = models.CharField(max_length=120)
+    phone = models.CharField(max_length=40)
+    business = models.CharField(max_length=120, blank=True)
+    location = models.CharField(max_length=120, blank=True)
+    interest = models.CharField(max_length=200, blank=True)
+    message = models.TextField(blank=True)
+    product = models.ForeignKey(
+        'products.Product',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='website_enquiries',
+    )
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default=STATUS_NEW, db_index=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name_plural = 'website enquiries'
+
+    def __str__(self):
+        return f'{self.name} — {self.interest or "enquiry"}'

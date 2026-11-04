@@ -1,7 +1,7 @@
 """Blog management API: admins and website.manage holders only."""
 
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from accounts.models import Permission, Role, UserProfile
@@ -18,8 +18,10 @@ from cms.permissions import user_can_manage_website
 from .helpers import png_upload
 
 URL = '/api/cms/blog-posts/'
+WEBSITE_KEY = 'test-website-key'
 
 
+@override_settings(WEBSITE_API_KEY=WEBSITE_KEY)
 class BlogAdminApiTest(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -66,6 +68,29 @@ class BlogAdminApiTest(TestCase):
             role = Role.objects.get(name=role_name)
             self.assertFalse(role.has_permission('website', 'manage'))
 
+    def test_enquiry_list_is_for_website_managers(self):
+        from cms.models import WebsiteEnquiry
+        public = APIClient()
+        public.credentials(HTTP_X_WEBSITE_KEY=WEBSITE_KEY)
+        created = public.post('/api/public/website/enquiries/', {
+            'name': 'Amina', 'phone': '0718515142', 'message': '20 m webbing',
+        }, format='json')
+        self.assertEqual(created.status_code, 201)
+        self.assertEqual(public.get('/api/cms/enquiries/').status_code, 401)
+        self.assertEqual(self._client(self.cashier).get('/api/cms/enquiries/').status_code, 403)
+        listed = self._client(self.admin).get('/api/cms/enquiries/')
+        self.assertEqual(listed.status_code, 200)
+        row = listed.data['results'][0]
+        self.assertEqual(row['name'], 'Amina')
+        reviewed = self._client(self.writer).patch(
+            f"/api/cms/enquiries/{row['id']}/",
+            {'status': WebsiteEnquiry.STATUS_REVIEWED},
+            format='json',
+        )
+        self.assertEqual(reviewed.status_code, 200)
+        self.assertEqual(reviewed.data['name'], 'Amina')
+        self.assertEqual(reviewed.data['status'], 'reviewed')
+
     def test_anonymous_is_401_and_staff_without_grant_is_403(self):
         self.assertEqual(self._client().get(URL).status_code, 401)
         self.assertEqual(self._client(self.cashier).get(URL).status_code, 403)
@@ -101,7 +126,9 @@ class BlogAdminApiTest(TestCase):
         self.assertEqual(res.status_code, 201, res.data)
         self.assertTrue(res.data['cover_image_url'].startswith('http'))
         self.assertIsNotNone(res.data['published_at'])
-        public = self._client().get('/api/public/website/blog/castors-guide/')
+        public_client = APIClient()
+        public_client.credentials(HTTP_X_WEBSITE_KEY=WEBSITE_KEY)
+        public = public_client.get('/api/public/website/blog/castors-guide/')
         self.assertEqual(public.status_code, 200)
 
     def test_validation_errors(self):
@@ -130,8 +157,10 @@ class BlogAdminApiTest(TestCase):
         post.refresh_from_db()
         self.assertIsNone(post.published_at)
         self.assertFalse(post.cover_image)
+        public_client = APIClient()
+        public_client.credentials(HTTP_X_WEBSITE_KEY=WEBSITE_KEY)
         self.assertEqual(
-            self._client().get(f'/api/public/website/blog/{post.slug}/').status_code, 404,
+            public_client.get(f'/api/public/website/blog/{post.slug}/').status_code, 404,
         )
 
     def test_blank_slug_on_edit_keeps_existing_url(self):

@@ -3,10 +3,16 @@
 #
 # DNS A records (both to the same VPS IP):
 #   shop.omuwenga.com
+#   api.omuwenga.com
 #   uat.omuwenga.com
 
 shop.omuwenga.com {
 	reverse_proxy 127.0.0.1:3000
+}
+
+# Public API for the marketing site. The backend container stays on localhost:8000.
+api.omuwenga.com {
+	reverse_proxy 127.0.0.1:8000
 }
 
 uat.omuwenga.com {

@@ -44,6 +44,7 @@ import {
   Banknote,
   MapPin,
   Newspaper,
+  Inbox,
 } from 'lucide-react';
 
 import { modulesAPI, storeSettingsAPI } from '../../services/api';
@@ -282,6 +283,7 @@ export const NAV_SECTIONS = [
     label: 'Website',
     items: [
       { to: '/website/blog', label: 'Blog posts', icon: Newspaper, permission: ['website', 'manage'] },
+      { to: '/website/enquiries', label: 'Enquiries', icon: Inbox, permission: ['website', 'manage'] },
     ],
   },
   {

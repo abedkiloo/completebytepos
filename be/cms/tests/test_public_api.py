@@ -1,4 +1,4 @@
-"""Public website API: no auth, only published posts, safe product fields."""
+"""Public website API: website key required, only published posts, safe product fields."""
 
 from datetime import timedelta
 from decimal import Decimal
@@ -8,16 +8,20 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from cms.models import BlogPost
+from cms.models import BlogPost, WebsiteEnquiry
 from products.models import Category, Product
 
 from .helpers import png_upload
 
+WEBSITE_KEY = 'test-website-key'
 
+
+@override_settings(WEBSITE_API_KEY=WEBSITE_KEY)
 class PublicBlogApiTest(TestCase):
     def setUp(self):
         cache.clear()
         self.client = APIClient()
+        self.client.credentials(HTTP_X_WEBSITE_KEY=WEBSITE_KEY)
         self.live = BlogPost.objects.create(
             title='How to choose a sofa stand',
             body='## Height\nPick the right height.',
@@ -54,8 +58,13 @@ class PublicBlogApiTest(TestCase):
         self.assertTrue(item['cover_image_url'].startswith('http'))
         self.assertEqual(item['author_name'], 'Omuwenga Suppliers')
 
-    def test_stale_bearer_token_is_ignored(self):
+    def test_staff_bearer_is_not_the_website_key(self):
         self.client.credentials(HTTP_AUTHORIZATION='Bearer not-a-real-token')
+        res = self.client.get('/api/public/website/blog/')
+        self.assertEqual(res.status_code, 401)
+
+    def test_bearer_website_key_is_accepted(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {WEBSITE_KEY}')
         res = self.client.get('/api/public/website/blog/')
         self.assertEqual(res.status_code, 200)
 
@@ -84,10 +93,12 @@ class PublicBlogApiTest(TestCase):
         self.assertEqual(res.status_code, 405)
 
 
+@override_settings(WEBSITE_API_KEY=WEBSITE_KEY)
 class PublicCatalogApiTest(TestCase):
     def setUp(self):
         cache.clear()
         self.client = APIClient()
+        self.client.credentials(HTTP_X_WEBSITE_KEY=WEBSITE_KEY)
         self.zippers = Category.objects.create(name='Zippers')
         self.stands = Category.objects.create(name='Sofa stands')
         self.empty = Category.objects.create(name='Empty category')
@@ -113,12 +124,23 @@ class PublicCatalogApiTest(TestCase):
     def _names(self, res):
         return [p['name'] for p in res.data['results']]
 
+    def test_missing_or_wrong_key_is_rejected(self):
+        open_client = APIClient()
+        self.assertEqual(open_client.get('/api/public/website/products/').status_code, 401)
+        open_client.credentials(HTTP_X_WEBSITE_KEY='wrong-key')
+        self.assertEqual(open_client.get('/api/public/website/products/').status_code, 401)
+        posted = open_client.post('/api/public/website/enquiries/', {
+            'name': 'Amina', 'phone': '0718515142', 'message': 'hello',
+        }, format='json')
+        self.assertEqual(posted.status_code, 401)
+        self.assertEqual(WebsiteEnquiry.objects.count(), 0)
+
     def test_lists_only_active_products_without_login(self):
         res = self.client.get('/api/public/website/products/')
         self.assertEqual(res.status_code, 200)
         self.assertEqual(
             self._names(res),
-            ['Golden trophy stand', 'No. 5 nylon zipper', 'Upholstery labour'],
+            ['No. 5 nylon zipper', 'Golden trophy stand', 'Upholstery labour'],
         )
 
     def test_never_exposes_cost_stock_or_supplier(self):
@@ -165,6 +187,32 @@ class PublicCatalogApiTest(TestCase):
         self.assertEqual(
             self.client.get(f'/api/public/website/products/{self.zip.id}/').status_code, 200,
         )
+
+    def test_enquiry_is_saved_and_rejects_a_bad_phone(self):
+        res = self.client.post('/api/public/website/enquiries/', {
+            'name': 'Amina',
+            'phone': '0718 515 142',
+            'interest': 'No. 5 nylon zipper',
+            'message': '20 metres for cushion covers',
+            'product_id': self.zip.id,
+        }, format='json')
+        self.assertEqual(res.status_code, 201)
+        saved = WebsiteEnquiry.objects.get()
+        self.assertEqual(saved.product_id, self.zip.id)
+        self.assertEqual(saved.status, WebsiteEnquiry.STATUS_NEW)
+        bad = self.client.post('/api/public/website/enquiries/', {
+            'name': 'A', 'phone': '12', 'message': 'x',
+        }, format='json')
+        self.assertEqual(bad.status_code, 400)
+        self.assertEqual(WebsiteEnquiry.objects.count(), 1)
+
+    def test_honeypot_is_not_stored(self):
+        res = self.client.post('/api/public/website/enquiries/', {
+            'name': 'Bot', 'phone': '0718000000', 'message': 'buy now',
+            'company_website': 'https://spam.example',
+        }, format='json')
+        self.assertEqual(res.status_code, 201)
+        self.assertEqual(WebsiteEnquiry.objects.count(), 0)
 
     def test_categories_only_with_active_products(self):
         res = self.client.get('/api/public/website/categories/')

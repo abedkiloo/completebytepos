@@ -1,20 +1,23 @@
 from __future__ import annotations
 
-from django.db.models import Count, Q
-from rest_framework import mixins, viewsets
+from django.db.models import Case, Count, IntegerField, Q, Value, When
+from rest_framework import generics, mixins, viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 
 from products.models import Category, Product
 
-from .models import BlogPost
-from .permissions import CanManageWebsite
+from .models import BlogPost, WebsiteEnquiry
+from .permissions import CanManageWebsite, WebsiteKeyAuthentication
 from .serializers import (
     BlogPostAdminSerializer,
     PublicBlogPostDetailSerializer,
     PublicBlogPostListSerializer,
     PublicCategorySerializer,
+    PublicEnquirySerializer,
     PublicProductSerializer,
+    WebsiteEnquiryAdminSerializer,
 )
 
 _TRUTHY = {'1', 'true', 'yes'}
@@ -25,9 +28,13 @@ class PublicWebsiteThrottle(AnonRateThrottle):
     rate = '240/min'
 
 
+class PublicEnquiryThrottle(AnonRateThrottle):
+    scope = 'website_enquiry'
+    rate = '12/hour'
+
+
 class _PublicReadOnly(viewsets.ReadOnlyModelViewSet):
-    # No authentication: a stale token from the website must never turn into a 401.
-    authentication_classes = []
+    authentication_classes = [WebsiteKeyAuthentication]
     permission_classes = [AllowAny]
     throttle_classes = [PublicWebsiteThrottle]
 
@@ -65,7 +72,14 @@ class PublicProductViewSet(_PublicReadOnly):
         qs = (
             Product.objects.filter(is_active=True)
             .select_related('category', 'subcategory')
-            .order_by('name')
+            .annotate(
+                image_rank=Case(
+                    When(Q(image__isnull=True) | Q(image=''), then=Value(1)),
+                    default=Value(0),
+                    output_field=IntegerField(),
+                )
+            )
+            .order_by('image_rank', 'name')
         )
         params = self.request.query_params
         category = (params.get('category') or '').strip()
@@ -96,6 +110,51 @@ class PublicCategoryViewSet(_PublicReadOnly):
             .filter(public_product_count__gt=0)
             .order_by('name')
         )
+
+
+class PublicEnquiryCreateView(generics.CreateAPIView):
+    authentication_classes = [WebsiteKeyAuthentication]
+    permission_classes = [AllowAny]
+    throttle_classes = [PublicEnquiryThrottle]
+    serializer_class = PublicEnquirySerializer
+
+    def create(self, request, *args, **kwargs):
+        # A filled honeypot is a bot. Pretend it succeeded and store nothing.
+        if str(request.data.get('company_website') or '').strip():
+            return Response({'status': WebsiteEnquiry.STATUS_NEW}, status=201)
+        return super().create(request, *args, **kwargs)
+
+
+class WebsiteEnquiryAdminViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
+    viewsets.GenericViewSet,
+):
+    serializer_class = WebsiteEnquiryAdminSerializer
+    permission_classes = [IsAuthenticated, CanManageWebsite]
+    http_method_names = ['get', 'patch', 'head', 'options']
+
+    def get_queryset(self):
+        qs = WebsiteEnquiry.objects.select_related('product')
+        params = self.request.query_params
+        status_filter = (params.get('status') or '').strip()
+        if status_filter in {
+            WebsiteEnquiry.STATUS_NEW,
+            WebsiteEnquiry.STATUS_REVIEWED,
+            WebsiteEnquiry.STATUS_CLOSED,
+        }:
+            qs = qs.filter(status=status_filter)
+        search = (params.get('search') or '').strip()
+        if search:
+            qs = qs.filter(
+                Q(name__icontains=search)
+                | Q(phone__icontains=search)
+                | Q(interest__icontains=search)
+                | Q(message__icontains=search)
+                | Q(business__icontains=search)
+            )
+        return qs
 
 
 class BlogPostAdminViewSet(
