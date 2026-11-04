@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollText, Search, Loader2 } from 'lucide-react';
-import { auditLogAPI } from '../../services/api';
+import { auditLogAPI, usersAPI } from '../../services/api';
 import { PageShell, PageHeader, PageLoading } from '../page';
 import { ListSortBar } from '../page/ListSortBar';
 import { useListOrdering } from '../../hooks/useListOrdering';
@@ -34,12 +34,59 @@ const ACTION_LABELS = {
   holding_save: 'Saved holding',
   stock_adjust: 'Stock adjust',
   stock_purchase: 'Stock purchase',
+  stock_transfer: 'Stock transfer',
+  stock_undo: 'Stock undo',
   approve: 'Approved',
   reject: 'Rejected',
   pending_submit: 'Submitted for approval',
   pending_approve: 'Approved change',
   pending_reject: 'Rejected change',
+  refund: 'Refund',
+  rollback: 'Rollback',
 };
+
+const MODULE_OPTIONS = [
+  { value: '', label: 'All modules' },
+  { value: 'sales', label: 'Sales / POS' },
+  { value: 'products', label: 'Products' },
+  { value: 'inventory', label: 'Inventory' },
+  { value: 'customers', label: 'Customers' },
+  { value: 'users', label: 'Users' },
+  { value: 'roles', label: 'Roles' },
+  { value: 'approvals', label: 'Approvals' },
+  { value: 'expenses', label: 'Expenses' },
+  { value: 'income', label: 'Income' },
+  { value: 'bankaccounts', label: 'Bank accounts' },
+  { value: 'transfers', label: 'Money transfers' },
+  { value: 'accounting', label: 'Accounting' },
+  { value: 'payroll', label: 'Payroll' },
+  { value: 'employees', label: 'Employees' },
+  { value: 'appraisals', label: 'Target delivery' },
+  { value: 'suppliers', label: 'Suppliers' },
+  { value: 'agents', label: 'Field / sites' },
+  { value: 'dispatch', label: 'Dispatch' },
+  { value: 'delivery', label: 'Delivery' },
+  { value: 'payments', label: 'Payments' },
+  { value: 'messaging', label: 'Messaging' },
+  { value: 'daily_notes', label: 'Daily notes' },
+  { value: 'settings', label: 'Settings' },
+  { value: 'module_settings', label: 'Module settings' },
+  { value: 'website', label: 'Website / CMS' },
+];
+
+function todayIsoDate() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function humanModuleName(value) {
+  const hit = MODULE_OPTIONS.find((o) => o.value === value);
+  if (hit) return hit.label;
+  return humanFieldName(value);
+}
 
 function formatValue(value) {
   if (value === null || value === undefined || value === '') return '—';
@@ -172,10 +219,29 @@ export default function AuditLogPage() {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [action, setAction] = useState('');
+  const [module, setModule] = useState('');
+  const [userId, setUserId] = useState('');
+  const [dateFrom, setDateFrom] = useState(todayIsoDate);
+  const [dateTo, setDateTo] = useState(todayIsoDate);
+  const [timeFrom, setTimeFrom] = useState('');
+  const [timeTo, setTimeTo] = useState('');
+  const [users, setUsers] = useState([]);
+  const [facetModules, setFacetModules] = useState([]);
+  const [facetActions, setFacetActions] = useState([]);
   const { ordering, setOrdering } = useListOrdering();
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+
+  const moduleOptions = useMemo(() => {
+    const known = new Map(MODULE_OPTIONS.map((o) => [o.value, o]));
+    for (const m of facetModules) {
+      if (m && !known.has(m)) {
+        known.set(m, { value: m, label: humanModuleName(m) });
+      }
+    }
+    return Array.from(known.values());
+  }, [facetModules]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -183,6 +249,12 @@ export default function AuditLogPage() {
       const params = withListOrdering({}, ordering);
       if (q.trim()) params.q = q.trim();
       if (action) params.action = action;
+      if (module) params.module = module;
+      if (userId) params.user = userId;
+      if (dateFrom) params.date_from = dateFrom;
+      if (dateTo) params.date_to = dateTo;
+      if (timeFrom) params.time_from = timeFrom;
+      if (timeTo) params.time_to = timeTo;
       const res = await auditLogAPI.list(params);
       const data = res.data?.results ?? res.data ?? [];
       setRows(Array.isArray(data) ? data : []);
@@ -192,7 +264,38 @@ export default function AuditLogPage() {
     } finally {
       setLoading(false);
     }
-  }, [q, action, ordering]);
+  }, [q, action, module, userId, dateFrom, dateTo, timeFrom, timeTo, ordering]);
+
+  useEffect(() => {
+    if (!allowed) return undefined;
+    let cancelled = false;
+    usersAPI
+      .list({ page_size: 200 })
+      .then((res) => {
+        if (cancelled) return;
+        const data = res.data?.results ?? res.data ?? [];
+        setUsers(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (!cancelled) setUsers([]);
+      });
+    auditLogAPI
+      .facets()
+      .then((res) => {
+        if (cancelled) return;
+        setFacetModules(Array.isArray(res.data?.modules) ? res.data.modules : []);
+        setFacetActions(Array.isArray(res.data?.actions) ? res.data.actions : []);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFacetModules([]);
+          setFacetActions([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [allowed]);
 
   useEffect(() => {
     if (allowed) load();
@@ -234,7 +337,7 @@ export default function AuditLogPage() {
     <PageShell>
       <PageHeader
         title="Audit log"
-        description="Who changed prices, stock, sales, and sign-in activity. Click a row to see what they entered."
+        description="Everything any user does in the system — every module. Filter by day, time, user, module, or action. Click a row for before/after values."
         icon={ScrollText}
       />
       <Card>
@@ -244,13 +347,73 @@ export default function AuditLogPage() {
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 className="pl-8"
-                placeholder="Search user, object, path…"
+                placeholder="Search user, object, path, module…"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
               />
             </div>
+            <label className="flex items-center gap-1 text-sm text-muted-foreground">
+              <span className="sr-only">From date</span>
+              <Input
+                type="date"
+                aria-label="From date"
+                className="h-9 w-auto"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+              />
+            </label>
+            <Input
+              type="time"
+              aria-label="From time"
+              className="h-9 w-auto"
+              value={timeFrom}
+              onChange={(e) => setTimeFrom(e.target.value)}
+            />
+            <label className="flex items-center gap-1 text-sm text-muted-foreground">
+              <span className="sr-only">To date</span>
+              <Input
+                type="date"
+                aria-label="To date"
+                className="h-9 w-auto"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+              />
+            </label>
+            <Input
+              type="time"
+              aria-label="To time"
+              className="h-9 w-auto"
+              value={timeTo}
+              onChange={(e) => setTimeTo(e.target.value)}
+            />
             <select
               className="h-9 rounded-md border px-2 text-sm"
+              aria-label="Filter by user"
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+            >
+              <option value="">All users</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.username || u.email || `User ${u.id}`}
+                </option>
+              ))}
+            </select>
+            <select
+              className="h-9 rounded-md border px-2 text-sm"
+              aria-label="Filter by module"
+              value={module}
+              onChange={(e) => setModule(e.target.value)}
+            >
+              {moduleOptions.map((opt) => (
+                <option key={opt.value || 'all'} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <select
+              className="h-9 rounded-md border px-2 text-sm"
+              aria-label="Filter by action"
               value={action}
               onChange={(e) => setAction(e.target.value)}
             >
@@ -260,11 +423,77 @@ export default function AuditLogPage() {
               <option value="checkout">Checkout</option>
               <option value="create">Create</option>
               <option value="update">Update</option>
+              <option value="delete">Delete</option>
+              <option value="assign_role">Assign role</option>
+              <option value="change_password">Change password</option>
               <option value="stock_adjust">Stock adjust</option>
+              <option value="stock_purchase">Stock purchase</option>
+              <option value="stock_transfer">Stock transfer</option>
+              <option value="refund">Refund</option>
+              <option value="rollback">Rollback</option>
+              <option value="pending_submit">Submitted for approval</option>
+              <option value="pending_approve">Approved change</option>
+              <option value="pending_reject">Rejected change</option>
+              {facetActions
+                .filter(
+                  (a) =>
+                    ![
+                      'login',
+                      'logout',
+                      'checkout',
+                      'create',
+                      'update',
+                      'delete',
+                      'assign_role',
+                      'change_password',
+                      'stock_adjust',
+                      'stock_purchase',
+                      'stock_transfer',
+                      'refund',
+                      'rollback',
+                      'pending_submit',
+                      'pending_approve',
+                      'pending_reject',
+                    ].includes(a)
+                )
+                .map((a) => (
+                  <option key={a} value={a}>
+                    {actionLabel(a)}
+                  </option>
+                ))}
             </select>
             <ListSortBar value={ordering} onChange={setOrdering} />
             <Button type="button" onClick={load}>
               Apply
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setDateFrom('');
+                setDateTo('');
+                setTimeFrom('');
+                setTimeTo('');
+                setUserId('');
+                setModule('');
+                setAction('');
+                setQ('');
+              }}
+            >
+              All time
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                const today = todayIsoDate();
+                setDateFrom(today);
+                setDateTo(today);
+                setTimeFrom('');
+                setTimeTo('');
+              }}
+            >
+              Today
             </Button>
           </div>
           {loading ? (

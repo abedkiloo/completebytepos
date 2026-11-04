@@ -4,6 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from accounts.permissions import RequirePermPerAction
+from utils.audit_mixin import AuditedModelViewSetMixin
 
 from .models import FieldOrder
 from .order_serializers import (
@@ -29,12 +30,13 @@ FIELD_ORDER_PERMS = RequirePermPerAction(
 )
 
 
-class FieldOrderViewSet(viewsets.ModelViewSet):
+class FieldOrderViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = FieldOrder.objects.select_related(
         'site', 'customer', 'created_by', 'assigned_delivery_agent',
     ).prefetch_related('lines', 'lines__variant', 'site__media')
     serializer_class = FieldOrderSerializer
     permission_classes = [IsAuthenticated, FIELD_ORDER_PERMS]
+    audit_module = 'agents'
     http_method_names = ['get', 'post', 'patch', 'head', 'options']
 
     def get_queryset(self):

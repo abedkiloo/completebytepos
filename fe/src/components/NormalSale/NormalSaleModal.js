@@ -778,11 +778,10 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                         key={product.id}
                         className="cursor-pointer border-b border-border/50 px-3 py-2 last:border-b-0 hover:bg-muted"
                         onMouseDown={(e) => {
-                          // Use onMouseDown to prevent onBlur from firing first
+                          // onMouseDown only — onClick would fire after and double-add the line.
                           e.preventDefault();
                           handleProductSelect(product);
                         }}
-                        onClick={() => handleProductSelect(product)}
                       >
                         <div className="mb-1 font-medium text-foreground">{product.name}</div>
                         <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
@@ -849,12 +848,8 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                                   key={product.id}
                                   className="cursor-pointer border-b border-border/50 px-3 py-2 last:border-b-0 hover:bg-muted"
                                   onMouseDown={(e) => {
-                                    // Use onMouseDown to prevent onBlur from firing first
+                                    // onMouseDown only — pairing with onClick doubles the product line.
                                     e.preventDefault();
-                                    handleProductSelect(product);
-                                    setSelectedProductRowIndex(null);
-                                  }}
-                                  onClick={() => {
                                     handleProductSelect(product);
                                     setSelectedProductRowIndex(null);
                                   }}

@@ -332,3 +332,9 @@ class AuditLog(models.Model):
     def __str__(self):
         who = self.username_snapshot or 'anonymous'
         return f"[{self.created_at:%Y-%m-%d %H:%M:%S}] {who} {self.action} {self.object_type or self.module or '-'}"
+
+    def save(self, *args, **kwargs):
+        # Append-only: allow create, never update existing rows.
+        if self.pk and not self._state.adding:
+            raise ValueError('AuditLog entries are immutable and cannot be updated')
+        return super().save(*args, **kwargs)

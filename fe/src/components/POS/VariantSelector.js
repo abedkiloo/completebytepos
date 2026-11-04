@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { variantsAPI, productsAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
 import { cn } from '../../lib/cn';
@@ -38,6 +38,8 @@ const VariantSelector = ({
   const [quantity, setQuantity] = useState(1);
   const [quantityInput, setQuantityInput] = useState('1');
   const [quantityError, setQuantityError] = useState(null);
+  /** Prevents double Add (1→2 / 3→6) from double-click or StrictMode remount. */
+  const submittedRef = useRef(false);
 
   const loadProductDetails = useCallback(async () => {
     if (!product?.id) return;
@@ -197,15 +199,24 @@ const VariantSelector = ({
     variantsList: activeVariants,
   });
 
+  const commitSelection = useCallback(
+    (payload) => {
+      if (submittedRef.current) return;
+      submittedRef.current = true;
+      onSelect(payload);
+    },
+    [onSelect]
+  );
+
   const handleAddToCart = () => {
-    if (addDisabled) return;
+    if (addDisabled || submittedRef.current) return;
     const payload = buildVariantCartPayload(
       product,
       selectedVariant,
       quantity,
       activeVariants
     );
-    onSelect(payload);
+    commitSelection(payload);
   };
 
   const getVariantStock = () => {
@@ -262,8 +273,14 @@ const VariantSelector = ({
     setQuantityInput(numValue.toString());
   };
 
+  // Auto-add simple products once after load — never during render (StrictMode-safe).
+  useEffect(() => {
+    if (loading || loadingDetails || !product) return;
+    if (product.has_variants || activeVariants.length > 0) return;
+    commitSelection(buildVariantCartPayload(product, null, 1));
+  }, [loading, loadingDetails, product, activeVariants.length, commitSelection]);
+
   if (!product.has_variants && activeVariants.length === 0) {
-    onSelect(buildVariantCartPayload(product, null, 1));
     return null;
   }
 
@@ -559,7 +576,7 @@ const VariantSelector = ({
             type="button"
             className="flex-1"
             onClick={handleAddToCart}
-            disabled={addDisabled}
+            disabled={addDisabled || submittedRef.current}
           >
             Add to Cart
           </Button>

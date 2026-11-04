@@ -63,22 +63,38 @@ class EmployeeSerializer(serializers.ModelSerializer):
     def _profile(self, obj):
         if not obj.user_id:
             return None
-        from accounts.models import UserProfile
+        if hasattr(obj, '_emp_profile_cache'):
+            return obj._emp_profile_cache
 
-        # Fresh fetch so role changes in the same request show up in the response.
-        return (
-            UserProfile.objects.select_related('custom_role')
-            .filter(user_id=obj.user_id)
-            .first()
-        )
+        profile = None
+        user = getattr(obj, 'user', None)
+        if user is not None:
+            try:
+                profile = user.profile
+            except Exception:
+                profile = None
+        if profile is None:
+            from accounts.models import UserProfile
+
+            profile = (
+                UserProfile.objects.select_related('custom_role')
+                .filter(user_id=obj.user_id)
+                .first()
+            )
+        obj._emp_profile_cache = profile
+        return profile
 
     def _role_from_position(self, obj):
+        if hasattr(obj, '_emp_position_role_cache'):
+            return obj._emp_position_role_cache
         position = (obj.position or '').strip()
-        if not position:
-            return None
-        from accounts.models import Role
+        role = None
+        if position:
+            from accounts.models import Role
 
-        return Role.objects.filter(name__iexact=position, is_active=True).first()
+            role = Role.objects.filter(name__iexact=position, is_active=True).first()
+        obj._emp_position_role_cache = role
+        return role
 
     def get_role_id(self, obj):
         profile = self._profile(obj)

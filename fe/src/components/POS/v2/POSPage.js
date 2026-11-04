@@ -479,8 +479,9 @@ export default function POSPage() {
           product={state.variantPickerProduct}
           validateStock={state.validateStock}
           onSelect={(productWithVariant) => {
-            state.addProductToCart(productWithVariant);
+            // Close first so a second click cannot land on Add and double qty.
             state.setVariantPickerProduct(null);
+            state.addProductToCart(productWithVariant);
           }}
           onClose={() => state.setVariantPickerProduct(null)}
         />

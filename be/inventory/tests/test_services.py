@@ -38,6 +38,25 @@ class StockMovementServiceTestCase(TestCase):
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock_quantity, 15)
 
+    def test_adjust_writes_audit_with_before_after(self):
+        from accounts.models import AuditLog
+
+        AuditLog.objects.all().delete()
+        self.service.adjust_stock(
+            product_id=self.product.id,
+            variant_id=None,
+            quantity=3,
+            notes='test adjust',
+            user=self.user,
+            use_catalog_cost=True,
+        )
+        entry = AuditLog.objects.filter(module='inventory', action='stock_adjust').latest(
+            'created_at'
+        )
+        self.assertEqual(entry.changes.get('stock_before'), 10)
+        self.assertEqual(entry.changes.get('stock_after'), 13)
+        self.assertEqual(entry.changes.get('quantity'), 3)
+
     def test_purchase_records_stock_before_and_after(self):
         movement = self.service.purchase_stock(
             product_id=self.product.id,

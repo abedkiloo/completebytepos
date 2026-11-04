@@ -164,18 +164,7 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 branch=current_branch,
                 unit_cost=unit_cost,
                 use_catalog_cost=use_catalog_cost,
-            )
-            from utils.audit_events import log_stock_movement_event
-
-            log_stock_movement_event(
-                request,
-                movement,
-                event='stock_adjust',
-                payload={
-                    'product_id': product_id,
-                    'variant_id': variant_id,
-                    'notes': notes,
-                },
+                request=request,
             )
             response_serializer = self.get_serializer(movement)
             return Response(response_serializer.data, status=status.HTTP_201_CREATED)
@@ -242,22 +231,7 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 reference=reference,
                 unit_sell_price=unit_sell_price,
                 use_catalog_cost=use_catalog_cost,
-            )
-            from utils.audit_events import log_stock_movement_event
-
-            log_stock_movement_event(
-                request,
-                movement,
-                event='stock_purchase',
-                payload={
-                    'product_id': product_id,
-                    'variant_id': variant_id,
-                    'unit_cost': str(unit_cost) if unit_cost is not None else None,
-                    'unit_sell_price': (
-                        str(unit_sell_price) if unit_sell_price is not None else None
-                    ),
-                    'reference': reference,
-                },
+                request=request,
             )
             response_serializer = self.get_serializer(movement)
             return Response(response_serializer.data, status=status.HTTP_201_CREATED)
@@ -342,7 +316,8 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 from_branch=from_branch,
                 to_branch=to_branch,
                 notes=transfer_notes,
-                user=request.user
+                user=request.user,
+                request=request,
             )
             
             # Update reference if provided
@@ -351,20 +326,6 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 for movement in movements:
                     movement.reference = reference
                     movement.save(update_fields=['reference'])
-
-            from utils.audit_events import log_stock_movement_event
-
-            for movement in movements:
-                log_stock_movement_event(
-                    request,
-                    movement,
-                    event='stock_transfer',
-                    payload={
-                        'product_id': product_id,
-                        'from_branch_id': from_branch.id,
-                        'to_branch_id': to_branch.id,
-                    },
-                )
 
             response_serializer = self.get_serializer(movements, many=True)
             return Response({
@@ -393,23 +354,8 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
         try:
             _, reverse_movement, reverse_paired = self.stock_service.undo_transfer(
-                movement, user=request.user
+                movement, user=request.user, request=request
             )
-            from utils.audit_events import log_stock_movement_event
-
-            log_stock_movement_event(
-                request,
-                reverse_movement,
-                event='stock_undo',
-                payload={'original_movement_id': movement.id},
-            )
-            if reverse_paired:
-                log_stock_movement_event(
-                    request,
-                    reverse_paired,
-                    event='stock_undo',
-                    payload={'original_movement_id': movement.id},
-                )
             if reverse_paired:
                 return Response({
                     'message': 'Transfer undone successfully',
@@ -515,20 +461,9 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                     branch=current_branch,
                     unit_cost=adj.get('unit_cost'),
                     use_catalog_cost=bool(adj.get('use_catalog_cost')),
+                    request=request,
                 )
                 created_movements.append(movement)
-                from utils.audit_events import log_stock_movement_event
-
-                log_stock_movement_event(
-                    request,
-                    movement,
-                    event='stock_adjust',
-                    payload={
-                        'product_id': product_id,
-                        'variant_id': variant_id,
-                        'bulk': True,
-                    },
-                )
 
             except Exception as e:
                 errors.append(f"Adjustment {idx + 1}: {str(e)}")

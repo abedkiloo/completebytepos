@@ -603,6 +603,7 @@ export const reportsAPI = {
 export const auditLogAPI = {
   list: (params) => api.get('/accounts/audit-logs/', { params }),
   get: (id) => api.get(`/accounts/audit-logs/${id}/`),
+  facets: (params) => api.get('/accounts/audit-logs/facets/', { params }),
 };
 
 export const pendingChangesAPI = {

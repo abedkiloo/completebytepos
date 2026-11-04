@@ -505,6 +505,13 @@ class UserViewSet(viewsets.ModelViewSet):
             serializer.is_valid(raise_exception=True)
             user = serializer.save()
             apply_profile_updates(user, profile_data)
+            log_domain_event(
+                request,
+                AuditLog.ACTION_UPDATE,
+                user,
+                module='users',
+                changes={'self_service': True, 'fields': sorted(data.keys())},
+            )
             return Response(UserSerializer(user).data)
 
         # Admins can update other users
@@ -516,6 +523,13 @@ class UserViewSet(viewsets.ModelViewSet):
             serializer.is_valid(raise_exception=True)
             user = serializer.save()
             apply_profile_updates(user, profile_data)
+            log_domain_event(
+                request,
+                AuditLog.ACTION_UPDATE,
+                user,
+                module='users',
+                changes={'admin_edit': True, 'fields': sorted(data.keys())},
+            )
             return Response(UserSerializer(user).data)
         
         return Response(
@@ -527,12 +541,20 @@ class UserViewSet(viewsets.ModelViewSet):
         """Delete user - only super admins"""
         if not users_enable_delete():
             return self._feature_disabled_response('Deleting users')
-        user = request.user
-        if not (user.is_superuser or (hasattr(user, 'profile') and user.profile and user.profile.is_super_admin)):
+        actor = request.user
+        if not (actor.is_superuser or (hasattr(actor, 'profile') and actor.profile and actor.profile.is_super_admin)):
             return Response(
                 {'error': 'Only super admins can delete users'},
                 status=status.HTTP_403_FORBIDDEN
             )
+        target = self.get_object()
+        log_domain_event(
+            request,
+            AuditLog.ACTION_DELETE,
+            target,
+            module='users',
+            changes={'username': target.username},
+        )
         return super().destroy(request, *args, **kwargs)
     
     @action(detail=True, methods=['post'])
@@ -560,8 +582,16 @@ class UserViewSet(viewsets.ModelViewSet):
         if not hasattr(user, 'profile'):
             UserProfile.objects.create(user=user, role='cashier')
         
+        previous = getattr(user.profile.custom_role, 'name', None)
         user.profile.custom_role = role
         user.profile.save()
+        log_domain_event(
+            request,
+            'assign_role',
+            user,
+            module='users',
+            changes={'from': previous, 'to': role.name, 'role_id': role.id},
+        )
         
         return Response({
             'message': f'Role {role.name} assigned to {user.username}',
@@ -606,6 +636,13 @@ class UserViewSet(viewsets.ModelViewSet):
         user.save()
         # Admin-set password must be changed on next login; self-service clears the flag.
         set_must_change_password(user, not is_self)
+        log_domain_event(
+            request,
+            'change_password',
+            user,
+            module='users',
+            changes={'self_service': is_self},
+        )
         
         return Response({
             'message': 'Password changed successfully',
@@ -805,20 +842,41 @@ class AuthViewSet(viewsets.ViewSet):
         })
 
 
+def _parse_audit_datetime(value: str):
+    """Accept YYYY-MM-DD or ISO datetime strings for audit range filters."""
+    from django.utils.dateparse import parse_date, parse_datetime
+    from django.utils import timezone as dj_tz
+
+    raw = (value or '').strip()
+    if not raw:
+        return None
+    dt = parse_datetime(raw)
+    if dt is not None:
+        if dj_tz.is_naive(dt):
+            dt = dj_tz.make_aware(dt, dj_tz.get_current_timezone())
+        return dt
+    d = parse_date(raw)
+    if d is not None:
+        return d
+    return None
+
+
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    Read-only view onto the append-only audit log. Gated to super-admins
-    only - we don't want regular admins to see who looked at what (that's a
-    privacy + power concentration issue).
+    Read-only append-only audit log for every write across the system.
 
     Supports filtering via query params:
-      * ``user``        - user id
-      * ``action``      - exact match ('create', 'update', 'login', etc.)
-      * ``module``      - exact match ('sales', 'products', ...)
-      * ``object_type`` - exact match ('sales.Sale', ...)
-      * ``date_from``   - YYYY-MM-DD inclusive
-      * ``date_to``     - YYYY-MM-DD inclusive
-      * ``q``           - free-text search over username / object_repr / path
+      * ``user``            - user id
+      * ``action``          - exact match ('create', 'update', 'login', etc.)
+      * ``module``          - exact match ('sales', 'products', ...)
+      * ``object_type``     - exact match ('sales.Sale', ...)
+      * ``date_from``       - YYYY-MM-DD inclusive (calendar day)
+      * ``date_to``         - YYYY-MM-DD inclusive (calendar day)
+      * ``created_after``   - ISO datetime or YYYY-MM-DD (created_at >=)
+      * ``created_before``  - ISO datetime or YYYY-MM-DD (created_at <= end of day if date-only)
+      * ``time_from``       - HH:MM on date_from (optional, local time)
+      * ``time_to``         - HH:MM on date_to (optional, local time)
+      * ``q``               - free-text search over username / object_repr / path
     """
     queryset = AuditLog.objects.all().select_related('user')
     serializer_class = AuditLogSerializer
@@ -826,6 +884,10 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     ordering = ['-created_at']
 
     def get_queryset(self):
+        from datetime import datetime, time as dt_time
+
+        from django.utils import timezone as dj_tz
+
         qs = super().get_queryset()
         params = self.request.query_params
 
@@ -837,18 +899,85 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(module=params['module'])
         if params.get('object_type'):
             qs = qs.filter(object_type=params['object_type'])
-        if params.get('date_from'):
-            qs = qs.filter(created_at__date__gte=params['date_from'])
-        if params.get('date_to'):
-            qs = qs.filter(created_at__date__lte=params['date_to'])
+
+        created_after = _parse_audit_datetime(params.get('created_after', ''))
+        created_before = _parse_audit_datetime(params.get('created_before', ''))
+        if created_after is not None:
+            if hasattr(created_after, 'hour'):
+                qs = qs.filter(created_at__gte=created_after)
+            else:
+                qs = qs.filter(created_at__date__gte=created_after)
+        if created_before is not None:
+            if hasattr(created_before, 'hour'):
+                qs = qs.filter(created_at__lte=created_before)
+            else:
+                qs = qs.filter(created_at__date__lte=created_before)
+
+        date_from = params.get('date_from')
+        date_to = params.get('date_to')
+        time_from = (params.get('time_from') or '').strip()
+        time_to = (params.get('time_to') or '').strip()
+
+        if date_from and time_from and not params.get('created_after'):
+            try:
+                hh, mm = [int(x) for x in time_from.split(':', 1)]
+                d = _parse_audit_datetime(date_from)
+                if d is not None and not hasattr(d, 'hour'):
+                    start = dj_tz.make_aware(
+                        datetime.combine(d, dt_time(hh, mm)),
+                        dj_tz.get_current_timezone(),
+                    )
+                    qs = qs.filter(created_at__gte=start)
+                    date_from = None
+            except (TypeError, ValueError):
+                pass
+        if date_to and time_to and not params.get('created_before'):
+            try:
+                hh, mm = [int(x) for x in time_to.split(':', 1)]
+                d = _parse_audit_datetime(date_to)
+                if d is not None and not hasattr(d, 'hour'):
+                    end = dj_tz.make_aware(
+                        datetime.combine(d, dt_time(hh, mm, 59)),
+                        dj_tz.get_current_timezone(),
+                    )
+                    qs = qs.filter(created_at__lte=end)
+                    date_to = None
+            except (TypeError, ValueError):
+                pass
+
+        if date_from:
+            qs = qs.filter(created_at__date__gte=date_from)
+        if date_to:
+            qs = qs.filter(created_at__date__lte=date_to)
+
         if params.get('q'):
             term = params['q']
             qs = qs.filter(
                 Q(username_snapshot__icontains=term) |
                 Q(object_repr__icontains=term) |
-                Q(path__icontains=term)
+                Q(path__icontains=term) |
+                Q(module__icontains=term) |
+                Q(action__icontains=term)
             )
         return qs
+
+    @action(detail=False, methods=['get'], url_path='facets')
+    def facets(self, request):
+        """Distinct modules/actions present in the log (for filter dropdowns)."""
+        qs = self.filter_queryset(self.get_queryset())
+        modules = list(
+            qs.exclude(module='')
+            .values_list('module', flat=True)
+            .distinct()
+            .order_by('module')
+        )
+        actions = list(
+            qs.exclude(action='')
+            .values_list('action', flat=True)
+            .distinct()
+            .order_by('action')
+        )
+        return Response({'modules': modules, 'actions': actions})
 
 
 # Module settings ViewSets moved to settings app

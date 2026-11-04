@@ -575,9 +575,24 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
   // Cart mutations
   // ------------------------------------------------------------------
 
+  const lastPickerAddRef = useRef({ stamp: '', at: 0 });
+
   const addProductToCart = useCallback((product) => {
     const key = cartItemKey(product);
     const qtyToAdd = product.quantity || 1;
+    // Variant picker sends an explicit quantity. Ignore a second identical
+    // add within 500ms (double-click / double-fire → 1→2 or 3→6).
+    if (product.quantity != null && product.quantity !== undefined) {
+      const stamp = `${key}:${qtyToAdd}`;
+      const now = Date.now();
+      if (
+        lastPickerAddRef.current.stamp === stamp &&
+        now - lastPickerAddRef.current.at < 500
+      ) {
+        return;
+      }
+      lastPickerAddRef.current = { stamp, at: now };
+    }
     setCart((prev) => {
       const existing = prev.find((item) => cartItemKey(item) === key);
       if (existing) {

@@ -7,6 +7,8 @@ from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 
 from products.models import Category, Product
+from utils.audit_helpers import log_domain_event
+from utils.audit_mixin import AuditedModelViewSetMixin
 
 from .models import BlogPost, WebsiteEnquiry
 from .permissions import CanManageWebsite, WebsiteKeyAuthentication
@@ -122,10 +124,25 @@ class PublicEnquiryCreateView(generics.CreateAPIView):
         # A filled honeypot is a bot. Pretend it succeeded and store nothing.
         if str(request.data.get('company_website') or '').strip():
             return Response({'status': WebsiteEnquiry.STATUS_NEW}, status=201)
-        return super().create(request, *args, **kwargs)
+        response = super().create(request, *args, **kwargs)
+        if getattr(response, 'status_code', 0) in (200, 201):
+            enquiry_id = None
+            data = getattr(response, 'data', None)
+            if isinstance(data, dict):
+                enquiry_id = data.get('id')
+            log_domain_event(
+                request,
+                'create',
+                None,
+                module='website',
+                changes={'enquiry_id': enquiry_id, 'channel': 'public'},
+                object_repr='Website enquiry',
+            )
+        return response
 
 
 class WebsiteEnquiryAdminViewSet(
+    AuditedModelViewSetMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
@@ -134,6 +151,7 @@ class WebsiteEnquiryAdminViewSet(
     serializer_class = WebsiteEnquiryAdminSerializer
     permission_classes = [IsAuthenticated, CanManageWebsite]
     http_method_names = ['get', 'patch', 'head', 'options']
+    audit_module = 'website'
 
     def get_queryset(self):
         qs = WebsiteEnquiry.objects.select_related('product')
@@ -158,6 +176,7 @@ class WebsiteEnquiryAdminViewSet(
 
 
 class BlogPostAdminViewSet(
+    AuditedModelViewSetMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
@@ -167,6 +186,7 @@ class BlogPostAdminViewSet(
 ):
     serializer_class = BlogPostAdminSerializer
     permission_classes = [IsAuthenticated, CanManageWebsite]
+    audit_module = 'website'
 
     def get_queryset(self):
         qs = BlogPost.objects.select_related('author').order_by('-updated_at')

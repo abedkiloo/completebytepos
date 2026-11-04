@@ -45,6 +45,8 @@ from payroll.services import (
 )
 from payroll.starters import seed_starter_components
 from settings.models import Tenant
+from utils.audit_helpers import log_domain_event
+from utils.audit_mixin import AuditedModelViewSetMixin
 
 
 def _perm(module, action):
@@ -69,16 +71,44 @@ class PayrollSettingsView(APIView):
 
     def _update(self, request):
         settings = PayrollSettings.load()
+        before = {
+            'currency': settings.currency,
+            'pay_day': settings.pay_day,
+            'statutory_enabled': settings.statutory_enabled,
+            'include_appraisal_bonus': settings.include_appraisal_bonus,
+            'letterhead_line': settings.letterhead_line,
+        }
         ser = PayrollSettingsSerializer(settings, data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
         ser.save()
+        settings.refresh_from_db()
+        after = {
+            'currency': settings.currency,
+            'pay_day': settings.pay_day,
+            'statutory_enabled': settings.statutory_enabled,
+            'include_appraisal_bonus': settings.include_appraisal_bonus,
+            'letterhead_line': settings.letterhead_line,
+        }
+        changes = {
+            k: {'from': before[k], 'to': after[k]}
+            for k in before
+            if before[k] != after[k]
+        }
+        log_domain_event(
+            request,
+            'update',
+            settings,
+            module='payroll',
+            changes=changes or {'updated': True},
+        )
         return Response(ser.data)
 
 
-class PayComponentViewSet(viewsets.ModelViewSet):
+class PayComponentViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = PayComponent.objects.all()
     serializer_class = PayComponentSerializer
     lookup_field = 'pk'
+    audit_module = 'payroll'
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
@@ -101,7 +131,8 @@ class PayComponentViewSet(viewsets.ModelViewSet):
         return Response({'created': created})
 
 
-class EmployeePayAssignmentViewSet(viewsets.ModelViewSet):
+class EmployeePayAssignmentViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
+    audit_module = 'payroll'
     queryset = EmployeePayAssignment.objects.select_related(
         'employee', 'component'
     ).all()
@@ -120,7 +151,8 @@ class EmployeePayAssignmentViewSet(viewsets.ModelViewSet):
         return qs
 
 
-class RolePayPackageViewSet(viewsets.ModelViewSet):
+class RolePayPackageViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
+    audit_module = 'payroll'
     queryset = RolePayPackage.objects.select_related('role').prefetch_related(
         'lines__component'
     )
@@ -340,7 +372,8 @@ class RolePayPackageViewSet(viewsets.ModelViewSet):
         )
 
 
-class RolePayPackageLineViewSet(viewsets.ModelViewSet):
+class RolePayPackageLineViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
+    audit_module = 'payroll'
     queryset = RolePayPackageLine.objects.select_related('component', 'package')
     serializer_class = RolePayPackageLineSerializer
     http_method_names = ['get', 'patch', 'put', 'delete', 'head', 'options']
@@ -358,9 +391,10 @@ class RolePayPackageLineViewSet(viewsets.ModelViewSet):
         return qs
 
 
-class StatutoryRuleViewSet(viewsets.ModelViewSet):
+class StatutoryRuleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = StatutoryRule.objects.select_related('component').all()
     serializer_class = StatutoryRuleSerializer
+    audit_module = 'payroll'
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):

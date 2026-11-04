@@ -1299,6 +1299,10 @@ class ProductListSerializer(serializers.ModelSerializer):
     def get_variants_count(self, obj):
         if not obj.has_variants:
             return 0
+        # Prefer prefetched cache — .count() always hits the DB (N+1 on list).
+        prefetched = getattr(obj, '_prefetched_objects_cache', {}) or {}
+        if 'variants' in prefetched:
+            return len(obj.variants.all())
         return obj.variants.count()
     
     def get_image_url(self, obj):

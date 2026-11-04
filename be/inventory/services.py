@@ -63,11 +63,45 @@ def resolve_intake_unit_cost(
     )
 
 
+def _on_hand(product: Product, variant: Optional[ProductVariant] = None) -> int:
+    if variant is not None:
+        return int(variant.stock_quantity or 0)
+    return int(product.stock_quantity or 0)
+
+
 class StockMovementService(BaseService):
     """Service for stock movement operations"""
     
     def __init__(self):
         super().__init__(StockMovement)
+
+    def _audit_movement(
+        self,
+        movement: StockMovement,
+        *,
+        event: str,
+        request=None,
+        stock_before=None,
+        stock_after=None,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Every stock change must leave an AuditLog trail (before/after qty)."""
+        from utils.audit_events import log_stock_movement_event
+
+        payload = {
+            'product_id': movement.product_id,
+            'variant_id': movement.variant_id,
+            'movement_id': movement.id,
+            'reference': movement.reference or '',
+            'notes': movement.notes or '',
+        }
+        if stock_before is not None:
+            payload['stock_before'] = stock_before
+        if stock_after is not None:
+            payload['stock_after'] = stock_after
+        if extra:
+            payload.update(extra)
+        log_stock_movement_event(request, movement, event=event, payload=payload)
     
     def build_queryset(self, filters: Optional[Dict[str, Any]] = None, request=None) -> QuerySet:
         """
@@ -141,7 +175,7 @@ class StockMovementService(BaseService):
     def adjust_stock(self, product_id: int, variant_id: Optional[int],
                     quantity: int, notes: str = '', user=None,
                     branch: Optional[Branch] = None, unit_cost: Optional[Decimal] = None,
-                    use_catalog_cost: bool = False) -> StockMovement:
+                    use_catalog_cost: bool = False, request=None) -> StockMovement:
         """
         Adjust stock for a product or variant.
         Creates stock movement and updates product/variant stock quantity.
@@ -198,6 +232,8 @@ class StockMovementService(BaseService):
 
         total_cost = unit_cost * abs(quantity) if unit_cost else None
 
+        stock_before = _on_hand(product, variant)
+
         # Create stock movement. StockMovement.save() applies the +/-quantity
         # delta atomically with row locking and raises ValidationError if the
         # result would go below zero, rolling back this @transaction.atomic.
@@ -231,6 +267,17 @@ class StockMovementService(BaseService):
                     quantity=abs(quantity),
                 )
 
+        if variant is not None:
+            variant.refresh_from_db(fields=['stock_quantity'])
+        else:
+            product.refresh_from_db(fields=['stock_quantity'])
+        self._audit_movement(
+            movement,
+            event='stock_adjust',
+            request=request,
+            stock_before=stock_before,
+            stock_after=_on_hand(product, variant),
+        )
         return movement
     
     @transaction.atomic
@@ -239,7 +286,7 @@ class StockMovementService(BaseService):
                       user=None, branch: Optional[Branch] = None,
                       reference: str = '',
                       unit_sell_price: Optional[Decimal] = None,
-                      use_catalog_cost: bool = False) -> StockMovement:
+                      use_catalog_cost: bool = False, request=None) -> StockMovement:
         """
         Record a stock purchase (add stock).
 
@@ -289,6 +336,8 @@ class StockMovementService(BaseService):
                 variant_id=variant.id if variant else None,
             )
 
+        stock_before = _on_hand(product, variant)
+
         # Create stock movement. StockMovement.save() atomically increments
         # stock_quantity. With layers enabled, catalog cost is set from the
         # oldest open layer after the layer is created (not WAC-blended).
@@ -316,12 +365,23 @@ class StockMovementService(BaseService):
                 unit_sell_price=Decimal(str(unit_sell_price or 0)),
             )
 
+        if variant is not None:
+            variant.refresh_from_db(fields=['stock_quantity'])
+        else:
+            product.refresh_from_db(fields=['stock_quantity'])
+        self._audit_movement(
+            movement,
+            event='stock_purchase',
+            request=request,
+            stock_before=stock_before,
+            stock_after=_on_hand(product, variant),
+        )
         return movement
     
     @transaction.atomic
     def transfer_stock(self, product_id: int, variant_id: Optional[int],
                       quantity: int, from_branch: Branch, to_branch: Branch,
-                      notes: str = '', user=None) -> List[StockMovement]:
+                      notes: str = '', user=None, request=None) -> List[StockMovement]:
         """
         Transfer stock between branches.
         Creates two movements: one for source (negative) and one for destination (positive).
@@ -363,6 +423,7 @@ class StockMovementService(BaseService):
         # This allows undo logic to find paired movements even with custom notes
         transfer_id = uuid.uuid4().hex[:8].upper()
         shared_reference = f'TRF-{transfer_id}'
+        stock_before = _on_hand(product, variant)
         
         # Create outbound movement (from source)
         outbound = StockMovement.objects.create(
@@ -395,6 +456,27 @@ class StockMovementService(BaseService):
         # Note: Stock quantities are updated automatically by the StockMovement.save() method
         # The outbound movement (negative quantity) reduces stock, and inbound (positive) increases it
         # Net effect is 0 for global stock, but both movements are recorded for branch tracking
+        if variant is not None:
+            variant.refresh_from_db(fields=['stock_quantity'])
+        else:
+            product.refresh_from_db(fields=['stock_quantity'])
+        stock_after = _on_hand(product, variant)
+        self._audit_movement(
+            outbound,
+            event='stock_transfer',
+            request=request,
+            stock_before=stock_before,
+            stock_after=stock_after,
+            extra={'paired_movement_id': inbound.id, 'direction': 'out'},
+        )
+        self._audit_movement(
+            inbound,
+            event='stock_transfer',
+            request=request,
+            stock_before=stock_before,
+            stock_after=stock_after,
+            extra={'paired_movement_id': outbound.id, 'direction': 'in'},
+        )
         
         return [outbound, inbound]
 
@@ -465,7 +547,7 @@ class StockMovementService(BaseService):
 
     @transaction.atomic
     def undo_transfer(
-        self, movement: StockMovement, user=None
+        self, movement: StockMovement, user=None, request=None
     ) -> Tuple[StockMovement, Optional[StockMovement], Optional[StockMovement]]:
         """
         Reverse a transfer movement (and its pair if present).
@@ -490,6 +572,8 @@ class StockMovementService(BaseService):
             raise ValidationError(
                 f'Insufficient stock to undo. Available: {stock_quantity}, needed: {reverse_quantity}'
             )
+
+        stock_before = _on_hand(movement.product, movement.variant)
 
         reverse_movement = StockMovement.objects.create(
             branch=movement.branch,
@@ -525,6 +609,22 @@ class StockMovementService(BaseService):
         else:
             movement.notes = f'UNDONE: {movement.notes}'
             movement.save(update_fields=['notes'])
+
+        if movement.variant_id:
+            movement.variant.refresh_from_db(fields=['stock_quantity'])
+        else:
+            movement.product.refresh_from_db(fields=['stock_quantity'])
+        self._audit_movement(
+            reverse_movement,
+            event='stock_undo',
+            request=request,
+            stock_before=stock_before,
+            stock_after=_on_hand(movement.product, movement.variant),
+            extra={
+                'undone_movement_id': movement.id,
+                'paired_undo_id': reverse_paired.id if reverse_paired else None,
+            },
+        )
 
         return movement, reverse_movement, reverse_paired
     

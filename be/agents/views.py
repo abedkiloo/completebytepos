@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from accounts.permissions import RequirePermPerAction
+from utils.audit_mixin import AuditedModelViewSetMixin
 
 from .config import MAX_SITE_IMAGE_BYTES, MAX_SITE_MEDIA, MIN_SITE_MEDIA
 from .models import CustomerSite, SiteMedia
@@ -34,12 +35,13 @@ AGENTS_PERMS = RequirePermPerAction(
 )
 
 
-class CustomerSiteViewSet(viewsets.ModelViewSet):
+class CustomerSiteViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = CustomerSite.objects.select_related('customer', 'created_by').prefetch_related(
         'media',
     )
     serializer_class = CustomerSiteSerializer
     permission_classes = [IsAuthenticated, AGENTS_PERMS]
+    audit_module = 'agents'
     parser_classes = [JSONParser, MultiPartParser, FormParser]
     http_method_names = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options']
 

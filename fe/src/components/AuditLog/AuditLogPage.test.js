@@ -9,6 +9,10 @@ jest.mock('../../services/api', () => ({
   auditLogAPI: {
     list: jest.fn(),
     get: jest.fn(),
+    facets: jest.fn(),
+  },
+  usersAPI: {
+    list: jest.fn(),
   },
 }));
 
@@ -94,7 +98,7 @@ jest.mock('../../lib/cn', () => ({
   cn: (...args) => args.filter(Boolean).join(' '),
 }));
 
-const { auditLogAPI } = require('../../services/api');
+const { auditLogAPI, usersAPI } = require('../../services/api');
 
 describe('audit change helpers', () => {
   it('summarizes field diffs and created payloads', () => {
@@ -118,6 +122,12 @@ describe('audit change helpers', () => {
 describe('AuditLogPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    usersAPI.list.mockResolvedValue({
+      data: { results: [{ id: 4, username: 'amina' }, { id: 9, username: 'john' }] },
+    });
+    auditLogAPI.facets.mockResolvedValue({
+      data: { modules: ['products', 'inventory', 'payroll'], actions: ['create', 'stock_adjust'] },
+    });
     auditLogAPI.list.mockResolvedValue({
       data: {
         results: [
@@ -164,9 +174,9 @@ describe('AuditLogPage', () => {
     render(<AuditLogPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('amina')).toBeInTheDocument();
+      expect(screen.getByText(/Price: 800 → 850/)).toBeInTheDocument();
     });
-    expect(screen.getByText(/Price: 800 → 850/)).toBeInTheDocument();
+    expect(screen.getAllByText('amina').length).toBeGreaterThan(0);
     expect(screen.getByText('Updated')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Open audit detail for Updated/i }));
@@ -178,5 +188,49 @@ describe('AuditLogPage', () => {
     expect(screen.getByText('What they entered')).toBeInTheDocument();
     expect(screen.getByText('850')).toBeInTheDocument();
     expect(screen.getByText('CEM-50')).toBeInTheDocument();
+  });
+
+  it('sends day, time, and user filters to the audit API', async () => {
+    render(<AuditLogPage />);
+
+    await waitFor(() => {
+      expect(auditLogAPI.list).toHaveBeenCalled();
+    });
+
+    fireEvent.change(screen.getByLabelText('From date'), {
+      target: { value: '2026-10-01' },
+    });
+    fireEvent.change(screen.getByLabelText('From time'), {
+      target: { value: '08:00' },
+    });
+    fireEvent.change(screen.getByLabelText('To date'), {
+      target: { value: '2026-10-05' },
+    });
+    fireEvent.change(screen.getByLabelText('To time'), {
+      target: { value: '18:30' },
+    });
+    await waitFor(() => {
+      expect(usersAPI.list).toHaveBeenCalled();
+    });
+    fireEvent.change(screen.getByLabelText('Filter by user'), {
+      target: { value: '4' },
+    });
+    fireEvent.change(screen.getByLabelText('Filter by module'), {
+      target: { value: 'inventory' },
+    });
+
+    await waitFor(() => {
+      const calls = auditLogAPI.list.mock.calls.map((c) => c[0] || {});
+      const matched = calls.find(
+        (p) =>
+          p.date_from === '2026-10-01' &&
+          p.date_to === '2026-10-05' &&
+          p.time_from === '08:00' &&
+          p.time_to === '18:30' &&
+          String(p.user) === '4' &&
+          p.module === 'inventory'
+      );
+      expect(matched).toBeTruthy();
+    });
   });
 });
