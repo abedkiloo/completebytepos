@@ -266,17 +266,20 @@ from settings.models import ModuleSettings, ModuleFeature
 
 class AuditLog(models.Model):
     """
-    Append-only ledger of every state-changing request made through the API.
+    Append-only ledger of state-changing API activity across all modules.
 
-    Wired in via DRF's auditing layer (``utils.audit.log_audit``) and from
-    inside ``ModelViewSet.perform_create / perform_update / perform_destroy``
-    where we want to capture the *before* state. The log is intentionally
-    minimal — schema changes are cheap once the table exists.
+    Writers: ``utils.audit.log_audit``, ``AuditedModelViewSetMixin``, and
+    domain helpers (``log_domain_event``, stock/sale events). Rows answer:
+    who acted, on what object, with which before/after values, when, and from
+    which IP/path.
 
-    Designed to answer:
-      * Who voided this invoice?
-      * Who increased the stock on product 1234 last Tuesday?
-      * Has anyone ever logged in as the owner account from outside the LAN?
+    Invariants:
+        - Create only. ``save()`` on an existing PK raises ``ValueError``.
+        - Prefer ``username_snapshot`` over joining deleted users.
+        - ``changes`` must be JSON-safe (no binary).
+
+    Filters (API): ``user``, ``module``, ``action``, ``date_from``/``date_to``,
+    ``time_from``/``time_to``, ``created_after``/``created_before``, ``q``.
     """
 
     # Common action verbs. Free-form (CharField, not choices) so service code

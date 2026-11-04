@@ -1,3 +1,14 @@
+"""
+Non-sale income (other receipts), categories, and approval workflow state.
+
+Public entry points:
+    - ``IncomeCategory``, ``Income`` ORM models
+    - ``IncomeService`` in ``be.income.services`` for list/approve/reject/void/resubmit
+
+Side effects: approval posts journals via ``accounting.services.create_income_journal_entry``;
+void on posted rows reverses journals through ``accounting.reversal.reverse_source_documents``.
+Does not move bank ledger rows directly.
+"""
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator
@@ -6,7 +17,17 @@ import uuid
 
 
 class IncomeCategory(models.Model):
-    """Categories for income"""
+    """
+    Taxonomy label for non-sale income lines (e.g. grants, reimbursements).
+
+    Categories are optional on ``Income`` rows. Inactive categories remain in the
+    database but are typically filtered out of pickers.
+
+    Attributes:
+        name: Unique display name (max 100 characters).
+        is_active: When False, category is hidden from active listings.
+    """
+
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
@@ -22,7 +43,20 @@ class IncomeCategory(models.Model):
 
 
 class Income(models.Model):
-    """Income records"""
+    """
+    A single other-income receipt pending or past approval.
+
+    Status drives whether journals exist: ``approved`` / ``received`` are posted;
+    ``voided`` marks a correction after optional reversal. ``income_number`` is
+    assigned on first save if blank.
+
+    Attributes:
+        amount: Receipt total in account currency; ≥ 0.01, two decimal places.
+        status: One of pending, approved, rejected, received, voided.
+        payment_method: cash, mpesa, bank, card, or other — selects debit side
+            on journal creation (cash vs bank GL).
+    """
+
     PAYMENT_METHODS = [
         ('cash', 'Cash'),
         ('mpesa', 'M-PESA'),
@@ -95,6 +129,15 @@ class Income(models.Model):
         return f"{self.income_number} - {self.amount} KES"
 
     def save(self, *args, **kwargs):
+        """
+        Persist the row and assign ``income_number`` when missing.
+
+        Generates ``INC-{8 hex upper}`` from UUID; collision retry is implicit
+        via unique constraint on save failure (extremely rare).
+
+        Side effects:
+            Writes one row to the income table only; does not post journals.
+        """
         if not self.income_number:
             self.income_number = f"INC-{uuid.uuid4().hex[:8].upper()}"
         super().save(*args, **kwargs)

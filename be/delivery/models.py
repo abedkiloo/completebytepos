@@ -1,3 +1,14 @@
+"""
+Delivery routes, stops, line outcomes, POD, and pin corrections.
+
+Public entry points:
+    - ``DeliveryRoute`` / ``DeliveryStop`` — daily workload per assignee
+    - ``ProofOfDelivery`` — signature, photo, and GPS evidence
+    - ``ProposedPinCorrection`` — manager-reviewed site pin fixes
+
+Side effects: models only; mutations live in ``delivery.services`` and views.
+"""
+
 from django.conf import settings
 from django.db import models
 
@@ -5,7 +16,16 @@ from agents.models import FieldOrder
 
 
 class DeliveryRoute(models.Model):
-    """One agent's ordered stops for a calendar day."""
+    """
+    One delivery agent's ordered stops for a calendar day.
+
+    At most one route per ``(route_date, delivery_agent)``. Cached map geometry
+    fields refresh when stops change (see ``maps.geometry``).
+
+    Attributes:
+        encoded_polyline: Google or straight-line fallback polyline string.
+        polyline_source: ``google``, ``straight``, or empty when not built.
+    """
 
     route_date = models.DateField(db_index=True)
     delivery_agent = models.ForeignKey(
@@ -38,6 +58,17 @@ class DeliveryRoute(models.Model):
 
 
 class DeliveryStop(models.Model):
+    """
+    One field order stop on a route with collection and POD workflow.
+
+    Links one-to-one to ``FieldOrder``. ``sequence`` orders stops on the route
+    (0-based default; services append with increasing sequence).
+
+    Attributes:
+        collection_method: ``cash``, ``debt``, or ``defer_stk`` when collected.
+        collection_amount: Money collected (2 dp); optional for defer paths.
+    """
+
     STATUS_PENDING = 'pending'
     STATUS_ARRIVED = 'arrived'
     STATUS_DELIVERING = 'delivering'
@@ -85,6 +116,15 @@ class DeliveryStop(models.Model):
 
 
 class DeliveryLineResult(models.Model):
+    """
+    Per-product delivery outcome for a stop (ordered vs delivered vs returned).
+
+    Quantities use three decimal places. ``stock_applied`` marks when return/partial
+    policy has been applied (inventory hook may extend later).
+
+    Invariants: one row per ``(stop, product)`` pair.
+    """
+
     stop = models.ForeignKey(
         DeliveryStop,
         on_delete=models.CASCADE,
@@ -113,6 +153,13 @@ class DeliveryLineResult(models.Model):
 
 
 class ProofOfDelivery(models.Model):
+    """
+    Proof-of-delivery capture for a stop (signature, photo, GPS, notes).
+
+    ``is_complete`` requires signature image, photo, and lat/lng all present.
+    Completion may be enforced via ``REQUIRE_POD_TO_COMPLETE`` in services.
+    """
+
     stop = models.OneToOneField(
         DeliveryStop,
         on_delete=models.CASCADE,
@@ -135,6 +182,7 @@ class ProofOfDelivery(models.Model):
 
     @property
     def is_complete(self) -> bool:
+        """Return whether signature, photo, and map pin are all captured."""
         has_sig = bool(self.signature_image)
         has_photo = bool(self.photo)
         has_pin = self.latitude is not None and self.longitude is not None
@@ -142,7 +190,12 @@ class ProofOfDelivery(models.Model):
 
 
 class ProposedPinCorrection(models.Model):
-    """Optional corrected pin pending manager approval."""
+    """
+    Driver-proposed site pin fix awaiting manager approval.
+
+    Does not overwrite ``CustomerSite`` coordinates until approved in admin/workflow.
+    Lat/lng required (7 decimal places). Status: pending, approved, or rejected.
+    """
 
     STATUS_PENDING = 'pending'
     STATUS_APPROVED = 'approved'

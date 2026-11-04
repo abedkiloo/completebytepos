@@ -1,5 +1,12 @@
 """
 Read typed configuration from environment variables (.env).
+
+Public entry points:
+    - ``env_str`` / ``env_bool`` / ``env_int`` / ``env_list`` / ``env_path``
+    - ``env_csv_or_lines`` — comma or newline separated lists
+    - ``normalize_public_host`` / ``public_host_origins`` — CSRF/CORS host helpers
+
+Missing vars fall back to defaults; invalid ints fall back without raising.
 """
 from __future__ import annotations
 
@@ -8,10 +15,30 @@ from pathlib import Path
 
 
 def env_str(name: str, default: str = '') -> str:
+    """
+    Read a stripped string environment variable.
+
+    Args:
+        name: Variable name.
+        default: Value when unset (also stripped).
+
+    Returns:
+        Non-None string (may be empty).
+    """
     return os.getenv(name, default).strip()
 
 
 def env_bool(name: str, default: bool = False) -> bool:
+    """
+    Parse a truthy environment flag.
+
+    Args:
+        name: Variable name.
+        default: Used when the variable is unset.
+
+    Returns:
+        ``True`` for ``1``, ``true``, ``yes``, ``on`` (case-insensitive); else ``False``.
+    """
     raw = os.getenv(name)
     if raw is None:
         return default
@@ -19,6 +46,16 @@ def env_bool(name: str, default: bool = False) -> bool:
 
 
 def env_int(name: str, default: int) -> int:
+    """
+    Parse an integer environment variable.
+
+    Args:
+        name: Variable name.
+        default: Returned when unset, blank, or non-numeric.
+
+    Returns:
+        Parsed int or ``default``.
+    """
     raw = os.getenv(name)
     if raw is None or raw.strip() == '':
         return default
@@ -29,6 +66,17 @@ def env_int(name: str, default: int) -> int:
 
 
 def env_list(name: str, default: list[str] | None = None, sep: str = ',') -> list[str]:
+    """
+    Split a delimited environment list.
+
+    Args:
+        name: Variable name.
+        default: Used when unset or blank (copied to a new list).
+        sep: Delimiter (default comma).
+
+    Returns:
+        List of stripped tokens; literal ``*`` alone returns ``['*']``.
+    """
     raw = os.getenv(name)
     if raw is None or raw.strip() == '':
         return list(default or [])
@@ -43,7 +91,15 @@ def env_list(name: str, default: list[str] | None = None, sep: str = ',') -> lis
 
 
 def merge_unique_list(*lists: list[str] | None) -> list[str]:
-    """Merge lists preserving order, dropping empty duplicates."""
+    """
+    Merge string lists preserving first-seen order.
+
+    Args:
+        *lists: Optional lists; ``None`` and empty lists are skipped.
+
+    Returns:
+        De-duplicated list; strips whitespace; drops blank entries.
+    """
     seen: set[str] = set()
     out: list[str] = []
     for lst in lists:
@@ -58,6 +114,16 @@ def merge_unique_list(*lists: list[str] | None) -> list[str]:
 
 
 def env_path(name: str, default: Path | str) -> Path:
+    """
+    Resolve a filesystem path from the environment.
+
+    Args:
+        name: Variable name.
+        default: Used when the variable is empty after strip.
+
+    Returns:
+        ``Path`` instance.
+    """
     raw = env_str(name)
     if raw:
         return Path(raw)
@@ -65,7 +131,16 @@ def env_path(name: str, default: Path | str) -> Path:
 
 
 def env_csv_or_lines(name: str, default: list[str] | None = None) -> list[str]:
-    """Comma-separated list, or newline-separated if value contains \\n."""
+    """
+    Parse comma-separated or newline-separated env lists.
+
+    Args:
+        name: Variable name.
+        default: When unset or blank.
+
+    Returns:
+        Non-empty lines when ``\\n`` present; otherwise ``env_list`` result.
+    """
     raw = os.getenv(name)
     if raw is None or not raw.strip():
         return list(default or [])
@@ -75,7 +150,15 @@ def env_csv_or_lines(name: str, default: list[str] | None = None) -> list[str]:
 
 
 def normalize_public_host(raw: str) -> str:
-    """Strip scheme/path from PUBLIC_HOST so ALLOWED_HOSTS gets a bare hostname."""
+    """
+    Strip scheme and path from a public host string.
+
+    Args:
+        raw: Host or URL (``https://shop.example.com/path``).
+
+    Returns:
+        Bare hostname without trailing dot; empty when input blank.
+    """
     host = (raw or '').strip()
     if not host:
         return ''
@@ -88,7 +171,15 @@ def normalize_public_host(raw: str) -> str:
 
 
 def is_ip_like_host(host: str) -> bool:
-    """True for IPv4 (optional :port). Domains and IPv6 netlocs return False."""
+    """
+    Detect IPv4 literals (optional ``:port``) for dev origin rules.
+
+    Args:
+        host: Host header or origin host.
+
+    Returns:
+        ``True`` for dotted IPv4 or bracketed IPv6 netloc; ``False`` for domains.
+    """
     bare = (host or '').strip().split('%')[0]
     if bare.startswith('[') and ']' in bare:
         return True  # [IPv6]
@@ -99,9 +190,15 @@ def is_ip_like_host(host: str) -> bool:
 
 def public_host_origins(host: str) -> list[str]:
     """
-    http + https origins for CSRF/CORS from PUBLIC_HOST.
+    Build http/https origins for CSRF/CORS from ``PUBLIC_HOST``.
 
-    Includes :3000/:8000 for IP/dev access; bare https://domain for reverse-proxy TLS.
+    Args:
+        host: Raw host string (normalized internally).
+
+    Returns:
+        ``http``/``https`` origins; adds ``:3000`` and ``:8000`` variants when the
+        host has no explicit port (skipped for hosts that already include ``:port``).
+        Empty list when host normalizes to blank.
     """
     host = normalize_public_host(host)
     if not host:

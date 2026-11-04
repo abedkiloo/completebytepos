@@ -1,5 +1,16 @@
 """
-Inventory service layer - handles all inventory/stock movement business logic
+Inventory stock movements and on-hand quantity.
+
+Public entry points:
+    - ``StockMovementService.adjust_stock`` / ``purchase_stock`` /
+      ``transfer_stock`` / ``undo_transfer`` / ``build_queryset``
+    - Called from ``StockMovementViewSet`` under ``/api/inventory/``
+
+Side effects:
+    Updates ``Product`` / ``ProductVariant.stock_quantity`` on movement create,
+    optional FIFO layers, and ``AuditLog`` rows (``stock_*`` with before/after).
+
+Does not create sales or wallet postings — those live in ``sales``.
 """
 import re
 import uuid
@@ -19,7 +30,19 @@ from services.datetime_filters import inclusive_end_datetime, inclusive_start_da
 
 
 def catalog_unit_cost(product: Product, variant: Optional[ProductVariant] = None) -> Decimal:
-    """Effective catalog cost for a product or variant row."""
+    """
+    Return the effective catalog unit cost for a product or variant.
+
+    Args:
+        product: Parent product (used when variant has no cost).
+        variant: Optional variant; its ``cost`` wins when not None.
+
+    Returns:
+        Non-negative ``Decimal`` cost. Missing/null costs become ``0``.
+
+    Bounds:
+        No upper bound beyond the Decimal stored on the model field.
+    """
     if variant is not None and variant.cost is not None:
         return Decimal(str(variant.cost))
     return Decimal(str(product.cost or 0))
@@ -33,11 +56,24 @@ def resolve_intake_unit_cost(
     use_catalog_cost: bool = False,
 ) -> Decimal:
     """
-    Resolve cost for stock intake (purchase or positive adjust).
+    Resolve unit cost for stock intake (purchase or positive adjust).
 
-    Cost changes per delivery: either reuse the current catalog cost
-    (``use_catalog_cost``) or require a positive ``unit_cost`` for the new batch.
-    Catalog cost of 0/null cannot be reused — callers must enter a new cost.
+    Args:
+        product: Product being received.
+        variant: Optional variant receiving stock.
+        unit_cost: Explicit batch cost. When provided must be ``> 0``.
+        use_catalog_cost: If True, reuse positive catalog cost and ignore
+            a missing ``unit_cost``.
+
+    Returns:
+        Positive ``Decimal`` unit cost for the intake layer/movement.
+
+    Raises:
+        ValidationError: Catalog cost is zero when reuse requested, or
+            ``unit_cost`` is missing/≤0 when a new batch cost is required.
+
+    Bounds:
+        Resolved cost must be ``> 0``. There is no configured upper limit.
     """
     catalog = catalog_unit_cost(product, variant)
     if use_catalog_cost:
@@ -70,7 +106,16 @@ def _on_hand(product: Product, variant: Optional[ProductVariant] = None) -> int:
 
 
 class StockMovementService(BaseService):
-    """Service for stock movement operations"""
+    """
+    Business operations for inventory ledger rows and on-hand quantity.
+
+    Owns create paths for adjust / purchase / transfer / undo. Views stay thin
+    and call these methods. Every mutating path emits an ``AuditLog`` entry
+    with ``stock_before`` / ``stock_after`` when known.
+
+    Attributes:
+        model: Bound to ``StockMovement``.
+    """
     
     def __init__(self):
         super().__init__(StockMovement)
@@ -85,7 +130,20 @@ class StockMovementService(BaseService):
         stock_after=None,
         extra: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Every stock change must leave an AuditLog trail (before/after qty)."""
+        """
+        Append one inventory ``AuditLog`` row for a movement.
+
+        Args:
+            movement: Persisted movement (must have ``id``).
+            event: Audit action verb (e.g. ``stock_adjust``, ``stock_purchase``).
+            request: Optional HTTP request for actor IP/path; may be None.
+            stock_before: On-hand units before the movement; int or None.
+            stock_after: On-hand units after the movement; int or None.
+            extra: Optional extra JSON fields merged into ``changes``.
+
+        Returns:
+            None. Failures inside ``log_audit`` are swallowed by design.
+        """
         from utils.audit_events import log_stock_movement_event
 
         payload = {
@@ -177,12 +235,32 @@ class StockMovementService(BaseService):
                     branch: Optional[Branch] = None, unit_cost: Optional[Decimal] = None,
                     use_catalog_cost: bool = False, request=None) -> StockMovement:
         """
-        Adjust stock for a product or variant.
-        Creates stock movement and updates product/variant stock quantity.
+        Apply a signed stock adjustment and write an audit row.
 
-        Positive adjustments require a positive unit cost (new batch or catalog).
-        When layers are enabled, +qty creates a FIFO layer and -qty drains FIFO
-        so valuation/reports stay aligned with on-hand quantity.
+        Creates one ``StockMovement`` (type ``adjustment``). Positive
+        ``quantity`` adds stock; negative removes stock. Audits
+        ``stock_before`` / ``stock_after``.
+
+        Args:
+            product_id: PK of the product (must exist).
+            variant_id: Optional variant PK on that product; None = product level.
+            quantity: Signed units to apply. Must be non-zero. No hard upper
+                bound beyond the movement integer field; negative adjusts cannot
+                drive on-hand below 0 (ValidationError).
+            notes: Free-text note stored on the movement (may be empty).
+            user: Acting user stored on the movement; may be None for jobs.
+            branch: Optional branch for multi-branch installs.
+            unit_cost: Required path for +qty when catalog cost is zero.
+            use_catalog_cost: If True, reuse positive catalog cost for +qty.
+            request: Optional HTTP request for audit IP/path.
+
+        Returns:
+            The created ``StockMovement`` (stock already applied).
+
+        Raises:
+            ValidationError: Product/variant missing, product does not track
+                stock, ``quantity == 0``, cost rules fail, or resulting stock
+                would be negative.
         """
         try:
             product = Product.objects.get(id=product_id)

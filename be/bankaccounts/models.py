@@ -1,3 +1,13 @@
+"""
+Operational bank/cash accounts and deposit-withdrawal ledger lines.
+
+Public entry points:
+    - ``BankAccount``, ``BankTransaction`` ORM models
+    - ``BankAccountService`` / ``BankTransactionService`` in ``be.bankaccounts.services``
+
+Side effects: saving ``BankTransaction`` recalculates ``BankAccount.current_balance``
+from transactions and completed ``MoneyTransfer`` rows. Does not post GL journals.
+"""
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator
@@ -7,7 +17,19 @@ import uuid
 
 
 class BankAccount(models.Model):
-    """Bank accounts"""
+    """
+    A named bank or cash account tracked for operational balances.
+
+    ``current_balance`` is derived from ``opening_balance``, ``BankTransaction``
+    lines, and completed transfers — not set arbitrarily by API clients.
+
+    Attributes:
+        account_number: Unique identifier (max 100 chars), indexed.
+        opening_balance: Starting balance ≥ 0.00; twelve digits, two decimals.
+        current_balance: Cached sum; updated by ``update_balance`` and transaction saves.
+        currency: ISO-like code (default KES), three characters.
+    """
+
     ACCOUNT_TYPES = [
         ('savings', 'Savings'),
         ('current', 'Current'),
@@ -56,16 +78,28 @@ class BankAccount(models.Model):
         return f"{self.bank_name} - {self.account_name} ({self.account_number})"
 
     def update_balance(self):
-        """Recalculate balance from transactions"""
+        """
+        Recompute ``current_balance`` from ledger activity and persist.
+
+        Sums deposit-like transaction types (deposit, transfer_in, interest)
+        minus withdrawal-like types (withdrawal, transfer_out, fee). Adds
+        completed ``MoneyTransfer`` amounts in/out when the transfers app is available.
+
+        Returns:
+            None.
+
+        Side effects:
+            Writes ``current_balance`` on this account row only.
+        """
         # Calculate from bank transactions
         deposits = self.transactions.filter(
             transaction_type__in=['deposit', 'transfer_in', 'interest']
         ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
-        
+
         withdrawals = self.transactions.filter(
             transaction_type__in=['withdrawal', 'transfer_out', 'fee']
         ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
-        
+
         # Also calculate from transfers
         try:
             from transfers.models import MoneyTransfer
@@ -73,23 +107,32 @@ class BankAccount(models.Model):
                 to_account=self,
                 status='completed'
             ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
-            
+
             transfer_withdrawals = MoneyTransfer.objects.filter(
                 from_account=self,
                 status='completed'
             ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
-            
+
             deposits += transfer_deposits
             withdrawals += transfer_withdrawals
         except:
             pass
-        
+
         self.current_balance = self.opening_balance + deposits - withdrawals
         self.save(update_fields=['current_balance'])
 
 
 class BankTransaction(models.Model):
-    """Bank account transactions"""
+    """
+    One deposit, withdrawal, fee, or transfer leg on a ``BankAccount``.
+
+    ``transaction_number`` is auto-assigned on first save. Amount must be ≥ 0.01.
+
+    Attributes:
+        transaction_type: deposit, withdrawal, transfer_in, transfer_out, fee, interest.
+        amount: Positive money movement in account currency (12,2).
+    """
+
     TRANSACTION_TYPES = [
         ('deposit', 'Deposit'),
         ('withdrawal', 'Withdrawal'),
@@ -133,6 +176,14 @@ class BankTransaction(models.Model):
         return f"{self.transaction_number} - {self.amount} {self.bank_account.currency}"
 
     def save(self, *args, **kwargs):
+        """
+        Persist the transaction and refresh parent account balance.
+
+        Assigns ``BTXN-{8 hex upper}`` when ``transaction_number`` is empty.
+
+        Side effects:
+            Calls ``bank_account.update_balance()`` after save.
+        """
         if not self.transaction_number:
             self.transaction_number = f"BTXN-{uuid.uuid4().hex[:8].upper()}"
         super().save(*args, **kwargs)

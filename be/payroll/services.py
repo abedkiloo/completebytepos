@@ -270,9 +270,25 @@ def _package_for_employee(emp) -> RolePayPackage | None:
 
 def estimate_current_pay(emp, *, on_date: date | None = None) -> dict:
     """
-    Current pay preview for an employee: role package + personal Staff-pay edits.
+    Build a current-pay preview for one employee (package + Staff-pay edits).
 
-    Does not run appraisal/loan/statutory adapters — those apply only on a payroll run.
+    Does **not** run appraisal/loan/statutory adapters — those apply only when
+    a payroll run is calculated. Safe for self-service ``GET /payroll/me/pay/``.
+
+    Args:
+        emp: ``employees.Employee`` instance (active or inactive).
+        on_date: Effective date for assignment windows. Defaults to today.
+            Must be a ``datetime.date``.
+
+    Returns:
+        Dict with string money fields (``effective_basic``, ``estimated_gross``,
+        ``estimated_deductions``, ``estimated_net``), package/role metadata,
+        and ``earnings`` / ``deductions`` line lists. Amounts use 2 decimal
+        places as strings.
+
+    Bounds:
+        Money values are non-negative Decimals serialized as strings. No
+        hard upper bound beyond component/assignment field limits.
     """
     on_date = on_date or date.today()
     settings = PayrollSettings.load(getattr(emp, 'tenant', None))

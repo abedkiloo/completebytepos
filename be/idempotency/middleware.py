@@ -1,3 +1,12 @@
+"""
+HTTP idempotency replay for mutating API requests.
+
+Public entry points:
+    - ``IdempotencyMiddleware`` — honors ``Idempotency-Key`` on POST/PUT/PATCH
+
+Persists responses in ``IdempotencyRecord``. Replays set ``X-Idempotency-Replayed``.
+401 responses are never cached. Mismatched body hash → 409 JSON error.
+"""
 import hashlib
 import json
 
@@ -10,6 +19,15 @@ IDEMPOTENT_METHODS = {'POST', 'PUT', 'PATCH'}
 
 
 def _request_hash(body: bytes) -> str:
+    """
+    Hash the raw request body for idempotency conflict detection.
+
+    Args:
+        body: Raw bytes; empty body hashes as SHA-256 of empty input.
+
+    Returns:
+        Lowercase hex digest (64 chars).
+    """
     return hashlib.sha256(body or b'').hexdigest()
 
 
@@ -17,10 +35,24 @@ class IdempotencyMiddleware(MiddlewareMixin):
     """
     Replay prior responses for identical Idempotency-Key + user + method + path.
 
-    If the same key is reused with a different body → 409 Conflict.
+    Scope key: header ``Idempotency-Key`` (or ``HTTP_IDEMPOTENCY_KEY``), authenticated
+    user (``None`` for anonymous), HTTP method, and request path (max 512 on model).
+    Key max length 255 on ``IdempotencyRecord.key``.
+
+    If the same key is reused with a different body hash → 409 Conflict JSON.
     """
 
     def process_request(self, request):
+        """
+        Short-circuit with a stored response when a matching record exists.
+
+        Args:
+            request: Incoming Django request.
+
+        Returns:
+            ``None`` to continue the stack, or ``HttpResponse`` when replaying or
+            rejecting a body mismatch (409).
+        """
         if request.method not in IDEMPOTENT_METHODS:
             return None
         key = request.headers.get('Idempotency-Key') or request.META.get('HTTP_IDEMPOTENCY_KEY')
@@ -57,6 +89,16 @@ class IdempotencyMiddleware(MiddlewareMixin):
         return response
 
     def process_response(self, request, response):
+        """
+        Persist the first completed response for a new idempotency key.
+
+        Args:
+            request: Request that may carry ``_idempotency_key`` from ``process_request``.
+            response: Downstream response to optionally store.
+
+        Returns:
+            The same ``response`` object (possibly after DB ``update_or_create``).
+        """
         key = getattr(request, '_idempotency_key', None)
         if not key:
             return response

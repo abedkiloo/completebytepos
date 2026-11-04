@@ -1,4 +1,14 @@
-"""SMS template CRUD + debt collection reminder preview/send."""
+"""
+SMS template admin APIs and debt reminder preview/send.
+
+Public entry points:
+    - ``list_sms_templates`` / ``save_sms_template`` / ``reset_sms_template``
+    - ``build_debt_reminder_preview`` / ``send_debt_reminders`` / ``queue_debt_reminders``
+    - ``owed_amount`` — helper for debtor balance display
+
+Side effects: ``send_*`` creates ``MessageOutbox`` rows and calls SMS providers.
+Debt preview scans customers with ``wallet_balance < 0`` (optional id filter).
+"""
 
 from __future__ import annotations
 
@@ -27,7 +37,7 @@ from .templates_sms import (
 
 
 class MessagingError(ValidationError):
-    pass
+    """Template, recipient, or provider failure surfaced to API callers."""
 
 
 # Avoid circular import — preview helper lives next to catalog usage below.
@@ -36,6 +46,18 @@ def _preview_body(spec, body: str) -> str:
 
 
 def serialize_template(key: str) -> dict:
+    """
+    Build API payload for one SMS template key.
+
+    Args:
+        key: Catalog key (e.g. ``debt_reminder``).
+
+    Returns:
+        Dict with label, body, defaults, placeholders, preview, customization flags.
+
+    Raises:
+        MessagingError: Unknown key.
+    """
     spec = get_spec(key)
     if spec is None:
         raise MessagingError({'key': f'Unknown template: {key}'})
@@ -59,10 +81,28 @@ def serialize_template(key: str) -> dict:
 
 
 def list_sms_templates() -> list[dict]:
+    """Return serialized metadata for every catalog template key."""
     return [serialize_template(spec.key) for spec in all_template_specs()]
 
 
 def save_sms_template(key: str, body: str, *, user=None) -> dict:
+    """
+    Upsert customized template body for a catalog key.
+
+    Args:
+        key: Known template key.
+        body: Non-empty text, max 600 characters after strip.
+        user: Stored on ``updated_by``.
+
+    Returns:
+        Fresh ``serialize_template`` dict.
+
+    Raises:
+        MessagingError: Unknown key, empty body, or over length limit.
+
+    Side effects:
+        Creates/updates ``SmsTemplate`` row.
+    """
     spec = get_spec(key)
     if spec is None:
         raise MessagingError({'key': f'Unknown template: {key}'})
@@ -79,6 +119,22 @@ def save_sms_template(key: str, body: str, *, user=None) -> dict:
 
 
 def reset_sms_template(key: str, *, user=None) -> dict:
+    """
+    Delete customization so catalog default body applies again.
+
+    Args:
+        key: Known template key.
+        user: Accepted for API symmetry; not persisted on delete.
+
+    Returns:
+        ``serialize_template`` using default body.
+
+    Raises:
+        MessagingError: Unknown key.
+
+    Side effects:
+        Deletes ``SmsTemplate`` row when present.
+    """
     spec = get_spec(key)
     if spec is None:
         raise MessagingError({'key': f'Unknown template: {key}'})
@@ -88,10 +144,12 @@ def reset_sms_template(key: str, *, user=None) -> dict:
 
 
 def get_debt_reminder_template_body() -> str:
+    """Return effective debt reminder body (DB override or catalog default)."""
     return get_template_body(SmsTemplate.KEY_DEBT_REMINDER)
 
 
 def save_debt_reminder_template(body: str, *, user=None) -> SmsTemplate:
+    """Persist debt reminder template and return the ``SmsTemplate`` row."""
     save_sms_template(SmsTemplate.KEY_DEBT_REMINDER, body, user=user)
     return SmsTemplate.objects.get(key=SmsTemplate.KEY_DEBT_REMINDER)
 
@@ -106,6 +164,20 @@ def build_debt_reminder_preview(
     template: str | None = None,
     customer_ids: list[int] | None = None,
 ) -> dict:
+    """
+    Preview personalized debt SMS for debtors with phone numbers.
+
+    Args:
+        template: Optional override body; defaults to stored debt reminder template.
+        customer_ids: When set, restrict to these customer pks; else all debtors.
+
+    Returns:
+        Dict with template, counts, ``total_debt``, and per-recipient messages.
+        Skips customers without phone (`skipped_no_phone` counter).
+
+    Side effects:
+        Read-only; no outbox rows created.
+    """
     body_template = (template or '').strip() or get_debt_reminder_template_body()
     store_name = resolved_store_name()
     recipients = []
@@ -163,6 +235,24 @@ def send_debt_reminders(
     customer_ids: list[int] | None = None,
     save_template: bool = False,
 ) -> dict:
+    """
+    Send bulk personalized debt reminders via provider bulk API.
+
+    Args:
+        created_by: User stored on outbox rows.
+        template: Optional body override for this send.
+        customer_ids: Optional subset; same rules as preview.
+        save_template: When True and ``template`` provided, persist before send.
+
+    Returns:
+        Dict with ``queued`` count, provider refs, template snapshot, outbox ids.
+
+    Raises:
+        MessagingError: No eligible recipients or provider bulk failure.
+
+    Side effects:
+        Creates pending outbox rows then bulk-updates to sent/failed.
+    """
     preview = build_debt_reminder_preview(template=template, customer_ids=customer_ids)
     recipients = preview['recipients']
     if not recipients:
@@ -222,6 +312,19 @@ def send_debt_reminders(
 
 @transaction.atomic
 def queue_debt_reminders(*, created_by=None, limit: int = 50) -> list[MessageOutbox]:
+    """
+    Send debt reminders sequentially for the worst balances (legacy path).
+
+    Args:
+        created_by: User on outbox rows.
+        limit: Max debtors to consider (ordered by most negative balance first).
+
+    Returns:
+        List of outbox rows actually sent or marked failed (skips no-phone).
+
+    Side effects:
+        One provider ``send`` per customer; immediate status update per row.
+    """
     debtors = (
         Customer.objects.filter(wallet_balance__lt=0)
         .order_by('wallet_balance')[:limit]
@@ -263,6 +366,7 @@ def queue_debt_reminders(*, created_by=None, limit: int = 50) -> list[MessageOut
 
 
 def owed_amount(customer: Customer) -> Decimal:
+    """Return absolute debt from negative ``wallet_balance``, else ``0.00``."""
     bal = customer.wallet_balance or Decimal('0')
     return abs(bal) if bal < 0 else Decimal('0')
 

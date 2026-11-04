@@ -1,3 +1,17 @@
+"""
+Field-agent visit sites, media, and packable field orders.
+
+Public entry points:
+    - ``CustomerSite`` / ``SiteMedia`` — visit location and driver-recognition photos
+    - ``FieldOrder`` / ``FieldOrderLine`` — order lifecycle; pack creates one sale
+    - ``order_services.pack_order`` / ``field_sale.record_field_sale`` — sale path
+
+Side effects: none at model layer. Packing (services) moves stock, posts journals,
+and records customer debt via ``sales.Sale``. Stock is not reserved in draft/submitted.
+
+Invariants: at most one ``Sale`` per ``FieldOrder`` (``OneToOne`` on ``sale``).
+"""
+
 from django.conf import settings
 from django.db import models
 
@@ -6,10 +20,16 @@ from sales.models import Customer
 
 class CustomerSite(models.Model):
     """
-    Field-agent visit location for a customer.
+    Field-agent visit location tied to an optional customer.
 
-    Delivery stop UI (S09) should treat map + media as first-class:
-    lat/lng/accuracy, landmark, label, and ordered SiteMedia thumbnails.
+    Holds map pin (lat/lng/accuracy), landmark text, label, and ordered
+    ``SiteMedia`` for driver recognition. Finalized sites require pin + customer
+    (photos optional when ``MIN_SITE_MEDIA`` is 0).
+
+    Attributes:
+        STATUS_DRAFT: Editable visit; orders may reference but submit checks apply.
+        STATUS_FINALIZED: Pin and customer locked by ``finalize_site``.
+        client_uuid: Optional mobile idempotency key; unique when set.
     """
 
     STATUS_DRAFT = 'draft'
@@ -58,15 +78,25 @@ class CustomerSite(models.Model):
 
     @property
     def has_pin(self) -> bool:
+        """Return whether both latitude and longitude are set."""
         return self.latitude is not None and self.longitude is not None
 
     @property
     def media_count(self) -> int:
+        """Return the number of ``SiteMedia`` rows for this site (0 if none)."""
         return self.media.count()
 
 
 class SiteMedia(models.Model):
-    """Photo attached to a customer site (driver recognition)."""
+    """
+    Photo attached to a customer site for driver recognition.
+
+    Images upload to ``site_media/``. Clients may supply ``client_uuid`` for
+    offline idempotency; duplicate UUIDs are rejected at the DB layer.
+
+    Attributes:
+        caption: Optional short label (max 255 chars).
+    """
 
     site = models.ForeignKey(
         CustomerSite,
@@ -95,9 +125,16 @@ class SiteMedia(models.Model):
 
 class FieldOrder(models.Model):
     """
-    Agent order tied to a CustomerSite.
+    Agent order tied to a ``CustomerSite``; packs into a single POS sale.
 
-    Stock policy (DECISIONS): allocate on pack — no reservation in draft/submitted.
+    Status flows draft → submitted → packing → ready → out_for_delivery → done
+    (or cancelled). Stock and accounting apply on pack only — no reservation
+    while draft or submitted.
+
+    Attributes:
+        stock_allocated: Set True when pack succeeds (allocate-on-pack).
+        sale: One-to-one link to the ``sales.Sale`` created at pack; null until packed.
+        assigned_delivery_agent: Driver/sales user with ``delivery.update`` after assign.
     """
 
     STATUS_DRAFT = 'draft'
@@ -173,6 +210,17 @@ class FieldOrder(models.Model):
 
 
 class FieldOrderLine(models.Model):
+    """
+    One product line on a field order before pack.
+
+    ``quantity`` uses three decimal places in storage; sale recording requires
+    a whole-number quantity at pack time. ``unit_price`` is money (2 dp).
+
+    Attributes:
+        product_name: Snapshot label; falls back to product name when blank.
+        line_total: Computed ``quantity * unit_price`` (not persisted).
+    """
+
     order = models.ForeignKey(
         FieldOrder,
         on_delete=models.CASCADE,

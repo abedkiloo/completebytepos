@@ -1,4 +1,12 @@
-"""Customer SMS for sale complete and debt changes — never raise into the sale path."""
+"""
+Customer-triggered SMS hooks (sale, debt, welcome).
+
+Public entry points:
+    - ``notify_customer_*`` — queue outbox + send on commit
+    - ``dispatch_outbox`` — single-message provider send
+
+Never raises into sales/payment paths; failures are logged and return ``None``.
+"""
 
 from __future__ import annotations
 
@@ -23,6 +31,18 @@ logger = logging.getLogger(__name__)
 
 
 def dispatch_outbox(msg: MessageOutbox) -> MessageOutbox:
+    """
+    Send one outbox message synchronously.
+
+    Args:
+        msg: Row with ``to_phone`` and ``body``.
+
+    Returns:
+        Updated row with ``sent`` or ``failed`` status and provider metadata.
+
+    Side effects:
+        External SMS API call.
+    """
     provider = get_sms_provider()
     result = provider.send(to=msg.to_phone, body=msg.body)
     msg.provider = getattr(provider, 'name', '') or ''
@@ -69,7 +89,19 @@ def _queue_customer_sms(*, customer, body: str, template_key: str, created_by=No
 
 
 def notify_customer_sale_completed(sale, *, user=None) -> MessageOutbox | None:
-    """One SMS when a sale is final — includes balance only if they still owe."""
+    """
+    Queue sale-complete SMS after checkout (skipped for backfill sales).
+
+    Args:
+        sale: Completed sale with optional customer and line items.
+        user: Stored as ``created_by`` on outbox.
+
+    Returns:
+        Outbox row when queued, else ``None`` (no customer/phone or errors swallowed).
+
+    Side effects:
+        Creates outbox; sends on transaction commit via ``dispatch_outbox``.
+    """
     try:
         customer = getattr(sale, 'customer', None)
         if customer is None:
@@ -109,7 +141,17 @@ def notify_customer_sale_completed(sale, *, user=None) -> MessageOutbox | None:
 
 
 def notify_customer_debt_increase(customer, *, amount, user=None) -> MessageOutbox | None:
-    """SMS when debt is added outside a sale-complete notice (e.g. adjustment)."""
+    """
+    Queue SMS when customer debt increases outside a sale-complete flow.
+
+    Args:
+        customer: Target customer with phone.
+        amount: Positive debt increase amount; ignored when ≤ 0.
+        user: Outbox ``created_by``.
+
+    Returns:
+        Outbox row or ``None`` when skipped/failed (logged, not raised).
+    """
     try:
         amount = Decimal(str(amount or 0))
         if amount <= 0 or customer is None:
@@ -134,7 +176,18 @@ def notify_customer_debt_increase(customer, *, amount, user=None) -> MessageOutb
 def notify_customer_debt_settlement(
     customer, *, amount, payment_reference: str | None = None, user=None,
 ) -> MessageOutbox | None:
-    """SMS when a debt payment is received."""
+    """
+    Queue SMS when a debt payment is recorded.
+
+    Args:
+        customer: Debtor receiving confirmation.
+        amount: Payment amount; must be > 0.
+        payment_reference: Optional M-Pesa or receipt reference in body.
+        user: Outbox ``created_by``.
+
+    Returns:
+        Outbox row or ``None`` when skipped/failed.
+    """
     try:
         amount = Decimal(str(amount or 0))
         if amount <= 0 or customer is None:
@@ -161,7 +214,16 @@ def notify_customer_debt_settlement(
 
 
 def notify_customer_welcome(customer, *, user=None) -> MessageOutbox | None:
-    """Welcome SMS when a duka is first registered (skipped if no phone)."""
+    """
+    Queue welcome SMS for a newly registered customer/duka.
+
+    Args:
+        customer: Must have phone for send.
+        user: Outbox ``created_by``.
+
+    Returns:
+        Outbox row or ``None`` when no phone or on internal error.
+    """
     try:
         if customer is None:
             return None

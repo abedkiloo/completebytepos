@@ -20,7 +20,10 @@ from employees.module_settings import (
 
 class EmployeeViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     """
-    ViewSet for Employee Management
+    CRUD + stats for the staff roster under ``/api/employees/``.
+
+    Feature flags may 403 create/edit/delete/statistics. Module access is
+    required for list/retrieve. Audits under ``module=employees``.
     """
     queryset = Employee.objects.all()
     serializer_class = EmployeeSerializer

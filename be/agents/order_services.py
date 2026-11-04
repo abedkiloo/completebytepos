@@ -1,4 +1,18 @@
-"""Field-order state machine. Stock: allocate on pack (see DECISIONS.md)."""
+"""
+Field-order status machine and pack/assign orchestration.
+
+Public entry points:
+    - ``submit_order`` / ``start_packing`` / ``pack_order`` — through ready + sale
+    - ``assign_delivery_agent`` / ``claim_ready_order`` — handoff to delivery
+    - ``field_order_total`` / ``require_field_order_customer`` — pricing and customer
+
+Side effects: ``pack_order`` sets ``stock_allocated``, creates ``sales.Sale`` via
+``field_sale.record_field_sale``, and may enqueue a delivery stop. Assign calls
+``delivery.services.enqueue_assigned_order``. Stock allocates on pack only.
+
+Invariants: illegal transitions raise ``FieldOrderTransitionError``; dispatch assign
+wins over driver self-claim on already-assigned ready orders.
+"""
 
 from decimal import Decimal
 
@@ -13,7 +27,7 @@ from .models import FieldOrder
 
 
 class FieldOrderTransitionError(ValidationError):
-    """Illegal status transition or precondition failure."""
+    """Illegal status transition, missing customer/lines, or pack precondition failure."""
 
 
 ALLOWED_TRANSITIONS = {
@@ -36,6 +50,19 @@ ALLOWED_TRANSITIONS = {
 
 
 def assert_site_ready_for_order(site, *, min_media: int = MIN_SITE_MEDIA) -> None:
+    """
+    Verify the order's site can be submitted (pin, customer, optional photos).
+
+    Args:
+        site: ``CustomerSite`` linked to the order; required non-null.
+        min_media: Minimum photo count when > 0; default ``MIN_SITE_MEDIA``.
+
+    Returns:
+        None.
+
+    Raises:
+        FieldOrderTransitionError: Site missing, no pin, no customer, or too few photos.
+    """
     errors = {}
     if site is None:
         raise FieldOrderTransitionError({'site': 'Site is required.'})
@@ -50,6 +77,15 @@ def assert_site_ready_for_order(site, *, min_media: int = MIN_SITE_MEDIA) -> Non
 
 
 def field_order_total(order: FieldOrder) -> Decimal:
+    """
+    Sum line totals for a field order (quantity × unit_price per line).
+
+    Args:
+        order: Order whose ``lines`` relation is evaluated (may prefetch).
+
+    Returns:
+        Total in shop currency, quantized to 2 decimal places. Empty lines → ``0.00``.
+    """
     total = Decimal('0.00')
     for line in order.lines.all():
         qty = line.quantity or Decimal('0')
@@ -59,7 +95,21 @@ def field_order_total(order: FieldOrder) -> Decimal:
 
 
 def require_field_order_customer(order: FieldOrder) -> Customer:
-    """Every field sale must be for a named customer."""
+    """
+    Ensure the order has a customer, copying from the site when needed.
+
+    Args:
+        order: Field order; may persist ``customer_id`` from ``order.site``.
+
+    Returns:
+        The linked ``Customer`` instance.
+
+    Raises:
+        FieldOrderTransitionError: No customer on order or site.
+
+    Side effects:
+        May ``save`` ``customer_id`` on the order when inferred from site.
+    """
     if order.customer_id is None and order.site_id and order.site.customer_id:
         order.customer_id = order.site.customer_id
         order.save(update_fields=['customer', 'updated_at'])
@@ -72,6 +122,22 @@ def require_field_order_customer(order: FieldOrder) -> Customer:
 
 
 def transition(order: FieldOrder, to_status: str) -> FieldOrder:
+    """
+    Move a field order to ``to_status`` if allowed by ``ALLOWED_TRANSITIONS``.
+
+    Args:
+        order: Current status read from the instance.
+        to_status: Target status string (one of ``FieldOrder.STATUS_*``).
+
+    Returns:
+        Updated order with new ``status``.
+
+    Raises:
+        FieldOrderTransitionError: Transition not in the adjacency map.
+
+    Side effects:
+        Persists ``status`` and ``updated_at`` only.
+    """
     allowed = ALLOWED_TRANSITIONS.get(order.status, set())
     if to_status not in allowed:
         raise FieldOrderTransitionError({
@@ -83,6 +149,18 @@ def transition(order: FieldOrder, to_status: str) -> FieldOrder:
 
 
 def submit_order(order: FieldOrder) -> FieldOrder:
+    """
+    Submit a draft order for packing (draft → submitted).
+
+    Args:
+        order: Must be in ``STATUS_DRAFT`` with at least one line.
+
+    Returns:
+        Order in ``STATUS_SUBMITTED``.
+
+    Raises:
+        FieldOrderTransitionError: No lines, site not ready, or illegal status.
+    """
     if not order.lines.exists():
         raise FieldOrderTransitionError({'lines': 'Add at least one line before submit.'})
     assert_site_ready_for_order(order.site)
@@ -91,14 +169,42 @@ def submit_order(order: FieldOrder) -> FieldOrder:
 
 
 def start_packing(order: FieldOrder) -> FieldOrder:
+    """
+    Move submitted → packing without recording a sale.
+
+    Args:
+        order: Typically ``STATUS_SUBMITTED``.
+
+    Returns:
+        Order in ``STATUS_PACKING``.
+
+    Raises:
+        FieldOrderTransitionError: Illegal transition.
+    """
     return transition(order, FieldOrder.STATUS_PACKING)
 
 
 def pack_order(order: FieldOrder, user=None) -> FieldOrder:
     """
-    Packing is when a field order becomes a sale: it is recorded for the agent
-    who took the order, stock moves, the books post, and the unpaid total goes
-    on the customer's debt (collected through debt management).
+    Pack an order: allocate stock, create the field sale, mark ready.
+
+    If status is ``submitted``, moves to ``packing`` first. Sets
+    ``stock_allocated``, ``packed_at``, and ``STATUS_READY``, then calls
+    ``record_field_sale`` inside one DB transaction.
+
+    Args:
+        order: Must reach ``STATUS_PACKING`` (auto from submitted).
+        user: Acting user for sale attribution; falls back to ``created_by``.
+
+    Returns:
+        Order in ``STATUS_READY`` with ``sale`` linked when total > 0 debt path.
+
+    Raises:
+        FieldOrderTransitionError: Wrong status, customer missing, or stock/sale errors.
+
+    Side effects:
+        Stock movement, sale journal, customer debt for unpaid total; idempotent
+        sale if ``order.sale_id`` already set inside ``record_field_sale``.
     """
     from .field_sale import record_field_sale
 
@@ -122,6 +228,26 @@ def pack_order(order: FieldOrder, user=None) -> FieldOrder:
 
 
 def assign_delivery_agent(order: FieldOrder, agent, user=None) -> FieldOrder:
+    """
+    Assign a delivery agent and enqueue the order on today's route.
+
+    Requires packed order (``STATUS_READY`` with ``stock_allocated``). Moves
+    ready → ``out_for_delivery`` and calls ``delivery.services.enqueue_assigned_order``.
+
+    Args:
+        order: Packed field order.
+        agent: User with ``delivery.update``; must be non-null.
+        user: Optional actor for audit (defaults unused in service layer).
+
+    Returns:
+        Refreshed order after route enqueue.
+
+    Raises:
+        FieldOrderTransitionError: Unpacked order, wrong status, or missing agent.
+
+    Side effects:
+        Updates assignee timestamps; may create ``DeliveryStop`` on agent route.
+    """
     if agent is None:
         raise FieldOrderTransitionError({
             'delivery_agent_id': 'Delivery driver is required.',
@@ -158,9 +284,20 @@ def assign_delivery_agent(order: FieldOrder, agent, user=None) -> FieldOrder:
 
 def claim_ready_order(order: FieldOrder, agent) -> FieldOrder:
     """
-    Delivery driver self-assign for unassigned ready orders.
+    Let a delivery agent self-assign an unassigned ready order.
 
-    Dispatch assign always wins: already-assigned orders cannot be claimed.
+    Dispatch assign always wins: orders with ``assigned_delivery_agent`` set
+    cannot be claimed.
+
+    Args:
+        order: Must be ``STATUS_READY`` and unassigned.
+        agent: Claiming user (passed through to ``assign_delivery_agent``).
+
+    Returns:
+        Same as ``assign_delivery_agent``.
+
+    Raises:
+        FieldOrderTransitionError: Not ready, already assigned, or missing agent.
     """
     if agent is None:
         raise FieldOrderTransitionError({
@@ -180,4 +317,19 @@ def claim_ready_order(order: FieldOrder, agent) -> FieldOrder:
 
 
 def cancel_order(order: FieldOrder) -> FieldOrder:
+    """
+    Cancel a field order when the status graph allows cancelled.
+
+    Args:
+        order: Any non-terminal status that lists ``cancelled`` in transitions.
+
+    Returns:
+        Order in ``STATUS_CANCELLED``.
+
+    Raises:
+        FieldOrderTransitionError: Illegal transition (e.g. from ``done``).
+
+    Side effects:
+        Does not reverse stock or sale if already packed; cancel only updates status.
+    """
     return transition(order, FieldOrder.STATUS_CANCELLED)

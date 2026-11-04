@@ -4,7 +4,15 @@ from django.db import models
 
 class PendingChange(models.Model):
     """
-    Maker-checker proposal. Live data stays on the entity until status=approved.
+    Maker-checker proposal. Live entity data stays unchanged until approved.
+
+    ``original_values`` / ``proposed_values`` are JSON-safe snapshots.
+    ``apply_payload`` holds extra data needed to apply (e.g. stock movement
+    params). ``batch_id`` (UUID string, max 36) links multi-row approvals —
+    empty string means a standalone change.
+
+    Status: ``pending_approval`` → ``approved`` | ``rejected``.
+    ``entity_repr`` is capped at 255 chars for display.
     """
 
     STATUS_PENDING = 'pending_approval'

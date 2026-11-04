@@ -1,9 +1,21 @@
+"""
+Persisted idempotency keys for mutating HTTP requests.
+
+Public entry points:
+    - ``IdempotencyRecord`` — unique on (key, user, method, path)
+"""
 from django.conf import settings
 from django.db import models
 
 
 class IdempotencyRecord(models.Model):
-    """Stores the first successful (or completed) response for an Idempotency-Key."""
+    """
+    First completed response for an ``Idempotency-Key`` within scope.
+
+    ``response_body`` is stored as text (UTF-8 with replacement on decode).
+    ``status_code`` replays as-is except 401 responses are never written by
+    middleware. ``key`` max 255 chars; ``path`` max 512.
+    """
 
     key = models.CharField(max_length=255)
     user = models.ForeignKey(

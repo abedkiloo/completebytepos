@@ -54,6 +54,14 @@ def log_audit(
             produced by ``diff_instance`` below, or a custom event payload).
         object_repr: optional pretty-printable string. Defaults to
             ``str(instance)`` if instance is given.
+
+    Returns:
+        None. Writes one ``AuditLog`` row inside ``transaction.atomic()`` when
+        successful.
+
+    Side effects:
+        Truncates several string fields to model max lengths (action 32, module 32,
+        object_repr 255, etc.). Never raises to callers — failures are logged.
     """
 
     # Hard-coded import-deferral so this module is import-time safe even
@@ -121,6 +129,15 @@ def diff_instance(before: Model | None, after: Model | None) -> dict:
     (deletion). FKs are recorded as their PK (Django's ``model_to_dict``
     handles this). DateTime / Decimal / UUID values are stringified so the
     JSONField round-trips cleanly.
+
+    Args:
+        before: Pre-change instance, or ``None`` on create.
+        after: Post-change instance, or ``None`` on delete.
+
+    Returns:
+        Empty dict when both are ``None``; ``{'__created__': ...}`` or
+        ``{'__deleted__': ...}`` for single-sided snapshots; otherwise field diff
+        map ``{field: {'from': X, 'to': Y}}``.
     """
     def _normalize(d: dict) -> dict:
         return {k: _json_safe(v) for k, v in d.items()}

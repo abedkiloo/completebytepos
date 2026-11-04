@@ -5,7 +5,13 @@ from decimal import Decimal
 
 
 class ExpenseCategory(models.Model):
-    """Categories for expenses"""
+    """
+    Expense taxonomy row.
+
+    ``name`` is unique (max 100). When ``include_in_trading_profit`` is False,
+    approved expenses in this category are excluded from trading P&L.
+    """
+
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
@@ -29,7 +35,17 @@ class ExpenseCategory(models.Model):
 
 
 class Expense(models.Model):
-    """Expense records"""
+    """
+    Operating expense voucher.
+
+    Bounds:
+        - ``amount``: Decimal ≥ 0.01, max_digits=10, 2 dp.
+        - ``expense_number``: auto ``EXP-`` + 8 hex chars; unique.
+        - ``status``: pending → approved|rejected|paid|voided (via services).
+
+    ``expense_date`` is the business day the cost occurred (not create time).
+    """
+
     PAYMENT_METHODS = [
         ('cash', 'Cash'),
         ('mpesa', 'M-PESA'),

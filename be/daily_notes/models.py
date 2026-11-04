@@ -1,10 +1,24 @@
+"""
+Staff daily notes, checklists, and standalone tasks.
+
+Public entry points:
+    - ``DailyNote`` / ``DailyNoteChecklistItem`` / ``DailyTask`` models
+    - Board helpers ``mark_done`` / ``move_to_board`` on notes
+
+Mutations do not write ``AuditLog`` from the model layer alone.
+"""
 from django.contrib.auth.models import User
 from django.db import models
 from django.utils import timezone
 
 
 class DailyNote(models.Model):
-    """Staff journal entry for a specific calendar day."""
+    """
+    Staff journal entry for a calendar day with optional assignment.
+
+    Sticky notes block POS until the assignee marks them done. ``title`` max
+    200 chars; ``content`` is required text.
+    """
 
     note_date = models.DateField(db_index=True)
     title = models.CharField(max_length=200, blank=True)
@@ -68,12 +82,33 @@ class DailyNote(models.Model):
         return f'{self.note_date} — {label} ({kind})'
 
     def mark_done(self, *, done: bool, at=None):
+        """
+        Set completion state and timestamp.
+
+        Args:
+            done: When ``True``, sets ``completed_at`` to ``at`` or ``timezone.now()``
+                and clears ``in_progress``. When ``False``, clears ``completed_at``.
+            at: Optional timezone-aware completion time when ``done=True``.
+
+        Returns:
+            None. Updates fields in memory; caller must ``save()``.
+        """
         self.is_done = done
         self.completed_at = (at or timezone.now()) if done else None
         if done:
             self.in_progress = False
 
     def move_to_board(self, column: str):
+        """
+        Map a kanban column name to note status fields.
+
+        Args:
+            column: ``'past'`` marks done; ``'doing'`` sets in progress; any other
+                value (including ``'todo'``) clears in progress and open state.
+
+        Returns:
+            None. Updates fields in memory; caller must ``save()``.
+        """
         column = (column or '').strip().lower()
         if column == 'past':
             self.mark_done(done=True)
@@ -86,6 +121,12 @@ class DailyNote(models.Model):
 
     @property
     def board_column(self) -> str:
+        """
+        Derive kanban column from current flags.
+
+        Returns:
+            ``'past'``, ``'doing'``, or ``'todo'``.
+        """
         if self.is_done:
             return 'past'
         if self.in_progress:
@@ -122,6 +163,16 @@ class DailyNoteChecklistItem(models.Model):
         return f'{self.label} ({status})'
 
     def mark_done(self, *, done: bool, at=None):
+        """
+        Set checklist row completion.
+
+        Args:
+            done: Completion flag; sets ``completed_at`` when ``True``.
+            at: Optional completion timestamp; defaults to ``timezone.now()``.
+
+        Returns:
+            None. Caller must ``save()``.
+        """
         self.is_done = done
         self.completed_at = (at or timezone.now()) if done else None
 
@@ -170,5 +221,15 @@ class DailyTask(models.Model):
         return f'{self.task_date} — {self.title} ({status})'
 
     def mark_done(self, *, done: bool, at=None):
+        """
+        Set task completion state.
+
+        Args:
+            done: When ``True``, records ``completed_at`` (``at`` or now).
+            at: Optional timezone-aware completion instant.
+
+        Returns:
+            None. Caller must ``save()``.
+        """
         self.is_done = done
         self.completed_at = (at or timezone.now()) if done else None

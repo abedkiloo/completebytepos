@@ -1,8 +1,15 @@
-"""Turn a packed field order into a real sale credited to the agent who took it.
+"""
+Record a ``sales.Sale`` for a packed field order (allocate-on-pack).
 
-The sale moves stock, posts to the books and puts the unpaid total on the
-customer's debt, exactly like a shop credit sale. It is marked
-``entry_source='field'`` so every screen can tell field sales from shop sales.
+Public entry points:
+    - ``record_field_sale`` — idempotent sale create + debt for unpaid total
+
+Side effects: ``SaleService.create_sale`` (stock, journals when ``move_stock``),
+customer debt via ``_apply_sale_payment`` when ``post_debt`` and ``sale.total > 0``.
+Sets ``FieldOrder.sale`` OneToOne. Sale uses ``entry_source='field'``.
+
+Invariants: line quantities must be positive integers at pack time; at most one
+sale per order (early return when ``order.sale_id`` is set).
 """
 
 from __future__ import annotations
@@ -48,7 +55,26 @@ def _field_sale_items(order: FieldOrder) -> list[dict]:
 
 
 def record_field_sale(order: FieldOrder, user=None, *, move_stock: bool = True, post_debt: bool = True):
-    """Create (once) the sale for a packed field order and link it to the order."""
+    """
+    Create (once) the POS sale for a packed field order and link it on the order.
+
+    Args:
+        order: Packed order with lines and customer; ``packed_at`` used as ``occurred_at``.
+        user: Fallback ``served_by`` when ``order.created_by`` is null.
+        move_stock: When True, complete sale with stock movement; when False, mark
+            completed and post journal only (backfill/testing paths).
+        post_debt: When True and ``sale.total > 0``, record full amount as pending debt.
+
+    Returns:
+        Existing or newly created ``Sale`` instance.
+
+    Raises:
+        FieldOrderTransitionError: Invalid line quantities, empty lines, or stock validation.
+
+    Side effects:
+        Creates sale items, stock movements (unless ``move_stock=False``), debt row,
+        and sets ``order.sale``. No-op return when ``order.sale_id`` already set.
+    """
     from sales.services import SaleService
 
     if order.sale_id:

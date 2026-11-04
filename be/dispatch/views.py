@@ -1,3 +1,15 @@
+"""
+Dispatch board HTTP API over ``agents.FieldOrder``.
+
+Public entry points:
+    - ``DispatchQueueViewSet`` — list/filter orders, queue, pack, assign, drivers
+
+Side effects: ``pack`` / ``assign`` delegate to agent order services (sale, routes).
+Permissions: ``dispatch.view`` for reads; ``dispatch.update`` for pack/assign/driver create.
+
+Does not define models; reuses ``FieldOrder`` serializers from ``agents``.
+"""
+
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -82,12 +94,17 @@ def _apply_field_order_filters(qs, params):
 
 class DispatchQueueViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    Dispatcher / admin board for field (visit) orders.
+    Dispatcher and admin API for field (visit) orders.
 
-    - list: all field orders with date/status/customer filters
-    - queue: submitted/packing/ready only (mobile pack board)
-    - pack: mark ready for pickup
-    - assign: hand to anyone with delivery.update (sales, driver, …)
+    Supports filtered list/retrieve, a pack-board ``queue`` action, ``pack`` and
+    ``assign`` mutations, and driver directory/create helpers.
+
+    Query bounds (list/queue): optional ``status`` (including buckets
+    ``awaiting_pack`` / ``dispatched``), ``date_from`` / ``date_to`` (created date,
+    inclusive), and ``search`` (customer, site label, notes, or numeric pk).
+
+    Attributes:
+        queryset: Prefetched lines, site media, assignee relations.
     """
 
     serializer_class = FieldOrderSerializer
@@ -134,6 +151,16 @@ class DispatchQueueViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='pack')
     def pack(self, request, pk=None):
+        """
+        Pack a field order (stock + sale + ready).
+
+        Returns:
+            Serialized ``FieldOrder`` on success.
+
+        Raises:
+            HTTP 404: Unknown pk.
+            HTTP 400: ``FieldOrderTransitionError`` detail from serializers/services.
+        """
         try:
             order = self._order(pk)
         except FieldOrder.DoesNotExist:
@@ -153,6 +180,16 @@ class DispatchQueueViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='assign')
     def assign(self, request, pk=None):
+        """
+        Assign a delivery agent and enqueue the order on their route.
+
+        Returns:
+            Serialized ``FieldOrder`` after assign + delivery enqueue.
+
+        Raises:
+            HTTP 404: Unknown pk.
+            HTTP 400: Unpacked order, ineligible agent, or transition error.
+        """
         try:
             order = self._order(pk)
         except FieldOrder.DoesNotExist:

@@ -1,4 +1,14 @@
-"""Build appraisal progress snapshots from posted sales."""
+"""
+Appraisal progress snapshots and year-end salary-increment decisions.
+
+Public entry points:
+    - ``staff_snapshot`` / ``team_snapshots``
+    - ``sync_salary_increment`` / ``decide_salary_increment`` / ``list_salary_increments``
+    - HTTP under ``/api/appraisals/``
+
+Reads posted sales only (via ``reports.sale_scope.posted_sales``). Approve may
+write ``Employee.salary``; does not recalculate locked payroll runs.
+"""
 
 from __future__ import annotations
 
@@ -83,6 +93,16 @@ _LEGACY_ROLE_NAMES = {
 
 
 def staff_role_name(user: User | None) -> str:
+    """
+    Resolve the display role used for appraisal templates.
+
+    Args:
+        user: Auth user, or None.
+
+    Returns:
+        Custom role name when set; else mapped legacy role; else
+        ``'Sales Personnel'``. Never empty.
+    """
     if user is None:
         return 'Sales Personnel'
     try:
@@ -630,6 +650,29 @@ def staff_snapshot(
     collections_by_day=None,
     employee=None,
 ) -> dict[str, Any]:
+    """
+    Build today/month/year star progress for one staff member.
+
+    Args:
+        user: Staff user whose posted sales/collections are scored.
+        year: Calendar year to score. ``None`` → ``today.year``. Callers should
+            keep years in a sane range (API uses roughly 2000–2100).
+        today: Anchor date for “today” and partial months; default localdate().
+        template: Optional loaded policy dict; ``None`` loads store template.
+        daily_net / collections_by_*: Optional pre-aggregated maps for team
+            bulk paths; ``None`` queries for this user only.
+        employee: Optional ``Employee`` to avoid N+1 salary/hire lookups.
+
+    Returns:
+        Dict with ``staff``, ``policy``, ``applied_policy``, ``today``,
+        ``month``, ``year``, greeting/tips, and ``has_personal_target``.
+        Skipped roles get null day/month/year blocks and
+        ``has_personal_target=False``.
+
+    Side effects:
+        May persist/update ``AppraisalSalaryIncrement`` for completed past years
+        via ``sync_salary_increment`` (``persist=True`` when ``today.year > year``).
+    """
     today = today or timezone.localdate()
     year = int(year or today.year)
     base = template or load_template()
@@ -746,6 +789,18 @@ def staff_snapshot(
 
 
 def team_snapshots(*, year: int | None = None, today=None, template=None) -> dict[str, Any]:
+    """
+    Build appraisal snapshots for every staff id with posted sales in ``year``.
+
+    Args:
+        year: Calendar year; ``None`` → local today year.
+        today: Anchor date; default localdate().
+        template: Optional shared policy template.
+
+    Returns:
+        Dict with per-staff results plus team insights. Staff set is unbounded
+        by distinct cashiers/served_by on posted sales in that year.
+    """
     today = today or timezone.localdate()
     year = int(year or today.year)
     template = template or load_template()
@@ -970,6 +1025,22 @@ def sync_salary_increment(
     *,
     persist: bool,
 ) -> dict[str, Any] | None:
+    """
+    Upsert or preview the year-end increment row from a year snapshot.
+
+    Args:
+        user: Staff user.
+        year_snap: Year block from ``_build_year`` / ``staff_snapshot``.
+        role_name: Role label stored on the increment row.
+        persist: When False, return existing row or an unsaved preview payload
+            (``id=None``). When True, get_or_create and refresh non-approved rows.
+
+    Returns:
+        Serialized increment dict, or preview dict when not persisted.
+
+    Invariants:
+        Already-``approved`` rows are never overwritten by recalculation.
+    """
     payload = _increment_payload(user, year_snap, role_name)
     if not persist:
         existing = AppraisalSalaryIncrement.objects.filter(
@@ -1007,6 +1078,29 @@ def decide_salary_increment(
     reason: str = '',
     effective_date=None,
 ) -> dict[str, Any]:
+    """
+    Approve or reject a pending salary increment.
+
+    Args:
+        increment_id: Primary key of ``AppraisalSalaryIncrement``.
+        user: Acting checker (stored on ``approved_by``).
+        request: Optional HTTP request for audit IP/path.
+        approve: True to approve; False to reject.
+        reason: Free text; truncated to 500 chars. May be blank.
+        effective_date: Date salary takes effect; default local today on approve.
+
+    Returns:
+        Serialized increment after status change.
+
+    Raises:
+        PolicyError: Missing row, already approved, or approve when
+            ``qualifies`` is False.
+
+    Side effects:
+        On approve, sets linked ``Employee.salary = new_basic`` when present.
+        Writes an ``AuditLog`` under ``module=appraisals``. Does not create
+        payroll runs or maker-checker ``PendingChange`` rows.
+    """
     try:
         row = AppraisalSalaryIncrement.objects.select_related('user').get(pk=increment_id)
     except AppraisalSalaryIncrement.DoesNotExist as exc:

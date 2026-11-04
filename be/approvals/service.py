@@ -1,5 +1,13 @@
 """
 Maker-checker workflow: submit, approve, reject, validate.
+
+Public entry points:
+    - ``submit_change`` / ``approve_change`` / ``reject_change``
+    - ``validate_before_approval`` / ``snapshot_model``
+    - HTTP queue under ``/api/approvals/pending-changes/``
+
+Side effects: creates ``PendingChange`` rows; approve applies live domain
+mutations via ``approvals.apply`` and writes ``AuditLog`` (module=approvals).
 """
 
 from __future__ import annotations
@@ -116,6 +124,31 @@ def submit_change(
     batch_id: str = '',
     require_maker_checker: bool = True,
 ) -> PendingChange:
+    """
+    Create a pending maker-checker proposal without mutating live data.
+
+    Args:
+        request: HTTP request; ``request.user`` becomes ``made_by`` when present.
+        action_type: Registry action key (e.g. product price/stock, sale complete).
+        entity_type: Logical type string (model label / domain key).
+        entity_id: Coerced to str (max useful length ~64 on the field).
+        entity_repr: Human label; truncated to 255 chars.
+        original_values / proposed_values: Field maps; values JSON-sanitized.
+        reason: Required non-blank explanation (stripped).
+        apply_payload: Optional extra apply data; default ``{}``.
+        batch_id: Optional shared batch UUID string; default ``''``.
+        require_maker_checker: When True (default), store setting must enable
+            maker-checker; when False, still creates a row (caller opted in).
+
+    Returns:
+        New ``PendingChange`` in ``pending_approval``.
+
+    Raises:
+        ValidationError: Blank reason, or maker-checker disabled when required.
+
+    Side effects:
+        Audits ``pending_submit``. Does not apply proposed values yet.
+    """
     if not reason or not str(reason).strip():
         raise ValidationError({'reason': 'A reason is required for maker-checker proposals.'})
     if require_maker_checker and not is_maker_checker_enabled():
@@ -280,6 +313,27 @@ def approve_change(
     *,
     extreme_price_confirmed: bool = False,
 ) -> PendingChange:
+    """
+    Approve a pending change (and its ``batch_id`` peers when set).
+
+    Args:
+        change: Must be ``pending_approval``.
+        checker: User performing the check (must be allowed; maker≠checker
+            unless admin override).
+        request: Optional request for audit context.
+        extreme_price_confirmed: Required True when price swing exceeds 50%.
+
+    Returns:
+        The input ``change`` after apply (batch peers also applied).
+
+    Raises:
+        ValidationError: Wrong status, permission, past-dated/posted-correction
+            admin gates, or pre-apply validation failures (e.g. negative stock).
+
+    Side effects:
+        Applies live domain mutation, sets status approved, audits
+        ``pending_approve``, completes requester daily-note notices.
+    """
     if change.status != PendingChange.STATUS_PENDING:
         raise ValidationError('Only pending changes can be approved.')
     _require_past_dated_admin(checker, change)
@@ -372,6 +426,25 @@ def reject_change(
     rejection_reason: str,
     request=None,
 ) -> PendingChange:
+    """
+    Reject a pending change (and pending peers sharing ``batch_id``).
+
+    Args:
+        change: Must be ``pending_approval``.
+        checker: User allowed to reject this action type.
+        rejection_reason: Required non-blank text (stripped).
+        request: Optional request for audit.
+
+    Returns:
+        Updated ``PendingChange`` with status ``rejected``.
+
+    Raises:
+        ValidationError: Wrong status, permission, or blank rejection reason.
+
+    Side effects:
+        May return queued sales for correction and notify the maker via
+        daily notes; audits rejection.
+    """
     if change.status != PendingChange.STATUS_PENDING:
         raise ValidationError('Only pending changes can be rejected.')
     _require_past_dated_admin(checker, change)

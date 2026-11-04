@@ -1,3 +1,14 @@
+"""
+Inter-account and cash money transfers with approval status.
+
+Public entry points:
+    - ``MoneyTransfer`` ORM model
+    - ``MoneyTransferService`` in ``be.transfers.services``
+
+Side effects: when ``status`` is ``completed``, ``save`` refreshes
+``from_account`` / ``to_account`` balances via ``BankAccount.update_balance``.
+Pending or cancelled transfers do not change bank balances on save alone.
+"""
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator
@@ -7,7 +18,19 @@ import uuid
 
 
 class MoneyTransfer(models.Model):
-    """Money transfers between accounts"""
+    """
+    Documented movement of funds between bank accounts and/or cash.
+
+    ``from_account`` / ``to_account`` may be null for cash legs. Balance impact
+    is tied to ``completed`` status (see ``save`` and approve service).
+
+    Attributes:
+        amount: Transfer principal ≥ 0.01 (12,2 decimals).
+        fees: Additional fees ≥ 0.00; not auto-deducted from amount in model.
+        status: pending, processing, completed, failed, cancelled.
+        transfer_type: bank_to_bank, bank_to_cash, cash_to_bank, cash_to_cash.
+    """
+
     TRANSFER_TYPES = [
         ('bank_to_bank', 'Bank to Bank'),
         ('bank_to_cash', 'Bank to Cash'),
@@ -92,10 +115,19 @@ class MoneyTransfer(models.Model):
         return f"{self.transfer_number} - {self.amount} {self.currency}"
 
     def save(self, *args, **kwargs):
+        """
+        Persist transfer and refresh bank balances when completed.
+
+        Assigns ``TRF-{8 hex upper}`` when ``transfer_number`` is empty.
+
+        Side effects:
+            When ``status == 'completed'``, calls ``update_balance`` on non-null
+            ``from_account`` and ``to_account``.
+        """
         if not self.transfer_number:
             self.transfer_number = f"TRF-{uuid.uuid4().hex[:8].upper()}"
         super().save(*args, **kwargs)
-        
+
         # Update account balances when completed
         if self.status == 'completed':
             if self.from_account:

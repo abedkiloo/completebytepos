@@ -8,6 +8,12 @@ A multi-module retail POS API: products & stock, POS/billing sales, customers & 
 
 Stacks: **Django + DRF**, PostgreSQL in deploy, JWT auth, Docker entrypoint runs migrations then Gunicorn.
 
+## Documentation standard
+
+- **Docstrings:** Google style on every public function/class/module — parameters, returns, raises, numeric/size **bounds**, and side effects. See `.cursor/skills/docstrings/SKILL.md`.
+- **Module briefs:** `docs/modules/<app>.md` (index in `docs/modules/README.md`).
+- Prefer improving an existing docstring in the same change that alters behavior or signature.
+
 ## App map
 
 | App | Responsibility |

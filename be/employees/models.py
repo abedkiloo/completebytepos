@@ -5,8 +5,17 @@ from decimal import Decimal
 
 
 class Employee(models.Model):
-    """Employee Management Model"""
-    
+    """
+    Staff roster row used by payroll, appraisals, and HR screens.
+
+    Optionally links 1:1 to a login ``User`` (``related_name='employee_record'``).
+    ``employee_id`` is the internal staff code (unique), not national ID
+    (``id_number``). ``salary`` is monthly basic when set (Decimal ≥ 0).
+
+    Status is soft lifecycle only (``active`` / ``inactive`` / ``on_leave`` /
+    ``terminated``); hard delete is gated by module feature flags on the API.
+    """
+
     STATUS_CHOICES = [
         ('active', 'Active'),
         ('inactive', 'Inactive'),
@@ -113,8 +122,10 @@ class Employee(models.Model):
     
     @property
     def full_name(self):
+        """Display name: ``first_name`` + space + ``last_name`` (may be blank parts)."""
         return f"{self.first_name} {self.last_name}"
     
     @property
     def is_active(self):
+        """True only when ``status == 'active'`` (not on_leave / inactive / terminated)."""
         return self.status == 'active'

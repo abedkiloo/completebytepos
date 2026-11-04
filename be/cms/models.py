@@ -1,4 +1,13 @@
-"""Public website content (blog and enquiries) served to the marketing site."""
+"""
+Marketing website blog posts and public enquiry intake.
+
+Public entry points:
+    - ``BlogPost`` / ``BlogPostQuerySet.published()`` — public blog visibility rules
+    - ``WebsiteEnquiry`` — lead capture from the public site
+
+Side effects: ``BlogPost.save`` auto-slugs and sets ``published_at`` when publishing.
+Public create path: ``PublicEnquirySerializer.create`` in ``cms.serializers``.
+"""
 
 from __future__ import annotations
 
@@ -14,7 +23,16 @@ WORDS_PER_MINUTE = 200
 
 
 class BlogPostQuerySet(models.QuerySet):
+    """Query helpers for blog visibility."""
+
     def published(self):
+        """
+        Filter posts visible on the public site.
+
+        Returns:
+            Queryset with ``status=published``, ``published_at`` set, and
+            ``published_at`` ≤ current timezone-aware now.
+        """
         return self.filter(
             status=BlogPost.STATUS_PUBLISHED,
             published_at__isnull=False,
@@ -23,6 +41,17 @@ class BlogPostQuerySet(models.QuerySet):
 
 
 class BlogPost(models.Model):
+    """
+    CMS blog article with markdown body and SEO fields.
+
+    Slug auto-generates from title when blank (unique with numeric suffix).
+    ``reading_minutes`` assumes ``WORDS_PER_MINUTE`` (200) from word count ≥ 1.
+
+    Attributes:
+        tag_list: Parsed comma-separated ``tags`` for APIs.
+        summary: ``excerpt`` or truncated plain body (~160 chars).
+    """
+
     STATUS_DRAFT = 'draft'
     STATUS_PUBLISHED = 'published'
     STATUS_CHOICES = [
@@ -107,7 +136,14 @@ class BlogPost(models.Model):
 
 
 class WebsiteEnquiry(models.Model):
-    """A request sent from the public website, for the shop to review."""
+    """
+    Lead or product enquiry submitted from the public marketing site.
+
+    Create-only on public API; staff move ``status`` from ``new`` → reviewed/closed.
+    Optional ``product`` FK when visitor selected a catalog item.
+
+    Field bounds match serializer validation (name ≥ 2 chars; phone 9–15 digits).
+    """
 
     STATUS_NEW = 'new'
     STATUS_REVIEWED = 'reviewed'

@@ -1,3 +1,14 @@
+"""
+Chart of accounts and double-entry journal lines linked to source documents.
+
+Public entry points:
+    - ``AccountType``, ``Account``, ``JournalEntry``, ``Transaction`` models
+    - ``accounting.services`` journal factories (``create_*_journal_entry``)
+    - ``accounting.reversal`` for offsetting posted transactions
+
+Side effects: each ``JournalEntry`` save/delete recalculates ``Account.current_balance``.
+``Transaction.validate_balance`` checks debits equal credits in memory only.
+"""
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator
@@ -5,7 +16,16 @@ from decimal import Decimal
 
 
 class AccountType(models.Model):
-    """Account types (Asset, Liability, Equity, Revenue, Expense)"""
+    """
+    High-level GL classification (asset, liability, equity, revenue, expense).
+
+    ``normal_balance`` defaults on save when blank: asset/expense → debit;
+    liability, equity, revenue → credit.
+
+    Attributes:
+        name: One of the ``TYPE_CHOICES`` values; unique.
+    """
+
     TYPE_CHOICES = [
         ('asset', 'Asset'),
         ('liability', 'Liability'),
@@ -30,6 +50,12 @@ class AccountType(models.Model):
         return self.name
 
     def save(self, *args, **kwargs):
+        """
+        Persist account type and infer ``normal_balance`` when unset.
+
+        Side effects:
+            Single row write; does not touch child ``Account`` balances.
+        """
         # Set normal balance based on account type
         if not self.normal_balance:
             if self.name in ['asset', 'expense']:
@@ -40,7 +66,17 @@ class AccountType(models.Model):
 
 
 class Account(models.Model):
-    """Chart of Accounts"""
+    """
+    Chart-of-accounts row with optional parent for sub-accounts.
+
+    ``current_balance`` is maintained from ``JournalEntry`` totals plus
+    ``opening_balance`` according to ``account_type.normal_balance``.
+
+    Attributes:
+        account_code: Unique GL code (max 20 chars), indexed.
+        opening_balance / current_balance: Decimal(12,2); opening set at setup.
+    """
+
     account_code = models.CharField(max_length=20, unique=True, db_index=True)
     name = models.CharField(max_length=200)
     account_type = models.ForeignKey(
@@ -85,32 +121,53 @@ class Account(models.Model):
 
     @property
     def balance(self):
-        """Get current balance"""
+        """Return ``current_balance`` (alias for reports and serializers)."""
         return self.current_balance
 
     def update_balance(self):
-        """Recalculate balance from journal entries"""
+        """
+        Recompute ``current_balance`` from all journal lines on this account.
+
+        Debit-normal accounts: opening + debits − credits. Credit-normal:
+        opening + credits − debits.
+
+        Returns:
+            None.
+
+        Side effects:
+            Persists ``current_balance`` on this account row.
+        """
         from .models import JournalEntry
         debit_total = JournalEntry.objects.filter(
             account=self,
             entry_type='debit'
         ).aggregate(total=models.Sum('amount'))['total'] or Decimal('0.00')
-        
+
         credit_total = JournalEntry.objects.filter(
             account=self,
             entry_type='credit'
         ).aggregate(total=models.Sum('amount'))['total'] or Decimal('0.00')
-        
+
         if self.account_type.normal_balance == 'debit':
             self.current_balance = self.opening_balance + debit_total - credit_total
         else:
             self.current_balance = self.opening_balance + credit_total - debit_total
-        
+
         self.save(update_fields=['current_balance'])
 
 
 class JournalEntry(models.Model):
-    """Double-entry journal entries"""
+    """
+    One debit or credit leg; amounts are always positive (≥ 0.01).
+
+    ``reference_type`` / ``reference_id`` tie back to expense, income, sale, etc.
+    Account is PROTECTed from deletion while entries exist.
+
+    Attributes:
+        entry_type: ``debit`` or ``credit``.
+        amount: Line amount in account currency (12,2).
+    """
+
     ENTRY_TYPES = [
         ('debit', 'Debit'),
         ('credit', 'Credit'),
@@ -158,6 +215,12 @@ class JournalEntry(models.Model):
         return f"{self.entry_number} - {self.account.name} - {self.entry_type} {self.amount}"
 
     def save(self, *args, **kwargs):
+        """
+        Persist entry, assign ``JE-{8 hex}`` if needed, refresh account balance.
+
+        Side effects:
+            Updates parent ``Account.current_balance`` after save.
+        """
         if not self.entry_number:
             import uuid
             self.entry_number = f"JE-{uuid.uuid4().hex[:8].upper()}"
@@ -167,6 +230,12 @@ class JournalEntry(models.Model):
             self.account.update_balance()
 
     def delete(self, *args, **kwargs):
+        """
+        Remove entry and recalculate the linked account balance.
+
+        Side effects:
+            Deletes row; calls ``account.update_balance`` afterward.
+        """
         account = self.account
         super().delete(*args, **kwargs)
         # Recalculate account balance after deletion
@@ -175,7 +244,17 @@ class JournalEntry(models.Model):
 
 
 class Transaction(models.Model):
-    """Transaction linking journal entries (double-entry)"""
+    """
+    Header grouping balanced journal lines for one economic event.
+
+    Lines are attached via M2M after creation in service helpers. Reversal
+    transactions use ``reference_type='reversal'`` pointing at the original txn id.
+
+    Attributes:
+        transaction_number: Unique ``TXN-{8 hex}`` when auto-assigned.
+        reference_type / reference_id: Source document linkage (parallel to lines).
+    """
+
     transaction_number = models.CharField(max_length=50, unique=True, editable=False, db_index=True)
     transaction_date = models.DateField(db_index=True)
     description = models.TextField()
@@ -202,13 +281,25 @@ class Transaction(models.Model):
         return f"{self.transaction_number} - {self.description}"
 
     def save(self, *args, **kwargs):
+        """
+        Persist transaction header; assign ``TXN-{8 hex}`` when number is empty.
+
+        Side effects:
+            Does not validate balance or attach lines — callers add M2M entries.
+        """
         if not self.transaction_number:
             import uuid
             self.transaction_number = f"TXN-{uuid.uuid4().hex[:8].upper()}"
         super().save(*args, **kwargs)
 
     def validate_balance(self):
-        """Validate that debits equal credits"""
+        """
+        Check whether attached journal lines satisfy double-entry equality.
+
+        Returns:
+            True if sum of debit amounts equals sum of credit amounts; False otherwise.
+            Empty line set returns True (0 == 0).
+        """
         entries = self.journal_entries.all()
         debit_total = sum(entry.amount for entry in entries if entry.entry_type == 'debit')
         credit_total = sum(entry.amount for entry in entries if entry.entry_type == 'credit')

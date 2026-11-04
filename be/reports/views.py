@@ -28,6 +28,19 @@ from .export import maybe_export_report
 
 
 def request_date_bounds(request):
+    """
+    Parse ``date_from`` / ``date_to`` query params into inclusive datetimes.
+
+    Date-only values expand to start-of-day and end-of-day in the current
+    timezone (see ``services.datetime_filters``).
+
+    Args:
+        request: DRF request with ``query_params``.
+
+    Returns:
+        ``(start, end)`` where each element is a timezone-aware ``datetime`` or
+        ``None`` when the param is missing or unparseable.
+    """
     from services.datetime_filters import inclusive_end_datetime, inclusive_start_datetime
 
     return (
@@ -37,6 +50,16 @@ def request_date_bounds(request):
 
 
 def sale_report_queryset(date_from=None, date_to=None):
+    """
+    Posted (completed) sales optionally filtered by ``occurred_at``.
+
+    Args:
+        date_from: Inclusive lower bound on ``occurred_at``; omitted when ``None``.
+        date_to: Inclusive upper bound on ``occurred_at``; omitted when ``None``.
+
+    Returns:
+        A ``Sale`` queryset (``posted_sales()``) with date filters applied.
+    """
     qs = posted_sales()
     if date_from:
         qs = qs.filter(occurred_at__gte=date_from)

@@ -1,0 +1,19 @@
+---
+description: Require Google-style docstrings with Args/Returns/Raises/bounds on every new or edited public API
+globs: be/**/*.py,fe/src/**/*.{js,jsx,ts,tsx},mobile/lib/**/*.dart
+alwaysApply: false
+---
+
+# Docstring standard
+
+When creating or editing a function, class, or module in matching files, follow
+`.cursor/skills/docstrings/SKILL.md`.
+
+Every public item must document: purpose, parameters (meaning + types), return
+value, raises, and limits/upper–lower bounds where numeric or sized. Domain
+code must note side effects (stock, wallet, audit, journals).
+
+Same standard applies to **existing** public APIs when a module is under a
+documentation pass — do not leave thin one-liners on services/models you touch.
+
+Update `docs/modules/<app>.md` when documenting or introducing a Django app.

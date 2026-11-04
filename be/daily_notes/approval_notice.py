@@ -1,4 +1,14 @@
-"""Notify the requester in Daily notes when an approval is returned."""
+"""
+Approval rejection/queue notices on Daily notes boards.
+
+Public entry points:
+    - ``notify_approval_rejected`` / ``notify_sale_approved`` / ``notify_managers_sale_queued``
+    - ``complete_*`` helpers to close cards when workflow advances
+    - ``is_sale_return_notice_text`` — detect POS correction notices
+
+Writes ``DailyNote`` / ``DailyTask`` rows; no ``AuditLog``. Fingerprints in
+content use ``ref:`` / ``source:`` lines for idempotent close matching.
+"""
 
 from __future__ import annotations
 
@@ -45,6 +55,16 @@ ACTION_LABELS = {
 
 
 def action_label(action_type: str | None) -> str:
+    """
+    Map an approval ``action_type`` code to user-facing words.
+
+    Args:
+        action_type: Pending-change or domain action key; blank becomes ``'request'``.
+
+    Returns:
+        Label from ``ACTION_LABELS`` or a title-cased fallback with underscores
+        replaced by spaces.
+    """
     key = str(action_type or '').strip()
     if not key:
         return 'request'
@@ -62,14 +82,26 @@ SALE_RETURN_ACTIONS = frozenset({'sale_complete', 'sale_backfill'})
 
 
 def sale_return_notice_fingerprint(record_id) -> str:
+    """Return the ``ref:`` token embedded in returned-sale notice bodies."""
     return f'ref: reject/sale/{record_id}/'
 
 
 def backfill_return_notice_fingerprint(change_id) -> str:
+    """Return the ``ref:`` token for rejected past-sale (backfill) notices."""
     return f'ref: reject/backfill/{change_id}/'
 
 
 def rejection_notice_fingerprint(source: str, record_id) -> str:
+    """
+    Build a generic rejection fingerprint for close matching.
+
+    Args:
+        source: ``pending_change``, ``expense``, ``income``, or ``transfer``.
+        record_id: Primary key of the rejected record.
+
+    Returns:
+        A ``ref: reject/<source>/<id>/`` substring stored in note content.
+    """
     return f'ref: reject/{source}/{record_id}/'
 
 
@@ -98,7 +130,15 @@ SALE_RETURN_TICK_ERROR = (
 
 
 def is_sale_return_notice_text(text: str | None) -> bool:
-    """True when the Daily note/task is a returned sale that must be fixed on POS."""
+    """
+    Detect returned-sale notices that require POS correction (not tick-only).
+
+    Args:
+        text: Note ``content`` or task ``description``.
+
+    Returns:
+        ``True`` when body contains sale/backfill rejection refs or a ``sale_id:`` line.
+    """
     raw = text or ''
     if 'ref: reject/sale/' in raw or 'ref: reject/backfill/' in raw:
         return True
@@ -151,6 +191,21 @@ def build_rejection_notice(
     record_id,
     sale=None,
 ) -> tuple[str, str]:
+    """
+    Compose title and body for a rejection daily note.
+
+    Args:
+        action_type: Drives wording and sale-specific POS instructions.
+        entity_repr: Human item label (product name, sale number, etc.).
+        rejection_reason: Manager comment; defaults to ``'No reason given'``.
+        checker: Reviewer user for attribution.
+        source: Workflow source key stored in footer metadata.
+        record_id: Id embedded in footer for later auto-close.
+        sale: Optional ``Sale`` for ``sale_complete`` snapshot lines.
+
+    Returns:
+        ``(title, content)`` strings (title truncated to 200 chars).
+    """
     label = action_label(action_type)
     item = (entity_repr or '').strip() or 'your request'
     checker_name = _person_name(checker)
@@ -205,7 +260,25 @@ def notify_approval_rejected(
     is_sticky: bool = False,
     sale=None,
 ):
-    """Write a daily note and an open task for the person who requested approval."""
+    """
+    Write a daily note and open task when an approval is rejected.
+
+    Sale return actions are always sticky and assigned to the requester.
+
+    Args:
+        requester: User who submitted the change (assignee when sticky).
+        checker: Reviewer; becomes note author for sticky sale returns.
+        action_type: Pending-change action key.
+        entity_repr: Display label for the rejected entity.
+        rejection_reason: Manager comment text.
+        source: Footer source (default ``pending_change``).
+        record_id: Required id for fingerprints; skips write when ``None``.
+        is_sticky: Force sticky gate; sale return actions override to sticky.
+        sale: Optional sale for ``sale_complete`` body details.
+
+    Returns:
+        ``(note, task)`` tuple on success, or ``None`` on skip/error.
+    """
     if requester is None or record_id is None:
         return None
     sticky = bool(is_sticky) or action_type in SALE_RETURN_ACTIONS
@@ -291,7 +364,15 @@ def _only_past_sale(qs):
 
 
 def complete_sale_return_notes(*, record_id) -> int:
-    """Move the salesperson's returned-sale sticky note and task to Past."""
+    """
+    Move returned-sale sticky notes/tasks to Past for a sale id.
+
+    Args:
+        record_id: Sale primary key embedded in notice fingerprints.
+
+    Returns:
+        Count of notes moved to Past (tasks completed separately).
+    """
     if record_id is None:
         return 0
     return _close_by_ref('ref: reject/sale/', record_id, title_filter=_not_past_sale)
@@ -461,7 +542,16 @@ def _notice_filter(text_field: str):
 
 
 def complete_stale_approval_notices(*, user=None) -> int:
-    """Close open approval notes and tasks whose sale or request has already been dealt with."""
+    """
+    Close open approval notes/tasks whose backing record no longer needs action.
+
+    Args:
+        user: When set, only scans notes/tasks authored by or assigned to this user.
+
+    Returns:
+        Approximate count of notes moved plus tasks completed (may double-count
+        operations across the two loops).
+    """
     from django.db.models import Q
 
     notes = DailyNote.objects.filter(is_done=False).filter(_notice_filter('content'))
@@ -486,11 +576,24 @@ def complete_stale_approval_notices(*, user=None) -> int:
 
 
 def complete_stale_sale_notice_tasks(*, user=None) -> int:
+    """Alias for ``complete_stale_approval_notices`` (task-oriented call sites)."""
     return complete_stale_approval_notices(user=user)
 
 
 def notify_sale_approved(*, sale, checker):
-    """Tell the cashier in Daily notes that the sale is complete."""
+    """
+    Tell the cashier in Daily notes that the sale is complete.
+
+    Closes leftover queue/return tasks first, then creates a done note for the
+    cashier (no open task).
+
+    Args:
+        sale: Approved ``Sale`` with ``cashier`` set.
+        checker: Approving user for attribution.
+
+    Returns:
+        Created ``DailyNote`` or ``None`` when cashier missing or on error.
+    """
     requester = getattr(sale, 'cashier', None)
     if requester is None:
         return None
@@ -529,7 +632,16 @@ def _notes_for_sale_queue(source: str, record_id) -> list:
 
 
 def manager_notice_recipients(*, exclude_user=None):
-    """Managers (then sales.approve staff) who should clear a queued sale."""
+    """
+    Resolve users who should receive manager sale-queue cards.
+
+    Args:
+        exclude_user: Optional author to omit (typically the submitting cashier).
+
+    Returns:
+        De-duplicated list of active ``User`` rows (manager role, legacy manager
+        profile flag, or ``sales`` ``approve`` permission).
+    """
     from django.contrib.auth.models import User
 
     from accounts.models import Permission, Role
@@ -598,7 +710,21 @@ def notify_managers_sale_queued(
     sale=None,
     entity_repr: str = '',
 ):
-    """Put a To do card on each manager Daily notes board for a queued sale."""
+    """
+    Put a To do card on each manager board for a queued sale.
+
+    Reopens existing cards or skips when open cards already exist.
+
+    Args:
+        author: Submitting user (excluded from recipients).
+        source: ``sale_complete`` or ``sale_backfill`` fingerprint namespace.
+        record_id: Sale or pending-change id for matching.
+        sale: Optional sale for totals in the title.
+        entity_repr: Fallback label when sale number missing.
+
+    Returns:
+        List of open or reopened ``DailyNote`` rows (may be empty).
+    """
     if author is None or record_id is None:
         return []
     existing = list(_notes_for_sale_queue(source, record_id))

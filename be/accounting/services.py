@@ -1,5 +1,16 @@
 """
-Accounting service layer - handles all accounting business logic
+General ledger queries and source-document journal factories.
+
+Public entry points:
+    - ``AccountTypeService`` / ``AccountService`` / ``JournalEntryService`` /
+      ``TransactionService`` — filtered list querysets
+    - ``sale_books_date`` — calendar date for sale postings
+    - ``create_expense_journal_entry`` / ``create_income_journal_entry`` /
+      ``create_sale_journal_entry`` / ``create_sale_refund_journal_entry``
+
+Side effects: journal helpers create ``Transaction`` + ``JournalEntry`` rows and
+update ``Account.current_balance`` on each line save. Reversals live in
+``accounting.reversal`` (not here). Posted sale journals skipped when status ≠ completed.
 """
 import logging
 from typing import Optional, List, Dict, Any
@@ -16,7 +27,18 @@ logger = logging.getLogger(__name__)
 
 
 def sale_books_date(sale) -> date:
-    """Local calendar date used for sale journals and reports."""
+    """
+    Resolve the local calendar date used for sale journal ``entry_date``.
+
+    Args:
+        sale: Sale-like object with ``occurred_at`` and/or ``created_at``;
+            either may be None.
+
+    Returns:
+        ``date`` in the active Django timezone. Aware datetimes are converted
+        with ``localtime``; naive datetimes use ``.date()``; missing timestamps
+        fall back to ``timezone.localdate()``.
+    """
     when = getattr(sale, 'occurred_at', None) or getattr(sale, 'created_at', None)
     if when is None:
         return timezone.localdate()
@@ -30,18 +52,36 @@ def sale_books_date(sale) -> date:
 
 
 class AccountTypeService(BaseService):
-    """Service for account type operations"""
-    
+    """
+    Read-only listing for GL account type reference data.
+
+    Attributes:
+        model: Bound to ``AccountType``.
+    """
+
     def __init__(self):
         super().__init__(AccountType)
-    
+
     def build_queryset(self, filters: Optional[Dict[str, Any]] = None) -> QuerySet:
-        """Build queryset for account types"""
+        """
+        Return all account types ordered by name.
+
+        Args:
+            filters: Ignored (reserved for API parity); may be None.
+
+        Returns:
+            ``QuerySet`` of ``AccountType`` ordered by ``name``.
+        """
         return self.model.objects.all().order_by('name')
 
 
 class AccountService(BaseService):
-    """Service for account operations"""
+    """
+    Chart-of-accounts filtering and balance refresh.
+
+    Attributes:
+        model: Bound to ``Account``.
+    """
     
     def __init__(self):
         super().__init__(Account)
@@ -76,13 +116,29 @@ class AccountService(BaseService):
         return queryset.order_by('account_code')
     
     def update_balance(self, account: Account) -> Account:
-        """Update account balance from journal entries"""
+        """
+        Recalculate GL balance from journal lines for one account.
+
+        Args:
+            account: ``Account`` instance to refresh.
+
+        Returns:
+            Same instance after ``current_balance`` is persisted.
+
+        Side effects:
+            Writes ``Account.current_balance``.
+        """
         account.update_balance()
         return account
 
 
 class JournalEntryService(BaseService):
-    """Service for journal entry operations"""
+    """
+    Filtered journal line listings.
+
+    Attributes:
+        model: Bound to ``JournalEntry``.
+    """
     
     def __init__(self):
         super().__init__(JournalEntry)
@@ -129,7 +185,12 @@ class JournalEntryService(BaseService):
 
 
 class TransactionService(BaseService):
-    """Service for transaction operations"""
+    """
+    Filtered transaction headers with prefetched journal lines.
+
+    Attributes:
+        model: Bound to ``Transaction``.
+    """
     
     def __init__(self):
         super().__init__(Transaction)
@@ -164,7 +225,23 @@ class TransactionService(BaseService):
 
 # Helper functions for creating journal entries
 def create_expense_journal_entry(expense):
-    """Create journal entries for an expense"""
+    """
+    Post a balanced expense transaction (debit expense, credit cash/bank).
+
+    Uses default chart codes 6000 (expense), 1000 (cash) or 1100 (bank) creating
+    accounts if missing. Credit side follows ``expense.payment_method`` (cash vs other).
+
+    Args:
+        expense: Approved expense with ``amount`` ≥ 0.01, ``expense_date``,
+            ``description``, ``expense_number``, ``created_by``, ``payment_method``.
+
+    Returns:
+        Created ``Transaction`` with two linked ``JournalEntry`` rows.
+
+    Side effects:
+        Creates GL rows; updates affected ``Account.current_balance`` values.
+        Does not change expense status.
+    """
     # Get or create expense account
     expense_account, _ = Account.objects.get_or_create(
         account_code='6000',
@@ -247,7 +324,22 @@ def create_expense_journal_entry(expense):
 
 
 def create_income_journal_entry(income):
-    """Create journal entries for an income"""
+    """
+    Post a balanced income transaction (debit cash/bank, credit revenue).
+
+    Uses codes 4100 (other income), 1000 or 1100 for debit per ``payment_method``.
+
+    Args:
+        income: Income row with ``amount``, ``income_date``, ``description``,
+            ``income_number``, ``created_by``, ``payment_method``.
+
+    Returns:
+        Created ``Transaction`` with two linked ``JournalEntry`` rows.
+
+    Side effects:
+        Creates GL rows and refreshes account balances. Idempotency is not enforced
+        here — callers should avoid double-posting the same income id.
+    """
     # Get or create income account
     income_account, _ = Account.objects.get_or_create(
         account_code='4100',
@@ -330,10 +422,27 @@ def create_income_journal_entry(income):
 
 
 def create_sale_journal_entry(sale):
-    """Create journal entries for a sale
-    
-    For POS sales: Debit Cash, Credit Sales Revenue
-    For Normal sales: Debit Accounts Receivable (or Cash if paid), Credit Sales Revenue
+    """
+    Post sale revenue and payment splits (cash, wallet, AR, overpayment).
+
+    Skips posting when ``sale.status`` is not ``completed`` (returns None).
+    POS vs normal sale affects descriptions only; payment logic uses
+    ``amount_paid``, wallet debits, and ``sale.total`` (includes delivery).
+
+    Args:
+        sale: Completed sale with ``sale_number``, ``total``, ``cashier``,
+            optional ``sale_type``, ``amount_paid``, ``created_at``.
+
+    Returns:
+        Created ``Transaction`` with one or more journal lines, or ``None`` if
+        unposted status.
+
+    Raises:
+        ValueError: Overpayment exceeds total by more than 1000 (sanity guard).
+
+    Side effects:
+        May link orphan wallet transactions to the sale; creates GL lines for
+        cash (1000), AR (1200), revenue (4000), customer prepaid (2100) as needed.
     """
     if getattr(sale, 'status', None) != 'completed':
         logger.info(
@@ -596,7 +705,21 @@ def create_sale_journal_entry(sale):
 
 
 def create_sale_refund_journal_entry(refund):
-    """Reverse sale revenue and offset cash, wallet, or accounts receivable."""
+    """
+    Post refund journals debiting revenue and crediting payment sources.
+
+    Allocation (cash vs wallet vs AR) comes from ``sales.refund_allocation``.
+
+    Args:
+        refund: Refund with positive ``amount``, linked ``sale``, ``refund_number``,
+            ``refunded_by``, ``created_at``.
+
+    Returns:
+        Created ``Transaction``, or ``None`` when ``amount`` ≤ 0.
+
+    Side effects:
+        Creates offsetting GL lines; updates account balances.
+    """
     from sales.refund_allocation import compute_refund_allocation
 
     sale = refund.sale

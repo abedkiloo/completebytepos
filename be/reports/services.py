@@ -1,5 +1,12 @@
 """
-Reports service layer — aggregations and period parsing (no ORM in views).
+Reports service layer — aggregations and period parsing.
+
+Public entry points:
+    - ``resolve_period`` — map ``?period=`` / ``date_from`` / ``date_to`` to bounds
+    - ``ReportDashboardService.get_dashboard_summary`` — home-screen KPI bundle
+
+Uses ``posted_sales`` / ``posted_sale_items`` for revenue; read-only DB reads.
+No audit rows. Times use the active Django timezone (``timezone.now()``).
 """
 from datetime import datetime
 
@@ -46,14 +53,28 @@ def _checkpoint_baseline_start(params):
 
 def resolve_period(request):
     """
-    Parse ``?period=today|week|month|year`` into a (start, end, label) tuple.
-  Falls back to explicit ``date_from`` / ``date_to`` query params.
+    Parse report period query params into inclusive datetime bounds.
+
+    Prefers ``?period=today|week|month|year``. Unknown or empty ``period`` falls
+    back to ``date_from`` / ``date_to`` (``YYYY-MM-DD``). Invalid date strings
+    are ignored for that bound (left ``None``).
 
     ``week`` is the current calendar week starting Monday (not a rolling 7 days).
+    Preset periods use ``end=timezone.now()``; custom range may leave ``end``
+    open when ``date_to`` is missing.
 
-    Optional stock checkpoint baseline:
-    ``since_checkpoint_id`` or ``use_checkpoint_baseline=1`` raises the floor
-    of ``start`` to the checkpoint ``closed_at`` (new sales journey).
+    Optional stock checkpoint baseline: ``since_checkpoint_id`` (closed checkpoint
+    PK) or ``use_checkpoint_baseline=1|true|yes`` raises ``start`` to the
+    checkpoint ``closed_at`` when that timestamp is later than the parsed start.
+
+    Args:
+        request: DRF request or Django ``HttpRequest`` with ``query_params`` or
+            ``GET`` for filter params.
+
+    Returns:
+        A ``(start, end, label)`` tuple. ``start`` and ``end`` are timezone-aware
+        datetimes or ``None``. ``label`` is ``today``, ``week``, ``month``,
+        ``year``, ``custom``, or ``checkpoint:<id>`` when a baseline applied.
     """
     now = timezone.now()
     today = now.date()
@@ -105,10 +126,28 @@ def resolve_period(request):
 
 
 class ReportDashboardService:
-    """Dashboard KPI bundle used by the home screen."""
+    """
+    Aggregate KPIs for the reports dashboard API.
+
+    Combines posted sales, refunds, purchases, expenses, and catalog signals.
+    Month-over-month growth percentages are ``0`` when the prior month total is
+    zero (avoids division by zero).
+    """
 
     @staticmethod
     def get_dashboard_summary():
+        """
+        Build the dashboard summary payload for the current local calendar day.
+
+        Uses ``timezone.localdate()`` for "today" and calendar month boundaries.
+        Top products: at most 5 lines by revenue this month from ``posted_sale_items``.
+        ``overall.suppliers`` / ``customers`` are placeholders (``0``).
+
+        Returns:
+            A JSON-serializable ``dict`` with keys ``today``, ``week``, ``month``,
+            ``low_stock_count``, ``top_products``, totals, returns, ``growth``,
+            and ``overall``. Money fields are ``float`` (2 decimal places at source).
+        """
         today = timezone.localdate()
         start_of_day = timezone.make_aware(datetime.combine(today, datetime.min.time()))
         start_of_month = timezone.make_aware(datetime(today.year, today.month, 1))

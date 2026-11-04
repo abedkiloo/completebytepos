@@ -1,3 +1,12 @@
+"""
+Supplier master data for purchases and product sourcing.
+
+Public entry points:
+    - ``Supplier`` model — contact, terms, credit, and generated ``supplier_code``
+
+Side effects: ``save`` may assign ``SUP-<uuid>`` when code is blank. No audit
+rows from the model alone.
+"""
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.validators import EmailValidator, MinValueValidator
@@ -5,7 +14,13 @@ from decimal import Decimal
 
 
 class Supplier(models.Model):
-    """Supplier model for managing supplier information"""
+    """
+    Vendor record linked to products and purchase movements.
+
+    ``credit_limit`` of ``0`` means no credit line. ``account_balance`` is
+    amount owed to the supplier (2 decimal places, max 12 digits). ``rating``
+    is 1–5 inclusive.
+    """
     SUPPLIER_TYPE_CHOICES = [
         ('individual', 'Individual'),
         ('business', 'Business'),
@@ -100,6 +115,7 @@ class Supplier(models.Model):
         return f"{self.name} ({self.supplier_code})"
     
     def save(self, *args, **kwargs):
+        """Persist the supplier, generating ``supplier_code`` when empty."""
         if not self.supplier_code:
             # Generate unique supplier code
             import uuid
@@ -108,20 +124,38 @@ class Supplier(models.Model):
     
     @property
     def full_address(self):
-        """Get full formatted address"""
+        """
+        Format address fields as a single comma-separated string.
+
+        Returns:
+            Non-empty parts of address, city, state, country, postal_code joined;
+            empty string when all are blank.
+        """
         parts = [self.address, self.city, self.state, self.country, self.postal_code]
         return ', '.join(filter(None, parts))
     
     @property
     def primary_contact(self):
-        """Get primary contact information"""
+        """
+        Human-readable primary contact line for UI lists.
+
+        Returns:
+            ``contact_person - phone/email``, or phone/email alone, or
+            ``'No contact info'`` when nothing is set.
+        """
         if self.contact_person:
             return f"{self.contact_person} - {self.phone or self.email}"
         return self.phone or self.email or 'No contact info'
     
     @property
     def is_credit_available(self):
-        """Check if credit is available"""
+        """
+        Whether the supplier has unused credit headroom.
+
+        Returns:
+            ``False`` when ``credit_limit`` is ``0``; otherwise ``True`` when
+            ``account_balance`` is strictly less than ``credit_limit``.
+        """
         if self.credit_limit == 0:
             return False
         return self.account_balance < self.credit_limit

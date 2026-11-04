@@ -1,3 +1,12 @@
+"""
+CMS and public website serializers.
+
+Public entry points:
+    - ``PublicBlogPostListSerializer`` / ``PublicBlogPostDetailSerializer`` — read-only blog
+    - ``PublicEnquirySerializer`` — anonymous enquiry create
+    - ``BlogPostAdminSerializer`` — staff blog CRUD
+"""
+
 from __future__ import annotations
 
 from django.conf import settings
@@ -182,6 +191,16 @@ class PublicProductSerializer(serializers.ModelSerializer):
 
 
 class PublicEnquirySerializer(serializers.ModelSerializer):
+    """
+    Validate and create a public website enquiry (unauthenticated).
+
+    Requires name (≥ 2 chars), phone (9–15 digits), and either ``message`` or
+    ``interest``. ``product_id`` links an active product when provided.
+
+    Side effects:
+        Inserts ``WebsiteEnquiry`` with ``status=new``; no SMS or audit in serializer.
+    """
+
     product_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
 
     class Meta:
@@ -211,6 +230,18 @@ class PublicEnquirySerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
+        """
+        Persist enquiry after stripping optional product and text fields.
+
+        Args:
+            validated_data: Validated serializer fields including write-only ``product_id``.
+
+        Returns:
+            New ``WebsiteEnquiry`` instance (``status=new``).
+
+        Side effects:
+            Single INSERT; inactive/missing ``product_id`` stores null product FK.
+        """
         product_id = validated_data.pop('product_id', None)
         if product_id:
             validated_data['product'] = Product.objects.filter(pk=product_id, is_active=True).first()

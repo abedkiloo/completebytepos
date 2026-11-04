@@ -3,7 +3,14 @@ from django.contrib.auth.models import User
 
 
 class ModuleSettings(models.Model):
-    """Module enablement settings - only super admins can modify"""
+    """
+    Coarse module on/off switch (legacy table name ``accounts_modulesettings``).
+
+    Missing rows are treated as enabled (``is_module_enabled`` → True).
+    Only privileged admins should mutate via the settings API. Distinct from
+    typed ``ModuleSetting`` key/value rows and ``ModuleFeature`` toggles.
+    """
+
     MODULE_CHOICES = [
         ('products', 'Products Management'),
         ('sales', 'Sales'),
@@ -53,7 +60,15 @@ class ModuleSettings(models.Model):
 
     @classmethod
     def is_module_enabled(cls, module_name):
-        """Check if a module is enabled"""
+        """
+        Return whether ``module_name`` is enabled.
+
+        Args:
+            module_name: Choice key from ``MODULE_CHOICES`` (e.g. ``sales``).
+
+        Returns:
+            Stored ``is_enabled``, or True when no row exists (fail-open).
+        """
         try:
             module = cls.objects.get(module_name=module_name)
             return module.is_enabled
@@ -63,7 +78,13 @@ class ModuleSettings(models.Model):
 
 
 class ModuleFeature(models.Model):
-    """Granular feature settings within modules - allows enabling/disabling specific features"""
+    """
+    Granular feature toggle within a module (e.g. ``sales.pos``).
+
+    Missing features are typically treated as enabled by feature helpers —
+    confirm in ``settings.module_features`` / ``feature_flags`` before assuming.
+    """
+
     MODULE_FEATURES = {
         'products': [
             ('qr_printing', 'QR Code Printing'),

@@ -1,8 +1,11 @@
-"""Who may be assigned (or claim) a delivery.
+"""
+Delivery assignee eligibility (permission-based, not role name).
 
-Eligibility is the Delivery *permission*, not the Delivery Driver role name.
-Admin can assign a sales person, a dedicated driver, or anyone whose role
-has ``delivery.update``.
+Public entry points:
+    - ``user_can_do_delivery`` / ``eligible_delivery_assignees`` — assign + claim gates
+    - ``user_is_delivery_driver`` — alias of ``user_can_do_delivery``
+
+Rule: active user profile with ``delivery.update`` on an active custom role.
 """
 
 from django.contrib.auth.models import User
@@ -10,6 +13,15 @@ from django.core.exceptions import ObjectDoesNotExist
 
 
 def user_can_do_delivery(user) -> bool:
+    """
+    Return whether ``user`` may run delivery stops or be assigned orders.
+
+    Args:
+        user: Django user; inactive or missing profile → False.
+
+    Returns:
+        True when profile is active and ``has_permission('delivery', 'update')``.
+    """
     if user is None or not getattr(user, 'is_active', False):
         return False
     try:
@@ -26,6 +38,13 @@ user_is_delivery_driver = user_can_do_delivery
 
 
 def eligible_delivery_assignees():
+    """
+    List active users eligible for dispatch assign and driver directory APIs.
+
+    Returns:
+        ``QuerySet`` of ``User`` ordered by name, distinct, with profile/role
+        prefetched. Empty when no roles grant ``delivery.update``.
+    """
     return (
         User.objects.filter(
             is_active=True,

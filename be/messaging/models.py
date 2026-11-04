@@ -1,8 +1,28 @@
+"""
+SMS outbox rows and editable template bodies.
+
+Public entry points:
+    - ``MessageOutbox`` — send record linked to customers/payment intents
+    - ``SmsTemplate`` — per-key overrides of ``template_catalog`` defaults
+
+Side effects: models only; sending via ``messaging.services`` / ``customer_notify``.
+"""
+
 from django.conf import settings
 from django.db import models
 
 
 class MessageOutbox(models.Model):
+    """
+    Persisted SMS send attempt (pending, sent, or failed).
+
+    ``template_key`` identifies which template rendered ``body``. Optional FKs tie
+    rows to ``PaymentIntent`` or ``Customer`` for reporting.
+
+    Attributes:
+        TEMPLATE_*: Known template keys for invoice, debt, sale, and promos.
+    """
+
     STATUS_PENDING = 'pending'
     STATUS_SENT = 'sent'
     STATUS_FAILED = 'failed'
@@ -62,7 +82,15 @@ class MessageOutbox(models.Model):
 
 
 class SmsTemplate(models.Model):
-    """Editable SMS bodies. Defaults live in messaging.template_catalog."""
+    """
+    Shop-editable SMS body for a catalog key.
+
+    When no row exists, ``template_catalog`` defaults apply. ``body`` has no hard
+    DB length cap; API save enforces 600 characters in ``save_sms_template``.
+
+    Attributes:
+        KEY_* / KEY_CHOICES: Supported template identifiers.
+    """
 
     KEY_SALE_COMPLETED = 'sale_completed'
     KEY_DEBT_SETTLEMENT = 'debt_settlement'

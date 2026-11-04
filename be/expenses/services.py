@@ -1,5 +1,14 @@
 """
-Expenses service layer - handles all expense business logic
+Expense vouchers, categories, and status transitions.
+
+Public entry points:
+    - ``ExpenseService.approve_expense`` / ``reject_expense`` / ``resubmit_expense`` /
+      ``void_expense`` / ``build_queryset`` / ``get_expense_statistics``
+    - ``ExpenseCategoryService.build_queryset`` / ``delete_unused_category``
+    - HTTP under ``/api/expenses/``
+
+Approve may create an accounting journal (best-effort). Void reverses posted
+journals for approved/paid rows.
 """
 from typing import Optional, List, Dict, Any
 from decimal import Decimal
@@ -15,7 +24,15 @@ from services.base import BaseService
 
 
 def _clean_filter_value(value: Any) -> Optional[str]:
-    """Drop empty / client sentinel filter values (e.g. 'undefined' from bad selects)."""
+    """
+    Drop empty / client sentinel filter values (e.g. ``undefined`` from bad selects).
+
+    Args:
+        value: Raw query param.
+
+    Returns:
+        Stripped string, or None when empty/sentinel.
+    """
     if value is None:
         return None
     text = str(value).strip()
@@ -25,8 +42,8 @@ def _clean_filter_value(value: Any) -> Optional[str]:
 
 
 class ExpenseCategoryService(BaseService):
-    """Service for expense category operations"""
-    
+    """List/filter expense categories and safe hard-delete when unused."""
+
     def __init__(self):
         super().__init__(ExpenseCategory)
     
@@ -61,7 +78,19 @@ class ExpenseCategoryService(BaseService):
         return queryset.order_by('name')
 
     def delete_unused_category(self, category: ExpenseCategory) -> None:
-        """Hard-delete a category only when no expenses reference it."""
+        """
+        Hard-delete a category only when no expenses reference it.
+
+        Args:
+            category: Category instance to delete.
+
+        Returns:
+            None.
+
+        Raises:
+            ValidationError: When one or more expenses still use the category
+                (caller should deactivate instead).
+        """
         usage = Expense.objects.filter(category=category).count()
         if usage:
             raise ValidationError(
@@ -75,6 +104,15 @@ EXPENSE_ADMIN_ONLY_MESSAGE = 'Only an admin can approve or return expenses.'
 
 
 def require_expense_admin(user) -> None:
+    """
+    Require admin-checker override for expense approve/return.
+
+    Args:
+        user: Acting user.
+
+    Raises:
+        PermissionDenied: When the user lacks admin checker override.
+    """
     from django.core.exceptions import PermissionDenied
 
     from approvals.permissions import user_has_admin_checker_override
@@ -84,8 +122,13 @@ def require_expense_admin(user) -> None:
 
 
 class ExpenseService(BaseService):
-    """Service for expense operations"""
-    
+    """
+    Expense list filters and approve/reject/resubmit/void transitions.
+
+    Amount bounds live on the model (``amount`` ≥ 0.01). Status machine:
+    pending ↔ rejected (resubmit) → approved/paid → voided.
+    """
+
     def __init__(self):
         super().__init__(Expense)
     
@@ -190,7 +233,26 @@ class ExpenseService(BaseService):
     
     @transaction.atomic
     def approve_expense(self, expense: Expense, approved_by) -> Expense:
-        """Approve an expense and create journal entry"""
+        """
+        Approve a pending expense and attempt to post its journal.
+
+        Args:
+            expense: Must be ``pending`` (not already approved).
+            approved_by: Admin checker; must not be the maker; past-dated
+                rows require admin past-date override.
+
+        Returns:
+            Expense with ``status='approved'`` and ``approved_by`` set.
+
+        Raises:
+            PermissionDenied: Non-admin checker.
+            ValidationError: Wrong status or maker/checker / past-date rules.
+
+        Side effects:
+            Completes rejection notices; best-effort
+            ``create_expense_journal_entry`` (journal failure is logged and
+            does **not** roll back approval status).
+        """
         from approvals.financial_workflow import (
             validate_checker_not_maker,
             validate_past_dated_checker,
@@ -225,6 +287,23 @@ class ExpenseService(BaseService):
 
     @transaction.atomic
     def reject_expense(self, expense: Expense, rejected_by, reason: str) -> Expense:
+        """
+        Return a pending expense to the requester with a required reason.
+
+        Args:
+            expense: Must be ``pending``.
+            rejected_by: Admin checker (≠ maker).
+            reason: Non-blank explanation; appended into ``notes``.
+
+        Returns:
+            Expense with ``status='rejected'``.
+
+        Raises:
+            PermissionDenied / ValidationError: Auth or status/reason failures.
+
+        Side effects:
+            Notifies requester via daily-notes approval notice.
+        """
         from approvals.financial_workflow import (
             validate_checker_not_maker,
             validate_past_dated_checker,
@@ -256,6 +335,19 @@ class ExpenseService(BaseService):
 
     @transaction.atomic
     def resubmit_expense(self, expense: Expense, user) -> Expense:
+        """
+        Move a rejected expense back to ``pending`` for another check.
+
+        Args:
+            expense: Must be ``rejected``.
+            user: Must be the original ``created_by`` (or superuser).
+
+        Returns:
+            Expense with ``status='pending'``.
+
+        Raises:
+            ValidationError: Wrong status or not the owner.
+        """
         if expense.status != 'rejected':
             raise ValidationError('Only rejected expenses can be sent back for approval.')
         if (
@@ -273,7 +365,21 @@ class ExpenseService(BaseService):
 
     @transaction.atomic
     def void_expense(self, expense: Expense, *, reason: str, user) -> Expense:
-        """Void a posted expense and reverse its journals so P&L and cash match."""
+        """
+        Void an expense and reverse journals when it was posted.
+
+        Args:
+            expense: ``pending``/``rejected`` void without journal reverse;
+                ``approved``/``paid`` reverse source journals first.
+            reason: Required non-blank void reason (appended to notes).
+            user: Actor passed to accounting reversal.
+
+        Returns:
+            Expense with ``status='voided'``.
+
+        Raises:
+            ValidationError: Blank reason, already voided, or unsupported status.
+        """
         reason = (reason or '').strip()
         if not reason:
             raise ValidationError({'reason': 'A reason is required to void an expense.'})
@@ -299,7 +405,19 @@ class ExpenseService(BaseService):
     def get_expense_statistics(self, branch: Optional[Branch] = None,
                               date_from: Optional[str] = None,
                               date_to: Optional[str] = None) -> Dict[str, Any]:
-        """Get comprehensive expense statistics"""
+        """
+        Aggregate approved expense totals (and status breakdown) for a window.
+
+        Args:
+            branch: Optional branch filter; ``None`` = all branches.
+            date_from / date_to: Inclusive ``expense_date`` bounds as date
+                strings accepted by Django (``YYYY-MM-DD``). ``None`` = open.
+
+        Returns:
+            Dict with ``total_expenses``, ``month_expenses`` (current calendar
+            month of approved rows), ``by_category``, ``by_status``. Money
+            totals returned as float for API compatibility.
+        """
         queryset = self.model.objects.all()
         
         if branch:

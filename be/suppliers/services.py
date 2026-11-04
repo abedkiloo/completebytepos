@@ -1,5 +1,10 @@
 """
-Suppliers service layer - handles all supplier business logic
+Suppliers service layer — listing, search, and balance updates.
+
+Public entry points:
+    - ``SupplierService`` — queryset filters, search, balance, statistics
+
+Balance updates run in a DB transaction. No ``AuditLog`` from this module.
 """
 from typing import Optional, List, Dict, Any
 from decimal import Decimal
@@ -12,7 +17,12 @@ from services.base import BaseService
 
 
 class SupplierService(BaseService):
-    """Service for supplier operations"""
+    """
+    CRUD-adjacent operations for ``Supplier`` records.
+
+    Attributes:
+        model: Bound to ``Supplier``.
+    """
     
     def __init__(self):
         super().__init__(Supplier)
@@ -30,7 +40,8 @@ class SupplierService(BaseService):
                 - search: str (search term)
         
         Returns:
-            QuerySet of suppliers
+            ``Supplier`` queryset ordered by ``name``. Invalid ``search`` returns
+            ``queryset.none()`` rather than raising.
         """
         queryset = self.model.objects.all()
         
@@ -73,7 +84,18 @@ class SupplierService(BaseService):
         return queryset.order_by('name')
     
     def search_suppliers(self, query: str, limit: int = 50) -> List[Supplier]:
-        """Search suppliers by name, code, email, phone, or contact person"""
+        """
+        Search active suppliers by name, code, email, phone, or contact person.
+
+        Args:
+            query: Case-insensitive substring; blank or whitespace-only returns
+                an empty list.
+            limit: Max rows returned. Clamped to 1–1000; default 50 when ``< 1``.
+
+        Returns:
+            List of matching ``Supplier`` instances (``is_active=True`` only).
+            On unexpected errors, logs and returns ``[]``.
+        """
         try:
             if not query or not query.strip():
                 return []
@@ -104,8 +126,22 @@ class SupplierService(BaseService):
                               transaction_type: str = 'credit',
                               reference: str = '', notes: str = '') -> Supplier:
         """
-        Update supplier account balance.
-        transaction_type: 'credit' (increase balance/owed) or 'debit' (decrease balance/paid)
+        Apply a credit or debit to ``supplier.account_balance``.
+
+        Args:
+            supplier: Existing ``Supplier`` row to mutate.
+            amount: Non-negative ``Decimal`` (2 dp); sign comes from
+                ``transaction_type``.
+            transaction_type: ``'credit'`` increases balance owed; ``'debit'``
+                decreases it. After debit, balance is floored at ``0``.
+            reference: Unused legacy param (reserved for future ledger rows).
+            notes: Unused legacy param (reserved for future ledger rows).
+
+        Returns:
+            The same ``supplier`` instance after ``save()``.
+
+        Raises:
+            ValidationError: When ``transaction_type`` is not ``credit`` or ``debit``.
         """
         if transaction_type == 'credit':
             supplier.account_balance += amount
@@ -120,7 +156,20 @@ class SupplierService(BaseService):
         return supplier
     
     def get_supplier_statistics(self, supplier_id: int) -> Dict[str, Any]:
-        """Get comprehensive statistics for a supplier"""
+        """
+        Snapshot stats for one supplier.
+
+        Args:
+            supplier_id: Primary key of the supplier.
+
+        Returns:
+            Dict with ``supplier_name``, balances, ``credit_available``,
+            ``product_count``, ``rating``, ``is_preferred``. Money fields are
+            ``float``.
+
+        Raises:
+            ValidationError: When no supplier exists for ``supplier_id``.
+        """
         try:
             supplier = self.model.objects.get(id=supplier_id)
         except Supplier.DoesNotExist:
@@ -142,7 +191,13 @@ class SupplierService(BaseService):
         return stats
     
     def get_all_supplier_statistics(self) -> Dict[str, Any]:
-        """Get aggregate statistics for all suppliers"""
+        """
+        Roll-up counts and balances for active suppliers only.
+
+        Returns:
+            Dict with ``total_suppliers``, ``preferred_suppliers``,
+            ``total_account_balance`` (float), and ``by_type`` breakdown list.
+        """
         queryset = self.model.objects.filter(is_active=True)
         
         total_suppliers = queryset.count()

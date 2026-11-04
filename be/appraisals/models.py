@@ -5,6 +5,20 @@ from django.db import models
 
 
 class AppraisalSalaryIncrement(models.Model):
+    """
+    Year-end salary increment decision for one ``(user, year)``.
+
+    Stars/bonus math rebuild from posted sales on read; this row persists
+    eligibility amounts and approve/reject. On approve, ``Employee.salary`` is
+    set to ``new_basic`` when an employee record exists.
+
+    Bounds:
+        - ``year``: positive calendar year (API typically clamps [2000, 2100]).
+        - Money fields: Decimal max_digits=12, 2 dp, default 0.
+        - ``four_star_months_required`` default 8 (policy may override at calc).
+        - ``reason`` truncated to 500 chars on decide.
+    """
+
     STATUS_PENDING = 'pending'
     STATUS_APPROVED = 'approved'
     STATUS_REJECTED = 'rejected'

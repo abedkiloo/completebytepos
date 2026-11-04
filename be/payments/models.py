@@ -1,3 +1,13 @@
+"""
+M-Pesa STK payment intents and public invoice tokens.
+
+Public entry points:
+    - ``PaymentIntent`` — lifecycle row for Daraja STK and SMS receipt links
+
+Side effects: ``save`` auto-generates ``public_token`` and ``invoice_number`` when blank.
+Callback handling lives in ``payments.services``.
+"""
+
 import secrets
 import uuid
 
@@ -7,6 +17,21 @@ from django.utils import timezone
 
 
 class PaymentIntent(models.Model):
+    """
+    Tracks an M-Pesa STK push from create through paid/failed terminal states.
+
+    Amounts use 2 decimal places. ``public_token`` exposes read-only invoice URLs;
+    ``client_uuid`` supports idempotent mobile creates when set (unique).
+
+    Attributes:
+        purpose: ``pos``, ``debt``, ``delivery``, or ``other`` for reporting.
+        is_terminal: True for paid, failed, cancelled, or expired statuses.
+        callback_processed: Set when Daraja callback or reconcile handled the intent.
+
+    Invariants:
+        ``public_token`` and ``invoice_number`` assigned on first save if empty.
+    """
+
     STATUS_CREATED = 'created'
     STATUS_PROMPTED = 'prompted'
     STATUS_PAID = 'paid'
@@ -78,6 +103,7 @@ class PaymentIntent(models.Model):
         return f'PaymentIntent {self.pk} ({self.status})'
 
     def save(self, *args, **kwargs):
+        """Persist intent, generating ``public_token`` and ``invoice_number`` when missing."""
         if not self.public_token:
             self.public_token = secrets.token_urlsafe(24)
         if not self.invoice_number:
@@ -86,6 +112,7 @@ class PaymentIntent(models.Model):
 
     @property
     def is_terminal(self) -> bool:
+        """Return whether the intent is in a final non-promptable status."""
         return self.status in {
             self.STATUS_PAID,
             self.STATUS_FAILED,

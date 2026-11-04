@@ -1,4 +1,15 @@
-"""Create Delivery Driver users from the field-sales / dispatch board."""
+"""
+Create delivery-capable users from the dispatch board.
+
+Public entry points:
+    - ``CreateDriverSerializer`` — validate/create user + ``UserProfile`` + role
+    - ``driver_payload`` — API shape for driver list/create responses
+    - ``delivery_driver_role`` — ensure Delivery Driver role and permissions
+
+Side effects: creates ``User`` and ``UserProfile`` rows; may attach
+``delivery.update`` permissions to the default role. Returns one-time password
+on generated credentials (not stored in plaintext after create).
+"""
 
 from __future__ import annotations
 
@@ -20,6 +31,16 @@ from utils.phone import PhoneNumberError, normalize_phone_number
 
 
 def split_display_name(value: str) -> tuple[str, str]:
+    """
+    Split a display name into Django ``first_name`` / ``last_name`` segments.
+
+    Args:
+        value: Free-text name; whitespace trimmed.
+
+    Returns:
+        Tuple ``(first_name, last_name)`` each truncated to 150 chars. Single token
+        yields ``(token, '')``; empty input → ``('', '')``.
+    """
     parts = [p for p in (value or '').strip().split() if p]
     if not parts:
         return '', ''
@@ -29,11 +50,30 @@ def split_display_name(value: str) -> tuple[str, str]:
 
 
 def slug_username(value: str) -> str:
+    """
+    Normalize arbitrary text into a Django-safe username fragment.
+
+    Args:
+        value: Proposed username or name seed.
+
+    Returns:
+        Lowercase alphanumeric plus ``._-``, max 40 chars, or ``'driver'`` if empty.
+    """
     cleaned = re.sub(r'[^a-z0-9._-]', '', (value or '').strip().lower())
     return cleaned[:40] or 'driver'
 
 
 def unique_username(base: str) -> str:
+    """
+    Pick a unused ``User.username`` derived from ``base``.
+
+    Args:
+        base: Seed string; slugged before suffixing.
+
+    Returns:
+        First free username, appending numeric suffixes ``2``, ``3``, … as needed
+        while keeping total length ≤ 40.
+    """
     candidate = slug_username(base)
     n = 1
     while User.objects.filter(username=candidate).exists():
@@ -45,6 +85,12 @@ def unique_username(base: str) -> str:
 
 
 def generate_temp_password() -> str:
+    """
+    Generate a random password that passes ``validate_new_password``.
+
+    Returns:
+        URL-safe token string meeting ``MIN_PASSWORD_LENGTH`` policy.
+    """
     password = secrets.token_urlsafe(9)
     while validate_new_password(password) is not None:
         password = secrets.token_urlsafe(10)
@@ -52,6 +98,15 @@ def generate_temp_password() -> str:
 
 
 def delivery_driver_role() -> Role:
+    """
+    Load or bootstrap the active Delivery Driver role with ``delivery.update``.
+
+    Returns:
+        Active ``Role`` named ``ROLE_DELIVERY_AGENT``.
+
+    Raises:
+        serializers.ValidationError: Role missing after ``sync_default_roles``.
+    """
     role = Role.objects.filter(name=ROLE_DELIVERY_AGENT, is_active=True).first()
     if role is None:
         sync_default_roles()
@@ -66,6 +121,18 @@ def delivery_driver_role() -> Role:
 
 
 def driver_payload(user: User, *, temporary_password: str | None = None) -> dict:
+    """
+    Serialize a user for dispatch driver list/create responses.
+
+    Args:
+        user: Active driver user with optional ``profile`` / ``custom_role``.
+        temporary_password: Included once on create when password was generated;
+            omitted from list responses.
+
+    Returns:
+        Dict with ``id``, ``username``, ``display_name``, ``phone_number``,
+        ``role_name``, and optional ``temporary_password``.
+    """
     full = f'{user.first_name} {user.last_name}'.strip()
     profile = getattr(user, 'profile', None)
     role = getattr(profile, 'custom_role', None) if profile else None
@@ -82,6 +149,17 @@ def driver_payload(user: User, *, temporary_password: str | None = None) -> dict
 
 
 class CreateDriverSerializer(serializers.Serializer):
+    """
+    Validate and create a delivery driver account from the dispatch UI.
+
+    Requires unique normalized phone and optional explicit username/password.
+    Retries up to five times on username ``IntegrityError`` with suffixed names.
+
+    Side effects:
+        Creates ``User`` + ``UserProfile`` with ``must_change_password=True`` and
+        attaches the delivery driver custom role.
+    """
+
     display_name = serializers.CharField(max_length=150, allow_blank=True)
     phone = serializers.CharField(max_length=20)
     username = serializers.CharField(required=False, allow_blank=True, max_length=150)
