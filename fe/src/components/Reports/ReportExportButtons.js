@@ -18,9 +18,15 @@ export default function ReportExportButtons({
   params = {},
   disabled = false,
   size = 'sm',
+  formats = null,
 }) {
   const [busy, setBusy] = useState(null);
   if (!reportExportPath(slug)) return null;
+
+  const allowed = Array.isArray(formats) && formats.length
+    ? EXPORT_FORMATS.filter((fmt) => formats.includes(fmt.id))
+    : EXPORT_FORMATS;
+  if (!allowed.length) return null;
 
   const download = async (format) => {
     setBusy(format);
@@ -44,7 +50,7 @@ export default function ReportExportButtons({
     <>
       <CenterScreenLoader open={Boolean(busy)} label="Downloading report…" />
       <div className="flex flex-wrap items-center gap-2 print:hidden">
-        {EXPORT_FORMATS.map((fmt) => {
+        {allowed.map((fmt) => {
           const Icon = ICONS[fmt.id] || Download;
           return (
             <Button

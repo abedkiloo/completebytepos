@@ -59,7 +59,14 @@ class SalesHistoryExportTests(ManagerAPITestCase):
         self.assertEqual(data['summary']['total_revenue'], 80.0)
         self.assertEqual(len(data['sales']), 1)
         self.assertEqual(data['sales'][0]['payment'], 'cash')
-        self.assertEqual(data['sales'][0]['items'], 2)
+        self.assertEqual(data['sales'][0]['quantity'], 2)
+        self.assertIn('Hist Product', data['sales'][0]['products'])
+        self.assertNotIn('customer', data['sales'][0])
+        self.assertTrue(data['by_product'])
+        self.assertEqual(data['by_product'][0]['product'], 'Hist Product')
+        self.assertEqual(data['by_product'][0]['quantity_sold'], 2.0)
+        self.assertEqual(len(data['sale_lines']), 1)
+        self.assertEqual(data['sale_lines'][0]['product'], 'Hist Product')
 
     def test_export_pdf(self):
         response = self.client.get('/api/sales/export/', {'format': 'pdf'})
@@ -69,6 +76,10 @@ class SalesHistoryExportTests(ManagerAPITestCase):
         self.assertIn('sales-history', response['Content-Disposition'])
 
     def test_export_excel(self):
+        from io import BytesIO
+
+        from openpyxl import load_workbook
+
         response = self.client.get('/api/sales/export/', {'format': 'xlsx'})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn(
@@ -76,12 +87,26 @@ class SalesHistoryExportTests(ManagerAPITestCase):
             response['Content-Type'],
         )
         self.assertTrue(response.content[:2] == b'PK')
+        wb = load_workbook(BytesIO(response.content))
+        self.assertEqual(wb.sheetnames[0], 'Goods Sold')
+        self.assertIn('Sale Lines', wb.sheetnames)
+        goods_headers = [c.value for c in wb['Goods Sold'][1]]
+        self.assertEqual(goods_headers[0], 'Goods sold (product)')
+        self.assertEqual(goods_headers[3], 'Quantity sold')
+        # No customer column on Sales tickets sheet
+        if 'Sales' in wb.sheetnames:
+            sales_headers = [c.value for c in wb['Sales'][1]]
+            self.assertIn('Products', sales_headers)
+            self.assertNotIn('Customer', sales_headers)
 
     def test_export_csv(self):
         response = self.client.get('/api/sales/export/', {'format': 'csv'})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         body = response.content.decode('utf-8-sig')
-        self.assertIn('Sale Number', body)
+        self.assertIn('Goods sold (product)', body)
+        self.assertIn('Hist Product', body)
+        self.assertIn('Quantity sold', body)
+        self.assertNotIn('Walk-in', body)
 
     def test_export_requires_format(self):
         response = self.client.get('/api/sales/export/')
@@ -168,7 +193,8 @@ class SalesHistoryExportTests(ManagerAPITestCase):
         data = build_sales_history_report(Sale.objects.filter(pk=self.sale.pk))
         row = data['sales'][0]
         self.assertEqual(row['cashier'], '')
-        self.assertEqual(row['customer'], 'Walk-in')
+        self.assertNotIn('customer', row)
+        self.assertIn('Hist Product', row['products'])
         self.assertEqual(row['payment'], '')
         self.assertEqual(data['by_payment_method'][0]['payment_method'], 'unknown')
 

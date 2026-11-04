@@ -89,6 +89,11 @@ class ReportsViewsTestCase(ManagerAPITestCase):
         self.assertIn('summary', response.data)
         self.assertIn('by_payment_method', response.data)
         self.assertIn('daily_breakdown', response.data)
+        self.assertIn('by_product', response.data)
+        self.assertTrue(response.data['by_product'])
+        product = response.data['by_product'][0]
+        self.assertIn('product', product)
+        self.assertIn('quantity_sold', product)
 
     def test_unposted_sales_do_not_change_sales_or_product_reports(self):
         before_sales = self.client.get('/api/reports/sales/')
@@ -123,10 +128,21 @@ class ReportsViewsTestCase(ManagerAPITestCase):
         self.assertIn('attachment', response['Content-Disposition'])
 
     def test_sales_report_excel_download(self):
+        from io import BytesIO
+
+        from openpyxl import load_workbook
+
         response = self.client.get('/api/reports/sales/', {'format': 'xlsx'})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('spreadsheetml', response['Content-Type'])
         self.assertTrue(response.content[:2] == b'PK')
+        wb = load_workbook(BytesIO(response.content))
+        self.assertEqual(wb.sheetnames[0], 'Goods Sold')
+        headers = [cell.value for cell in wb['Goods Sold'][1]]
+        self.assertEqual(headers[0], 'Goods sold (product)')
+        self.assertEqual(headers[3], 'Quantity sold')
+        self.assertIn('Payment Method', wb.sheetnames)
+        self.assertIn('Daily Breakdown', wb.sheetnames)
 
     def test_expense_report_excel_alias(self):
         response = self.client.get('/api/reports/expense/', {'format': 'excel'})

@@ -647,18 +647,33 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             )
 
         queryset = self.get_queryset()
+        from reports.sales_export import maybe_export_sales_workbook
         from sales.history_export import build_sales_history_report
 
         payload = build_sales_history_report(queryset)
-        response = maybe_export_report(
+        response = maybe_export_sales_workbook(
             request,
             payload,
             title='Sales history',
             slug='sales-history',
         )
-        if response is not None and payload.get('summary', {}).get('truncated'):
+        if response is None:
+            response = maybe_export_report(
+                request,
+                payload,
+                title='Sales history',
+                slug='sales-history',
+            )
+        if response is not None and (
+            payload.get('summary', {}).get('truncated')
+            or payload.get('lines_truncated')
+        ):
             response['X-Export-Truncated'] = '1'
-            response['X-Export-Total-Count'] = str(payload['summary']['sales_count'])
+            # Prefer sale ticket count when tickets were capped; else line count.
+            total = payload.get('summary', {}).get('sales_count')
+            if not payload.get('summary', {}).get('truncated'):
+                total = payload.get('line_count') or total
+            response['X-Export-Total-Count'] = str(total or '')
         return response
 
     def _resolve_branch(self, request, branch_id=None):

@@ -146,6 +146,17 @@ def gated_report_action(action_name):
                     )
                     if cogs_file is not None:
                         return cogs_file
+                if action_name in ('sales', 'sales_overview'):
+                    from reports.sales_export import maybe_export_sales_workbook
+
+                    sales_file = maybe_export_sales_workbook(
+                        request,
+                        response.data,
+                        title=reports_action_label(action_name),
+                        slug=action_name,
+                    )
+                    if sales_file is not None:
+                        return sales_file
                 csv_body = None
                 if action_name == 'sales_by_person':
                     csv_body = SalesPersonReportService.to_csv(response.data)
@@ -184,7 +195,14 @@ class ReportViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'])
     @gated_report_action('sales')
     def sales(self, request):
-        """Sales report with date filtering"""
+        """
+        Sales report with date filtering.
+
+        JSON and Excel include ``by_product`` / ``sale_lines`` (goods + qty),
+        not only payment-method and daily sale counts.
+        """
+        from reports.sales_goods import goods_sold_for_sales
+
         date_from, date_to = request_date_bounds(request)
 
         queryset = sale_report_queryset(date_from, date_to)
@@ -222,8 +240,14 @@ class ReportViewSet(viewsets.ViewSet):
             for row in daily_sales
         ]
 
+        goods = goods_sold_for_sales(queryset)
+
         return Response({
             'summary': summary,
+            'by_product': goods['by_product'],
+            'sale_lines': goods['sale_lines'],
+            'line_count': goods['line_count'],
+            'lines_truncated': goods['lines_truncated'],
             'by_payment_method': list(by_payment),
             'daily_breakdown': daily_sales,
         })
@@ -797,6 +821,8 @@ class ReportViewSet(viewsets.ViewSet):
         count = agg['sales_count'] or 0
         avg_ticket = (gross / count) if count else 0.0
 
+        from reports.sales_goods import goods_sold_for_sales
+
         by_pm = list(
             qs.values('payment_method')
             .annotate(count=Count('id'), total=Sum('total'))
@@ -822,6 +848,8 @@ class ReportViewSet(viewsets.ViewSet):
             for row in trend
         ]
 
+        goods = goods_sold_for_sales(qs)
+
         return Response({
             'period': label,
             'summary': {
@@ -832,6 +860,10 @@ class ReportViewSet(viewsets.ViewSet):
                 'tax': float(agg['tax'] or 0),
                 'discount': float(agg['discount'] or 0),
             },
+            'by_product': goods['by_product'],
+            'sale_lines': goods['sale_lines'],
+            'line_count': goods['line_count'],
+            'lines_truncated': goods['lines_truncated'],
             'by_payment_method': by_pm,
             'trend': trend,
         })

@@ -527,7 +527,12 @@ export default function TradingProfitReportView() {
         description="Trading profit (accrual, includes unpaid) and cash trading profit (money collected) — this week, month, year, or any past date range. Click any figure to see how it was calculated."
       >
         <div className="flex flex-wrap items-center gap-2">
-          <ReportExportButtons slug="trading-profit" params={reportParams} disabled={loading} />
+          <ReportExportButtons
+            slug="trading-profit"
+            params={reportParams}
+            disabled={loading}
+            formats={['pdf']}
+          />
           <Button
             type="button"
             variant="outline"
@@ -539,7 +544,7 @@ export default function TradingProfitReportView() {
             data-testid="trading-profit-cogs-excel"
           >
             <FileSpreadsheet className="h-4 w-4" />
-            {cogsExportBusy ? 'COGS Excel…' : 'COGS Excel'}
+            {cogsExportBusy ? 'Excel…' : 'Excel (goods + COGS)'}
           </Button>
           <Button variant="outline" size="sm" onClick={() => navigate('/reports')}>
             <ArrowLeft className="mr-2 h-4 w-4" />

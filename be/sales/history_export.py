@@ -1,6 +1,11 @@
-"""Sales-history PDF/Excel/CSV payload (transaction list + totals)."""
+"""
+Sales-history PDF/Excel/CSV payload — products and sales first.
 
-from django.db.models import Count, Sum
+Customer identity is omitted from export rows; analysts get goods sold,
+quantities, and ticket totals instead of a customer column.
+"""
+
+from django.db.models import Count, Prefetch, Sum
 from django.db.models.functions import TruncDate
 
 from sales.models import SaleItem
@@ -9,14 +14,30 @@ SALES_HISTORY_EXPORT_LIMIT = 10000
 
 
 def build_sales_history_report(queryset, *, limit=None):
-    """Summary + transaction rows for PDF/Excel/CSV of sales history."""
+    """
+    Build a product-forward sales history report for file export.
+
+    Args:
+        queryset: Filtered ``Sale`` queryset (same filters as the sales list).
+        limit: Max sale tickets and sale lines in the file (1–SALES_HISTORY_EXPORT_LIMIT).
+            Defaults to ``SALES_HISTORY_EXPORT_LIMIT``.
+
+    Returns:
+        Dict with ``summary``, ``by_product``, ``sale_lines``, slim ``sales``
+        tickets (no customer), payment and daily breakdowns. Empty queryset
+        yields zero totals and empty lists.
+    """
+    from reports.sales_goods import goods_sold_for_sales
+
     if limit is None:
         limit = SALES_HISTORY_EXPORT_LIMIT
+    limit = max(1, min(int(limit), SALES_HISTORY_EXPORT_LIMIT))
+
     sales_count = queryset.count()
     total_revenue = queryset.aggregate(total=Sum('total'))['total'] or 0
-    items_sold = (
-        SaleItem.objects.filter(sale__in=queryset).aggregate(qty=Sum('quantity'))['qty'] or 0
-    )
+    items_qs = SaleItem.objects.filter(sale__in=queryset)
+    items_sold = items_qs.aggregate(qty=Sum('quantity'))['qty'] or 0
+
     by_payment = [
         {
             'payment_method': row['payment_method'] or 'unknown',
@@ -43,24 +64,47 @@ def build_sales_history_report(queryset, *, limit=None):
             }
         )
 
+    goods = goods_sold_for_sales(
+        queryset,
+        line_limit=limit,
+        items_qs=items_qs,
+    )
+
+    item_prefetch = Prefetch(
+        'items',
+        queryset=SaleItem.objects.select_related('product').order_by('id'),
+    )
     sales_rows = []
-    for sale in queryset.order_by('-occurred_at', '-id')[:limit]:
-        item_qty = sum(int(item.quantity or 0) for item in sale.items.all())
+    # Clear any prior `items` prefetch from the list view queryset.
+    ticket_qs = (
+        queryset.prefetch_related(None)
+        .select_related('cashier')
+        .prefetch_related(item_prefetch)
+        .order_by('-occurred_at', '-id')[:limit]
+    )
+    for sale in ticket_qs:
+        lines = list(sale.items.all())
+        item_qty = sum(int(item.quantity or 0) for item in lines)
+        product_bits = []
+        for item in lines:
+            name = getattr(item.product, 'name', None) or 'Item'
+            qty = item.quantity
+            product_bits.append(f'{name} × {qty}')
         when = sale.occurred_at or sale.created_at
         cashier = getattr(sale.cashier, 'username', None) or ''
-        customer = getattr(sale.customer, 'name', None) or 'Walk-in'
         sales_rows.append(
             {
                 'sale_number': sale.sale_number,
                 'date': when,
                 'cashier': cashier,
-                'customer': customer,
-                'items': item_qty,
+                'products': '; '.join(product_bits),
+                'quantity': item_qty,
                 'total': float(sale.total or 0),
                 'payment': sale.payment_method or '',
                 'status': sale.status or '',
             }
         )
+
     return {
         'summary': {
             'sales_count': sales_count,
@@ -69,6 +113,10 @@ def build_sales_history_report(queryset, *, limit=None):
             'rows_in_file': len(sales_rows),
             'truncated': sales_count > limit,
         },
+        'by_product': goods['by_product'],
+        'sale_lines': goods['sale_lines'],
+        'line_count': goods['line_count'],
+        'lines_truncated': goods['lines_truncated'] or sales_count > limit,
         'by_payment_method': by_payment,
         'daily_breakdown': daily_breakdown,
         'sales': sales_rows,
