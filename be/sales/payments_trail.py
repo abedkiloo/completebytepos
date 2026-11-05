@@ -243,6 +243,39 @@ def _summarize_by_method(results: Sequence[Dict[str, Any]]) -> List[Dict[str, An
     ]
 
 
+def summarize_payments_trail(
+    *,
+    kind: Optional[str] = None,
+    date_from=None,
+    date_to=None,
+    search: Optional[str] = None,
+    user=None,
+) -> Dict[str, Any]:
+    """
+    Totals for the selected Payments trail filters (full range, not one page).
+
+    Returns:
+        Dict with ``count``, ``total_amount``, ``by_method``, date window, and
+        truncation flags (same row cap as Excel export).
+    """
+    payload = build_payments_trail_export(
+        kind=kind,
+        date_from=date_from,
+        date_to=date_to,
+        search=search,
+        user=user,
+    )
+    return {
+        'count': payload['count'],
+        'included_count': payload['exported_count'],
+        'truncated': payload['truncated'],
+        'total_amount': payload['total_amount'],
+        'by_method': payload['by_method'],
+        'date_from': payload['date_from'],
+        'date_to': payload['date_to'],
+    }
+
+
 def _settlement_index(day_from, day_to, term, visible_ids) -> List[Dict[str, Any]]:
     qs = CustomerWalletTransaction.objects.filter(
         source_type='debt_settlement',

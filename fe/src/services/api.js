@@ -472,6 +472,8 @@ export const customersAPI = {
   debtCollections: (params) => api.get('/sales/customers/debt-collections/', { params }),
   paymentsTrail: (params) =>
     api.get('/sales/customers/payments-trail/', { params, timeout: 30000 }),
+  paymentsTrailSummary: (params) =>
+    api.get('/sales/customers/payments-trail/summary/', { params, timeout: 30000 }),
   /**
    * Download Payments trail Excel for the given filters.
    * @param {{ date_from?: string, date_to?: string, kind?: string, search?: string }} params

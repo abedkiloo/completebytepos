@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Banknote, FileSpreadsheet, Search } from 'lucide-react';
+import { Banknote, Calculator, FileSpreadsheet, Search } from 'lucide-react';
 
 import { customersAPI } from '../../services/api';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
@@ -26,6 +26,7 @@ import {
   EmptyState,
   FilterBar,
   FilterField,
+  SummaryCard,
   DataTable,
   DataTableHeader,
   DataTableHead,
@@ -66,25 +67,45 @@ export default function PaymentsTrailPage() {
   const [pageSize] = useState(DEFAULT_PAGE_SIZE);
   const [loading, setLoading] = useState(true);
   const [exportBusy, setExportBusy] = useState(false);
+  const [totalBusy, setTotalBusy] = useState(false);
+  const [rangeTotal, setRangeTotal] = useState(null);
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
+
+  const trailFilterParams = useCallback(() => {
+    const params = {
+      date_from: dateFrom || undefined,
+      date_to: dateTo || undefined,
+    };
+    if (kind && kind !== 'all') params.kind = kind;
+    if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
+    return params;
+  }, [kind, dateFrom, dateTo, debouncedSearch]);
 
   const handleExportExcel = async () => {
     if (!canExport || exportBusy) return;
     setExportBusy(true);
     try {
-      const params = {
-        date_from: dateFrom || undefined,
-        date_to: dateTo || undefined,
-      };
-      if (kind && kind !== 'all') params.kind = kind;
-      if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
-      await customersAPI.paymentsTrailExport(params);
+      await customersAPI.paymentsTrailExport(trailFilterParams());
       toast.success('Payments Excel downloaded');
     } catch (err) {
       toast.error(err.message || err.response?.data?.error || 'Could not download Excel');
     } finally {
       setExportBusy(false);
+    }
+  };
+
+  const handleShowTotal = async () => {
+    if (!allowed || totalBusy) return;
+    setTotalBusy(true);
+    try {
+      const res = await customersAPI.paymentsTrailSummary(trailFilterParams());
+      setRangeTotal(res.data || null);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not calculate total');
+      setRangeTotal(null);
+    } finally {
+      setTotalBusy(false);
     }
   };
 
@@ -100,11 +121,8 @@ export default function PaymentsTrailPage() {
       const params = {
         page,
         page_size: pageSize,
-        date_from: dateFrom || undefined,
-        date_to: dateTo || undefined,
+        ...trailFilterParams(),
       };
-      if (kind && kind !== 'all') params.kind = kind;
-      if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
       const res = await customersAPI.paymentsTrail(params);
       setRows(res.data?.results || []);
       setCount(Number(res.data?.count || 0));
@@ -115,7 +133,7 @@ export default function PaymentsTrailPage() {
     } finally {
       setLoading(false);
     }
-  }, [allowed, kind, dateFrom, dateTo, debouncedSearch, page, pageSize]);
+  }, [allowed, page, pageSize, trailFilterParams]);
 
   useEffect(() => {
     load();
@@ -123,6 +141,7 @@ export default function PaymentsTrailPage() {
 
   useEffect(() => {
     setPage(1);
+    setRangeTotal(null);
   }, [kind, dateFrom, dateTo, debouncedSearch]);
 
   if (!allowed) {
@@ -201,7 +220,45 @@ export default function PaymentsTrailPage() {
         <Button type="button" variant="outline" size="sm" onClick={load} disabled={loading}>
           Refresh
         </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={handleShowTotal}
+          disabled={totalBusy || loading}
+          aria-label="Show total for selected range"
+        >
+          <Calculator className="h-4 w-4 mr-1.5" />
+          {totalBusy ? 'Calculating…' : 'Show total'}
+        </Button>
       </FilterBar>
+
+      {rangeTotal ? (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <SummaryCard
+            icon={Banknote}
+            label="Range total"
+            value={formatCurrency(rangeTotal.total_amount)}
+            subtext={`${rangeTotal.included_count ?? rangeTotal.count ?? 0} payment${
+              Number(rangeTotal.included_count ?? rangeTotal.count ?? 0) === 1 ? '' : 's'
+            }${
+              rangeTotal.date_from && rangeTotal.date_to
+                ? ` · ${rangeTotal.date_from} → ${rangeTotal.date_to}`
+                : ''
+            }`}
+            tone="success"
+          />
+          {(rangeTotal.by_method || []).map((row) => (
+            <SummaryCard
+              key={row.payment_method}
+              icon={Calculator}
+              label={row.payment_method_label || row.payment_method}
+              value={formatCurrency(row.total)}
+              subtext={`${row.count} payment${Number(row.count) === 1 ? '' : 's'}`}
+            />
+          ))}
+        </div>
+      ) : null}
 
       {loading ? (
         <PageLoading rows={6} />

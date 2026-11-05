@@ -1495,6 +1495,31 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @action(
         detail=False,
         methods=['get'],
+        url_path='payments-trail/summary',
+        permission_classes=[IsAuthenticated, RequirePerm('debt_management', 'payments_trail')],
+    )
+    def payments_trail_summary(self, request):
+        """Totals for the selected Payments trail date range / filters."""
+        from sales.customer_module_settings import customers_show_wallet_balance
+        from sales.payments_trail import summarize_payments_trail
+
+        if not customers_show_wallet_balance():
+            return self._feature_disabled_response('Wallet balance')
+        try:
+            payload = summarize_payments_trail(
+                kind=request.query_params.get('kind'),
+                date_from=request.query_params.get('date_from'),
+                date_to=request.query_params.get('date_to'),
+                search=request.query_params.get('search'),
+                user=request.user,
+            )
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(payload)
+
+    @action(
+        detail=False,
+        methods=['get'],
         url_path='payments-trail/export',
         permission_classes=[IsAuthenticated, RequirePerm('debt_management', 'payments_trail')],
     )
