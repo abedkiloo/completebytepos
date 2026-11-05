@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Maximize2,
@@ -32,7 +32,9 @@ import { SaleCommitConfirm } from './SaleCommitConfirm';
 import ReceiptDialog from './ReceiptDialog';
 
 import VariantSelector from '../VariantSelector';
+import BarcodeCameraScanner from '../BarcodeCameraScanner';
 import PosCartRecoveryDialog from '../PosCartRecoveryDialog';
+import { isModuleFeatureEnabled } from '../../../utils/moduleFeatures';
 import { buildCartRecoveryPreview } from '../../../utils/posCartRecovery';
 import CorrectionModePanel, {
   CorrectionTotalsCompare,
@@ -98,8 +100,24 @@ export default function POSPage() {
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [cameraScanOpen, setCameraScanOpen] = useState(false);
   const [mobilePanel, setMobilePanel] = useState('products');
   const searchInputRef = useRef(null);
+  const cameraScanEnabled = isModuleFeatureEnabled(
+    'sales',
+    'camera_barcode_scan',
+    true
+  );
+  const handleCameraScan = useCallback(
+    async (code) => {
+      const ok = await state.addByScanCode(code);
+      if (ok) {
+        setCameraScanOpen(false);
+        searchInputRef.current?.focus();
+      }
+    },
+    [state.addByScanCode]
+  );
 
   const handleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -323,6 +341,9 @@ export default function POSPage() {
             onSelectCategory={state.setSelectedCategory}
             onSelectSubcategory={state.setSelectedSubcategory}
             onAddToCart={state.tryAddToCart}
+            onScanSubmit={state.addByScanCode}
+            onOpenCameraScan={() => setCameraScanOpen(true)}
+            cameraScanEnabled={cameraScanEnabled}
             searchInputRef={searchInputRef}
             respectStockLimits={state.validateStock}
           />
@@ -473,6 +494,14 @@ export default function POSPage() {
         onStartNew={state.startNewSaleFromRecovery}
         busy={state.recoveryBusy}
       />
+
+      {cameraScanEnabled ? (
+        <BarcodeCameraScanner
+          open={cameraScanOpen}
+          onClose={() => setCameraScanOpen(false)}
+          onScan={handleCameraScan}
+        />
+      ) : null}
 
       {state.variantPickerProduct && (
         <VariantSelector

@@ -59,3 +59,24 @@ dart run tools/check_coverage.dart --min=98 --paths=lib/features/pos
 **Android smoke:** `flutter run -d <android> --dart-define=API_BASE_URL=http://10.0.2.2:8000/api` → New sale → search product → Pay cash.
 
 **Deferred:** Holdings v2 → `BACKLOG.md`.
+
+### Barcode scanning (native follow-up)
+
+- **Camera:** Scan button opens `BarcodeScannerPage` (`mobile_scanner`) when
+  Module Feature `sales.camera_barcode_scan` is on. Exact barcode/SKU → cart
+  via `GET /products/search/`.
+- **Bluetooth HID:** Pair gun as keyboard; focus POS search; scan sends digits
+  + Enter → same exact-add path (no Bluetooth plugin).
+- Seed feature rows: `python manage.py init_modules` on the API host
+  (registry already includes `sales.camera_barcode_scan`).
+
+**Coverage (barcode follow-up):** `100%` on
+`barcode_scan.dart` + `barcode_scan_lookup.dart`. Camera page excluded
+(platform channel / device camera — see `COVERAGE_POLICY.md`).
+
+```bash
+flutter test test/features/pos test/features/auth/module_features_test.dart --coverage
+dart run tools/check_coverage.dart --min=98 \
+  --paths=lib/features/pos/domain/barcode_scan.dart,lib/features/pos/application/barcode_scan_lookup.dart \
+  --exclude=lib/features/pos/presentation/barcode_scanner_page.dart
+```

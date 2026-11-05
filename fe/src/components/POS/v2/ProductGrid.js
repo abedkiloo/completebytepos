@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Package, Filter, Expand } from 'lucide-react';
+import { Search, Package, Filter, Expand, ScanBarcode } from 'lucide-react';
 
 import { Input } from '../../ui/input';
 import { Button } from '../../ui/button';
@@ -9,6 +9,7 @@ import { formatCurrency } from '../../../utils/formatters';
 import { cn } from '../../../lib/cn';
 import { isProductOutOfStock } from '../../../utils/productStock';
 import { resolveMediaUrl } from '../../../utils/mediaUrl';
+import { looksLikeScanCode } from '../../../utils/posBarcodeScan';
 import PendingApprovalBadges from '../../Approvals/PendingApprovalBadges';
 import ProductImageLightbox from '../../Shared/ProductImageLightbox';
 
@@ -33,27 +34,53 @@ export function ProductGrid({
   onSelectCategory,
   onSelectSubcategory,
   onAddToCart,
+  onScanSubmit,
+  onOpenCameraScan,
+  cameraScanEnabled = false,
   searchInputRef,
   respectStockLimits = true,
 }) {
   const activeTop = categories.find((c) => c.id === selectedCategory);
   const subcategories = activeTop?.children || [];
 
+  const handleSearchKeyDown = (e) => {
+    if (e.key !== 'Enter') return;
+    const value = e.currentTarget.value;
+    if (!onScanSubmit || !looksLikeScanCode(value)) return;
+    e.preventDefault();
+    onScanSubmit(value);
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-secondary/30">
-      {/* Search */}
+      {/* Search — HID Bluetooth guns type here; camera is the Scan button */}
       <div className="shrink-0 border-b bg-background px-4 py-3">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            ref={searchInputRef}
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search products or scan a barcode…  (F2)"
-            className="h-11 pl-10 text-base"
-            autoComplete="off"
-            inputMode="search"
-          />
+        <div className="flex gap-2">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              ref={searchInputRef}
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              placeholder="Search or scan barcode… (F2 · Bluetooth gun works here)"
+              className="h-11 pl-10 text-base"
+              autoComplete="off"
+              inputMode="search"
+            />
+          </div>
+          {cameraScanEnabled && onOpenCameraScan ? (
+            <Button
+              type="button"
+              variant="secondary"
+              className="h-11 shrink-0 px-3"
+              onClick={onOpenCameraScan}
+              title="Scan with phone camera"
+            >
+              <ScanBarcode className="h-5 w-5" />
+              <span className="ml-1.5 hidden sm:inline">Scan</span>
+            </Button>
+          ) : null}
         </div>
       </div>
 

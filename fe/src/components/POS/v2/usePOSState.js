@@ -14,6 +14,11 @@ import { normalizeProductForSale } from '../../../utils/moduleFeatures';
 import { isProductOutOfStock } from '../../../utils/productStock';
 import { shouldOpenVariantPicker } from '../../../utils/variantSelector';
 import {
+  isDuplicateScan,
+  normalizeScanCode,
+  pickExactScanProduct,
+} from '../../../utils/posBarcodeScan';
+import {
   posCartDraftKey,
   serializeRetailCartDraft,
   loadRetailCartDraft,
@@ -576,6 +581,7 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
   // ------------------------------------------------------------------
 
   const lastPickerAddRef = useRef({ stamp: '', at: 0 });
+  const lastScanRef = useRef({ code: '', at: 0 });
 
   const addProductToCart = useCallback((product) => {
     const key = cartItemKey(product);
@@ -664,6 +670,44 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
       addProductToCart(normalizeProductForSale(product));
     },
     [addProductToCart, blockedCheckpointProductIds, validateStock]
+  );
+
+  /**
+   * Resolve a barcode/SKU (camera or HID gun) and add to cart on exact match.
+   *
+   * @param {string} rawCode
+   * @returns {Promise<boolean>} True when a line was added / variant picker opened.
+   */
+  const addByScanCode = useCallback(
+    async (rawCode) => {
+      const code = normalizeScanCode(rawCode);
+      if (!code) return false;
+      if (isDuplicateScan(lastScanRef.current, code)) {
+        return false;
+      }
+      lastScanRef.current = { code, at: Date.now() };
+      try {
+        const res = await productsAPI.search(code, 8);
+        const rows = Array.isArray(res.data) ? res.data : res.data?.results || [];
+        const { product, reason } = pickExactScanProduct(rows, code);
+        if (!product) {
+          if (reason === 'ambiguous') {
+            toast.warning('Several products share that code — pick from the list.');
+            setSearchQuery(code);
+          } else {
+            toast.error(`No product for “${code}”. Check the barcode or add it in Products.`);
+          }
+          return false;
+        }
+        tryAddToCart(product);
+        toast.success(`${product.name} added`);
+        return true;
+      } catch (err) {
+        toast.error(err?.response?.data?.detail || 'Could not look up that barcode.');
+        return false;
+      }
+    },
+    [tryAddToCart]
   );
 
   const setItemQuantity = useCallback((item, newQty) => {
@@ -1197,6 +1241,7 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
     cartItemCount,
     hasOversell,
     tryAddToCart,
+    addByScanCode,
     addProductToCart,
     setItemQuantity,
     setItemPrice,

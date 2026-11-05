@@ -266,6 +266,29 @@ class ProductServiceTestCase(TestCase):
         results = self.service.search_products('SOFA')
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].sku, 'SOFA-001')
+
+    def test_search_products_by_variant_barcode(self):
+        """Phone/HID scans of a variant barcode resolve to the parent product."""
+        parent = Product.objects.create(
+            name='Variant Shirt',
+            sku='SHIRT-P',
+            category=self.category,
+            price=Decimal('50.00'),
+            cost=Decimal('20.00'),
+            is_active=True,
+            has_variants=True,
+        )
+        ProductVariant.objects.create(
+            product=parent,
+            sku='SHIRT-RED-M',
+            barcode='6281001234567',
+            price=Decimal('50.00'),
+            stock_quantity=3,
+            is_active=True,
+        )
+        results = self.service.search_products('6281001234567')
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].pk, parent.pk)
     
     def test_search_products_empty_query(self):
         """Test search with empty query returns empty list"""

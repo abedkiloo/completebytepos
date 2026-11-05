@@ -59,6 +59,7 @@ ModuleSetting = *how does this store run it once installed?*
 | Must-tick notes | `daily_notes` | `sticky_notes` |
 | Sales history export | `sales` | `history_export` |
 | Late sale SMS opt-in | `sales` | `late_sale_sms` |
+| Phone camera barcode scan | `sales` | `camera_barcode_scan` |
 | Kenya location filters | `customers` | `location_filters` |
 | Trading profit & COGS | `reports` | `trading_profit` (+ `enable_financial_reports` ModuleSetting) |
 

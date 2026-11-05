@@ -120,6 +120,13 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
                 'Allow cashier to send customer SMS when recording a past (backfill) sale.',
                 8,
             ),
+            _f(
+                'camera_barcode_scan',
+                'Phone camera barcode scan',
+                'Open the phone camera on Retail POS to scan barcodes into the cart '
+                '(package add-on; Bluetooth HID guns still work via the search box).',
+                9,
+            ),
         ],
     },
     {
@@ -501,7 +508,7 @@ PRESETS: dict[str, dict[str, Any]] = {
             'reports': True,
         },
         'features': {
-            'sales': ['pos', 'normal_sale'],
+            'sales': ['pos', 'normal_sale', 'camera_barcode_scan'],
             'products': ['barcode_printing'],
             'invoicing': ['partial_payments'],
             'suppliers': ['supplier_management'],

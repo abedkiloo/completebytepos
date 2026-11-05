@@ -476,22 +476,41 @@ class ProductService(BaseService):
             # Prefer exact matches for SKU or barcode (fast for scans). If
             # exact matches exist, return them immediately. Otherwise
             # fallback to substring search for name/sku/barcode.
+            q = query.strip()
             exact_qs = apply_operational_product_filter(
                 self.model.objects.filter(
-                    Q(sku__iexact=query) | Q(barcode__iexact=query) | Q(name__iexact=query)
+                    Q(sku__iexact=q) | Q(barcode__iexact=q) | Q(name__iexact=q)
                 )
             )
             if exact_qs.exists():
                 return list(exact_qs[:limit])
 
+            # Variant SKU/barcode scans resolve to the parent product (POS
+            # then opens the variant picker when the catalogue requires it).
+            from products.models import ProductVariant
+
+            variant_ids = list(
+                ProductVariant.objects.filter(
+                    Q(sku__iexact=q) | Q(barcode__iexact=q),
+                    is_active=True,
+                ).values_list('product_id', flat=True)[:limit]
+            )
+            if variant_ids:
+                variant_parents = apply_operational_product_filter(
+                    self.model.objects.filter(pk__in=variant_ids)
+                )
+                parents = list(variant_parents[:limit])
+                if parents:
+                    return parents
+
             queryset = apply_operational_product_filter(
                 self.model.objects.filter(
-                    Q(name__icontains=query) |
-                    Q(sku__icontains=query) |
-                    Q(barcode__icontains=query)
+                    Q(name__icontains=q) |
+                    Q(sku__icontains=q) |
+                    Q(barcode__icontains=q)
                 )
             )[:limit]
-            
+
             return list(queryset)
         except Exception as e:
             import logging
