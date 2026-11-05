@@ -1492,6 +1492,54 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(payload)
 
+    @action(
+        detail=False,
+        methods=['get'],
+        url_path='payments-trail/export',
+        permission_classes=[IsAuthenticated, RequirePerm('debt_management', 'payments_trail')],
+    )
+    def payments_trail_export(self, request):
+        """Excel download of Payments trail money-in for the current filters."""
+        from sales.customer_module_settings import customers_show_wallet_balance
+        from sales.module_settings import sales_payments_trail_export_enabled
+        from sales.payments_trail import build_payments_trail_export
+        from sales.payments_trail_export import payments_trail_export_response
+
+        if not customers_show_wallet_balance():
+            return self._feature_disabled_response('Wallet balance')
+        if not sales_payments_trail_export_enabled():
+            return Response(
+                {
+                    'error': (
+                        'Payments trail Excel is disabled for this package. '
+                        'Enable Sales → Payments trail Excel in Module Settings.'
+                    )
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            payload = build_payments_trail_export(
+                kind=request.query_params.get('kind'),
+                date_from=request.query_params.get('date_from'),
+                date_to=request.query_params.get('date_to'),
+                search=request.query_params.get('search'),
+                user=request.user,
+            )
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        response = payments_trail_export_response(
+            request,
+            payload,
+            title='Payments trail',
+            slug='payments-trail',
+        )
+        if response is None:
+            return Response(
+                {'error': 'Use format=xlsx.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return response
+
     @action(detail=True, methods=['get'], url_path='detail')
     def lifetime_detail(self, request, pk=None):
         """Lifetime customer profile: standing, orders, and debt/payment trail."""

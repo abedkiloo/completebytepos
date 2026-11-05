@@ -27,6 +27,15 @@ KIND_INVOICE_PAYMENT = 'invoice_payment'
 KIND_SALE_PAYMENT = 'sale_payment'
 ALL_KINDS = (KIND_DEBT_SETTLEMENT, KIND_INVOICE_PAYMENT, KIND_SALE_PAYMENT)
 
+#: Max hydrated rows for Excel export (index sources already cap at 5000 each).
+PAYMENTS_TRAIL_EXPORT_LIMIT = 10000
+
+KIND_LABELS = {
+    KIND_DEBT_SETTLEMENT: 'Debt collection',
+    KIND_INVOICE_PAYMENT: 'Invoice payment',
+    KIND_SALE_PAYMENT: 'Sale tender',
+}
+
 _METHOD_LABELS = {
     'cash': 'Cash',
     'mpesa': 'M-PESA',
@@ -73,6 +82,42 @@ def _parse_kinds(raw) -> List[str]:
     return kinds or list(ALL_KINDS)
 
 
+def _resolve_trail_window(date_from, date_to):
+    """Parse dates; default to last 30 days when both blank."""
+    day_from = _parse_day(date_from)
+    day_to = _parse_day(date_to)
+    if day_from is None and day_to is None:
+        day_from = timezone.localdate() - timedelta(days=30)
+        day_to = timezone.localdate()
+    return day_from, day_to
+
+
+def _collect_index_rows(
+    *,
+    kinds: Sequence[str],
+    day_from,
+    day_to,
+    term: str,
+    visible_ids,
+) -> List[Dict[str, Any]]:
+    index_rows: List[Dict[str, Any]] = []
+    if KIND_DEBT_SETTLEMENT in kinds:
+        index_rows.extend(_settlement_index(day_from, day_to, term, visible_ids))
+    if KIND_INVOICE_PAYMENT in kinds:
+        index_rows.extend(_invoice_index(day_from, day_to, term, visible_ids))
+    if KIND_SALE_PAYMENT in kinds:
+        index_rows.extend(_sale_tender_index(day_from, day_to, term, visible_ids))
+
+    index_rows.sort(
+        key=lambda row: (
+            row['occurred_at'] or timezone.make_aware(datetime.min),
+            row['source_id'],
+        ),
+        reverse=True,
+    )
+    return index_rows
+
+
 def list_payments_trail(
     *,
     kind: Optional[str] = None,
@@ -91,30 +136,15 @@ def list_payments_trail(
     page = max(1, int(page or 1))
     page_size = min(100, max(1, int(page_size or 20)))
     kinds = _parse_kinds(kind)
-    day_from = _parse_day(date_from)
-    day_to = _parse_day(date_to)
-    # Bound unbounded scans so the trail stays fast without a cache layer.
-    if day_from is None and day_to is None:
-        day_from = timezone.localdate() - timedelta(days=30)
-        day_to = timezone.localdate()
+    day_from, day_to = _resolve_trail_window(date_from, date_to)
     term = (search or '').strip()
-
     visible_ids = _visible_debtor_customer_ids(user)
-
-    index_rows: List[Dict[str, Any]] = []
-    if KIND_DEBT_SETTLEMENT in kinds:
-        index_rows.extend(_settlement_index(day_from, day_to, term, visible_ids))
-    if KIND_INVOICE_PAYMENT in kinds:
-        index_rows.extend(_invoice_index(day_from, day_to, term, visible_ids))
-    if KIND_SALE_PAYMENT in kinds:
-        index_rows.extend(_sale_tender_index(day_from, day_to, term, visible_ids))
-
-    index_rows.sort(
-        key=lambda row: (
-            row['occurred_at'] or timezone.make_aware(datetime.min),
-            row['source_id'],
-        ),
-        reverse=True,
+    index_rows = _collect_index_rows(
+        kinds=kinds,
+        day_from=day_from,
+        day_to=day_to,
+        term=term,
+        visible_ids=visible_ids,
     )
     count = len(index_rows)
     start_idx = (page - 1) * page_size
@@ -127,6 +157,90 @@ def list_payments_trail(
         'page_size': page_size,
         'results': results,
     }
+
+
+def build_payments_trail_export(
+    *,
+    kind: Optional[str] = None,
+    date_from=None,
+    date_to=None,
+    search: Optional[str] = None,
+    user=None,
+    limit: Optional[int] = None,
+) -> Dict[str, Any]:
+    """
+    Unpaginated payments-trail payload for Excel (same rows as the list UI).
+
+    Args:
+        kind: Trail kind filter or ``all``.
+        date_from: Inclusive start day (YYYY-MM-DD).
+        date_to: Inclusive end day (YYYY-MM-DD).
+        search: Optional customer / reference search.
+        user: Request user for debtor visibility.
+        limit: Max rows to hydrate (1–PAYMENTS_TRAIL_EXPORT_LIMIT).
+
+    Returns:
+        Dict with ``results``, ``count``, ``truncated``, date window, and
+        ``by_method`` totals.
+    """
+    if limit is None:
+        limit = PAYMENTS_TRAIL_EXPORT_LIMIT
+    limit = max(1, min(int(limit), PAYMENTS_TRAIL_EXPORT_LIMIT))
+    kinds = _parse_kinds(kind)
+    day_from, day_to = _resolve_trail_window(date_from, date_to)
+    term = (search or '').strip()
+    visible_ids = _visible_debtor_customer_ids(user)
+    index_rows = _collect_index_rows(
+        kinds=kinds,
+        day_from=day_from,
+        day_to=day_to,
+        term=term,
+        visible_ids=visible_ids,
+    )
+    count = len(index_rows)
+    truncated = count > limit
+    results = _hydrate_page(index_rows[:limit])
+    by_method = _summarize_by_method(results)
+    return {
+        'count': count,
+        'exported_count': len(results),
+        'truncated': truncated,
+        'date_from': day_from.isoformat() if day_from else None,
+        'date_to': day_to.isoformat() if day_to else None,
+        'results': results,
+        'by_method': by_method,
+        'total_amount': str(
+            sum((_q(r.get('amount')) for r in results), Decimal('0.00'))
+        ),
+    }
+
+
+def _summarize_by_method(results: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    buckets: Dict[str, Dict[str, Any]] = {}
+    for row in results:
+        method = (row.get('payment_method') or 'other').strip().lower() or 'other'
+        bucket = buckets.setdefault(
+            method,
+            {
+                'payment_method': method,
+                'payment_method_label': row.get('payment_method_label')
+                or _method_label(method),
+                'count': 0,
+                'total': Decimal('0.00'),
+            },
+        )
+        bucket['count'] += 1
+        bucket['total'] += _q(row.get('amount'))
+    ordered = sorted(buckets.values(), key=lambda b: b['payment_method'])
+    return [
+        {
+            'payment_method': b['payment_method'],
+            'payment_method_label': b['payment_method_label'],
+            'count': b['count'],
+            'total': str(_q(b['total'])),
+        }
+        for b in ordered
+    ]
 
 
 def _settlement_index(day_from, day_to, term, visible_ids) -> List[Dict[str, Any]]:

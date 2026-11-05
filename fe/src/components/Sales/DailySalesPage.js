@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  FileSpreadsheet,
   Receipt,
   Search,
   ShoppingCart,
@@ -14,7 +15,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 
-import { salesAPI } from '../../services/api';
+import { customersAPI, salesAPI } from '../../services/api';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import {
   settlementMethodLabel,
@@ -26,6 +27,7 @@ import {
   hasPermission,
   userSeesAllSalesFromStorage,
 } from '../../utils/roleAccess';
+import { isModuleFeatureEnabled } from '../../utils/moduleFeatures';
 import {
   canViewDailySalesFromStorage,
   dailySalesCustomerPath,
@@ -260,10 +262,30 @@ export default function DailySalesPage() {
   const canCollect = hasPermission(permissions, 'customers', 'update');
   const canFilterBySeller = userSeesAllSalesFromStorage();
   const sellerOptions = useSellerOptions(allowed && canFilterBySeller);
+  const canExportPayments =
+    hasPermission(permissions, 'debt_management', 'payments_trail') &&
+    isModuleFeatureEnabled('sales', 'payments_trail_export', true);
+  const [exportBusy, setExportBusy] = useState(false);
 
   const todayStr = getTodayDateString();
   const isFutureOrToday = date >= todayStr;
   const paidDebtMix = useMemo(() => dailySalesPaidDebtMix(summary), [summary]);
+
+  const handleExportPaymentsExcel = async () => {
+    if (!canExportPayments || exportBusy || !date) return;
+    setExportBusy(true);
+    try {
+      await customersAPI.paymentsTrailExport({
+        date_from: date,
+        date_to: date,
+      });
+      toast.success(`Payments Excel downloaded for ${date}`);
+    } catch (err) {
+      toast.error(err.message || err.response?.data?.error || 'Could not download Excel');
+    } finally {
+      setExportBusy(false);
+    }
+  };
 
   // Sync date with URL params
   const handleDateChange = (newDate) => {
@@ -469,6 +491,18 @@ export default function DailySalesPage() {
         }
       >
         <div className="flex flex-wrap items-center gap-2">
+          {canExportPayments ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleExportPaymentsExcel}
+              disabled={exportBusy || loading}
+              aria-label="Download payments Excel for this day"
+            >
+              <FileSpreadsheet className="h-4 w-4 mr-1.5" />
+              {exportBusy ? 'Downloading…' : 'Download payments Excel'}
+            </Button>
+          ) : null}
           <Button variant="outline" asChild>
             <Link to="/sales">
               <Receipt className="h-4 w-4 mr-1.5" />

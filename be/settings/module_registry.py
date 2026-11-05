@@ -127,6 +127,13 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
                 '(package add-on; Bluetooth HID guns still work via the search box).',
                 9,
             ),
+            _f(
+                'payments_trail_export',
+                'Payments trail Excel',
+                'Download Excel of money-in for a day or date range '
+                '(sale tender, invoice payments, debt collections).',
+                10,
+            ),
         ],
     },
     {
@@ -508,7 +515,13 @@ PRESETS: dict[str, dict[str, Any]] = {
             'reports': True,
         },
         'features': {
-            'sales': ['pos', 'normal_sale', 'camera_barcode_scan'],
+            'sales': [
+                'pos',
+                'normal_sale',
+                'camera_barcode_scan',
+                'history_export',
+                'payments_trail_export',
+            ],
             'products': ['barcode_printing'],
             'invoicing': ['partial_payments'],
             'suppliers': ['supplier_management'],

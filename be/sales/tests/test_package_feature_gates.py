@@ -15,6 +15,7 @@ from sales.models import Customer, Sale, SaleItem
 from sales.module_settings import (
     sales_history_export_enabled,
     sales_late_sale_sms_enabled,
+    sales_payments_trail_export_enabled,
 )
 from settings.models import ModuleFeature, ModuleSettings
 from utils.tests.api_test_base import ManagerAPITestCase
@@ -105,6 +106,12 @@ class PackageFeatureGateTests(ManagerAPITestCase):
         self.assertTrue(sales_history_export_enabled())
         _set_feature('sales', 'history_export', False)
         self.assertFalse(sales_history_export_enabled())
+
+    def test_payments_trail_export_helper(self):
+        _set_feature('sales', 'payments_trail_export', True)
+        self.assertTrue(sales_payments_trail_export_enabled())
+        _set_feature('sales', 'payments_trail_export', False)
+        self.assertFalse(sales_payments_trail_export_enabled())
 
     def test_location_filter_sub_and_ward_without_county(self):
         from sales.kenya_admin import DEFAULT_COUNTY, DEFAULT_SUB_COUNTY, DEFAULT_WARD

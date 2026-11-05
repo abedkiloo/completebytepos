@@ -58,6 +58,7 @@ ModuleSetting = *how does this store run it once installed?*
 | Note checklists | `daily_notes` | `checklists` |
 | Must-tick notes | `daily_notes` | `sticky_notes` |
 | Sales history export | `sales` | `history_export` |
+| Payments trail Excel | `sales` | `payments_trail_export` |
 | Late sale SMS opt-in | `sales` | `late_sale_sms` |
 | Phone camera barcode scan | `sales` | `camera_barcode_scan` |
 | Kenya location filters | `customers` | `location_filters` |

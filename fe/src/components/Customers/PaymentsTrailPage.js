@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Banknote, Search } from 'lucide-react';
+import { Banknote, FileSpreadsheet, Search } from 'lucide-react';
 
 import { customersAPI } from '../../services/api';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { toast } from '../../utils/toast';
 import { getStoredAuth, hasPermission } from '../../utils/roleAccess';
+import { isModuleFeatureEnabled } from '../../utils/moduleFeatures';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { customerDetailPath, formatDebtTrail } from '../../utils/customerDetail';
 import {
@@ -55,6 +56,7 @@ function defaultDateFrom() {
 export default function PaymentsTrailPage() {
   const { permissions } = getStoredAuth();
   const allowed = hasPermission(permissions, 'debt_management', 'payments_trail');
+  const canExport = allowed && isModuleFeatureEnabled('sales', 'payments_trail_export', true);
   const [kind, setKind] = useState('all');
   const [dateFrom, setDateFrom] = useState(defaultDateFrom);
   const [dateTo, setDateTo] = useState(getTodayDateString);
@@ -63,8 +65,28 @@ export default function PaymentsTrailPage() {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(DEFAULT_PAGE_SIZE);
   const [loading, setLoading] = useState(true);
+  const [exportBusy, setExportBusy] = useState(false);
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
+
+  const handleExportExcel = async () => {
+    if (!canExport || exportBusy) return;
+    setExportBusy(true);
+    try {
+      const params = {
+        date_from: dateFrom || undefined,
+        date_to: dateTo || undefined,
+      };
+      if (kind && kind !== 'all') params.kind = kind;
+      if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
+      await customersAPI.paymentsTrailExport(params);
+      toast.success('Payments Excel downloaded');
+    } catch (err) {
+      toast.error(err.message || err.response?.data?.error || 'Could not download Excel');
+    } finally {
+      setExportBusy(false);
+    }
+  };
 
   const load = useCallback(async () => {
     if (!allowed) {
@@ -123,8 +145,22 @@ export default function PaymentsTrailPage() {
     <PageShell>
       <PageHeader
         title="Payments trail"
-        description="Every payment in, what it settled, and the debt balance after — for audit and balancing."
-      />
+        description="Every payment in, what it settled, and the debt balance after — for audit and balancing. Download Excel for the selected dates."
+      >
+        {canExport ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleExportExcel}
+            disabled={exportBusy || loading}
+            aria-label="Download payments Excel"
+          >
+            <FileSpreadsheet className="h-4 w-4 mr-1.5" />
+            {exportBusy ? 'Downloading…' : 'Download Excel'}
+          </Button>
+        ) : null}
+      </PageHeader>
 
       <FilterBar>
         <FilterField label="Type">

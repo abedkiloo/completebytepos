@@ -2,6 +2,7 @@ import axios from 'axios';
 import { resolveApiBaseUrl } from '../config/apiBaseUrl';
 import {
   buildPdfFilename,
+  downloadAuthenticatedFile,
   downloadAuthenticatedPdf,
 } from '../utils/pdfDownload';
 import { downloadReportExport } from '../utils/reportExport';
@@ -10,6 +11,7 @@ import {
   logoutAndRedirect,
 } from '../utils/authSession';
 import { markSessionActivity } from '../utils/sessionIdle';
+import { toast } from '../utils/toast';
 
 const API_BASE_URL = resolveApiBaseUrl();
 
@@ -470,6 +472,38 @@ export const customersAPI = {
   debtCollections: (params) => api.get('/sales/customers/debt-collections/', { params }),
   paymentsTrail: (params) =>
     api.get('/sales/customers/payments-trail/', { params, timeout: 30000 }),
+  /**
+   * Download Payments trail Excel for the given filters.
+   * @param {{ date_from?: string, date_to?: string, kind?: string, search?: string }} params
+   */
+  paymentsTrailExport: async (params = {}) => {
+    const query = new URLSearchParams();
+    Object.entries({ ...params, format: 'xlsx' }).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '') return;
+      query.set(key, String(value));
+    });
+    const qs = query.toString();
+    const path = `/sales/customers/payments-trail/export/${qs ? `?${qs}` : ''}`;
+    const day = params.date_to || params.date_from || 'range';
+    const filename = buildPdfFilename('payments-trail', day, 'xlsx');
+    await downloadAuthenticatedFile(api, path, filename, {
+      emptyMessage: 'The Excel file was empty',
+      failedMessage: 'Could not download payments Excel',
+      onDownloaded: (response) => {
+        const truncated = response.headers?.['x-export-truncated'];
+        if (truncated !== '1' && String(truncated || '').toLowerCase() !== 'true') {
+          return;
+        }
+        const total = response.headers?.['x-export-total-count'];
+        toast.warning(
+          total
+            ? `Excel includes a subset of payments (${total} match these filters). Narrow the date range if needed.`
+            : 'Excel includes a subset of payments. Narrow the date range to export everything.'
+        );
+      },
+    });
+    return filename;
+  },
 };
 
 export const messagingAPI = {

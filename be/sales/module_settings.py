@@ -44,6 +44,11 @@ def sales_history_export_enabled() -> bool:
     return is_module_feature_enabled(MODULE, 'history_export')
 
 
+def sales_payments_trail_export_enabled() -> bool:
+    """Catalog feature: Excel download of Payments trail money-in rows."""
+    return is_module_feature_enabled(MODULE, 'payments_trail_export')
+
+
 def sales_late_sale_sms_enabled() -> bool:
     """Catalog feature: opt-in SMS when recording a past (backfill) sale."""
     return is_module_feature_enabled(MODULE, 'late_sale_sms')

@@ -19,6 +19,8 @@ POS/billing domain: customers (duka identity, wallet/debt), holdings → approva
 - `SaleService.create_sale` / holding / checkout / complete paths
 - `sale_completion_approval.*`, `sale_debt_sync.*`, refunds/rollback/unvoid
 - HTTP: `/api/sales/` (sales, customers, invoices, payments)
+- Payments trail Excel: `GET /api/sales/customers/payments-trail/export/?date_from=&date_to=&format=xlsx`
+  (Module Feature `sales.payments_trail_export`; seed with `python manage.py init_modules`)
 
 ## Bounds & invariants
 
