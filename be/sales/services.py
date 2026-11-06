@@ -43,6 +43,13 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _sale_books_date(sale):
+    """Local calendar day for invoice/payment books (never raw UTC ``.date()``)."""
+    from accounting.services import sale_books_date
+
+    return sale_books_date(sale)
+
+
 class SaleService(BaseService):
     """Service for sale operations"""
     
@@ -806,6 +813,10 @@ class SaleService(BaseService):
         holding.status = 'pending_approval' if defer_complete else 'completed'
         if client_channel:
             holding.client_channel = client_channel
+        # Business day = checkout day for first-time POS completion (not cart-open day).
+        from sales.sale_date import stamp_occurred_at_for_pos_checkout
+
+        stamp_occurred_at_for_pos_checkout(holding)
         holding.save()
 
         if defer_complete:
@@ -1734,7 +1745,7 @@ class InvoiceService(BaseService):
             balance=balance,
             status=status,
             due_date=due_date,
-            issued_date=(sale.occurred_at or sale.created_at).date(),
+            issued_date=_sale_books_date(sale),
             created_by=user or sale.cashier,
             notes=notes
         )
@@ -1758,7 +1769,7 @@ class InvoiceService(BaseService):
                 invoice=invoice,
                 amount=paid_amount,
                 payment_method=sale.payment_method,
-                payment_date=(sale.occurred_at or sale.created_at).date(),
+                payment_date=_sale_books_date(sale),
                 recorded_by=user or sale.cashier,
                 notes=f"Initial payment from sale {sale.sale_number}"
             )

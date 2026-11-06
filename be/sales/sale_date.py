@@ -1,4 +1,4 @@
-"""Manager/admin correction of a sale's business date."""
+"""Manager/admin correction of a sale's business date + POS checkout stamping."""
 
 from __future__ import annotations
 
@@ -15,6 +15,62 @@ DATE_CORRECTION_NOT_ALLOWED = 'Only a manager or admin can change the sale date.
 DATE_CORRECTION_STATUS_BLOCKED = 'This sale cannot have its date changed.'
 DATE_CORRECTION_FUTURE = 'Sale date cannot be more than one day in the future.'
 BLOCKED_STATUSES = frozenset({'cancelled'})
+
+
+def stamp_occurred_at_for_pos_checkout(sale) -> bool:
+    """
+    Stamp ``occurred_at`` to now when a POS holding is actually checked out.
+
+    Holdings set ``occurred_at`` when the cart is first opened. Leaving a cart
+    open overnight (or for days) must not leave the sale on the open day once
+    the cashier completes it — Daily Sales and books use ``occurred_at``.
+
+    Preserves the existing business date when:
+      - the sale is a past / backfill entry (``entry_source=backfill``), or
+      - the sale was already completed/posted and later returned for correction
+        (fixing a sold invoice must not silently move it to "today").
+
+    Args:
+        sale: ``sales.Sale`` instance in ``holding`` (mutated in memory only).
+
+    Returns:
+        True when ``occurred_at`` was updated; False when left unchanged.
+
+    Side effects:
+        Sets ``sale.occurred_at`` in memory. Caller must save the row.
+    """
+    if getattr(sale, 'entry_source', '') == 'backfill':
+        return False
+    from sales.sale_completion_approval import sale_was_returned_from_completed
+
+    if sale_was_returned_from_completed(sale):
+        return False
+    sale.occurred_at = timezone.now()
+    return True
+
+
+def format_sale_business_date(when) -> str:
+    """
+    Human-readable local business datetime for activity / audit detail.
+
+    Args:
+        when: aware/naive datetime, or None.
+
+    Returns:
+        Local ``DD/MM/YYYY, H:MM AM/PM`` string, or empty string when ``when``
+        is None.
+    """
+    if when is None:
+        return ''
+    local = timezone.localtime(when) if timezone.is_aware(when) else when
+    # %-d / %-I are POSIX-only; use portable replacements.
+    day = local.day
+    month = f'{local.month:02d}'
+    year = local.year
+    hour12 = local.hour % 12 or 12
+    minute = f'{local.minute:02d}'
+    ampm = 'AM' if local.hour < 12 else 'PM'
+    return f'{day:02d}/{month}/{year}, {hour12}:{minute} {ampm}'
 
 
 def user_can_correct_sale_date(user) -> bool:

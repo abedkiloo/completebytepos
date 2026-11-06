@@ -388,9 +388,25 @@ export default function SaleDetailDialog({
               <SummaryRow label="Late entry" value="Yes" className="text-amber-800" />
             ) : null}
             {sale.occurred_at ? (
-              <SummaryRow label="Sale date" value={formatDateTime(sale.occurred_at)} />
+              <SummaryRow
+                label="Sale date (books)"
+                value={formatDateTime(sale.occurred_at)}
+              />
             ) : null}
-            <SummaryRow label="Recorded in system" value={formatDateTime(sale.created_at)} />
+            <SummaryRow
+              label="First recorded in system"
+              value={formatDateTime(sale.created_at)}
+            />
+            {Array.isArray(sale.activity) &&
+            sale.activity.some((e) => e?.kind === 'rejected') &&
+            sale.occurred_at &&
+            sale.created_at &&
+            String(sale.occurred_at).slice(0, 10) !== String(sale.created_at).slice(0, 10) ? (
+              <p className="pt-1 text-xs text-muted-foreground">
+                Activity times (approve / return) are not the sale business day. Daily Sales
+                and reports use Sale date above — correct it here if the books day is wrong.
+              </p>
+            ) : null}
             {sale.served_by_name ? (
               <SummaryRow label="Served by" value={sale.served_by_name} />
             ) : null}

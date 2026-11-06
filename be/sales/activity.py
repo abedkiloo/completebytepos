@@ -103,18 +103,23 @@ def build_sale_activity(sale) -> list[dict[str, Any]]:
     """
     events: list[dict[str, Any]] = []
 
+    from sales.sale_date import format_sale_business_date
+
     cashier = _username(getattr(sale, 'cashier', None))
+    business_when = getattr(sale, 'occurred_at', None)
+    business_label = format_sale_business_date(business_when)
     events.append(
         _event(
             event_id=f'recorded-{sale.pk}',
             kind='recorded',
             label='Sale recorded',
-            at=getattr(sale, 'created_at', None) or getattr(sale, 'occurred_at', None),
+            # Activity time = when the row entered the system; business day lives in detail.
+            at=getattr(sale, 'created_at', None) or business_when,
             actor=cashier,
             actor_role='Cashier',
             detail=(
-                f'Sale date {sale.occurred_at.isoformat()}'
-                if getattr(sale, 'occurred_at', None)
+                f'Business sale date (books / Daily Sales): {business_label}'
+                if business_label
                 else ''
             ),
             comment=(getattr(sale, 'backfill_reason', None) or '')
@@ -184,6 +189,13 @@ def build_sale_activity(sale) -> list[dict[str, Any]]:
                     )
                 )
             elif change.status == PendingChange.STATUS_REJECTED:
+                reject_detail = ''
+                if change.action_type == ACTION_SALE_COMPLETE and business_label:
+                    reject_detail = (
+                        f'This is the return/reject time — not a new sale day. '
+                        f'Business sale date stays {business_label} unless an admin '
+                        f'uses Sale date correction.'
+                    )
                 events.append(
                     _event(
                         event_id=f'change-rejected-{change.pk}',
@@ -193,6 +205,7 @@ def build_sale_activity(sale) -> list[dict[str, Any]]:
                         actor=_username(change.checked_by),
                         actor_role='Approver',
                         comment=change.rejection_reason or '',
+                        detail=reject_detail,
                     )
                 )
 

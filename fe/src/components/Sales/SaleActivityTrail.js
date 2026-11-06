@@ -42,6 +42,9 @@ export default function SaleActivityTrail({ activity = [], className }) {
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Activity
         </p>
+        <p className="text-[11px] font-normal normal-case tracking-normal text-muted-foreground">
+          Event times ≠ sale business day (see detail under “Sale recorded”)
+        </p>
       </div>
       <ol className="space-y-2">
         {rows.map((event) => {
