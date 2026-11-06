@@ -82,6 +82,55 @@ def latest_closed_checkpoint() -> Optional[StockCheckpoint]:
     )
 
 
+def should_skip_stock_for_past_sale(
+    occurred_at,
+    product_id: int,
+    variant_id: Optional[int] = None,
+) -> bool:
+    """
+    True when a late/past sale must not change current on-hand stock.
+
+    After a stock take, counted qty is physical truth. Posting a sale that
+    happened before that count would double-decrement today's stock.
+
+    Args:
+        occurred_at: Claimed sale datetime (aware preferred); None → never skip.
+        product_id: Product pk on the sale line.
+        variant_id: Optional variant pk; product-level counted lines still apply.
+
+    Returns:
+        True if any counted checkpoint line for this SKU has
+        ``counted_at`` (or checkpoint ``closed_at``) strictly after ``occurred_at``.
+
+    Bounds:
+        One indexed query for this product's counted lines. Empty / no match → False.
+    """
+    if occurred_at is None or not product_id:
+        return False
+
+    qs = (
+        StockCheckpointLine.objects.filter(
+            product_id=product_id,
+            status=StockCheckpointLine.STATUS_COUNTED,
+            checkpoint__status__in=(
+                StockCheckpoint.STATUS_OPEN,
+                StockCheckpoint.STATUS_CLOSED,
+            ),
+        )
+        .filter(Q(counted_at__isnull=False) | Q(checkpoint__closed_at__isnull=False))
+        .select_related('checkpoint')
+    )
+    if variant_id:
+        qs = qs.filter(Q(variant_id=variant_id) | Q(variant__isnull=True))
+    # No variant on the sale line: any counted line for this product freezes stock.
+
+    for line in qs:
+        freeze_at = line.counted_at or getattr(line.checkpoint, 'closed_at', None)
+        if freeze_at is not None and occurred_at < freeze_at:
+            return True
+    return False
+
+
 def _on_hand(product: Product, variant: Optional[ProductVariant]) -> int:
     if variant is not None:
         return int(variant.stock_quantity or 0)

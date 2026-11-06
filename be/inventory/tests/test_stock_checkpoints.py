@@ -1,5 +1,6 @@
 """Stock checkpoints — sell block, count, inventory journal, close baseline."""
 
+from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth.models import User
@@ -18,12 +19,14 @@ from inventory.checkpoint_services import (
     count_checkpoint_line,
     latest_closed_checkpoint,
     open_checkpoint,
+    should_skip_stock_for_past_sale,
 )
 from inventory.checkpoint_serializers import StockCheckpointListSerializer
 from inventory.checkpoint_views import StockCheckpointViewSet
 from inventory.models import StockCheckpoint, StockMovement
 from products.models import Category, Product
 from sales.services import SaleService
+from settings.models import StoreSettings
 from utils.tests.api_test_base import ManagerAPITestCase
 
 
@@ -346,3 +349,161 @@ class StockCheckpointAPITests(ManagerAPITestCase):
         blocked = self.client.get('/api/inventory/checkpoints/blocked-products/')
         self.assertEqual(blocked.status_code, status.HTTP_200_OK)
         self.assertIn('product_ids', blocked.data)
+
+
+class LateSaleAfterCheckpointStockTests(ManagerAPITestCase):
+    """Late/backfill sales before a counted take must not change current stock."""
+
+    def setUp(self):
+        super().setUp()
+        ensure_permissions()
+        sync_default_roles()
+        store = StoreSettings.load()
+        store.maker_checker_enabled = False
+        store.backfill_maker_checker_enabled = False
+        store.backfill_max_days = 0
+        store.save(
+            update_fields=[
+                'maker_checker_enabled',
+                'backfill_maker_checker_enabled',
+                'backfill_max_days',
+            ]
+        )
+        cat = Category.objects.create(name='Late CP Cat', is_active=True)
+        self.product = Product.objects.create(
+            name='Late Sale Widget',
+            sku='LATE-CP-1',
+            category=cat,
+            price=Decimal('100'),
+            cost=Decimal('40'),
+            stock_quantity=20,
+            track_stock=True,
+            is_active=True,
+        )
+        self.other = Product.objects.create(
+            name='Not On Take',
+            sku='LATE-CP-2',
+            category=cat,
+            price=Decimal('50'),
+            cost=Decimal('20'),
+            stock_quantity=15,
+            track_stock=True,
+            is_active=True,
+        )
+
+    def _backfill(self, *, product, occurred_at, qty=1):
+        return self.client.post(
+            '/api/sales/backfill/',
+            {
+                'occurred_at': occurred_at.isoformat(),
+                'backfill_reason': 'Found offline receipt after stock take',
+                'sale_type': 'pos',
+                'payment_method': 'cash',
+                'amount_paid': str(Decimal(qty) * product.price),
+                'acknowledge_stock_warnings': True,
+                'items': [
+                    {
+                        'product_id': product.id,
+                        'quantity': qty,
+                        'unit_price': str(product.price),
+                    }
+                ],
+            },
+            format='json',
+        )
+
+    def test_helper_skips_when_sale_before_count(self):
+        cp = open_checkpoint(
+            title='Take',
+            user=self.manager_user,
+            product_ids=[self.product.id],
+        )
+        line = cp.lines.get()
+        count_checkpoint_line(line_id=line.id, counted_qty=18, user=self.manager_user)
+        close_checkpoint(checkpoint_id=cp.id, user=self.manager_user)
+        line.refresh_from_db()
+        before = line.counted_at - timedelta(hours=2)
+        after = line.counted_at + timedelta(hours=2)
+        self.assertTrue(
+            should_skip_stock_for_past_sale(before, self.product.id)
+        )
+        self.assertFalse(
+            should_skip_stock_for_past_sale(after, self.product.id)
+        )
+        self.assertFalse(
+            should_skip_stock_for_past_sale(before, self.other.id)
+        )
+
+    def test_late_backfill_before_closed_take_does_not_change_stock(self):
+        cp = open_checkpoint(
+            title='Physical count',
+            user=self.manager_user,
+            product_ids=[self.product.id],
+        )
+        line = cp.lines.get()
+        count_checkpoint_line(line_id=line.id, counted_qty=18, user=self.manager_user)
+        close_checkpoint(checkpoint_id=cp.id, user=self.manager_user)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 18)
+
+        occurred = timezone.now() - timedelta(days=3)
+        res = self._backfill(product=self.product, occurred_at=occurred, qty=2)
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.data)
+        self.assertEqual(res.data['entry_source'], 'backfill')
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 18)
+        self.assertFalse(
+            StockMovement.objects.filter(
+                product=self.product,
+                movement_type='sale',
+                reference=res.data['sale_number'],
+            ).exists()
+        )
+
+    def test_late_backfill_after_take_still_decrements_stock(self):
+        from inventory.models import StockCheckpointLine
+
+        cp = open_checkpoint(
+            title='Physical count 2',
+            user=self.manager_user,
+            product_ids=[self.product.id],
+        )
+        line = cp.lines.get()
+        count_checkpoint_line(line_id=line.id, counted_qty=18, user=self.manager_user)
+        close_checkpoint(checkpoint_id=cp.id, user=self.manager_user)
+        self.product.refresh_from_db()
+
+        # Put the take two days ago so a yesterday sale is clearly after it.
+        take_at = timezone.now() - timedelta(days=2)
+        StockCheckpointLine.objects.filter(pk=line.pk).update(counted_at=take_at)
+        StockCheckpoint.objects.filter(pk=cp.id).update(closed_at=take_at)
+
+        occurred = timezone.now() - timedelta(days=1)
+        res = self._backfill(product=self.product, occurred_at=occurred, qty=2)
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.data)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 16)
+        self.assertTrue(
+            StockMovement.objects.filter(
+                product=self.product,
+                movement_type='sale',
+                reference=res.data['sale_number'],
+            ).exists()
+        )
+
+    def test_late_backfill_product_not_on_take_still_decrements(self):
+        cp = open_checkpoint(
+            title='Partial take',
+            user=self.manager_user,
+            product_ids=[self.product.id],
+        )
+        line = cp.lines.get()
+        count_checkpoint_line(line_id=line.id, counted_qty=18, user=self.manager_user)
+        close_checkpoint(checkpoint_id=cp.id, user=self.manager_user)
+
+        occurred = timezone.now() - timedelta(days=2)
+        res = self._backfill(product=self.other, occurred_at=occurred, qty=3)
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.data)
+        self.other.refresh_from_db()
+        self.assertEqual(self.other.stock_quantity, 12)

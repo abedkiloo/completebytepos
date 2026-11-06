@@ -946,17 +946,30 @@ class SaleService(BaseService):
             )
 
             if complete and item_data['product'].track_stock:
-                self._create_sale_stock_movements(
-                    branch=branch,
-                    user=user,
-                    reference=sale.sale_number,
-                    notes=f'Sale {sale.sale_number}',
-                    product=item_data['product'],
-                    variant=item_data['variant'],
-                    quantity=item_data['quantity'],
-                    unit_cost=item_data['unit_cost'],
-                    sale_item=sale_item,
+                from inventory.checkpoint_services import should_skip_stock_for_past_sale
+
+                # Late / backfill sales before a counted stock take must not
+                # change current on-hand — the take already reflects physical truth.
+                skip_stock = (
+                    entry_source == 'backfill'
+                    and should_skip_stock_for_past_sale(
+                        occurred_at,
+                        item_data['product'].id,
+                        item_data['variant'].id if item_data['variant'] else None,
+                    )
                 )
+                if not skip_stock:
+                    self._create_sale_stock_movements(
+                        branch=branch,
+                        user=user,
+                        reference=sale.sale_number,
+                        notes=f'Sale {sale.sale_number}',
+                        product=item_data['product'],
+                        variant=item_data['variant'],
+                        quantity=item_data['quantity'],
+                        unit_cost=item_data['unit_cost'],
+                        sale_item=sale_item,
+                    )
         
         if complete:
             # Create journal entry

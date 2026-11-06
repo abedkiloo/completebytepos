@@ -97,15 +97,27 @@ def get_backfill_stock_warnings(occurred_at, items) -> list[dict]:
         if not last_adj:
             continue
         when = timezone.localtime(last_adj.created_at).strftime('%Y-%m-%d %H:%M')
+        from inventory.checkpoint_services import should_skip_stock_for_past_sale
+
+        skip_stock = should_skip_stock_for_past_sale(occurred_at, product_id)
+        if skip_stock:
+            message = (
+                f'Stock for "{product.name}" was counted/adjusted on {when} after this '
+                f'sale date. Current on-hand will not change — the stock take already '
+                f'reflects physical stock.'
+            )
+        else:
+            message = (
+                f'Stock for "{product.name}" was adjusted on {when} after this sale date. '
+                'Current stock may not match what was on hand when the sale happened.'
+            )
         warnings.append(
             {
                 'product_id': product_id,
                 'product_name': product.name,
                 'last_adjustment_at': last_adj.created_at.isoformat(),
-                'message': (
-                    f'Stock for "{product.name}" was adjusted on {when} after this sale date. '
-                    'Current stock may not match what was on hand when the sale happened.'
-                ),
+                'skip_current_stock': skip_stock,
+                'message': message,
             }
         )
     return warnings

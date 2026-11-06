@@ -869,6 +869,17 @@ def complete_queued_sale(sale: Sale, user, payload: dict | None = None) -> Sale:
         if unit_cost != sale_item.unit_cost:
             SaleItem.objects.filter(pk=sale_item.pk).update(unit_cost=unit_cost)
             sale_item.unit_cost = unit_cost
+        from inventory.checkpoint_services import should_skip_stock_for_past_sale
+
+        if (
+            getattr(sale, 'entry_source', '') == 'backfill'
+            and should_skip_stock_for_past_sale(
+                getattr(sale, 'occurred_at', None),
+                sale_item.product_id,
+                sale_item.variant_id,
+            )
+        ):
+            continue
         service._create_sale_stock_movements(
             branch=sale.branch,
             user=user,
