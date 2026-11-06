@@ -8,6 +8,7 @@ from approvals.models import PendingChange
 from approvals.registry import (
     ACTION_PRODUCT_PRICE,
     ACTION_SALE_BACKFILL,
+    ACTION_SALE_COMPLETE,
     ACTION_SALE_REFUND,
     ACTION_STOCK_PURCHASE,
     ACTION_STORE_SETTINGS,
@@ -113,6 +114,41 @@ class ApprovalDetailsTests(TestCase):
         header = _facts(sections['Past sale'])
         self.assertEqual(header['Sold by'], 'Amina')
         self.assertEqual(header['Reason'], 'Power outage')
+
+    def test_sale_complete_merges_duplicate_lines_and_warns_on_mismatch(self):
+        sale = Sale.objects.create(
+            sale_number='DET-SALE-DUP',
+            status='pending_approval',
+            subtotal=Decimal('2400.00'),
+            total=Decimal('2400.00'),
+            amount_paid=Decimal('0'),
+            payment_method='cash',
+            customer=self.customer,
+            cashier=self.maker,
+        )
+        for qty, sub in ((3, '1200.00'), (3, '1200.00'), (6, '2400.00'), (3, '1200.00')):
+            SaleItem.objects.create(
+                sale=sale,
+                product=self.product,
+                quantity=qty,
+                unit_price=Decimal('400.00'),
+                subtotal=Decimal(sub),
+            )
+        change = self._change(
+            action_type=ACTION_SALE_COMPLETE,
+            entity_type='sales.Sale',
+            entity_id=str(sale.pk),
+            apply_payload={'amount_paid': '0', 'payment_method': 'cash'},
+        )
+        sections = _sections(pending_change_details(change))
+        lines = sections['Items']['lines']
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(lines[0]['quantity'], '15')
+        self.assertEqual(Decimal(lines[0]['subtotal']), Decimal('6000.00'))
+        self.assertIn('stock lines combined', lines[0].get('note', ''))
+        money = _facts(sections['Money'])
+        self.assertIn('Warning', money)
+        self.assertIn('Reject', money['Warning'])
 
     def test_product_change_shows_current_product(self):
         change = self._change(

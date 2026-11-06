@@ -515,12 +515,17 @@ def _notify_change_rejected(change: PendingChange, checker, reason: str) -> None
     from daily_notes.approval_notice import SOURCE_PENDING_CHANGE, notify_approval_rejected
 
     sale = None
-    if change.action_type == ACTION_SALE_COMPLETE:
+    requester = change.made_by
+    if change.action_type in (ACTION_SALE_COMPLETE, ACTION_SALE_BACKFILL):
         from sales.models import Sale
 
         sale = Sale.objects.filter(pk=change.entity_id).first()
+        # Sticky return notice goes to the person who keyed the till sale —
+        # prefer cashier, then served_by, then the PendingChange maker.
+        if sale is not None:
+            requester = sale.cashier or sale.served_by or change.made_by
     notify_approval_rejected(
-        requester=change.made_by,
+        requester=requester,
         checker=checker,
         action_type=change.action_type,
         entity_repr=change.entity_repr,

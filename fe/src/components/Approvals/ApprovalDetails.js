@@ -97,6 +97,9 @@ function LinesTable({ lines }) {
                 {line.variant ? (
                   <span className="block text-xs text-muted-foreground">{line.variant}</span>
                 ) : null}
+                {line.note ? (
+                  <span className="block text-xs text-muted-foreground">{line.note}</span>
+                ) : null}
               </td>
               <td className="px-3 py-2 text-right tabular-nums">{formatApprovalQty(line.quantity)}</td>
               <td className="px-3 py-2 text-right">{formatCurrency(Number(line.unit_price) || 0)}</td>

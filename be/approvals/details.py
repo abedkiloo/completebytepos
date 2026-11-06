@@ -149,22 +149,63 @@ def sale_sections(sale, *, payment_payload: dict | None = None) -> list[dict]:
         _fact('Past-sale reason', getattr(sale, 'backfill_reason', '')),
     ))
 
-    lines = [
-        _line(
-            item.product.name if item.product_id else '',
-            _variant_label(item.size, item.color, getattr(item.variant, 'sku', '') if item.variant_id else ''),
-            item.quantity,
-            item.unit_price,
-            item.subtotal,
+    raw_items = list(_iter_sale_items(sale))
+    lines_sum = sum((_dec(item.subtotal) for item in raw_items), Decimal('0'))
+    # Merge identical product/variant/price rows for the reviewer (FIFO layer
+    # splits otherwise look like the cashier keyed duplicates).
+    merged: dict[tuple, dict] = {}
+    for item in raw_items:
+        name = item.product.name if item.product_id else ''
+        variant = _variant_label(
+            item.size,
+            item.color,
+            getattr(item.variant, 'sku', '') if item.variant_id else '',
         )
-        for item in _iter_sale_items(sale)
+        price = _dec(item.unit_price)
+        key = (name, variant, str(price))
+        if key not in merged:
+            merged[key] = {
+                'name': name,
+                'variant': variant,
+                'quantity': Decimal('0'),
+                'unit_price': price,
+                'subtotal': Decimal('0'),
+                'row_count': 0,
+            }
+        merged[key]['quantity'] += _dec(item.quantity)
+        merged[key]['subtotal'] += _dec(item.subtotal)
+        merged[key]['row_count'] += 1
+    lines = [
+        {
+            **_line(row['name'], row['variant'], row['quantity'], row['unit_price'], row['subtotal']),
+            **(
+                {'note': f'{row["row_count"]} stock lines combined'}
+                if row['row_count'] > 1
+                else {}
+            ),
+        }
+        for row in merged.values()
     ]
     items = _section('Items', lines=lines)
 
     wallet_used = _dec(payload.get('wallet_amount_locked') or (
         payload.get('wallet_amount') if payload.get('use_wallet') else 0
     ))
+    mismatch = abs(lines_sum - _dec(sale.subtotal)) > Decimal('0.01')
     money = _section('Money', facts=_facts(
+        _fact(
+            'Line items total',
+            lines_sum,
+            'money',
+        ) if mismatch else None,
+        _fact(
+            'Warning',
+            (
+                f'Item lines add up to {lines_sum} but sale subtotal is '
+                f'{_dec(sale.subtotal)}. Reject and ask the salesperson to '
+                f're-key — do not approve until these match.'
+            ),
+        ) if mismatch else None,
         _fact('Subtotal', sale.subtotal, 'money'),
         _fact('Discount', sale.discount_amount, 'money') if _dec(sale.discount_amount) else None,
         _fact('Tax', sale.tax_amount, 'money') if _dec(sale.tax_amount) else None,
