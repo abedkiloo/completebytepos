@@ -22,6 +22,64 @@ def sale_unpaid_balance(sale: Sale) -> Decimal:
     return unpaid if unpaid > 0 else Decimal('0')
 
 
+def sale_settlement_allocated_total(sale_id: int) -> Decimal:
+    """Sum of debt-settlement chunks later applied onto this sale's amount_paid."""
+    from sales.models import DebtSettlementAllocation
+
+    total = (
+        DebtSettlementAllocation.objects.filter(sale_id=sale_id).aggregate(
+            total=Sum('amount')
+        )['total']
+        or Decimal('0')
+    )
+    return Decimal(str(total)).quantize(Decimal('0.01'))
+
+
+def sale_checkout_tender_amount(sale: Sale | dict | None = None, *, sale_id=None, amount_paid=None) -> Decimal:
+    """
+    Cash/M-Pesa taken at checkout — excludes later debt-settlement bumps.
+
+    ``Sale.amount_paid`` is bumped when collections clear underpaid sales so
+    Orders show paid. Money-in reports must use this tender figure or the same
+    shillings appear twice (settlement row + inflated sale tender).
+    """
+    if sale is not None and not isinstance(sale, dict):
+        sid = sale.pk
+        paid = Decimal(str(sale.amount_paid or 0))
+    else:
+        sid = sale_id if sale_id is not None else (sale or {}).get('id')
+        paid = Decimal(
+            str(
+                amount_paid
+                if amount_paid is not None
+                else (sale or {}).get('amount_paid') or 0
+            )
+        )
+    if not sid:
+        return max(Decimal('0.00'), paid.quantize(Decimal('0.01')))
+    settled = sale_settlement_allocated_total(int(sid))
+    tender = paid - settled
+    return tender if tender > 0 else Decimal('0.00')
+
+
+def settlement_allocated_by_sale_ids(sale_ids) -> dict[int, Decimal]:
+    """Map sale_id → sum(DebtSettlementAllocation.amount) for a batch."""
+    from sales.models import DebtSettlementAllocation
+
+    ids = [int(x) for x in sale_ids if x is not None]
+    if not ids:
+        return {}
+    rows = (
+        DebtSettlementAllocation.objects.filter(sale_id__in=ids)
+        .values('sale_id')
+        .annotate(total=Sum('amount'))
+    )
+    return {
+        int(row['sale_id']): Decimal(str(row['total'] or 0)).quantize(Decimal('0.01'))
+        for row in rows
+    }
+
+
 def active_sale_debt_amount(sale: Sale) -> Decimal:
     return (
         CustomerWalletTransaction.objects.filter(
@@ -215,9 +273,12 @@ def reconcile_sale_payments_with_wallet(customer) -> int:
     Gap = sum(unpaid on sales with live debt) − current wallet debt.
     Allocate that gap FIFO onto amount_paid so Orders match Debt Management.
 
-    Only runs when debt_settlement credits exist — otherwise a zero wallet with
-    unpaid sales means debt is missing and heal should post it.
+    Always attach ``DebtSettlementAllocation`` rows to unallocated settlement
+    credits when possible — otherwise Payments trail shows the bump as a second
+    "Sale tender" line for the same cash.
     """
+    from django.db.models import Count
+
     from sales.debt_management import debt_amount_from_balance
 
     customer.refresh_from_db()
@@ -239,8 +300,104 @@ def reconcile_sale_payments_with_wallet(customer) -> int:
     if gap <= 0:
         return 0
 
-    applied = apply_settlement_to_underpaid_sales(customer, gap)
-    return 1 if applied > 0 else 0
+    remaining = gap
+    applied_total = Decimal('0.00')
+    unallocated_txns = (
+        CustomerWalletTransaction.objects.filter(
+            customer_id=customer.pk,
+            source_type='debt_settlement',
+            transaction_type='credit',
+        )
+        .annotate(alloc_n=Count('sale_allocations'))
+        .filter(alloc_n=0)
+        .order_by('created_at', 'id')
+    )
+    for txn in unallocated_txns:
+        if remaining <= 0:
+            break
+        chunk = min(remaining, Decimal(str(txn.amount or 0)).quantize(Decimal('0.01')))
+        applied = apply_settlement_to_underpaid_sales(
+            customer, chunk, wallet_txn=txn
+        )
+        applied_total += applied
+        remaining = (remaining - applied).quantize(Decimal('0.01'))
+
+    if remaining > 0:
+        # No spare unallocated settlement credit — still clear Orders debt, but
+        # trail tender math needs a later backfill of allocations.
+        applied_total += apply_settlement_to_underpaid_sales(customer, remaining)
+
+    return 1 if applied_total > 0 else 0
+
+
+@transaction.atomic
+def backfill_missing_settlement_allocations(*, customer_id: int | None = None) -> dict:
+    """
+    Link orphan ``amount_paid`` bumps to settlement credits that have no allocation.
+
+    Does **not** change balances — only inserts ``DebtSettlementAllocation`` so
+    Payments trail / Daily cash use checkout tender once.
+
+    Returns:
+        Dict with ``allocations_created`` and ``sales_touched``.
+    """
+    from django.db.models import Count, Sum
+
+    from sales.models import DebtSettlementAllocation, Sale
+
+    created = 0
+    sales_touched: set[int] = set()
+    txn_qs = CustomerWalletTransaction.objects.filter(
+        source_type='debt_settlement',
+        transaction_type='credit',
+    ).annotate(alloc_n=Count('sale_allocations')).filter(alloc_n=0)
+    if customer_id is not None:
+        txn_qs = txn_qs.filter(customer_id=customer_id)
+    txn_qs = txn_qs.order_by('customer_id', 'created_at', 'id')
+
+    for txn in txn_qs.iterator(chunk_size=200):
+        remaining = Decimal(str(txn.amount or 0)).quantize(Decimal('0.01'))
+        if remaining <= 0:
+            continue
+        sales = (
+            Sale.objects.filter(
+                customer_id=txn.customer_id,
+                status='completed',
+                amount_paid__gt=0,
+            )
+            .order_by('occurred_at', 'id')
+        )
+        for sale in sales:
+            if remaining <= 0:
+                break
+            allocated = (
+                DebtSettlementAllocation.objects.filter(sale_id=sale.pk).aggregate(
+                    total=Sum('amount')
+                )['total']
+                or Decimal('0')
+            )
+            orphan = (
+                Decimal(str(sale.amount_paid or 0)) - Decimal(str(allocated))
+            ).quantize(Decimal('0.01'))
+            if orphan <= 0:
+                continue
+            # Only attribute orphan paid that could have come after this sale.
+            if sale.occurred_at and txn.created_at and txn.created_at < sale.occurred_at:
+                continue
+            chunk = min(remaining, orphan)
+            DebtSettlementAllocation.objects.create(
+                wallet_transaction=txn,
+                sale=sale,
+                amount=chunk,
+            )
+            created += 1
+            sales_touched.add(sale.pk)
+            remaining = (remaining - chunk).quantize(Decimal('0.01'))
+
+    return {
+        'allocations_created': created,
+        'sales_touched': len(sales_touched),
+    }
 
 
 @transaction.atomic

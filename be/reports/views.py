@@ -916,15 +916,41 @@ class ReportViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'])
     @gated_report_action('cash_and_payments')
     def cash_and_payments(self, request):
-        """Money-in breakdown: sales tender + invoice payments, by method.
+        """Money-in breakdown: sales checkout tender + invoice payments, by method.
 
         Drives the cash-reconciliation tile (cash drawer expected, M-Pesa
-        expected, etc).
+        expected, etc). Uses checkout tender (amount_paid minus debt-settlement
+        allocations), not sale totals, and skips invoice rows that only mirror
+        sale tender ("Initial payment from sale …").
         """
+        from django.db.models import DecimalField, F, OuterRef, Subquery, Value
+        from django.db.models.functions import Coalesce, Greatest, Least
+        from sales.models import DebtSettlementAllocation
+
         start, end, label = resolve_period(request)
 
         sales = sale_report_queryset(start, end)
-        payments = Payment.objects.all()
+        dec = DecimalField(max_digits=14, decimal_places=2)
+        settled_sub = (
+            DebtSettlementAllocation.objects.filter(sale_id=OuterRef('pk'))
+            .values('sale_id')
+            .annotate(total=Sum('amount'))
+            .values('total')[:1]
+        )
+        zero = Value(0, output_field=dec)
+        sales = sales.annotate(
+            settled_total=Coalesce(
+                Subquery(settled_sub, output_field=dec),
+                zero,
+            )
+        )
+        tender_expr = Least(
+            Greatest(F('amount_paid') - F('settled_total'), zero),
+            F('total'),
+        )
+        payments = Payment.objects.exclude(
+            notes__startswith='Initial payment from sale '
+        )
         if start:
             payments = payments.filter(payment_date__gte=start)
         if end:
@@ -932,7 +958,7 @@ class ReportViewSet(viewsets.ViewSet):
 
         sales_by_method = {
             (row['payment_method'] or 'unknown'): float(row['total'] or 0)
-            for row in sales.values('payment_method').annotate(total=Sum('total'))
+            for row in sales.values('payment_method').annotate(total=Sum(tender_expr))
         }
         payments_by_method = {
             (row['payment_method'] or 'unknown'): float(row['total'] or 0)
@@ -954,11 +980,14 @@ class ReportViewSet(viewsets.ViewSet):
                 'total': method_total,
             })
 
+        sales_tender_total = float(
+            sales.aggregate(t=Sum(tender_expr))['t'] or 0
+        )
         return Response({
             'period': label,
             'summary': {
                 'total_in': total_in,
-                'sales_total': float(sales.aggregate(t=Sum('total'))['t'] or 0),
+                'sales_total': sales_tender_total,
                 'payments_total': float(payments.aggregate(t=Sum('amount'))['t'] or 0),
             },
             'by_method': rows,

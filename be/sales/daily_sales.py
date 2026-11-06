@@ -212,8 +212,13 @@ def get_daily_sales_report(
     pending_summary['needs_correction_count'] = 0
 
     # Summary from slim rows only (no item prefetch / full model hydrate).
-    summary_rows = base_qs.values(
-        'id', 'total', 'amount_paid', 'payment_method', 'entry_source'
+    summary_rows = list(
+        base_qs.values('id', 'total', 'amount_paid', 'payment_method', 'entry_source')
+    )
+    from sales.sale_debt_sync import settlement_allocated_by_sale_ids
+
+    settled_by_sale = settlement_allocated_by_sale_ids(
+        [row['id'] for row in summary_rows]
     )
     orders_count = 0
     total_sales = Decimal('0.00')
@@ -226,14 +231,22 @@ def get_daily_sales_report(
     field_sales_total = Decimal('0.00')
     by_method_breakdown: Dict[str, Dict[str, Any]] = {}
 
-    for s in summary_rows.iterator(chunk_size=500):
+    for s in summary_rows:
         orders_count += 1
         s_total = Decimal(str(s['total'] or 0))
         s_paid = Decimal(str(s['amount_paid'] or 0))
-        p_amount, d_amount, p_status = classify_sale_payment(s_total, s_paid)
+        # Order paid/debt status still uses live amount_paid (includes settlements).
+        _paid_live, d_amount, p_status = classify_sale_payment(s_total, s_paid)
+        # Cash-in at checkout must exclude later debt-settlement bumps or
+        # Daily "total collected" double-counts with Prior Debt Collected.
+        settled = settled_by_sale.get(int(s['id']), Decimal('0.00'))
+        tender = s_paid - settled
+        if tender < 0:
+            tender = Decimal('0.00')
+        tender = min(tender, s_total)
 
         total_sales += s_total
-        total_paid_upfront += p_amount
+        total_paid_upfront += tender
         total_debt_incurred += d_amount
         if s.get('entry_source') == 'field':
             field_orders_count += 1
@@ -250,8 +263,9 @@ def get_daily_sales_report(
         method = s['payment_method'] or 'other'
         if method not in by_method_breakdown:
             by_method_breakdown[method] = {'count': 0, 'total': Decimal('0.00')}
-        by_method_breakdown[method]['count'] += 1
-        by_method_breakdown[method]['total'] += p_amount
+        if tender > 0:
+            by_method_breakdown[method]['count'] += 1
+            by_method_breakdown[method]['total'] += tender
 
     # Settlements of prior customer debts collected on that day (who paid, how much)
     own_only = False

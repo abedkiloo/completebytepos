@@ -9,7 +9,16 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Sequence
 
-from django.db.models import Q
+from django.db.models import (
+    DecimalField,
+    F,
+    OuterRef,
+    Q,
+    Subquery,
+    Sum,
+    Value,
+)
+from django.db.models.functions import Coalesce, Greatest
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 
@@ -306,7 +315,8 @@ def _settlement_index(day_from, day_to, term, visible_ids) -> List[Dict[str, Any
 
 
 def _invoice_index(day_from, day_to, term, visible_ids) -> List[Dict[str, Any]]:
-    qs = Payment.objects.all()
+    # Skip "Initial payment from sale …" — that cash is already the sale tender row.
+    qs = Payment.objects.exclude(notes__startswith='Initial payment from sale ')
     if day_from:
         qs = qs.filter(created_at__date__gte=day_from)
     if day_to:
@@ -331,7 +341,32 @@ def _invoice_index(day_from, day_to, term, visible_ids) -> List[Dict[str, Any]]:
 
 
 def _sale_tender_index(day_from, day_to, term, visible_ids) -> List[Dict[str, Any]]:
-    qs = Sale.objects.filter(status='completed', amount_paid__gt=0)
+    """Sale checkout tender only — excludes amount_paid bumps from debt settlements."""
+    settled_sub = (
+        DebtSettlementAllocation.objects.filter(sale_id=OuterRef('pk'))
+        .values('sale_id')
+        .annotate(total=Sum('amount'))
+        .values('total')[:1]
+    )
+    dec = DecimalField(max_digits=14, decimal_places=2)
+    zero = Value(0, output_field=dec)
+    qs = (
+        Sale.objects.filter(status='completed', amount_paid__gt=0)
+        .annotate(
+            settled_total=Coalesce(
+                Subquery(settled_sub, output_field=dec),
+                zero,
+            )
+        )
+        .annotate(
+            tender=Greatest(
+                F('amount_paid') - F('settled_total'),
+                zero,
+                output_field=dec,
+            )
+        )
+        .filter(tender__gt=0)
+    )
     if day_from:
         qs = qs.filter(occurred_at__date__gte=day_from)
     if day_to:
@@ -350,9 +385,10 @@ def _sale_tender_index(day_from, day_to, term, visible_ids) -> List[Dict[str, An
             'kind': KIND_SALE_PAYMENT,
             'source_id': row['id'],
             'occurred_at': row['occurred_at'] or row['created_at'],
+            'tender_amount': row['tender'],
         }
         for row in qs.order_by('-occurred_at', '-id').values(
-            'id', 'occurred_at', 'created_at'
+            'id', 'occurred_at', 'created_at', 'tender'
         )[:5000]
     ]
 
@@ -415,7 +451,8 @@ def _hydrate_page(page_index: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
         elif row['kind'] == KIND_SALE_PAYMENT:
             sale = sales.get(row['source_id'])
             if sale:
-                results.append(_serialize_sale_tender(sale))
+                tender = row.get('tender_amount')
+                results.append(_serialize_sale_tender(sale, tender_amount=tender))
     return results
 
 
@@ -502,16 +539,26 @@ def _serialize_invoice_payment(pay: Payment) -> Dict[str, Any]:
     }
 
 
-def _serialize_sale_tender(sale: Sale) -> Dict[str, Any]:
+def _serialize_sale_tender(
+    sale: Sale,
+    *,
+    tender_amount=None,
+) -> Dict[str, Any]:
+    from sales.sale_debt_sync import sale_checkout_tender_amount
+
     customer = sale.customer
     unpaid = max(Decimal('0.00'), _q(sale.total) - _q(sale.amount_paid))
     method = (sale.payment_method or '').strip().lower()
+    if tender_amount is None:
+        tender = sale_checkout_tender_amount(sale)
+    else:
+        tender = _q(tender_amount)
     target = {
         'type': 'sale',
         'sale_id': sale.id,
         'sale_number': sale.sale_number,
         'label': f'Sale {sale.sale_number}',
-        'amount': str(_q(sale.amount_paid)),
+        'amount': str(tender),
     }
     return {
         'kind': KIND_SALE_PAYMENT,
@@ -519,7 +566,7 @@ def _serialize_sale_tender(sale: Sale) -> Dict[str, Any]:
         'occurred_at': (sale.occurred_at or sale.created_at).isoformat()
         if (sale.occurred_at or sale.created_at)
         else None,
-        'amount': str(_q(sale.amount_paid)),
+        'amount': str(tender),
         'payment_method': method,
         'payment_method_label': _method_label(method),
         'reference': getattr(sale, 'payment_reference', '') or '',
@@ -535,9 +582,10 @@ def _serialize_sale_tender(sale: Sale) -> Dict[str, Any]:
         'balance_after': None,
         'previous_debt': None,
         'new_debt': str(_q(unpaid)) if unpaid > 0 else '0.00',
-        'payment_amount': str(_q(sale.amount_paid)),
+        'payment_amount': str(tender),
         'debt_added': None,
         'sale_total': str(_q(sale.total)),
         'sale_paid': str(_q(sale.amount_paid)),
+        'checkout_tender': str(tender),
         'delta_debt': None,
     }

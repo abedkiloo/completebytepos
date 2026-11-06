@@ -169,6 +169,14 @@ class SettlementUpdatesSaleAmountPaidTests(TestCase):
         self.assertEqual(reconcile_sale_payments_with_wallet(self.customer), 1)
         self.sale.refresh_from_db()
         self.assertEqual(self.sale.amount_paid, Decimal('1000.00'))
+        from sales.models import DebtSettlementAllocation
+        from sales.sale_debt_sync import sale_checkout_tender_amount
+
+        self.assertEqual(
+            DebtSettlementAllocation.objects.filter(sale=self.sale).count(),
+            1,
+        )
+        self.assertEqual(sale_checkout_tender_amount(self.sale), Decimal('0.00'))
 
         detail = get_customer_detail(customer_id=self.customer.id)
         self.assertEqual(detail['orders'][0]['payment_status'], 'paid')

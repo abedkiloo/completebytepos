@@ -5,7 +5,17 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
-from django.db.models import Count, ExpressionWrapper, F, Q, Sum, Value, fields as dj_fields
+from django.db.models import (
+    Count,
+    ExpressionWrapper,
+    F,
+    OuterRef,
+    Q,
+    Subquery,
+    Sum,
+    Value,
+    fields as dj_fields,
+)
 from django.db.models.functions import Coalesce, Greatest, Least
 from django.utils import timezone
 from expenses.models import Expense
@@ -14,6 +24,7 @@ from inventory.models import StockMovement
 from reports.sale_scope import posted_sales
 from sales.models import (
     CustomerWalletTransaction,
+    DebtSettlementAllocation,
     SaleItem,
     SaleItemLayerAllocation,
     SaleRefund,
@@ -221,8 +232,26 @@ def compute_trading_profit(*, start, end) -> dict[str, Any]:
     """
     sales_qs, refund_qs = _period_sales_and_refunds(start=start, end=end)
 
+    # Checkout tender only — debt settlements bump amount_paid later and are
+    # added separately as debt_collections (avoid double-counting cash).
+    settled_sub = (
+        DebtSettlementAllocation.objects.filter(sale_id=OuterRef('pk'))
+        .values('sale_id')
+        .annotate(total=Sum('amount'))
+        .values('total')[:1]
+    )
+    _zero = Value(0, output_field=_DEC)
+    sales_qs = sales_qs.annotate(
+        settled_total=Coalesce(
+            Subquery(settled_sub, output_field=_DEC),
+            _zero,
+        )
+    )
     collected_expr = ExpressionWrapper(
-        Least(F('amount_paid'), F('total')),
+        Least(
+            Greatest(F('amount_paid') - F('settled_total'), _zero),
+            F('total'),
+        ),
         output_field=_DEC,
     )
     unpaid_expr = ExpressionWrapper(
@@ -234,7 +263,7 @@ def compute_trading_profit(*, start, end) -> dict[str, Any]:
         tax_amount=Sum('tax_amount'),
         discount_amount=Sum('discount_amount'),
         sale_count=Count('id'),
-        # Cash taken on these sales (never above the sale total).
+        # Cash taken at checkout on these sales (never above the sale total).
         collected_on_sales=Sum(collected_expr),
         # Still owed on these sales (wallet debt + invoice outstanding).
         unpaid_on_sales=Sum(unpaid_expr),

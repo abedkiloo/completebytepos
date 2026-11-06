@@ -164,7 +164,7 @@ export default function PaymentsTrailPage() {
     <PageShell>
       <PageHeader
         title="Payments trail"
-        description="Every payment in, what it settled, and the debt balance after — for audit and balancing. Download Excel for the selected dates."
+        description="Every payment in once: checkout tender, debt collections, and invoice payments. A collection that clears a debt sale is not listed again as sale tender. Download Excel for the selected dates."
       >
         {canExport ? (
           <Button
