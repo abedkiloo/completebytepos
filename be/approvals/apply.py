@@ -286,7 +286,13 @@ def _apply_sale_complete(change: PendingChange) -> None:
         try:
             from utils.audit_events import log_sale_completed
 
-            log_sale_completed(None, sale, source='complete')
+            class _Req:
+                user = checker
+                META = {}
+                path = '/approvals/apply/sale-complete/'
+                method = 'POST'
+
+            log_sale_completed(_Req(), sale, source='approval')
         except Exception:
             pass
 
@@ -348,6 +354,29 @@ def _apply_debt_collection(change: PendingChange) -> None:
         'wallet_balance': str(customer.wallet_balance),
     }
     change.save(update_fields=['apply_payload'])
+    try:
+        from utils.audit_events import log_debt_settlement_posted
+
+        class _Req:
+            """Minimal request shim so apply-path audits still capture the actor."""
+
+            user = change.checked_by or change.made_by
+            META = {}
+            path = '/approvals/apply/debt-collection/'
+            method = 'POST'
+
+        log_debt_settlement_posted(
+            _Req(),
+            customer=customer,
+            txn=txn,
+            amount=amount,
+            payment_method=payload.get('payment_method') or 'cash',
+            reference=payload.get('reference') or '',
+            pending_change_id=change.id,
+            via='approval',
+        )
+    except Exception:
+        pass
 
 
 def _apply_sale_backfill(change: PendingChange) -> None:

@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import AuditLogPage, {
+  extractFinanceFields,
   parseAuditChanges,
   summarizeAuditChanges,
 } from './AuditLogPage';
@@ -117,6 +118,46 @@ describe('audit change helpers', () => {
 
     expect(parseAuditChanges(null).rows).toEqual([]);
   });
+
+  it('summarizes debt/sale money events with amount method and stage', () => {
+    expect(
+      summarizeAuditChanges({
+        lifecycle: 'money_posted',
+        amount: '460.00',
+        payment_method: 'mpesa',
+        reference: 'QHX',
+        customer_name: 'Kogi',
+        via: 'approval',
+        proposed_values: { amount: '460.00' },
+        reason: 'Debt collection of 460.00 via M-PESA',
+      })
+    ).toMatch(/Money posted.*460.*MPESA.*QHX.*Kogi/i);
+
+    expect(
+      summarizeAuditChanges({
+        lifecycle: 'submitted',
+        amount: '460.00',
+        payment_method: 'mpesa',
+        reason: 'Debt collection of 460.00 via M-PESA',
+        original_values: {},
+        proposed_values: { amount: '460' },
+      })
+    ).toMatch(/Submitted.*460.*MPESA/i);
+
+    expect(
+      extractFinanceFields({
+        amount: '100',
+        payment_method: 'cash',
+        lifecycle: 'money_posted',
+      })
+    ).toEqual(
+      expect.objectContaining({
+        amount: '100',
+        method: 'cash',
+        lifecycle: 'money_posted',
+      })
+    );
+  });
 });
 
 describe('AuditLogPage', () => {
@@ -185,7 +226,7 @@ describe('AuditLogPage', () => {
       expect(screen.getByText('Audit trail details')).toBeInTheDocument();
     });
     expect(auditLogAPI.get).toHaveBeenCalledWith(7);
-    expect(screen.getByText('What they entered')).toBeInTheDocument();
+    expect(screen.getByText('All recorded values')).toBeInTheDocument();
     expect(screen.getByText('850')).toBeInTheDocument();
     expect(screen.getByText('CEM-50')).toBeInTheDocument();
   });

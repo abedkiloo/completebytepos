@@ -39,6 +39,40 @@ class AuditEventsTests(TestCase):
         log_sale_completed(self.request, sale, source='checkout')
         row = AuditLog.objects.get(action='checkout', module='sales')
         self.assertEqual(row.changes['total'], '100')
+        self.assertEqual(row.changes['lifecycle'], 'money_posted')
+        self.assertEqual(row.changes['amount'], '100')
+        self.assertEqual(row.changes['payment_method'], 'cash')
+        self.assertIn('money posted', row.object_repr.lower())
+
+    def test_log_debt_settlement_posted(self):
+        from types import SimpleNamespace
+
+        from utils.audit_events import log_debt_settlement_posted
+
+        customer = SimpleNamespace(
+            id=9,
+            name='Kogi',
+            customer_code='C-9',
+            wallet_balance=Decimal('460'),
+        )
+        txn = SimpleNamespace(id=44, payment_method='mpesa', reference='QHX123')
+        log_debt_settlement_posted(
+            self.request,
+            customer=customer,
+            txn=txn,
+            amount=Decimal('460'),
+            payment_method='mpesa',
+            reference='QHX123',
+            pending_change_id=12,
+            via='approval',
+        )
+        row = AuditLog.objects.get(action='debt_settlement_posted', module='sales')
+        self.assertEqual(row.changes['lifecycle'], 'money_posted')
+        self.assertEqual(row.changes['amount'], '460')
+        self.assertEqual(row.changes['payment_method'], 'mpesa')
+        self.assertEqual(row.changes['pending_change_id'], 12)
+        self.assertEqual(row.changes['transaction_id'], 44)
+        self.assertIn('money posted', row.object_repr.lower())
 
     def test_log_product_write_update(self):
         cat = Category.objects.create(name='C', is_active=True)

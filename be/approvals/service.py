@@ -87,10 +87,114 @@ def snapshot_model(instance, fields: Optional[List[str]] = None) -> Dict[str, An
     return {k: _json_safe(v) for k, v in data.items()}
 
 
+def _money_snapshot_from_pending(change: PendingChange) -> dict:
+    """
+    Lift finance fields to the top of audit ``changes`` for list readability.
+
+    Nested ``proposed_values`` alone are useless in the audit table — cashiers
+    and managers need amount / method / reference at a glance.
+
+    Args:
+        change: PendingChange row being audited (read-only).
+
+    Returns:
+        Flat dict of non-empty money/identity keys. Empty dict when the action
+        has no finance fields. Values are strings (or entity ids as stored).
+
+    Bounds:
+        Amounts kept as decimal strings; no currency conversion. Customer name
+        is truncated via ``entity_repr`` (max 255 on the model).
+    """
+    proposed = dict(change.proposed_values or {})
+    payload = dict(change.apply_payload or {})
+    action_type = change.action_type or ''
+    snap: dict = {'action_type': action_type}
+
+    if action_type == ACTION_DEBT_COLLECTION:
+        amount = payload.get('amount', proposed.get('amount'))
+        method = payload.get('payment_method', proposed.get('payment_method'))
+        reference = payload.get('reference', proposed.get('reference'))
+        customer_name = (change.entity_repr or '').split('·')[0].strip()
+        snap.update(
+            {
+                'amount': str(amount) if amount is not None else '',
+                'payment_method': method or '',
+                'reference': reference or '',
+                'customer_id': change.entity_id,
+                'customer_name': customer_name,
+            }
+        )
+    elif action_type == ACTION_SALE_COMPLETE:
+        amount = (
+            proposed.get('total')
+            or proposed.get('amount_paid')
+            or payload.get('total')
+            or payload.get('amount_paid')
+            or ''
+        )
+        sale_number = (
+            proposed.get('sale_number')
+            or payload.get('sale_number')
+            or (change.entity_repr or '').split()[0]
+            or ''
+        )
+        snap.update(
+            {
+                'amount': str(amount) if amount != '' else '',
+                'payment_method': proposed.get('payment_method')
+                or payload.get('payment_method')
+                or '',
+                'reference': proposed.get('payment_reference')
+                or payload.get('payment_reference')
+                or proposed.get('reference')
+                or '',
+                'sale_id': change.entity_id,
+                'sale_number': str(sale_number),
+                'total': str(proposed.get('total') or payload.get('total') or ''),
+            }
+        )
+    return {k: v for k, v in snap.items() if v not in (None, '')}
+
+
 def _audit_pending(request, change: PendingChange, action: str, extra: dict | None = None):
+    """
+    Write an approvals AuditLog row with flat finance fields when present.
+
+    Args:
+        request: Actor request (may be None for jobs).
+        change: PendingChange being submitted / approved / rejected.
+        action: Audit verb (``pending_submit``, ``pending_approve``, …).
+        extra: Optional extra keys merged into ``changes`` (money keys win).
+
+    Returns:
+        None. Logging failures are swallowed inside ``log_domain_event``.
+
+    Side effects:
+        Appends one ``AuditLog`` row (module=approvals). Does not mutate money.
+    """
     from utils.audit_helpers import log_domain_event
 
+    money = _money_snapshot_from_pending(change)
+    if action == 'pending_submit':
+        lifecycle = 'submitted'
+    elif action == 'pending_reject':
+        lifecycle = 'rejected'
+    elif action == 'pending_resubmit':
+        lifecycle = 'resubmitted'
+    elif action == 'pending_approve':
+        if change.action_type == ACTION_DEBT_COLLECTION:
+            # Wallet credit is logged separately as debt_settlement_posted.
+            lifecycle = 'approved_not_yet_money'
+        elif change.action_type == ACTION_SALE_COMPLETE:
+            lifecycle = 'approved_money_follows'
+        else:
+            lifecycle = 'approved'
+    else:
+        lifecycle = 'workflow'
+    money['lifecycle'] = lifecycle
+
     changes = {
+        **money,
         'pending_change_id': change.id,
         'action_type': change.action_type,
         'status': change.status,
@@ -100,12 +204,42 @@ def _audit_pending(request, change: PendingChange, action: str, extra: dict | No
     }
     if extra:
         changes.update(extra)
+        changes.update({k: v for k, v in money.items() if k != 'lifecycle'})
+        changes['lifecycle'] = lifecycle
+
+    action_type = change.action_type or 'change'
+    amount = changes.get('amount') or ''
+    method = changes.get('payment_method') or ''
+    ref = changes.get('reference') or ''
+    verb = {
+        'pending_submit': 'submitted',
+        'pending_approve': 'approved (workflow)',
+        'pending_reject': 'rejected',
+        'pending_resubmit': 'resubmitted',
+    }.get(action, action)
+
+    if action_type == ACTION_DEBT_COLLECTION and amount:
+        object_repr = (
+            f'Debt collection {verb} · {amount}'
+            + (f' · {method}' if method else '')
+            + (f' · ref {ref}' if ref else '')
+            + (f' · {changes.get("customer_name")}' if changes.get('customer_name') else '')
+        )
+    elif action_type == ACTION_SALE_COMPLETE and amount:
+        object_repr = (
+            f'Sale {verb} · {amount}'
+            + (f' · {method}' if method else '')
+            + (f' · {changes.get("sale_number")}' if changes.get('sale_number') else '')
+        )
+    else:
+        object_repr = str(change)
+
     log_domain_event(
         request,
         action,
         module='approvals',
         changes=changes,
-        object_repr=str(change),
+        object_repr=object_repr[:255],
     )
 
 

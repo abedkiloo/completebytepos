@@ -1692,6 +1692,20 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         except ValidationError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         customer.refresh_from_db()
+        try:
+            from utils.audit_events import log_debt_settlement_posted
+
+            log_debt_settlement_posted(
+                request,
+                customer=customer,
+                txn=txn,
+                amount=data['amount'],
+                payment_method=data['payment_method'],
+                reference=data.get('reference', ''),
+                via='direct',
+            )
+        except Exception:
+            pass
         return Response(
             {
                 'transaction': CustomerWalletTransactionSerializer(txn).data,

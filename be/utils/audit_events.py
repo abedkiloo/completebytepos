@@ -17,21 +17,115 @@ def _money(value) -> str:
 
 
 def log_sale_completed(request, sale, *, source: str = 'checkout'):
+    """
+    Audit when a sale is completed and tender is recorded.
+
+    Args:
+        request: Actor request (may be None).
+        sale: Saved ``sales.Sale`` instance.
+        source: Origin label (``checkout``, ``approval``, …); max useful ~32 chars.
+
+    Returns:
+        None.
+
+    Side effects:
+        Appends one ``AuditLog`` row with ``lifecycle=money_posted``.
+    """
     items = list(sale.items.all()) if hasattr(sale, 'items') else []
+    customer = getattr(sale, 'customer', None)
+    action = 'checkout' if source == 'checkout' else 'sale_completed'
+    method = getattr(sale, 'payment_method', '') or ''
+    total = _money(getattr(sale, 'total', None))
+    paid = _money(getattr(sale, 'amount_paid', None))
     log_domain_event(
         request,
-        'checkout' if source == 'checkout' else AuditLog.ACTION_CREATE,
+        action,
         sale,
         module='sales',
         changes={
+            'lifecycle': 'money_posted',
             'source': source,
             'sale_number': getattr(sale, 'sale_number', ''),
-            'total': _money(getattr(sale, 'total', None)),
-            'payment_method': getattr(sale, 'payment_method', ''),
+            'amount': paid or total,
+            'total': total,
+            'amount_paid': paid,
+            'payment_method': method,
+            'reference': getattr(sale, 'payment_reference', '') or '',
             'status': getattr(sale, 'status', ''),
             'item_count': len(items),
             'customer_id': getattr(sale, 'customer_id', None),
+            'customer_name': getattr(customer, 'name', '') if customer else '',
+            'customer_code': getattr(customer, 'customer_code', '') if customer else '',
         },
+        object_repr=(
+            f"Sale money posted · {getattr(sale, 'sale_number', sale.pk)} · "
+            f"{total or paid} · {method or '—'}"
+        )[:255],
+    )
+
+
+def log_debt_settlement_posted(
+    request,
+    *,
+    customer,
+    txn,
+    amount,
+    payment_method: str = '',
+    reference: str = '',
+    pending_change_id=None,
+    via: str = 'direct',
+):
+    """
+    Audit the moment cash actually hits the customer wallet.
+
+    Distinct from ``pending_submit`` / ``pending_approve`` so finance can see
+    workflow vs money posted as separate audit rows.
+
+    Args:
+        request: Actor request-like object (``user``, ``META``, ``path``, ``method``).
+        customer: Customer whose wallet was credited.
+        txn: ``CustomerWalletTransaction`` (or compatible) for object_id.
+        amount: Decimal/str/float collection amount (> 0).
+        payment_method: Tender label (cash, mpesa, …); falls back to txn.
+        reference: External ref (e.g. M-PESA code); falls back to txn.
+        pending_change_id: Optional linked PendingChange pk when via approval.
+        via: ``direct`` or ``approval``.
+
+    Returns:
+        None.
+
+    Side effects:
+        Appends one ``AuditLog`` with action ``debt_settlement_posted``.
+    """
+    changes = {
+        'lifecycle': 'money_posted',
+        'via': via,
+        'amount': _money(amount),
+        'payment_method': payment_method or getattr(txn, 'payment_method', '') or '',
+        'reference': reference or getattr(txn, 'reference', '') or '',
+        'transaction_id': getattr(txn, 'id', None),
+        'customer_id': getattr(customer, 'id', None),
+        'customer_name': getattr(customer, 'name', '') or '',
+        'customer_code': getattr(customer, 'customer_code', '') or '',
+        'wallet_balance_after': _money(getattr(customer, 'wallet_balance', None)),
+    }
+    if pending_change_id is not None:
+        changes['pending_change_id'] = pending_change_id
+    method = changes['payment_method'] or '—'
+    ref = changes['reference']
+    label = (
+        f"Money posted · debt collection · {changes['amount']} · {method}"
+        + (f" · ref {ref}" if ref else '')
+        + f" · {changes['customer_name'] or 'Customer'}"
+    )
+    instance = txn if isinstance(txn, Model) else None
+    log_domain_event(
+        request,
+        'debt_settlement_posted',
+        instance,
+        module='sales',
+        changes=changes,
+        object_repr=label[:255],
     )
 
 

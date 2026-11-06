@@ -30,7 +30,9 @@ const ACTION_LABELS = {
   logout: 'Signed out',
   login_failed: 'Failed sign-in',
   permission_denied: 'Permission denied',
-  checkout: 'Checkout',
+  checkout: 'Sale money posted',
+  sale_completed: 'Sale money posted',
+  debt_settlement_posted: 'Debt money posted',
   holding_save: 'Saved holding',
   stock_adjust: 'Stock adjust',
   stock_purchase: 'Stock purchase',
@@ -38,12 +40,48 @@ const ACTION_LABELS = {
   stock_undo: 'Stock undo',
   approve: 'Approved',
   reject: 'Rejected',
-  pending_submit: 'Submitted for approval',
-  pending_approve: 'Approved change',
+  pending_submit: 'Submitted (awaiting approval)',
+  pending_approve: 'Approved (workflow)',
   pending_reject: 'Rejected change',
+  pending_resubmit: 'Resubmitted for approval',
   refund: 'Refund',
   rollback: 'Rollback',
 };
+
+const LIFECYCLE_LABELS = {
+  money_posted: 'Money posted',
+  submitted: 'Submitted',
+  approved: 'Approved',
+  approved_not_yet_money: 'Approved — money posts next',
+  approved_money_follows: 'Approved — sale posts next',
+  approved_awaiting_post: 'Approved — awaiting post',
+  rejected: 'Rejected',
+  resubmitted: 'Resubmitted',
+  workflow: 'Workflow',
+};
+
+/** Prefer these keys in list summaries so finance rows are readable at a glance. */
+const FINANCE_SUMMARY_KEYS = [
+  'lifecycle',
+  'amount',
+  'total',
+  'amount_paid',
+  'payment_method',
+  'reference',
+  'customer_name',
+  'sale_number',
+  'via',
+  'wallet_balance_after',
+  'reason',
+];
+
+const BULKY_CHANGE_KEYS = new Set([
+  'original_values',
+  'proposed_values',
+  'apply_payload',
+  '__created__',
+  '__deleted__',
+]);
 
 const MODULE_OPTIONS = [
   { value: '', label: 'All modules' },
@@ -102,10 +140,71 @@ function formatValue(value) {
 }
 
 function humanFieldName(key) {
+  const special = {
+    lifecycle: 'Stage',
+    payment_method: 'Method',
+    amount_paid: 'Amount paid',
+    wallet_balance_after: 'Wallet after',
+    pending_change_id: 'Approval #',
+    customer_name: 'Customer',
+    sale_number: 'Sale #',
+    transaction_id: 'Txn #',
+  };
+  if (special[key]) return special[key];
   return String(key || '')
     .replace(/^__|__$/g, '')
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function formatLifecycle(value) {
+  if (value == null || value === '') return '';
+  return LIFECYCLE_LABELS[value] || humanFieldName(value);
+}
+
+function formatMoneyish(value) {
+  if (value === null || value === undefined || value === '') return '';
+  const raw = String(value).trim();
+  if (!raw) return '';
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return raw;
+  return n.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+/** Pull flat finance fields from an audit `changes` payload. */
+export function extractFinanceFields(changes) {
+  if (!changes || typeof changes !== 'object' || Array.isArray(changes)) {
+    return null;
+  }
+  const amount = changes.amount ?? changes.total ?? changes.amount_paid ?? null;
+  const method = changes.payment_method || '';
+  const reference = changes.reference || '';
+  const lifecycle = changes.lifecycle || '';
+  if (!amount && !method && !reference && !lifecycle) return null;
+  return {
+    amount: amount != null && amount !== '' ? String(amount) : '',
+    method: method ? String(method) : '',
+    reference: reference ? String(reference) : '',
+    lifecycle: lifecycle ? String(lifecycle) : '',
+    customerName: changes.customer_name ? String(changes.customer_name) : '',
+    saleNumber: changes.sale_number ? String(changes.sale_number) : '',
+  };
+}
+
+function rowToSummaryPart(row) {
+  const display =
+    row.field === 'lifecycle'
+      ? formatLifecycle(row.to ?? row.from)
+      : ['amount', 'total', 'amount_paid', 'wallet_balance_after'].includes(row.field)
+        ? formatMoneyish(row.to ?? row.from) || formatValue(row.to ?? row.from)
+        : formatValue(row.to ?? row.from);
+  if (row.from != null && row.to != null && row.field !== 'lifecycle') {
+    return `${row.label}: ${formatValue(row.from)} → ${formatValue(row.to)}`;
+  }
+  return `${row.label}: ${display}`;
 }
 
 /** Flatten audit `changes` into readable rows for list + detail. */
@@ -157,16 +256,45 @@ export function parseAuditChanges(changes) {
   return { kind: rows.length ? 'diff' : 'empty', rows };
 }
 
-export function summarizeAuditChanges(changes, maxItems = 3) {
-  const parsed = parseAuditChanges(changes);
-  if (!parsed.rows.length) return 'No values recorded';
-  const parts = parsed.rows.slice(0, maxItems).map((row) => {
-    if (row.from != null && row.to != null) {
-      return `${row.label}: ${formatValue(row.from)} → ${formatValue(row.to)}`;
+/**
+ * Finance-first one-line summary for the Values column.
+ * Skips nested proposed/original blobs so debt/sale rows show amount · method · ref.
+ */
+export function summarizeAuditChanges(changes, maxItems = 4) {
+  if (!changes || typeof changes !== 'object' || Array.isArray(changes)) {
+    return 'No values recorded';
+  }
+
+  const finance = extractFinanceFields(changes);
+  if (finance && (finance.amount || finance.method || finance.lifecycle)) {
+    const parts = [];
+    if (finance.lifecycle) parts.push(formatLifecycle(finance.lifecycle));
+    if (finance.amount) parts.push(formatMoneyish(finance.amount) || finance.amount);
+    if (finance.method) parts.push(String(finance.method).toUpperCase());
+    if (finance.reference) parts.push(`ref ${finance.reference}`);
+    if (finance.customerName) parts.push(finance.customerName);
+    else if (finance.saleNumber) parts.push(finance.saleNumber);
+    if (changes.via && changes.lifecycle === 'money_posted') {
+      parts.push(changes.via === 'approval' ? 'via approval' : 'direct');
     }
-    return `${row.label}: ${formatValue(row.to ?? row.from)}`;
+    return parts.filter(Boolean).join(' · ') || 'No values recorded';
+  }
+
+  const parsed = parseAuditChanges(changes);
+  const preferred = [];
+  const rest = [];
+  parsed.rows.forEach((row) => {
+    if (BULKY_CHANGE_KEYS.has(row.field)) return;
+    if (typeof row.to === 'object' && row.to !== null && !('from' in (changes[row.field] || {}))) {
+      return;
+    }
+    if (FINANCE_SUMMARY_KEYS.includes(row.field)) preferred.push(row);
+    else rest.push(row);
   });
-  const extra = parsed.rows.length - maxItems;
+  const ordered = [...preferred, ...rest];
+  if (!ordered.length) return 'No values recorded';
+  const parts = ordered.slice(0, maxItems).map(rowToSummaryPart);
+  const extra = ordered.length - maxItems;
   return extra > 0 ? `${parts.join(' · ')} · +${extra} more` : parts.join(' · ');
 }
 
@@ -175,9 +303,80 @@ function actionLabel(action) {
   return ACTION_LABELS[action] || humanFieldName(action);
 }
 
+function FinanceHighlight({ changes }) {
+  const finance = extractFinanceFields(changes);
+  if (!finance || (!finance.amount && !finance.method && !finance.lifecycle)) return null;
+  return (
+    <div className="rounded-md border border-border/80 bg-muted/30 px-3 py-3">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Money summary
+      </p>
+      <dl className="grid gap-2 sm:grid-cols-2">
+        {finance.lifecycle ? (
+          <div>
+            <dt className="text-xs text-muted-foreground">Stage</dt>
+            <dd className="text-sm font-medium">{formatLifecycle(finance.lifecycle)}</dd>
+          </div>
+        ) : null}
+        {finance.amount ? (
+          <div>
+            <dt className="text-xs text-muted-foreground">Amount</dt>
+            <dd className="text-sm font-medium tabular-nums">
+              {formatMoneyish(finance.amount) || finance.amount}
+            </dd>
+          </div>
+        ) : null}
+        {finance.method ? (
+          <div>
+            <dt className="text-xs text-muted-foreground">Method</dt>
+            <dd className="text-sm font-medium uppercase">{finance.method}</dd>
+          </div>
+        ) : null}
+        {finance.reference ? (
+          <div>
+            <dt className="text-xs text-muted-foreground">Reference</dt>
+            <dd className="text-sm font-mono">{finance.reference}</dd>
+          </div>
+        ) : null}
+        {finance.customerName ? (
+          <div>
+            <dt className="text-xs text-muted-foreground">Customer</dt>
+            <dd className="text-sm">{finance.customerName}</dd>
+          </div>
+        ) : null}
+        {finance.saleNumber ? (
+          <div>
+            <dt className="text-xs text-muted-foreground">Sale</dt>
+            <dd className="text-sm">{finance.saleNumber}</dd>
+          </div>
+        ) : null}
+      </dl>
+      {finance.lifecycle && finance.lifecycle !== 'money_posted' ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          This row is workflow only. Look for a separate “money posted” entry when cash actually
+          landed.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function ChangesTable({ changes }) {
   const parsed = useMemo(() => parseAuditChanges(changes), [changes]);
-  if (!parsed.rows.length) {
+  const orderedRows = useMemo(() => {
+    if (!parsed.rows.length) return [];
+    const preferred = [];
+    const rest = [];
+    parsed.rows.forEach((row) => {
+      if (FINANCE_SUMMARY_KEYS.includes(row.field) || row.field === 'action_type' || row.field === 'status') {
+        preferred.push(row);
+      } else {
+        rest.push(row);
+      }
+    });
+    return [...preferred, ...rest];
+  }, [parsed.rows]);
+  if (!orderedRows.length) {
     return <p className="text-sm text-muted-foreground">No entered values were stored for this event.</p>;
   }
   const showFrom = parsed.kind === 'diff' || parsed.kind === 'deleted';
@@ -194,7 +393,15 @@ function ChangesTable({ changes }) {
           </tr>
         </thead>
         <tbody>
-          {parsed.rows.map((row) => (
+          {orderedRows.map((row) => {
+            const raw = row.to ?? row.from;
+            const display =
+              row.field === 'lifecycle'
+                ? formatLifecycle(raw)
+                : ['amount', 'total', 'amount_paid', 'wallet_balance_after'].includes(row.field)
+                  ? formatMoneyish(raw) || formatValue(raw)
+                  : formatValue(raw);
+            return (
             <tr key={row.field} className="border-b border-border/60 align-top">
               <td className="px-3 py-2 font-medium text-foreground">{row.label}</td>
               {showFrom ? (
@@ -203,10 +410,11 @@ function ChangesTable({ changes }) {
                 </td>
               ) : null}
               <td className="px-3 py-2 whitespace-pre-wrap break-words tabular-nums">
-                {formatValue(row.to ?? row.from)}
+                {display}
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -337,7 +545,7 @@ export default function AuditLogPage() {
     <PageShell>
       <PageHeader
         title="Audit log"
-        description="Everything any user does in the system — every module. Filter by day, time, user, module, or action. Click a row for before/after values."
+        description="Who did what, and for money events: amount, method, reference, and whether cash was only submitted, approved, or actually posted. Click a row for full detail."
         icon={ScrollText}
       />
       <Card>
@@ -420,7 +628,9 @@ export default function AuditLogPage() {
               <option value="">All actions</option>
               <option value="login">Login</option>
               <option value="logout">Logout</option>
-              <option value="checkout">Checkout</option>
+              <option value="checkout">Sale money posted (checkout)</option>
+              <option value="sale_completed">Sale money posted</option>
+              <option value="debt_settlement_posted">Debt money posted</option>
               <option value="create">Create</option>
               <option value="update">Update</option>
               <option value="delete">Delete</option>
@@ -431,8 +641,8 @@ export default function AuditLogPage() {
               <option value="stock_transfer">Stock transfer</option>
               <option value="refund">Refund</option>
               <option value="rollback">Rollback</option>
-              <option value="pending_submit">Submitted for approval</option>
-              <option value="pending_approve">Approved change</option>
+              <option value="pending_submit">Submitted (awaiting approval)</option>
+              <option value="pending_approve">Approved (workflow)</option>
               <option value="pending_reject">Rejected change</option>
               {facetActions
                 .filter(
@@ -441,6 +651,8 @@ export default function AuditLogPage() {
                       'login',
                       'logout',
                       'checkout',
+                      'sale_completed',
+                      'debt_settlement_posted',
                       'create',
                       'update',
                       'delete',
@@ -508,13 +720,16 @@ export default function AuditLogPage() {
                     <th className="py-2 pr-3">When</th>
                     <th className="py-2 pr-3">User</th>
                     <th className="py-2 pr-3">Action</th>
-                    <th className="py-2 pr-3">Module</th>
+                    <th className="py-2 pr-3">Amount</th>
+                    <th className="py-2 pr-3">Method</th>
                     <th className="py-2 pr-3">Object</th>
-                    <th className="py-2 pr-3">Values</th>
+                    <th className="py-2 pr-3">Summary</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row) => (
+                  {rows.map((row) => {
+                    const finance = extractFinanceFields(row.changes);
+                    return (
                     <tr
                       key={row.id}
                       className={cn(
@@ -539,18 +754,26 @@ export default function AuditLogPage() {
                       <td className="py-2 pr-3">
                         <Badge variant="outline">{actionLabel(row.action)}</Badge>
                       </td>
-                      <td className="py-2 pr-3">{row.module || '—'}</td>
-                      <td className="py-2 pr-3 max-w-[12rem] truncate" title={row.object_repr}>
+                      <td className="py-2 pr-3 whitespace-nowrap tabular-nums font-medium">
+                        {finance?.amount
+                          ? formatMoneyish(finance.amount) || finance.amount
+                          : '—'}
+                      </td>
+                      <td className="py-2 pr-3 whitespace-nowrap uppercase text-xs">
+                        {finance?.method || '—'}
+                      </td>
+                      <td className="py-2 pr-3 max-w-[14rem] truncate" title={row.object_repr}>
                         {row.object_repr || row.object_type || '—'}
                       </td>
                       <td
-                        className="py-2 pr-3 max-w-[20rem] truncate text-muted-foreground"
+                        className="py-2 pr-3 max-w-[18rem] truncate text-muted-foreground"
                         title={summarizeAuditChanges(row.changes)}
                       >
                         {summarizeAuditChanges(row.changes)}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -566,7 +789,7 @@ export default function AuditLogPage() {
           <DialogHeader>
             <DialogTitle>Audit trail details</DialogTitle>
             <DialogDescription>
-              What changed, who did it, and the values recorded in the system.
+              Who acted, money stage (submitted / approved / posted), and the values recorded.
             </DialogDescription>
           </DialogHeader>
           {detailLoading && !detail ? (
@@ -594,7 +817,7 @@ export default function AuditLogPage() {
                 </div>
                 <div>
                   <dt className="text-xs font-medium text-muted-foreground">Module</dt>
-                  <dd className="text-sm">{detail.module || '—'}</dd>
+                  <dd className="text-sm">{humanModuleName(detail.module) || detail.module || '—'}</dd>
                 </div>
                 <div className="sm:col-span-2">
                   <dt className="text-xs font-medium text-muted-foreground">Object</dt>
@@ -624,8 +847,10 @@ export default function AuditLogPage() {
                 ) : null}
               </dl>
 
+              <FinanceHighlight changes={detail.changes} />
+
               <div>
-                <h3 className="mb-2 text-sm font-semibold">What they entered</h3>
+                <h3 className="mb-2 text-sm font-semibold">All recorded values</h3>
                 <ChangesTable changes={detail.changes} />
               </div>
             </div>

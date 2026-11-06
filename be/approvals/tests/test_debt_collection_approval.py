@@ -8,7 +8,7 @@ from django.test import RequestFactory, TestCase
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from accounts.models import Permission, Role, UserProfile
+from accounts.models import AuditLog, Permission, Role, UserProfile
 from accounts.role_definitions import ROLE_MANAGER, ROLE_SUPER_ADMIN, ensure_permissions
 from approvals.apply import apply_pending_change
 from approvals.models import PendingChange
@@ -122,6 +122,15 @@ class DebtCollectionApprovalAPITests(SalesAPITestCase):
         self.assertEqual(queued.status_code, status.HTTP_202_ACCEPTED, queued.data)
         change = PendingChange.objects.get(action_type=ACTION_DEBT_COLLECTION)
 
+        submit_row = AuditLog.objects.filter(
+            module='approvals', action='pending_submit'
+        ).order_by('-id').first()
+        self.assertIsNotNone(submit_row)
+        self.assertEqual(submit_row.changes.get('amount'), '100.00')
+        self.assertEqual(submit_row.changes.get('payment_method'), 'cash')
+        self.assertEqual(submit_row.changes.get('lifecycle'), 'submitted')
+        self.assertIn('100.00', submit_row.object_repr)
+
         approved = self._manager_client().post(
             f'/api/approvals/pending-changes/{change.id}/approve/'
         )
@@ -134,6 +143,40 @@ class DebtCollectionApprovalAPITests(SalesAPITestCase):
         )
         self.assertEqual(txn.amount, Decimal('100.00'))
         self.assertEqual(txn.created_by_id, self.sales_user.id)
+
+        approve_row = AuditLog.objects.filter(
+            module='approvals', action='pending_approve'
+        ).order_by('-id').first()
+        self.assertIsNotNone(approve_row)
+        self.assertEqual(approve_row.changes.get('lifecycle'), 'approved_not_yet_money')
+        self.assertEqual(approve_row.changes.get('amount'), '100.00')
+
+        money_row = AuditLog.objects.filter(
+            action='debt_settlement_posted', module='sales'
+        ).order_by('-id').first()
+        self.assertIsNotNone(money_row)
+        self.assertEqual(money_row.changes.get('lifecycle'), 'money_posted')
+        self.assertEqual(money_row.changes.get('amount'), '100.00')
+        self.assertEqual(money_row.changes.get('via'), 'approval')
+        self.assertIn('money posted', money_row.object_repr.lower())
+
+    def test_direct_manager_collection_logs_money_posted(self):
+        resp = self._collect(
+            self._manager_client(),
+            amount='50.00',
+            payment_method='mpesa',
+            reference='QHX7K2L9M1',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED, resp.data)
+        money_row = AuditLog.objects.filter(
+            action='debt_settlement_posted', module='sales'
+        ).order_by('-id').first()
+        self.assertIsNotNone(money_row)
+        self.assertEqual(money_row.changes.get('lifecycle'), 'money_posted')
+        self.assertEqual(money_row.changes.get('amount'), '50.00')
+        self.assertEqual(money_row.changes.get('payment_method'), 'mpesa')
+        self.assertEqual(money_row.changes.get('reference'), 'QHX7K2L9M1')
+        self.assertEqual(money_row.changes.get('via'), 'direct')
 
     def test_manager_with_approve_records_payment_live(self):
         resp = self._collect(self._manager_client(), amount='50.00')
