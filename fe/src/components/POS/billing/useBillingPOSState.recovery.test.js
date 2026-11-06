@@ -14,6 +14,7 @@ jest.mock('../../../services/api', () => ({
     saveHolding: jest.fn(),
     cancelHolding: jest.fn(),
     get: jest.fn(),
+    openForCorrection: jest.fn(),
   },
 }));
 
@@ -111,7 +112,7 @@ describe('useBillingPOSState cart recovery', () => {
   });
 
   it('loads a specific returned sale from resumeSaleId on Terminal POS', async () => {
-    salesAPI.get.mockResolvedValueOnce({
+    const returnedPayload = {
       data: {
         id: 99,
         status: 'holding',
@@ -145,14 +146,15 @@ describe('useBillingPOSState cart recovery', () => {
           },
         ],
       },
-    });
+    };
+    salesAPI.openForCorrection.mockResolvedValueOnce(returnedPayload);
 
     const { result } = renderHook(() => useBillingPOSState({ resumeSaleId: '99' }));
 
     await waitFor(() => {
       expect(result.current.cart).toHaveLength(1);
     });
-    expect(salesAPI.get).toHaveBeenCalledWith(99);
+    expect(salesAPI.openForCorrection).toHaveBeenCalledWith(99);
     expect(salesAPI.activeHolding).not.toHaveBeenCalled();
     expect(result.current.cart[0].name).toBe('Bottled Water');
     expect(result.current.cart[0].quantity).toBe(3);
@@ -179,7 +181,7 @@ describe('useBillingPOSState cart recovery', () => {
   });
 
   it('leaves Amount paid blank when the returned sale was unpaid', async () => {
-    salesAPI.get.mockResolvedValueOnce({
+    salesAPI.openForCorrection.mockResolvedValueOnce({
       data: {
         id: 88,
         status: 'holding',
@@ -228,7 +230,7 @@ describe('useBillingPOSState cart recovery', () => {
   });
 
   it('loads returned sale lines even when on-hand stock is zero', async () => {
-    salesAPI.get.mockResolvedValueOnce({
+    salesAPI.openForCorrection.mockResolvedValueOnce({
       data: {
         id: 77,
         status: 'holding',

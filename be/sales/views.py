@@ -135,6 +135,7 @@ SALES_PERMS = RequirePermPerAction('sales', {
     'active_holding': 'view',
     'save_holding': 'create',
     'checkout': 'create',
+    'open_for_correction': 'create',
     'cancel_holding': 'update',
     'refund': 'refund',
     'rollback': 'rollback',
@@ -224,6 +225,7 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             'update',
             'partial_update',
             'checkout',
+            'open_for_correction',
             'cancel_holding',
             'receipt',
             'complete',
@@ -919,6 +921,22 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        return Response(SaleSerializer(sale).data)
+
+    @action(detail=True, methods=['post'], url_path='open-for-correction')
+    @transaction.atomic
+    def open_for_correction(self, request, pk=None):
+        """Cashier/Terminal: open a returned sale in Correction Mode (heals stuck rejects)."""
+        from sales.sale_completion_approval import ensure_sale_openable_for_pos_correction
+
+        sale = self.get_object()
+        try:
+            sale = ensure_sale_openable_for_pos_correction(sale)
+        except ValidationError as e:
+            return Response(
+                {'error': validation_error_message(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         return Response(SaleSerializer(sale).data)
 
     @action(detail=True, methods=['post'], url_path='reject-complete')

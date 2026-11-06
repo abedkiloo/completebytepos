@@ -392,6 +392,52 @@ class SaleCompletionHelperTests(TestCase):
         self.assertTrue(sale_needs_salesperson_action(returned))
         self.assertEqual(sale_rejection_reason(returned), 'Wrong prices')
 
+    def test_ensure_openable_heals_stuck_pending_after_reject(self):
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        from sales.sale_completion_approval import ensure_sale_openable_for_pos_correction
+
+        stuck = Sale.objects.create(
+            sale_number='S-STUCK-PEND',
+            status='pending_approval',
+            subtotal=Decimal('10'),
+            total=Decimal('10'),
+            payment_method='cash',
+            amount_paid=Decimal('0'),
+        )
+        PendingChange.objects.create(
+            action_type=ACTION_SALE_COMPLETE,
+            entity_type='sales.Sale',
+            entity_id=str(stuck.pk),
+            entity_repr=stuck.sale_number,
+            reason=QUEUE_REASON,
+            status=PendingChange.STATUS_REJECTED,
+            rejection_reason='Correct amounts',
+        )
+        healed = ensure_sale_openable_for_pos_correction(stuck)
+        healed.refresh_from_db()
+        self.assertEqual(healed.status, 'holding')
+        self.assertTrue(sale_needs_salesperson_action(healed))
+
+        live = Sale.objects.create(
+            sale_number='S-LIVE-PEND',
+            status='pending_approval',
+            subtotal=Decimal('10'),
+            total=Decimal('10'),
+            payment_method='cash',
+            amount_paid=Decimal('0'),
+        )
+        PendingChange.objects.create(
+            action_type=ACTION_SALE_COMPLETE,
+            entity_type='sales.Sale',
+            entity_id=str(live.pk),
+            entity_repr=live.sale_number,
+            reason=QUEUE_REASON,
+            status=PendingChange.STATUS_PENDING,
+        )
+        with self.assertRaises(DjangoValidationError):
+            ensure_sale_openable_for_pos_correction(live)
+
 
 class SaleCompletionApprovalAPITests(SalesAPITestCase):
     @classmethod
@@ -933,6 +979,18 @@ class SaleCompletionApprovalAPITests(SalesAPITestCase):
         self.assertEqual(len(opened.data['items']), 1)
         self.assertEqual(opened.data['items'][0]['product_id'], self.product.id)
         self.assertEqual(opened.data['items'][0]['quantity'], 1)
+
+        correction = self.client.post(f'/api/sales/{sale_id}/open-for-correction/')
+        self.assertEqual(correction.status_code, status.HTTP_200_OK, correction.data)
+        self.assertEqual(correction.data['status'], 'holding')
+        self.assertTrue(correction.data['needs_salesperson_action'])
+
+        # Stuck reject: approval rejected but sale left on pending_approval.
+        Sale.objects.filter(pk=sale_id).update(status='pending_approval')
+        healed = self.client.post(f'/api/sales/{sale_id}/open-for-correction/')
+        self.assertEqual(healed.status_code, status.HTTP_200_OK, healed.data)
+        self.assertEqual(healed.data['status'], 'holding')
+        self.assertEqual(Sale.objects.get(pk=sale_id).status, 'holding')
 
         ordinary_hold = Sale.objects.create(
             sale_number='S-CART-HOLD',

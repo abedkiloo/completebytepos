@@ -662,11 +662,61 @@ def cancel_queued_sale(sale: Sale) -> Sale:
 
 def return_queued_sale_for_correction(sale: Sale) -> Sale:
     """Put a rejected sale back on the cashier's POS cart so they can fix it."""
-    if sale.status != 'pending_approval':
+    if sale.status not in ('pending_approval', 'awaiting_payment'):
         return sale
     sale.status = 'holding'
     sale.save(update_fields=['status', 'updated_at'])
     return sale
+
+
+def ensure_sale_openable_for_pos_correction(sale: Sale) -> Sale:
+    """
+    Ensure a returned sale is ``holding`` so Terminal POS can load Correction Mode.
+
+    Heals the stuck case where the approval row was rejected but the sale was
+    left on ``pending_approval`` (Open sale then shows
+    "This sale is not waiting for a fix on POS").
+
+    Args:
+        sale: Sale row to open for correction (refreshed from DB).
+
+    Returns:
+        The sale after any needed status heal.
+
+    Raises:
+        ValidationError: When the sale is not a returned correction candidate
+            (wrong status, still awaiting approval, or already completed).
+
+    Performance:
+        Only runs on Open sale (not list/checkout loops). Fast path when already
+        ``holding`` is one refresh. Otherwise one indexed Exists on PendingChange
+        for this sale id — no N+1, no scans of other sales.
+    """
+    sale.refresh_from_db(fields=['status', 'updated_at'])
+    if sale.status == 'holding':
+        return sale
+
+    base = PendingChange.objects.filter(
+        action_type=ACTION_SALE_COMPLETE,
+        entity_type='sales.Sale',
+        entity_id=str(sale.pk),
+    )
+    has_pending = base.filter(status=PendingChange.STATUS_PENDING).exists()
+    has_rejected = base.filter(status=PendingChange.STATUS_REJECTED).exists()
+
+    if sale.status == 'pending_approval' and has_pending:
+        raise ValidationError(
+            'This sale is still waiting for manager approval — it is not back '
+            'on Terminal for correction yet.'
+        )
+
+    if has_rejected and sale.status in ('pending_approval', 'awaiting_payment'):
+        return return_queued_sale_for_correction(sale)
+
+    raise ValidationError(
+        'This sale is not waiting for a fix on POS '
+        f'(status: {sale.status or "unknown"}).'
+    )
 
 
 def _resubmitted_amount_paid(sale: Sale, change: PendingChange, existing: dict) -> Decimal:

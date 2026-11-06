@@ -401,6 +401,7 @@ export const salesAPI = {
   /** Today/month totals for dashboard (sales.view — no reports.view required). */
   dashboardSummary: () => api.get('/sales/dashboard-summary/'),
   get: (id) => api.get(`/sales/${id}/`),
+  openForCorrection: (id) => api.post(`/sales/${id}/open-for-correction/`),
   create: (data) => api.post('/sales/', data),
   receipt: (id) => api.get(`/sales/${id}/receipt/`),
   complete: (id, data) => api.post(`/sales/${id}/complete/`, data || {}),

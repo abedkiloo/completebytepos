@@ -328,16 +328,34 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
     setLoadingHolding(true);
     try {
       if (resumeSalePk) {
-        const res = await salesAPI.get(resumeSalePk);
-        const holding = res.data;
-        const canFix =
-          holding &&
-          (holding.status === 'holding' || holding.needs_salesperson_action);
-        if (canFix) {
-          skipNextSyncRef.current = true;
-          hydrateFromHolding(holding);
-        } else {
-          toast.error('This sale is not waiting for a fix on POS.');
+        try {
+          const open =
+            typeof salesAPI.openForCorrection === 'function'
+              ? salesAPI.openForCorrection
+              : null;
+          const res = open
+            ? await open(resumeSalePk)
+            : await salesAPI.get(resumeSalePk);
+          const holding = res.data;
+          const canFix =
+            holding &&
+            (holding.status === 'holding' || holding.needs_salesperson_action);
+          if (canFix) {
+            skipNextSyncRef.current = true;
+            hydrateFromHolding(holding);
+          } else {
+            toast.error(
+              holding?.status
+                ? `This sale is not waiting for a fix on POS (status: ${holding.status}).`
+                : 'This sale is not waiting for a fix on POS.'
+            );
+          }
+        } catch (err) {
+          const msg =
+            err?.response?.data?.error ||
+            err?.response?.data?.detail ||
+            'This sale is not waiting for a fix on POS.';
+          toast.error(typeof msg === 'string' ? msg : 'This sale is not waiting for a fix on POS.');
         }
         return;
       }

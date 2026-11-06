@@ -321,23 +321,45 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
     (async () => {
       try {
         if (resumeSalePk) {
-          const res = await salesAPI.get(resumeSalePk);
-          const holding = res.data;
-          if (cancelled) return;
-          const canFix =
-            holding &&
-            (holding.status === 'holding' || holding.needs_salesperson_action);
-          if (canFix) {
-            setCartRecovery({
-              source: 'holding',
-              holding,
-              itemCount: countHoldingItems(holding),
-              label: holding.sale_number,
-              autoContinue: true,
-            });
-            setHoldingId(holding.id);
-          } else {
-            toast.error('This sale is not waiting for a fix on POS.');
+          try {
+            const open =
+              typeof salesAPI.openForCorrection === 'function'
+                ? salesAPI.openForCorrection
+                : null;
+            const res = open
+              ? await open(resumeSalePk)
+              : await salesAPI.get(resumeSalePk);
+            const holding = res.data;
+            if (cancelled) return;
+            const canFix =
+              holding &&
+              (holding.status === 'holding' || holding.needs_salesperson_action);
+            if (canFix) {
+              setCartRecovery({
+                source: 'holding',
+                holding,
+                itemCount: countHoldingItems(holding),
+                label: holding.sale_number,
+                autoContinue: true,
+              });
+              setHoldingId(holding.id);
+            } else {
+              toast.error(
+                holding?.status
+                  ? `This sale is not waiting for a fix on POS (status: ${holding.status}).`
+                  : 'This sale is not waiting for a fix on POS.'
+              );
+            }
+          } catch (err) {
+            if (!cancelled) {
+              const msg =
+                err?.response?.data?.error ||
+                err?.response?.data?.detail ||
+                'This sale is not waiting for a fix on POS.';
+              toast.error(
+                typeof msg === 'string' ? msg : 'This sale is not waiting for a fix on POS.'
+              );
+            }
           }
         } else {
           const res = await salesAPI.activeHolding();
