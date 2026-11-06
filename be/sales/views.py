@@ -132,6 +132,7 @@ SALES_PERMS = RequirePermPerAction('sales', {
     'partial_update': 'update',
     'receipt': 'view',
     'dashboard_summary': 'view',
+    'history_summary': 'view',
     'active_holding': 'view',
     'save_holding': 'create',
     'checkout': 'create',
@@ -504,6 +505,45 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             payload['month'] = {
                 'total': float(month_sales.aggregate(total=Sum('total'))['total'] or 0),
             }
+        return Response(payload)
+
+    @action(detail=False, methods=['get'], url_path='history-summary')
+    def history_summary(self, request):
+        """
+        On-click Sales history totals for the selected period / filters.
+
+        Same filter keys as list. Requires date_from and date_to. Store-wide
+        viewers only (admin / manager / sales.view_all).
+        """
+        from sales.sales_history_summary import summarize_sales_history
+        from sales.visibility import user_sees_all_sales
+
+        if not user_sees_all_sales(request.user):
+            return Response(
+                {'error': 'Only managers and admins can calculate sales history totals.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        filters = {}
+        for param in (
+            'branch_id',
+            'show_all',
+            'date_from',
+            'date_to',
+            'payment_method',
+            'search',
+            'customer_id',
+            'status',
+            'cashier_id',
+            'sale_origin',
+        ):
+            if param in request.query_params:
+                filters[param] = request.query_params.get(param)
+
+        try:
+            payload = summarize_sales_history(filters=filters, request=request)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(payload)
 
     @action(detail=False, methods=['get'], url_path='sellers')

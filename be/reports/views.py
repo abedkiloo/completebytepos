@@ -137,6 +137,7 @@ def gated_report_action(action_name):
                 response.data = apply_report_response_flags(response.data)
                 if action_name == 'trading_profit':
                     from reports.cogs_export import maybe_export_cogs_workbook
+                    from reports.gross_sales_export import maybe_export_gross_sales_workbook
 
                     cogs_file = maybe_export_cogs_workbook(
                         request,
@@ -146,6 +147,14 @@ def gated_report_action(action_name):
                     )
                     if cogs_file is not None:
                         return cogs_file
+                    gross_file = maybe_export_gross_sales_workbook(
+                        request,
+                        response.data,
+                        title='Gross sales',
+                        slug='trading_profit_gross_sales',
+                    )
+                    if gross_file is not None:
+                        return gross_file
                 if action_name in ('sales', 'sales_overview'):
                     from reports.sales_export import maybe_export_sales_workbook
 

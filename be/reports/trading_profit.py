@@ -806,6 +806,7 @@ def _sale_row(sale, *, amount_key: str = 'total') -> dict[str, Any]:
         'sale_total': _money(sale.total),
         'amount_paid': _money(sale.amount_paid),
         'unpaid': _money(unpaid),
+        'payment_method': sale.payment_method or '',
         'occurred_at': _iso_dt(sale.occurred_at),
         'lines': lines,
     }
@@ -1224,11 +1225,9 @@ def trading_profit_breakdown_for_request(request) -> dict[str, Any]:
     metric = (params.get('metric') or '').strip().lower()
     if not metric:
         raise ValidationError({'metric': 'Query param metric is required.'})
-    row_limit = (
-        _cogs_sale_limit_for_request(request)
-        if metric == 'cogs'
-        else BREAKDOWN_ROW_LIMIT
-    )
+    # File exports raise the row cap so Excel/CSV can tie out to TOTAL.
+    default_limit = COGS_BREAKDOWN_SALE_LIMIT if metric == 'cogs' else BREAKDOWN_ROW_LIMIT
+    row_limit = _cogs_sale_limit_for_request(request, default=default_limit)
     try:
         breakdown = compute_metric_breakdown(
             metric=metric,

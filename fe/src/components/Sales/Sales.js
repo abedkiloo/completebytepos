@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Calendar, Receipt, RotateCcw, ShoppingCart, Clock } from 'lucide-react';
+import { Calculator, Calendar, Receipt, RotateCcw, ShoppingCart, Clock } from 'lucide-react';
 import { salesAPI } from '../../services/api';
 import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
@@ -59,6 +59,7 @@ import {
   DataTableCell,
   StatusBadge,
   ListPaginationRail,
+  SummaryCard,
 } from '../page';
 import { useListOrdering } from '../../hooks/useListOrdering';
 import { withListOrdering } from '../../utils/listOrdering';
@@ -80,6 +81,7 @@ const Sales = () => {
   const canReturnForCorrection = isAdmin;
   const canViewDaily = canViewDailySalesFromStorage();
   const canFilterBySeller = userSeesAllSalesFromStorage();
+  const canShowPeriodTotal = canFilterBySeller;
   const sellerOptions = useSellerOptions(canFilterBySeller);
   const [filters, setFilters] = useState({
     date_from: '',
@@ -97,6 +99,8 @@ const Sales = () => {
   });
   const { ordering, setOrdering } = useListOrdering();
   const [historyTab, setHistoryTab] = useState('completed');
+  const [rangeTotal, setRangeTotal] = useState(null);
+  const [totalBusy, setTotalBusy] = useState(false);
 
   useEffect(() => {
     setFilters((prev) => {
@@ -109,23 +113,50 @@ const Sales = () => {
     setPagination((p) => (p.page === 1 ? p : { ...p, page: 1 }));
   }, [filters.search]);
 
+  useEffect(() => {
+    setRangeTotal(null);
+  }, [filters, historyTab]);
+
+  const historyFilterParams = useCallback(() => {
+    const params = {};
+    if (filters.date_from) params.date_from = filters.date_from;
+    if (filters.date_to) params.date_to = filters.date_to;
+    if (filters.payment_method) params.payment_method = filters.payment_method;
+    if (filters.search) params.search = filters.search;
+    if (filters.cashier_id) params.cashier_id = filters.cashier_id;
+    if (historyTab === 'pending') params.status = 'pending_approval';
+    else if (historyTab === 'cancelled') params.status = 'cancelled';
+    else if (historyTab === 'voided') params.status = 'voided';
+    else if (historyTab === 'completed') params.status = 'completed';
+    return params;
+  }, [filters, historyTab]);
+
+  const handleShowTotal = async () => {
+    if (!canShowPeriodTotal || totalBusy) return;
+    if (!filters.date_from || !filters.date_to) {
+      toast.error('Choose a From and To date before calculating the total.');
+      return;
+    }
+    setTotalBusy(true);
+    try {
+      const res = await salesAPI.historySummary(historyFilterParams());
+      setRangeTotal(res.data || null);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not calculate total');
+      setRangeTotal(null);
+    } finally {
+      setTotalBusy(false);
+    }
+  };
+
   const loadSales = useCallback(async () => {
     setLoading(true);
     try {
       const params = withListOrdering({
         page: pagination.page,
         page_size: pagination.page_size,
+        ...historyFilterParams(),
       }, ordering);
-      
-      if (filters.date_from) params.date_from = filters.date_from;
-      if (filters.date_to) params.date_to = filters.date_to;
-      if (filters.payment_method) params.payment_method = filters.payment_method;
-      if (filters.search) params.search = filters.search;
-      if (filters.cashier_id) params.cashier_id = filters.cashier_id;
-      if (historyTab === 'pending') params.status = 'pending_approval';
-      else if (historyTab === 'cancelled') params.status = 'cancelled';
-      else if (historyTab === 'voided') params.status = 'voided';
-      else if (historyTab === 'completed') params.status = 'completed';
       const response = await salesAPI.list(params);
       const data = response.data;
       
@@ -143,7 +174,7 @@ const Sales = () => {
     } finally {
       setLoading(false);
     }
-  }, [filters, pagination.page, pagination.page_size, historyTab, ordering]);
+  }, [historyFilterParams, pagination.page, pagination.page_size, ordering]);
 
   useEffect(() => {
     loadSales();
@@ -542,7 +573,47 @@ const Sales = () => {
               onChange={(e) => setSearchInput(e.target.value || '')}
             />
           </FilterField>
+          {canShowPeriodTotal ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={handleShowTotal}
+              disabled={totalBusy}
+              aria-label="Show total for selected range"
+            >
+              <Calculator className="h-4 w-4 mr-1.5" />
+              {totalBusy ? 'Calculating…' : 'Show total'}
+            </Button>
+          ) : null}
         </FilterBar>
+
+        {rangeTotal ? (
+          <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <SummaryCard
+              icon={Calculator}
+              label="Range total"
+              value={formatCurrency(rangeTotal.total_amount)}
+              subtext={`${rangeTotal.count ?? 0} sale${
+                Number(rangeTotal.count ?? 0) === 1 ? '' : 's'
+              }${
+                rangeTotal.date_from && rangeTotal.date_to
+                  ? ` · ${rangeTotal.date_from} → ${rangeTotal.date_to}`
+                  : ''
+              }`}
+              tone="success"
+            />
+            {(rangeTotal.by_method || []).map((row) => (
+              <SummaryCard
+                key={row.payment_method}
+                icon={Calculator}
+                label={row.payment_method_label || row.payment_method}
+                value={formatCurrency(row.total)}
+                subtext={`${row.count} sale${Number(row.count) === 1 ? '' : 's'}`}
+              />
+            ))}
+          </div>
+        ) : null}
 
         {sales.length === 0 ? (
           <EmptyState

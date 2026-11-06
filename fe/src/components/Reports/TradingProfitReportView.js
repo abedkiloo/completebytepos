@@ -118,20 +118,28 @@ function BreakdownDialog({ open, onOpenChange, loading, error, data, exportParam
   const rows = data?.rows || [];
   const cogsSales = cogs?.sales || [];
   const cogsRefunds = cogs?.refunds || [];
+  const metric = data?.metric || '';
+  const isGrossSales = metric === 'gross_sales';
   const canDownloadCogs = Boolean(cogs) && !loading && !error;
+  const canDownloadGrossSales = isGrossSales && !loading && !error;
+  const canDownload = canDownloadCogs || canDownloadGrossSales;
 
-  const downloadCogsExcel = async () => {
-    if (!canDownloadCogs || exportBusy) return;
+  const downloadBreakdown = async (format) => {
+    if (!canDownload || exportBusy || !metric) return;
     setExportBusy(true);
     try {
       await reportsAPI.exportFile(
         'trading-profit-breakdown',
-        { ...exportParams, metric: 'cogs' },
-        'xlsx'
+        { ...exportParams, metric },
+        format
       );
-      toast.success('COGS Excel downloaded');
+      toast.success(
+        format === 'csv'
+          ? `${data?.title || 'Breakdown'} CSV downloaded`
+          : `${data?.title || 'Breakdown'} Excel downloaded`
+      );
     } catch (err) {
-      toast.error(err?.message || 'Could not download COGS Excel');
+      toast.error(err?.message || 'Could not download file');
     } finally {
       setExportBusy(false);
     }
@@ -140,24 +148,46 @@ function BreakdownDialog({ open, onOpenChange, loading, error, data, exportParam
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
-        <CenterScreenLoader open={exportBusy} label="Building COGS Excel…" />
+        <CenterScreenLoader
+          open={exportBusy}
+          label={isGrossSales ? 'Building Gross sales file…' : 'Building COGS Excel…'}
+        />
         <DialogHeader>
           <div className="flex flex-wrap items-start justify-between gap-3 pr-6">
             <DialogTitle>{data?.title || 'How this was calculated'}</DialogTitle>
-            {canDownloadCogs ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="shrink-0 print:hidden"
-                disabled={exportBusy}
-                onClick={downloadCogsExcel}
-                aria-label="Download COGS Excel"
-                data-testid="cogs-download-excel"
-              >
-                <FileSpreadsheet className="h-4 w-4" />
-                {exportBusy ? 'Downloading…' : 'Download Excel'}
-              </Button>
+            {canDownload ? (
+              <div className="flex shrink-0 flex-wrap items-center gap-2 print:hidden">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={exportBusy}
+                  onClick={() => downloadBreakdown('xlsx')}
+                  aria-label={
+                    isGrossSales ? 'Download Gross sales Excel' : 'Download COGS Excel'
+                  }
+                  data-testid={
+                    isGrossSales ? 'gross-sales-download-excel' : 'cogs-download-excel'
+                  }
+                >
+                  <FileSpreadsheet className="h-4 w-4" />
+                  {exportBusy ? 'Downloading…' : 'Download Excel'}
+                </Button>
+                {canDownloadGrossSales ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={exportBusy}
+                    onClick={() => downloadBreakdown('csv')}
+                    aria-label="Download Gross sales CSV"
+                    data-testid="gross-sales-download-csv"
+                  >
+                    <FileSpreadsheet className="h-4 w-4" />
+                    {exportBusy ? 'Downloading…' : 'Download CSV'}
+                  </Button>
+                ) : null}
+              </div>
             ) : null}
           </div>
           <DialogDescription>

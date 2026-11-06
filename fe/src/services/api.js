@@ -400,6 +400,8 @@ export const salesAPI = {
   list: (params) => api.get('/sales/', { params }),
   /** Today/month totals for dashboard (sales.view — no reports.view required). */
   dashboardSummary: () => api.get('/sales/dashboard-summary/'),
+  /** On-click Sales history totals for the selected period / filters (managers). */
+  historySummary: (params) => api.get('/sales/history-summary/', { params }),
   get: (id) => api.get(`/sales/${id}/`),
   openForCorrection: (id) => api.post(`/sales/${id}/open-for-correction/`),
   create: (data) => api.post('/sales/', data),

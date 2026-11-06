@@ -26,8 +26,10 @@ const mockSeesAllSales = jest.fn(() => false);
 jest.mock('../../utils/saleRefund', () => ({
   userCanRefundSales: () => false,
   userCanRollbackSales: () => false,
+  userCanUnvoidSales: () => false,
   saleIsRefundable: () => false,
   saleIsRollbackable: () => false,
+  saleIsUnvoidable: () => false,
   handleSaleRefundResponse: jest.fn(),
 }));
 
@@ -35,6 +37,7 @@ jest.mock('../../services/api', () => ({
   salesAPI: {
     list: jest.fn(),
     sellers: jest.fn(),
+    historySummary: jest.fn(),
     get: jest.fn(),
     refund: jest.fn(),
     rollback: jest.fn(),
@@ -42,6 +45,10 @@ jest.mock('../../services/api', () => ({
   reportsAPI: {
     exportFile: jest.fn(),
   },
+}));
+
+jest.mock('../../utils/toast', () => ({
+  toast: { error: jest.fn(), success: jest.fn(), info: jest.fn() },
 }));
 
 jest.mock('./RefundSaleDialog', () => () => null);
@@ -125,6 +132,62 @@ describe('Sales history export', () => {
         { date_from: '2026-08-01' },
         'pdf'
       );
+    });
+  });
+
+  it('hides Show total from staff who only see their own sales', async () => {
+    render(<Sales />);
+    await waitFor(() => expect(screen.getByText('S-100')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /Show total for selected range/i })).not.toBeInTheDocument();
+  });
+
+  it('lets managers calculate the selected period total on click', async () => {
+    mockSeesAllSales.mockReturnValue(true);
+    salesAPI.historySummary.mockResolvedValue({
+      data: {
+        count: 2,
+        total_amount: '350.00',
+        by_method: [
+          { payment_method: 'cash', payment_method_label: 'Cash', count: 1, total: '100.00' },
+          { payment_method: 'mpesa', payment_method_label: 'M-PESA', count: 1, total: '250.00' },
+        ],
+        date_from: '2026-08-01',
+        date_to: '2026-08-18',
+      },
+    });
+
+    render(<Sales />);
+    await waitFor(() => expect(screen.getByText('S-100')).toBeInTheDocument());
+
+    fireEvent.change(document.querySelector('input[name="date_from"]'), {
+      target: { name: 'date_from', value: '2026-08-01' },
+    });
+    fireEvent.change(document.querySelector('input[name="date_to"]'), {
+      target: { name: 'date_to', value: '2026-08-18' },
+    });
+
+    await waitFor(() => {
+      expect(salesAPI.list).toHaveBeenCalledWith(
+        expect.objectContaining({
+          date_from: '2026-08-01',
+          date_to: '2026-08-18',
+        })
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Show total for selected range/i }));
+
+    await waitFor(() => {
+      expect(salesAPI.historySummary).toHaveBeenCalledWith(
+        expect.objectContaining({
+          date_from: '2026-08-01',
+          date_to: '2026-08-18',
+          status: 'completed',
+        })
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Range total')).toBeInTheDocument();
     });
   });
 });
