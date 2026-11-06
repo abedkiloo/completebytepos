@@ -44,28 +44,6 @@ def is_sales_export_payload(payload: Any) -> bool:
     )
 
 
-def _product_rows(payload: dict[str, Any]) -> list[list[Any]]:
-    rows = payload.get('by_product') or payload.get('goods_sold') or []
-    out = []
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        out.append(
-            [
-                row.get('product') or row.get('product_name') or '',
-                row.get('sku') or '',
-                row.get('category') or '',
-                row.get('quantity_sold'),
-                row.get('revenue'),
-                row.get('cogs'),
-                row.get('gross_profit'),
-                row.get('margin_pct'),
-                row.get('sale_line_count'),
-            ]
-        )
-    return out
-
-
 PRODUCT_HEADERS = [
     'Goods sold (product)',
     'SKU',
@@ -78,31 +56,14 @@ PRODUCT_HEADERS = [
     'Sale line count',
 ]
 
-
-def _line_rows(payload: dict[str, Any]) -> list[list[Any]]:
-    out = []
-    for row in payload.get('sale_lines') or []:
-        if not isinstance(row, dict):
-            continue
-        occurred = row.get('sale_date') or ''
-        if isinstance(occurred, str) and 'T' in occurred:
-            occurred = occurred.replace('T', ' ')[:19]
-        out.append(
-            [
-                row.get('sale_number') or '',
-                occurred,
-                row.get('product') or '',
-                row.get('sku') or '',
-                row.get('quantity'),
-                row.get('unit_price'),
-                row.get('line_sale'),
-                row.get('unit_cost'),
-                row.get('line_cogs'),
-                row.get('line_gross_profit'),
-            ]
-        )
-    return out
-
+PRODUCT_HEADERS_NO_COST = [
+    'Goods sold (product)',
+    'SKU',
+    'Category',
+    'Quantity sold',
+    'Revenue',
+    'Sale line count',
+]
 
 LINE_HEADERS = [
     'Sale number',
@@ -116,6 +77,93 @@ LINE_HEADERS = [
     'Line COGS',
     'Line gross profit',
 ]
+
+LINE_HEADERS_NO_COST = [
+    'Sale number',
+    'Sale date/time',
+    'Goods sold',
+    'SKU',
+    'Quantity',
+    'Unit price',
+    'Line sale',
+]
+
+
+def _product_rows(payload: dict[str, Any], *, include_cost: bool = True) -> list[list[Any]]:
+    """
+    Goods-sold product roll-up rows.
+
+    Args:
+        payload: Sales payload with ``by_product`` / ``goods_sold``.
+        include_cost: When False, omit COGS / margin columns (non-admin Excel).
+
+    Returns:
+        List of PRODUCT_HEADERS or PRODUCT_HEADERS_NO_COST-aligned rows.
+    """
+    rows = payload.get('by_product') or payload.get('goods_sold') or []
+    out = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        base = [
+            row.get('product') or row.get('product_name') or '',
+            row.get('sku') or '',
+            row.get('category') or '',
+            row.get('quantity_sold'),
+            row.get('revenue'),
+        ]
+        if include_cost:
+            base.extend(
+                [
+                    row.get('cogs'),
+                    row.get('gross_profit'),
+                    row.get('margin_pct'),
+                    row.get('sale_line_count'),
+                ]
+            )
+        else:
+            base.append(row.get('sale_line_count'))
+        out.append(base)
+    return out
+
+
+def _line_rows(payload: dict[str, Any], *, include_cost: bool = True) -> list[list[Any]]:
+    """
+    Sale-line detail rows.
+
+    Args:
+        payload: Sales payload with ``sale_lines``.
+        include_cost: When False, omit unit cost / line COGS columns.
+
+    Returns:
+        List of LINE_HEADERS or LINE_HEADERS_NO_COST-aligned rows.
+    """
+    out = []
+    for row in payload.get('sale_lines') or []:
+        if not isinstance(row, dict):
+            continue
+        occurred = row.get('sale_date') or ''
+        if isinstance(occurred, str) and 'T' in occurred:
+            occurred = occurred.replace('T', ' ')[:19]
+        base = [
+            row.get('sale_number') or '',
+            occurred,
+            row.get('product') or '',
+            row.get('sku') or '',
+            row.get('quantity'),
+            row.get('unit_price'),
+            row.get('line_sale'),
+        ]
+        if include_cost:
+            base.extend(
+                [
+                    row.get('unit_cost'),
+                    row.get('line_cogs'),
+                    row.get('line_gross_profit'),
+                ]
+            )
+        out.append(base)
+    return out
 
 
 def _payment_rows(payload: dict[str, Any]) -> list[list[Any]]:
@@ -211,13 +259,19 @@ def _summary_rows(payload: dict[str, Any], product_rows: list) -> list[list[Any]
     ]
 
 
-def render_sales_xlsx(payload: dict[str, Any], *, title: str = 'Sales') -> bytes:
+def render_sales_xlsx(
+    payload: dict[str, Any],
+    *,
+    title: str = 'Sales',
+    include_cost: bool = True,
+) -> bytes:
     """
     Build a multi-sheet sales workbook with Goods Sold first.
 
     Args:
         payload: Sales or sales-overview response including ``by_product``.
         title: Workbook title (≤ 120 chars).
+        include_cost: When True (admin), include COGS columns on product sheets.
 
     Returns:
         XLSX bytes.
@@ -232,12 +286,14 @@ def render_sales_xlsx(payload: dict[str, Any], *, title: str = 'Sales') -> bytes
     except ImportError as exc:
         raise RuntimeError('openpyxl must be installed to export Excel files.') from exc
 
-    products = _product_rows(payload)
-    lines = _line_rows(payload)
+    products = _product_rows(payload, include_cost=include_cost)
+    lines = _line_rows(payload, include_cost=include_cost)
+    product_headers = PRODUCT_HEADERS if include_cost else PRODUCT_HEADERS_NO_COST
+    line_headers = LINE_HEADERS if include_cost else LINE_HEADERS_NO_COST
     tickets = _ticket_rows(payload)
     sheets = [
-        ('Goods Sold', PRODUCT_HEADERS, products),
-        ('Sale Lines', LINE_HEADERS, lines),
+        ('Goods Sold', product_headers, products),
+        ('Sale Lines', line_headers, lines),
     ]
     if tickets:
         sheets.append(('Sales', TICKET_HEADERS, tickets))
@@ -257,8 +313,8 @@ def render_sales_xlsx(payload: dict[str, Any], *, title: str = 'Sales') -> bytes
     header_fill = PatternFill('solid', fgColor='1F4E79')
     header_font = Font(bold=True, color='FFFFFF')
     money_idx = {
-        'Goods Sold': {4, 5, 6},
-        'Sale Lines': {5, 6, 7, 8, 9},
+        'Goods Sold': {4, 5, 6} if include_cost else {4},
+        'Sale Lines': {5, 6, 7, 8, 9} if include_cost else {5, 6},
         'Sales': {5},
         'Payment Method': {2},
         'Daily Breakdown': {2},
@@ -302,20 +358,26 @@ def render_sales_xlsx(payload: dict[str, Any], *, title: str = 'Sales') -> bytes
     return buffer.getvalue()
 
 
-def render_sales_csv(payload: dict[str, Any]) -> bytes:
+def render_sales_csv(
+    payload: dict[str, Any],
+    *,
+    include_cost: bool = True,
+) -> bytes:
     """
     Flat Goods Sold CSV (product + quantity).
 
     Args:
         payload: Sales payload with ``by_product``.
+        include_cost: When True (admin), include COGS columns.
 
     Returns:
         UTF-8-SIG CSV bytes.
     """
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(PRODUCT_HEADERS)
-    for row in _product_rows(payload):
+    headers = PRODUCT_HEADERS if include_cost else PRODUCT_HEADERS_NO_COST
+    writer.writerow(headers)
+    for row in _product_rows(payload, include_cost=include_cost):
         writer.writerow(row)
     return output.getvalue().encode('utf-8-sig')
 
@@ -352,15 +414,18 @@ def maybe_export_sales_workbook(
         return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
     if not fmt or fmt == 'pdf':
         return None
+    from reports.export_product_cost import user_may_export_product_cost
+
+    include_cost = user_may_export_product_cost(getattr(request, 'user', None))
     if fmt == 'csv':
-        content = render_sales_csv(payload)
+        content = render_sales_csv(payload, include_cost=include_cost)
         response = HttpResponse(content, content_type=CONTENT_TYPES['csv'])
         response['Content-Disposition'] = (
             f'attachment; filename="{export_filename(slug, "csv")}"'
         )
         response['X-Report-Export'] = 'csv'
         return response
-    content = render_sales_xlsx(payload, title=title)
+    content = render_sales_xlsx(payload, title=title, include_cost=include_cost)
     response = HttpResponse(content, content_type=CONTENT_TYPES['xlsx'])
     response['Content-Disposition'] = (
         f'attachment; filename="{export_filename(slug, "xlsx")}"'

@@ -140,6 +140,7 @@ class GrossSalesExportTests(ManagerAPITestCase):
         wb = load_workbook(BytesIO(xlsx.content), data_only=True)
         self.assertIn('Sales', wb.sheetnames)
         self.assertIn('Summary', wb.sheetnames)
+        self.assertIn('Line items', wb.sheetnames)
         sales_ws = wb['Sales']
         # Header + 2 sales
         sale_totals = []
@@ -148,6 +149,20 @@ class GrossSalesExportTests(ManagerAPITestCase):
                 continue
             sale_totals.append(Decimal(str(row[4])))
         self.assertEqual(sum(sale_totals), Decimal('350.00'))
+
+        lines_ws = wb['Line items']
+        headers = [c.value for c in lines_ws[1]]
+        self.assertIn('Unit cost', headers)
+        self.assertIn('Line cost (COGS)', headers)
+        unit_cost_idx = headers.index('Unit cost')
+        line_cost_idx = headers.index('Line cost (COGS)')
+        line_costs = []
+        for row in lines_ws.iter_rows(min_row=2, values_only=True):
+            if not row or not row[0]:
+                continue
+            self.assertEqual(Decimal(str(row[unit_cost_idx])), Decimal('40.00'))
+            line_costs.append(Decimal(str(row[line_cost_idx])))
+        self.assertEqual(sum(line_costs), Decimal('80.00'))
 
         summary_ws = wb['Summary']
         summary_map = {
@@ -185,6 +200,8 @@ class GrossSalesExportTests(ManagerAPITestCase):
         self.assertIn('S-GS-MPESA', text)
         self.assertIn('TOTAL', text)
         self.assertIn('350', text)
+        self.assertIn('Unit cost', text)
+        self.assertIn('Line cost (COGS)', text)
 
     def test_helpers_detect_payload_and_skip_non_export(self):
         payload = {

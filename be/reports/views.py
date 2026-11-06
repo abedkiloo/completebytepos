@@ -134,7 +134,13 @@ def gated_report_action(action_name):
                 )
             response = view_method(self, request, *args, **kwargs)
             if isinstance(response, Response) and isinstance(response.data, dict):
-                response.data = apply_report_response_flags(response.data)
+                from reports.export_product_cost import should_preserve_product_cost_on_export
+
+                preserve_cost = should_preserve_product_cost_on_export(request)
+                response.data = apply_report_response_flags(
+                    response.data,
+                    preserve_cost=preserve_cost,
+                )
                 if action_name == 'trading_profit':
                     from reports.cogs_export import maybe_export_cogs_workbook
                     from reports.gross_sales_export import maybe_export_gross_sales_workbook
@@ -278,20 +284,49 @@ class ReportViewSet(viewsets.ViewSet):
         if date_to:
             queryset = queryset.filter(sale__occurred_at__lte=date_to)
         
+        from django.db.models import DecimalField, ExpressionWrapper, F, Value
+        from django.db.models.functions import Coalesce
+
+        _dec = DecimalField(max_digits=14, decimal_places=2)
+        _zero = Value(0, output_field=_dec)
+        cogs_expr = ExpressionWrapper(
+            F('quantity') * Coalesce(F('unit_cost'), _zero),
+            output_field=_dec,
+        )
         product_sales = queryset.values(
             'product__id',
-            'product__name', 
+            'product__name',
             'product__sku',
-            'product__category__name'
+            'product__category__name',
         ).annotate(
             quantity_sold=Sum('quantity'),
             revenue=Sum('subtotal'),
-            avg_price=Sum('subtotal') / Sum('quantity')
+            avg_price=Sum('subtotal') / Sum('quantity'),
+            cogs=Sum(cogs_expr),
         ).order_by('-revenue')
 
         limit = _parse_top_limit(request.query_params.get('limit'), default=10)
-        rows = list(product_sales)
-        
+        rows = []
+        for row in product_sales:
+            qty = float(row['quantity_sold'] or 0)
+            revenue = float(row['revenue'] or 0)
+            cogs = float(row['cogs'] or 0)
+            avg_unit_cost = round(cogs / qty, 4) if qty else None
+            rows.append(
+                {
+                    'product__id': row['product__id'],
+                    'product__name': row['product__name'],
+                    'product__sku': row['product__sku'],
+                    'product__category__name': row['product__category__name'],
+                    'quantity_sold': row['quantity_sold'],
+                    'revenue': row['revenue'],
+                    'avg_price': row['avg_price'],
+                    'cogs': cogs,
+                    'avg_unit_cost': avg_unit_cost,
+                    'gross_profit': round(revenue - cogs, 2),
+                }
+            )
+
         return Response({
             'limit': limit,
             'top': rows[:limit],
@@ -893,28 +928,45 @@ class ReportViewSet(viewsets.ViewSet):
         if end:
             qs = qs.filter(sale__occurred_at__lte=end)
 
+        from django.db.models import DecimalField, ExpressionWrapper, F, Value
+        from django.db.models.functions import Coalesce
+
+        _dec = DecimalField(max_digits=14, decimal_places=2)
+        _zero = Value(0, output_field=_dec)
+        cogs_expr = ExpressionWrapper(
+            F('quantity') * Coalesce(F('unit_cost'), _zero),
+            output_field=_dec,
+        )
         rows = list(
             qs.values('product__id', 'product__name', 'product__sku', 'product__category__name')
             .annotate(
                 quantity_sold=Sum('quantity'),
                 revenue=Sum('subtotal'),
                 line_count=Count('id'),
+                cogs=Sum(cogs_expr),
             )
             .order_by('-quantity_sold')[:limit]
         )
 
-        items = [
-            {
-                'product_id': r['product__id'],
-                'name': r['product__name'] or '(unnamed product)',
-                'sku': r['product__sku'] or '',
-                'category': r['product__category__name'] or 'Uncategorised',
-                'quantity_sold': int(r['quantity_sold'] or 0),
-                'revenue': float(r['revenue'] or 0),
-                'line_count': r['line_count'] or 0,
-            }
-            for r in rows
-        ]
+        items = []
+        for r in rows:
+            qty = int(r['quantity_sold'] or 0)
+            revenue = float(r['revenue'] or 0)
+            cogs = float(r['cogs'] or 0)
+            items.append(
+                {
+                    'product_id': r['product__id'],
+                    'name': r['product__name'] or '(unnamed product)',
+                    'sku': r['product__sku'] or '',
+                    'category': r['product__category__name'] or 'Uncategorised',
+                    'quantity_sold': qty,
+                    'revenue': revenue,
+                    'line_count': r['line_count'] or 0,
+                    'cogs': cogs,
+                    'avg_unit_cost': round(cogs / qty, 4) if qty else None,
+                    'gross_profit': round(revenue - cogs, 2),
+                }
+            )
 
         return Response({
             'period': label,

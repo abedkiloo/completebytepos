@@ -791,11 +791,20 @@ def _sale_row(sale, *, amount_key: str = 'total') -> dict[str, Any]:
             if item.subtotal is not None
             else _d(item.quantity) * _d(item.unit_price)
         )
+        qty = _d(item.quantity)
+        unit_cost = item.unit_cost
+        line_cogs = (
+            _d(unit_cost) * qty
+            if unit_cost is not None
+            else Decimal('0')
+        )
         lines.append({
             'product_name': getattr(item.product, 'name', None) or 'Item',
-            'quantity': float(_d(item.quantity)),
+            'quantity': float(qty),
             'unit_price': _money(item.unit_price),
             'line_total': _money(line_total),
+            'unit_cost': _money(unit_cost) if unit_cost is not None else None,
+            'line_cogs': _money(line_cogs),
         })
     occurred = _as_date(sale.occurred_at) or ''
     return {

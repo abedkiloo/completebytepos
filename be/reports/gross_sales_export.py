@@ -41,6 +41,17 @@ LINE_HEADERS = [
     'Line total',
 ]
 
+LINE_HEADERS_WITH_COST = [
+    'Sale number',
+    'Business date',
+    'Product',
+    'Quantity',
+    'Unit price',
+    'Line total',
+    'Unit cost',
+    'Line cost (COGS)',
+]
+
 
 def _d(value: Any) -> Decimal:
     """
@@ -171,15 +182,20 @@ def sale_export_rows(payload: dict[str, Any]) -> list[list[Any]]:
     return out
 
 
-def line_export_rows(payload: dict[str, Any]) -> list[list[Any]]:
+def line_export_rows(
+    payload: dict[str, Any],
+    *,
+    include_cost: bool = False,
+) -> list[list[Any]]:
     """
     Flat line-item rows for Excel/CSV.
 
     Args:
         payload: Gross sales breakdown with nested ``lines`` on each sale.
+        include_cost: When True (admin Excel), append unit cost and line COGS.
 
     Returns:
-        List of LINE_HEADERS-aligned rows.
+        List of LINE_HEADERS or LINE_HEADERS_WITH_COST-aligned rows.
     """
     out: list[list[Any]] = []
     for row in payload.get('rows') or []:
@@ -190,16 +206,26 @@ def line_export_rows(payload: dict[str, Any]) -> list[list[Any]]:
         for line in row.get('lines') or []:
             if not isinstance(line, dict):
                 continue
-            out.append(
-                [
-                    sale_number,
-                    day,
-                    line.get('product_name') or 'Item',
-                    _qty_num(line.get('quantity')),
-                    _money_num(line.get('unit_price')),
-                    _money_num(line.get('line_total')),
-                ]
-            )
+            base = [
+                sale_number,
+                day,
+                line.get('product_name') or 'Item',
+                _qty_num(line.get('quantity')),
+                _money_num(line.get('unit_price')),
+                _money_num(line.get('line_total')),
+            ]
+            if include_cost:
+                unit_cost = line.get('unit_cost')
+                line_cogs = line.get('line_cogs')
+                if line_cogs is None and unit_cost is not None:
+                    line_cogs = _d(unit_cost) * _d(line.get('quantity'))
+                base.extend(
+                    [
+                        _money_num(unit_cost) if unit_cost is not None else None,
+                        _money_num(line_cogs) if line_cogs is not None else None,
+                    ]
+                )
+            out.append(base)
     return out
 
 
@@ -244,6 +270,7 @@ def render_gross_sales_xlsx(
     payload: dict[str, Any],
     *,
     title: str = 'Gross sales',
+    include_cost: bool = False,
 ) -> bytes:
     """
     Build a multi-sheet Gross sales workbook.
@@ -251,6 +278,7 @@ def render_gross_sales_xlsx(
     Args:
         payload: Gross sales breakdown dict.
         title: Workbook title (≤ 120 chars).
+        include_cost: When True, Line items include unit cost and line COGS.
 
     Returns:
         XLSX bytes.
@@ -266,7 +294,8 @@ def render_gross_sales_xlsx(
         raise RuntimeError('openpyxl must be installed to export Excel files.') from exc
 
     sales = sale_export_rows(payload)
-    lines = line_export_rows(payload)
+    lines = line_export_rows(payload, include_cost=include_cost)
+    line_headers = LINE_HEADERS_WITH_COST if include_cost else LINE_HEADERS
     summary = summary_rows(payload, sales_rows=sales)
 
     workbook = Workbook()
@@ -295,7 +324,7 @@ def render_gross_sales_xlsx(
     sales_ws = workbook.create_sheet('Sales')
     write_table(sales_ws, SALE_HEADERS, sales)
     lines_ws = workbook.create_sheet('Line items')
-    write_table(lines_ws, LINE_HEADERS, lines)
+    write_table(lines_ws, line_headers, lines)
 
     summary_ws['A3'] = title[:120]
     summary_ws['A3'].font = Font(bold=True, size=12)
@@ -305,18 +334,24 @@ def render_gross_sales_xlsx(
     return buffer.getvalue()
 
 
-def render_gross_sales_csv(payload: dict[str, Any]) -> bytes:
+def render_gross_sales_csv(
+    payload: dict[str, Any],
+    *,
+    include_cost: bool = False,
+) -> bytes:
     """
     Flat Gross sales CSV (sales first, then line items).
 
     Args:
         payload: Gross sales breakdown dict.
+        include_cost: When True, Line items include unit cost and line COGS.
 
     Returns:
         UTF-8-SIG CSV bytes.
     """
     sales = sale_export_rows(payload)
-    lines = line_export_rows(payload)
+    lines = line_export_rows(payload, include_cost=include_cost)
+    line_headers = LINE_HEADERS_WITH_COST if include_cost else LINE_HEADERS
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([brand_name_line()])
@@ -329,7 +364,7 @@ def render_gross_sales_csv(payload: dict[str, Any]) -> bytes:
         writer.writerow(row)
     writer.writerow([])
     writer.writerow(['Line items'])
-    writer.writerow(LINE_HEADERS)
+    writer.writerow(line_headers)
     for row in lines:
         writer.writerow(row)
     return output.getvalue().encode('utf-8-sig')
@@ -369,15 +404,20 @@ def maybe_export_gross_sales_workbook(
         return None
     if fmt == 'pdf':
         return None
+    from reports.export_product_cost import user_may_export_product_cost
+
+    include_cost = user_may_export_product_cost(getattr(request, 'user', None))
     if fmt == 'csv':
-        content = render_gross_sales_csv(payload)
+        content = render_gross_sales_csv(payload, include_cost=include_cost)
         response = HttpResponse(content, content_type=CONTENT_TYPES['csv'])
         response['Content-Disposition'] = (
             f'attachment; filename="{export_filename(slug, "csv")}"'
         )
         response['X-Report-Export'] = 'csv'
     else:
-        content = render_gross_sales_xlsx(payload, title=title)
+        content = render_gross_sales_xlsx(
+            payload, title=title, include_cost=include_cost
+        )
         response = HttpResponse(content, content_type=CONTENT_TYPES['xlsx'])
         response['Content-Disposition'] = (
             f'attachment; filename="{export_filename(slug, "xlsx")}"'

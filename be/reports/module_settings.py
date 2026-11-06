@@ -147,8 +147,17 @@ def _strip_summary(summary: dict) -> dict:
     return summary
 
 
-def apply_report_response_flags(data: dict) -> dict:
-    """Strip sensitive report fields based on display toggles."""
+def apply_report_response_flags(data: dict, *, preserve_cost: bool = False) -> dict:
+    """
+    Strip sensitive report fields based on display toggles.
+
+    Args:
+        data: Report JSON payload.
+        preserve_cost: When True (admin Excel/CSV), keep product cost/COGS fields.
+
+    Returns:
+        Possibly stripped copy of ``data`` (non-dicts returned unchanged).
+    """
     if not isinstance(data, dict):
         return data
 
@@ -162,7 +171,9 @@ def apply_report_response_flags(data: dict) -> dict:
     if not reports_show_tax():
         data.pop('tax_breakdown', None)
 
-    if not reports_show_cost_and_profit():
+    if not reports_show_cost_and_profit() and not preserve_cost:
+        from reports.export_product_cost import strip_product_cost_fields
+
         data.pop('profit', None)
         data.pop('net_profit', None)
         data.pop('profit_margin', None)
@@ -203,17 +214,23 @@ def apply_report_response_flags(data: dict) -> dict:
                 row.pop('total_cost', None)
                 stripped.append(row)
             data['purchases'] = stripped
-        for list_key in ('lines', 'items'):
+        for list_key in (
+            'lines',
+            'items',
+            'products',
+            'top',
+            'by_product',
+            'sale_lines',
+            'goods_sold',
+        ):
             if not isinstance(data.get(list_key), list):
                 continue
             stripped = []
             for row in data[list_key]:
-                row = dict(row)
-                row.pop('unit_cost', None)
-                row.pop('cost_value', None)
-                row.pop('inventory_value', None)
-                row.pop('cost', None)
-                stripped.append(row)
+                if isinstance(row, dict):
+                    stripped.append(strip_product_cost_fields(row))
+                else:
+                    stripped.append(row)
             data[list_key] = stripped
 
     return data
