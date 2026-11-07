@@ -1058,6 +1058,11 @@ export default function DailySalesPage() {
           setShowReceiptModal(false);
           loadDailySales();
         }}
+        onDiscarded={() => {
+          setShowReceiptModal(false);
+          setSelectedSale(null);
+          loadDailySales();
+        }}
         onUnvoided={(updated) => {
           setSelectedSale(updated);
           loadDailySales();

@@ -138,6 +138,7 @@ SALES_PERMS = RequirePermPerAction('sales', {
     'checkout': 'create',
     'open_for_correction': 'create',
     'cancel_holding': 'update',
+    'discard_returned': 'approve',
     'refund': 'refund',
     'rollback': 'rollback',
     'unvoid': 'unvoid',
@@ -228,6 +229,7 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             'checkout',
             'open_for_correction',
             'cancel_holding',
+            'discard_returned',
             'receipt',
             'complete',
             'reject_complete',
@@ -1208,6 +1210,57 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
         log_holding_cancelled(request, holding)
         return Response({'message': 'Holding invoice cancelled.', 'sale_number': holding.sale_number})
+
+    @action(detail=True, methods=['post'], url_path='discard-returned')
+    @transaction.atomic
+    def discard_returned(self, request, pk=None):
+        """
+        Permanently remove a returned-for-correction sale from history.
+
+        Body: ``confirm=true``, ``confirm_sale_number`` (exact), ``reason``.
+        Books/stock were already reversed on return — this only hides the row.
+        """
+        from sales.sale_completion_approval import (
+            discard_returned_sale,
+            sale_can_be_permanently_discarded,
+        )
+        from utils.audit_events import log_sale_discarded
+
+        sale = self.get_object()
+        if not sale_can_be_permanently_discarded(sale):
+            from sales.sale_completion_approval import DISCARD_NOT_ALLOWED
+
+            return Response(
+                {'error': DISCARD_NOT_ALLOWED},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        data = request.data if hasattr(request, 'data') else {}
+        confirm_raw = data.get('confirm', False)
+        confirm = confirm_raw in (True, 'true', '1', 1, 'yes', 'on')
+        try:
+            discarded = discard_returned_sale(
+                sale,
+                user=request.user,
+                reason=data.get('reason') or '',
+                confirm=confirm,
+                confirm_sale_number=data.get('confirm_sale_number') or '',
+            )
+        except ValidationError as e:
+            return Response(
+                {'error': validation_error_message(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        log_sale_discarded(request, discarded, reason=data.get('reason') or '')
+        return Response(
+            {
+                'message': (
+                    f'Sale {discarded.sale_number} was permanently removed. '
+                    'It will not appear in sales history or reports.'
+                ),
+                'sale_number': discarded.sale_number,
+                'status': discarded.status,
+            }
+        )
 
 
 class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):

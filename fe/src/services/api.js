@@ -408,6 +408,8 @@ export const salesAPI = {
   receipt: (id) => api.get(`/sales/${id}/receipt/`),
   complete: (id, data) => api.post(`/sales/${id}/complete/`, data || {}),
   rejectComplete: (id, data) => api.post(`/sales/${id}/reject-complete/`, data),
+  /** Permanently remove a returned-for-correction sale (admin confirm). */
+  discardReturned: (id, data) => api.post(`/sales/${id}/discard-returned/`, data),
   /** Register draft invoice (holding) — synced as items are added */
   activeHolding: () => api.get('/sales/active-holding/'),
   saveHolding: (data) => api.post('/sales/holding/', data),

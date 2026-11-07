@@ -35,6 +35,7 @@ import {
   saleReceiptBlockedReason,
   saleRejectionReason,
   saleCanAdminReturnForCorrection,
+  saleCanPermanentlyDiscard,
   saleDateInputValue,
   saleMaxCorrectableDateInput,
   userCanCorrectSaleDate,
@@ -60,6 +61,7 @@ export default function SaleDetailDialog({
   onPrint,
   canReturnForCorrection = false,
   onReturned,
+  onDiscarded,
   onUpdated,
   showCustomerName = true,
   showAdminDetails = true,
@@ -75,6 +77,10 @@ export default function SaleDetailDialog({
   const [showUnvoid, setShowUnvoid] = useState(false);
   const [unvoidReason, setUnvoidReason] = useState('');
   const [unvoiding, setUnvoiding] = useState(false);
+  const [showDiscard, setShowDiscard] = useState(false);
+  const [discardReason, setDiscardReason] = useState('');
+  const [discardConfirmNumber, setDiscardConfirmNumber] = useState('');
+  const [discarding, setDiscarding] = useState(false);
   const [saleDate, setSaleDate] = useState(() => saleDateInputValue(sale?.occurred_at || sale?.created_at));
   const [savingDate, setSavingDate] = useState(false);
 
@@ -84,6 +90,9 @@ export default function SaleDetailDialog({
     setClearPayment(Number(sale?.amount_paid || 0) > 0);
     setShowUnvoid(false);
     setUnvoidReason('');
+    setShowDiscard(false);
+    setDiscardReason('');
+    setDiscardConfirmNumber('');
     setSaleDate(saleDateInputValue(sale?.occurred_at || sale?.created_at));
   }, [sale?.id, sale?.occurred_at, sale?.created_at, sale?.amount_paid]);
 
@@ -100,6 +109,8 @@ export default function SaleDetailDialog({
   const managerComment = saleRejectionReason(sale);
   const receiptBlocked = saleReceiptBlockedReason(sale);
   const canReturn = canReturnForCorrection && saleCanAdminReturnForCorrection(sale);
+  const canDiscard =
+    canReturnForCorrection && saleCanPermanentlyDiscard(sale);
   const canCorrectDate =
     sale.status !== 'cancelled' &&
     (sale.can_correct_date === true || userCanCorrectSaleDate());
@@ -165,6 +176,38 @@ export default function SaleDetailDialog({
       );
     } finally {
       setUnvoiding(false);
+    }
+  };
+
+  const permanentlyDiscard = async () => {
+    if (!discardReason.trim()) {
+      toast.warning('Please say why you are permanently removing this sale');
+      return;
+    }
+    if (discardConfirmNumber.trim() !== String(sale.sale_number || '').trim()) {
+      toast.warning(`Type the sale number ${sale.sale_number} to confirm removal`);
+      return;
+    }
+    setDiscarding(true);
+    try {
+      const res = await salesAPI.discardReturned(sale.id, {
+        confirm: true,
+        confirm_sale_number: discardConfirmNumber.trim(),
+        reason: discardReason.trim(),
+      });
+      toast.success(
+        res.data?.message ||
+          `Sale ${sale.sale_number} was permanently removed from history and reports.`
+      );
+      onDiscarded?.(res.data);
+      onOpenChange(false);
+    } catch (err) {
+      const data = err.response?.data;
+      toast.error(
+        data?.error || data?.detail || 'Could not permanently remove this sale'
+      );
+    } finally {
+      setDiscarding(false);
     }
   };
 
@@ -567,6 +610,45 @@ export default function SaleDetailDialog({
           </div>
         ) : null}
 
+        {canDiscard && showDiscard ? (
+          <div
+            className="space-y-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm"
+            data-testid="sale-discard-panel"
+          >
+            <p className="font-semibold">Permanently remove this returned sale</p>
+            <p className="text-muted-foreground">
+              Stock and money were already reversed when it was returned. This hides the
+              sale from history and reports forever. Type the sale number to confirm.
+            </p>
+            <Label htmlFor={`discard-reason-${sale.id}`}>Reason</Label>
+            <Input
+              id={`discard-reason-${sale.id}`}
+              value={discardReason}
+              onChange={(event) => setDiscardReason(event.target.value)}
+              placeholder="Why remove this sale permanently?"
+            />
+            <Label htmlFor={`discard-number-${sale.id}`}>
+              Type {sale.sale_number} to confirm
+            </Label>
+            <Input
+              id={`discard-number-${sale.id}`}
+              value={discardConfirmNumber}
+              onChange={(event) => setDiscardConfirmNumber(event.target.value)}
+              placeholder={sale.sale_number}
+              autoComplete="off"
+            />
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={permanentlyDiscard}
+              disabled={discarding}
+              data-testid="confirm-permanent-discard"
+            >
+              {discarding ? 'Removing…' : 'Confirm permanent removal'}
+            </Button>
+          </div>
+        ) : null}
+
         <DialogFooter className="flex-wrap gap-2 sm:justify-between">
           <div className="flex flex-wrap items-center gap-1">
             {canRollback && saleIsRollbackable(sale) && onRollback ? (
@@ -592,6 +674,7 @@ export default function SaleDetailDialog({
                 variant="outline"
                 onClick={() => {
                   setShowReturn(false);
+                  setShowDiscard(false);
                   setShowUnvoid((open) => !open);
                 }}
                 disabled={unvoiding}
@@ -606,6 +689,7 @@ export default function SaleDetailDialog({
                   variant="destructive"
                   onClick={() => {
                     setShowUnvoid(false);
+                    setShowDiscard(false);
                     setShowReturn((open) => !open);
                   }}
                   disabled={returning}
@@ -614,6 +698,20 @@ export default function SaleDetailDialog({
                   Return for correction
                 </Button>
               </span>
+            ) : null}
+            {canDiscard ? (
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  setShowReturn(false);
+                  setShowUnvoid(false);
+                  setShowDiscard((open) => !open);
+                }}
+                disabled={discarding}
+                data-testid="permanent-remove-sale"
+              >
+                Permanently remove
+              </Button>
             ) : null}
           </div>
           <div className="flex gap-2">

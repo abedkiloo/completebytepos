@@ -44,6 +44,20 @@ POSTED_RETURN_BLOCKED_REFUND = (
 ADMIN_RETURN_NOT_ALLOWED = (
     'This sale cannot be returned for correction.'
 )
+DISCARD_NOT_ALLOWED = (
+    'Only a sale that was returned for correction (and is not completed) '
+    'can be permanently removed.'
+)
+DISCARD_CONFIRM_REQUIRED = (
+    'Confirm permanent removal: send confirm=true and type the sale number.'
+)
+DISCARD_SALE_NUMBER_MISMATCH = (
+    'Type the exact sale number to permanently remove this sale.'
+)
+DISCARD_REASON_REQUIRED = 'Say why you are permanently removing this sale.'
+DISCARD_HAS_REFUNDS = (
+    'This sale has refund records and cannot be permanently removed.'
+)
 
 
 def user_can_complete_sales(user) -> bool:
@@ -505,6 +519,90 @@ def admin_return_sale_for_correction(
     if clear_payment:
         clear_sale_tender_fields(sale)
     notify_sale_returned_for_correction(sale, user, reason)
+    return sale
+
+
+def sale_can_be_permanently_discarded(sale: Sale) -> bool:
+    """
+    True when an admin may permanently hide this sale from lists/reports.
+
+    Only holdings/cancelled sales that were returned from a live completed sale
+    (books already reversed). Fresh drafts and completed sales cannot be discarded.
+
+    Args:
+        sale: Sale row (may be unsaved — returns False without pk/status).
+
+    Returns:
+        True when discard is allowed; False otherwise.
+    """
+    if sale is None or not getattr(sale, 'pk', None):
+        return False
+    if sale.status not in ('holding', 'cancelled'):
+        return False
+    if getattr(sale, 'refund_status', 'none') not in ('none', '', None):
+        return False
+    if sale.refunds.exists():
+        return False
+    return sale_was_returned_from_completed(sale) or sale_needs_salesperson_action(sale)
+
+
+@transaction.atomic
+def discard_returned_sale(
+    sale: Sale,
+    *,
+    user,
+    reason: str,
+    confirm: bool = False,
+    confirm_sale_number: str = '',
+) -> Sale:
+    """
+    Permanently remove a returned sale from history/lists (status=discarded).
+
+    Does not reverse stock or money again — return-for-correction already did.
+    Discarded sales are excluded from reports (``posted_sales`` only counts
+    completed) and from default sales list filters.
+
+    Args:
+        sale: Sale in holding/cancelled that was returned for correction.
+        user: Admin performing the discard.
+        reason: Non-empty explanation (stored on audit / notes, ≤ 2000 chars).
+        confirm: Must be True.
+        confirm_sale_number: Must match ``sale.sale_number`` exactly.
+
+    Returns:
+        The sale refreshed with ``status='discarded'``.
+
+    Raises:
+        ValidationError: When confirm/number/reason missing, sale not eligible,
+            or refunds exist.
+
+    Side effects:
+        Sets status discarded; closes related daily-note return tasks; no stock
+        or wallet changes.
+    """
+    reason = (reason or '').strip()
+    if not reason:
+        raise ValidationError(DISCARD_REASON_REQUIRED)
+    if not confirm:
+        raise ValidationError(DISCARD_CONFIRM_REQUIRED)
+    expected = (getattr(sale, 'sale_number', None) or '').strip()
+    typed = (confirm_sale_number or '').strip()
+    if not expected or typed != expected:
+        raise ValidationError(DISCARD_SALE_NUMBER_MISMATCH)
+    if not sale_can_be_permanently_discarded(sale):
+        raise ValidationError(DISCARD_NOT_ALLOWED)
+    if sale.refunds.exists():
+        raise ValidationError(DISCARD_HAS_REFUNDS)
+
+    sale.status = 'discarded'
+    note = (getattr(sale, 'notes', None) or '').strip()
+    discard_line = f'Permanently removed by admin: {reason[:500]}'
+    sale.notes = f'{note}\n{discard_line}'.strip() if note else discard_line
+    sale.save(update_fields=['status', 'notes', 'updated_at'])
+
+    from daily_notes.approval_notice import complete_sale_return_notes
+
+    complete_sale_return_notes(record_id=sale.pk)
     return sale
 
 

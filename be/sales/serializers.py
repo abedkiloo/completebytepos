@@ -498,6 +498,7 @@ class SaleSerializer(serializers.ModelSerializer):
     can_rollback = serializers.SerializerMethodField()
     can_correct_date = serializers.SerializerMethodField()
     needs_salesperson_action = serializers.SerializerMethodField()
+    can_permanently_discard = serializers.SerializerMethodField()
     rejection_reason = serializers.SerializerMethodField()
     is_posted_correction = serializers.SerializerMethodField()
     approval_details = serializers.SerializerMethodField()
@@ -519,7 +520,8 @@ class SaleSerializer(serializers.ModelSerializer):
             'client_channel', 'backfill_reason', 'is_late_entry',
             'backfill_receipt_photo_url',
             'items', 'item_count', 'amount_refunded', 'refundable_remaining', 'can_refund',
-            'can_rollback', 'can_correct_date', 'needs_salesperson_action', 'rejection_reason',
+            'can_rollback', 'can_correct_date', 'needs_salesperson_action',
+            'can_permanently_discard', 'rejection_reason',
             'is_posted_correction',
             'approval_details', 'activity',
             'created_at', 'updated_at'
@@ -587,6 +589,11 @@ class SaleSerializer(serializers.ModelSerializer):
         from sales.sale_completion_approval import sale_needs_salesperson_action
 
         return sale_needs_salesperson_action(obj)
+
+    def get_can_permanently_discard(self, obj):
+        from sales.sale_completion_approval import sale_can_be_permanently_discarded
+
+        return sale_can_be_permanently_discarded(obj)
 
     def get_rejection_reason(self, obj):
         from sales.sale_completion_approval import sale_rejection_reason

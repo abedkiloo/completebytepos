@@ -100,6 +100,14 @@ export function saleCanAdminReturnForCorrection(sale) {
   return false;
 }
 
+/** Admin may permanently remove a returned sale (books already reversed). */
+export function saleCanPermanentlyDiscard(sale) {
+  if (sale?.can_permanently_discard === true) return true;
+  const status = String(sale?.status || '');
+  if (status !== 'holding' && status !== 'cancelled') return false;
+  return saleNeedsSalespersonAction(sale);
+}
+
 export function awaitingApprovalListParams(filters = {}) {
   return { ...filters, status: SALE_AWAITING_APPROVAL_STATUS };
 }

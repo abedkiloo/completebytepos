@@ -480,6 +480,11 @@ export default function CustomerDailyDetailPage() {
           setShowReceipt(false);
           load();
         }}
+        onDiscarded={() => {
+          setShowReceipt(false);
+          setSelectedSale(null);
+          load();
+        }}
         onUnvoided={(updated) => {
           setSelectedSale(updated);
           load();

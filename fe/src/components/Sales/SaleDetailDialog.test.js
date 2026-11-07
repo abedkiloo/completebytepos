@@ -8,7 +8,12 @@ jest.mock('../../hooks/useStoreSettings', () => ({
 }));
 
 jest.mock('../../services/api', () => ({
-  salesAPI: { rejectComplete: jest.fn(), correctDate: jest.fn(), unvoid: jest.fn() },
+  salesAPI: {
+    rejectComplete: jest.fn(),
+    correctDate: jest.fn(),
+    unvoid: jest.fn(),
+    discardReturned: jest.fn(),
+  },
 }));
 
 const mockNavigate = jest.fn();
@@ -334,6 +339,51 @@ describe('SaleDetailDialog', () => {
         clear_payment: false,
       });
     });
+  });
+
+  it('lets admin permanently remove a returned sale after confirming the number', async () => {
+    salesAPI.discardReturned.mockResolvedValue({
+      data: {
+        message: 'Sale S-100 was permanently removed.',
+        sale_number: 'S-100',
+        status: 'discarded',
+      },
+    });
+    const onDiscarded = jest.fn();
+    const onOpenChange = jest.fn();
+    renderDialog(
+      <SaleDetailDialog
+        sale={{
+          ...sale,
+          status: 'holding',
+          refund_status: 'none',
+          can_permanently_discard: true,
+          needs_salesperson_action: true,
+        }}
+        open
+        onOpenChange={onOpenChange}
+        canReturnForCorrection
+        onDiscarded={onDiscarded}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('permanent-remove-sale'));
+    fireEvent.change(screen.getByLabelText(/Reason/i), {
+      target: { value: 'Will not rekey' },
+    });
+    fireEvent.change(screen.getByLabelText(/Type S-100 to confirm/i), {
+      target: { value: 'S-100' },
+    });
+    fireEvent.click(screen.getByTestId('confirm-permanent-discard'));
+    await waitFor(() => {
+      expect(salesAPI.discardReturned).toHaveBeenCalledWith(1, {
+        confirm: true,
+        confirm_sale_number: 'S-100',
+        reason: 'Will not rekey',
+      });
+    });
+    expect(onDiscarded).toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
   it('lets a manager save a new sale date', async () => {

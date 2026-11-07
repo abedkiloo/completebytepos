@@ -213,6 +213,7 @@ class Sale(models.Model):
         ('awaiting_payment', 'Awaiting payment'),
         ('completed', 'Completed'),
         ('cancelled', 'Cancelled'),
+        ('discarded', 'Permanently removed'),
     ]
 
     REFUND_STATUS_CHOICES = [

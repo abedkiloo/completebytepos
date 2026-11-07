@@ -150,6 +150,10 @@ class SaleService(BaseService):
         date_from = inclusive_start_datetime(filters.get('date_from'))
         date_to = inclusive_end_datetime(filters.get('date_to'))
 
+        # Permanently removed sales stay out of every list/history tab.
+        if status != 'discarded':
+            queryset = queryset.exclude(status='discarded')
+
         if status == 'pending_approval':
             if date_from:
                 queryset = queryset.filter(occurred_at__gte=date_from)
@@ -1648,6 +1652,42 @@ class SaleService(BaseService):
 
         complete_sale_return_notes(record_id=holding.pk)
         return holding
+
+    @transaction.atomic
+    def discard_returned_sale(
+        self,
+        sale: Sale,
+        *,
+        user,
+        reason: str,
+        confirm: bool = False,
+        confirm_sale_number: str = '',
+    ) -> Sale:
+        """
+        Permanently remove a returned sale (admin). Books already reversed.
+
+        Args:
+            sale: Sale to discard.
+            user: Acting admin.
+            reason: Non-empty reason.
+            confirm: Must be True.
+            confirm_sale_number: Must match sale.sale_number.
+
+        Returns:
+            Sale with status discarded.
+
+        Raises:
+            ValidationError: From ``discard_returned_sale`` eligibility checks.
+        """
+        from sales.sale_completion_approval import discard_returned_sale as discard_fn
+
+        return discard_fn(
+            sale,
+            user=user,
+            reason=reason,
+            confirm=confirm,
+            confirm_sale_number=confirm_sale_number,
+        )
 
 
 class InvoiceService(BaseService):

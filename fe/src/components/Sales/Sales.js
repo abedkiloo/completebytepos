@@ -774,6 +774,11 @@ const Sales = () => {
             setShowReceiptModal(false);
             loadSales();
           }}
+          onDiscarded={() => {
+            setShowReceiptModal(false);
+            setSelectedSale(null);
+            loadSales();
+          }}
           onRefund={(sale) => {
             setShowReceiptModal(false);
             openRefundDialog(sale);

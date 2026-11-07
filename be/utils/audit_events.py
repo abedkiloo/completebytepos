@@ -203,6 +203,28 @@ def log_holding_cancelled(request, holding):
     )
 
 
+def log_sale_discarded(request, sale, *, reason: str = ''):
+    """
+    Audit permanent removal of a returned sale.
+
+    Args:
+        request: Authenticated request.
+        sale: Sale with status discarded.
+        reason: Admin reason (truncated to 500 chars).
+    """
+    log_domain_event(
+        request,
+        'sale_discarded',
+        sale,
+        module='sales',
+        changes={
+            'sale_number': getattr(sale, 'sale_number', ''),
+            'status': getattr(sale, 'status', ''),
+            'reason': (reason or '')[:500],
+        },
+    )
+
+
 def log_product_write(request, product: Model, *, before: Model | None, action: str):
     log_model_change(request, action, product, module='products', before=before)
 
