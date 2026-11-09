@@ -401,6 +401,15 @@ def _debt_collection_sections(change: PendingChange, cache=None) -> list[dict]:
         _section('Collection', facts=_facts(
             _fact('Amount collected', amount, 'money'),
             _fact('Payment method', PAYMENT_LABELS.get(method, method)),
+            _fact('Paid by', payload.get('payer_name')),
+            _fact('Payer phone', payload.get('payer_phone')),
+            _fact(
+                'M-Pesa via',
+                {'till': 'Till', 'bank': 'Bank'}.get(
+                    (payload.get('mpesa_destination') or '').strip().lower(),
+                    payload.get('mpesa_destination'),
+                ),
+            ),
             _fact('Reference', payload.get('reference')),
             _fact('Notes', payload.get('notes')),
             _fact('Collected by', _user_label(change.made_by)),

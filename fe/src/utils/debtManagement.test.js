@@ -5,6 +5,9 @@ import {
   getTodayDateString,
   shiftDate,
   formatDateLabel,
+  settlementMethodLabel,
+  settlementPayerLabel,
+  settlementReferenceLabel,
 } from './debtManagement';
 
 describe('debtManagement utils', () => {
@@ -32,5 +35,21 @@ describe('debtManagement utils', () => {
   it('labels today in formatDateLabel', () => {
     const today = getTodayDateString();
     expect(formatDateLabel(today)).toContain('Today');
+  });
+
+  it('labels method with till/bank and payer', () => {
+    expect(
+      settlementMethodLabel({
+        payment_method: 'mpesa',
+        mpesa_destination: 'till',
+      })
+    ).toBe('M-PESA · Till');
+    expect(
+      settlementPayerLabel({
+        payer_name: 'Ann',
+        payer_phone: '0700',
+      })
+    ).toBe('Ann · 0700');
+    expect(settlementReferenceLabel({ reference: 'QHX1' })).toBe('QHX1');
   });
 });

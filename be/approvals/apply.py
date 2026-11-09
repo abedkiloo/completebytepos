@@ -346,6 +346,9 @@ def _apply_debt_collection(change: PendingChange) -> None:
         reference=payload.get('reference') or '',
         notes=payload.get('notes') or '',
         user=change.made_by,
+        payer_name=payload.get('payer_name') or '',
+        payer_phone=payload.get('payer_phone') or '',
+        mpesa_destination=payload.get('mpesa_destination') or '',
     )
     customer.refresh_from_db()
     change.apply_payload = {

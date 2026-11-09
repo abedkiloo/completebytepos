@@ -1184,6 +1184,28 @@ class CustomerWalletTransaction(models.Model):
         default='',
         help_text='How a debt settlement was paid (cash / mpesa). Blank for non-settlement rows.',
     )
+    payer_name = models.CharField(
+        max_length=120,
+        blank=True,
+        default='',
+        help_text='Name of the person who paid (may differ from the customer on file).',
+    )
+    payer_phone = models.CharField(
+        max_length=32,
+        blank=True,
+        default='',
+        help_text='Phone number of the person who paid.',
+    )
+    mpesa_destination = models.CharField(
+        max_length=16,
+        blank=True,
+        default='',
+        choices=[
+            ('till', 'Till'),
+            ('bank', 'Bank'),
+        ],
+        help_text='For M-Pesa codes: till or bank. Blank for cash / non-code flows.',
+    )
     notes = models.TextField(blank=True, help_text='Transaction notes')
     created_by = models.ForeignKey(
         User,
@@ -1200,6 +1222,7 @@ class CustomerWalletTransaction(models.Model):
             models.Index(fields=['sale']),
             models.Index(fields=['invoice']),
             models.Index(fields=['source_type', 'created_at']),
+            models.Index(fields=['mpesa_destination', 'reference']),
         ]
     
     def __str__(self):

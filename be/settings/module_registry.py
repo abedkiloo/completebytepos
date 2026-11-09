@@ -173,6 +173,13 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
                 'County / sub-county / ward filters and invalid-location cleanup.',
                 4,
             ),
+            _f(
+                'collection_payer_details',
+                'Collection payer details',
+                'Require who paid (name + phone) on debt collections, and mark '
+                'M-Pesa codes as till or bank so payments can be filtered.',
+                5,
+            ),
         ],
     },
     {
@@ -490,7 +497,11 @@ PRESETS: dict[str, dict[str, Any]] = {
             # No retail POS, normal sale, or barcode module in the starter pack.
             'sales': ['billing_pos', 'receipt_printing', 'sales_history', 'daily_sales'],
             'products': ['bulk_operations', 'csv_import_export'],
-            'customers': ['customer_management', 'customer_history'],
+            'customers': [
+                'customer_management',
+                'customer_history',
+                'collection_payer_details',
+            ],
             'invoicing': ['invoice_creation', 'invoice_tracking', 'payment_tracking'],
             'inventory': ['stock_adjustments', 'low_stock_alerts', 'inventory_reports'],
             'stock': ['manage_stock', 'stock_adjustments', 'low_stock_alerts'],

@@ -42,7 +42,30 @@ def queue_debt_collection(
     payment_method: str,
     reference: str = '',
     notes: str = '',
+    payer_name: str = '',
+    payer_phone: str = '',
+    mpesa_destination: str = '',
 ) -> PendingChange:
+    """
+    Queue a debt collection for manager approval.
+
+    Args:
+        request: HTTP request (maker identity).
+        customer: Customer whose wallet will be credited on approve.
+        amount: Positive payment amount (KES, > 0).
+        payment_method: ``cash`` or ``mpesa``.
+        reference: Optional M-Pesa / receipt code (≤ 100 chars).
+        notes: Optional free-text note.
+        payer_name: Who paid (≤ 120 chars).
+        payer_phone: Payer phone (≤ 32 chars).
+        mpesa_destination: ``till``, ``bank``, or blank.
+
+    Returns:
+        PendingChange awaiting checker approval.
+
+    Raises:
+        ValidationError: Amount ≤ 0 or another collection already pending.
+    """
     if amount <= 0:
         raise ValidationError('Payment amount must be greater than zero.')
     if customer_has_pending_debt_collection(customer):
@@ -54,6 +77,9 @@ def queue_debt_collection(
     method = payment_method or 'cash'
     reference = (reference or '').strip()
     notes = (notes or '').strip()
+    payer_name = (payer_name or '').strip()[:120]
+    payer_phone = (payer_phone or '').strip()[:32]
+    mpesa_destination = (mpesa_destination or '').strip().lower()[:16]
     amount_str = str(amount)
 
     return submit_change(
@@ -69,6 +95,9 @@ def queue_debt_collection(
             'amount': amount_str,
             'payment_method': method,
             'reference': reference,
+            'payer_name': payer_name,
+            'payer_phone': payer_phone,
+            'mpesa_destination': mpesa_destination,
             'effect': 'Wallet credited after manager approval',
         },
         reason=collection_reason(amount=amount, payment_method=method, notes=notes),
@@ -77,6 +106,9 @@ def queue_debt_collection(
             'payment_method': method,
             'reference': reference,
             'notes': notes,
+            'payer_name': payer_name,
+            'payer_phone': payer_phone,
+            'mpesa_destination': mpesa_destination,
         },
         require_maker_checker=False,
     )

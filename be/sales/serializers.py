@@ -268,6 +268,7 @@ class CustomerWalletTransactionSerializer(serializers.ModelSerializer):
     sale_number = serializers.CharField(source='sale.sale_number', read_only=True)
     created_by_name = serializers.SerializerMethodField()
     payment_method_label = serializers.SerializerMethodField()
+    mpesa_destination_label = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomerWalletTransaction
@@ -281,6 +282,10 @@ class CustomerWalletTransactionSerializer(serializers.ModelSerializer):
             'sale_number',
             'payment_method',
             'payment_method_label',
+            'payer_name',
+            'payer_phone',
+            'mpesa_destination',
+            'mpesa_destination_label',
             'reference',
             'notes',
             'created_by_name',
@@ -298,6 +303,11 @@ class CustomerWalletTransactionSerializer(serializers.ModelSerializer):
 
         return payment_method_label(resolve_settlement_payment_method(obj))
 
+    def get_mpesa_destination_label(self, obj):
+        from sales.collection_payer import mpesa_destination_label
+
+        return mpesa_destination_label(getattr(obj, 'mpesa_destination', '') or '')
+
 
 class ReceiveWalletPaymentSerializer(serializers.Serializer):
     amount = serializers.DecimalField(
@@ -312,14 +322,44 @@ class ReceiveWalletPaymentSerializer(serializers.Serializer):
     )
     reference = serializers.CharField(required=False, allow_blank=True, max_length=100)
     notes = serializers.CharField(required=False, allow_blank=True)
+    payer_name = serializers.CharField(required=False, allow_blank=True, max_length=120)
+    payer_phone = serializers.CharField(required=False, allow_blank=True, max_length=32)
+    mpesa_destination = serializers.ChoiceField(
+        choices=[('', '—'), ('till', 'Till'), ('bank', 'Bank')],
+        required=False,
+        allow_blank=True,
+        default='',
+    )
 
     def validate(self, attrs):
+        from sales.collection_payer import validate_collection_payer_fields
+        from sales.customer_module_settings import customers_collection_payer_details_enabled
+
         method = attrs.get('payment_method')
         if method == 'mpesa':
             error = mpesa_receipt_error(attrs.get('reference'))
             if error:
                 raise serializers.ValidationError({'reference': error})
             attrs['reference'] = normalize_mpesa_receipt(attrs.get('reference'))
+
+        require_payer = customers_collection_payer_details_enabled()
+        try:
+            payer = validate_collection_payer_fields(
+                payment_method=method or 'cash',
+                reference=attrs.get('reference') or '',
+                payer_name=attrs.get('payer_name') or '',
+                payer_phone=attrs.get('payer_phone') or '',
+                mpesa_destination=attrs.get('mpesa_destination') or '',
+                require_payer=require_payer,
+                require_mpesa_destination_for_code=require_payer,
+            )
+        except Exception as exc:
+            from django.core.exceptions import ValidationError as DjangoValidationError
+
+            if isinstance(exc, DjangoValidationError):
+                raise serializers.ValidationError(getattr(exc, 'message_dict', {'error': str(exc)}))
+            raise
+        attrs.update(payer)
         return attrs
 
 

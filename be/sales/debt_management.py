@@ -702,6 +702,9 @@ def list_debt_collections(
     for txn in rows:
         customer = txn.customer
         method = resolve_settlement_payment_method(txn)
+        from sales.collection_payer import mpesa_destination_label
+
+        dest = (getattr(txn, 'mpesa_destination', None) or '').strip().lower()
         results.append(
             {
                 'id': txn.id,
@@ -715,6 +718,10 @@ def list_debt_collections(
                 'payment_method_label': payment_method_label(method) or '—',
                 'reference': txn.reference or '',
                 'notes': txn.notes or '',
+                'payer_name': (getattr(txn, 'payer_name', None) or '').strip(),
+                'payer_phone': (getattr(txn, 'payer_phone', None) or '').strip(),
+                'mpesa_destination': dest,
+                'mpesa_destination_label': mpesa_destination_label(dest),
                 'sale_number': txn.sale.sale_number if txn.sale_id and txn.sale else None,
                 'received_by': _user_label(txn.created_by),
                 'created_at': txn.created_at.isoformat() if txn.created_at else None,

@@ -13,6 +13,7 @@ import {
   getTodayDateString,
   shiftDate,
   settlementMethodLabel,
+  settlementPayerLabel,
   settlementReferenceLabel,
 } from '../../utils/debtManagement';
 import { Button } from '../ui/button';
@@ -44,6 +45,12 @@ const KIND_OPTIONS = [
   { id: 'sale_payment', name: 'Sale tender' },
 ];
 
+const MPESA_VIA_OPTIONS = [
+  { id: '', name: 'Till or bank' },
+  { id: 'till', name: 'Till only' },
+  { id: 'bank', name: 'Bank only' },
+];
+
 const KIND_LABELS = {
   debt_settlement: 'Debt collection',
   invoice_payment: 'Invoice payment',
@@ -59,6 +66,7 @@ export default function PaymentsTrailPage() {
   const allowed = hasPermission(permissions, 'debt_management', 'payments_trail');
   const canExport = allowed && isModuleFeatureEnabled('sales', 'payments_trail_export', true);
   const [kind, setKind] = useState('all');
+  const [mpesaDestination, setMpesaDestination] = useState('');
   const [dateFrom, setDateFrom] = useState(defaultDateFrom);
   const [dateTo, setDateTo] = useState(getTodayDateString);
   const [search, setSearch] = useState('');
@@ -78,9 +86,13 @@ export default function PaymentsTrailPage() {
       date_to: dateTo || undefined,
     };
     if (kind && kind !== 'all') params.kind = kind;
+    if (mpesaDestination) {
+      params.mpesa_destination = mpesaDestination;
+      if (!params.kind) params.kind = 'debt_settlement';
+    }
     if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
     return params;
-  }, [kind, dateFrom, dateTo, debouncedSearch]);
+  }, [kind, mpesaDestination, dateFrom, dateTo, debouncedSearch]);
 
   const handleExportExcel = async () => {
     if (!canExport || exportBusy) return;
@@ -142,7 +154,7 @@ export default function PaymentsTrailPage() {
   useEffect(() => {
     setPage(1);
     setRangeTotal(null);
-  }, [kind, dateFrom, dateTo, debouncedSearch]);
+  }, [kind, mpesaDestination, dateFrom, dateTo, debouncedSearch]);
 
   if (!allowed) {
     return (
@@ -190,6 +202,14 @@ export default function PaymentsTrailPage() {
             placeholder="Payment type"
           />
         </FilterField>
+        <FilterField label="M-Pesa via">
+          <SearchableSelect
+            value={mpesaDestination}
+            onChange={(e) => setMpesaDestination(e.target.value || '')}
+            options={MPESA_VIA_OPTIONS}
+            placeholder="Till or bank"
+          />
+        </FilterField>
         <FilterField label="From">
           <Input
             type="date"
@@ -212,7 +232,7 @@ export default function PaymentsTrailPage() {
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Customer, sale, invoice, or reference"
+              placeholder="Customer, payer, sale, invoice, or code"
               className="h-9 pl-8"
             />
           </div>
@@ -283,6 +303,7 @@ export default function PaymentsTrailPage() {
               <DataTableHead>Customer</DataTableHead>
               <DataTableHead align="right">Amount</DataTableHead>
               <DataTableHead>Method</DataTableHead>
+              <DataTableHead>Paid by</DataTableHead>
               <DataTableHead>Reference</DataTableHead>
               <DataTableHead>Paid towards</DataTableHead>
               <DataTableHead>Balance trail</DataTableHead>
@@ -319,6 +340,9 @@ export default function PaymentsTrailPage() {
                   </DataTableCell>
                   <DataTableCell className="text-sm">
                     {settlementMethodLabel(row)}
+                  </DataTableCell>
+                  <DataTableCell className="text-sm">
+                    {row.kind === 'debt_settlement' ? settlementPayerLabel(row) : '—'}
                   </DataTableCell>
                   <DataTableCell className="font-mono text-sm">
                     {settlementReferenceLabel(row)}

@@ -101,6 +101,14 @@ def _resolve_trail_window(date_from, date_to):
     return day_from, day_to
 
 
+def _normalize_mpesa_destination_filter(raw) -> str:
+    """Return ``till``, ``bank``, or ``''`` (no filter)."""
+    value = (raw or '').strip().lower()
+    if value in ('till', 'bank'):
+        return value
+    return ''
+
+
 def _collect_index_rows(
     *,
     kinds: Sequence[str],
@@ -108,14 +116,25 @@ def _collect_index_rows(
     day_to,
     term: str,
     visible_ids,
+    mpesa_destination: str = '',
 ) -> List[Dict[str, Any]]:
     index_rows: List[Dict[str, Any]] = []
     if KIND_DEBT_SETTLEMENT in kinds:
-        index_rows.extend(_settlement_index(day_from, day_to, term, visible_ids))
-    if KIND_INVOICE_PAYMENT in kinds:
-        index_rows.extend(_invoice_index(day_from, day_to, term, visible_ids))
-    if KIND_SALE_PAYMENT in kinds:
-        index_rows.extend(_sale_tender_index(day_from, day_to, term, visible_ids))
+        index_rows.extend(
+            _settlement_index(
+                day_from,
+                day_to,
+                term,
+                visible_ids,
+                mpesa_destination=mpesa_destination,
+            )
+        )
+    # Till/bank filter only applies to debt settlements with M-Pesa codes.
+    if not mpesa_destination:
+        if KIND_INVOICE_PAYMENT in kinds:
+            index_rows.extend(_invoice_index(day_from, day_to, term, visible_ids))
+        if KIND_SALE_PAYMENT in kinds:
+            index_rows.extend(_sale_tender_index(day_from, day_to, term, visible_ids))
 
     index_rows.sort(
         key=lambda row: (
@@ -133,6 +152,7 @@ def list_payments_trail(
     date_from=None,
     date_to=None,
     search: Optional[str] = None,
+    mpesa_destination: Optional[str] = None,
     page: int = 1,
     page_size: int = 20,
     user=None,
@@ -141,12 +161,16 @@ def list_payments_trail(
     Paginated money-in trail with balancing fields and paid-towards targets.
 
     Designed for operator accountability — not a live dashboard cache.
+
+    Args:
+        mpesa_destination: Optional ``till`` / ``bank`` filter for debt settlements.
     """
     page = max(1, int(page or 1))
     page_size = min(100, max(1, int(page_size or 20)))
     kinds = _parse_kinds(kind)
     day_from, day_to = _resolve_trail_window(date_from, date_to)
     term = (search or '').strip()
+    dest = _normalize_mpesa_destination_filter(mpesa_destination)
     visible_ids = _visible_debtor_customer_ids(user)
     index_rows = _collect_index_rows(
         kinds=kinds,
@@ -154,6 +178,7 @@ def list_payments_trail(
         day_to=day_to,
         term=term,
         visible_ids=visible_ids,
+        mpesa_destination=dest,
     )
     count = len(index_rows)
     start_idx = (page - 1) * page_size
@@ -174,6 +199,7 @@ def build_payments_trail_export(
     date_from=None,
     date_to=None,
     search: Optional[str] = None,
+    mpesa_destination: Optional[str] = None,
     user=None,
     limit: Optional[int] = None,
 ) -> Dict[str, Any]:
@@ -184,7 +210,8 @@ def build_payments_trail_export(
         kind: Trail kind filter or ``all``.
         date_from: Inclusive start day (YYYY-MM-DD).
         date_to: Inclusive end day (YYYY-MM-DD).
-        search: Optional customer / reference search.
+        search: Optional customer / reference / payer search.
+        mpesa_destination: Optional ``till`` / ``bank`` filter for settlements.
         user: Request user for debtor visibility.
         limit: Max rows to hydrate (1–PAYMENTS_TRAIL_EXPORT_LIMIT).
 
@@ -198,6 +225,7 @@ def build_payments_trail_export(
     kinds = _parse_kinds(kind)
     day_from, day_to = _resolve_trail_window(date_from, date_to)
     term = (search or '').strip()
+    dest = _normalize_mpesa_destination_filter(mpesa_destination)
     visible_ids = _visible_debtor_customer_ids(user)
     index_rows = _collect_index_rows(
         kinds=kinds,
@@ -205,6 +233,7 @@ def build_payments_trail_export(
         day_to=day_to,
         term=term,
         visible_ids=visible_ids,
+        mpesa_destination=dest,
     )
     count = len(index_rows)
     truncated = count > limit
@@ -258,6 +287,7 @@ def summarize_payments_trail(
     date_from=None,
     date_to=None,
     search: Optional[str] = None,
+    mpesa_destination: Optional[str] = None,
     user=None,
 ) -> Dict[str, Any]:
     """
@@ -272,6 +302,7 @@ def summarize_payments_trail(
         date_from=date_from,
         date_to=date_to,
         search=search,
+        mpesa_destination=mpesa_destination,
         user=user,
     )
     return {
@@ -285,7 +316,14 @@ def summarize_payments_trail(
     }
 
 
-def _settlement_index(day_from, day_to, term, visible_ids) -> List[Dict[str, Any]]:
+def _settlement_index(
+    day_from,
+    day_to,
+    term,
+    visible_ids,
+    *,
+    mpesa_destination: str = '',
+) -> List[Dict[str, Any]]:
     qs = CustomerWalletTransaction.objects.filter(
         source_type='debt_settlement',
         transaction_type='credit',
@@ -296,6 +334,8 @@ def _settlement_index(day_from, day_to, term, visible_ids) -> List[Dict[str, Any
         qs = qs.filter(created_at__date__lte=day_to)
     if visible_ids is not None:
         qs = qs.filter(customer_id__in=list(visible_ids) or [])
+    if mpesa_destination:
+        qs = qs.filter(mpesa_destination=mpesa_destination)
     if term:
         qs = qs.filter(
             Q(customer__name__icontains=term)
@@ -303,6 +343,8 @@ def _settlement_index(day_from, day_to, term, visible_ids) -> List[Dict[str, Any
             | Q(customer__customer_code__icontains=term)
             | Q(reference__icontains=term)
             | Q(notes__icontains=term)
+            | Q(payer_name__icontains=term)
+            | Q(payer_phone__icontains=term)
         )
     return [
         {
@@ -474,6 +516,9 @@ def _serialize_settlement(txn: CustomerWalletTransaction, targets: List[Dict[str
                 'amount': str(_q(txn.amount)),
             }
         ]
+    from sales.collection_payer import mpesa_destination_label
+
+    dest = (getattr(txn, 'mpesa_destination', None) or '').strip().lower()
     return {
         'kind': KIND_DEBT_SETTLEMENT,
         'id': txn.id,
@@ -483,6 +528,10 @@ def _serialize_settlement(txn: CustomerWalletTransaction, targets: List[Dict[str
         'payment_method_label': _method_label(method),
         'reference': txn.reference or '',
         'notes': txn.notes or '',
+        'payer_name': (getattr(txn, 'payer_name', None) or '').strip(),
+        'payer_phone': (getattr(txn, 'payer_phone', None) or '').strip(),
+        'mpesa_destination': dest,
+        'mpesa_destination_label': mpesa_destination_label(dest),
         'customer_id': txn.customer_id,
         'customer_name': customer.name if customer else '',
         'customer_code': (customer.customer_code or '') if customer else '',

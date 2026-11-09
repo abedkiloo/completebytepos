@@ -1595,6 +1595,7 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 date_from=request.query_params.get('date_from'),
                 date_to=request.query_params.get('date_to'),
                 search=request.query_params.get('search'),
+                mpesa_destination=request.query_params.get('mpesa_destination'),
                 page=page,
                 page_size=page_size,
                 user=request.user,
@@ -1622,6 +1623,7 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 date_from=request.query_params.get('date_from'),
                 date_to=request.query_params.get('date_to'),
                 search=request.query_params.get('search'),
+                mpesa_destination=request.query_params.get('mpesa_destination'),
                 user=request.user,
             )
         except ValueError as exc:
@@ -1659,6 +1661,7 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 date_from=request.query_params.get('date_from'),
                 date_to=request.query_params.get('date_to'),
                 search=request.query_params.get('search'),
+                mpesa_destination=request.query_params.get('mpesa_destination'),
                 user=request.user,
             )
         except ValueError as exc:
@@ -1772,6 +1775,9 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                     payment_method=data['payment_method'],
                     reference=data.get('reference', ''),
                     notes=data.get('notes', ''),
+                    payer_name=data.get('payer_name', ''),
+                    payer_phone=data.get('payer_phone', ''),
+                    mpesa_destination=data.get('mpesa_destination', ''),
                 )
             except ValidationError as exc:
                 payload = getattr(exc, 'message_dict', None) or {
@@ -1799,6 +1805,9 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 reference=data.get('reference', ''),
                 notes=data.get('notes', ''),
                 user=request.user if request.user.is_authenticated else None,
+                payer_name=data.get('payer_name', ''),
+                payer_phone=data.get('payer_phone', ''),
+                mpesa_destination=data.get('mpesa_destination', ''),
             )
         except ValidationError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)

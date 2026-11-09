@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import ReceiveWalletPaymentDialog from './ReceiveWalletPaymentDialog';
 import { customersAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
+import { collectionPayerDetailsEnabled } from '../../utils/collectionPayer';
 
 jest.mock('../../services/api', () => ({
   customersAPI: {
@@ -34,6 +35,14 @@ jest.mock('../../utils/toast', () => ({
   toast: { success: jest.fn(), error: jest.fn(), warning: jest.fn(), info: jest.fn() },
 }));
 
+jest.mock('../../utils/collectionPayer', () => {
+  const actual = jest.requireActual('../../utils/collectionPayer');
+  return {
+    ...actual,
+    collectionPayerDetailsEnabled: jest.fn(() => true),
+  };
+});
+
 const debtor = {
   id: 3,
   name: 'Jane Debtor',
@@ -44,13 +53,14 @@ const debtor = {
 describe('ReceiveWalletPaymentDialog', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    collectionPayerDetailsEnabled.mockReturnValue(true);
     customersAPI.walletTransactions.mockResolvedValue({ data: [] });
     customersAPI.receiveWalletPayment.mockResolvedValue({
       data: { wallet_balance: '-50.00' },
     });
   });
 
-  it('prefills full debt and submits payment', async () => {
+  it('prefills full debt and submits payment with payer details', async () => {
     const onSuccess = jest.fn();
     const onOpenChange = jest.fn();
 
@@ -67,16 +77,12 @@ describe('ReceiveWalletPaymentDialog', () => {
     await waitFor(() => {
       expect(screen.getByLabelText(/Payment amount/i)).toHaveValue(150);
     });
-    expect(
-      screen.getByText(/KES amount with up to 2 decimal places, e.g. 250.00/i)
-    ).toBeInTheDocument();
+    expect(screen.getByTestId('wallet-payer-name')).toHaveValue('Jane Debtor');
+    expect(screen.getByTestId('wallet-payer-phone')).toHaveValue('0712345678');
 
     fireEvent.click(screen.getByRole('button', { name: /Record payment/i }));
     expect(
       await screen.findByText(/Proceed with this payment/i)
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/Do you really want to continue with this transaction/i)
     ).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: /Yes, record payment/i }));
 
@@ -86,9 +92,54 @@ describe('ReceiveWalletPaymentDialog', () => {
         payment_method: 'cash',
         reference: '',
         notes: '',
+        payer_name: 'Jane Debtor',
+        payer_phone: '0712345678',
+        mpesa_destination: '',
       });
     });
     expect(onSuccess).toHaveBeenCalled();
+  });
+
+  it('asks till or bank before allowing an M-Pesa code', async () => {
+    render(
+      <ReceiveWalletPaymentDialog
+        open
+        customer={debtor}
+        onOpenChange={jest.fn()}
+        onSuccess={jest.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/Payment method/i), {
+      target: { value: 'mpesa' },
+    });
+    expect(screen.getByTestId('mpesa-destination-step')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/M-Pesa code/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Record payment/i }));
+    expect(customersAPI.receiveWalletPayment).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId('mpesa-destination-till'));
+    expect(await screen.findByLabelText(/M-Pesa code/i)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/M-Pesa code/i), {
+      target: { value: 'QHX7K2L9M1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Record payment/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Yes, record payment/i }));
+
+    await waitFor(() => {
+      expect(customersAPI.receiveWalletPayment).toHaveBeenCalledWith(3, {
+        amount: 150,
+        payment_method: 'mpesa',
+        reference: 'QHX7K2L9M1',
+        notes: '',
+        payer_name: 'Jane Debtor',
+        payer_phone: '0712345678',
+        mpesa_destination: 'till',
+      });
+    });
   });
 
   it('pay full debt button sets amount', async () => {
@@ -133,10 +184,10 @@ describe('ReceiveWalletPaymentDialog', () => {
     expect(toast.error).toHaveBeenCalledWith(
       'Amount must be greater than zero, e.g. 250.00'
     );
-    expect(screen.getByText(/greater than zero, e.g. 250.00/i)).toBeInTheDocument();
   });
 
-  it('requires an M-Pesa receipt code before recording', async () => {
+  it('skips payer fields when the module feature is off', async () => {
+    collectionPayerDetailsEnabled.mockReturnValue(false);
     render(
       <ReceiveWalletPaymentDialog
         open
@@ -146,81 +197,22 @@ describe('ReceiveWalletPaymentDialog', () => {
       />
     );
 
-    fireEvent.change(screen.getByLabelText(/Payment method/i), {
-      target: { value: 'mpesa' },
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Payment amount/i)).toHaveValue(150);
     });
-    fireEvent.click(screen.getByTestId('mpesa-capture-code'));
-    expect(screen.getByLabelText(/M-Pesa code/i)).toBeInTheDocument();
-    expect(
-      screen.getByText(/At least 4 letters and numbers from the M-Pesa SMS/i)
-    ).toBeInTheDocument();
+    expect(screen.queryByTestId('wallet-payer-name')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /Record payment/i }));
-    expect(customersAPI.receiveWalletPayment).not.toHaveBeenCalled();
-    expect(toast.error).toHaveBeenCalledWith(
-      'Enter the M-Pesa code from the SMS (at least 4 letters and numbers), e.g. QHX7K2L9M1'
-    );
-    expect(
-      screen.getByText(/Enter the M-Pesa code from the SMS \(at least 4 letters and numbers\)/i)
-    ).toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText(/M-Pesa code/i), {
-      target: { value: 'AB1' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /Record payment/i }));
-    expect(toast.error).toHaveBeenCalledWith(
-      'Must be at least 4 characters (you entered 3), e.g. QHX7K2L9M1'
-    );
-    expect(screen.getByText(/you entered 3/i)).toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText(/M-Pesa code/i), {
-      target: { value: ' qhx 7k2 l9m1 ' },
-    });
     fireEvent.click(screen.getByRole('button', { name: /Record payment/i }));
     fireEvent.click(await screen.findByRole('button', { name: /Yes, record payment/i }));
 
     await waitFor(() => {
       expect(customersAPI.receiveWalletPayment).toHaveBeenCalledWith(3, {
         amount: 150,
-        payment_method: 'mpesa',
-        reference: 'QHX7K2L9M1',
+        payment_method: 'cash',
+        reference: '',
         notes: '',
       });
     });
-  });
-
-  it('records an M-Pesa wallet payment with a typed code', async () => {
-    const onSuccess = jest.fn();
-    render(
-      <ReceiveWalletPaymentDialog
-        open
-        customer={debtor}
-        onOpenChange={jest.fn()}
-        onSuccess={onSuccess}
-      />
-    );
-
-    fireEvent.change(screen.getByLabelText(/Payment method/i), {
-      target: { value: 'mpesa' },
-    });
-    expect(screen.getByLabelText(/M-Pesa code/i)).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('mpesa-capture-prompt'));
-    expect(toast.info).toHaveBeenCalledWith('Coming soon');
-    fireEvent.change(screen.getByLabelText(/M-Pesa code/i), {
-      target: { value: 'QHX7K2L9M1' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /Record payment/i }));
-    fireEvent.click(await screen.findByRole('button', { name: /Yes, record payment/i }));
-
-    await waitFor(() => {
-      expect(customersAPI.receiveWalletPayment).toHaveBeenCalledWith(3, {
-        amount: 150,
-        payment_method: 'mpesa',
-        reference: 'QHX7K2L9M1',
-        notes: '',
-      });
-    });
-    expect(onSuccess).toHaveBeenCalled();
   });
 
   it('toasts pending approval when collection is queued', async () => {

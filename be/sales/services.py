@@ -2028,7 +2028,10 @@ class CustomerService(BaseService):
                              transaction_type: str, source_type: str = 'other',
                              sale: Optional[Sale] = None, invoice: Optional[Invoice] = None,
                              reference: str = '', notes: str = '', user=None,
-                             payment_method: str = '') -> 'CustomerWalletTransaction':
+                             payment_method: str = '',
+                             payer_name: str = '',
+                             payer_phone: str = '',
+                             mpesa_destination: str = '') -> 'CustomerWalletTransaction':
         """Update customer wallet balance and create transaction record"""
         from sales.models import CustomerWalletTransaction
         
@@ -2056,6 +2059,9 @@ class CustomerService(BaseService):
             invoice=invoice,
             reference=reference,
             payment_method=(payment_method or '').strip().lower(),
+            payer_name=(payer_name or '').strip()[:120],
+            payer_phone=(payer_phone or '').strip()[:32],
+            mpesa_destination=(mpesa_destination or '').strip().lower()[:16],
             notes=notes,
             created_by=user
         )
@@ -2071,6 +2077,9 @@ class CustomerService(BaseService):
         reference: str = '',
         notes: str = '',
         user=None,
+        payer_name: str = '',
+        payer_phone: str = '',
+        mpesa_destination: str = '',
     ) -> 'CustomerWalletTransaction':
         """Credit customer wallet — typically to settle POS partial-payment debt."""
         if amount <= 0:
@@ -2086,6 +2095,10 @@ class CustomerService(BaseService):
         default_notes = f'Debt payment received via {method_label}'
         if reference:
             default_notes = f'{default_notes} (ref: {reference})'
+        if mpesa_destination:
+            default_notes = f'{default_notes} [{mpesa_destination}]'
+        if payer_name:
+            default_notes = f'{default_notes}; paid by {payer_name}'
 
         txn = self.update_wallet_balance(
             customer=customer,
@@ -2094,6 +2107,9 @@ class CustomerService(BaseService):
             source_type='debt_settlement',
             reference=reference,
             payment_method=payment_method,
+            payer_name=payer_name,
+            payer_phone=payer_phone,
+            mpesa_destination=mpesa_destination,
             notes=notes.strip() or default_notes,
             user=user,
         )

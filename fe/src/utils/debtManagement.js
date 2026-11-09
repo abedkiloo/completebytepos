@@ -102,14 +102,27 @@ export function walletTxnLabel(sourceType) {
 /** Cash / M-PESA label for a debt collection or ledger settlement row. */
 export function settlementMethodLabel(row) {
   if (!row) return '—';
-  if (row.payment_method_label) return row.payment_method_label;
-  const method = String(row.payment_method || '').toLowerCase();
-  if (method === 'cash') return 'Cash';
-  if (method === 'mpesa') return 'M-PESA';
-  const notes = String(row.notes || '').toLowerCase();
-  if (notes.includes('via m-pesa') || notes.includes('via mpesa')) return 'M-PESA';
-  if (notes.includes('via cash')) return 'Cash';
-  return '—';
+  let base = '';
+  if (row.payment_method_label) base = row.payment_method_label;
+  else {
+    const method = String(row.payment_method || '').toLowerCase();
+    if (method === 'cash') base = 'Cash';
+    else if (method === 'mpesa') base = 'M-PESA';
+    else {
+      const notes = String(row.notes || '').toLowerCase();
+      if (notes.includes('via m-pesa') || notes.includes('via mpesa')) base = 'M-PESA';
+      else if (notes.includes('via cash')) base = 'Cash';
+    }
+  }
+  if (!base) return '—';
+  const via =
+    row.mpesa_destination_label ||
+    (String(row.mpesa_destination || '').toLowerCase() === 'till'
+      ? 'Till'
+      : String(row.mpesa_destination || '').toLowerCase() === 'bank'
+        ? 'Bank'
+        : '');
+  return via ? `${base} · ${via}` : base;
 }
 
 /** Reference line for settlements (M-PESA code or cash receipt). */
@@ -118,4 +131,13 @@ export function settlementReferenceLabel(row) {
   const ref = (row.reference || '').trim();
   if (ref) return ref;
   return '—';
+}
+
+/** Who paid (may differ from the customer on file). */
+export function settlementPayerLabel(row) {
+  if (!row) return '—';
+  const name = String(row.payer_name || '').trim();
+  const phone = String(row.payer_phone || '').trim();
+  if (name && phone) return `${name} · ${phone}`;
+  return name || phone || '—';
 }

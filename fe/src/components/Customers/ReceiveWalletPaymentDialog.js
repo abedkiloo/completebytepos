@@ -10,6 +10,12 @@ import {
   isPendingApprovalResponse,
   pendingApprovalToastMessage,
 } from '../../utils/makerChecker';
+import {
+  collectionPayerDetailsEnabled,
+  mpesaDestinationLabel,
+  MPESA_DESTINATION_OPTIONS,
+  validateCollectionPayerFields,
+} from '../../utils/collectionPayer';
 import { CustomerWalletBalance } from './CustomerWalletBalance';
 import {
   Dialog,
@@ -48,6 +54,9 @@ const EMPTY_FORM = {
   payment_method: 'cash',
   reference: '',
   notes: '',
+  payer_name: '',
+  payer_phone: '',
+  mpesa_destination: '',
 };
 
 /**
@@ -74,6 +83,13 @@ export default function ReceiveWalletPaymentDialog({
   const debtAmount = getWalletDebtAmount(customer?.wallet_balance);
   const { permissions } = getStoredAuth();
   const canApproveCollection = hasPermission(permissions, 'debt_management', 'approve');
+  const requirePayer = collectionPayerDetailsEnabled();
+  const needsDestinationBeforeCode =
+    requirePayer &&
+    form.payment_method === 'mpesa' &&
+    !isLiveMpesaPrompt(mpesaMode);
+  const codeUnlocked =
+    !needsDestinationBeforeCode || Boolean(form.mpesa_destination);
 
   useEffect(() => {
     if (!open || !customer?.id) {
@@ -85,10 +101,12 @@ export default function ReceiveWalletPaymentDialog({
       setStkOpen(false);
       return;
     }
-    setForm((prev) => ({
+    setForm({
       ...EMPTY_FORM,
-      amount: debtAmount > 0 ? String(debtAmount) : prev.amount,
-    }));
+      amount: debtAmount > 0 ? String(debtAmount) : '',
+      payer_name: customer.name || '',
+      payer_phone: customer.phone || '',
+    });
     setMpesaMode(MPESA_CAPTURE_CODE);
     setMpesaPhone(customer.phone || '');
 
@@ -109,15 +127,33 @@ export default function ReceiveWalletPaymentDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, customer?.id, debtAmount]);
+  }, [open, customer?.id, debtAmount, customer?.name, customer?.phone]);
 
   const updateField = (key, value) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((prev) => {
+      const next = { ...prev, [key]: value };
+      if (key === 'payment_method' && value !== 'mpesa') {
+        next.mpesa_destination = '';
+      }
+      if (key === 'mpesa_destination' && !value) {
+        next.reference = '';
+      }
+      return next;
+    });
     setFieldErrors((prev) => {
-      if (!prev[key] && !(key === 'payment_method' && prev.reference)) return prev;
+      if (
+        !prev[key] &&
+        !(key === 'payment_method' && (prev.reference || prev.mpesa_destination))
+      ) {
+        return prev;
+      }
       const next = { ...prev };
       delete next[key];
-      if (key === 'payment_method') delete next.reference;
+      if (key === 'payment_method') {
+        delete next.reference;
+        delete next.mpesa_destination;
+      }
+      if (key === 'mpesa_destination') delete next.reference;
       return next;
     });
   };
@@ -134,13 +170,40 @@ export default function ReceiveWalletPaymentDialog({
         const phoneErr = phoneMessage(mpesaPhone, { required: true });
         if (phoneErr) errors.phone = phoneErr;
       } else {
-        const codeError = mpesaReceiptMessage(form.reference);
-        if (codeError) errors.reference = codeError;
+        if (needsDestinationBeforeCode && !form.mpesa_destination) {
+          errors.mpesa_destination =
+            'Say whether this M-Pesa code came via till or bank before entering the code.';
+        } else {
+          const codeError = mpesaReceiptMessage(form.reference);
+          if (codeError) errors.reference = codeError;
+        }
       }
+    }
+    if (requirePayer) {
+      Object.assign(
+        errors,
+        validateCollectionPayerFields({
+          paymentMethod: form.payment_method,
+          reference: form.reference,
+          payerName: form.payer_name,
+          payerPhone: form.payer_phone,
+          mpesaDestination: form.mpesa_destination,
+          requirePayer: true,
+          requireMpesaDestinationForCode:
+            form.payment_method === 'mpesa' && !isLiveMpesaPrompt(mpesaMode),
+        })
+      );
     }
     if (Object.keys(errors).length) {
       setFieldErrors(errors);
-      toast.error(errors.amount || errors.reference || errors.phone);
+      toast.error(
+        errors.amount ||
+          errors.payer_name ||
+          errors.payer_phone ||
+          errors.mpesa_destination ||
+          errors.reference ||
+          errors.phone
+      );
       return;
     }
     setPendingAmount(parsePaymentAmount(form.amount));
@@ -151,7 +214,7 @@ export default function ReceiveWalletPaymentDialog({
     if (!customer?.id || submitting || pendingAmount == null) return;
     setSubmitting(true);
     try {
-      const res = await customersAPI.receiveWalletPayment(customer.id, {
+      const payload = {
         amount: pendingAmount,
         payment_method: form.payment_method,
         reference:
@@ -159,7 +222,14 @@ export default function ReceiveWalletPaymentDialog({
             ? normalizeMpesaReceipt(referenceValue)
             : String(referenceValue || '').trim(),
         notes: form.notes.trim(),
-      });
+      };
+      if (requirePayer) {
+        payload.payer_name = form.payer_name.trim();
+        payload.payer_phone = form.payer_phone.trim();
+        payload.mpesa_destination =
+          form.payment_method === 'mpesa' ? form.mpesa_destination || '' : '';
+      }
+      const res = await customersAPI.receiveWalletPayment(customer.id, payload);
       if (isPendingApprovalResponse(res.status)) {
         toast.warning(pendingApprovalToastMessage());
         setShowCommitConfirm(false);
@@ -179,10 +249,14 @@ export default function ReceiveWalletPaymentDialog({
       });
       onOpenChange(false);
     } catch (error) {
+      const data = error.response?.data || {};
       const msg =
-        error.response?.data?.error ||
-        error.response?.data?.amount?.[0] ||
-        error.response?.data?.detail ||
+        data.error ||
+        data.payer_name?.[0] ||
+        data.payer_phone?.[0] ||
+        data.mpesa_destination?.[0] ||
+        data.amount?.[0] ||
+        data.detail ||
         error.message ||
         'Failed to record payment';
       toast.error(msg);
@@ -215,6 +289,18 @@ export default function ReceiveWalletPaymentDialog({
             emphasis: true,
           },
           { label: 'Method', value: methodLabel },
+          requirePayer && form.payer_name.trim()
+            ? { label: 'Paid by', value: form.payer_name.trim() }
+            : null,
+          requirePayer && form.payer_phone.trim()
+            ? { label: 'Payer phone', value: form.payer_phone.trim() }
+            : null,
+          form.payment_method === 'mpesa' && form.mpesa_destination
+            ? {
+                label: 'M-Pesa via',
+                value: mpesaDestinationLabel(form.mpesa_destination),
+              }
+            : null,
           form.payment_method === 'mpesa' && isLiveMpesaPrompt(mpesaMode)
             ? { label: 'Phone', value: mpesaPhone }
             : form.reference.trim()
@@ -294,6 +380,41 @@ export default function ReceiveWalletPaymentDialog({
             ) : null}
           </div>
 
+          {requirePayer ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="wallet-payer-name">Who paid *</Label>
+                <Input
+                  id="wallet-payer-name"
+                  value={form.payer_name}
+                  onChange={(e) => updateField('payer_name', e.target.value)}
+                  placeholder="Name of the person who paid"
+                  aria-invalid={Boolean(fieldErrors.payer_name)}
+                  data-testid="wallet-payer-name"
+                />
+                {fieldErrors.payer_name ? (
+                  <p className="text-xs text-destructive">{fieldErrors.payer_name}</p>
+                ) : null}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="wallet-payer-phone">Payer phone *</Label>
+                <Input
+                  id="wallet-payer-phone"
+                  type="tel"
+                  inputMode="tel"
+                  value={form.payer_phone}
+                  onChange={(e) => updateField('payer_phone', e.target.value)}
+                  placeholder="07… or +254…"
+                  aria-invalid={Boolean(fieldErrors.payer_phone)}
+                  data-testid="wallet-payer-phone"
+                />
+                {fieldErrors.payer_phone ? (
+                  <p className="text-xs text-destructive">{fieldErrors.payer_phone}</p>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
           <div className="space-y-2">
             <Label htmlFor="wallet-payment-method">Payment method *</Label>
             <select
@@ -312,25 +433,61 @@ export default function ReceiveWalletPaymentDialog({
 
           <div className="space-y-2">
             {form.payment_method === 'mpesa' ? (
-              <MpesaCapture
-                mode={mpesaMode}
-                onModeChange={(next) => {
-                  setMpesaMode(next);
-                  setFieldErrors((prev) => {
-                    if (!prev.reference && !prev.phone) return prev;
-                    const nextErrors = { ...prev };
-                    delete nextErrors.reference;
-                    delete nextErrors.phone;
-                    return nextErrors;
-                  });
-                }}
-                phone={mpesaPhone}
-                onPhoneChange={setMpesaPhone}
-                code={form.reference}
-                onCodeChange={(value) => updateField('reference', value)}
-                disabled={submitting}
-                showErrors={Boolean(fieldErrors.reference || fieldErrors.phone)}
-              />
+              <>
+                {needsDestinationBeforeCode ? (
+                  <div className="space-y-2" data-testid="mpesa-destination-step">
+                    <Label>Did the payment come via till or bank? *</Label>
+                    <div className="grid grid-cols-2 gap-1">
+                      {MPESA_DESTINATION_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          data-testid={`mpesa-destination-${opt.value}`}
+                          disabled={submitting}
+                          onClick={() => updateField('mpesa_destination', opt.value)}
+                          className={
+                            form.mpesa_destination === opt.value
+                              ? 'rounded-md border border-primary bg-primary/10 px-2 py-2 text-xs font-medium text-primary'
+                              : 'rounded-md border border-border bg-background px-2 py-2 text-xs font-medium hover:bg-accent'
+                          }
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                    {fieldErrors.mpesa_destination ? (
+                      <p className="text-xs text-destructive">
+                        {fieldErrors.mpesa_destination}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Choose till or bank first, then enter the M-Pesa code.
+                      </p>
+                    )}
+                  </div>
+                ) : null}
+                {codeUnlocked ? (
+                  <MpesaCapture
+                    mode={mpesaMode}
+                    onModeChange={(next) => {
+                      setMpesaMode(next);
+                      setFieldErrors((prev) => {
+                        if (!prev.reference && !prev.phone) return prev;
+                        const nextErrors = { ...prev };
+                        delete nextErrors.reference;
+                        delete nextErrors.phone;
+                        return nextErrors;
+                      });
+                    }}
+                    phone={mpesaPhone}
+                    onPhoneChange={setMpesaPhone}
+                    code={form.reference}
+                    onCodeChange={(value) => updateField('reference', value)}
+                    disabled={submitting}
+                    showErrors={Boolean(fieldErrors.reference || fieldErrors.phone)}
+                  />
+                ) : null}
+              </>
             ) : (
               <>
                 <Label htmlFor="wallet-payment-reference">Reference</Label>

@@ -65,6 +65,16 @@ def customers_location_filters_enabled() -> bool:
     return is_module_feature_enabled(MODULE, 'location_filters')
 
 
+def customers_collection_payer_details_enabled() -> bool:
+    """
+    Catalog feature: require payer name/phone and till/bank on collections.
+
+    Returns:
+        True when ``collection_payer_details`` is enabled for customers.
+    """
+    return is_module_feature_enabled(MODULE, 'collection_payer_details')
+
+
 def apply_customer_representation_flags(data: dict) -> dict:
     if not customers_show_customer_code():
         data.pop('customer_code', None)
