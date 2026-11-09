@@ -99,9 +99,15 @@ api.interceptors.request.use(
       }
     }
 
+    // Never send a stale Bearer on login/refresh/logout — SimpleJWT rejects
+    // expired access tokens even on AllowAny endpoints (Chrome keeps old
+    // localStorage; Safari often does not).
     const token = getToken();
-    if (token) {
+    if (token && !isAuthBypassUrl(config.url || '')) {
       config.headers.Authorization = `Bearer ${token}`;
+    } else if (config.headers.Authorization || config.headers.authorization) {
+      delete config.headers.Authorization;
+      delete config.headers.authorization;
     }
     
     // Only add branch header if branch support is enabled AND endpoint needs it

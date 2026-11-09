@@ -42,12 +42,14 @@ describe('authSession', () => {
     expect(localStorage.getItem('access_token')).toBeNull();
   });
 
-  it('logoutAndRedirect skips when already on login', async () => {
+  it('logoutAndRedirect on login clears stale tokens without redirecting', async () => {
     const replace = jest.fn();
     delete window.location;
     window.location = { pathname: '/login', replace };
     await logoutAndRedirect();
     expect(replace).not.toHaveBeenCalled();
+    expect(localStorage.getItem('access_token')).toBeNull();
+    expect(localStorage.getItem('isAuthenticated')).toBeNull();
   });
 
   it('logoutAndRedirect with idle reason redirects to login with expired flag', async () => {

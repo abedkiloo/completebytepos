@@ -96,6 +96,8 @@ export async function logoutAndRedirect({ reason = 'auth' } = {}) {
   const loginPath = reason === 'idle' ? '/login?expired=idle' : '/login';
 
   if (window.location.pathname.startsWith('/login')) {
+    // Drop expired tokens so the next login request is not sent with a dead Bearer.
+    clearAuthState();
     clearSessionTeardownFlag();
     return;
   }

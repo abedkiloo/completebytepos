@@ -12,7 +12,7 @@ import {
 import { authAPI } from '../../services/api';
 import { sessionIdleExpiredMessage } from '../../config/sessionConfig';
 import { markSessionActivity } from '../../utils/sessionIdle';
-import { clearSessionTeardownFlag } from '../../utils/authSession';
+import { clearAuthState, clearSessionTeardownFlag } from '../../utils/authSession';
 import { fetchSetupStatus } from '../../utils/setupStatus';
 import {
   DEFAULT_STORE_NAME,
@@ -173,6 +173,9 @@ const Login = () => {
       setError(sessionIdleExpiredMessage());
       sessionStorage.removeItem('session_expired_reason');
     }
+    // Chrome may still hold an expired access_token from a prior session; clear
+    // before login so credentials are not paired with a dead Authorization header.
+    clearAuthState();
     clearSessionTeardownFlag();
 
     let cancelled = false;
