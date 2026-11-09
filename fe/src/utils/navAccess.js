@@ -9,15 +9,6 @@ import {
   getStoredAuth,
   isFieldSalesFromStorage,
 } from './roleAccess';
-
-/** Field Sales sidebar — customers, own sales, own commission only. */
-const FIELD_SALES_NAV_PATHS = new Set([
-  '/',
-  '/customers',
-  '/sales',
-  '/sales/daily',
-  '/payroll',
-]);
 import { localRegistryFeatureDefault } from '../config/moduleFeatureDefaults';
 import {
   normalizeModuleSettings,
@@ -31,6 +22,15 @@ import { salesCatalogAccessEnabled } from './productAccess';
 import { userMayOpenDailyNotes } from './dailyNotesAccess';
 import { canViewDailySalesFromStorage } from './dailySalesAccess';
 import { NAV_SECTION_MODULES, navSectionGrantedByPermissions } from './permissionRoutes';
+
+/** Field Sales sidebar — customers, own sales, own commission only. */
+const FIELD_SALES_NAV_PATHS = new Set([
+  '/',
+  '/customers',
+  '/sales',
+  '/sales/daily',
+  '/payroll',
+]);
 
 /** Section ids visible per persona (`null` = all sections). */
 export const VISIBLE_SECTIONS = {
