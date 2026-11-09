@@ -1952,30 +1952,39 @@ class CustomerService(BaseService):
     def __init__(self):
         super().__init__(Customer)
     
-    def build_queryset(self, filters: Optional[Dict[str, Any]] = None) -> QuerySet:
+    def build_queryset(
+        self,
+        filters: Optional[Dict[str, Any]] = None,
+        *,
+        user=None,
+    ) -> QuerySet:
         """
         Build queryset with filters for customer listing.
-        
+
         Args:
             filters: Dictionary with filter parameters:
                 - is_active: bool or str ('true'/'false')
                 - search: str (search term)
                 - customer_type: str
-        
+            user: Optional request user. Field Sales see only ``created_by=user``.
+
         Returns:
-            QuerySet of customers
+            QuerySet of customers (possibly empty for Field Sales with no dukas).
         """
+        from sales.visibility import apply_customer_visibility
+
         queryset = self.model.objects.select_related('branch', 'created_by')
-        
+        queryset = apply_customer_visibility(queryset, user)
+
         if not filters:
             return queryset
-        
+
         is_active = filters.get('is_active')
         if is_active is not None:
             if isinstance(is_active, str):
                 is_active = is_active.lower() == 'true'
             queryset = queryset.filter(is_active=is_active)
-        
+
         search = filters.get('search')
         if search:
             search = str(search).strip()
@@ -1990,32 +1999,48 @@ class CustomerService(BaseService):
                 except Exception:
                     # If search fails, return empty queryset rather than crashing
                     queryset = queryset.none()
-        
+
         customer_type = filters.get('customer_type')
         if customer_type:
             queryset = queryset.filter(customer_type=customer_type)
-        
+
         return queryset
-    
-    def search_customers(self, query: str, limit: int = 50) -> List[Customer]:
-        """Search customers by name, email, phone, or customer code"""
+
+    def search_customers(
+        self, query: str, limit: int = 50, *, user=None
+    ) -> List[Customer]:
+        """
+        Search customers by name, email, phone, or customer code.
+
+        Args:
+            query: Free-text search (stripped). Empty → [].
+            limit: Max rows 1–1000 (default 50; values below 1 become 50).
+            user: Optional request user for Field Sales ownership scoping.
+
+        Returns:
+            List of active ``Customer`` rows (may be empty on error or no match).
+        """
         try:
             if not query or not query.strip():
                 return []
-            
+
             # Validate and sanitize limit
             if limit < 1:
                 limit = 50
             elif limit > 1000:
                 limit = 1000
-            
-            queryset = self.model.objects.filter(
+
+            from sales.visibility import apply_customer_visibility
+
+            queryset = apply_customer_visibility(
+                self.model.objects.all(), user
+            ).filter(
                 Q(name__icontains=query) |
                 Q(email__icontains=query) |
                 Q(phone__icontains=query) |
                 Q(customer_code__icontains=query)
             ).filter(is_active=True)[:limit]
-            
+
             return list(queryset)
         except Exception as e:
             import logging

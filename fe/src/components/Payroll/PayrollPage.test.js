@@ -60,6 +60,7 @@ describe('PayrollPage', () => {
         pay_day: 28,
         statutory_enabled: false,
         include_appraisal_bonus: true,
+        include_sales_commission: true,
         letterhead_line: '',
       },
     });

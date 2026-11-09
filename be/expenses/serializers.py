@@ -30,6 +30,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
     category_include_in_trading_profit = serializers.SerializerMethodField()
     created_by_name = serializers.CharField(source='created_by.username', read_only=True)
     approved_by_name = serializers.CharField(source='approved_by.username', read_only=True)
+    image_url = serializers.SerializerMethodField()
     amount = serializers.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -41,6 +42,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
         allow_null=True,
         error_messages=date_error_messages(label='expense date'),
     )
+    image = serializers.ImageField(required=False, allow_null=True)
     
     class Meta:
         model = Expense
@@ -48,18 +50,35 @@ class ExpenseSerializer(serializers.ModelSerializer):
             'id', 'expense_number', 'category', 'category_name',
             'category_include_in_trading_profit',
             'amount', 'description', 'payment_method', 'status',
-            'vendor', 'receipt_number', 'expense_date',
+            'vendor', 'receipt_number', 'image', 'image_url', 'expense_date',
             'created_by', 'created_by_name', 'approved_by', 'approved_by_name',
             'notes', 'created_at', 'updated_at'
         ]
         read_only_fields = [
             'expense_number', 'status', 'approved_by', 'created_at', 'updated_at',
+            'image_url',
         ]
 
     def get_category_include_in_trading_profit(self, obj):
         if not obj.category_id:
             return True
         return bool(obj.category.include_in_trading_profit)
+
+    def get_image_url(self, obj):
+        """
+        Absolute media URL for the optional expense photo.
+
+        Args:
+            obj: Expense instance.
+
+        Returns:
+            str URL or None when no image is attached.
+        """
+        if not obj.image:
+            return None
+        from config.media_urls import absolute_media_url
+
+        return absolute_media_url(self.context.get('request'), obj.image.url)
 
     def validate_description(self, value):
         raise_field_error(
@@ -81,6 +100,7 @@ class ExpenseListSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
     category_include_in_trading_profit = serializers.SerializerMethodField()
     created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    image_url = serializers.SerializerMethodField()
     
     class Meta:
         model = Expense
@@ -88,7 +108,7 @@ class ExpenseListSerializer(serializers.ModelSerializer):
             'id', 'expense_number', 'category_name',
             'category_include_in_trading_profit',
             'amount', 'description', 'payment_method', 'status',
-            'vendor', 'expense_date',
+            'vendor', 'expense_date', 'image_url', 'notes',
             'created_by', 'created_by_name', 'created_at'
         ]
 
@@ -96,4 +116,11 @@ class ExpenseListSerializer(serializers.ModelSerializer):
         if not obj.category_id:
             return True
         return bool(obj.category.include_in_trading_profit)
+
+    def get_image_url(self, obj):
+        if not obj.image:
+            return None
+        from config.media_urls import absolute_media_url
+
+        return absolute_media_url(self.context.get('request'), obj.image.url)
 

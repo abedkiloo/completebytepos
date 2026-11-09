@@ -14,6 +14,7 @@ from payroll.adapters import (
     fetch_absence_deduction,
     fetch_appraisal_bonus,
     fetch_loan_deduction,
+    fetch_sales_commission,
 )
 from payroll.engine import build_payslip_lines, money
 from payroll.models import (
@@ -358,7 +359,12 @@ def _merged_pay_lines(emp, *, period_end, settings, components) -> tuple[list, d
     Precedence per component: employee assignment > role package line.
     BASIC is handled separately via ``_resolve_basic``.
     """
-    formula_codes = {'BONUS_APPRAISAL', 'DED_LOAN', 'DED_ABSENCE'}
+    formula_codes = {
+        'BONUS_APPRAISAL',
+        'EARN_COMMISSION',
+        'DED_LOAN',
+        'DED_ABSENCE',
+    }
     package = _package_for_employee(emp)
     assignments = list(_active_assignments(emp, period_end))
     by_code: dict[str, dict] = {}
@@ -497,6 +503,25 @@ def _calculate_employee(emp, *, run, settings, components) -> dict | None:
                     'include_zero': bonus_amount > ZERO,
                     'force': bonus_amount > ZERO,
                     'meta': bonus.get('meta') or {},
+                }
+            )
+
+    # Field sales commission adapter
+    if (
+        getattr(settings, 'include_sales_commission', True)
+        and 'EARN_COMMISSION' in components
+    ):
+        commission = fetch_sales_commission(emp, year=run.year, month=run.month)
+        meta['adapters']['commission'] = commission.get('meta') or {}
+        commission_amount = money(commission.get('amount'))
+        if commission_amount > ZERO or commission.get('qualified'):
+            rows.append(
+                {
+                    'component': components['EARN_COMMISSION'],
+                    'amount': commission_amount,
+                    'include_zero': commission_amount > ZERO,
+                    'force': commission_amount > ZERO,
+                    'meta': commission.get('meta') or {},
                 }
             )
 

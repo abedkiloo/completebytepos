@@ -438,10 +438,17 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
                 5,
             ),
             _f(
+                'sales_commission',
+                'Sales commission',
+                'Field sales commission on payslips from net field sales × rate '
+                '(role template general, Staff pay per person).',
+                6,
+            ),
+            _f(
                 'statutory',
                 'Statutory deductions',
                 'PAYE / NSSF / SHIF — off by default until configured.',
-                6,
+                7,
                 enabled=False,
             ),
         ],

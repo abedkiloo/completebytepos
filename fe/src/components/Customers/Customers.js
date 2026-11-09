@@ -59,7 +59,11 @@ import {
   customersShowNotes,
   customersShowStatus,
 } from '../../utils/customerDisplay';
-import { getStoredAuth, isManagerOrAdminFromStorage } from '../../utils/roleAccess';
+import {
+  getStoredAuth,
+  isFieldSalesFromStorage,
+  isManagerOrAdminFromStorage,
+} from '../../utils/roleAccess';
 import { getWalletDebtAmount } from '../../utils/walletDisplay';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 import {
@@ -393,7 +397,11 @@ const Customers = () => {
     <PageShell>
         <PageHeader
           title="Customers"
-          description="Classify buyers vs registered-only dukas, track contact details, invoice balances, and POS wallet debt."
+          description={
+            isFieldSalesFromStorage()
+              ? 'Only dukas you registered. Search, update contact details, and collect on customers you onboarded.'
+              : 'Classify buyers vs registered-only dukas, track contact details, invoice balances, and POS wallet debt.'
+          }
         >
           {canCreate && (
             <Button onClick={openCreate}>

@@ -27,7 +27,7 @@ class ExpenseAdmin(admin.ModelAdmin):
             'fields': ('expense_number', 'category', 'amount', 'expense_date', 'description')
         }),
         ('Payment Details', {
-            'fields': ('payment_method', 'vendor', 'receipt_number')
+            'fields': ('payment_method', 'vendor', 'receipt_number', 'image')
         }),
         ('Status & Approval', {
             'fields': ('status', 'created_by', 'approved_by', 'notes')

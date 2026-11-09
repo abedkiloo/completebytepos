@@ -296,8 +296,22 @@ export const suppliersAPI = {
 export const dailyNotesAPI = {
   list: (params) => api.get('/daily-notes/notes/', { params }),
   get: (id) => api.get(`/daily-notes/notes/${id}/`),
-  create: (data) => api.post('/daily-notes/notes/', data),
-  update: (id, data) => api.put(`/daily-notes/notes/${id}/`, data),
+  create: (data) =>
+    api.post(
+      '/daily-notes/notes/',
+      data,
+      data instanceof FormData
+        ? { headers: { 'Content-Type': 'multipart/form-data' } }
+        : undefined
+    ),
+  update: (id, data) =>
+    api.put(
+      `/daily-notes/notes/${id}/`,
+      data,
+      data instanceof FormData
+        ? { headers: { 'Content-Type': 'multipart/form-data' } }
+        : undefined
+    ),
   patch: (id, data) => api.patch(`/daily-notes/notes/${id}/`, data),
   delete: (id) => api.delete(`/daily-notes/notes/${id}/`),
   recentDates: () => api.get('/daily-notes/notes/recent-dates/'),
@@ -477,6 +491,9 @@ export const customersAPI = {
     api.get(`/sales/customers/${id}/wallet-transactions/`, { params }),
   receiveWalletPayment: (id, data) =>
     api.post(`/sales/customers/${id}/receive-wallet-payment/`, data),
+  /** Admin-only: correct cash collected on a posted debt settlement. */
+  correctWalletSettlementAmount: (txnId, data) =>
+    api.patch(`/sales/customers/wallet-settlements/${txnId}/amount/`, data),
   debtSummary: () => api.get('/sales/customers/debt-summary/', { timeout: 30000 }),
   debtors: (params) => api.get('/sales/customers/debtors/', { params, timeout: 30000 }),
   debtorCount: () => api.get('/sales/customers/debtor-count/'),
@@ -679,8 +696,22 @@ export const barcodesAPI = {
 export const expensesAPI = {
   list: (params) => api.get('/expenses/', { params }),
   get: (id) => api.get(`/expenses/${id}/`),
-  create: (data) => api.post('/expenses/', data),
-  update: (id, data) => api.put(`/expenses/${id}/`, data),
+  create: (data) =>
+    api.post(
+      '/expenses/',
+      data,
+      data instanceof FormData
+        ? { headers: { 'Content-Type': 'multipart/form-data' } }
+        : undefined
+    ),
+  update: (id, data) =>
+    api.put(
+      `/expenses/${id}/`,
+      data,
+      data instanceof FormData
+        ? { headers: { 'Content-Type': 'multipart/form-data' } }
+        : undefined
+    ),
   delete: (id) => api.delete(`/expenses/${id}/`),
   void: (id, data) => api.post(`/expenses/${id}/void/`, data),
   approve: (id) => api.post(`/expenses/${id}/approve/`),

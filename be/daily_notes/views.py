@@ -1,5 +1,6 @@
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -47,6 +48,7 @@ class DailyNoteViewSet(DailyAuthorScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = DailyNote.objects.all()
     serializer_class = DailyNoteSerializer
     permission_classes = [IsAuthenticated, RequireModuleEnabled('daily_notes'), DAILY_NOTES_PERMS]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
     date_param = 'note_date'
 
     def __init__(self, *args, **kwargs):

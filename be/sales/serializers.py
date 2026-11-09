@@ -309,6 +309,22 @@ class CustomerWalletTransactionSerializer(serializers.ModelSerializer):
         return mpesa_destination_label(getattr(obj, 'mpesa_destination', '') or '')
 
 
+class CorrectDebtSettlementAmountSerializer(serializers.Serializer):
+    """Admin correction of cash collected on a posted debt settlement."""
+
+    amount = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.01'),
+        error_messages=money_error_messages(allow_zero=False),
+    )
+    reason = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=200,
+    )
+
+
 class ReceiveWalletPaymentSerializer(serializers.Serializer):
     amount = serializers.DecimalField(
         max_digits=10,

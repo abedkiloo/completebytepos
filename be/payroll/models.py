@@ -31,6 +31,13 @@ class PayrollSettings(models.Model):
         default=True,
         help_text='Pull monthly target-delivery bonus into earnings when calculating',
     )
+    include_sales_commission = models.BooleanField(
+        default=True,
+        help_text=(
+            'Pull field-sales commission into earnings when calculating '
+            '(net field sales × rate from role template or Staff pay)'
+        ),
+    )
     letterhead_line = models.CharField(
         max_length=255,
         blank=True,

@@ -129,6 +129,57 @@ def log_debt_settlement_posted(
     )
 
 
+def log_debt_settlement_corrected(
+    request,
+    *,
+    customer,
+    txn,
+    old_amount,
+    new_amount,
+    reason: str = '',
+):
+    """
+    Audit admin correction of cash collected on a posted debt settlement.
+
+    Args:
+        request: Actor request-like object.
+        customer: Customer whose wallet was adjusted.
+        txn: Updated ``CustomerWalletTransaction``.
+        old_amount: Amount before correction.
+        new_amount: Amount after correction (>= 0.01).
+        reason: Optional free-text reason (truncated in changes).
+
+    Returns:
+        None.
+
+    Side effects:
+        Appends one ``AuditLog`` with action ``debt_settlement_corrected``.
+    """
+    changes = {
+        'lifecycle': 'money_corrected',
+        'old_amount': _money(old_amount),
+        'new_amount': _money(new_amount),
+        'transaction_id': getattr(txn, 'id', None),
+        'customer_id': getattr(customer, 'id', None),
+        'customer_name': getattr(customer, 'name', '') or '',
+        'wallet_balance_after': _money(getattr(customer, 'wallet_balance', None)),
+        'reason': (reason or '')[:200],
+    }
+    label = (
+        f"Money corrected · debt collection · {changes['old_amount']} → "
+        f"{changes['new_amount']} · {changes['customer_name'] or 'Customer'}"
+    )
+    instance = txn if isinstance(txn, Model) else None
+    log_domain_event(
+        request,
+        'debt_settlement_corrected',
+        instance,
+        module='sales',
+        changes=changes,
+        object_repr=label[:255],
+    )
+
+
 def log_holding_saved(request, holding, *, created: bool):
     log_domain_event(
         request,

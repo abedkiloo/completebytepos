@@ -26,6 +26,7 @@ import {
 } from '../../utils/formValidation';
 import { formBannerMessage } from '../../utils/formFeedback';
 import FormBanner from '../form/FormBanner';
+import { resolveMediaUrl } from '../../utils/mediaUrl';
 
 const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }) => {
   const canCorrectPosted = hasPermission(
@@ -54,6 +55,8 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
   const [creatingCategory, setCreatingCategory] = useState(false);
   const [proposalReason, setProposalReason] = useState('');
   const [showCommitConfirm, setShowCommitConfirm] = useState(false);
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
   const { settings: storeSettings, refresh: refreshStoreSettings } = useStoreSettings();
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
   const showReasonField =
@@ -71,8 +74,31 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
         expense_date: toDateInputValue(expense.expense_date),
         notes: expense.notes || '',
       });
+      setImageFile(null);
+      setImagePreview(resolveMediaUrl(expense.image_url || '') || null);
+    } else {
+      setImageFile(null);
+      setImagePreview(null);
     }
   }, [expense]);
+
+  const handleImageChange = (e) => {
+    const file = e.target.files?.[0] || null;
+    if (!file) {
+      setImageFile(null);
+      setImagePreview(
+        expense ? resolveMediaUrl(expense.image_url || '') || null : null
+      );
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      toast.error('Choose an image file (JPG, PNG, or similar)');
+      e.target.value = '';
+      return;
+    }
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+  };
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -186,9 +212,23 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
     if (loading) return;
     setLoading(true);
     try {
-      const payload = { ...formData };
-      if (proposalReason.trim()) {
-        payload.proposal_reason = proposalReason.trim();
+      let payload;
+      if (imageFile) {
+        const body = new FormData();
+        Object.entries(formData).forEach(([key, value]) => {
+          if (value === null || value === undefined) return;
+          body.append(key, String(value));
+        });
+        if (proposalReason.trim()) {
+          body.append('proposal_reason', proposalReason.trim());
+        }
+        body.append('image', imageFile);
+        payload = body;
+      } else {
+        payload = { ...formData };
+        if (proposalReason.trim()) {
+          payload.proposal_reason = proposalReason.trim();
+        }
       }
       if (expense) {
         await expensesAPI.update(expense.id, payload);
@@ -237,6 +277,9 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
       ? { label: 'Date occurred', value: formatOccurredDate(formData.expense_date) }
       : null,
     { label: 'Method', value: formData.payment_method },
+    imageFile || imagePreview
+      ? { label: 'Image', value: imageFile ? imageFile.name : 'Attached' }
+      : null,
   ].filter(Boolean);
 
 
@@ -401,6 +444,28 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
                 onChange={handleChange}
                 placeholder="Receipt number"
               />
+            </div>
+
+            <div className="form-group full-width">
+              <label htmlFor="expense-image">Expense image (optional)</label>
+              <input
+                id="expense-image"
+                type="file"
+                accept="image/*"
+                onChange={handleImageChange}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Attach a photo of the receipt or proof of payment — not required.
+              </p>
+              {imagePreview ? (
+                <div className="mt-2">
+                  <img
+                    src={imagePreview}
+                    alt="Expense proof preview"
+                    className="max-h-40 rounded-md border object-contain"
+                  />
+                </div>
+              ) : null}
             </div>
 
             {showReasonField ? (

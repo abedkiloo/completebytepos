@@ -2,6 +2,7 @@ from rest_framework import viewsets, status, filters, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import JSONParser, FormParser, MultiPartParser
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.exceptions import ValidationError
 from django.db.models import Sum, Count, Q
@@ -144,6 +145,7 @@ class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = Expense.objects.all().select_related('category', 'created_by', 'approved_by')
     serializer_class = ExpenseSerializer
     permission_classes = [IsAuthenticated, EXPENSES_PERMS]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
     audit_module = 'expenses'
     filter_backends = [filters.SearchFilter, NameSavedOrderingFilter]
     search_fields = ['expense_number', 'description', 'vendor', 'receipt_number']

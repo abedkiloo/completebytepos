@@ -11,6 +11,7 @@ import FormBanner from '../form/FormBanner';
 import PriorityPicker from './PriorityPicker';
 import { PRIORITY_MEDIUM, normalizePriority } from '../../utils/dailyNotesPriority';
 import { isModuleFeatureEnabled } from '../../utils/moduleFeatures';
+import { resolveMediaUrl } from '../../utils/mediaUrl';
 
 const DailyNoteForm = ({
   note,
@@ -36,6 +37,8 @@ const DailyNoteForm = ({
   const [loadingStaff, setLoadingStaff] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formBanner, setFormBanner] = useState(null);
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
 
   useEffect(() => {
     if (note) {
@@ -58,6 +61,8 @@ const DailyNoteForm = ({
             }))
           : []
       );
+      setImageFile(null);
+      setImagePreview(resolveMediaUrl(note.image_url || '') || null);
       if (note.assigned_role && !note.assigned_to) {
         setAssignMode('role');
       } else {
@@ -66,8 +71,26 @@ const DailyNoteForm = ({
     } else if (defaultDate) {
       setFormData((prev) => ({ ...prev, note_date: defaultDate }));
       setChecklist([]);
+      setImageFile(null);
+      setImagePreview(null);
     }
   }, [note, defaultDate]);
+
+  const handleImageChange = (e) => {
+    const file = e.target.files?.[0] || null;
+    if (!file) {
+      setImageFile(null);
+      setImagePreview(note ? resolveMediaUrl(note.image_url || '') || null : null);
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      toast.error('Choose an image file (JPG, PNG, or similar)');
+      e.target.value = '';
+      return;
+    }
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+  };
 
   useEffect(() => {
     if (note) return;
@@ -153,7 +176,7 @@ const DailyNoteForm = ({
 
     setLoading(true);
     try {
-      const payload = {
+      const base = {
         note_date: formData.note_date,
         title: formData.title.trim(),
         content: formData.content.trim(),
@@ -162,14 +185,34 @@ const DailyNoteForm = ({
         checklist_items: checklistItems,
       };
       if (canAssignToOthers && assignMode === 'person' && formData.assigned_to) {
-        payload.assigned_to = parseInt(formData.assigned_to, 10);
+        base.assigned_to = parseInt(formData.assigned_to, 10);
       }
       if (canAssignToOthers && assignMode === 'role' && formData.assigned_role) {
-        payload.assigned_role = parseInt(formData.assigned_role, 10);
+        base.assigned_role = parseInt(formData.assigned_role, 10);
       }
       if (canAssignToOthers && assignMode === 'everyone' && !note) {
-        payload.assign_to_all = true;
+        base.assign_to_all = true;
       }
+
+      let payload = base;
+      if (imageFile) {
+        const body = new FormData();
+        Object.entries(base).forEach(([key, value]) => {
+          if (value === null || value === undefined) return;
+          if (key === 'checklist_items') {
+            body.append(key, JSON.stringify(value));
+            return;
+          }
+          if (typeof value === 'boolean') {
+            body.append(key, value ? 'true' : 'false');
+            return;
+          }
+          body.append(key, String(value));
+        });
+        body.append('image', imageFile);
+        payload = body;
+      }
+
       if (note?.id) {
         await dailyNotesAPI.update(note.id, payload);
         toast.success('Note updated');
@@ -179,7 +222,7 @@ const DailyNoteForm = ({
         toast.success(
           createdCount > 1
             ? `Note sent to ${createdCount} people`
-            : payload.is_sticky
+            : base.is_sticky
               ? 'Must-tick note saved'
               : 'Note saved'
         );
@@ -265,6 +308,28 @@ const DailyNoteForm = ({
               <p className="mt-1 text-xs text-muted-foreground">
                 Required. You can also add an optional checklist below.
               </p>
+            </div>
+            <div className="form-group">
+              <label htmlFor="daily-note-image">Note image (optional)</label>
+              <input
+                id="daily-note-image"
+                type="file"
+                accept="image/*"
+                onChange={handleImageChange}
+                data-testid="note-image"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Attach a photo — not required.
+              </p>
+              {imagePreview ? (
+                <div className="mt-2">
+                  <img
+                    src={imagePreview}
+                    alt="Note attachment preview"
+                    className="max-h-40 rounded-md border object-contain"
+                  />
+                </div>
+              ) : null}
             </div>
             <div className="form-group" data-testid="note-checklist">
               <div className="mb-2 flex items-center justify-between gap-2">

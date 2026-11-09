@@ -7,7 +7,17 @@ import {
   resolvePersona,
   hasPermission,
   getStoredAuth,
+  isFieldSalesFromStorage,
 } from './roleAccess';
+
+/** Field Sales sidebar — customers, own sales, own commission only. */
+const FIELD_SALES_NAV_PATHS = new Set([
+  '/',
+  '/customers',
+  '/sales',
+  '/sales/daily',
+  '/payroll',
+]);
 import { localRegistryFeatureDefault } from '../config/moduleFeatureDefaults';
 import {
   normalizeModuleSettings,
@@ -106,6 +116,30 @@ export function canSeeNavItem(item, sectionId, ctx) {
 
   if (item.requireSuperAdmin && !isSuperAdmin) return false;
   if (item.managerOnly && persona === PERSONA.SALES) return false;
+
+  if (isFieldSalesFromStorage()) {
+    const path = (item.to || '').split('?')[0];
+    if (!FIELD_SALES_NAV_PATHS.has(path)) return false;
+    if (item.module && !isModuleEnabled(item.module)) return false;
+    if (item.permission) {
+      const [mod, action] = item.permission;
+      if (!hasPermission(permissions, mod, action)) return false;
+    }
+    if (item.dailySalesAccess && !canViewDailySalesFromStorage()) return false;
+    const payrollSelfServiceOnly =
+      path === '/payroll' &&
+      hasPermission(permissions, 'payroll', 'view_own') &&
+      !hasPermission(permissions, 'payroll', 'view') &&
+      !hasPermission(permissions, 'payroll', 'manage');
+    if (
+      item.feature &&
+      !payrollSelfServiceOnly &&
+      !isFeatureEnabled(item.feature[0], item.feature[1])
+    ) {
+      return false;
+    }
+    return true;
+  }
 
   if (item.to === '/daily-notes') {
     if (

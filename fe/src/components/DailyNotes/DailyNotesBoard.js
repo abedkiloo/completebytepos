@@ -21,6 +21,7 @@ import { priorityMeta } from '../../utils/dailyNotesPriority';
 import { cn } from '../../lib/cn';
 import PriorityBadge from './PriorityBadge';
 import { isModuleFeatureEnabled } from '../../utils/moduleFeatures';
+import { resolveMediaUrl } from '../../utils/mediaUrl';
 
 export default function DailyNotesBoard({
   notes,
@@ -167,6 +168,18 @@ export default function DailyNotesBoard({
                           >
                             {note.content || 'No details on this note.'}
                           </p>
+
+                          {note.image_url ? (
+                            <a
+                              href={resolveMediaUrl(note.image_url)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex text-sm text-primary underline"
+                              data-testid={`daily-note-image-${note.id}`}
+                            >
+                              View image
+                            </a>
+                          ) : null}
 
                           {Array.isArray(note.checklist_items) &&
                           note.checklist_items.length > 0 ? (

@@ -25,8 +25,8 @@ function basicSourceLabel(source) {
 }
 
 /**
- * Default pay package per job role. Everyone on that role inherits it;
- * Staff pay edits one person without changing the role package.
+ * General pay template per job role. Everyone on that role inherits it;
+ * Staff pay edits one person without changing the template.
  */
 export default function RolePackagesPanel({ components = [], onEditEmployee }) {
   const [roles, setRoles] = useState([]);
@@ -39,7 +39,12 @@ export default function RolePackagesPanel({ components = [], onEditEmployee }) {
   const [overviewLoading, setOverviewLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [defaultBasic, setDefaultBasic] = useState('');
-  const [lineForm, setLineForm] = useState({ component: '', amount: '', notes: '' });
+  const [lineForm, setLineForm] = useState({
+    component: '',
+    amount: '',
+    rate: '',
+    notes: '',
+  });
 
   const activeComponents = useMemo(
     () =>
@@ -193,12 +198,13 @@ export default function RolePackagesPanel({ components = [], onEditEmployee }) {
       const res = await payrollAPI.addPackageLine(current.id, {
         component: Number(lineForm.component),
         amount: lineForm.amount === '' ? null : lineForm.amount,
+        rate: lineForm.rate === '' ? null : lineForm.rate,
         notes: lineForm.notes || '',
         is_active: true,
       });
       setPkg(res.data);
-      setLineForm({ component: '', amount: '', notes: '' });
-      toast.success('Added for everyone on this role');
+      setLineForm({ component: '', amount: '', rate: '', notes: '' });
+      toast.success('Added to the general template for this role');
       await refresh();
       await loadStaff(res.data.id);
       await loadOverview(selectedRoleId);
@@ -454,6 +460,7 @@ export default function RolePackagesPanel({ components = [], onEditEmployee }) {
                   <th className="py-2 pr-2">Component</th>
                   <th className="py-2 pr-2">Kind</th>
                   <th className="py-2 pr-2">Amount</th>
+                  <th className="py-2 pr-2">Rate</th>
                   <th className="py-2 pr-2">Active</th>
                   <th className="py-2"> </th>
                 </tr>
@@ -469,7 +476,12 @@ export default function RolePackagesPanel({ components = [], onEditEmployee }) {
                     </td>
                     <td className="py-2 pr-2">{line.component_kind}</td>
                     <td className="py-2 pr-2">
-                      {line.amount != null ? formatCurrency(line.amount) : 'template default'}
+                      {line.amount != null ? formatCurrency(line.amount) : '—'}
+                    </td>
+                    <td className="py-2 pr-2 tabular-nums">
+                      {line.rate != null && line.rate !== ''
+                        ? `${(Number(line.rate) * 100).toFixed(2)}%`
+                        : '—'}
                     </td>
                     <td className="py-2 pr-2">
                       <label className="inline-flex items-center gap-2 text-xs">
@@ -525,7 +537,7 @@ export default function RolePackagesPanel({ components = [], onEditEmployee }) {
               </select>
             </div>
             <div>
-              <Label>Amount</Label>
+              <Label>Amount (fixed)</Label>
               <Input
                 type="number"
                 step="0.01"
@@ -533,6 +545,17 @@ export default function RolePackagesPanel({ components = [], onEditEmployee }) {
                 value={lineForm.amount}
                 onChange={(e) => setLineForm({ ...lineForm, amount: e.target.value })}
                 placeholder="e.g. 3000"
+              />
+            </div>
+            <div>
+              <Label>Rate (e.g. 0.03 = 3%)</Label>
+              <Input
+                type="number"
+                step="0.0001"
+                min="0"
+                value={lineForm.rate}
+                onChange={(e) => setLineForm({ ...lineForm, rate: e.target.value })}
+                placeholder="0.03 for commission"
               />
             </div>
             <div>
@@ -545,7 +568,7 @@ export default function RolePackagesPanel({ components = [], onEditEmployee }) {
             <div className="sm:col-span-2 lg:col-span-4">
               <Button type="submit" size="sm" disabled={busy || !availableLines.length}>
                 <Plus className="h-4 w-4" />
-                Add line for whole role
+                Add to general template
               </Button>
             </div>
           </form>

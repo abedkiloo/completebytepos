@@ -22,6 +22,7 @@ class PayrollSettingsAdmin(admin.ModelAdmin):
         'pay_day',
         'statutory_enabled',
         'include_appraisal_bonus',
+        'include_sales_commission',
     )
 
 

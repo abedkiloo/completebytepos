@@ -272,11 +272,24 @@ def originating_debt_customer_ids(user) -> set:
 
 
 def _visible_debtor_customer_ids(user) -> Optional[set]:
-    """None = every debtor; a set (possibly empty) = restrict to those customers."""
+    """
+    None = every debtor; a set (possibly empty) = restrict to those customers.
+
+    Field Sales only see debtors they onboarded (``Customer.created_by``).
+    Other limited sales staff still use originating-debt rules.
+    """
     if user is None:
         return None
-    from sales.visibility import user_sees_all_debt
+    from sales.models import Customer
+    from sales.visibility import user_limited_to_own_customers, user_sees_all_debt
 
+    if user_limited_to_own_customers(user):
+        uid = getattr(user, 'pk', None) or getattr(user, 'id', None)
+        if uid is None:
+            return set()
+        return set(
+            Customer.objects.filter(created_by_id=uid).values_list('pk', flat=True)
+        )
     if user_sees_all_debt(user):
         return None
     return originating_debt_customer_ids(user)

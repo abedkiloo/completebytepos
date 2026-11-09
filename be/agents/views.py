@@ -46,7 +46,18 @@ class CustomerSiteViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     http_method_names = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options']
 
     def get_queryset(self):
+        """
+        Site rows for agents. Field Sales only see sites for dukas they onboarded.
+
+        Query params:
+            customer: optional customer pk filter.
+            status: optional site status filter.
+        """
+        from sales.visibility import user_limited_to_own_customers
+
         qs = super().get_queryset()
+        if user_limited_to_own_customers(self.request.user):
+            qs = qs.filter(customer__created_by_id=self.request.user.pk)
         customer_id = self.request.query_params.get('customer')
         if customer_id:
             qs = qs.filter(customer_id=customer_id)

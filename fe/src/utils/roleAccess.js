@@ -123,6 +123,15 @@ export function getPersonaFromStorage() {
   });
 }
 
+/** Field Sales (or legacy field_sales) — directory scoped to dukas they onboarded. */
+export function isFieldSalesFromStorage() {
+  const { profile } = getStoredAuth();
+  const customName = (profile?.custom_role?.name || '').trim();
+  if (customName === 'Field Sales') return true;
+  const legacy = (profile?.role || '').trim();
+  return legacy === 'field_sales' || legacy === 'field_agent';
+}
+
 /** May edit at least one product pricing, cost, or stock field (module settings apply). */
 export function userMayEditFinancialFieldsFromStorage() {
   const persona = getPersonaFromStorage();
@@ -200,7 +209,19 @@ export function routesFromPermissions(permissions) {
   return routesFromPermissionList(permissions);
 }
 
+/** Field Sales may only open customers, own sales, and own payroll. */
+const FIELD_SALES_ROUTE_PREFIXES = [
+  '/',
+  '/change-password',
+  '/customers',
+  '/sales',
+  '/payroll',
+];
+
 function salesRoutePrefixes() {
+  if (isFieldSalesFromStorage()) {
+    return [...FIELD_SALES_ROUTE_PREFIXES];
+  }
   const { permissions } = getStoredAuth();
   const base = ALLOWED_ROUTE_PREFIXES[PERSONA.SALES];
   const store = readCachedStoreSettings();
@@ -223,6 +244,22 @@ export function canAccessRoute(persona, pathname, options = {}) {
 
   if (isSuperAdmin || persona === PERSONA.SUPER_ADMIN) {
     return true;
+  }
+
+  if (isFieldSalesFromStorage()) {
+    // Block debt / payments under /customers even though prefix matches.
+    if (
+      pathname.startsWith('/customers/debt') ||
+      pathname.startsWith('/customers/payments') ||
+      pathname.startsWith('/pos') ||
+      pathname.startsWith('/invoices') ||
+      pathname.startsWith('/daily-notes') ||
+      pathname.startsWith('/appraisals') ||
+      pathname.startsWith('/products') ||
+      pathname.startsWith('/categories')
+    ) {
+      return false;
+    }
   }
 
   const allowed =

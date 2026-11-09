@@ -96,9 +96,44 @@ class DefaultRolePermissionTests(TestCase):
         """Daily Sales Tracker is checkable — not on default Manager or Sales packs."""
         self.assertFalse(self._has(self.manager_role, 'sales', 'daily_sales'))
         self.assertFalse(self._has(self.sales_role, 'sales', 'daily_sales'))
-        # Field Sales includes daily_sales so agents can see own field + shop sales.
+        # Field Sales keeps daily_sales for own sales tracker only.
         self.assertTrue(self._has(self.field_role, 'sales', 'daily_sales'))
         self.assertTrue(self._has(self.super_role, 'sales', 'daily_sales'))
+
+    def test_field_sales_locked_to_customers_sales_commission(self):
+        """Field Sales: customers + own sales + agents visit + view catalog + payslips."""
+        for module, action in (
+            ('customers', 'view'),
+            ('customers', 'create'),
+            ('customers', 'update'),
+            ('sales', 'view'),
+            ('sales', 'create'),
+            ('sales', 'daily_sales'),
+            ('agents', 'view'),
+            ('agents', 'create'),
+            ('products', 'view'),
+            ('payroll', 'view_own'),
+        ):
+            self.assertTrue(
+                self._has(self.field_role, module, action),
+                f'Field Sales should have {module}.{action}',
+            )
+        for module in (
+            'pos',
+            'debt_management',
+            'delivery',
+            'invoicing',
+            'daily_notes',
+            'appraisals',
+            'messaging',
+            'payments',
+        ):
+            self.assertFalse(
+                self.field_role.permissions.filter(module=module).exists(),
+                f'Field Sales should not have {module} permissions',
+            )
+        self.assertFalse(self._has(self.field_role, 'products', 'create'))
+        self.assertFalse(self._has(self.field_role, 'products', 'update'))
 
     def test_sales_role_has_catalog_create_import_only(self):
         self.assertTrue(self._has(self.sales_role, 'products', 'create'))
@@ -113,15 +148,15 @@ class DefaultRolePermissionTests(TestCase):
     def test_sales_role_can_do_delivery(self):
         self.assertTrue(self._has(self.sales_role, 'delivery', 'view'))
         self.assertTrue(self._has(self.sales_role, 'delivery', 'update'))
-        self.assertTrue(self._has(self.field_role, 'delivery', 'view'))
-        self.assertTrue(self._has(self.field_role, 'delivery', 'update'))
+        self.assertFalse(self._has(self.field_role, 'delivery', 'view'))
+        self.assertFalse(self._has(self.field_role, 'delivery', 'update'))
 
     def test_sales_role_has_daily_notes(self):
         self.assertTrue(self._has(self.sales_role, 'daily_notes', 'view'))
         self.assertTrue(self._has(self.sales_role, 'daily_notes', 'create'))
         self.assertTrue(self._has(self.sales_role, 'daily_notes', 'update'))
         self.assertFalse(self._has(self.sales_role, 'daily_notes', 'view_all'))
-        self.assertTrue(self._has(self.field_role, 'daily_notes', 'view'))
+        self.assertFalse(self._has(self.field_role, 'daily_notes', 'view'))
 
     def test_manager_lacks_users_roles_settings_modules(self):
         for module in ('users', 'roles', 'settings', 'modules'):

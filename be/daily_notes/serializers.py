@@ -1,4 +1,8 @@
+import json
+import os
+
 from django.contrib.auth.models import User
+from django.core.files.base import ContentFile
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -12,6 +16,92 @@ from .services import (
     users_with_role,
 )
 from utils.field_types import date_error_messages, raise_field_error, required_text_error
+
+
+def attach_note_images(notes, uploaded_file) -> None:
+    """
+    Copy an optional uploaded image onto each created daily note.
+
+    Fan-out creates many rows; each gets its own media file so deleting one
+    note does not break siblings.
+
+    Args:
+        notes: Iterable of saved ``DailyNote`` instances (1–500).
+        uploaded_file: Django ``UploadedFile`` / file-like, or ``None``.
+
+    Returns:
+        None.
+    """
+    if not uploaded_file or not notes:
+        return
+    raw = uploaded_file.read()
+    if hasattr(uploaded_file, 'seek'):
+        try:
+            uploaded_file.seek(0)
+        except Exception:
+            pass
+    name = os.path.basename(getattr(uploaded_file, 'name', '') or 'note.jpg') or 'note.jpg'
+    for note in notes:
+        note.image.save(name, ContentFile(raw), save=True)
+
+
+def _parse_multipart_payload(data):
+    """
+    Normalize multipart/form-data into a plain dict for ModelSerializer.
+
+    Checklist rows may arrive as a JSON string; file fields stay as uploads.
+
+    Args:
+        data: Request data (``QueryDict`` or mapping).
+
+    Returns:
+        dict suitable for ``super().to_internal_value``.
+
+    Raises:
+        serializers.ValidationError: When ``checklist_items`` JSON is invalid.
+    """
+    if hasattr(data, 'lists'):
+        mutable = {}
+        for key, values in data.lists():
+            if key == 'checklist_items' and len(values) == 1 and isinstance(values[0], str):
+                raw = values[0].strip()
+                if not raw:
+                    mutable[key] = []
+                    continue
+                try:
+                    mutable[key] = json.loads(raw)
+                except json.JSONDecodeError as exc:
+                    raise serializers.ValidationError(
+                        {'checklist_items': 'Invalid checklist JSON.'}
+                    ) from exc
+            elif len(values) == 1:
+                mutable[key] = values[0]
+            else:
+                mutable[key] = values
+        return _nullify_empty_fk(mutable)
+
+    mutable = dict(data)
+    items = mutable.get('checklist_items')
+    if isinstance(items, str):
+        raw = items.strip()
+        if not raw:
+            mutable['checklist_items'] = []
+        else:
+            try:
+                mutable['checklist_items'] = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise serializers.ValidationError(
+                    {'checklist_items': 'Invalid checklist JSON.'}
+                ) from exc
+    return _nullify_empty_fk(mutable)
+
+
+def _nullify_empty_fk(mutable: dict) -> dict:
+    """Turn empty multipart FK strings into ``None`` for nullable relations."""
+    for key in ('assigned_to', 'assigned_role'):
+        if mutable.get(key) == '':
+            mutable[key] = None
+    return mutable
 
 
 def _author_display(user) -> str:
@@ -102,6 +192,8 @@ class DailyNoteSerializer(serializers.ModelSerializer):
         write_only=True,
     )
     checklist_items = DailyNoteChecklistItemSerializer(many=True, required=False)
+    image = serializers.ImageField(required=False, allow_null=True)
+    image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = DailyNote
@@ -129,6 +221,8 @@ class DailyNoteSerializer(serializers.ModelSerializer):
             'created_count',
             'days_carried_over',
             'checklist_items',
+            'image',
+            'image_url',
             'created_at',
             'updated_at',
         ]
@@ -137,12 +231,32 @@ class DailyNoteSerializer(serializers.ModelSerializer):
             'completed_at',
             'assignment_group',
             'days_carried_over',
+            'image_url',
             'created_at',
             'updated_at',
         ]
         extra_kwargs = {
             'note_date': {'error_messages': date_error_messages(label='note date')},
         }
+
+    def to_internal_value(self, data):
+        return super().to_internal_value(_parse_multipart_payload(data))
+
+    def get_image_url(self, obj):
+        """
+        Absolute media URL for the optional note photo.
+
+        Args:
+            obj: ``DailyNote`` instance.
+
+        Returns:
+            str URL or ``None`` when no image is attached.
+        """
+        if not obj.image:
+            return None
+        from config.media_urls import absolute_media_url
+
+        return absolute_media_url(self.context.get('request'), obj.image.url)
 
     def validate_content(self, value):
         raise_field_error(
@@ -296,6 +410,7 @@ class DailyNoteSerializer(serializers.ModelSerializer):
         assigned_role = validated_data.pop('assigned_role', None)
         assign_to_all = validated_data.pop('assign_to_all', False)
         checklist_items = validated_data.pop('checklist_items', None)
+        image = validated_data.pop('image', None)
         if not daily_notes_priority_enabled():
             validated_data['priority'] = PRIORITY_MEDIUM
         if not daily_notes_sticky_enabled():
@@ -333,6 +448,7 @@ class DailyNoteSerializer(serializers.ModelSerializer):
         if checklist_items is not None:
             for created_note in notes:
                 replace_note_checklist(created_note, checklist_items)
+        attach_note_images(notes, image)
         return note
 
     def to_representation(self, instance):

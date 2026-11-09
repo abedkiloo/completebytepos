@@ -76,6 +76,7 @@ class PayrollSettingsView(APIView):
             'pay_day': settings.pay_day,
             'statutory_enabled': settings.statutory_enabled,
             'include_appraisal_bonus': settings.include_appraisal_bonus,
+            'include_sales_commission': settings.include_sales_commission,
             'letterhead_line': settings.letterhead_line,
         }
         ser = PayrollSettingsSerializer(settings, data=request.data, partial=True)
@@ -87,6 +88,7 @@ class PayrollSettingsView(APIView):
             'pay_day': settings.pay_day,
             'statutory_enabled': settings.statutory_enabled,
             'include_appraisal_bonus': settings.include_appraisal_bonus,
+            'include_sales_commission': settings.include_sales_commission,
             'letterhead_line': settings.letterhead_line,
         }
         changes = {

@@ -28,6 +28,21 @@ STARTER_COMPONENTS = [
         'description': 'Monthly bonus from appraisals adapter (snapshot at calculate)',
     },
     {
+        'code': 'EARN_COMMISSION',
+        'name': 'Sales commission',
+        'kind': PayComponent.KIND_EARNING,
+        'calculation_type': PayComponent.CALC_FORMULA,
+        'default_amount': Decimal('0.00'),
+        'default_rate': Decimal('0.0300'),
+        'is_taxable': True,
+        'is_statutory': False,
+        'sort_order': 25,
+        'description': (
+            'Field sales commission: net field sales × rate. '
+            'Set rate on the role template (general) or Staff pay (one person).'
+        ),
+    },
+    {
         'code': 'ALLOWANCE_TRANSPORT',
         'name': 'Transport allowance',
         'kind': PayComponent.KIND_EARNING,
@@ -164,11 +179,16 @@ def seed_starter_components(*, force_inactive_statutory: bool = True) -> int:
     created = 0
     for row in STARTER_COMPONENTS:
         defaults = {k: v for k, v in row.items() if k != 'code'}
-        _, was_created = PayComponent.objects.get_or_create(
+        obj, was_created = PayComponent.objects.get_or_create(
             code=row['code'], defaults=defaults
         )
         if was_created:
             created += 1
+        elif row['code'] == 'EARN_COMMISSION' and obj.default_rate == Decimal('0.0000'):
+            # Upgrade older installs that created the row without a default rate.
+            obj.default_rate = row.get('default_rate', Decimal('0.0300'))
+            obj.description = row.get('description') or obj.description
+            obj.save(update_fields=['default_rate', 'description', 'updated_at'])
     for row in STATUTORY_STARTERS:
         component = PayComponent.objects.filter(code=row['component_code']).first()
         _, was_created = StatutoryRule.objects.get_or_create(
@@ -182,4 +202,11 @@ def seed_starter_components(*, force_inactive_statutory: bool = True) -> int:
         )
         if was_created:
             created += 1
+    try:
+        from payroll.adapters.commission import ensure_field_sales_commission_package
+
+        ensure_field_sales_commission_package()
+    except Exception:
+        # Roles may not be synced yet during early migrate/tests.
+        pass
     return created

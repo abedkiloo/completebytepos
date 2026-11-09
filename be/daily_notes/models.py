@@ -103,6 +103,12 @@ class DailyNote(models.Model):
         db_index=True,
         help_text='Shared id for notes fanned out to a role.',
     )
+    image = models.ImageField(
+        upload_to='daily_notes/',
+        blank=True,
+        null=True,
+        help_text='Optional photo attached to this note (receipt, damage, handover proof).',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

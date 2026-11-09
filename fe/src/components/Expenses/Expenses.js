@@ -58,6 +58,7 @@ import {
   ListPaginationRail,
 } from '../page';
 import { useListOrdering } from '../../hooks/useListOrdering';
+import { resolveMediaUrl } from '../../utils/mediaUrl';
 
 function filtersFromSearchParams(searchParams) {
   const defaults = periodToDateFilters(DEFAULT_REPORT_PERIOD);
@@ -525,8 +526,19 @@ const Expenses = () => {
                       {formatOccurredDate(expense.expense_date) || formatDate(expense.expense_date)}
                     </DataTableCell>
                     <DataTableCell>{expense.category_name || '—'}</DataTableCell>
-                    <DataTableCell className="max-w-[200px] truncate">
-                      {expense.description}
+                    <DataTableCell className="max-w-[220px]">
+                      <div className="truncate">{expense.description}</div>
+                      {expense.image_url ? (
+                        <a
+                          href={resolveMediaUrl(expense.image_url)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-0.5 inline-flex text-xs text-primary hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          View image
+                        </a>
+                      ) : null}
                     </DataTableCell>
                     <DataTableCell align="right" className="font-semibold">
                       {formatCurrency(expense.amount)}

@@ -253,6 +253,7 @@ export default function PayrollPage() {
         pay_day: Number(settings.pay_day),
         statutory_enabled: Boolean(settings.statutory_enabled),
         include_appraisal_bonus: Boolean(settings.include_appraisal_bonus),
+        include_sales_commission: Boolean(settings.include_sales_commission),
         letterhead_line: settings.letterhead_line || '',
       });
       setSettings(res.data);
@@ -422,7 +423,7 @@ export default function PayrollPage() {
     ...(canAdmin
       ? [
           { id: 'runs', label: 'Runs' },
-          { id: 'packages', label: 'Role packages' },
+          { id: 'packages', label: 'Role templates' },
           { id: 'staff', label: 'Staff pay' },
           { id: 'components', label: 'Components' },
           { id: 'settings', label: 'Settings' },
@@ -980,6 +981,16 @@ export default function PayrollPage() {
               }
             />
             Include target-delivery bonus when calculating
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={Boolean(settings.include_sales_commission)}
+              onChange={(e) =>
+                setSettings({ ...settings, include_sales_commission: e.target.checked })
+              }
+            />
+            Include field sales commission when calculating (net field sales × rate)
           </label>
           <label className="flex items-center gap-2 text-sm">
             <input

@@ -12,6 +12,7 @@ import {
   ChevronRight,
   X,
   MessageSquareText,
+  Pencil,
 } from 'lucide-react';
 
 import { customersAPI } from '../../services/api';
@@ -21,6 +22,7 @@ import { getStoredAuth, hasPermission } from '../../utils/roleAccess';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import { userHasAdminSaleOverride } from '../../utils/saleCompletionApproval';
 import {
   customersShowWalletBalance,
   customersEnableWalletPayment,
@@ -38,6 +40,7 @@ import {
 } from '../../utils/debtManagement';
 import { customerDetailPath } from '../../utils/customerDetail';
 import ReceiveWalletPaymentDialog from './ReceiveWalletPaymentDialog';
+import CorrectCollectionAmountDialog from './CorrectCollectionAmountDialog';
 import DebtReminderDialog from './DebtReminderDialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -88,8 +91,12 @@ export default function DebtManagementPage() {
   const canSendReminders =
     hasPermission(permissions, 'messaging', 'create') ||
     hasPermission(permissions, 'debt_management', 'update');
+  const canCorrectCollection =
+    userHasAdminSaleOverride() ||
+    hasPermission(permissions, 'debt_management', 'correct');
 
   const [summary, setSummary] = useState(emptyDebtSummary());
+  const [correctingCollection, setCorrectingCollection] = useState(null);
   const [debtors, setDebtors] = useState([]);
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -399,6 +406,7 @@ export default function DebtManagementPage() {
                   <DataTableHead>Collected by</DataTableHead>
                   <DataTableHead align="right">Balance after</DataTableHead>
                   <DataTableHead>Notes</DataTableHead>
+                  {canCorrectCollection ? <DataTableHead> </DataTableHead> : null}
                 </DataTableHeader>
                 <DataTableBody>
                   {collections.results.map((row) => {
@@ -449,6 +457,20 @@ export default function DebtManagementPage() {
                         <DataTableCell className="max-w-[12rem] truncate text-sm text-muted-foreground">
                           {row.notes || '—'}
                         </DataTableCell>
+                        {canCorrectCollection ? (
+                          <DataTableCell>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              aria-label={`Edit amount for ${row.customer_name || 'collection'}`}
+                              onClick={() => setCorrectingCollection(row)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                              Edit
+                            </Button>
+                          </DataTableCell>
+                        ) : null}
                       </DataTableRow>
                     );
                   })}
@@ -603,6 +625,17 @@ export default function DebtManagementPage() {
         }}
         onSuccess={() => {
           setPayCustomer(null);
+          refreshAll();
+        }}
+      />
+      <CorrectCollectionAmountDialog
+        open={Boolean(correctingCollection)}
+        collection={correctingCollection}
+        onOpenChange={(open) => {
+          if (!open) setCorrectingCollection(null);
+        }}
+        onSaved={() => {
+          setCorrectingCollection(null);
           refreshAll();
         }}
       />

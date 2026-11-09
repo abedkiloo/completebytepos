@@ -23,6 +23,7 @@ class PayrollSettingsSerializer(serializers.ModelSerializer):
             'pay_day',
             'statutory_enabled',
             'include_appraisal_bonus',
+            'include_sales_commission',
             'letterhead_line',
             'created_at',
             'updated_at',

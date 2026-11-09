@@ -17,8 +17,9 @@ function unwrapList(data) {
 }
 
 /**
- * Per-employee overrides on top of the role package.
- * Role package applies automatically; lines here win for this person only.
+ * Per-employee overrides on top of the role template (general package).
+ * Template applies automatically; lines here win for this person only
+ * (including sales commission rate).
  */
 export default function StaffPayPanel({
   components = [],
@@ -217,6 +218,29 @@ export default function StaffPayPanel({
     }
   };
 
+  const updateRate = async (row, rate) => {
+    setBusy(true);
+    try {
+      await payrollAPI.updateAssignment(row.id, {
+        rate: rate === '' ? null : rate,
+      });
+      await loadAssignments(employeeId);
+      await loadPayPreview(employeeId);
+      toast.success('Rate updated');
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Update failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const formatRate = (rate) => {
+    if (rate == null || rate === '') return null;
+    const n = Number(rate);
+    if (Number.isNaN(n)) return String(rate);
+    return `${(n * 100).toFixed(2)}%`;
+  };
+
   const removeAssignment = async (id) => {
     setBusy(true);
     try {
@@ -249,8 +273,8 @@ export default function StaffPayPanel({
     <div className="space-y-6">
       <p className="text-sm text-muted-foreground max-w-2xl">
         If this person has a job role with a package, they already inherit those
-        lines. Add or change amounts here only when this one employee should differ
-        from the role package.
+        lines. Add or change amounts / rates here only when this one employee should
+        differ from the role package (e.g. a higher sales commission rate).
       </p>
 
       <div className="max-w-md space-y-2">
@@ -328,8 +352,8 @@ export default function StaffPayPanel({
               </div>
               {inheritedLines.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  Role package exists but has no active lines yet. Set default basic
-                  and add allowances under Role packages.
+                  Role template exists but has no active lines yet. Set default basic
+                  and add allowances under Role templates.
                 </p>
               ) : (
                 <ul className="text-sm space-y-1">
@@ -339,7 +363,7 @@ export default function StaffPayPanel({
                       <span className="text-muted-foreground">
                         {line.amount != null
                           ? formatCurrency(line.amount)
-                          : 'template default'}
+                          : formatRate(line.rate) || 'template default'}
                       </span>
                       <Badge variant="outline" className="text-[10px]">
                         role
@@ -357,7 +381,7 @@ export default function StaffPayPanel({
             <p className="text-sm text-muted-foreground">
               No role package found for this person. Under Employees, set Position /
               job role to <strong>Sales Personnel</strong> (or their role), and create
-              that Role package — or add personal lines here.
+              that role template — or add personal lines here (e.g. commission rate).
             </p>
           )}
 
@@ -370,6 +394,7 @@ export default function StaffPayPanel({
                   <th className="py-2 pr-2">Component</th>
                   <th className="py-2 pr-2">Kind</th>
                   <th className="py-2 pr-2">Amount (KES)</th>
+                  <th className="py-2 pr-2">Rate</th>
                   <th className="py-2 pr-2">Notes</th>
                   <th className="py-2"> </th>
                 </tr>
@@ -377,7 +402,7 @@ export default function StaffPayPanel({
               <tbody>
                 {assignments.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-6 text-center text-muted-foreground">
+                    <td colSpan={6} className="py-6 text-center text-muted-foreground">
                       No personal overrides — full role package applies as-is.
                     </td>
                   </tr>
@@ -414,6 +439,22 @@ export default function StaffPayPanel({
                           disabled={busy}
                         />
                       </td>
+                      <td className="py-2 pr-2">
+                        <Input
+                          className="w-28"
+                          type="number"
+                          step="0.0001"
+                          min="0"
+                          defaultValue={row.rate ?? ''}
+                          placeholder="0.03"
+                          onBlur={(ev) => {
+                            const next = ev.target.value;
+                            const prev = row.rate == null ? '' : String(row.rate);
+                            if (next !== prev) updateRate(row, next);
+                          }}
+                          disabled={busy}
+                        />
+                      </td>
                       <td className="py-2 pr-2 text-muted-foreground">{row.notes || '—'}</td>
                       <td className="py-2">
                         <Button
@@ -436,7 +477,7 @@ export default function StaffPayPanel({
 
           <form
             onSubmit={saveAssignment}
-            className="grid gap-3 rounded-md border border-dashed border-border/70 p-4 sm:grid-cols-2 lg:grid-cols-4"
+            className="grid gap-3 rounded-md border border-dashed border-border/70 p-4 sm:grid-cols-2 lg:grid-cols-5"
           >
             <div className="sm:col-span-2">
               <Label>Add component for this person</Label>
@@ -466,6 +507,17 @@ export default function StaffPayPanel({
               />
             </div>
             <div>
+              <Label>Rate (e.g. 0.03 = 3%)</Label>
+              <Input
+                type="number"
+                step="0.0001"
+                min="0"
+                value={form.rate}
+                onChange={(ev) => setForm({ ...form, rate: ev.target.value })}
+                placeholder="0.03 for commission"
+              />
+            </div>
+            <div>
               <Label>Notes</Label>
               <Input
                 value={form.notes}
@@ -473,14 +525,14 @@ export default function StaffPayPanel({
                 placeholder="Optional"
               />
             </div>
-            <div className="sm:col-span-2 lg:col-span-4">
+            <div className="sm:col-span-2 lg:col-span-5">
               <Button type="submit" size="sm" disabled={busy || !availableToAdd.length}>
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
                 Add for this employee
               </Button>
               <p className="mt-2 text-xs text-muted-foreground">
-                Earnings increase pay; deductions reduce it. Leave amount blank to use the
-                component’s template default / %.
+                Earnings increase pay; deductions reduce it. For sales commission, set
+                Rate (leave Amount blank). Rate is a fraction — 0.05 means 5%.
               </p>
             </div>
           </form>

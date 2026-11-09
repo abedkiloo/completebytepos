@@ -110,6 +110,11 @@ PERMISSIONS_DATA = [
         'payments_trail',
         'View store-wide payments trail (managers — not sales staff)',
     ),
+    (
+        'debt_management',
+        'correct',
+        'Edit cash collected on a posted debt collection (admin by default)',
+    ),
     ('invoicing', 'view', 'View invoices and payments'),
     ('invoicing', 'create', 'Create invoices and record payments'),
     ('invoicing', 'update', 'Update invoices'),
@@ -246,10 +251,10 @@ ROLE_SCREEN_MATRIX = {
         'My payslips (download after payroll is locked for the period)',
     ],
     ROLE_FIELD_AGENT: [
-        'Field sales (customer → products → pin → place)',
-        'POS / sales (same as Sales)',
-        'Customers (lookup / create)',
-        'Delivery (admin can assign you to a route)',
+        'Own customers only (register / update dukas you onboarded)',
+        'Own sales only (field visit sale + history / daily tracker)',
+        'Own commission / payslips (payroll self-service)',
+        'Nothing else (no POS, debt board, delivery, catalog edit, notes)',
     ],
     ROLE_DISPATCHER: [
         'Dispatch queue (submitted / packing / ready)',
@@ -319,6 +324,8 @@ def _manager_queryset():
         .exclude(module='reports', action='profit')
         # Editing expenses (incl. approved) stays admin unless explicitly checked.
         .exclude(module='expenses', action='update')
+        # Correcting posted debt collections stays admin unless explicitly checked.
+        .exclude(module='debt_management', action='correct')
     ) | Permission.objects.filter(
         module='appraisals',
         action__in=['view', 'view_all'],
@@ -350,15 +357,42 @@ def _sales_queryset():
 
 
 def _field_agent_queryset():
-    """Field Sales permission pack — sales + customers (visit orders are normal sales)."""
+    """
+    Field Sales locked pack — own customers, own sales, own commission only.
+
+    - Customers: view / create / update (API scopes to ``created_by``).
+    - Sales: view / create / update + daily tracker (API scopes to cashier/served_by).
+    - Agents: visit pin / site / field sale flow.
+    - Products/categories view: pick items on a visit (no catalog edit).
+    - Payroll view_own: locked payslips including sales commission.
+
+    No POS, debt board, delivery, invoicing, messaging, daily notes, or appraisals.
+    """
     return (
-        _sales_queryset()
+        Permission.objects.filter(
+            module='customers',
+            action__in=['view', 'create', 'update'],
+        )
+        | Permission.objects.filter(
+            module='sales',
+            action__in=['view', 'create', 'update', 'daily_sales'],
+        )
         | Permission.objects.filter(
             module='agents',
             action__in=['view', 'create', 'update'],
         )
-        # Agents need the daily sales tracker to see their own field + shop sales.
-        | Permission.objects.filter(module='sales', action='daily_sales')
+        | Permission.objects.filter(
+            module='products',
+            action='view',
+        )
+        | Permission.objects.filter(
+            module='categories',
+            action='view',
+        )
+        | Permission.objects.filter(
+            module='payroll',
+            action='view_own',
+        )
     )
 
 
@@ -399,6 +433,7 @@ def grant_daily_notes_to_sales_roles():
     """
     Sales desk users need Daily notes (returned-sale sticky tasks).
     Additive — does not strip permissions an admin already granted.
+    Field Sales is excluded (own customers / sales / commission only).
     """
     perms = list(
         Permission.objects.filter(
@@ -413,6 +448,7 @@ def grant_daily_notes_to_sales_roles():
             permissions__module__in=['sales', 'pos'],
             permissions__action='view',
         )
+        .exclude(name=ROLE_FIELD_AGENT)
         .values_list('id', flat=True)
         .distinct()
     )
@@ -432,6 +468,7 @@ def grant_appraisals_to_sales_roles():
     """
     Sales desk and managers who sell need appraisal progress.
     Additive — does not strip permissions an admin already granted.
+    Field Sales is excluded (own customers / sales / commission only).
     """
     view = list(Permission.objects.filter(module='appraisals', action='view'))
     view_all = list(Permission.objects.filter(module='appraisals', action='view_all'))
@@ -442,6 +479,7 @@ def grant_appraisals_to_sales_roles():
             permissions__module__in=['sales', 'pos'],
             permissions__action='view',
         )
+        .exclude(name=ROLE_FIELD_AGENT)
         .values_list('id', flat=True)
         .distinct()
     )
@@ -541,29 +579,20 @@ def sync_default_roles(created_by=None):
             )
         )
 
-    field_agent, agent_created = Role.objects.update_or_create(
+    field_agent, _agent_created = Role.objects.update_or_create(
         name=ROLE_FIELD_AGENT,
         defaults={
-            'description': 'Customer visits — map pin, site photos, field sales and POS sales',
+            'description': (
+                'Field Sales — own onboarded customers, own sales, and own '
+                'commission/payslips only'
+            ),
             'is_system_role': True,
             'is_active': True,
             'created_by': created_by,
         },
     )
-    if agent_created:
-        field_agent.permissions.set(_field_agent_queryset())
-    else:
-        # Additive: existing Field Sales roles need daily tracker after upgrade.
-        field_agent.permissions.add(
-            *Permission.objects.filter(module='sales', action='daily_sales')
-        )
-        # Additive: keep customer create/update so the app can edit dukas.
-        field_agent.permissions.add(
-            *Permission.objects.filter(
-                module='customers',
-                action__in=['view', 'create', 'update'],
-            )
-        )
+    # Product policy: always reset Field Sales to the locked pack (not additive).
+    field_agent.permissions.set(_field_agent_queryset())
 
     dispatcher, dispatcher_created = Role.objects.update_or_create(
         name=ROLE_DISPATCHER,

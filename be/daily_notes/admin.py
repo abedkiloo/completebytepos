@@ -15,6 +15,19 @@ class DailyNoteAdmin(admin.ModelAdmin):
     search_fields = ('title', 'content', 'author__username')
     raw_id_fields = ('author',)
     inlines = [DailyNoteChecklistItemInline]
+    fields = (
+        'note_date',
+        'title',
+        'content',
+        'priority',
+        'is_sticky',
+        'in_progress',
+        'is_done',
+        'author',
+        'assigned_to',
+        'assigned_role',
+        'image',
+    )
 
 
 @admin.register(DailyTask)

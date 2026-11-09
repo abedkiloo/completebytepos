@@ -17,7 +17,9 @@ from .serializers import (
     InvoiceSerializer, InvoiceCreateSerializer,
     PaymentSerializer, PaymentCreateSerializer,
     CustomerSerializer, CustomerListSerializer,
-    CustomerWalletTransactionSerializer, ReceiveWalletPaymentSerializer,
+    CustomerWalletTransactionSerializer,
+    CorrectDebtSettlementAmountSerializer,
+    ReceiveWalletPaymentSerializer,
 )
 from .refunds import SaleRefundService
 from products.models import Product, ProductVariant
@@ -26,7 +28,7 @@ from inventory.models import StockMovement
 from settings.utils import get_current_branch, get_current_tenant, is_branch_support_enabled
 from .services import SaleService, InvoiceService, PaymentService, CustomerService
 from .module_settings import sales_validate_stock_before_sale
-from accounts.permissions import RequireAny, RequirePerm, RequirePermPerAction
+from accounts.permissions import IsAdmin, RequireAny, RequirePerm, RequirePermPerAction
 from utils.audit_mixin import AuditedModelViewSetMixin
 from utils.validation_errors import validation_error_message
 from utils.pdf_generator import create_invoice_pdf
@@ -1410,8 +1412,10 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         from django.db.models import Sum
 
         from sales.customer_location_filters import apply_customer_location_filters
+        from sales.visibility import apply_customer_visibility
 
         queryset = Customer.objects.all().select_related('branch')
+        queryset = apply_customer_visibility(queryset, self.request.user)
         if getattr(self, 'action', None) == 'list':
             # Avoid N+1 Customer.total_outstanding (per-row invoice aggregate).
             queryset = queryset.annotate(
@@ -1832,6 +1836,85 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 'wallet_balance': str(customer.wallet_balance),
             },
             status=status.HTTP_201_CREATED,
+        )
+
+    @transaction.atomic
+    @action(
+        detail=False,
+        methods=['patch'],
+        url_path=r'wallet-settlements/(?P<txn_id>[0-9]+)/amount',
+        permission_classes=[
+            IsAuthenticated,
+            RequireAny(IsAdmin, RequirePerm('debt_management', 'correct')),
+        ],
+    )
+    def correct_wallet_settlement_amount(self, request, txn_id=None):
+        """
+        Admin-only: edit cash collected on a posted debt settlement.
+
+        Body:
+            amount (required) — new collection amount (>= 0.01).
+            reason (optional) — short note for audit.
+        """
+        from sales.customer_module_settings import customers_show_wallet_balance
+        from sales.debt_settlement_correction import correct_debt_settlement_amount
+
+        if not customers_show_wallet_balance():
+            return self._feature_disabled_response('Wallet balance')
+
+        serializer = CorrectDebtSettlementAmountSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        try:
+            existing = CustomerWalletTransaction.objects.get(pk=txn_id)
+        except CustomerWalletTransaction.DoesNotExist:
+            return Response(
+                {'error': 'Settlement not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        old_amount = existing.amount
+
+        try:
+            txn = correct_debt_settlement_amount(
+                txn_id=int(txn_id),
+                new_amount=data['amount'],
+                user=request.user,
+                reason=data.get('reason', ''),
+            )
+        except CustomerWalletTransaction.DoesNotExist:
+            return Response(
+                {'error': 'Settlement not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except ValidationError as exc:
+            return Response(
+                {'error': validation_error_message(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        customer = txn.customer
+        customer.refresh_from_db()
+        try:
+            from utils.audit_events import log_debt_settlement_corrected
+
+            log_debt_settlement_corrected(
+                request,
+                customer=customer,
+                txn=txn,
+                old_amount=old_amount,
+                new_amount=data['amount'],
+                reason=data.get('reason', ''),
+            )
+        except Exception:
+            pass
+        return Response(
+            {
+                'transaction': CustomerWalletTransactionSerializer(txn).data,
+                'wallet_balance': str(customer.wallet_balance),
+                'old_amount': str(old_amount),
+                'new_amount': str(data['amount']),
+            }
         )
 
 
