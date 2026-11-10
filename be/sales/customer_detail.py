@@ -109,6 +109,9 @@ def serialize_ledger_entry(txn: CustomerWalletTransaction) -> Dict[str, Any]:
         method = resolve_settlement_payment_method(txn)
         method_label = payment_method_label(method)
 
+    from sales.wallet_receipt import is_backdated_wallet_txn, receipt_image_url
+
+    when = txn.effective_occurred_at
     return {
         'id': txn.id,
         'transaction_type': txn.transaction_type,
@@ -120,6 +123,9 @@ def serialize_ledger_entry(txn: CustomerWalletTransaction) -> Dict[str, Any]:
         'notes': txn.notes or '',
         'sale': txn.sale_id,
         'sale_number': txn.sale.sale_number if txn.sale_id and txn.sale else None,
+        'receipt_image_url': receipt_image_url(txn),
+        'occurred_at': when.isoformat() if when else None,
+        'is_backdated': is_backdated_wallet_txn(txn),
         'created_by_name': created_by_name,
         'created_at': txn.created_at.isoformat() if txn.created_at else None,
         **flow,

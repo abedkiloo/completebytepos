@@ -690,14 +690,16 @@ def list_debt_collections(
     page = max(1, int(page or 1))
     page_size = min(200, max(1, int(page_size or 50)))
 
+    from sales.wallet_receipt import is_backdated_wallet_txn, receipt_image_url
+
     qs = (
         CustomerWalletTransaction.objects.filter(
             source_type='debt_settlement',
-            created_at__gte=start,
-            created_at__lte=end,
         )
+        .annotate(effective_at=Coalesce('occurred_at', 'created_at'))
+        .filter(effective_at__gte=start, effective_at__lte=end)
         .select_related('customer', 'created_by', 'sale')
-        .order_by('-created_at', '-id')
+        .order_by('-effective_at', '-id')
     )
     if own_only and user is not None:
         visible_ids = originating_debt_customer_ids(user)
@@ -718,6 +720,7 @@ def list_debt_collections(
         from sales.collection_payer import mpesa_destination_label
 
         dest = (getattr(txn, 'mpesa_destination', None) or '').strip().lower()
+        when = txn.effective_occurred_at
         results.append(
             {
                 'id': txn.id,
@@ -737,6 +740,9 @@ def list_debt_collections(
                 'mpesa_destination_label': mpesa_destination_label(dest),
                 'sale_number': txn.sale.sale_number if txn.sale_id and txn.sale else None,
                 'received_by': _user_label(txn.created_by),
+                'receipt_image_url': receipt_image_url(txn),
+                'occurred_at': when.isoformat() if when else None,
+                'is_backdated': is_backdated_wallet_txn(txn),
                 'created_at': txn.created_at.isoformat() if txn.created_at else None,
             }
         )

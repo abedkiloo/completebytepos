@@ -49,6 +49,14 @@ const PAYMENT_METHODS = [
   { value: 'mpesa', label: 'M-PESA' },
 ];
 
+const todayLocalDate = () => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
 const EMPTY_FORM = {
   amount: '',
   payment_method: 'cash',
@@ -57,6 +65,7 @@ const EMPTY_FORM = {
   payer_name: '',
   payer_phone: '',
   mpesa_destination: '',
+  payment_date: todayLocalDate(),
 };
 
 /**
@@ -79,6 +88,8 @@ export default function ReceiveWalletPaymentDialog({
   const [mpesaMode, setMpesaMode] = useState(MPESA_CAPTURE_CODE);
   const [mpesaPhone, setMpesaPhone] = useState('');
   const [stkOpen, setStkOpen] = useState(false);
+  const [receiptFile, setReceiptFile] = useState(null);
+  const [receiptPreview, setReceiptPreview] = useState(null);
 
   const debtAmount = getWalletDebtAmount(customer?.wallet_balance);
   const { permissions } = getStoredAuth();
@@ -93,22 +104,27 @@ export default function ReceiveWalletPaymentDialog({
 
   useEffect(() => {
     if (!open || !customer?.id) {
-      setForm(EMPTY_FORM);
+      setForm({ ...EMPTY_FORM, payment_date: todayLocalDate() });
       setTransactions([]);
       setFieldErrors({});
       setMpesaMode(MPESA_CAPTURE_CODE);
       setMpesaPhone('');
       setStkOpen(false);
+      setReceiptFile(null);
+      setReceiptPreview(null);
       return;
     }
     setForm({
       ...EMPTY_FORM,
+      payment_date: todayLocalDate(),
       amount: debtAmount > 0 ? String(debtAmount) : '',
       payer_name: customer.name || '',
       payer_phone: customer.phone || '',
     });
     setMpesaMode(MPESA_CAPTURE_CODE);
     setMpesaPhone(customer.phone || '');
+    setReceiptFile(null);
+    setReceiptPreview(null);
 
     let cancelled = false;
     setLoadingTxns(true);
@@ -158,6 +174,29 @@ export default function ReceiveWalletPaymentDialog({
     });
   };
 
+  const onReceiptSelected = (file) => {
+    if (receiptPreview && typeof URL !== 'undefined' && URL.revokeObjectURL) {
+      URL.revokeObjectURL(receiptPreview);
+    }
+    if (!file) {
+      setReceiptFile(null);
+      setReceiptPreview(null);
+      return;
+    }
+    setReceiptFile(file);
+    const preview =
+      typeof URL !== 'undefined' && URL.createObjectURL
+        ? URL.createObjectURL(file)
+        : null;
+    setReceiptPreview(preview);
+    setFieldErrors((prev) => {
+      if (!prev.receipt_image) return prev;
+      const next = { ...prev };
+      delete next.receipt_image;
+      return next;
+    });
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!customer?.id || submitting) return;
@@ -166,6 +205,9 @@ export default function ReceiveWalletPaymentDialog({
     const amountError = paymentAmountMessage(form.amount);
     if (amountError) errors.amount = amountError;
     if (form.payment_method === 'mpesa') {
+      if (!receiptFile) {
+        errors.receipt_image = 'Attach a screenshot of the M-Pesa repayment receipt.';
+      }
       if (isLiveMpesaPrompt(mpesaMode)) {
         const phoneErr = phoneMessage(mpesaPhone, { required: true });
         if (phoneErr) errors.phone = phoneErr;
@@ -178,6 +220,9 @@ export default function ReceiveWalletPaymentDialog({
           if (codeError) errors.reference = codeError;
         }
       }
+    }
+    if (form.payment_date && form.payment_date > todayLocalDate()) {
+      errors.payment_date = 'Payment date cannot be in the future.';
     }
     if (requirePayer) {
       Object.assign(
@@ -198,6 +243,8 @@ export default function ReceiveWalletPaymentDialog({
       setFieldErrors(errors);
       toast.error(
         errors.amount ||
+          errors.receipt_image ||
+          errors.payment_date ||
           errors.payer_name ||
           errors.payer_phone ||
           errors.mpesa_destination ||
@@ -214,7 +261,7 @@ export default function ReceiveWalletPaymentDialog({
     if (!customer?.id || submitting || pendingAmount == null) return;
     setSubmitting(true);
     try {
-      const payload = {
+      const fields = {
         amount: pendingAmount,
         payment_method: form.payment_method,
         reference:
@@ -223,12 +270,27 @@ export default function ReceiveWalletPaymentDialog({
             : String(referenceValue || '').trim(),
         notes: form.notes.trim(),
       };
+      if (form.payment_date && form.payment_date !== todayLocalDate()) {
+        fields.payment_date = form.payment_date;
+      }
       if (requirePayer) {
-        payload.payer_name = form.payer_name.trim();
-        payload.payer_phone = form.payer_phone.trim();
-        payload.mpesa_destination =
+        fields.payer_name = form.payer_name.trim();
+        fields.payer_phone = form.payer_phone.trim();
+        fields.mpesa_destination =
           form.payment_method === 'mpesa' ? form.mpesa_destination || '' : '';
       }
+
+      let payload = fields;
+      if (receiptFile) {
+        const body = new FormData();
+        Object.entries(fields).forEach(([key, value]) => {
+          if (value === null || value === undefined) return;
+          body.append(key, String(value));
+        });
+        body.append('receipt_image', receiptFile);
+        payload = body;
+      }
+
       const res = await customersAPI.receiveWalletPayment(customer.id, payload);
       if (isPendingApprovalResponse(res.status)) {
         toast.warning(pendingApprovalToastMessage());
@@ -252,6 +314,8 @@ export default function ReceiveWalletPaymentDialog({
       const data = error.response?.data || {};
       const msg =
         data.error ||
+        data.receipt_image?.[0] ||
+        data.payment_date?.[0] ||
         data.payer_name?.[0] ||
         data.payer_phone?.[0] ||
         data.mpesa_destination?.[0] ||
@@ -309,6 +373,10 @@ export default function ReceiveWalletPaymentDialog({
                 value: form.reference.trim(),
               }
             : null,
+          form.payment_date && form.payment_date !== todayLocalDate()
+            ? { label: 'Payment date', value: form.payment_date }
+            : null,
+          receiptFile ? { label: 'Receipt', value: receiptFile.name || 'Attached' } : null,
           debtAmount > 0
             ? { label: 'Current debt', value: formatCurrency(debtAmount) }
             : null,
@@ -507,6 +575,59 @@ export default function ReceiveWalletPaymentDialog({
               </>
             )}
           </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="wallet-payment-date">Payment date *</Label>
+            <Input
+              id="wallet-payment-date"
+              type="date"
+              max={todayLocalDate()}
+              value={form.payment_date}
+              onChange={(e) => updateField('payment_date', e.target.value)}
+              aria-invalid={Boolean(fieldErrors.payment_date)}
+              data-testid="wallet-payment-date"
+            />
+            {form.payment_date && form.payment_date !== todayLocalDate() ? (
+              <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                Marked as a past repayment on {form.payment_date} (not today).
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Use today for payments received now. Change the date only when
+                recording a repayment from an earlier day.
+              </p>
+            )}
+            {fieldErrors.payment_date ? (
+              <p className="text-xs text-destructive">{fieldErrors.payment_date}</p>
+            ) : null}
+          </div>
+
+          {form.payment_method === 'mpesa' ? (
+            <div className="space-y-2">
+              <Label htmlFor="wallet-receipt-image">M-Pesa receipt screenshot *</Label>
+              <Input
+                id="wallet-receipt-image"
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                onChange={(e) => onReceiptSelected(e.target.files?.[0] || null)}
+                aria-invalid={Boolean(fieldErrors.receipt_image)}
+                data-testid="wallet-receipt-image"
+              />
+              <p className="text-xs text-muted-foreground">
+                Upload a clear screenshot of the M-Pesa confirmation (JPEG, PNG, WebP, or GIF, max 5 MB).
+              </p>
+              {receiptPreview ? (
+                <img
+                  src={receiptPreview}
+                  alt="M-Pesa receipt preview"
+                  className="max-h-40 rounded-md border object-contain"
+                />
+              ) : null}
+              {fieldErrors.receipt_image ? (
+                <p className="text-xs text-destructive">{fieldErrors.receipt_image}</p>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="space-y-2">
             <Label htmlFor="wallet-payment-notes">Notes</Label>

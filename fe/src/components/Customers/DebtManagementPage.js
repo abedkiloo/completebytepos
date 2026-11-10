@@ -17,6 +17,7 @@ import {
 
 import { customersAPI } from '../../services/api';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
+import { resolveMediaUrl } from '../../utils/mediaUrl';
 import { toast } from '../../utils/toast';
 import { getStoredAuth, hasPermission } from '../../utils/roleAccess';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
@@ -416,7 +417,27 @@ export default function DebtManagementPage() {
                     return (
                       <DataTableRow key={row.id}>
                         <DataTableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                          {row.created_at ? formatDateTime(row.created_at) : '—'}
+                          <div>
+                            {row.occurred_at || row.created_at
+                              ? formatDateTime(row.occurred_at || row.created_at)
+                              : '—'}
+                          </div>
+                          {row.is_backdated ? (
+                            <Badge variant="outline" className="mt-1 text-[10px]">
+                              Past day
+                            </Badge>
+                          ) : null}
+                          {row.receipt_image_url ? (
+                            <a
+                              href={resolveMediaUrl(row.receipt_image_url)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                            >
+                              Receipt
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          ) : null}
                         </DataTableCell>
                         <DataTableCell>
                           <Link

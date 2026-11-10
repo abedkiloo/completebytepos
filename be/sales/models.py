@@ -1207,6 +1207,21 @@ class CustomerWalletTransaction(models.Model):
         help_text='For M-Pesa codes: till or bank. Blank for cash / non-code flows.',
     )
     notes = models.TextField(blank=True, help_text='Transaction notes')
+    receipt_image = models.ImageField(
+        upload_to='debt_receipts/',
+        blank=True,
+        null=True,
+        help_text='Screenshot or photo of the M-Pesa (or other) repayment receipt.',
+    )
+    occurred_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text=(
+            'Business time the customer paid. May differ from created_at when '
+            'staff record a past-day repayment. Null on legacy rows — use created_at.'
+        ),
+    )
     created_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -1214,6 +1229,11 @@ class CustomerWalletTransaction(models.Model):
         related_name='wallet_transactions_created'
     )
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    @property
+    def effective_occurred_at(self):
+        """Business payment time (occurred_at), else recorded-at for legacy rows."""
+        return self.occurred_at or self.created_at
     
     class Meta:
         ordering = ['-created_at']
@@ -1222,6 +1242,7 @@ class CustomerWalletTransaction(models.Model):
             models.Index(fields=['sale']),
             models.Index(fields=['invoice']),
             models.Index(fields=['source_type', 'created_at']),
+            models.Index(fields=['source_type', 'occurred_at']),
             models.Index(fields=['mpesa_destination', 'reference']),
         ]
     

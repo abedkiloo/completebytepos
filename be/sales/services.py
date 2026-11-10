@@ -2056,7 +2056,10 @@ class CustomerService(BaseService):
                              payment_method: str = '',
                              payer_name: str = '',
                              payer_phone: str = '',
-                             mpesa_destination: str = '') -> 'CustomerWalletTransaction':
+                             mpesa_destination: str = '',
+                             occurred_at=None,
+                             receipt_image=None,
+                             receipt_image_path: str = '') -> 'CustomerWalletTransaction':
         """Update customer wallet balance and create transaction record"""
         from sales.models import CustomerWalletTransaction
         
@@ -2088,8 +2091,19 @@ class CustomerService(BaseService):
             payer_phone=(payer_phone or '').strip()[:32],
             mpesa_destination=(mpesa_destination or '').strip().lower()[:16],
             notes=notes,
+            occurred_at=occurred_at,
             created_by=user
         )
+        if receipt_image is not None:
+            transaction.receipt_image.save(
+                getattr(receipt_image, 'name', 'receipt.jpg') or 'receipt.jpg',
+                receipt_image,
+                save=True,
+            )
+        elif receipt_image_path:
+            from sales.debt_receipt_photo import attach_pending_debt_receipt_photo
+
+            attach_pending_debt_receipt_photo(transaction, receipt_image_path)
         
         return transaction
 
@@ -2105,6 +2119,9 @@ class CustomerService(BaseService):
         payer_name: str = '',
         payer_phone: str = '',
         mpesa_destination: str = '',
+        occurred_at=None,
+        receipt_image=None,
+        receipt_image_path: str = '',
     ) -> 'CustomerWalletTransaction':
         """Credit customer wallet — typically to settle POS partial-payment debt."""
         if amount <= 0:
@@ -2137,6 +2154,9 @@ class CustomerService(BaseService):
             mpesa_destination=mpesa_destination,
             notes=notes.strip() or default_notes,
             user=user,
+            occurred_at=occurred_at,
+            receipt_image=receipt_image,
+            receipt_image_path=receipt_image_path,
         )
         from sales.sale_debt_sync import apply_settlement_to_underpaid_sales
 

@@ -483,13 +483,16 @@ def get_customer_day_detail(
     wallet_credit = wallet_balance if wallet_balance > 0 else Decimal('0.00')
     standing = 'good' if wallet_debt == 0 else 'debt'
 
+    from django.db.models.functions import Coalesce
+
     settlements_today = (
         CustomerWalletTransaction.objects.filter(
             customer_id=customer.id,
             source_type='debt_settlement',
-            created_at__gte=start_of_day,
-            created_at__lte=end_of_day,
-        ).aggregate(s=Sum('amount'))['s']
+        )
+        .annotate(effective_at=Coalesce('occurred_at', 'created_at'))
+        .filter(effective_at__gte=start_of_day, effective_at__lte=end_of_day)
+        .aggregate(s=Sum('amount'))['s']
         or Decimal('0.00')
     )
 

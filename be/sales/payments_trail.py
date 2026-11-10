@@ -324,14 +324,16 @@ def _settlement_index(
     *,
     mpesa_destination: str = '',
 ) -> List[Dict[str, Any]]:
+    from django.db.models.functions import Coalesce
+
     qs = CustomerWalletTransaction.objects.filter(
         source_type='debt_settlement',
         transaction_type='credit',
-    )
+    ).annotate(effective_at=Coalesce('occurred_at', 'created_at'))
     if day_from:
-        qs = qs.filter(created_at__date__gte=day_from)
+        qs = qs.filter(effective_at__date__gte=day_from)
     if day_to:
-        qs = qs.filter(created_at__date__lte=day_to)
+        qs = qs.filter(effective_at__date__lte=day_to)
     if visible_ids is not None:
         qs = qs.filter(customer_id__in=list(visible_ids) or [])
     if mpesa_destination:
@@ -350,9 +352,9 @@ def _settlement_index(
         {
             'kind': KIND_DEBT_SETTLEMENT,
             'source_id': row['id'],
-            'occurred_at': row['created_at'],
+            'occurred_at': row['effective_at'],
         }
-        for row in qs.order_by('-created_at', '-id').values('id', 'created_at')[:5000]
+        for row in qs.order_by('-effective_at', '-id').values('id', 'effective_at')[:5000]
     ]
 
 
@@ -519,10 +521,13 @@ def _serialize_settlement(txn: CustomerWalletTransaction, targets: List[Dict[str
     from sales.collection_payer import mpesa_destination_label
 
     dest = (getattr(txn, 'mpesa_destination', None) or '').strip().lower()
+    from sales.wallet_receipt import is_backdated_wallet_txn, receipt_image_url
+
+    when = txn.effective_occurred_at
     return {
         'kind': KIND_DEBT_SETTLEMENT,
         'id': txn.id,
-        'occurred_at': txn.created_at.isoformat() if txn.created_at else None,
+        'occurred_at': when.isoformat() if when else None,
         'amount': str(_q(txn.amount)),
         'payment_method': method,
         'payment_method_label': _method_label(method),
@@ -532,6 +537,8 @@ def _serialize_settlement(txn: CustomerWalletTransaction, targets: List[Dict[str
         'payer_phone': (getattr(txn, 'payer_phone', None) or '').strip(),
         'mpesa_destination': dest,
         'mpesa_destination_label': mpesa_destination_label(dest),
+        'receipt_image_url': receipt_image_url(txn),
+        'is_backdated': is_backdated_wallet_txn(txn),
         'customer_id': txn.customer_id,
         'customer_name': customer.name if customer else '',
         'customer_code': (customer.customer_code or '') if customer else '',

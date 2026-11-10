@@ -45,6 +45,8 @@ def queue_debt_collection(
     payer_name: str = '',
     payer_phone: str = '',
     mpesa_destination: str = '',
+    occurred_at=None,
+    receipt_image_path: str = '',
 ) -> PendingChange:
     """
     Queue a debt collection for manager approval.
@@ -59,6 +61,8 @@ def queue_debt_collection(
         payer_name: Who paid (≤ 120 chars).
         payer_phone: Payer phone (≤ 32 chars).
         mpesa_destination: ``till``, ``bank``, or blank.
+        occurred_at: Optional business payment datetime (past-day repayments).
+        receipt_image_path: Pending storage path for M-Pesa receipt screenshot.
 
     Returns:
         PendingChange awaiting checker approval.
@@ -80,7 +84,9 @@ def queue_debt_collection(
     payer_name = (payer_name or '').strip()[:120]
     payer_phone = (payer_phone or '').strip()[:32]
     mpesa_destination = (mpesa_destination or '').strip().lower()[:16]
+    receipt_image_path = (receipt_image_path or '').strip()
     amount_str = str(amount)
+    occurred_iso = occurred_at.isoformat() if occurred_at is not None else ''
 
     return submit_change(
         request=request,
@@ -98,6 +104,8 @@ def queue_debt_collection(
             'payer_name': payer_name,
             'payer_phone': payer_phone,
             'mpesa_destination': mpesa_destination,
+            'occurred_at': occurred_iso,
+            'has_receipt_image': bool(receipt_image_path),
             'effect': 'Wallet credited after manager approval',
         },
         reason=collection_reason(amount=amount, payment_method=method, notes=notes),
@@ -109,6 +117,8 @@ def queue_debt_collection(
             'payer_name': payer_name,
             'payer_phone': payer_phone,
             'mpesa_destination': mpesa_destination,
+            'occurred_at': occurred_iso,
+            'receipt_image_path': receipt_image_path,
         },
         require_maker_checker=False,
     )

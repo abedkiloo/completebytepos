@@ -490,7 +490,11 @@ export const customersAPI = {
   walletTransactions: (id, params) =>
     api.get(`/sales/customers/${id}/wallet-transactions/`, { params }),
   receiveWalletPayment: (id, data) =>
-    api.post(`/sales/customers/${id}/receive-wallet-payment/`, data),
+    data instanceof FormData
+      ? api.post(`/sales/customers/${id}/receive-wallet-payment/`, data, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+      : api.post(`/sales/customers/${id}/receive-wallet-payment/`, data),
   /** Admin-only: correct cash collected on a posted debt settlement. */
   correctWalletSettlementAmount: (txnId, data) =>
     api.patch(`/sales/customers/wallet-settlements/${txnId}/amount/`, data),

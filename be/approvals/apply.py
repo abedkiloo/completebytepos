@@ -339,6 +339,16 @@ def _apply_debt_collection(change: PendingChange) -> None:
     except (ArithmeticError, TypeError, ValueError) as exc:
         raise ValidationError('Invalid collection amount.') from exc
 
+    occurred_at = None
+    occurred_raw = (payload.get('occurred_at') or '').strip()
+    if occurred_raw:
+        from django.utils.dateparse import parse_datetime
+        from django.utils import timezone as dj_tz
+
+        occurred_at = parse_datetime(occurred_raw)
+        if occurred_at and dj_tz.is_naive(occurred_at):
+            occurred_at = dj_tz.make_aware(occurred_at)
+
     txn = CustomerService().record_wallet_payment(
         customer=customer,
         amount=amount,
@@ -349,6 +359,8 @@ def _apply_debt_collection(change: PendingChange) -> None:
         payer_name=payload.get('payer_name') or '',
         payer_phone=payload.get('payer_phone') or '',
         mpesa_destination=payload.get('mpesa_destination') or '',
+        occurred_at=occurred_at,
+        receipt_image_path=payload.get('receipt_image_path') or '',
     )
     customer.refresh_from_db()
     change.apply_payload = {

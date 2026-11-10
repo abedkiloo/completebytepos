@@ -182,6 +182,16 @@ class CollectionPayerAPITests(ManagerAPITestCase):
         return_value=True,
     )
     def test_receive_wallet_payment_stores_payer_and_destination(self, _mock):
+        from io import BytesIO
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+
+        buf = BytesIO()
+        Image.new('RGB', (24, 24), color=(30, 140, 60)).save(buf, format='JPEG')
+        receipt = SimpleUploadedFile(
+            'payer_receipt.jpg', buf.getvalue(), content_type='image/jpeg'
+        )
         res = self.client.post(
             f'/api/sales/customers/{self.customer.id}/receive-wallet-payment/',
             {
@@ -191,8 +201,9 @@ class CollectionPayerAPITests(ManagerAPITestCase):
                 'payer_name': 'Mary Payer',
                 'payer_phone': '0712999888',
                 'mpesa_destination': 'till',
+                'receipt_image': receipt,
             },
-            format='json',
+            format='multipart',
         )
         self.assertIn(
             res.status_code,

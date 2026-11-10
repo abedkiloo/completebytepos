@@ -17,6 +17,7 @@ import {
 
 import { customersAPI, salesAPI } from '../../services/api';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
+import { resolveMediaUrl } from '../../utils/mediaUrl';
 import {
   settlementMethodLabel,
   settlementReferenceLabel,
@@ -790,7 +791,26 @@ export default function DailySalesPage() {
                 return (
                   <DataTableRow key={row.id}>
                     <DataTableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                      {row.created_at ? formatDateTime(row.created_at) : '—'}
+                      <div>
+                        {row.occurred_at || row.created_at
+                          ? formatDateTime(row.occurred_at || row.created_at)
+                          : '—'}
+                      </div>
+                      {row.is_backdated ? (
+                        <Badge variant="outline" className="mt-1 text-[10px]">
+                          Past day
+                        </Badge>
+                      ) : null}
+                      {row.receipt_image_url ? (
+                        <a
+                          href={resolveMediaUrl(row.receipt_image_url)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-1 inline-flex text-xs text-primary hover:underline"
+                        >
+                          Receipt
+                        </a>
+                      ) : null}
                     </DataTableCell>
                     <DataTableCell>
                       {row.customer_id ? (

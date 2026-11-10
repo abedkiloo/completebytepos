@@ -411,6 +411,13 @@ def _debt_collection_sections(change: PendingChange, cache=None) -> list[dict]:
                 ),
             ),
             _fact('Reference', payload.get('reference')),
+            _fact('Payment date', payload.get('occurred_at'), 'datetime')
+            if payload.get('occurred_at')
+            else None,
+            _fact(
+                'Receipt screenshot',
+                'Attached' if payload.get('receipt_image_path') else None,
+            ),
             _fact('Notes', payload.get('notes')),
             _fact('Collected by', _user_label(change.made_by)),
             _fact('Collected at', change.made_at, 'datetime'),

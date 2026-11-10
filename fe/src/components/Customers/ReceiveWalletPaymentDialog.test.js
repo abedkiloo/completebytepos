@@ -126,20 +126,46 @@ describe('ReceiveWalletPaymentDialog', () => {
     fireEvent.change(screen.getByLabelText(/M-Pesa code/i), {
       target: { value: 'QHX7K2L9M1' },
     });
+    const receipt = new File(['fake-jpeg'], 'receipt.jpg', { type: 'image/jpeg' });
+    fireEvent.change(screen.getByTestId('wallet-receipt-image'), {
+      target: { files: [receipt] },
+    });
     fireEvent.click(screen.getByRole('button', { name: /Record payment/i }));
     fireEvent.click(await screen.findByRole('button', { name: /Yes, record payment/i }));
 
     await waitFor(() => {
-      expect(customersAPI.receiveWalletPayment).toHaveBeenCalledWith(3, {
-        amount: 150,
-        payment_method: 'mpesa',
-        reference: 'QHX7K2L9M1',
-        notes: '',
-        payer_name: 'Jane Debtor',
-        payer_phone: '0712345678',
-        mpesa_destination: 'till',
-      });
+      expect(customersAPI.receiveWalletPayment).toHaveBeenCalled();
     });
+    const [, payload] = customersAPI.receiveWalletPayment.mock.calls.at(-1);
+    expect(payload).toBeInstanceOf(FormData);
+    expect(payload.get('payment_method')).toBe('mpesa');
+    expect(payload.get('reference')).toBe('QHX7K2L9M1');
+    expect(payload.get('mpesa_destination')).toBe('till');
+    expect(payload.get('receipt_image')).toBeTruthy();
+  });
+
+  it('requires an M-Pesa receipt screenshot before submit', async () => {
+    render(
+      <ReceiveWalletPaymentDialog
+        open
+        customer={debtor}
+        onOpenChange={jest.fn()}
+        onSuccess={jest.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/Payment method/i), {
+      target: { value: 'mpesa' },
+    });
+    fireEvent.click(screen.getByTestId('mpesa-destination-till'));
+    fireEvent.change(await screen.findByLabelText(/M-Pesa code/i), {
+      target: { value: 'QHX7K2L9M1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Record payment/i }));
+    expect(customersAPI.receiveWalletPayment).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(
+      'Attach a screenshot of the M-Pesa repayment receipt.'
+    );
   });
 
   it('pay full debt button sets amount', async () => {

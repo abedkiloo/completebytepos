@@ -83,7 +83,15 @@ class DebtCollectionApprovalAPITests(SalesAPITestCase):
         return client
 
     def _collect(self, client, amount='100.00', **extra):
-        payload = {'amount': amount, 'payment_method': 'cash', **extra}
+        # collection_payer_details is on by default — include payer so these
+        # approval-flow tests stay focused on queue/approve, not payer validation.
+        payload = {
+            'amount': amount,
+            'payment_method': 'cash',
+            'payer_name': self.customer.name,
+            'payer_phone': self.customer.phone or '0700000000',
+            **extra,
+        }
         return client.post(
             f'/api/sales/customers/{self.customer.id}/receive-wallet-payment/',
             payload,
@@ -161,12 +169,31 @@ class DebtCollectionApprovalAPITests(SalesAPITestCase):
         self.assertIn('money posted', money_row.object_repr.lower())
 
     def test_direct_manager_collection_logs_money_posted(self):
-        resp = self._collect(
-            self._manager_client(),
-            amount='50.00',
-            payment_method='mpesa',
-            reference='QHX7K2L9M1',
+        from io import BytesIO
+        from unittest.mock import patch
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+
+        buf = BytesIO()
+        Image.new('RGB', (24, 24), color=(10, 120, 40)).save(buf, format='JPEG')
+        receipt = SimpleUploadedFile(
+            'mpesa.jpg', buf.getvalue(), content_type='image/jpeg'
         )
+        with patch(
+            'sales.customer_module_settings.customers_collection_payer_details_enabled',
+            return_value=False,
+        ):
+            resp = self._manager_client().post(
+                f'/api/sales/customers/{self.customer.id}/receive-wallet-payment/',
+                {
+                    'amount': '50.00',
+                    'payment_method': 'mpesa',
+                    'reference': 'QHX7K2L9M1',
+                    'receipt_image': receipt,
+                },
+                format='multipart',
+            )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED, resp.data)
         money_row = AuditLog.objects.filter(
             action='debt_settlement_posted', module='sales'

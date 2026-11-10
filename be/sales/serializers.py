@@ -270,6 +270,9 @@ class CustomerWalletTransactionSerializer(serializers.ModelSerializer):
     created_by_name = serializers.SerializerMethodField()
     payment_method_label = serializers.SerializerMethodField()
     mpesa_destination_label = serializers.SerializerMethodField()
+    receipt_image_url = serializers.SerializerMethodField()
+    occurred_at = serializers.SerializerMethodField()
+    is_backdated = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomerWalletTransaction
@@ -289,6 +292,9 @@ class CustomerWalletTransactionSerializer(serializers.ModelSerializer):
             'mpesa_destination_label',
             'reference',
             'notes',
+            'receipt_image_url',
+            'occurred_at',
+            'is_backdated',
             'created_by_name',
             'created_at',
         ]
@@ -309,6 +315,47 @@ class CustomerWalletTransactionSerializer(serializers.ModelSerializer):
 
         return mpesa_destination_label(getattr(obj, 'mpesa_destination', '') or '')
 
+    def get_receipt_image_url(self, obj):
+        """
+        Absolute media URL for the repayment receipt screenshot.
+
+        Args:
+            obj: CustomerWalletTransaction instance.
+
+        Returns:
+            str URL, or None when no receipt image is attached.
+        """
+        from sales.wallet_receipt import receipt_image_url
+
+        return receipt_image_url(obj, request=self.context.get('request'))
+
+    def get_occurred_at(self, obj):
+        """
+        Business payment time (ISO), falling back to created_at for legacy rows.
+
+        Args:
+            obj: CustomerWalletTransaction instance.
+
+        Returns:
+            ISO datetime string, or None.
+        """
+        when = obj.effective_occurred_at
+        return when.isoformat() if when else None
+
+    def get_is_backdated(self, obj):
+        """
+        True when the payment's business day differs from the recorded day.
+
+        Args:
+            obj: CustomerWalletTransaction instance.
+
+        Returns:
+            bool.
+        """
+        from sales.wallet_receipt import is_backdated_wallet_txn
+
+        return is_backdated_wallet_txn(obj)
+
 
 class CorrectDebtSettlementAmountSerializer(serializers.Serializer):
     """Admin correction of cash collected on a posted debt settlement."""
@@ -327,6 +374,13 @@ class CorrectDebtSettlementAmountSerializer(serializers.Serializer):
 
 
 class ReceiveWalletPaymentSerializer(serializers.Serializer):
+    """
+    Record a cash or M-Pesa repayment against customer wallet debt.
+
+    M-Pesa requires a receipt screenshot (``receipt_image``). Optional
+    ``payment_date`` marks a past-day repayment when it is not today.
+    """
+
     amount = serializers.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -347,10 +401,17 @@ class ReceiveWalletPaymentSerializer(serializers.Serializer):
         allow_blank=True,
         default='',
     )
+    receipt_image = serializers.ImageField(required=False, allow_null=True)
+    payment_date = serializers.DateField(required=False, allow_null=True)
 
     def validate(self, attrs):
+        from datetime import datetime, time
+
+        from django.utils import timezone
+
         from sales.collection_payer import validate_collection_payer_fields
         from sales.customer_module_settings import customers_collection_payer_details_enabled
+        from sales.debt_receipt_photo import require_mpesa_receipt_image
 
         method = attrs.get('payment_method')
         if method == 'mpesa':
@@ -358,6 +419,35 @@ class ReceiveWalletPaymentSerializer(serializers.Serializer):
             if error:
                 raise serializers.ValidationError({'reference': error})
             attrs['reference'] = normalize_mpesa_receipt(attrs.get('reference'))
+
+        try:
+            require_mpesa_receipt_image(
+                attrs.get('receipt_image'),
+                payment_method=method or 'cash',
+            )
+        except Exception as exc:
+            from django.core.exceptions import ValidationError as DjangoValidationError
+
+            if isinstance(exc, DjangoValidationError):
+                raise serializers.ValidationError(
+                    getattr(exc, 'message_dict', {'receipt_image': str(exc)})
+                )
+            raise
+
+        payment_date = attrs.get('payment_date')
+        occurred_at = None
+        if payment_date is not None:
+            today = timezone.localdate()
+            if payment_date > today:
+                raise serializers.ValidationError({
+                    'payment_date': 'Payment date cannot be in the future.',
+                })
+            local_tz = timezone.get_current_timezone()
+            occurred_at = timezone.make_aware(
+                datetime.combine(payment_date, time(12, 0)),
+                local_tz,
+            )
+        attrs['occurred_at'] = occurred_at
 
         require_payer = customers_collection_payer_details_enabled()
         try:

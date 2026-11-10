@@ -1776,12 +1776,25 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         from approvals.serializers import PendingChangeSerializer
         from sales.debt_collection_approval import queue_debt_collection
         from sales.debt_management import ensure_wallet_matches_unpaid_sales
+        from sales.debt_receipt_photo import save_pending_debt_receipt_photo
 
         # Underpaid POS sales must sit on the wallet before a settlement credit.
         ensure_wallet_matches_unpaid_sales(customer, user=request.user)
         customer.refresh_from_db()
 
+        receipt_image = data.get('receipt_image')
+        occurred_at = data.get('occurred_at')
+
         if not user_can_check(request.user, ACTION_DEBT_COLLECTION):
+            receipt_path = ''
+            if receipt_image is not None:
+                try:
+                    receipt_path = save_pending_debt_receipt_photo(receipt_image)
+                except ValidationError as exc:
+                    payload = getattr(exc, 'message_dict', None) or {
+                        'error': validation_error_message(exc)
+                    }
+                    return Response(payload, status=status.HTTP_400_BAD_REQUEST)
             try:
                 pending = queue_debt_collection(
                     request,
@@ -1793,6 +1806,8 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                     payer_name=data.get('payer_name', ''),
                     payer_phone=data.get('payer_phone', ''),
                     mpesa_destination=data.get('mpesa_destination', ''),
+                    occurred_at=occurred_at,
+                    receipt_image_path=receipt_path,
                 )
             except ValidationError as exc:
                 payload = getattr(exc, 'message_dict', None) or {
@@ -1823,6 +1838,8 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 payer_name=data.get('payer_name', ''),
                 payer_phone=data.get('payer_phone', ''),
                 mpesa_destination=data.get('mpesa_destination', ''),
+                occurred_at=occurred_at,
+                receipt_image=receipt_image,
             )
         except ValidationError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -1843,7 +1860,9 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             pass
         return Response(
             {
-                'transaction': CustomerWalletTransactionSerializer(txn).data,
+                'transaction': CustomerWalletTransactionSerializer(
+                    txn, context={'request': request}
+                ).data,
                 'wallet_balance': str(customer.wallet_balance),
             },
             status=status.HTTP_201_CREATED,
