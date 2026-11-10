@@ -1,8 +1,31 @@
 # Field sales commission — design proposal
 
-**Status:** Implemented (v1). See §10 for what shipped.  
+**Status:** Implemented (v2 daily bands = default). See §10–§11 for what shipped.  
 **Audience:** Product owner / ops / payroll admin  
 **Author stance:** System design for Omuwenga / CompleteBytePOS as it works today  
+
+---
+
+## 0. Current default (Omuwenga PDF starter)
+
+Award template is **daily fixed commission by qualifying sales band**, not a monthly %.  
+Stored in `PayrollSettings.sales_commission_template` (editable in Payroll → Settings).  
+Agents see the bands + today’s award on the field-sales dashboard (web + app) and can open any previous day.
+
+| Daily qualifying sales (KES) | Commission |
+|------------------------------|------------|
+| Below 12,500 | 0 |
+| 12,500 – 19,999.99 | 500 |
+| 20,000 – 31,999.99 | 1,000 |
+| 32,000 – 39,999.99 | 2,000 |
+| 40,000 – 49,999.99 | 3,500 |
+| 50,000 and above | 4,000 |
+
+**Transport:** qualifying sales ≥ 5,000 → **KES 200** for the following working day.  
+**Qualifying day:** field sales attributed to the agent, paid in full same day.  
+**Non-qualifying products (configurable):** by default product names matching `zip` or `sofa cup holder` do **not** count toward the award base — they are **not** removed from POS or agent sales views. Turn off or edit keywords under Payroll → Settings.  
+**Payroll:** sum each day’s band + transport over the calendar month into `EARN_COMMISSION`.  
+**Legacy:** set template `scheme` to `percent` to use the older monthly % path.
 
 ---
 
@@ -12,10 +35,10 @@ Field sales agents should earn **commission on sales**, on top of (or instead of
 
 We need:
 
-1. A **general template** for the Field Sales role (same idea as today’s Manager / Sales role pay package).  
-2. That template **assigned automatically** when someone is on that role.  
-3. Ability to **edit one person’s rates** without changing the whole role.  
-4. The same pattern for what we already have (Manager package): treat it as a **general role template**, then allow person-level edits — not a one-off special case.
+1. A **general award template** (daily bands by default; editable by payroll admin).  
+2. That template **visible every day** on the sales agent dashboard, with previous-day lookup.  
+3. Ability to **change the store-wide template** without a code deploy.  
+4. Payslip month total still calculated from the same rules (sum of daily awards).
 
 ---
 
@@ -227,15 +250,29 @@ Manager package unchanged in structure: still general template; if a manager has
 
 ---
 
-## 10. What shipped
+## 10. What shipped (v1 percent — still available)
 
 | Piece | Location |
 |-------|----------|
 | Pay component `EARN_COMMISSION` | `payroll/starters.py` |
 | Setting `include_sales_commission` | `PayrollSettings` + FE checkbox |
 | Module feature `sales_commission` | `settings/module_registry.py` under payroll |
-| Adapter (net field sales × rate) | `payroll/adapters/commission.py` |
-| Rate precedence | Staff assignment → role package → component default |
+| Adapter (legacy percent) | `payroll/adapters/commission.py` when template `scheme=percent` |
+| Rate precedence (percent) | Staff assignment → role package → component default |
 | Field Sales package seed | `ensure_field_sales_commission_package()` |
 | Calculate wiring | `payroll/services.py` `_calculate_employee` |
 | Tests | `payroll/tests/test_sales_commission.py` |
+
+## 11. What shipped (v2 daily bands — default)
+
+| Piece | Location |
+|-------|----------|
+| Default PDF bands + transport | `payroll/commission_template.py` |
+| Template JSON on settings | `PayrollSettings.sales_commission_template` |
+| Day qualifying + dashboard payload | `payroll/daily_commission.py` |
+| Agent API `GET /api/payroll/me/commission-day/?date=` | `AgentCommissionDayView` |
+| Payroll month sum of daily awards | `fetch_employee_daily_band_commission` |
+| FE agent card (date nav + bands) | `fe/.../Dashboard/AgentCommissionCard.js` |
+| FE settings editor | Payroll → Settings award template table |
+| Mobile agent card | `mobile/.../agent_commission_card.dart` on field-sales home |
+| Tests | `payroll/tests/test_daily_commission.py` + updated sales commission tests |

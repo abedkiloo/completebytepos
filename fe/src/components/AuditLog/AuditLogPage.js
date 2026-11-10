@@ -46,6 +46,27 @@ const ACTION_LABELS = {
   pending_resubmit: 'Resubmitted for approval',
   refund: 'Refund',
   rollback: 'Rollback',
+  pack: 'Packed field order',
+  assign: 'Assigned delivery',
+  create_driver: 'Created driver',
+  arrive: 'Delivery arrive',
+  start: 'Delivery start',
+  collect: 'Delivery collect',
+  pod: 'Proof of delivery',
+  complete: 'Delivery complete',
+  propose_pin: 'Proposed map pin',
+  lines_update: 'Delivery lines update',
+  stk_push: 'M-Pesa STK push',
+  sms_template_update: 'SMS template updated',
+  sms_template_reset: 'SMS template reset',
+  sms_debt_reminders_queue: 'Debt SMS queued',
+  sms_debt_reminders_send: 'Debt SMS sent',
+  payroll_run_created: 'Payroll run created',
+  payroll_run_calculated: 'Payroll calculated',
+  payroll_run_submitted: 'Payroll submitted',
+  payroll_run_locked: 'Payroll locked',
+  payroll_run_rejected: 'Payroll rejected',
+  payroll_run_cancelled: 'Payroll cancelled',
 };
 
 const LIFECYCLE_LABELS = {
@@ -428,6 +449,7 @@ export default function AuditLogPage() {
   const [q, setQ] = useState('');
   const [action, setAction] = useState('');
   const [module, setModule] = useState('');
+  const [clientChannel, setClientChannel] = useState('');
   const [userId, setUserId] = useState('');
   const [dateFrom, setDateFrom] = useState(todayIsoDate);
   const [dateTo, setDateTo] = useState(todayIsoDate);
@@ -458,6 +480,7 @@ export default function AuditLogPage() {
       if (q.trim()) params.q = q.trim();
       if (action) params.action = action;
       if (module) params.module = module;
+      if (clientChannel) params.client_channel = clientChannel;
       if (userId) params.user = userId;
       if (dateFrom) params.date_from = dateFrom;
       if (dateTo) params.date_to = dateTo;
@@ -472,7 +495,7 @@ export default function AuditLogPage() {
     } finally {
       setLoading(false);
     }
-  }, [q, action, module, userId, dateFrom, dateTo, timeFrom, timeTo, ordering]);
+  }, [q, action, module, clientChannel, userId, dateFrom, dateTo, timeFrom, timeTo, ordering]);
 
   useEffect(() => {
     if (!allowed) return undefined;
@@ -545,7 +568,7 @@ export default function AuditLogPage() {
     <PageShell>
       <PageHeader
         title="Audit log"
-        description="Who did what, and for money events: amount, method, reference, and whether cash was only submitted, approved, or actually posted. Click a row for full detail."
+        description="Who did what, on web or the mobile app, and for money events: amount, method, reference, and whether cash was only submitted, approved, or actually posted. Click a row for full detail."
         icon={ScrollText}
       />
       <Card>
@@ -621,6 +644,17 @@ export default function AuditLogPage() {
             </select>
             <select
               className="h-9 rounded-md border px-2 text-sm"
+              aria-label="Filter by client"
+              value={clientChannel}
+              onChange={(e) => setClientChannel(e.target.value)}
+            >
+              <option value="">Web + app</option>
+              <option value="web">Web</option>
+              <option value="mobile">Mobile app</option>
+              <option value="unknown">Unknown client</option>
+            </select>
+            <select
+              className="h-9 rounded-md border px-2 text-sm"
               aria-label="Filter by action"
               value={action}
               onChange={(e) => setAction(e.target.value)}
@@ -688,6 +722,7 @@ export default function AuditLogPage() {
                 setTimeTo('');
                 setUserId('');
                 setModule('');
+                setClientChannel('');
                 setAction('');
                 setQ('');
               }}
@@ -719,6 +754,7 @@ export default function AuditLogPage() {
                   <tr className="border-b text-left text-muted-foreground">
                     <th className="py-2 pr-3">When</th>
                     <th className="py-2 pr-3">User</th>
+                    <th className="py-2 pr-3">Client</th>
                     <th className="py-2 pr-3">Action</th>
                     <th className="py-2 pr-3">Amount</th>
                     <th className="py-2 pr-3">Method</th>
@@ -729,6 +765,16 @@ export default function AuditLogPage() {
                 <tbody>
                   {rows.map((row) => {
                     const finance = extractFinanceFields(row.changes);
+                    const channel =
+                      row.client_channel ||
+                      row.changes?.client_channel ||
+                      'unknown';
+                    const channelLabel =
+                      channel === 'mobile'
+                        ? 'App'
+                        : channel === 'web'
+                          ? 'Web'
+                          : 'Unknown';
                     return (
                     <tr
                       key={row.id}
@@ -751,6 +797,14 @@ export default function AuditLogPage() {
                         {formatDateTime(row.created_at)}
                       </td>
                       <td className="py-2 pr-3">{row.username_snapshot || '—'}</td>
+                      <td className="py-2 pr-3">
+                        <Badge
+                          variant="secondary"
+                          className="text-[10px] uppercase tracking-wide"
+                        >
+                          {channelLabel}
+                        </Badge>
+                      </td>
                       <td className="py-2 pr-3">
                         <Badge variant="outline">{actionLabel(row.action)}</Badge>
                       </td>
@@ -818,6 +872,20 @@ export default function AuditLogPage() {
                 <div>
                   <dt className="text-xs font-medium text-muted-foreground">Module</dt>
                   <dd className="text-sm">{humanModuleName(detail.module) || detail.module || '—'}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium text-muted-foreground">Client</dt>
+                  <dd className="text-sm">
+                    {detail.client_channel === 'mobile' ||
+                    detail.changes?.client_channel === 'mobile'
+                      ? 'Mobile app'
+                      : detail.client_channel === 'web' ||
+                          detail.changes?.client_channel === 'web'
+                        ? 'Web'
+                        : detail.client_channel ||
+                          detail.changes?.client_channel ||
+                          'Unknown'}
+                  </dd>
                 </div>
                 <div className="sm:col-span-2">
                   <dt className="text-xs font-medium text-muted-foreground">Object</dt>

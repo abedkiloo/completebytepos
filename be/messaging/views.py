@@ -99,17 +99,45 @@ def sms_template_detail(request, key: str):
 
     if request.method == 'DELETE' or request.data.get('reset'):
         try:
-            return Response(services.reset_sms_template(key, user=request.user))
+            payload = services.reset_sms_template(key, user=request.user)
         except services.MessagingError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            from utils.audit_events import log_simple_action
+
+            log_simple_action(
+                request,
+                'sms_template_reset',
+                None,
+                module='messaging',
+                changes={'key': key},
+                object_repr=f'SMS template {key}',
+            )
+        except Exception:
+            pass
+        return Response(payload)
 
     body = request.data.get('body')
     if body is None:
         return Response({'body': 'Required.'}, status=status.HTTP_400_BAD_REQUEST)
     try:
-        return Response(services.save_sms_template(key, str(body), user=request.user))
+        payload = services.save_sms_template(key, str(body), user=request.user)
     except services.MessagingError as exc:
         return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        from utils.audit_events import log_simple_action
+
+        log_simple_action(
+            request,
+            'sms_template_update',
+            None,
+            module='messaging',
+            changes={'key': key},
+            object_repr=f'SMS template {key}',
+        )
+    except Exception:
+        pass
+    return Response(payload)
 
 
 @api_view(['POST'])
@@ -119,6 +147,19 @@ def debt_reminders(request):
     if not _can_send_debt_reminders(request.user):
         return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
     queued = services.queue_debt_reminders(created_by=request.user)
+    try:
+        from utils.audit_events import log_simple_action
+
+        log_simple_action(
+            request,
+            'sms_debt_reminders_queue',
+            None,
+            module='messaging',
+            changes={'queued': len(queued)},
+            object_repr='Debt reminders queued',
+        )
+    except Exception:
+        pass
     return Response({
         'queued': len(queued),
         'ids': [m.id for m in queued],
@@ -206,6 +247,23 @@ def debt_reminder_send(request):
         customer_ids=_debt_reminder_customer_ids(request.user, customer_ids),
         save_template=save_template,
     )
+    try:
+        from utils.audit_events import log_simple_action
+
+        log_simple_action(
+            request,
+            'sms_debt_reminders_send',
+            None,
+            module='messaging',
+            changes={
+                'selected': len(customer_ids or []),
+                'save_template': save_template,
+                'result_keys': sorted(list(result.keys())) if isinstance(result, dict) else [],
+            },
+            object_repr='Debt reminders sent',
+        )
+    except Exception:
+        pass
     return Response(result, status=status.HTTP_201_CREATED)
 
 

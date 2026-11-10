@@ -75,6 +75,7 @@ def log_audit(
         ua = ''
         path = ''
         method = ''
+        channel = 'unknown'
 
         if request is not None:
             req_user = getattr(request, 'user', None)
@@ -85,6 +86,7 @@ def log_audit(
             ua = (request.META.get('HTTP_USER_AGENT') or '')[:255]
             path = (getattr(request, 'path', '') or '')[:255]
             method = getattr(request, 'method', '') or ''
+            channel = _resolve_channel(request, changes)
 
         object_type = ''
         object_id = ''
@@ -101,6 +103,11 @@ def log_audit(
                 except Exception:
                     object_repr = f"<{object_type}#{object_id}>"
 
+        payload = _json_safe(changes or {})
+        # Keep channel in changes too so older UIs / exports still see it.
+        if isinstance(payload, dict) and 'client_channel' not in payload:
+            payload = {**payload, 'client_channel': channel}
+
         with transaction.atomic():
             AuditLog.objects.create(
                 user=user,
@@ -110,9 +117,10 @@ def log_audit(
                 object_type=object_type[:64],
                 object_id=object_id,
                 object_repr=(object_repr or '')[:255],
-                changes=_json_safe(changes or {}),
+                changes=payload,
                 ip_address=ip,
                 user_agent=ua,
+                client_channel=(channel or 'unknown')[:16],
                 path=path,
                 method=method[:8],
             )
@@ -173,6 +181,27 @@ def _client_ip(request) -> str | None:
         if ip:
             return ip
     return request.META.get('REMOTE_ADDR') or None
+
+
+def _resolve_channel(request, changes: dict | None) -> str:
+    """
+    Resolve web vs mobile for the audit row without raising.
+
+    Prefers an explicit ``client_channel`` in ``changes``, then the shared
+    ``X-Client-Channel`` / User-Agent resolver used by sales.
+    """
+    try:
+        if isinstance(changes, dict):
+            raw = str(changes.get('client_channel') or '').strip().lower()
+            if raw in ('web', 'mobile', 'unknown'):
+                return raw
+            if raw in ('app', 'android', 'ios', 'flutter'):
+                return 'mobile'
+        from utils.client_channel import resolve_client_channel
+
+        return resolve_client_channel(request, changes if isinstance(changes, dict) else None)
+    except Exception:
+        return 'unknown'
 
 
 def _json_safe(value: Any) -> Any:

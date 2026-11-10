@@ -34,8 +34,16 @@ class PayrollSettings(models.Model):
     include_sales_commission = models.BooleanField(
         default=True,
         help_text=(
-            'Pull field-sales commission into earnings when calculating '
-            '(net field sales × rate from role template or Staff pay)'
+            'Pull sales-agent commission into earnings when calculating '
+            '(default: daily band template; editable under sales_commission_template)'
+        ),
+    )
+    sales_commission_template = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            'Editable daily commission template (bands + transport). '
+            'Empty uses the Omuwenga PDF starter defaults.'
         ),
     )
     letterhead_line = models.CharField(

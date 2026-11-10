@@ -401,6 +401,8 @@ export const payrollAPI = {
   payslipPdf: (id) =>
     api.get(`/payroll/payslips/${id}/pdf/`, { responseType: 'blob' }),
   myPay: () => api.get('/payroll/me/pay/'),
+  /** Agent daily commission dashboard; optional ``date=YYYY-MM-DD`` for former days. */
+  commissionDay: (params) => api.get('/payroll/me/commission-day/', { params }),
   myPayslips: (params) => api.get('/payroll/me/payslips/', { params }),
   myPayslipPdf: (id) =>
     api.get(`/payroll/me/payslips/${id}/pdf/`, { responseType: 'blob' }),

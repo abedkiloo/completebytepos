@@ -270,8 +270,8 @@ class AuditLog(models.Model):
 
     Writers: ``utils.audit.log_audit``, ``AuditedModelViewSetMixin``, and
     domain helpers (``log_domain_event``, stock/sale events). Rows answer:
-    who acted, on what object, with which before/after values, when, and from
-    which IP/path.
+    who acted, on what object, with which before/after values, when, from
+    which IP/path, and whether the action ran on **web** or **mobile**.
 
     Invariants:
         - Create only. ``save()`` on an existing PK raises ``ValueError``.
@@ -319,6 +319,13 @@ class AuditLog(models.Model):
     )
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.CharField(max_length=255, blank=True)
+    client_channel = models.CharField(
+        max_length=16,
+        blank=True,
+        default='',
+        db_index=True,
+        help_text="Where the action ran: 'web', 'mobile', or 'unknown'.",
+    )
     path = models.CharField(max_length=255, blank=True,
                             help_text='request.path at time of event.')
     method = models.CharField(max_length=8, blank=True)
@@ -330,6 +337,7 @@ class AuditLog(models.Model):
             models.Index(fields=['user', 'created_at']),
             models.Index(fields=['module', 'action', 'created_at']),
             models.Index(fields=['object_type', 'object_id']),
+            models.Index(fields=['client_channel', 'created_at']),
         ]
 
     def __str__(self):

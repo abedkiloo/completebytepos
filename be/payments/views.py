@@ -46,6 +46,21 @@ class PaymentIntentViewSet(viewsets.GenericViewSet):
             intent = ser.save()
         except PaymentTransitionError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            from utils.audit_events import log_simple_action
+
+            log_simple_action(
+                request,
+                'create',
+                intent,
+                module='payments',
+                changes={
+                    'amount': str(getattr(intent, 'amount', '')),
+                    'status': getattr(intent, 'status', ''),
+                },
+            )
+        except Exception:
+            pass
         return Response(
             PaymentIntentSerializer(intent).data,
             status=status.HTTP_201_CREATED,
@@ -62,6 +77,21 @@ class PaymentIntentViewSet(viewsets.GenericViewSet):
             intent = services.initiate_stk(intent)
         except PaymentTransitionError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            from utils.audit_events import log_simple_action
+
+            log_simple_action(
+                request,
+                'stk_push',
+                intent,
+                module='payments',
+                changes={
+                    'amount': str(getattr(intent, 'amount', '')),
+                    'status': getattr(intent, 'status', ''),
+                },
+            )
+        except Exception:
+            pass
         return Response(PaymentIntentSerializer(intent).data)
 
     @action(detail=True, methods=['post'], url_path='query')

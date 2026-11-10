@@ -29,7 +29,9 @@ class AuditLogHelperTests(TestCase):
             changes={'receipt_logo': png_upload('brand.png'), 'amount': Decimal('5.50')},
         )
         row = AuditLog.objects.get(module='store_settings')
-        self.assertEqual(row.changes, {'receipt_logo': 'brand.png', 'amount': '5.50'})
+        self.assertEqual(row.changes.get('receipt_logo'), 'brand.png')
+        self.assertEqual(row.changes.get('amount'), '5.50')
+        self.assertIn(row.changes.get('client_channel'), ('web', 'mobile', 'unknown'))
         self.assertTrue(User.objects.filter(pk=user.pk).exists())
 
     def test_diff_instance_detects_change(self):

@@ -136,6 +136,18 @@ class DispatchQueueViewSet(viewsets.ReadOnlyModelViewSet):
         ser = CreateDriverSerializer(data=request.data, context={'request': request})
         ser.is_valid(raise_exception=True)
         user = ser.save()
+        try:
+            from utils.audit_events import log_simple_action
+
+            log_simple_action(
+                request,
+                'create_driver',
+                user,
+                module='dispatch',
+                changes={'username': user.username},
+            )
+        except Exception:
+            pass
         return Response(
             driver_payload(user, temporary_password=user._temporary_password),
             status=status.HTTP_201_CREATED,
@@ -174,6 +186,21 @@ class DispatchQueueViewSet(viewsets.ReadOnlyModelViewSet):
             order = ser.save()
         except FieldOrderTransitionError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            from utils.audit_events import log_simple_action
+
+            log_simple_action(
+                request,
+                'pack',
+                order,
+                module='dispatch',
+                changes={
+                    'order_id': order.pk,
+                    'status': getattr(order, 'status', ''),
+                },
+            )
+        except Exception:
+            pass
         return Response(
             FieldOrderSerializer(order, context={'request': request}).data,
         )
@@ -203,6 +230,22 @@ class DispatchQueueViewSet(viewsets.ReadOnlyModelViewSet):
             order = ser.save()
         except FieldOrderTransitionError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            from utils.audit_events import log_simple_action
+
+            log_simple_action(
+                request,
+                'assign',
+                order,
+                module='dispatch',
+                changes={
+                    'order_id': order.pk,
+                    'status': getattr(order, 'status', ''),
+                    'delivery_agent_id': getattr(order, 'delivery_agent_id', None),
+                },
+            )
+        except Exception:
+            pass
         return Response(
             FieldOrderSerializer(order, context={'request': request}).data,
         )

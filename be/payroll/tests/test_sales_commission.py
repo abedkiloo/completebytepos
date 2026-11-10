@@ -104,7 +104,8 @@ class SalesCommissionTests(SuperAdminAPITestCase):
         )
         return sale
 
-    def test_net_field_sales_and_role_rate(self):
+    def test_daily_bands_sum_for_month(self):
+        # PDF default: 50k+ → 4,000 commission + 200 transport per day.
         self._field_sale(total=Decimal('100000.00'), day=date(2026, 6, 10))
         self._field_sale(total=Decimal('50000.00'), day=date(2026, 6, 15))
         # Shop sale must not count
@@ -127,10 +128,19 @@ class SalesCommissionTests(SuperAdminAPITestCase):
             'settings.module_features.is_module_feature_enabled', return_value=True
         ):
             result = fetch_sales_commission(self.emp, year=2026, month=6)
-        self.assertEqual(result['amount'], Decimal('4500.00'))  # 3% of 150k
-        self.assertEqual(result['meta']['rate_source'], 'role_package')
+        self.assertEqual(result['meta'].get('scheme'), 'daily_bands')
+        # Two qualifying days × (4000 + 200)
+        self.assertEqual(result['amount'], Decimal('8400.00'))
+        self.assertEqual(result['meta']['commission_total'], '8000.00')
+        self.assertEqual(result['meta']['transport_total'], '400.00')
 
-    def test_person_rate_overrides_template(self):
+    def test_legacy_percent_scheme_still_honours_person_rate(self):
+        settings = PayrollSettings.load()
+        settings.sales_commission_template = {
+            'scheme': 'percent',
+            'percent_rate': '0.03',
+        }
+        settings.save(update_fields=['sales_commission_template', 'updated_at'])
         self._field_sale(total=Decimal('100000.00'), day=date(2026, 7, 5))
         EmployeePayAssignment.objects.create(
             employee=self.emp,
@@ -146,7 +156,7 @@ class SalesCommissionTests(SuperAdminAPITestCase):
         self.assertEqual(result['amount'], Decimal('5000.00'))
         self.assertEqual(result['meta']['rate_source'], 'assignment')
 
-    def test_calculate_run_adds_commission_line(self):
+    def test_calculate_run_adds_daily_band_commission_line(self):
         self._field_sale(total=Decimal('200000.00'), day=date(2026, 8, 8))
         with patch(
             'settings.module_features.is_module_feature_enabled', return_value=True
@@ -156,7 +166,8 @@ class SalesCommissionTests(SuperAdminAPITestCase):
         slip = run.payslips.get(employee=self.emp)
         line = slip.lines.filter(component__code=COMMISSION_CODE).first()
         self.assertIsNotNone(line)
-        self.assertEqual(line.amount, Decimal('6000.00'))
+        # One day at 50k+ band: 4000 commission + 200 transport
+        self.assertEqual(line.amount, Decimal('4200.00'))
         self.assertIn('commission', slip.calculation_meta.get('adapters') or {})
 
     def test_feature_off_blocks_commission(self):

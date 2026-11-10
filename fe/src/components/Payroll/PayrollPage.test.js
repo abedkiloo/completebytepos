@@ -61,6 +61,14 @@ describe('PayrollPage', () => {
         statutory_enabled: false,
         include_appraisal_bonus: true,
         include_sales_commission: true,
+        sales_commission_template: {
+          scheme: 'daily_bands',
+          bands: [
+            { min: '0', max: '12499.99', commission: '0' },
+            { min: '12500', max: '19999.99', commission: '500' },
+          ],
+          transport: { min_sales: '5000', amount: '200' },
+        },
         letterhead_line: '',
       },
     });

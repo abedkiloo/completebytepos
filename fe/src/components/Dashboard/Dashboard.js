@@ -12,6 +12,8 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { reportsAPI, productsAPI, salesAPI, authAPI, appraisalsAPI } from '../../services/api';
+import { isFieldSalesFromStorage } from '../../utils/roleAccess';
+import AgentCommissionCard from './AgentCommissionCard';
 import { formatCurrency, formatNumber } from '../../utils/formatters';
 import { saleDisplayTotal } from '../../utils/saleItemDisplay';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -287,6 +289,8 @@ const Dashboard = () => {
         </header>
 
         {appraisal ? <AppraisalProgressCard snapshot={appraisal} compact /> : null}
+
+        {isFieldSalesFromStorage() ? <AgentCommissionCard /> : null}
 
         <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {kpis.map((kpi) => (

@@ -38,6 +38,23 @@ from .services import DeliveryTransitionError
 
 DELIVERY_VIEW = RequirePerm('delivery', 'view')
 DELIVERY_UPDATE = RequirePerm('delivery', 'update')
+
+
+def _audit_delivery(request, action: str, stop, **extra):
+    """Append a non-blocking delivery audit row."""
+    try:
+        from utils.audit_events import log_simple_action
+
+        changes = {'stop_id': getattr(stop, 'pk', None), **extra}
+        log_simple_action(
+            request,
+            action,
+            stop,
+            module='delivery',
+            changes=changes,
+        )
+    except Exception:
+        pass
 DELIVERY_PERMS = RequirePermPerAction(
     'delivery',
     {
@@ -316,8 +333,10 @@ class DeliveryStopViewSet(viewsets.ReadOnlyModelViewSet):
             services.arrive(stop)
         except DeliveryTransitionError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+        stop = self._reload(pk)
+        _audit_delivery(request, 'arrive', stop, status=getattr(stop, 'status', ''))
         return Response(
-            DeliveryStopSerializer(self._reload(pk), context={'request': request}).data,
+            DeliveryStopSerializer(stop, context={'request': request}).data,
         )
 
     @action(detail=True, methods=['post'], url_path='start')
@@ -327,8 +346,10 @@ class DeliveryStopViewSet(viewsets.ReadOnlyModelViewSet):
             services.start_delivery(stop)
         except DeliveryTransitionError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+        stop = self._reload(pk)
+        _audit_delivery(request, 'start', stop, status=getattr(stop, 'status', ''))
         return Response(
-            DeliveryStopSerializer(self._reload(pk), context={'request': request}).data,
+            DeliveryStopSerializer(stop, context={'request': request}).data,
         )
 
     @action(detail=True, methods=['post'], url_path='lines')
@@ -343,8 +364,10 @@ class DeliveryStopViewSet(viewsets.ReadOnlyModelViewSet):
             ser.save()
         except DeliveryTransitionError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+        stop = self._reload(pk)
+        _audit_delivery(request, 'lines_update', stop, status=getattr(stop, 'status', ''))
         return Response(
-            DeliveryStopSerializer(self._reload(pk), context={'request': request}).data,
+            DeliveryStopSerializer(stop, context={'request': request}).data,
         )
 
     @action(detail=True, methods=['post'], url_path='collect')
@@ -359,8 +382,10 @@ class DeliveryStopViewSet(viewsets.ReadOnlyModelViewSet):
             ser.save()
         except DeliveryTransitionError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+        stop = self._reload(pk)
+        _audit_delivery(request, 'collect', stop, status=getattr(stop, 'status', ''))
         return Response(
-            DeliveryStopSerializer(self._reload(pk), context={'request': request}).data,
+            DeliveryStopSerializer(stop, context={'request': request}).data,
         )
 
     @action(detail=True, methods=['post'], url_path='pod')
@@ -375,6 +400,7 @@ class DeliveryStopViewSet(viewsets.ReadOnlyModelViewSet):
             pod = ser.save()
         except DeliveryTransitionError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+        _audit_delivery(request, 'pod', stop, pod_id=getattr(pod, 'pk', None))
         return Response(
             ProofOfDeliverySerializer(pod, context={'request': request}).data,
         )
@@ -386,8 +412,10 @@ class DeliveryStopViewSet(viewsets.ReadOnlyModelViewSet):
             services.complete_stop(stop)
         except DeliveryTransitionError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+        stop = self._reload(pk)
+        _audit_delivery(request, 'complete', stop, status=getattr(stop, 'status', ''))
         return Response(
-            DeliveryStopSerializer(self._reload(pk), context={'request': request}).data,
+            DeliveryStopSerializer(stop, context={'request': request}).data,
         )
 
     @action(detail=True, methods=['post'], url_path='propose-pin')
@@ -399,6 +427,13 @@ class DeliveryStopViewSet(viewsets.ReadOnlyModelViewSet):
         )
         ser.is_valid(raise_exception=True)
         corr = ser.save()
+        _audit_delivery(
+            request,
+            'propose_pin',
+            stop,
+            correction_id=getattr(corr, 'pk', None),
+            status=getattr(corr, 'status', ''),
+        )
         return Response({
             'id': corr.id,
             'status': corr.status,

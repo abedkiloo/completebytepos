@@ -321,3 +321,40 @@ def log_permission_denied(request, *, module: str, action: str, detail: str = ''
         module=module,
         changes={'action': action, 'detail': detail},
     )
+
+
+def log_simple_action(
+    request,
+    action: str,
+    instance=None,
+    *,
+    module: str,
+    changes: dict | None = None,
+    object_repr: str | None = None,
+):
+    """
+    Non-blocking audit for any module action (dispatch, delivery, messaging, …).
+
+    Args:
+        request: Actor request (may be None for system jobs).
+        action: Short verb (≤32 chars), e.g. ``pack``, ``arrive``, ``sms_send``.
+        instance: Related model instance, or None.
+        module: Permission module string (``dispatch``, ``delivery``, …).
+        changes: Optional JSON-safe payload.
+        object_repr: Optional display string.
+
+    Returns:
+        None. Never raises to callers.
+    """
+    try:
+        log_domain_event(
+            request,
+            action,
+            instance,
+            module=module,
+            changes=changes or {},
+            object_repr=object_repr,
+        )
+    except Exception:
+        # Defensive: log_domain_event already swallows; keep callers safe.
+        pass

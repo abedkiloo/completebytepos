@@ -888,6 +888,7 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
       * ``user``            - user id
       * ``action``          - exact match ('create', 'update', 'login', etc.)
       * ``module``          - exact match ('sales', 'products', ...)
+      * ``client_channel``  - ``web`` / ``mobile`` / ``unknown``
       * ``object_type``     - exact match ('sales.Sale', ...)
       * ``date_from``       - YYYY-MM-DD inclusive (calendar day)
       * ``date_to``         - YYYY-MM-DD inclusive (calendar day)
@@ -916,6 +917,9 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(action=params['action'])
         if params.get('module'):
             qs = qs.filter(module=params['module'])
+        channel = (params.get('client_channel') or '').strip().lower()
+        if channel in ('web', 'mobile', 'unknown'):
+            qs = qs.filter(client_channel=channel)
         if params.get('object_type'):
             qs = qs.filter(object_type=params['object_type'])
 
@@ -996,7 +1000,15 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
             .distinct()
             .order_by('action')
         )
-        return Response({'modules': modules, 'actions': actions})
+        channels = list(
+            qs.exclude(client_channel='')
+            .values_list('client_channel', flat=True)
+            .distinct()
+            .order_by('client_channel')
+        )
+        return Response(
+            {'modules': modules, 'actions': actions, 'client_channels': channels}
+        )
 
 
 # Module settings ViewSets moved to settings app

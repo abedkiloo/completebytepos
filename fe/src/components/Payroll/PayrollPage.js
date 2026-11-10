@@ -254,6 +254,7 @@ export default function PayrollPage() {
         statutory_enabled: Boolean(settings.statutory_enabled),
         include_appraisal_bonus: Boolean(settings.include_appraisal_bonus),
         include_sales_commission: Boolean(settings.include_sales_commission),
+        sales_commission_template: settings.sales_commission_template || undefined,
         letterhead_line: settings.letterhead_line || '',
       });
       setSettings(res.data);
@@ -263,6 +264,53 @@ export default function PayrollPage() {
     } finally {
       setBusyId(null);
     }
+  };
+
+  const updateCommissionBand = (index, field, value) => {
+    const tpl = settings.sales_commission_template || {};
+    const bands = [...(tpl.bands || [])];
+    if (!bands[index]) return;
+    bands[index] = {
+      ...bands[index],
+      [field]: value === '' && field === 'max' ? null : value,
+    };
+    setSettings({
+      ...settings,
+      sales_commission_template: { ...tpl, bands },
+    });
+  };
+
+  const updateCommissionTransport = (field, value) => {
+    const tpl = settings.sales_commission_template || {};
+    setSettings({
+      ...settings,
+      sales_commission_template: {
+        ...tpl,
+        transport: { ...(tpl.transport || {}), [field]: value },
+      },
+    });
+  };
+
+  const resetCommissionTemplate = () => {
+    setSettings({
+      ...settings,
+      sales_commission_template: {
+        scheme: 'daily_bands',
+        bands: [
+          { min: '0', max: '12499.99', commission: '0' },
+          { min: '12500', max: '19999.99', commission: '500' },
+          { min: '20000', max: '31999.99', commission: '1000' },
+          { min: '32000', max: '39999.99', commission: '2000' },
+          { min: '40000', max: '49999.99', commission: '3500' },
+          { min: '50000', max: null, commission: '4000' },
+        ],
+        transport: { min_sales: '5000', amount: '200' },
+        exclude_products_from_commission: true,
+        exclude_product_keywords: ['zip', 'sofa cup holder'],
+        field_only: true,
+        require_full_payment_same_day: true,
+      },
+    });
   };
 
   const seedComponents = async () => {
@@ -990,8 +1038,215 @@ export default function PayrollPage() {
                 setSettings({ ...settings, include_sales_commission: e.target.checked })
               }
             />
-            Include field sales commission when calculating (net field sales × rate)
+            Include sales-agent commission when calculating (daily band template by default)
           </label>
+          {settings.sales_commission_template?.scheme === 'daily_bands' ||
+          !settings.sales_commission_template?.scheme ? (
+            <div
+              className="space-y-3 rounded-lg border border-border/60 bg-muted/15 p-3"
+              data-testid="sales-commission-template"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm font-medium">Sales agent award template</p>
+                  <p className="text-xs text-muted-foreground">
+                    Default from the Omuwenga daily sales bands. Agents see this on their
+                    dashboard; change bands here and Save.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={resetCommissionTemplate}
+                >
+                  Reset to PDF default
+                </Button>
+              </div>
+              <div className="overflow-x-auto rounded-md border bg-background">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-muted/40 text-muted-foreground">
+                    <tr>
+                      <th className="px-2 py-2 font-medium">Min sales (KES)</th>
+                      <th className="px-2 py-2 font-medium">Max sales</th>
+                      <th className="px-2 py-2 font-medium">Commission</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(settings.sales_commission_template?.bands || []).map((band, idx) => (
+                      <tr key={`band-${idx}`}>
+                        <td className="px-2 py-1.5">
+                          <Input
+                            className="h-8 text-xs"
+                            value={band.min ?? ''}
+                            onChange={(e) =>
+                              updateCommissionBand(idx, 'min', e.target.value)
+                            }
+                          />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <Input
+                            className="h-8 text-xs"
+                            placeholder="and above"
+                            value={band.max == null ? '' : band.max}
+                            onChange={(e) =>
+                              updateCommissionBand(idx, 'max', e.target.value)
+                            }
+                          />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <Input
+                            className="h-8 text-xs"
+                            value={band.commission ?? ''}
+                            onChange={(e) =>
+                              updateCommissionBand(idx, 'commission', e.target.value)
+                            }
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="transport-min">Transport min sales</Label>
+                  <Input
+                    id="transport-min"
+                    className="mt-1"
+                    value={settings.sales_commission_template?.transport?.min_sales ?? ''}
+                    onChange={(e) =>
+                      updateCommissionTransport('min_sales', e.target.value)
+                    }
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="transport-amt">Transport amount</Label>
+                  <Input
+                    id="transport-amt"
+                    className="mt-1"
+                    value={settings.sales_commission_template?.transport?.amount ?? ''}
+                    onChange={(e) =>
+                      updateCommissionTransport('amount', e.target.value)
+                    }
+                  />
+                </div>
+              </div>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={Boolean(
+                    settings.sales_commission_template?.field_only !== false
+                  )}
+                  onChange={(e) =>
+                    setSettings({
+                      ...settings,
+                      sales_commission_template: {
+                        ...(settings.sales_commission_template || {}),
+                        field_only: e.target.checked,
+                      },
+                    })
+                  }
+                />
+                <span>
+                  Field sales only (recommended)
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    Shop POS never counts toward the award. Field agents only see field
+                    sales in their history and daily tracker.
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={Boolean(
+                    settings.sales_commission_template
+                      ?.require_full_payment_same_day !== false
+                  )}
+                  onChange={(e) =>
+                    setSettings({
+                      ...settings,
+                      sales_commission_template: {
+                        ...(settings.sales_commission_template || {}),
+                        require_full_payment_same_day: e.target.checked,
+                      },
+                    })
+                  }
+                />
+                <span>
+                  Require full payment same day
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    Partially paid / debt field sales do not qualify until paid in full
+                    the same day.
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={Boolean(
+                    settings.sales_commission_template?.exclude_products_from_commission !==
+                      false
+                  )}
+                  onChange={(e) =>
+                    setSettings({
+                      ...settings,
+                      sales_commission_template: {
+                        ...(settings.sales_commission_template || {}),
+                        exclude_products_from_commission: e.target.checked,
+                      },
+                    })
+                  }
+                />
+                <span>
+                  Do not count matching product lines toward commission
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    Products stay on POS and agent sales views — they only skip the award
+                    base. Leave off to count every paid field line.
+                  </span>
+                </span>
+              </label>
+              <div>
+                <Label htmlFor="commission-exclude-keywords">
+                  Non-qualifying product keywords
+                </Label>
+                <Input
+                  id="commission-exclude-keywords"
+                  className="mt-1"
+                  disabled={
+                    settings.sales_commission_template?.exclude_products_from_commission ===
+                    false
+                  }
+                  value={(
+                    settings.sales_commission_template?.exclude_product_keywords || []
+                  ).join(', ')}
+                  onChange={(e) =>
+                    setSettings({
+                      ...settings,
+                      sales_commission_template: {
+                        ...(settings.sales_commission_template || {}),
+                        exclude_product_keywords: e.target.value
+                          .split(',')
+                          .map((part) => part.trim())
+                          .filter(Boolean),
+                      },
+                    })
+                  }
+                  placeholder="zip, sofa cup holder"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Comma-separated name fragments. Default starter: zip, sofa cup holder.
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Qualifying day: field sales paid in full the same day. Award bands use
+                qualifying sales only.
+              </p>
+            </div>
+          ) : null}
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"

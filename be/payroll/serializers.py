@@ -24,11 +24,39 @@ class PayrollSettingsSerializer(serializers.ModelSerializer):
             'statutory_enabled',
             'include_appraisal_bonus',
             'include_sales_commission',
+            'sales_commission_template',
             'letterhead_line',
             'created_at',
             'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate_sales_commission_template(self, value):
+        """
+        Normalize the editable daily-band (or percent) commission template.
+
+        Args:
+            value: Mapping or empty.
+
+        Returns:
+            Normalized template dict.
+        """
+        from payroll.commission_template import normalize_commission_template
+
+        if value in (None, '', {}):
+            return normalize_commission_template(None)
+        if not isinstance(value, dict):
+            raise serializers.ValidationError('Commission template must be an object.')
+        return normalize_commission_template(value)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        from payroll.commission_template import normalize_commission_template
+
+        data['sales_commission_template'] = normalize_commission_template(
+            getattr(instance, 'sales_commission_template', None) or None
+        )
+        return data
 
 
 class PayComponentSerializer(serializers.ModelSerializer):

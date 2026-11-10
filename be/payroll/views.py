@@ -77,6 +77,7 @@ class PayrollSettingsView(APIView):
             'statutory_enabled': settings.statutory_enabled,
             'include_appraisal_bonus': settings.include_appraisal_bonus,
             'include_sales_commission': settings.include_sales_commission,
+            'sales_commission_template': settings.sales_commission_template,
             'letterhead_line': settings.letterhead_line,
         }
         ser = PayrollSettingsSerializer(settings, data=request.data, partial=True)
@@ -89,6 +90,7 @@ class PayrollSettingsView(APIView):
             'statutory_enabled': settings.statutory_enabled,
             'include_appraisal_bonus': settings.include_appraisal_bonus,
             'include_sales_commission': settings.include_sales_commission,
+            'sales_commission_template': settings.sales_commission_template,
             'letterhead_line': settings.letterhead_line,
         }
         changes = {
@@ -532,6 +534,47 @@ class PayslipViewSet(viewsets.ReadOnlyModelViewSet):
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = f'inline; filename="{filename}"'
         return response
+
+
+class AgentCommissionDayView(APIView):
+    """
+    Sales agent daily commission dashboard (self).
+
+    Query ``?date=YYYY-MM-DD`` for a former day; default is today.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from datetime import timedelta
+
+        from django.utils import timezone as dj_tz
+        from django.utils.dateparse import parse_date
+
+        from payroll.daily_commission import agent_day_commission
+
+        raw = (request.query_params.get('date') or '').strip()
+        day = None
+        if raw:
+            day = parse_date(raw)
+            if day is None:
+                return Response(
+                    {'date': 'Use YYYY-MM-DD.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            today = dj_tz.localdate()
+            if day > today:
+                return Response(
+                    {'date': 'Date cannot be in the future.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if day < today - timedelta(days=366):
+                return Response(
+                    {'date': 'Date cannot be more than one year in the past.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        payload = agent_day_commission(request.user.id, day)
+        return Response(payload)
 
 
 class MyPayView(APIView):

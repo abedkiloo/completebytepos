@@ -173,7 +173,11 @@ def fetch_sales_commission(
     month: int,
 ) -> dict[str, Any]:
     """
-    Compute field-sales commission for one employee and payroll month.
+    Compute sales-agent commission for one employee and payroll month.
+
+    Default scheme is **daily_bands** (Omuwenga PDF starter): sum each day's
+    band commission + transport. Legacy ``percent`` scheme still uses
+    net field sales × rate when the stored template asks for it.
 
     Args:
         employee: Employee row (may lack linked user → amount 0).
@@ -183,6 +187,12 @@ def fetch_sales_commission(
     Returns:
         Dict with ``amount`` (Decimal), ``qualified`` (bool), and ``meta`` audit.
     """
+    from payroll.commission_template import normalize_commission_template
+    from payroll.daily_commission import (
+        fetch_employee_daily_band_commission,
+        load_commission_template,
+    )
+
     empty_meta = {
         'source': 'sales_commission',
         'available': True,
@@ -196,6 +206,10 @@ def fetch_sales_commission(
             **empty,
             'meta': {**empty_meta, 'available': False, 'reason': 'commission_disabled'},
         }
+
+    tpl = normalize_commission_template(load_commission_template())
+    if tpl.get('scheme', 'daily_bands') == 'daily_bands':
+        return fetch_employee_daily_band_commission(employee, year=year, month=month)
 
     user = resolve_user_for_employee(employee)
     if user is None:
@@ -213,6 +227,7 @@ def fetch_sales_commission(
         'qualified': amount > 0,
         'meta': {
             **empty_meta,
+            'scheme': 'percent',
             'matched_user': True,
             'user_id': user.id,
             'sales_base': str(base),

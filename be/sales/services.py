@@ -205,8 +205,14 @@ class SaleService(BaseService):
 
         # Own sales only unless admin / sales.view_all.
         # Managers with sales.approve see every cashier's waiting sales.
+        # Field Sales only see field-origin sales (not shop POS) — that is their
+        # working set for history, daily tracker, and commission.
         from sales.sale_completion_approval import user_can_complete_sales
-        from sales.visibility import own_sales_q, user_sees_all_sales
+        from sales.visibility import (
+            is_field_sales_user,
+            own_sales_q,
+            user_sees_all_sales,
+        )
 
         if request is not None and getattr(request, 'user', None) is not None:
             user = request.user
@@ -230,6 +236,9 @@ class SaleService(BaseService):
                     )
                 else:
                     queryset = queryset.filter(own_sales_q(user))
+
+                if is_field_sales_user(user) and not user_sees_all_sales(user):
+                    queryset = queryset.filter(entry_source='field')
 
         return queryset
     
