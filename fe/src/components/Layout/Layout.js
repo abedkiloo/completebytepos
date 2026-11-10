@@ -6,6 +6,8 @@ import {
   LogOut,
   Settings,
   User as UserIcon,
+  Search,
+  X,
   LayoutDashboard,
   Package,
   FolderTree,
@@ -70,8 +72,14 @@ import { resolveStoreName } from '../../utils/storeBranding';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import BrandMark from '../Shared/BrandMark';
 import { useNavBadgeCounts } from '../../hooks/useNavBadgeCounts';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { navBadgeCountForItem } from '../../utils/navBadges';
+import { filterNavSections, normalizeNavQuery } from '../../utils/navSearch';
+import { Input } from '../ui/input';
 import NavCountBadge from './NavCountBadge';
+
+/** Short debounce: filter is in-memory only (no API). */
+const NAV_SEARCH_DEBOUNCE_MS = 120;
 
 /**
  * Navigation tree.
@@ -321,6 +329,8 @@ const Layout = ({ children }) => {
   // visual noise. Cashiers can pop sections open as they need them.
   const [expanded, setExpanded] = useState({ sales: true, inventory: true });
   const [navTick, setNavTick] = useState(0);
+  const [navQuery, setNavQuery] = useState('');
+  const debouncedNavQuery = useDebouncedValue(navQuery, NAV_SEARCH_DEBOUNCE_MS);
   const { settings: brandingSettings } = useStoreSettings();
   const storeName = resolveStoreName(brandingSettings);
 
@@ -496,18 +506,33 @@ const Layout = ({ children }) => {
     [itemVisible, navCtx]
   );
 
+  // Search runs only over already-visible items (permissions already applied).
+  // Empty query returns the same array reference — no extra work / re-renders.
+  const displaySections = useMemo(
+    () => filterNavSections(visibleSections, debouncedNavQuery),
+    [visibleSections, debouncedNavQuery]
+  );
+  const navSearchActive = Boolean(normalizeNavQuery(debouncedNavQuery));
+
   const navBadgeCounts = useNavBadgeCounts();
 
   // On mobile, expand the section that contains the active route.
   useEffect(() => {
-    if (!isMobile) return;
+    if (!isMobile || navSearchActive) return;
     const activeSection = visibleSections.find((section) =>
       section.visibleItems.some((item) => isActive(item))
     );
     if (activeSection) {
       setExpanded((prev) => ({ ...prev, [activeSection.id]: true }));
     }
-  }, [isMobile, location.pathname, location.search, visibleSections, isActive]);
+  }, [isMobile, location.pathname, location.search, visibleSections, isActive, navSearchActive]);
+
+  const handleNavSearchKeyDown = (e) => {
+    if (e.key === 'Escape' && navQuery) {
+      e.preventDefault();
+      setNavQuery('');
+    }
+  };
 
   return (
     <div className="flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-background">
@@ -592,24 +617,65 @@ const Layout = ({ children }) => {
         {/* Sidebar */}
         <aside
           className={cn(
-            'fixed bottom-0 left-0 top-14 z-40 w-[min(100vw-3rem,16rem)] shrink-0 app-scroll-region border-r bg-background pb-[env(safe-area-inset-bottom)] transition-transform duration-200 lg:static lg:inset-auto lg:w-64 lg:translate-x-0',
+            'fixed bottom-0 left-0 top-14 z-40 flex w-[min(100vw-3rem,16rem)] shrink-0 flex-col border-r bg-background pb-[env(safe-area-inset-bottom)] transition-transform duration-200 lg:static lg:inset-auto lg:w-64 lg:translate-x-0',
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           )}
           aria-label="Primary navigation"
         >
-          <nav className="flex flex-col gap-1 p-3">
-            {visibleSections.map((section, idx) => (
-              <NavSection
-                key={section.id}
-                section={section}
-                expanded={!!expanded[section.id]}
-                onToggle={() => toggleSection(section.id)}
-                isActive={isActive}
-                onNavigate={handleNavClick}
-                showDivider={idx < visibleSections.length - 1}
-                navBadgeCounts={navBadgeCounts}
+          <div className="shrink-0 border-b p-3">
+            <label className="sr-only" htmlFor="nav-module-search">
+              Search modules
+            </label>
+            <div className="relative">
+              <Search
+                className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
               />
-            ))}
+              <Input
+                id="nav-module-search"
+                type="search"
+                value={navQuery}
+                onChange={(e) => setNavQuery(e.target.value)}
+                onKeyDown={handleNavSearchKeyDown}
+                placeholder="Search modules…"
+                className="h-9 pl-8 pr-8"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              {navQuery ? (
+                <button
+                  type="button"
+                  className="absolute right-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+                  onClick={() => setNavQuery('')}
+                  aria-label="Clear module search"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
+            </div>
+          </div>
+          <nav className="app-scroll-region min-h-0 flex-1 p-3">
+            <div className="flex flex-col gap-1">
+              {displaySections.length === 0 ? (
+                <p className="px-2 py-3 text-sm text-muted-foreground">
+                  No modules match “{normalizeNavQuery(debouncedNavQuery)}”.
+                </p>
+              ) : (
+                displaySections.map((section, idx) => (
+                  <NavSection
+                    key={section.id}
+                    section={section}
+                    expanded={navSearchActive || !!expanded[section.id]}
+                    onToggle={() => toggleSection(section.id)}
+                    isActive={isActive}
+                    onNavigate={handleNavClick}
+                    showDivider={idx < displaySections.length - 1}
+                    navBadgeCounts={navBadgeCounts}
+                    forceOpen={navSearchActive}
+                  />
+                ))
+              )}
+            </div>
           </nav>
         </aside>
 
@@ -622,14 +688,25 @@ const Layout = ({ children }) => {
   );
 };
 
-const NavSection = ({ section, expanded, onToggle, isActive, onNavigate, showDivider, navBadgeCounts }) => (
+const NavSection = ({
+  section,
+  expanded,
+  onToggle,
+  isActive,
+  onNavigate,
+  showDivider,
+  navBadgeCounts,
+  forceOpen = false,
+}) => (
   <div className="flex flex-col">
     <button
       type="button"
-      onClick={onToggle}
+      onClick={forceOpen ? undefined : onToggle}
+      disabled={forceOpen}
       className={cn(
         'flex h-10 items-center justify-between rounded-md px-3 text-sm font-semibold',
-        'text-muted-foreground hover:bg-accent hover:text-foreground'
+        'text-muted-foreground hover:bg-accent hover:text-foreground',
+        forceOpen && 'cursor-default opacity-100'
       )}
       aria-expanded={expanded}
     >

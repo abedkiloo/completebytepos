@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   ChevronDown,
   Loader2,
@@ -6,6 +6,8 @@ import {
   Sparkles,
   AlertTriangle,
   Layers,
+  Search,
+  X,
 } from 'lucide-react';
 import { modulesAPI, moduleFeaturesAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
@@ -16,11 +18,16 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Switch } from '../ui/switch';
 import { Separator } from '../ui/separator';
+import { Input } from '../ui/input';
 import { cn } from '../../lib/cn';
 import { MODULE_ICONS, getFeatureTip } from './moduleSettingsConfig';
 import { MODULE_PRESETS } from '../../utils/modulePresets';
 import CommitConfirm from '../Shared/CommitConfirm';
 import { moduleToggleRows, presetApplyRows, featureToggleRows } from '../../utils/formCommitSummary';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import { filterModuleCatalog, normalizeNavQuery } from '../../utils/navSearch';
+
+const MODULE_SEARCH_DEBOUNCE_MS = 150;
 
 function syncModulesCache(data) {
   if (!data) return;
@@ -38,8 +45,17 @@ const ModuleSettings = () => {
   const [expanded, setExpanded] = useState({});
   const [applyingPreset, setApplyingPreset] = useState(null);
   const [pendingCommit, setPendingCommit] = useState(null);
+  const [moduleQuery, setModuleQuery] = useState('');
+  const debouncedModuleQuery = useDebouncedValue(moduleQuery, MODULE_SEARCH_DEBOUNCE_MS);
 
   const isSuperAdmin = isSuperAdminFromStorage();
+
+  // In-memory filter only — catalog already loaded; empty query keeps same ref.
+  const displayCatalog = useMemo(
+    () => filterModuleCatalog(catalog, debouncedModuleQuery),
+    [catalog, debouncedModuleQuery]
+  );
+  const moduleSearchActive = Boolean(normalizeNavQuery(debouncedModuleQuery));
 
   const loadModules = useCallback(async () => {
     setLoading(true);
@@ -202,7 +218,8 @@ const ModuleSettings = () => {
     const features = Object.entries(module.features || {}).sort(
       ([, a], [, b]) => (a.display_order || 0) - (b.display_order || 0)
     );
-    const isOpen = expanded[module.id];
+    // While searching, keep cards open so feature-name hits are visible.
+    const isOpen = Boolean(expanded[module.id]) || moduleSearchActive;
     const enabledFeatures = features.filter(([, f]) => f.is_enabled).length;
     const critical = module.module_name === 'settings';
 
@@ -351,7 +368,7 @@ const ModuleSettings = () => {
           </Card>
         )}
 
-        {isSuperAdmin && presets.length > 0 && (
+        {isSuperAdmin && presets.length > 0 && !moduleSearchActive ? (
           <Card className="border-primary/25">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
@@ -383,20 +400,62 @@ const ModuleSettings = () => {
               ))}
             </CardContent>
           </Card>
-        )}
+        ) : null}
+
+        <div className="relative max-w-xl">
+          <label className="sr-only" htmlFor="module-settings-search">
+            Search modules and features
+          </label>
+          <Search
+            className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <Input
+            id="module-settings-search"
+            type="search"
+            value={moduleQuery}
+            onChange={(e) => setModuleQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape' && moduleQuery) {
+                e.preventDefault();
+                setModuleQuery('');
+              }
+            }}
+            placeholder="Search modules or features…"
+            className="h-10 pl-8 pr-10"
+            autoComplete="off"
+            spellCheck={false}
+          />
+          {moduleQuery ? (
+            <button
+              type="button"
+              className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+              onClick={() => setModuleQuery('')}
+              aria-label="Clear module search"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          ) : null}
+        </div>
 
         <div className="space-y-10">
-          {catalog.map((domain) => (
-            <section key={domain.id} className="space-y-3">
-              <div>
-                <h2 className="text-lg font-semibold tracking-tight">{domain.label}</h2>
-                <p className="text-sm text-muted-foreground">{domain.description}</p>
-              </div>
-              <div className="grid gap-3 lg:grid-cols-2">
-                {(domain.modules || []).map((mod) => renderModuleCard(mod))}
-              </div>
-            </section>
-          ))}
+          {displayCatalog.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No modules match “{normalizeNavQuery(debouncedModuleQuery)}”.
+            </p>
+          ) : (
+            displayCatalog.map((domain) => (
+              <section key={domain.id} className="space-y-3">
+                <div>
+                  <h2 className="text-lg font-semibold tracking-tight">{domain.label}</h2>
+                  <p className="text-sm text-muted-foreground">{domain.description}</p>
+                </div>
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {(domain.modules || []).map((mod) => renderModuleCard(mod))}
+                </div>
+              </section>
+            ))
+          )}
         </div>
       <CommitConfirm
         open={!!pendingCommit}
