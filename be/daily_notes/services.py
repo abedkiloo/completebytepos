@@ -324,7 +324,17 @@ class DailyNoteService:
         """
         from daily_notes.approval_notice import complete_stale_approval_notices
 
-        complete_stale_approval_notices(user=user)
+        try:
+            complete_stale_approval_notices(user=user)
+        except Exception:
+            # Never block the login gate if stale-notice cleanup fails
+            # (schema lag, partial deploys, etc.).
+            import logging
+
+            logging.getLogger(__name__).exception(
+                'Skipping stale approval-notice cleanup for user %s',
+                getattr(user, 'pk', None),
+            )
         qs = (
             DailyNote.objects.filter(
                 is_done=False,

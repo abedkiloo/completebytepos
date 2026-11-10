@@ -500,7 +500,17 @@ def _apply_single_change(change: PendingChange, checker, request) -> PendingChan
     change.status = PendingChange.STATUS_APPROVED
     change.checked_at = timezone.now()
     change.save(update_fields=['status', 'checked_by', 'checked_at'])
-    complete_requester_notices_for_change(change)
+    # Notice cleanup must not turn a successful approve into HTTP 500
+    # (e.g. missing daily_notes.image migration on a freshly pulled deploy).
+    try:
+        complete_requester_notices_for_change(change)
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception(
+            'Approved change %s but could not clear requester daily-note notices',
+            getattr(change, 'pk', None),
+        )
     if request:
         _audit_pending(
             request,

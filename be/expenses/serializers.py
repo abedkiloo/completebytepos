@@ -74,11 +74,16 @@ class ExpenseSerializer(serializers.ModelSerializer):
         Returns:
             str URL or None when no image is attached.
         """
-        if not obj.image:
+        image = getattr(obj, 'image', None)
+        if not image:
+            return None
+        try:
+            relative = image.url
+        except (ValueError, AttributeError, OSError):
             return None
         from config.media_urls import absolute_media_url
 
-        return absolute_media_url(self.context.get('request'), obj.image.url)
+        return absolute_media_url(self.context.get('request'), relative)
 
     def validate_description(self, value):
         raise_field_error(
@@ -118,9 +123,14 @@ class ExpenseListSerializer(serializers.ModelSerializer):
         return bool(obj.category.include_in_trading_profit)
 
     def get_image_url(self, obj):
-        if not obj.image:
+        image = getattr(obj, 'image', None)
+        if not image:
+            return None
+        try:
+            relative = image.url
+        except (ValueError, AttributeError, OSError):
             return None
         from config.media_urls import absolute_media_url
 
-        return absolute_media_url(self.context.get('request'), obj.image.url)
+        return absolute_media_url(self.context.get('request'), relative)
 

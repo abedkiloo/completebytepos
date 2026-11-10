@@ -3,9 +3,11 @@ import {
   REPORT_EXPORT_PATHS,
   downloadReportExport,
   normalizeReportExportFormat,
+  formatSaleExportDatePart,
   reportExportFilename,
   reportExportPath,
   reportExportQuery,
+  salesExportFilename,
   salesHistoryExportParams,
   reportExportRequestPath,
 } from './reportExport';
@@ -55,6 +57,52 @@ describe('reportExport', () => {
     expect(reportExportFilename('sales', 'pdf', when)).toBe('sales_2026-08-17.pdf');
     expect(reportExportFilename('sales', 'excel', when)).toBe('sales_2026-08-17.xlsx');
     expect(reportExportFilename('', 'csv', when)).toBe('report_2026-08-17.csv');
+  });
+
+  it('builds sales history filenames from selected dates', () => {
+    expect(formatSaleExportDatePart('2026-10-09')).toBe('oct-9');
+    expect(formatSaleExportDatePart('2026-11-20')).toBe('nov-20');
+    expect(formatSaleExportDatePart('bad')).toBe('');
+    expect(
+      salesExportFilename(
+        { date_from: '2026-10-09', date_to: '2026-11-20' },
+        'xlsx'
+      )
+    ).toBe('sale-oct-9-to-nov-20.xlsx');
+    expect(salesExportFilename({ date_from: '2026-10-09' }, 'excel')).toBe(
+      'sale-oct-9.xlsx'
+    );
+    expect(salesExportFilename({ date_to: '2026-11-20' }, 'pdf')).toBe(
+      'sale-to-nov-20.pdf'
+    );
+    expect(salesExportFilename({}, 'xlsx')).toBe('sale.xlsx');
+    expect(
+      salesExportFilename(
+        { date_from: '2026-10-09', date_to: '2026-10-09' },
+        'xlsx'
+      )
+    ).toBe('sale-oct-9.xlsx');
+  });
+
+  it('uses sale date-range filename for sales-history downloads', async () => {
+    const get = jest.fn().mockResolvedValue({
+      data: new Blob(['PK'], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }),
+      headers: {
+        'content-type':
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      },
+    });
+    const filename = await downloadReportExport(
+      { get },
+      {
+        slug: 'sales-history',
+        params: { date_from: '2026-10-09', date_to: '2026-11-20' },
+        format: 'xlsx',
+      }
+    );
+    expect(filename).toBe('sale-oct-9-to-nov-20.xlsx');
   });
 
   it('omits empty query params and adds format', () => {

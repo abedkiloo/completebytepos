@@ -86,8 +86,27 @@ class DailyNoteViewSet(DailyAuthorScopedViewSetMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='blocking')
     def blocking(self, request):
-        notes = self.entry_service.blocking_for_user(user=request.user)
-        return Response(self.get_serializer(notes, many=True).data)
+        try:
+            notes = self.entry_service.blocking_for_user(user=request.user)
+            return Response(self.get_serializer(notes, many=True).data)
+        except Exception as exc:
+            # Common after deploying DailyNote.image before migrate has run.
+            message = str(exc)
+            if 'image' in message.lower() and (
+                'does not exist' in message.lower()
+                or 'undefinedcolumn' in message.lower()
+                or 'no such column' in message.lower()
+            ):
+                return Response(
+                    {
+                        'error': (
+                            'Daily notes schema is out of date. '
+                            'Run: python manage.py migrate daily_notes'
+                        )
+                    },
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+            raise
 
     @action(detail=True, methods=['post'], url_path='toggle-done')
     def toggle_done(self, request, pk=None):

@@ -18,6 +18,7 @@ from reports.export import (
     UnsupportedExportFormat,
     export_filename,
     normalize_export_format,
+    sales_export_filename,
 )
 from utils.document_branding import brand_contact_line, brand_name_line
 
@@ -417,19 +418,21 @@ def maybe_export_sales_workbook(
     from reports.export_product_cost import user_may_export_product_cost
 
     include_cost = user_may_export_product_cost(getattr(request, 'user', None))
+    date_from = request.query_params.get('date_from') or request.GET.get('date_from')
+    date_to = request.query_params.get('date_to') or request.GET.get('date_to')
+    if slug in ('sales-history', 'sales', 'sale'):
+        file_name = sales_export_filename(fmt, date_from=date_from, date_to=date_to)
+    else:
+        file_name = export_filename(slug, fmt)
     if fmt == 'csv':
         content = render_sales_csv(payload, include_cost=include_cost)
         response = HttpResponse(content, content_type=CONTENT_TYPES['csv'])
-        response['Content-Disposition'] = (
-            f'attachment; filename="{export_filename(slug, "csv")}"'
-        )
+        response['Content-Disposition'] = f'attachment; filename="{file_name}"'
         response['X-Report-Export'] = 'csv'
         return response
     content = render_sales_xlsx(payload, title=title, include_cost=include_cost)
     response = HttpResponse(content, content_type=CONTENT_TYPES['xlsx'])
-    response['Content-Disposition'] = (
-        f'attachment; filename="{export_filename(slug, "xlsx")}"'
-    )
+    response['Content-Disposition'] = f'attachment; filename="{file_name}"'
     response['X-Report-Export'] = 'xlsx'
     if payload.get('lines_truncated'):
         response['X-Export-Truncated'] = '1'

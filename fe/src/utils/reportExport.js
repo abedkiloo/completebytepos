@@ -57,6 +57,71 @@ export function reportExportFilename(slug, format, when = new Date()) {
   return buildPdfFilename(slug || 'report', stamp, ext);
 }
 
+const SALE_EXPORT_MONTHS = [
+  'jan',
+  'feb',
+  'mar',
+  'apr',
+  'may',
+  'jun',
+  'jul',
+  'aug',
+  'sep',
+  'oct',
+  'nov',
+  'dec',
+];
+
+/**
+ * Turn YYYY-MM-DD into a short label like ``oct-9``.
+ *
+ * Args:
+ *   isoDate: Date string from the sales history filters.
+ *
+ * Returns:
+ *   Short date stem, or empty string when invalid.
+ */
+export function formatSaleExportDatePart(isoDate) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(isoDate || '').trim());
+  if (!match) return '';
+  const month = SALE_EXPORT_MONTHS[Number(match[2]) - 1];
+  if (!month) return '';
+  const day = String(Number(match[3]));
+  if (!day || day === 'NaN') return '';
+  return `${month}-${day}`;
+}
+
+/**
+ * Sales history download name from selected dates.
+ *
+ * Examples:
+ *   sale-oct-9-to-nov-20.xlsx
+ *   sale-oct-9.xlsx
+ *   sale.xlsx
+ *
+ * Args:
+ *   params: Export query (expects optional ``date_from`` / ``date_to``).
+ *   format: pdf | xlsx | csv (or excel alias).
+ *
+ * Returns:
+ *   Filename string safe for ``<a download>``.
+ */
+export function salesExportFilename(params = {}, format = 'xlsx') {
+  const fmt = normalizeReportExportFormat(format) || 'xlsx';
+  const ext = fmt === 'xlsx' ? 'xlsx' : fmt;
+  const from = formatSaleExportDatePart(params.date_from);
+  const to = formatSaleExportDatePart(params.date_to);
+  let stem = 'sale';
+  if (from && to) {
+    stem = from === to ? `sale-${from}` : `sale-${from}-to-${to}`;
+  } else if (from) {
+    stem = `sale-${from}`;
+  } else if (to) {
+    stem = `sale-to-${to}`;
+  }
+  return `${stem}.${ext}`;
+}
+
 export function salesHistoryExportParams(filters = {}) {
   return reportExportQuery({
     date_from: filters.date_from,
@@ -94,7 +159,10 @@ export async function downloadReportExport(apiClient, { slug, params = {}, forma
   if (!path) {
     throw new Error('This report cannot be exported.');
   }
-  const filename = reportExportFilename(slug, fmt);
+  const filename =
+    slug === 'sales-history'
+      ? salesExportFilename(params, fmt)
+      : reportExportFilename(slug, fmt);
   await downloadAuthenticatedFile(apiClient, path, filename, {
     emptyMessage: `The ${fmt.toUpperCase()} file was empty`,
     onDownloaded: (response) => {

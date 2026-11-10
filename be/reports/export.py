@@ -114,6 +114,76 @@ def export_filename(slug: str, fmt: str, when: Optional[datetime] = None) -> str
     return f'{safe}_{stamp}.{ext}'
 
 
+_SALE_EXPORT_MONTHS = (
+    'jan',
+    'feb',
+    'mar',
+    'apr',
+    'may',
+    'jun',
+    'jul',
+    'aug',
+    'sep',
+    'oct',
+    'nov',
+    'dec',
+)
+
+
+def _sale_export_date_part(iso_date: Optional[str]) -> str:
+    """
+    Format ``YYYY-MM-DD`` as ``oct-9`` for sales download names.
+
+    Args:
+        iso_date: Calendar date string, or empty/None.
+
+    Returns:
+        Short label, or empty string when invalid.
+    """
+    text = str(iso_date or '').strip()
+    match = re.fullmatch(r'(\d{4})-(\d{2})-(\d{2})', text)
+    if not match:
+        return ''
+    month_idx = int(match.group(2)) - 1
+    if month_idx < 0 or month_idx >= 12:
+        return ''
+    day = int(match.group(3))
+    if day < 1 or day > 31:
+        return ''
+    return f'{_SALE_EXPORT_MONTHS[month_idx]}-{day}'
+
+
+def sales_export_filename(
+    fmt: str,
+    *,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+) -> str:
+    """
+    Build ``sale-oct-9-to-nov-20.xlsx`` from selected sales history dates.
+
+    Args:
+        fmt: ``pdf``, ``xlsx``, or ``csv``.
+        date_from: Optional filter start (YYYY-MM-DD).
+        date_to: Optional filter end (YYYY-MM-DD).
+
+    Returns:
+        Download filename stem + extension.
+    """
+    ext = 'xlsx' if fmt == 'xlsx' else (fmt or 'xlsx')
+    start = _sale_export_date_part(date_from)
+    end = _sale_export_date_part(date_to)
+    if start and end:
+        stem = f'sale-{start}' if start == end else f'sale-{start}-to-{end}'
+    elif start:
+        stem = f'sale-{start}'
+    elif end:
+        stem = f'sale-to-{end}'
+    else:
+        stem = 'sale'
+    return f'{stem}.{ext}'
+
+
 def _table_from_records(records: Iterable[dict]) -> tuple[list[str], list[list[Any]]]:
     rows = [row for row in records if isinstance(row, dict)]
     if not rows:
@@ -356,8 +426,13 @@ def report_file_response(
     title: str,
     slug: str,
     csv_body: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
 ) -> HttpResponse:
-    filename = export_filename(slug, fmt)
+    if slug in ('sales-history', 'sales', 'sale'):
+        filename = sales_export_filename(fmt, date_from=date_from, date_to=date_to)
+    else:
+        filename = export_filename(slug, fmt)
     if fmt == 'csv' and csv_body is not None:
         content = csv_body.encode('utf-8-sig') if isinstance(csv_body, str) else csv_body
     else:
@@ -377,8 +452,12 @@ def maybe_export_report(
     csv_body: Optional[str] = None,
 ):
     raw = None
+    date_from = None
+    date_to = None
     if request is not None:
         raw = request.query_params.get('format') or request.GET.get('format')
+        date_from = request.query_params.get('date_from') or request.GET.get('date_from')
+        date_to = request.query_params.get('date_to') or request.GET.get('date_to')
     try:
         fmt = normalize_export_format(raw)
     except UnsupportedExportFormat as exc:
@@ -394,4 +473,6 @@ def maybe_export_report(
         title=title,
         slug=slug,
         csv_body=csv_body if fmt == 'csv' else None,
+        date_from=date_from,
+        date_to=date_to,
     )

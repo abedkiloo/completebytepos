@@ -114,6 +114,25 @@ class HumanizeTests(SimpleTestCase):
         )
         self.assertEqual(export_filename('', 'pdf', when=when), 'report_2026-08-17.pdf')
 
+    def test_sales_export_filename_uses_selected_dates(self):
+        from reports.export import sales_export_filename
+
+        self.assertEqual(
+            sales_export_filename(
+                'xlsx', date_from='2026-10-09', date_to='2026-11-20'
+            ),
+            'sale-oct-9-to-nov-20.xlsx',
+        )
+        self.assertEqual(
+            sales_export_filename('xlsx', date_from='2026-10-09', date_to='2026-10-09'),
+            'sale-oct-9.xlsx',
+        )
+        self.assertEqual(
+            sales_export_filename('pdf', date_from='2026-10-09'),
+            'sale-oct-9.pdf',
+        )
+        self.assertEqual(sales_export_filename('xlsx'), 'sale.xlsx')
+
 
 class FlattenPayloadTests(SimpleTestCase):
     def test_none_and_scalar(self):
