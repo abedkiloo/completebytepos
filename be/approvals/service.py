@@ -440,6 +440,7 @@ def _require_posted_correction_admin(checker, change: PendingChange) -> None:
 
 
 @transaction.atomic
+@transaction.atomic
 def approve_change(
     change: PendingChange,
     checker,
@@ -449,6 +450,10 @@ def approve_change(
 ) -> PendingChange:
     """
     Approve a pending change (and its ``batch_id`` peers when set).
+
+    Rows are locked with ``select_for_update`` so two concurrent approve
+    requests cannot apply the same debt/refund/stock mutation twice. Every
+    batch peer is permission-checked (not only the clicked row).
 
     Args:
         change: Must be ``pending_approval``.
@@ -468,6 +473,15 @@ def approve_change(
         Applies live domain mutation, sets status approved, audits
         ``pending_approve``, completes requester daily-note notices.
     """
+    locked = (
+        PendingChange.objects.select_for_update()
+        .filter(pk=change.pk)
+        .first()
+    )
+    if locked is None:
+        raise ValidationError('Pending change not found.')
+    change = locked
+
     if change.status != PendingChange.STATUS_PENDING:
         raise ValidationError('Only pending changes can be approved.')
     _require_past_dated_admin(checker, change)
@@ -476,12 +490,22 @@ def approve_change(
         raise ValidationError('You are not allowed to approve this change.')
 
     if change.batch_id:
-        batch = PendingChange.objects.filter(
-            batch_id=change.batch_id,
-            status=PendingChange.STATUS_PENDING,
+        batch = list(
+            PendingChange.objects.select_for_update().filter(
+                batch_id=change.batch_id,
+                status=PendingChange.STATUS_PENDING,
+            )
         )
         for item in batch:
-            validate_before_approval(item, extreme_price_confirmed=extreme_price_confirmed)
+            _require_past_dated_admin(checker, item)
+            _require_posted_correction_admin(checker, item)
+            if not user_may_approve_change(checker, item):
+                raise ValidationError(
+                    'You are not allowed to approve every item in this batch.'
+                )
+            validate_before_approval(
+                item, extreme_price_confirmed=extreme_price_confirmed,
+            )
         for item in batch:
             _apply_single_change(item, checker, request)
         return change

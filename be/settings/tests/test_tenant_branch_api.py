@@ -271,6 +271,15 @@ class FreshInstallCoverageTests(SuperAdminAPITestCase):
         response = self.client.get('/api/settings/setup-status/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+    def test_fresh_install_blocked_when_already_installed(self):
+        response = self.client.post(
+            '/api/settings/fresh-install/',
+            {'skip_db_delete': True},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(response.data.get('success'))
+
     @patch('settings.views.apply_module_preset', return_value={})
     @patch('settings.views.call_command')
     def test_fresh_install_happy_path(self, mock_cmd, _preset):
@@ -278,7 +287,15 @@ class FreshInstallCoverageTests(SuperAdminAPITestCase):
             return None
 
         mock_cmd.side_effect = _cmd
-        with patch('config.database.is_postgresql_config', return_value=True), \
+        needs_install = {
+            'installed': False,
+            'needs_install': True,
+            'user_count': 0,
+            'module_count': 0,
+            'tenant_count': 0,
+        }
+        with patch('settings.views.get_setup_status', return_value=needs_install), \
+             patch('config.database.is_postgresql_config', return_value=True), \
              patch('config.database.reset_default_database') as reset_db:
             response = self.client.post(
                 '/api/settings/fresh-install/',
@@ -316,7 +333,15 @@ class FreshInstallCoverageTests(SuperAdminAPITestCase):
             return None
 
         mock_cmd.side_effect = _cmd
-        with patch('config.database.is_postgresql_config', return_value=False), \
+        needs_install = {
+            'installed': False,
+            'needs_install': True,
+            'user_count': 0,
+            'module_count': 0,
+            'tenant_count': 0,
+        }
+        with patch('settings.views.get_setup_status', return_value=needs_install), \
+             patch('config.database.is_postgresql_config', return_value=False), \
              patch('config.database.reset_default_database'):
             response = self.client.post(
                 '/api/settings/fresh-install/',
@@ -328,11 +353,19 @@ class FreshInstallCoverageTests(SuperAdminAPITestCase):
 
     @patch('settings.views.call_command', side_effect=Exception('boom'))
     def test_fresh_install_failure(self, _cmd):
-        response = self.client.post(
-            '/api/settings/fresh-install/',
-            {'skip_db_delete': True},
-            format='json',
-        )
+        needs_install = {
+            'installed': False,
+            'needs_install': True,
+            'user_count': 0,
+            'module_count': 0,
+            'tenant_count': 0,
+        }
+        with patch('settings.views.get_setup_status', return_value=needs_install):
+            response = self.client.post(
+                '/api/settings/fresh-install/',
+                {'skip_db_delete': True},
+                format='json',
+            )
         self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
         self.assertFalse(response.data.get('success'))
 

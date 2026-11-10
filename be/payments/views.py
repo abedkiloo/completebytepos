@@ -77,7 +77,49 @@ class PaymentIntentViewSet(viewsets.GenericViewSet):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def daraja_callback(request):
-    """Daraja STK callback — no JWT; verified by correlation CheckoutRequestID."""
+    """
+    Daraja STK callback — no JWT.
+
+    Hardening (when configured):
+      * ``DARAJA_CALLBACK_SECRET`` must match header ``X-Callback-Secret``
+        or body ``callback_secret``.
+      * ``DARAJA_CALLBACK_IPS`` optional IP allowlist.
+      * Paid callbacks must report an Amount matching the intent.
+    """
+    from django.conf import settings as django_settings
+
+    expected = (getattr(django_settings, 'DARAJA_CALLBACK_SECRET', '') or '').strip()
+    if expected:
+        import hmac
+
+        provided = (
+            (request.headers.get('X-Callback-Secret') if hasattr(request, 'headers') else None)
+            or request.META.get('HTTP_X_CALLBACK_SECRET')
+            or (request.data.get('callback_secret') if hasattr(request, 'data') else None)
+            or ''
+        )
+        provided = str(provided).strip()
+        if not provided or not hmac.compare_digest(
+            provided.encode('utf-8'), expected.encode('utf-8'),
+        ):
+            return Response(
+                {'callback': 'Invalid callback secret.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+    allowed_ips = getattr(django_settings, 'DARAJA_CALLBACK_IPS', None) or []
+    if allowed_ips:
+        remote = (
+            request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip()
+            or request.META.get('REMOTE_ADDR')
+            or ''
+        )
+        if remote not in allowed_ips:
+            return Response(
+                {'callback': 'Callback source not allowed.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
     try:
         intent = services.process_callback(request.data if isinstance(request.data, dict) else {})
     except PaymentTransitionError as exc:

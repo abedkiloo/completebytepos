@@ -57,6 +57,7 @@ class CustomerSerializer(serializers.ModelSerializer):
             'customer_code', 'total_invoices', 'total_outstanding', 'wallet_balance',
             'engagement_tier', 'buyer_segment', 'purchase_count', 'lifetime_sales_value',
             'first_purchased_at', 'last_purchased_at', 'intelligence_updated_at',
+            'created_by',
             'created_at', 'updated_at',
         ]
     
@@ -532,6 +533,23 @@ class SaleRefundCreateSerializer(serializers.Serializer):
         return str(value).strip()
 
 
+# Money / status / attribution must move through checkout, services, or
+# maker-checker — never via generic PATCH on a holding/pending sale.
+SALE_PROTECTED_WRITE_FIELDS = (
+    'status',
+    'subtotal',
+    'tax_amount',
+    'discount_amount',
+    'total',
+    'amount_paid',
+    'change',
+    'cashier',
+    'served_by',
+    'occurred_at',
+    'sale_type',
+)
+
+
 class SaleSerializer(serializers.ModelSerializer):
     items = SaleItemSerializer(many=True, read_only=True)
     cashier_name = serializers.CharField(source='cashier.username', read_only=True)
@@ -586,6 +604,68 @@ class SaleSerializer(serializers.ModelSerializer):
             'sale_number', 'created_at', 'updated_at', 'refund_status', 'entry_source',
             'client_channel',
         ]
+
+    @staticmethod
+    def _values_differ(current, incoming) -> bool:
+        if hasattr(current, 'pk') or hasattr(incoming, 'pk'):
+            cur_id = getattr(current, 'pk', current)
+            new_id = getattr(incoming, 'pk', incoming)
+            return cur_id != new_id
+        if isinstance(current, Decimal) or isinstance(incoming, Decimal):
+            try:
+                return Decimal(str(current or 0)) != Decimal(str(incoming or 0))
+            except Exception:
+                return current != incoming
+        return current != incoming
+
+    def validate(self, attrs):
+        """
+        Block mass-assignment of money/status/attribution on live drafts.
+
+        Completed-sale edits may still carry these fields into
+        ``validated_data`` for maker-checker queuing (``update()`` is not
+        called on the sale in that path). Direct ``save()`` on holding /
+        pending sales always strips them in ``update()``.
+
+        Args:
+            attrs: Incoming field map after per-field validators.
+
+        Returns:
+            attrs unchanged when allowed; otherwise raises.
+
+        Raises:
+            ValidationError: Map of protected field → short reason.
+        """
+        if self.context.get('allow_sale_financial_write'):
+            return attrs
+
+        instance = getattr(self, 'instance', None)
+        if instance is not None and getattr(instance, 'status', None) == 'completed':
+            return attrs
+
+        blocked = {}
+        for field in SALE_PROTECTED_WRITE_FIELDS:
+            if field not in attrs:
+                continue
+            if instance is None:
+                blocked[field] = (
+                    'Change this through checkout or a dedicated action, not by editing the sale.'
+                )
+                continue
+            if self._values_differ(getattr(instance, field, None), attrs[field]):
+                blocked[field] = (
+                    'Change this through checkout or a dedicated action, not by editing the sale.'
+                )
+        if blocked:
+            raise serializers.ValidationError(blocked)
+        return attrs
+
+    def update(self, instance, validated_data):
+        """Never persist protected financial fields via generic sale PATCH."""
+        if not self.context.get('allow_sale_financial_write'):
+            for field in SALE_PROTECTED_WRITE_FIELDS:
+                validated_data.pop(field, None)
+        return super().update(instance, validated_data)
 
     def get_item_count(self, obj):
         cache = getattr(obj, '_prefetched_objects_cache', {})

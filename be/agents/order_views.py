@@ -40,13 +40,23 @@ class FieldOrderViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     http_method_names = ['get', 'post', 'patch', 'head', 'options']
 
     def get_queryset(self):
+        from django.db.models import Q
+
+        from sales.visibility import is_field_sales_user, user_sees_all_sales
+
         qs = super().get_queryset()
+        user = self.request.user
+        # Field agents only see their own orders unless they have store-wide sales view.
+        if is_field_sales_user(user) and not user_sees_all_sales(user):
+            qs = qs.filter(
+                Q(created_by=user) | Q(assigned_delivery_agent=user)
+            )
         status_filter = self.request.query_params.get('status')
         if status_filter:
             qs = qs.filter(status=status_filter)
         mine = self.request.query_params.get('mine')
         if mine in ('1', 'true', 'yes'):
-            qs = qs.filter(created_by=self.request.user)
+            qs = qs.filter(created_by=user)
         date_from = self.request.query_params.get('date_from')
         if date_from:
             qs = qs.filter(created_at__date__gte=date_from)
@@ -55,8 +65,6 @@ class FieldOrderViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             qs = qs.filter(created_at__date__lte=date_to)
         search = (self.request.query_params.get('search') or '').strip()
         if search:
-            from django.db.models import Q
-
             q = (
                 Q(customer__name__icontains=search)
                 | Q(customer__phone__icontains=search)

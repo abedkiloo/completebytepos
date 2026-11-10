@@ -93,6 +93,7 @@ class PaymentsAPITestCase(APITestCase):
                         'ResultDesc': 'Success',
                         'CallbackMetadata': {
                             'Item': [
+                                {'Name': 'Amount', 'Value': 150.00},
                                 {'Name': 'MpesaReceiptNumber', 'Value': 'ABC123'},
                             ],
                         },

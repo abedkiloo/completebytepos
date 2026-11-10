@@ -23,6 +23,7 @@ from accounts.module_settings import (
     users_enable_permission_catalog,
     users_show_phone,
 )
+from accounts.throttles import LoginRateThrottle
 from accounts.user_write import prepare_user_write_data, apply_profile_updates
 from accounts.password_policy import (
     set_must_change_password,
@@ -486,7 +487,9 @@ class UserViewSet(viewsets.ModelViewSet):
         user = self.get_object()
         current_user = request.user
         
-        # Users can update their own profile (except role)
+        from accounts.user_write import strip_privilege_escalation
+
+        # Users can update their own profile (except role / privileges)
         if user.id == current_user.id:
             # Don't allow changing role or staff status
             data, profile_data = prepare_user_write_data(request.data)
@@ -514,11 +517,12 @@ class UserViewSet(viewsets.ModelViewSet):
             )
             return Response(UserSerializer(user).data)
 
-        # Admins can update other users
+        # Admins can update other users (privilege fields: super admin only)
         if current_user.is_staff or (hasattr(current_user, 'profile') and current_user.profile and current_user.profile.is_admin):
             if not users_enable_edit():
                 return self._feature_disabled_response('Editing users')
             data, profile_data = prepare_user_write_data(request.data)
+            strip_privilege_escalation(data, profile_data, actor=current_user)
             serializer = self.get_serializer(user, data=data, partial=True)
             serializer.is_valid(raise_exception=True)
             user = serializer.save()
@@ -577,6 +581,19 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response(
                 {'error': 'Role not found'},
                 status=status.HTTP_404_NOT_FOUND
+            )
+
+        from accounts.role_definitions import ROLE_SUPER_ADMIN
+        from accounts.user_write import actor_is_super_admin
+
+        # Managers must not hand out the Super Admin custom role.
+        if (
+            getattr(role, 'name', None) == ROLE_SUPER_ADMIN
+            and not actor_is_super_admin(request.user)
+        ):
+            return Response(
+                {'error': 'Only a super admin can assign the Super Admin role.'},
+                status=status.HTTP_403_FORBIDDEN,
             )
         
         if not hasattr(user, 'profile'):
@@ -651,8 +668,13 @@ class UserViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def search(self, request):
-        """Search users"""
+        """Search users — admin/staff only (emails, roles, permissions)."""
         try:
+            if not _user_can_manage_permissions(request.user):
+                return Response(
+                    {'error': 'Permission denied'},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
             query = request.query_params.get('q', '').strip()
             if not query:
                 return Response([])
@@ -661,11 +683,11 @@ class UserViewSet(viewsets.ModelViewSet):
             limit_param = request.query_params.get('limit', '10')
             try:
                 limit = int(limit_param)
-                # Validate limit is reasonable (between 1 and 1000)
+                # Validate limit is reasonable (between 1 and 100)
                 if limit < 1:
                     limit = 10
-                elif limit > 1000:
-                    limit = 1000
+                elif limit > 100:
+                    limit = 100
             except (ValueError, TypeError):
                 limit = 10
             
@@ -693,9 +715,9 @@ class AuthViewSet(viewsets.ViewSet):
     @action(
         detail=False, methods=['post'],
         permission_classes=[AllowAny],
-        # Login is the front door — throttle aggressively. See
-        # config/settings.py:REST_FRAMEWORK for the actual rate string.
-        throttle_classes=[__import__('rest_framework.throttling', fromlist=['ScopedRateThrottle']).ScopedRateThrottle],
+        # Scope is on the throttle class (not set inside the method — DRF
+        # checks throttles before the action body runs).
+        throttle_classes=[LoginRateThrottle],
     )
     def login(self, request):
         """User login - returns JWT tokens.
@@ -708,9 +730,6 @@ class AuthViewSet(viewsets.ViewSet):
         from utils.audit import log_audit
         from accounts.models import AuditLog as _AuditLog
         logger = logging.getLogger(__name__)
-
-        # The throttle scope must match a key in DEFAULT_THROTTLE_RATES.
-        self.throttle_scope = 'login'
 
         # SECURITY: never log request.data here - it contains the cleartext
         # password. Log only the non-sensitive metadata needed to debug login

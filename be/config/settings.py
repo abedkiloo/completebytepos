@@ -32,11 +32,26 @@ load_dotenv(BASE_DIR.parent / '.env', override=True)
 # ---------------------------------------------------------------------------
 # Core
 # ---------------------------------------------------------------------------
-SECRET_KEY = env_str(
-    'SECRET_KEY',
-    'django-insecure-change-me-before-production',
-)
+_INSECURE_SECRET_FALLBACK = 'django-insecure-change-me-before-production'
+SECRET_KEY = env_str('SECRET_KEY', _INSECURE_SECRET_FALLBACK)
 DEBUG = env_bool('DEBUG', True)
+# Refuse the documented insecure default outside local DEBUG (deploy misconfig).
+if not DEBUG and SECRET_KEY == _INSECURE_SECRET_FALLBACK:
+    raise RuntimeError(
+        'SECRET_KEY must be set to a unique value when DEBUG=False.'
+    )
+
+# Fresh-install wipe: allowed only on empty DBs, or when both of these are set.
+ALLOW_DESTRUCTIVE_FRESH_INSTALL = env_bool('ALLOW_DESTRUCTIVE_FRESH_INSTALL', False)
+FRESH_INSTALL_SECRET = env_str('FRESH_INSTALL_SECRET', '')
+
+# Daraja STK callback hardening (optional in local/sandbox).
+DARAJA_CALLBACK_SECRET = env_str('DARAJA_CALLBACK_SECRET', '')
+DARAJA_CALLBACK_IPS = env_list('DARAJA_CALLBACK_IPS', [])
+
+# Optional: require session/JWT before serving /media/. Default off because
+# <img src> cannot send Bearer tokens; prefer unguessable paths + upload checks.
+MEDIA_REQUIRE_AUTH = env_bool('MEDIA_REQUIRE_AUTH', False)
 
 # Docker internals only. Never add scanner Hosts or bridge IPs (172.18.x.x).
 _DOCKER_ALLOWED_HOSTS = [
@@ -247,6 +262,7 @@ REST_FRAMEWORK = {
     'FORMAT_SUFFIX_KWARG': None,
     'DEFAULT_THROTTLE_RATES': {
         'login': env_str('THROTTLE_LOGIN_RATE', '10/min'),
+        'sms_blast': env_str('THROTTLE_SMS_BLAST_RATE', '5/hour'),
     },
 }
 

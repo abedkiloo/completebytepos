@@ -180,6 +180,8 @@ class UserSerializer(serializers.ModelSerializer):
             'password', 'is_staff', 'is_superuser', 'is_active',
             'date_joined', 'profile', 'permissions'
         ]
+        # Privilege flags are writable only after strip_privilege_escalation
+        # in the view (super admin). Ordinary clients cannot elevate.
         read_only_fields = ['date_joined']
         extra_kwargs = {
             'email': {
@@ -197,7 +199,15 @@ class UserSerializer(serializers.ModelSerializer):
         return apply_user_representation_flags(super().to_representation(instance))
 
     def validate(self, attrs):
-        return validate_user_write(attrs)
+        attrs = validate_user_write(attrs)
+        request = self.context.get('request')
+        actor = getattr(request, 'user', None) if request else None
+        from accounts.user_write import actor_is_super_admin
+
+        if not actor_is_super_admin(actor):
+            attrs.pop('is_staff', None)
+            attrs.pop('is_superuser', None)
+        return attrs
     
     def get_permissions(self, obj):
         """Get all permissions for this user"""
@@ -285,7 +295,25 @@ class UserCreateSerializer(serializers.ModelSerializer):
         return validate_optional_phone(value)
 
     def validate(self, attrs):
-        return validate_user_write(attrs)
+        attrs = validate_user_write(attrs)
+        request = self.context.get('request')
+        actor = getattr(request, 'user', None) if request else None
+        from accounts.user_write import (
+            PRIVILEGE_PROFILE_ROLES,
+            actor_is_super_admin,
+        )
+
+        role = attrs.get('role')
+        if role in PRIVILEGE_PROFILE_ROLES and not actor_is_super_admin(actor):
+            raise serializers.ValidationError({
+                'role': 'Only a super admin can assign admin or super admin roles.',
+            })
+        if not actor_is_super_admin(actor):
+            # Managers must not create staff Django users via the API.
+            attrs.pop('is_staff', None)
+            attrs['is_staff'] = False
+        attrs.pop('is_superuser', None)
+        return attrs
 
     def validate_password(self, value):
         error = validate_new_password(value)
@@ -300,6 +328,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
         custom_role_id = validated_data.pop('custom_role_id', None)
         phone_number = validated_data.pop('phone_number', '')
         password = validated_data.pop('password')
+        validated_data.pop('is_superuser', None)
         
         user = User.objects.create_user(
             password=password,

@@ -371,13 +371,91 @@ def _bootstrap_credentials_payload():
     }
 
 
+def _fresh_install_allowed(request) -> tuple[bool, str]:
+    """
+    Gate destructive install: open only on empty DBs, else secret + flag.
+
+    Args:
+        request: DRF request (body/headers may carry ``fresh_install_secret`` /
+            ``X-Fresh-Install-Secret``).
+
+    Returns:
+        ``(True, '')`` when allowed; ``(False, error_message)`` when blocked.
+        Message length is short (under 160 chars) for API clients.
+    """
+    from django.conf import settings as django_settings
+
+    status_payload = get_setup_status()
+    if status_payload.get('needs_install'):
+        return True, ''
+
+    if not getattr(django_settings, 'ALLOW_DESTRUCTIVE_FRESH_INSTALL', False):
+        return False, (
+            'Fresh install is disabled because the system is already installed. '
+            'Set ALLOW_DESTRUCTIVE_FRESH_INSTALL and FRESH_INSTALL_SECRET to wipe.'
+        )
+
+    expected = (getattr(django_settings, 'FRESH_INSTALL_SECRET', '') or '').strip()
+    if not expected:
+        return False, (
+            'FRESH_INSTALL_SECRET must be configured when destructive reinstall is enabled.'
+        )
+
+    provided = (
+        (request.headers.get('X-Fresh-Install-Secret') if hasattr(request, 'headers') else None)
+        or request.META.get('HTTP_X_FRESH_INSTALL_SECRET')
+        or (request.data.get('fresh_install_secret') if hasattr(request, 'data') else None)
+        or ''
+    )
+    provided = str(provided).strip()
+    if not secrets_compare(provided, expected):
+        return False, 'Invalid fresh install secret.'
+    return True, ''
+
+
+def secrets_compare(provided: str, expected: str) -> bool:
+    """
+    Constant-time string compare for install/callback secrets.
+
+    Args:
+        provided: Caller-supplied secret (may be empty).
+        expected: Configured secret (non-empty when used for gating).
+
+    Returns:
+        True only when both are non-empty and equal.
+    """
+    import hmac
+
+    if not provided or not expected:
+        return False
+    return hmac.compare_digest(provided.encode('utf-8'), expected.encode('utf-8'))
+
+
 @api_view(['POST'])
-@permission_classes([AllowAny])  # Allow installation without authentication
+@permission_classes([AllowAny])  # First install only; reinstall needs secret (see gate).
 def fresh_install(request):
     """
-    Complete fresh installation endpoint
-    Runs all setup steps: delete DB, migrations, superuser, permissions, modules, etc.
+    Complete fresh installation endpoint.
+
+    Runs setup steps: optional DB wipe, migrations, bootstrap users, permissions,
+    modules, etc. Open without auth only when ``needs_install`` is true. After
+    install, requires ``ALLOW_DESTRUCTIVE_FRESH_INSTALL`` plus matching
+    ``FRESH_INSTALL_SECRET`` (header or body).
+
+    Args:
+        request: JSON body with optional ``include_test_data``, ``skip_db_delete``,
+            ``module_preset``, seed counts, and ``fresh_install_secret``.
+
+    Returns:
+        200 with steps/credentials on success; 403 when gated; 500 on failure.
     """
+    allowed, deny_reason = _fresh_install_allowed(request)
+    if not allowed:
+        return Response(
+            {'success': False, 'error': deny_reason},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
     try:
         include_test_data = request.data.get('include_test_data', False)
         skip_db_delete = request.data.get('skip_db_delete', False)

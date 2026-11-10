@@ -326,7 +326,15 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
         photo = request.FILES.get('backfill_receipt_photo')
         if photo:
-            validated['backfill_receipt_photo_path'] = save_pending_backfill_receipt_photo(photo)
+            try:
+                validated['backfill_receipt_photo_path'] = (
+                    save_pending_backfill_receipt_photo(photo)
+                )
+            except ValidationError as e:
+                payload = getattr(e, 'message_dict', None) or {
+                    'error': validation_error_message(e),
+                }
+                return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
         from sales.backfill_policy import resolve_backfill_served_by
 
@@ -1688,6 +1696,9 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         """Lifetime customer profile: standing, orders, and debt/payment trail."""
         from sales.customer_detail import get_customer_detail
 
+        # Enforce Field Sales ownership via get_queryset visibility filters.
+        self.get_object()
+
         try:
             orders_page = int(request.query_params.get('orders_page', 1))
         except (TypeError, ValueError):
@@ -1845,7 +1856,8 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         url_path=r'wallet-settlements/(?P<txn_id>[0-9]+)/amount',
         permission_classes=[
             IsAuthenticated,
-            RequireAny(IsAdmin, RequirePerm('debt_management', 'correct')),
+            # Explicit debt_management.correct only — not bare Django is_staff.
+            RequirePerm('debt_management', 'correct'),
         ],
     )
     def correct_wallet_settlement_amount(self, request, txn_id=None):

@@ -1,6 +1,7 @@
 """User + profile write helpers (used by UserViewSet update)."""
 
 from django.contrib.auth.models import User
+from rest_framework.exceptions import PermissionDenied
 
 from .models import UserProfile, Role
 from accounts.module_settings import (
@@ -8,11 +9,81 @@ from accounts.module_settings import (
     users_show_phone,
 )
 
+# Django / profile fields that escalate authority. Only a real super admin
+# may set these via the API (never self-service, never ordinary staff).
+PRIVILEGE_USER_FIELDS = ('is_staff', 'is_superuser')
+PRIVILEGE_PROFILE_ROLES = frozenset({'super_admin', 'admin'})
+
+
+def actor_is_super_admin(actor) -> bool:
+    """
+    True when ``actor`` is a Django superuser or profile super admin.
+
+    Args:
+        actor: Authenticated user or None.
+
+    Returns:
+        bool — False for anonymous / missing profile.
+    """
+    if actor is None or not getattr(actor, 'is_authenticated', False):
+        return False
+    if getattr(actor, 'is_superuser', False):
+        return True
+    profile = getattr(actor, 'profile', None)
+    return bool(profile and getattr(profile, 'is_super_admin', False))
+
+
+def strip_privilege_escalation(payload: dict, profile_data: dict, *, actor) -> None:
+    """
+    Remove privilege fields unless the actor is a super admin.
+
+    Mutates ``payload`` / ``profile_data`` in place. Non-super-admins cannot
+    set ``is_staff``, ``is_superuser``, or elevate ``role`` to admin tiers.
+
+    Args:
+        payload: Django User field dict from ``prepare_user_write_data``.
+        profile_data: Profile field dict (may include ``role``).
+        actor: Request user performing the write.
+
+    Returns:
+        None.
+
+    Raises:
+        PermissionDenied: When a non-super-admin explicitly requests
+            ``is_superuser=True`` or ``role`` in admin tiers (clear attack).
+    """
+    if actor_is_super_admin(actor):
+        return
+
+    for field in PRIVILEGE_USER_FIELDS:
+        if field not in payload:
+            continue
+        # Reject explicit privilege grants; silently drop clears/false.
+        if payload.get(field) in (True, 'true', 'True', 1, '1'):
+            raise PermissionDenied(
+                'Only a super admin can grant staff or superuser privileges.'
+            )
+        payload.pop(field, None)
+
+    role = profile_data.get('role')
+    if role in PRIVILEGE_PROFILE_ROLES:
+        raise PermissionDenied(
+            'Only a super admin can assign admin or super admin roles.'
+        )
+
 
 def prepare_user_write_data(data):
     """
     Split request body into Django User fields and profile fields.
+
     Drops blank password so partial updates do not fail validation.
+
+    Args:
+        data: Mapping or QueryDict from the request body.
+
+    Returns:
+        Tuple ``(user_payload, profile_data)``. Privilege stripping is applied
+        by the caller via ``strip_privilege_escalation``.
     """
     if hasattr(data, 'copy'):
         payload = data.copy()

@@ -250,10 +250,30 @@ def process_callback(payload: dict) -> PaymentIntent | None:
     result_code = str(stk.get('ResultCode', stk.get('result_code', '')))
     if result_code == '0':
         receipt = ''
+        reported_amount = None
         meta = (stk.get('CallbackMetadata') or {}).get('Item') or []
         for item in meta:
-            if item.get('Name') == 'MpesaReceiptNumber':
+            name = item.get('Name')
+            if name == 'MpesaReceiptNumber':
                 receipt = str(item.get('Value') or '')
+            elif name == 'Amount':
+                reported_amount = item.get('Value')
+        if reported_amount is not None:
+            try:
+                from decimal import Decimal
+
+                reported = Decimal(str(reported_amount))
+                expected = Decimal(str(intent.amount))
+                if reported != expected:
+                    raise PaymentTransitionError({
+                        'callback': 'Callback amount does not match payment intent.',
+                    })
+            except PaymentTransitionError:
+                raise
+            except Exception as exc:
+                raise PaymentTransitionError({
+                    'callback': 'Invalid callback amount.',
+                }) from exc
         return mark_paid(intent, mpesa_receipt=receipt, payload=payload)
 
     desc = stk.get('ResultDesc') or stk.get('result_desc') or 'STK failed'

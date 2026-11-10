@@ -601,8 +601,38 @@ def submit_run(run: PayrollRun, *, user=None, request=None) -> PayrollRun:
 
 
 def approve_and_lock(run: PayrollRun, *, user=None, request=None) -> PayrollRun:
+    """
+    Lock a pending payroll run (maker ≠ checker unless super admin).
+
+    Args:
+        run: Must be ``pending_approval``.
+        user: Approver (required for separation check when present).
+        request: Optional request for audit context.
+
+    Returns:
+        Locked ``PayrollRun``.
+
+    Raises:
+        PayrollError: Wrong status, or same user submitted and approved
+            without super-admin override.
+    """
     if run.status != PayrollRun.STATUS_PENDING_APPROVAL:
         raise PayrollError('Only runs pending approval can be locked')
+    if (
+        user is not None
+        and run.submitted_by_id
+        and run.submitted_by_id == getattr(user, 'id', None)
+    ):
+        profile = getattr(user, 'profile', None)
+        is_super = bool(
+            getattr(user, 'is_superuser', False)
+            or (profile and getattr(profile, 'is_super_admin', False))
+        )
+        if not is_super:
+            raise PayrollError(
+                'The person who submitted this run cannot also approve it.',
+                status=403,
+            )
     run.status = PayrollRun.STATUS_LOCKED
     run.locked_at = timezone.now()
     run.locked_by = user
@@ -661,13 +691,18 @@ def cancel_run(run: PayrollRun, *, user=None, request=None) -> PayrollRun:
 
 
 def employee_for_user(user):
-    """Resolve Employee for self-service: linked user first, then email."""
+    """
+    Resolve Employee for self-service via the linked ``user`` FK only.
+
+    Email matching was removed: a cashier who changes their login email to a
+    colleague's address must not inherit that colleague's payslips.
+
+    Args:
+        user: Authenticated Django user, or None.
+
+    Returns:
+        ``Employee`` when ``Employee.user_id == user.id``; otherwise None.
+    """
     if not user or not user.is_authenticated:
         return None
-    linked = Employee.objects.filter(user=user).first()
-    if linked:
-        return linked
-    email = (user.email or '').strip()
-    if not email:
-        return None
-    return Employee.objects.filter(email__iexact=email).first()
+    return Employee.objects.filter(user=user).first()

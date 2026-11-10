@@ -17,6 +17,36 @@ def _user_can(user, module: str, action: str) -> bool:
     return profile.has_permission(module, action)
 
 
+def _debt_reminder_customer_ids(user, customer_ids: list[int] | None):
+    """
+    Restrict debt-reminder recipients to customers the user may see.
+
+    Args:
+        user: Authenticated request user.
+        customer_ids: Optional explicit subset; None means “all visible debtors”.
+
+    Returns:
+        Filtered id list, or None when unrestricted (store-wide visibility).
+    """
+    from sales.models import Customer
+    from sales.visibility import apply_customer_visibility, user_limited_to_own_customers
+
+    if not user_limited_to_own_customers(user):
+        if customer_ids is None:
+            return None
+        visible = set(
+            apply_customer_visibility(
+                Customer.objects.filter(pk__in=customer_ids), user,
+            ).values_list('pk', flat=True)
+        )
+        return [cid for cid in customer_ids if cid in visible]
+
+    qs = apply_customer_visibility(Customer.objects.all(), user)
+    if customer_ids is not None:
+        qs = qs.filter(pk__in=customer_ids)
+    return list(qs.values_list('pk', flat=True))
+
+
 def _can_send_debt_reminders(user) -> bool:
     return _user_can(user, 'messaging', 'create') or _user_can(
         user, 'debt_management', 'update',
@@ -140,7 +170,7 @@ def debt_reminder_preview(request):
 
     preview = services.build_debt_reminder_preview(
         template=template,
-        customer_ids=customer_ids,
+        customer_ids=_debt_reminder_customer_ids(request.user, customer_ids),
     )
     return Response(preview)
 
@@ -173,14 +203,16 @@ def debt_reminder_send(request):
     result = services.send_debt_reminders(
         created_by=request.user,
         template=template,
-        customer_ids=customer_ids,
+        customer_ids=_debt_reminder_customer_ids(request.user, customer_ids),
         save_template=save_template,
     )
     return Response(result, status=status.HTTP_201_CREATED)
 
 
 def _can_send_promos(user) -> bool:
-    return _user_can(user, 'messaging', 'create') or _user_can(user, 'customers', 'update')
+    # Sending requires messaging.create — customers.update alone was enough
+    # to blast every phone (cost + phishing). View stays broader.
+    return _user_can(user, 'messaging', 'create')
 
 
 def _can_view_promos(user) -> bool:
@@ -190,6 +222,30 @@ def _can_view_promos(user) -> bool:
         or _user_can(user, 'customers', 'view')
         or _user_can(user, 'customers', 'update')
     )
+
+
+def _can_blast_all_customers(user) -> bool:
+    """
+    Store-wide SMS blast requires messaging.create (not customers.update).
+
+    Rate limits on send endpoints further cap cost abuse.
+    """
+    return _can_send_promos(user)
+
+
+def _visible_customer_or_404(user, customer_id: int):
+    """Return customer if visible to user; else a 404 Response."""
+    from sales.models import Customer
+    from sales.visibility import apply_customer_visibility
+
+    qs = apply_customer_visibility(Customer.objects.all(), user)
+    customer = qs.filter(pk=customer_id).first()
+    if customer is None:
+        return None, Response(
+            {'customer_id': 'Customer not found.'},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    return customer, None
 
 
 def _parse_customer_ids(raw_ids):
@@ -250,6 +306,32 @@ def _blast_request_args(request, *, require_ids_nonempty: bool = False):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    if scope == 'all' and not _can_blast_all_customers(request.user):
+        return None, Response(
+            {'scope': 'Only managers and admins can message all customers.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    if customer_id is not None:
+        _customer, cerr = _visible_customer_or_404(request.user, customer_id)
+        if cerr is not None:
+            return None, cerr
+
+    if customer_ids is not None:
+        from sales.models import Customer
+        from sales.visibility import apply_customer_visibility
+
+        visible = set(
+            apply_customer_visibility(Customer.objects.filter(pk__in=customer_ids), request.user)
+            .values_list('pk', flat=True)
+        )
+        missing = [cid for cid in customer_ids if cid not in visible]
+        if missing:
+            return None, Response(
+                {'customer_ids': 'One or more customers were not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
     return {
         'template_key': template_key,
         'template': data.get('template'),
@@ -300,7 +382,15 @@ def customer_blast_send(request):
     if not _can_send_promos(request.user):
         return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
 
+    from accounts.throttles import SmsBlastRateThrottle
     from messaging.customer_blast import BlastError, send_customer_blast
+
+    throttle = SmsBlastRateThrottle()
+    if not throttle.allow_request(request, customer_blast_send):
+        return Response(
+            {'detail': 'SMS blast rate limit exceeded. Try again later.'},
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
 
     args, err = _blast_request_args(request, require_ids_nonempty=True)
     if err is not None:
@@ -321,6 +411,82 @@ def customer_blast_send(request):
     return Response(result, status=status.HTTP_201_CREATED)
 
 
+def _week_blast_scope_args(request, *, require_ids_nonempty: bool = False):
+    """
+    Parse Customer Week payload and apply the same blast security gates.
+
+    Args:
+        request: Authenticated DRF request.
+        require_ids_nonempty: When True, empty ``customer_ids`` is rejected.
+
+    Returns:
+        ``(args_dict, None)`` or ``(None, Response)`` on validation / auth errors.
+    """
+    from messaging.models import SmsTemplate
+
+    data = request.data if request.method == 'POST' else request.query_params
+    scope = (data.get('scope') or 'all').strip().lower()
+    if scope not in ('all', 'one'):
+        return None, Response(
+            {'scope': 'Use "all" or "one".'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if scope == 'all' and not _can_blast_all_customers(request.user):
+        return None, Response(
+            {'scope': 'Only managers and admins can message all customers.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    customer_id = data.get('customer_id')
+    if customer_id in ('', None):
+        customer_id = None
+    else:
+        try:
+            customer_id = int(customer_id)
+        except (TypeError, ValueError):
+            return None, Response(
+                {'customer_id': 'Must be a customer id.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+    if customer_id is not None:
+        _customer, cerr = _visible_customer_or_404(request.user, customer_id)
+        if cerr is not None:
+            return None, cerr
+
+    customer_ids, err = _parse_customer_ids(data.get('customer_ids'))
+    if err is not None:
+        return None, err
+    if require_ids_nonempty and customer_ids is not None and not customer_ids:
+        return None, Response(
+            {'customer_ids': 'Select at least one customer.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if customer_ids is not None:
+        from sales.models import Customer
+        from sales.visibility import apply_customer_visibility
+
+        visible = set(
+            apply_customer_visibility(
+                Customer.objects.filter(pk__in=customer_ids), request.user,
+            ).values_list('pk', flat=True)
+        )
+        if any(cid not in visible for cid in customer_ids):
+            return None, Response(
+                {'customer_ids': 'One or more customers were not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+    return {
+        'template_key': SmsTemplate.KEY_CUSTOMER_WEEK,
+        'template': data.get('template'),
+        'offer': data.get('offer'),
+        'scope': scope,
+        'customer_id': customer_id,
+        'customer_ids': customer_ids,
+        'save_template': bool(data.get('save_template', False)) if request.method == 'POST' else False,
+    }, None
+
+
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def customer_week_preview(request):
@@ -329,41 +495,18 @@ def customer_week_preview(request):
         return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     from messaging.customer_blast import BlastError, build_customer_blast_preview
-    from messaging.models import SmsTemplate
 
-    template = None
-    offer = None
-    customer_ids = None
-    scope = 'all'
-    customer_id = None
-    if request.method == 'POST':
-        template = request.data.get('template')
-        offer = request.data.get('offer')
-        scope = (request.data.get('scope') or 'all').strip().lower()
-        raw_one = request.data.get('customer_id')
-        if raw_one not in (None, ''):
-            try:
-                customer_id = int(raw_one)
-            except (TypeError, ValueError):
-                return Response(
-                    {'customer_id': 'Must be a customer id.'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-        customer_ids, err = _parse_customer_ids(request.data.get('customer_ids'))
-        if err is not None:
-            return err
-    else:
-        template = request.query_params.get('template')
-        offer = request.query_params.get('offer')
-
+    args, err = _week_blast_scope_args(request)
+    if err is not None:
+        return err
     try:
         preview = build_customer_blast_preview(
-            template_key=SmsTemplate.KEY_CUSTOMER_WEEK,
-            template=template,
-            offer=offer,
-            scope=scope,
-            customer_id=customer_id,
-            customer_ids=customer_ids,
+            template_key=args['template_key'],
+            template=args['template'],
+            offer=args['offer'],
+            scope=args['scope'],
+            customer_id=args['customer_id'],
+            customer_ids=args['customer_ids'],
         )
     except BlastError as exc:
         return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
@@ -377,42 +520,29 @@ def customer_week_send(request):
     if not _can_send_promos(request.user):
         return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
 
+    from accounts.throttles import SmsBlastRateThrottle
     from messaging.customer_blast import BlastError, send_customer_blast
-    from messaging.models import SmsTemplate
 
-    template = request.data.get('template')
-    offer = request.data.get('offer')
-    save_template = bool(request.data.get('save_template', False))
-    scope = (request.data.get('scope') or 'all').strip().lower()
-    raw_one = request.data.get('customer_id')
-    customer_id = None
-    if raw_one not in (None, ''):
-        try:
-            customer_id = int(raw_one)
-        except (TypeError, ValueError):
-            return Response(
-                {'customer_id': 'Must be a customer id.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-    customer_ids, err = _parse_customer_ids(request.data.get('customer_ids'))
-    if err is not None:
-        return err
-    if customer_ids is not None and not customer_ids:
+    throttle = SmsBlastRateThrottle()
+    if not throttle.allow_request(request, customer_week_send):
         return Response(
-            {'customer_ids': 'Select at least one customer.'},
-            status=status.HTTP_400_BAD_REQUEST,
+            {'detail': 'SMS blast rate limit exceeded. Try again later.'},
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
         )
 
+    args, err = _week_blast_scope_args(request, require_ids_nonempty=True)
+    if err is not None:
+        return err
     try:
         result = send_customer_blast(
-            template_key=SmsTemplate.KEY_CUSTOMER_WEEK,
+            template_key=args['template_key'],
             created_by=request.user,
-            template=template,
-            offer=offer,
-            scope=scope,
-            customer_id=customer_id,
-            customer_ids=customer_ids,
-            save_template=save_template,
+            template=args['template'],
+            offer=args['offer'],
+            scope=args['scope'],
+            customer_id=args['customer_id'],
+            customer_ids=args['customer_ids'],
+            save_template=args['save_template'],
         )
     except BlastError as exc:
         return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
