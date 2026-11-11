@@ -218,13 +218,50 @@ class PodSerializer(serializers.Serializer):
             raise serializers.ValidationError({name: 'Invalid base64.'}) from exc
         return SimpleUploadedFile(name, data, content_type='image/png')
 
+    def _compress_pod_image(self, uploaded, *, field_name: str, label: str):
+        """
+        JPEG-compress a POD signature/photo to ≤ 1.5 MiB.
+
+        Args:
+            uploaded: File-like image or ``None``.
+            field_name: Error dict key (``signature`` / ``photo``).
+            label: Human label for errors.
+
+        Returns:
+            Compressed upload, or ``None``.
+        """
+        if not uploaded:
+            return None
+        from utils.image_upload import (
+            GENERAL_MAX_INPUT_BYTES,
+            TARGET_STORED_BYTES,
+            prepare_uploaded_image,
+        )
+
+        return prepare_uploaded_image(
+            uploaded,
+            field_name=field_name,
+            max_input_bytes=GENERAL_MAX_INPUT_BYTES,
+            target_bytes=TARGET_STORED_BYTES,
+            label=label,
+            preferred_name=getattr(uploaded, 'name', f'{field_name}.jpg') or f'{field_name}.jpg',
+        )
+
     def save(self, **kwargs):
         stop = self.context['stop']
-        signature = self.validated_data.get('signature') or self._file_from_b64(
-            self.validated_data.get('signature_b64'), 'sig.png',
+        signature = self._compress_pod_image(
+            self.validated_data.get('signature') or self._file_from_b64(
+                self.validated_data.get('signature_b64'), 'sig.png',
+            ),
+            field_name='signature',
+            label='Signature image',
         )
-        photo = self.validated_data.get('photo') or self._file_from_b64(
-            self.validated_data.get('photo_b64'), 'pod.png',
+        photo = self._compress_pod_image(
+            self.validated_data.get('photo') or self._file_from_b64(
+                self.validated_data.get('photo_b64'), 'pod.png',
+            ),
+            field_name='photo',
+            label='Delivery photo',
         )
         return services.save_pod(
             stop,

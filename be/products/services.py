@@ -461,8 +461,54 @@ class ProductService(BaseService):
         self.variant_service = ProductVariantService()
         self.category_service = CategoryService()
     
+    @staticmethod
+    def barcode_query_candidates(query: str) -> List[str]:
+        """UPC-A / EAN-13 / check-digit variants for a scanned code.
+
+        Phone cameras often return EAN-13 (with leading zero or check digit)
+        while the catalog stores a 12-digit UPC / barcode without the check
+        digit (or the reverse). Returns 1–4 unique strings (max length 128).
+
+        Args:
+            query: Raw scan or typed code; blank → empty list.
+
+        Returns:
+            Ordered unique candidates to try for exact SKU/barcode match.
+        """
+        q = (query or '').strip()[:128]
+        if not q:
+            return []
+        out: List[str] = [q]
+        if q.isdigit():
+            if len(q) == 13 and q.startswith('0'):
+                out.append(q[1:])
+            if len(q) == 12:
+                out.append(f'0{q}')
+            if len(q) == 13:
+                out.append(q[:12])
+            if len(q) == 8:
+                out.append(q.zfill(13))
+        seen = set()
+        unique: List[str] = []
+        for candidate in out:
+            if candidate not in seen:
+                seen.add(candidate)
+                unique.append(candidate)
+        return unique
+
     def search_products(self, query: str, limit: int = 50) -> List[Product]:
-        """Search products by name, SKU, or barcode"""
+        """Search products by name, SKU, or barcode.
+
+        Prefers exact SKU/barcode hits (including UPC/EAN length variants),
+        then variant barcode → parent, then substring name/sku/barcode.
+
+        Args:
+            query: Search text; blank → empty list. Max practical length 128.
+            limit: Max rows to return; clamped to 1–1000 (default 50).
+
+        Returns:
+            List of Product rows (may be empty). Never raises to callers.
+        """
         try:
             if not query or not query.strip():
                 return []
@@ -477,10 +523,12 @@ class ProductService(BaseService):
             # exact matches exist, return them immediately. Otherwise
             # fallback to substring search for name/sku/barcode.
             q = query.strip()
+            candidates = self.barcode_query_candidates(q)
+            exact_filter = Q(name__iexact=q)
+            for candidate in candidates:
+                exact_filter |= Q(sku__iexact=candidate) | Q(barcode__iexact=candidate)
             exact_qs = apply_operational_product_filter(
-                self.model.objects.filter(
-                    Q(sku__iexact=q) | Q(barcode__iexact=q) | Q(name__iexact=q)
-                )
+                self.model.objects.filter(exact_filter)
             )
             if exact_qs.exists():
                 return list(exact_qs[:limit])
@@ -489,9 +537,12 @@ class ProductService(BaseService):
             # then opens the variant picker when the catalogue requires it).
             from products.models import ProductVariant
 
+            variant_filter = Q()
+            for candidate in candidates:
+                variant_filter |= Q(sku__iexact=candidate) | Q(barcode__iexact=candidate)
             variant_ids = list(
                 ProductVariant.objects.filter(
-                    Q(sku__iexact=q) | Q(barcode__iexact=q),
+                    variant_filter,
                     is_active=True,
                 ).values_list('product_id', flat=True)[:limit]
             )

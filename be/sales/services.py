@@ -2104,11 +2104,26 @@ class CustomerService(BaseService):
             created_by=user
         )
         if receipt_image is not None:
-            transaction.receipt_image.save(
-                getattr(receipt_image, 'name', 'receipt.jpg') or 'receipt.jpg',
-                receipt_image,
-                save=True,
+            from utils.image_upload import (
+                GENERAL_MAX_INPUT_BYTES,
+                TARGET_STORED_BYTES,
+                prepare_uploaded_image,
             )
+
+            prepared = prepare_uploaded_image(
+                receipt_image,
+                field_name='receipt_image',
+                max_input_bytes=GENERAL_MAX_INPUT_BYTES,
+                target_bytes=TARGET_STORED_BYTES,
+                label='Receipt photo',
+                preferred_name=getattr(receipt_image, 'name', 'receipt.jpg') or 'receipt.jpg',
+            )
+            if prepared is not None:
+                transaction.receipt_image.save(
+                    prepared.name or 'receipt.jpg',
+                    prepared,
+                    save=True,
+                )
         elif receipt_image_path:
             from sales.debt_receipt_photo import attach_pending_debt_receipt_photo
 

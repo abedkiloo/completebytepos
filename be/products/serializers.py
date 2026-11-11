@@ -751,6 +751,36 @@ class ProductSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(duplicate_product_message(existing))
         return value
 
+    def validate_image(self, value):
+        """
+        Reject product photos over 2 MiB, then JPEG-compress to ≤ 1.5 MiB.
+
+        Args:
+            value: Uploaded image or empty/None.
+
+        Returns:
+            Compressed JPEG upload, or the original empty value.
+
+        Raises:
+            ValidationError: Over 2 MiB, empty, or not a real image.
+        """
+        if not value:
+            return value
+        from utils.image_upload import (
+            PRODUCT_MAX_INPUT_BYTES,
+            TARGET_STORED_BYTES,
+            prepare_uploaded_image,
+        )
+
+        return prepare_uploaded_image(
+            value,
+            field_name='image',
+            max_input_bytes=PRODUCT_MAX_INPUT_BYTES,
+            target_bytes=TARGET_STORED_BYTES,
+            label='Product photo',
+            preferred_name=getattr(value, 'name', 'product.jpg') or 'product.jpg',
+        )
+
     def validate_sku(self, value):
         """Validate SKU uniqueness"""
         if self.instance and self.instance.sku == value:

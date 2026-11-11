@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .config import MAX_SITE_MEDIA, MAX_SITE_IMAGE_BYTES, MIN_SITE_MEDIA
+from .config import MAX_SITE_MEDIA, MIN_SITE_MEDIA
 from .models import CustomerSite, SiteMedia
 from .services import assert_can_finalize, finalize_site
 
@@ -79,15 +79,34 @@ class SiteMediaUploadSerializer(serializers.ModelSerializer):
         read_only_fields = ('id',)
 
     def validate_image(self, value):
+        """
+        Require a site photo and JPEG-compress it to ≤ 1.5 MiB.
+
+        Args:
+            value: Uploaded image (required).
+
+        Returns:
+            Compressed JPEG upload.
+
+        Raises:
+            ValidationError: Missing, over 5 MiB intake, or non-image.
+        """
         if value is None:
             raise serializers.ValidationError('Image is required.')
-        # Soft size hint — reject absurd uploads (10× client max).
-        max_bytes = MAX_SITE_IMAGE_BYTES * 10
-        if getattr(value, 'size', 0) > max_bytes:
-            raise serializers.ValidationError(
-                f'Image exceeds maximum size of {max_bytes} bytes.',
-            )
-        return value
+        from utils.image_upload import (
+            GENERAL_MAX_INPUT_BYTES,
+            TARGET_STORED_BYTES,
+            prepare_uploaded_image,
+        )
+
+        return prepare_uploaded_image(
+            value,
+            field_name='image',
+            max_input_bytes=GENERAL_MAX_INPUT_BYTES,
+            target_bytes=TARGET_STORED_BYTES,
+            label='Site photo',
+            preferred_name=getattr(value, 'name', 'site.jpg') or 'site.jpg',
+        )
 
     def create(self, validated_data):
         site = self.context['site']

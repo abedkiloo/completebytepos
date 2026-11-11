@@ -22,19 +22,84 @@ export function normalizeScanCode(value) {
 }
 
 /**
+ * Extract a product SKU/barcode/GTIN from a camera or QR payload.
+ *
+ * @param {unknown} value
+ * @returns {string} Normalized code (max 128); empty when blank.
+ */
+export function extractProductScanCode(value) {
+  const raw = normalizeScanCode(value);
+  if (!raw) return '';
+
+  const gs1Paren = raw.match(/^\(01\)(\d{8,14})$/);
+  if (gs1Paren) return normalizeScanCode(gs1Paren[1]);
+
+  const gs1Bare = raw.match(/^01(\d{14})$/);
+  if (gs1Bare) return normalizeScanCode(gs1Bare[1]);
+
+  try {
+    const uri = new URL(raw);
+    if (uri.protocol === 'http:' || uri.protocol === 'https:') {
+      const keys = ['barcode', 'sku', 'gtin', 'ean', 'code', 'id'];
+      for (const key of keys) {
+        const q = uri.searchParams.get(key);
+        if (q && q.trim()) return normalizeScanCode(q);
+      }
+      const segments = uri.pathname.split('/').filter(Boolean);
+      const skip = new Set(['product', 'products', 'p', 'item', 'items', 'sku', 'barcode']);
+      if (segments.length) {
+        const last = segments[segments.length - 1];
+        if (!skip.has(last.toLowerCase())) return normalizeScanCode(last);
+        if (segments.length >= 2) {
+          return normalizeScanCode(segments[segments.length - 2]);
+        }
+      }
+    }
+  } catch {
+    // Not a URL — use raw.
+  }
+  return raw;
+}
+
+/**
+ * UPC-A / EAN-13 / check-digit variants for a scanned code.
+ *
+ * @param {unknown} value
+ * @returns {string[]} 1–4 unique candidates; empty when blank. Max length 128.
+ */
+export function scanCodeCandidates(value) {
+  const code = normalizeScanCode(value);
+  if (!code) return [];
+  const out = new Set([code]);
+  if (/^\d+$/.test(code)) {
+    if (code.length === 13 && code.startsWith('0')) out.add(code.slice(1));
+    if (code.length === 12) out.add(`0${code}`);
+    if (code.length === 13) out.add(code.slice(0, 12));
+    if (code.length === 8) out.add(code.padStart(13, '0'));
+  }
+  return [...out];
+}
+
+/**
  * True when a product row is an exact SKU or barcode hit for the scan code.
  * Name-only matches are never treated as scan hits (avoids wrong auto-add).
+ * Also matches UPC/EAN length variants via {@link scanCodeCandidates}.
  *
  * @param {object|null|undefined} product
  * @param {string} code
  * @returns {boolean}
  */
 export function productMatchesScanCode(product, code) {
-  const needle = normalizeScanCode(code).toLowerCase();
-  if (!product || !needle) return false;
-  const sku = normalizeScanCode(product.sku).toLowerCase();
-  const barcode = normalizeScanCode(product.barcode).toLowerCase();
-  return sku === needle || barcode === needle;
+  if (!product) return false;
+  const needles = new Set(
+    scanCodeCandidates(extractProductScanCode(code))
+      .map((c) => c.toLowerCase())
+      .filter(Boolean)
+  );
+  if (!needles.size) return false;
+  const fieldHits = (field) =>
+    scanCodeCandidates(field).some((c) => needles.has(c.toLowerCase()));
+  return fieldHits(product.sku) || fieldHits(product.barcode);
 }
 
 /**
@@ -46,7 +111,7 @@ export function productMatchesScanCode(product, code) {
  */
 export function pickExactScanProduct(results, code) {
   const list = Array.isArray(results) ? results : [];
-  const needle = normalizeScanCode(code);
+  const needle = extractProductScanCode(code);
   if (!needle) return { product: null, reason: 'empty' };
   const exact = list.filter((row) => productMatchesScanCode(row, needle));
   if (exact.length === 1) return { product: exact[0], reason: 'exact' };

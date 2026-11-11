@@ -122,6 +122,36 @@ class BlogPostAdminSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Another post already uses this URL.')
         return value
 
+    def validate_cover_image(self, value):
+        """
+        Compress blog cover images to ≤ 1.5 MiB JPEG.
+
+        Args:
+            value: Uploaded cover image or empty.
+
+        Returns:
+            Compressed upload, or empty value.
+
+        Raises:
+            ValidationError: Over 5 MiB intake or non-image.
+        """
+        if not value:
+            return value
+        from utils.image_upload import (
+            GENERAL_MAX_INPUT_BYTES,
+            TARGET_STORED_BYTES,
+            prepare_uploaded_image,
+        )
+
+        return prepare_uploaded_image(
+            value,
+            field_name='cover_image',
+            max_input_bytes=GENERAL_MAX_INPUT_BYTES,
+            target_bytes=TARGET_STORED_BYTES,
+            label='Cover image',
+            preferred_name=getattr(value, 'name', 'cover.jpg') or 'cover.jpg',
+        )
+
     def _apply_cover_removal(self, instance, remove):
         if remove and instance.cover_image:
             instance.cover_image.delete(save=False)

@@ -289,6 +289,25 @@ class ProductServiceTestCase(TestCase):
         results = self.service.search_products('6281001234567')
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].pk, parent.pk)
+
+    def test_search_products_upc_ean_length_variants(self):
+        """Camera EAN-13 with leading zero still hits a stored UPC-A barcode."""
+        product = Product.objects.create(
+            name='Milk Pack',
+            sku='MILK-12',
+            barcode='123456789012',
+            category=self.category,
+            price=Decimal('20.00'),
+            cost=Decimal('10.00'),
+            is_active=True,
+        )
+        results = self.service.search_products('0123456789012')
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].pk, product.pk)
+        # Check-digit form (13 digits) should also resolve via first-12 candidate.
+        results_check = self.service.search_products('1234567890128')
+        self.assertEqual(len(results_check), 1)
+        self.assertEqual(results_check[0].pk, product.pk)
     
     def test_search_products_empty_query(self):
         """Test search with empty query returns empty list"""

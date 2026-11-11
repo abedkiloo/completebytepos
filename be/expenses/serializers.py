@@ -93,6 +93,36 @@ class ExpenseSerializer(serializers.ModelSerializer):
         )
         return value.strip()
 
+    def validate_image(self, value):
+        """
+        Compress expense photos to ≤ 1.5 MiB JPEG.
+
+        Args:
+            value: Uploaded image or ``None``.
+
+        Returns:
+            Compressed ``SimpleUploadedFile``, or ``None``.
+
+        Raises:
+            ValidationError: Empty, over 5 MiB intake, or non-image.
+        """
+        if not value:
+            return value
+        from utils.image_upload import (
+            GENERAL_MAX_INPUT_BYTES,
+            TARGET_STORED_BYTES,
+            prepare_uploaded_image,
+        )
+
+        return prepare_uploaded_image(
+            value,
+            field_name='image',
+            max_input_bytes=GENERAL_MAX_INPUT_BYTES,
+            target_bytes=TARGET_STORED_BYTES,
+            label='Expense photo',
+            preferred_name=getattr(value, 'name', 'expense.jpg') or 'expense.jpg',
+        )
+
     def validate(self, attrs):
         attrs = super().validate(attrs)
         if self.instance is None and not attrs.get('expense_date'):

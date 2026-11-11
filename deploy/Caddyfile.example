@@ -7,18 +7,31 @@
 #   uat.omuwenga.com
 
 shop.omuwenga.com {
+	# Match fe/nginx.conf — M-Pesa receipt multipart can exceed 1 MiB.
+	request_body {
+		max_size 10MB
+	}
 	reverse_proxy 127.0.0.1:3000
 }
 
 # Public API for the marketing site. The backend container stays on localhost:8000.
 api.omuwenga.com {
+	request_body {
+		max_size 10MB
+	}
 	reverse_proxy 127.0.0.1:8000
 }
 
 uat.omuwenga.com {
+	request_body {
+		max_size 10MB
+	}
 	reverse_proxy 127.0.0.1:3100
 }
 
 api.uat.omuwenga.com {
+	request_body {
+		max_size 10MB
+	}
 	reverse_proxy 127.0.0.1:8001
 }

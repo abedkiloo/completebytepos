@@ -525,6 +525,38 @@ class ProductAPITestCase(TransactionTestCase):
         self.assertTrue(bool(product.image))
         self.assertIn('image_url', response.data)
         self.assertTrue(response.data['image_url'])
+
+    def test_product_image_rejects_over_2mb(self):
+        """Product photos over 2 MiB are rejected before compression."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from utils.image_upload import PRODUCT_MAX_INPUT_BYTES
+
+        token = self.get_auth_token(self.superuser)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+        # Valid JPEG header + pad so size exceeds the hard product cap.
+        payload = b'\xff\xd8\xff\xe0' + (b'\x00' * (PRODUCT_MAX_INPUT_BYTES + 100))
+        image_file = SimpleUploadedFile(
+            'too_big.jpg',
+            payload,
+            content_type='image/jpeg',
+        )
+        response = self.client.post(
+            '/api/products/',
+            {
+                'name': 'Oversized Image Product',
+                'sku': 'IMG-BIG-001',
+                'category': self.main_category.id,
+                'price': '100.00',
+                'cost': '50.00',
+                'image': image_file,
+            },
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+        self.assertIn('image', response.data)
+        self.assertFalse(Product.objects.filter(sku='IMG-BIG-001').exists())
     
     def test_product_variants_creation(self):
         """Test that product variants are created correctly"""

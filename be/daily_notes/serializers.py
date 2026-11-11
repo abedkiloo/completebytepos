@@ -23,7 +23,7 @@ def attach_note_images(notes, uploaded_file) -> None:
     Copy an optional uploaded image onto each created daily note.
 
     Fan-out creates many rows; each gets its own media file so deleting one
-    note does not break siblings.
+    note does not break siblings. Images are JPEG-compressed to ≤ 1.5 MiB.
 
     Args:
         notes: Iterable of saved ``DailyNote`` instances (1–500).
@@ -31,16 +31,30 @@ def attach_note_images(notes, uploaded_file) -> None:
 
     Returns:
         None.
+
+    Raises:
+        ValidationError: When the upload is oversize, empty, or not an image.
     """
     if not uploaded_file or not notes:
         return
-    raw = uploaded_file.read()
-    if hasattr(uploaded_file, 'seek'):
-        try:
-            uploaded_file.seek(0)
-        except Exception:
-            pass
-    name = os.path.basename(getattr(uploaded_file, 'name', '') or 'note.jpg') or 'note.jpg'
+    from utils.image_upload import (
+        GENERAL_MAX_INPUT_BYTES,
+        TARGET_STORED_BYTES,
+        prepare_uploaded_image,
+    )
+
+    prepared = prepare_uploaded_image(
+        uploaded_file,
+        field_name='image',
+        max_input_bytes=GENERAL_MAX_INPUT_BYTES,
+        target_bytes=TARGET_STORED_BYTES,
+        label='Note photo',
+        preferred_name=os.path.basename(getattr(uploaded_file, 'name', '') or 'note.jpg'),
+    )
+    if prepared is None:
+        return
+    raw = prepared.read()
+    name = prepared.name or 'note.jpg'
     for note in notes:
         note.image.save(name, ContentFile(raw), save=True)
 

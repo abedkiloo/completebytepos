@@ -1,9 +1,11 @@
 import {
+  extractProductScanCode,
   isDuplicateScan,
   looksLikeScanCode,
   normalizeScanCode,
   pickExactScanProduct,
   productMatchesScanCode,
+  scanCodeCandidates,
 } from './posBarcodeScan';
 
 describe('posBarcodeScan', () => {
@@ -15,6 +17,29 @@ describe('posBarcodeScan', () => {
     expect(
       productMatchesScanCode({ sku: 'X', barcode: '', name: 'Soap' }, 'Soap')
     ).toBe(false);
+  });
+
+  it('matches UPC-A / EAN-13 length variants', () => {
+    expect(scanCodeCandidates('0123456789012')).toEqual(
+      expect.arrayContaining(['0123456789012', '123456789012'])
+    );
+    expect(
+      productMatchesScanCode({ sku: 'MILK', barcode: '123456789012' }, '0123456789012')
+    ).toBe(true);
+    expect(
+      productMatchesScanCode({ sku: 'MILK', barcode: '123456789012' }, '1234567890128')
+    ).toBe(true);
+  });
+
+  it('extracts product code from QR URL and GS1 payloads', () => {
+    expect(extractProductScanCode('https://shop.example/products/SOAP-1')).toBe(
+      'SOAP-1'
+    );
+    expect(
+      extractProductScanCode('https://shop.example/p?barcode=6281001234567')
+    ).toBe('6281001234567');
+    expect(extractProductScanCode('(01)01234567890128')).toBe('01234567890128');
+    expect(extractProductScanCode('0101234567890128')).toBe('01234567890128');
   });
 
   it('picks a single exact hit and rejects ambiguous', () => {

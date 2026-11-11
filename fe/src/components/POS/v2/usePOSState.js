@@ -14,8 +14,8 @@ import { normalizeProductForSale } from '../../../utils/moduleFeatures';
 import { isProductOutOfStock } from '../../../utils/productStock';
 import { shouldOpenVariantPicker } from '../../../utils/variantSelector';
 import {
+  extractProductScanCode,
   isDuplicateScan,
-  normalizeScanCode,
   pickExactScanProduct,
 } from '../../../utils/posBarcodeScan';
 import {
@@ -702,7 +702,7 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
    */
   const addByScanCode = useCallback(
     async (rawCode) => {
-      const code = normalizeScanCode(rawCode);
+      const code = extractProductScanCode(rawCode);
       if (!code) return false;
       if (isDuplicateScan(lastScanRef.current, code)) {
         return false;

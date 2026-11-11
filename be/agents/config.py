@@ -7,4 +7,5 @@ MIN_SITE_MEDIA = 0
 MAX_SITE_MEDIA = 10
 
 # Suggested max compressed image size for clients (bytes).
-MAX_SITE_IMAGE_BYTES = 2 * 1024 * 1024
+# Client hint for site media; server still compresses to ≤ 1.5 MiB.
+MAX_SITE_IMAGE_BYTES = int(1.5 * 1024 * 1024)
