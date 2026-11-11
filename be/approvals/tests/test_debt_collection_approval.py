@@ -358,6 +358,52 @@ class DebtCollectionApprovalAPITests(SalesAPITestCase):
         customer = {f['label']: f['value'] for f in sections['Customer']['facts']}
         self.assertIn('Customer', customer)
 
+    def test_pending_mpesa_collection_includes_receipt_image_url(self):
+        from io import BytesIO
+        from unittest.mock import patch
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+
+        buf = BytesIO()
+        Image.new('RGB', (24, 24), color=(20, 120, 40)).save(buf, format='JPEG')
+        receipt = SimpleUploadedFile(
+            'collect.jpg', buf.getvalue(), content_type='image/jpeg'
+        )
+        with patch(
+            'sales.customer_module_settings.customers_collection_payer_details_enabled',
+            return_value=True,
+        ):
+            queued = self.client.post(
+                f'/api/sales/customers/{self.customer.id}/receive-wallet-payment/',
+                {
+                    'amount': '100.00',
+                    'payment_method': 'mpesa',
+                    'reference': 'QHX7K2L9M1',
+                    'payer_name': 'Mary Payer',
+                    'payer_phone': '0712999888',
+                    'mpesa_destination': 'till',
+                    'notes': 'Duka paid via till',
+                    'receipt_image': receipt,
+                },
+                format='multipart',
+            )
+        self.assertEqual(queued.status_code, status.HTTP_202_ACCEPTED, queued.data)
+        listed = self._manager_client().get(
+            '/api/approvals/pending-changes/pending/',
+            {'action_type': ACTION_DEBT_COLLECTION},
+        )
+        row = listed.data[0]
+        sections = {s['title']: s for s in row['details']['sections']}
+        evidence = {f['label']: f for f in sections['Evidence']['facts']}
+        self.assertEqual(evidence['Receipt screenshot']['kind'], 'image')
+        self.assertTrue(evidence['Receipt screenshot']['value'])
+        self.assertIn('/media/', evidence['Receipt screenshot']['value'])
+        collection = {f['label']: f['value'] for f in sections['Collection']['facts']}
+        self.assertEqual(collection['Paid by'], 'Mary Payer')
+        self.assertEqual(collection['Notes'], 'Duka paid via till')
+        self.assertEqual(collection['Reference'], 'QHX7K2L9M1')
+
     def test_pending_status_alias_still_lists_collection(self):
         queued = self._collect(self.client)
         self.assertEqual(queued.status_code, status.HTTP_202_ACCEPTED, queued.data)

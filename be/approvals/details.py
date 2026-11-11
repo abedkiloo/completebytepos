@@ -10,7 +10,8 @@ Shape (all optional)::
                                       "subtotal": "1000.00"}]},
     ]}
 
-``kind`` is ``text`` (default), ``money`` or ``datetime``.
+``kind`` is ``text`` (default), ``money``, ``datetime``, ``notes``, or ``image``
+(``image`` values are media URLs the checker can open).
 """
 
 from __future__ import annotations
@@ -55,6 +56,37 @@ def _fact(label: str, value: Any, kind: str = 'text') -> dict | None:
     else:
         value = str(value)
     return {'label': label, 'value': value, 'kind': kind}
+
+
+def _media_url_for_storage_path(path: str, request=None) -> str | None:
+    """
+    Build a browser/app-reachable URL for a pending uploaded file.
+
+    Args:
+        path: Storage-relative path (e.g. ``debt_receipts/pending/….jpg``),
+            or a path that already starts with ``/media/``.
+        request: Optional HTTP request for absolute URL building.
+
+    Returns:
+        Media URL string, or None when path is blank.
+    """
+    raw = (path or '').strip()
+    if not raw:
+        return None
+    if raw.startswith('http://') or raw.startswith('https://'):
+        return raw
+    if raw.startswith('/media/'):
+        from config.media_urls import absolute_media_url
+
+        return absolute_media_url(request, raw)
+    from django.core.files.storage import default_storage
+    from config.media_urls import absolute_media_url
+
+    try:
+        relative = default_storage.url(raw)
+    except Exception:
+        relative = f'/media/{raw.lstrip("/")}'
+    return absolute_media_url(request, relative)
 
 
 def _facts(*rows) -> list[dict]:
@@ -266,7 +298,7 @@ def _refund_sections(change: PendingChange, sale) -> list[dict]:
     return [section] if section else []
 
 
-def _backfill_sections(change: PendingChange, cache=None) -> list[dict]:
+def _backfill_sections(change: PendingChange, cache=None, request=None) -> list[dict]:
     from django.contrib.auth.models import User
     from products.models import Product, ProductVariant
     from products.stock_utils import sellable_unit_price
@@ -352,11 +384,19 @@ def _backfill_sections(change: PendingChange, cache=None) -> list[dict]:
         _fact('Sold by', _user_label(served_by)),
         *(_customer_facts(customer) if customer or not payload.get('customer_name')
           else [_fact('Customer', payload.get('customer_name'))]),
-        _fact('Notes', payload.get('notes')),
-        _fact('Reason', payload.get('backfill_reason')),
+        _fact('Notes', payload.get('notes'), 'notes'),
+        _fact('Reason', payload.get('backfill_reason'), 'notes'),
         _fact(
             'Customer SMS',
             'Yes — send receipt SMS' if notify_yes else 'No — do not text customer',
+        ),
+        _fact(
+            'Proof photo',
+            _media_url_for_storage_path(
+                payload.get('backfill_receipt_photo_path') or '',
+                request=request,
+            ),
+            'image',
         ),
     ))
     money = _section('Money', facts=_facts(
@@ -373,7 +413,16 @@ def _backfill_sections(change: PendingChange, cache=None) -> list[dict]:
     return [s for s in (header, _section('Items', lines=lines), money) if s]
 
 
-def _debt_collection_sections(change: PendingChange, cache=None) -> list[dict]:
+def _customer_location_line(customer) -> str:
+    bits = [
+        (getattr(customer, 'ward', '') or '').strip(),
+        (getattr(customer, 'sub_county', '') or '').strip(),
+        (getattr(customer, 'county', '') or '').strip(),
+    ]
+    return ' · '.join(b for b in bits if b)
+
+
+def _debt_collection_sections(change: PendingChange, cache=None, request=None) -> list[dict]:
     from sales.models import Customer
 
     payload = change.apply_payload or {}
@@ -390,10 +439,19 @@ def _debt_collection_sections(change: PendingChange, cache=None) -> list[dict]:
         else (change.original_values or {}).get('wallet_balance')
     )
     after = before + amount
+    receipt_url = _media_url_for_storage_path(
+        payload.get('receipt_image_path') or '',
+        request=request,
+    )
+    location = _customer_location_line(customer) if customer else ''
     return [s for s in (
         _section('Customer', facts=_facts(
             _fact('Customer', customer.name if customer else change.entity_repr),
+            _fact('Customer code', getattr(customer, 'customer_code', '') if customer else ''),
+            _fact('Owner', getattr(customer, 'owner_name', '') if customer else ''),
             _fact('Phone', getattr(customer, 'phone', '') if customer else ''),
+            _fact('Address', getattr(customer, 'address', '') if customer else ''),
+            _fact('Location', location),
             _fact('Debt owed now', -before, 'money') if before < 0 else _fact('Wallet credit now', before, 'money'),
             _fact('Debt after approval', -after, 'money') if after < 0
             else _fact('Wallet after approval', after, 'money'),
@@ -414,13 +472,24 @@ def _debt_collection_sections(change: PendingChange, cache=None) -> list[dict]:
             _fact('Payment date', payload.get('occurred_at'), 'datetime')
             if payload.get('occurred_at')
             else None,
+            _fact('Notes', payload.get('notes'), 'notes'),
             _fact(
-                'Receipt screenshot',
-                'Attached' if payload.get('receipt_image_path') else None,
+                'Request reason',
+                change.reason
+                if (change.reason or '').strip()
+                and (change.reason or '').strip() != (payload.get('notes') or '').strip()
+                else None,
+                'notes',
             ),
-            _fact('Notes', payload.get('notes')),
             _fact('Collected by', _user_label(change.made_by)),
             _fact('Collected at', change.made_at, 'datetime'),
+        )),
+        _section('Evidence', facts=_facts(
+            _fact('Receipt screenshot', receipt_url, 'image'),
+            _fact(
+                'Receipt status',
+                'Not attached' if not receipt_url and method == 'mpesa' else None,
+            ),
         )),
     ) if s]
 
@@ -645,12 +714,12 @@ def _role_sections(change: PendingChange, cache=None) -> list[dict]:
     return [section] if section else []
 
 
-def pending_change_details(change: PendingChange, cache=None) -> dict | None:
+def pending_change_details(change: PendingChange, cache=None, request=None) -> dict | None:
     sections: list[dict] = []
     if change.action_type == ACTION_DEBT_COLLECTION:
-        sections = _debt_collection_sections(change, cache=cache)
+        sections = _debt_collection_sections(change, cache=cache, request=request)
     elif change.action_type == ACTION_SALE_BACKFILL:
-        sections = _backfill_sections(change, cache=cache)
+        sections = _backfill_sections(change, cache=cache, request=request)
     elif change.action_type in (
         ACTION_STOCK_ADJUST, ACTION_STOCK_PURCHASE, ACTION_STOCK_TRANSFER,
     ):

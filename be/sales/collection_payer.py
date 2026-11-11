@@ -122,12 +122,14 @@ def validate_collection_payer_fields(
         payer_name: Who paid (not necessarily the customer on file).
         payer_phone: Payer phone number.
         mpesa_destination: ``till`` or ``bank`` when an M-Pesa code is entered.
-        require_payer: When True, name and phone are required (feature on).
+        require_payer: When True and method is not cash, name and phone are
+            required (feature on). Cash collections never require who-paid.
         require_mpesa_destination_for_code: When True and method is mpesa with
             a non-empty reference, destination must be till or bank.
 
     Returns:
         Dict with normalized ``payer_name``, ``payer_phone``, ``mpesa_destination``.
+        Cash clears unused payer fields when they were not provided.
 
     Raises:
         ValidationError: Dict of field errors when required values are missing
@@ -138,14 +140,19 @@ def validate_collection_payer_fields(
     phone = normalize_payer_phone(payer_phone)
     method = (payment_method or '').strip().lower()
     ref = (reference or '').strip()
+    # Cash is face-to-face — do not force "who paid" / phone.
+    effective_require_payer = bool(require_payer) and method != 'cash'
 
-    if require_payer:
+    if effective_require_payer:
         if not name:
             errors['payer_name'] = 'Enter the name of who paid.'
         if not phone:
             errors['payer_phone'] = 'Enter the phone number of who paid.'
         elif len(_PHONE_DIGITS.sub('', phone.lstrip('+'))) < 9:
             errors['payer_phone'] = 'Enter a valid phone number (at least 9 digits).'
+    elif phone and len(_PHONE_DIGITS.sub('', phone.lstrip('+'))) < 9:
+        # Optional phone on cash: if typed, still validate shape.
+        errors['payer_phone'] = 'Enter a valid phone number (at least 9 digits).'
 
     try:
         dest = normalize_mpesa_destination(mpesa_destination, payment_method=method)

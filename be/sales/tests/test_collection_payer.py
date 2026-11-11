@@ -66,6 +66,15 @@ class CollectionPayerUnitTests(TestCase):
         self.assertEqual(result['payer_phone'], '0712345678')
         self.assertEqual(result['mpesa_destination'], 'bank')
 
+    def test_validate_cash_skips_who_paid_when_feature_on(self):
+        result = validate_collection_payer_fields(
+            payment_method='cash',
+            require_payer=True,
+            require_mpesa_destination_for_code=False,
+        )
+        self.assertEqual(result['payer_name'], '')
+        self.assertEqual(result['payer_phone'], '')
+
     def test_validate_rejects_short_phone(self):
         with self.assertRaises(ValidationError) as ctx:
             validate_collection_payer_fields(
@@ -176,6 +185,33 @@ class CollectionPayerAPITests(ManagerAPITestCase):
             format='json',
         )
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST, res.data)
+
+    @patch(
+        'sales.customer_module_settings.customers_collection_payer_details_enabled',
+        return_value=True,
+    )
+    def test_receive_wallet_cash_without_payer_keeps_notes(self, _mock):
+        res = self.client.post(
+            f'/api/sales/customers/{self.customer.id}/receive-wallet-payment/',
+            {
+                'amount': '100.00',
+                'payment_method': 'cash',
+                'notes': 'Something happened with duka',
+            },
+            format='json',
+        )
+        self.assertIn(
+            res.status_code,
+            (status.HTTP_200_OK, status.HTTP_201_CREATED),
+            res.data,
+        )
+        txn = CustomerWalletTransaction.objects.filter(
+            customer=self.customer,
+            source_type='debt_settlement',
+        ).latest('id')
+        self.assertEqual(txn.notes, 'Something happened with duka')
+        self.assertEqual(txn.payer_name, '')
+        self.assertEqual(txn.payer_phone, '')
 
     @patch(
         'sales.customer_module_settings.customers_collection_payer_details_enabled',

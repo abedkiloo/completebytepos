@@ -88,4 +88,33 @@ describe('ApprovalDetails', () => {
     expect(labels).toEqual(['Reference', 'Amount', 'Category', 'Expense date', 'Payment method']);
     expect(details.sections[0].facts[4].value).toBe('M-PESA');
   });
+
+  it('renders uploaded evidence images for the checker', () => {
+    render(
+      <ApprovalDetails
+        details={{
+          sections: [
+            {
+              title: 'Evidence',
+              facts: [
+                {
+                  label: 'Receipt screenshot',
+                  value: '/media/debt_receipts/pending/demo.jpg',
+                  kind: 'image',
+                },
+                {
+                  label: 'Notes',
+                  value: 'Something happened with duka',
+                  kind: 'notes',
+                },
+              ],
+            },
+          ],
+        }}
+      />
+    );
+    const img = screen.getByTestId('approval-evidence-image');
+    expect(img).toHaveAttribute('src', '/media/debt_receipts/pending/demo.jpg');
+    expect(screen.getByText(/Something happened with duka/i)).toBeInTheDocument();
+  });
 });

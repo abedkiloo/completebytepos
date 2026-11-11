@@ -36,10 +36,21 @@ describe('collectionPayer', () => {
     expect(normalizePayerPhone('0712 345 678')).toBe('0712345678');
   });
 
-  it('requires payer name and phone when feature validation is on', () => {
+  it('does not require who-paid for cash even when the feature is on', () => {
     const errors = validateCollectionPayerFields({
       paymentMethod: 'cash',
       requirePayer: true,
+    });
+    expect(errors).toEqual({});
+  });
+
+  it('requires payer name and phone for non-cash when feature validation is on', () => {
+    const errors = validateCollectionPayerFields({
+      paymentMethod: 'mpesa',
+      reference: 'QHX7K2L9M1',
+      mpesaDestination: 'till',
+      requirePayer: true,
+      requireMpesaDestinationForCode: true,
     });
     expect(errors.payer_name).toMatch(/who paid/i);
     expect(errors.payer_phone).toMatch(/phone/i);

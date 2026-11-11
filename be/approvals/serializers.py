@@ -39,7 +39,11 @@ class PendingChangeSerializer(serializers.ModelSerializer):
         from approvals.details import pending_change_details
 
         try:
-            return pending_change_details(obj, cache=self._details_cache())
+            return pending_change_details(
+                obj,
+                cache=self._details_cache(),
+                request=self.context.get('request'),
+            )
         except Exception:
             logging.getLogger(__name__).exception(
                 'Could not build approval details for change %s', obj.pk,

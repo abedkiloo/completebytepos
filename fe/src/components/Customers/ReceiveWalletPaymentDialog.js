@@ -224,7 +224,7 @@ export default function ReceiveWalletPaymentDialog({
     if (form.payment_date && form.payment_date > todayLocalDate()) {
       errors.payment_date = 'Payment date cannot be in the future.';
     }
-    if (requirePayer) {
+    if (requirePayer && form.payment_method !== 'cash') {
       Object.assign(
         errors,
         validateCollectionPayerFields({
@@ -273,7 +273,7 @@ export default function ReceiveWalletPaymentDialog({
       if (form.payment_date && form.payment_date !== todayLocalDate()) {
         fields.payment_date = form.payment_date;
       }
-      if (requirePayer) {
+      if (requirePayer && form.payment_method !== 'cash') {
         fields.payer_name = form.payer_name.trim();
         fields.payer_phone = form.payer_phone.trim();
         fields.mpesa_destination =
@@ -353,10 +353,14 @@ export default function ReceiveWalletPaymentDialog({
             emphasis: true,
           },
           { label: 'Method', value: methodLabel },
-          requirePayer && form.payer_name.trim()
+          requirePayer &&
+          form.payment_method !== 'cash' &&
+          form.payer_name.trim()
             ? { label: 'Paid by', value: form.payer_name.trim() }
             : null,
-          requirePayer && form.payer_phone.trim()
+          requirePayer &&
+          form.payment_method !== 'cash' &&
+          form.payer_phone.trim()
             ? { label: 'Payer phone', value: form.payer_phone.trim() }
             : null,
           form.payment_method === 'mpesa' && form.mpesa_destination
@@ -448,7 +452,23 @@ export default function ReceiveWalletPaymentDialog({
             ) : null}
           </div>
 
-          {requirePayer ? (
+          <div className="space-y-2">
+            <Label htmlFor="wallet-payment-method">Payment method *</Label>
+            <select
+              id="wallet-payment-method"
+              value={form.payment_method}
+              onChange={(e) => updateField('payment_method', e.target.value)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              {PAYMENT_METHODS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {requirePayer && form.payment_method !== 'cash' ? (
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="wallet-payer-name">Who paid *</Label>
@@ -482,22 +502,6 @@ export default function ReceiveWalletPaymentDialog({
               </div>
             </div>
           ) : null}
-
-          <div className="space-y-2">
-            <Label htmlFor="wallet-payment-method">Payment method *</Label>
-            <select
-              id="wallet-payment-method"
-              value={form.payment_method}
-              onChange={(e) => updateField('payment_method', e.target.value)}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            >
-              {PAYMENT_METHODS.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-          </div>
 
           <div className="space-y-2">
             {form.payment_method === 'mpesa' ? (
@@ -635,7 +639,7 @@ export default function ReceiveWalletPaymentDialog({
               id="wallet-payment-notes"
               value={form.notes}
               onChange={(e) => updateField('notes', e.target.value)}
-              placeholder="Optional internal note"
+              placeholder="Optional — e.g. duka closed, partial visit"
             />
           </div>
 

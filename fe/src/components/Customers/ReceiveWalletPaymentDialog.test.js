@@ -60,7 +60,7 @@ describe('ReceiveWalletPaymentDialog', () => {
     });
   });
 
-  it('prefills full debt and submits payment with payer details', async () => {
+  it('prefills full debt and submits cash without who-paid fields', async () => {
     const onSuccess = jest.fn();
     const onOpenChange = jest.fn();
 
@@ -77,8 +77,8 @@ describe('ReceiveWalletPaymentDialog', () => {
     await waitFor(() => {
       expect(screen.getByLabelText(/Payment amount/i)).toHaveValue(150);
     });
-    expect(screen.getByTestId('wallet-payer-name')).toHaveValue('Jane Debtor');
-    expect(screen.getByTestId('wallet-payer-phone')).toHaveValue('0712345678');
+    expect(screen.queryByTestId('wallet-payer-name')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('wallet-payer-phone')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Record payment/i }));
     expect(
@@ -92,12 +92,31 @@ describe('ReceiveWalletPaymentDialog', () => {
         payment_method: 'cash',
         reference: '',
         notes: '',
-        payer_name: 'Jane Debtor',
-        payer_phone: '0712345678',
-        mpesa_destination: '',
       });
     });
     expect(onSuccess).toHaveBeenCalled();
+  });
+
+  it('asks who paid only after a non-cash method is selected', async () => {
+    render(
+      <ReceiveWalletPaymentDialog
+        open
+        customer={debtor}
+        onOpenChange={jest.fn()}
+        onSuccess={jest.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Payment amount/i)).toHaveValue(150);
+    });
+    expect(screen.queryByTestId('wallet-payer-name')).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/Payment method/i), {
+      target: { value: 'mpesa' },
+    });
+    expect(screen.getByTestId('wallet-payer-name')).toHaveValue('Jane Debtor');
+    expect(screen.getByTestId('wallet-payer-phone')).toHaveValue('0712345678');
   });
 
   it('asks till or bank before allowing an M-Pesa code', async () => {

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { NotebookText } from 'lucide-react';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
+import { resolveMediaUrl } from '../../utils/mediaUrl';
 import { Button } from '../ui/button';
 import {
   Dialog,
@@ -50,14 +51,39 @@ function NotesFactValue({ value, onOpen }) {
   );
 }
 
+function ImageFactValue({ label, value }) {
+  const src = resolveMediaUrl(String(value || '').trim());
+  if (!src) return '—';
+  return (
+    <a
+      href={src}
+      target="_blank"
+      rel="noreferrer"
+      className="block max-w-full"
+      data-testid="approval-evidence-image-link"
+      title="Open full image"
+    >
+      <img
+        src={src}
+        alt={label || 'Uploaded evidence'}
+        data-testid="approval-evidence-image"
+        className="mt-1 max-h-64 w-full rounded-md border object-contain bg-background"
+      />
+      <span className="mt-1 block text-[11px] font-medium text-primary">
+        Open full image
+      </span>
+    </a>
+  );
+}
+
 function FactsGrid({ facts, onOpenNotes }) {
   return (
     <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
       {facts.map((fact) => (
         <div
-          key={fact.label}
+          key={`${fact.label}-${fact.kind}-${fact.value}`}
           className={`flex min-w-0 justify-between gap-3 border-b border-border/40 py-1 ${
-            fact.kind === 'notes' ? 'sm:col-span-2' : ''
+            fact.kind === 'notes' || fact.kind === 'image' ? 'sm:col-span-2' : ''
           }`}
         >
           <dt className="shrink-0 text-muted-foreground">{fact.label}</dt>
@@ -67,6 +93,8 @@ function FactsGrid({ facts, onOpenNotes }) {
                 value={fact.value}
                 onOpen={() => onOpenNotes?.(String(fact.value || '').trim())}
               />
+            ) : fact.kind === 'image' ? (
+              <ImageFactValue label={fact.label} value={fact.value} />
             ) : (
               formatFact(fact)
             )}

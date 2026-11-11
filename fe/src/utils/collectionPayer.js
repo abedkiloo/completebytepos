@@ -60,13 +60,18 @@ export function validateCollectionPayerFields({
     dest = '';
   }
 
-  if (requirePayer) {
+  // Cash is face-to-face — who-paid / phone only for non-cash methods.
+  const effectiveRequirePayer = Boolean(requirePayer) && method !== 'cash';
+
+  if (effectiveRequirePayer) {
     if (!name) errors.payer_name = 'Enter the name of who paid.';
     if (!phone) {
       errors.payer_phone = 'Enter the phone number of who paid.';
     } else if (phone.replace(/\D+/g, '').length < 9) {
       errors.payer_phone = 'Enter a valid phone number (at least 9 digits).';
     }
+  } else if (phone && phone.replace(/\D+/g, '').length < 9) {
+    errors.payer_phone = 'Enter a valid phone number (at least 9 digits).';
   }
 
   if (requireMpesaDestinationForCode && method === 'mpesa' && ref && !dest) {
