@@ -104,8 +104,9 @@ class IdempotencyMiddleware(MiddlewareMixin):
             return response
         if request.method not in IDEMPOTENT_METHODS:
             return response
-        # Only cache completed responses (not 401 auth challenges).
-        if response.status_code == 401:
+        # Never cache auth challenges or server failures — a cached HTML/empty
+        # 500 would stick the mobile client on a dead retry (same Idempotency-Key).
+        if response.status_code == 401 or response.status_code >= 500:
             return response
 
         user = request.user if getattr(request.user, 'is_authenticated', False) else None

@@ -3,6 +3,7 @@
 from decimal import Decimal
 from unittest.mock import patch
 
+from django.db import OperationalError
 from rest_framework import status
 
 from agents.models import CustomerSite
@@ -43,6 +44,61 @@ class CustomerLocationPingTests(SuperAdminAPITestCase):
         self.assertEqual(site.latitude, customer.latitude)
         self.assertEqual(site.longitude, customer.longitude)
         self.assertEqual(site.status, CustomerSite.STATUS_FINALIZED)
+
+    @patch('messaging.customer_notify.dispatch_outbox')
+    @patch(
+        'agents.models.CustomerSite.objects.create',
+        side_effect=RuntimeError('site table unavailable'),
+    )
+    def test_create_still_succeeds_when_default_site_fails(self, _site, _dispatch):
+        response = self.client.post(
+            '/api/sales/customers/',
+            {
+                'gender': 'female',
+                'name': 'Site Fail Duka',
+                'phone': '0712555666',
+                'latitude': -1.29,
+                'longitude': 36.82,
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertTrue(
+            Customer.objects.filter(id=response.data['id'], name='Site Fail Duka').exists()
+        )
+        self.assertFalse(
+            CustomerSite.objects.filter(customer_id=response.data['id']).exists()
+        )
+
+    @patch('messaging.customer_notify.dispatch_outbox')
+    @patch(
+        'agents.models.CustomerSite.objects.create',
+        side_effect=OperationalError(
+            'relation agents_customersite does not exist'
+        ),
+    )
+    def test_create_survives_site_db_error_without_html_500(self, _site, _dispatch):
+        """
+        Site DB errors must not dirty the atomic block into an HTML 500.
+
+        The mobile app treats HTML/empty 500 bodies as the generic
+        "Could not save this duka" message.
+        """
+        response = self.client.post(
+            '/api/sales/customers/',
+            {
+                'name': 'Ops Error Duka',
+                'phone': '0712555777',
+                'latitude': -1.29,
+                'longitude': 36.82,
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertTrue(
+            Customer.objects.filter(id=response.data['id'], name='Ops Error Duka').exists()
+        )
+        self.assertNotIn('<html', str(response.content).lower())
 
     @patch('messaging.customer_notify.dispatch_outbox')
     def test_create_accepts_high_precision_gps_doubles(self, _dispatch):

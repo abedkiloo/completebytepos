@@ -214,6 +214,25 @@ class CollectionPayerAPITests(ManagerAPITestCase):
         self.assertEqual(txn.payer_phone, '')
 
     @patch(
+        'sales.debt_management.ensure_wallet_matches_unpaid_sales',
+        side_effect=RuntimeError('wallet sync blew up'),
+    )
+    def test_receive_wallet_payment_returns_json_on_unexpected_error(self, _sync):
+        """App showed 'Could not save this duka' when payment returned HTML 500."""
+        res = self.client.post(
+            f'/api/sales/customers/{self.customer.id}/receive-wallet-payment/',
+            {
+                'amount': '100.00',
+                'payment_method': 'cash',
+                'notes': 'Something happened with duka',
+            },
+            format='json',
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST, res.data)
+        self.assertNotIn('<html', str(res.content).lower())
+        self.assertIn('Failed to record payment', str(res.data.get('error', '')))
+
+    @patch(
         'sales.customer_module_settings.customers_collection_payer_details_enabled',
         return_value=True,
     )

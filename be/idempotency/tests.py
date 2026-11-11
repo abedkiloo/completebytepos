@@ -113,3 +113,14 @@ class IdempotencyMiddlewareTests(TestCase):
         response = mw.process_response(request, HttpResponse('ok'))
         self.assertEqual(response.content, b'ok')
         self.assertEqual(IdempotencyRecord.objects.count(), 0)
+
+    def test_server_errors_are_not_cached(self):
+        factory = RequestFactory()
+        request = factory.post('/api/x/')
+        request.user = self.user
+        request._idempotency_key = 'fail-1'  # noqa: SLF001
+        request._idempotency_hash = 'abc'  # noqa: SLF001
+        mw = IdempotencyMiddleware(lambda req: HttpResponse('boom', status=500))
+        response = mw.process_response(request, HttpResponse('boom', status=500))
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(IdempotencyRecord.objects.count(), 0)

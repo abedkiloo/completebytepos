@@ -1329,17 +1329,27 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             customer.save(update_fields=update_fields)
 
         # Keep delivery / field sales in sync with the registration map pin.
+        # Never let site failures escape this block: a DB error caught by the
+        # outer ``create()`` handler used to leave the atomic transaction dirty
+        # and Django then returned HTML 500 — the app showed only the generic
+        # "Could not save this duka" message.
         if customer.latitude is not None and customer.longitude is not None:
-            CustomerSite.objects.create(
-                customer=customer,
-                label=customer.name or 'Duka',
-                latitude=customer.latitude,
-                longitude=customer.longitude,
-                accuracy=customer.location_accuracy,
-                is_default=True,
-                status=CustomerSite.STATUS_FINALIZED,
-                created_by=customer.created_by,
-            )
+            try:
+                CustomerSite.objects.create(
+                    customer=customer,
+                    label=customer.name or 'Duka',
+                    latitude=customer.latitude,
+                    longitude=customer.longitude,
+                    accuracy=customer.location_accuracy,
+                    is_default=True,
+                    status=CustomerSite.STATUS_FINALIZED,
+                    created_by=customer.created_by,
+                )
+            except Exception:
+                logger.exception(
+                    'Default CustomerSite was not created for customer %s',
+                    customer.pk,
+                )
 
         notify_customer_welcome(customer, user=self.request.user)
 
@@ -1348,7 +1358,12 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         """Create a customer with proper error handling"""
         from sales.customer_module_settings import customers_enable_create
 
-        if not customers_enable_create():
+        try:
+            create_enabled = customers_enable_create()
+        except Exception as e:
+            logger.error('Could not read customer create setting: %s', e, exc_info=True)
+            create_enabled = True
+        if not create_enabled:
             return self._feature_disabled_response('Creating customers')
         try:
             serializer = self.get_serializer(data=request.data)
@@ -1361,8 +1376,11 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             raise
         except Exception as e:
             logger.error(f"Error creating customer: {e}", exc_info=True)
+            # DB errors mark the atomic block dirty; without this, exiting the
+            # block raises TransactionManagementError → HTML 500 to the app.
+            transaction.set_rollback(True)
             return Response(
-                {'error': f'Failed to create customer: {str(e)}'},
+                {'error': f'Failed to create customer: {str(e) or e.__class__.__name__}'},
                 status=status.HTTP_400_BAD_REQUEST
             )
     
@@ -1385,8 +1403,9 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             raise
         except Exception as e:
             logger.error(f"Error updating customer: {e}", exc_info=True)
+            transaction.set_rollback(True)
             return Response(
-                {'error': f'Failed to update customer: {str(e)}'},
+                {'error': f'Failed to update customer: {str(e) or e.__class__.__name__}'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -1758,6 +1777,12 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         permission_classes=[IsAuthenticated, RequirePerm('debt_management', 'update')],
     )
     def receive_wallet_payment(self, request, pk=None):
+        """
+        Record a debt collection (or queue it for manager approval).
+
+        Always returns JSON — never HTML 500 from a dirty atomic block — so the
+        mobile app can show the real error instead of a generic fallback.
+        """
         from sales.customer_module_settings import (
             customers_enable_wallet_payment,
             customers_show_wallet_balance,
@@ -1767,106 +1792,125 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             return self._feature_disabled_response('Wallet balance')
         if not customers_enable_wallet_payment():
             return self._feature_disabled_response('Recording wallet payments')
-        customer = self.get_object()
-        serializer = ReceiveWalletPaymentSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
-        from approvals.permissions import user_can_check
-        from approvals.registry import ACTION_DEBT_COLLECTION
-        from approvals.serializers import PendingChangeSerializer
-        from sales.debt_collection_approval import queue_debt_collection
-        from sales.debt_management import ensure_wallet_matches_unpaid_sales
-        from sales.debt_receipt_photo import save_pending_debt_receipt_photo
 
-        # Underpaid POS sales must sit on the wallet before a settlement credit.
-        ensure_wallet_matches_unpaid_sales(customer, user=request.user)
-        customer.refresh_from_db()
+        def _validation_response(exc):
+            transaction.set_rollback(True)
+            payload = getattr(exc, 'message_dict', None) or {
+                'error': validation_error_message(exc)
+            }
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
-        receipt_image = data.get('receipt_image')
-        occurred_at = data.get('occurred_at')
+        try:
+            customer = self.get_object()
+            serializer = ReceiveWalletPaymentSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            data = serializer.validated_data
+            from approvals.permissions import user_can_check
+            from approvals.registry import ACTION_DEBT_COLLECTION
+            from approvals.serializers import PendingChangeSerializer
+            from sales.debt_collection_approval import queue_debt_collection
+            from sales.debt_management import ensure_wallet_matches_unpaid_sales
+            from sales.debt_receipt_photo import save_pending_debt_receipt_photo
 
-        if not user_can_check(request.user, ACTION_DEBT_COLLECTION):
-            receipt_path = ''
-            if receipt_image is not None:
+            # Underpaid POS sales must sit on the wallet before a settlement credit.
+            ensure_wallet_matches_unpaid_sales(customer, user=request.user)
+            customer.refresh_from_db()
+
+            receipt_image = data.get('receipt_image')
+            occurred_at = data.get('occurred_at')
+
+            if not user_can_check(request.user, ACTION_DEBT_COLLECTION):
+                receipt_path = ''
+                if receipt_image is not None:
+                    try:
+                        receipt_path = save_pending_debt_receipt_photo(receipt_image)
+                    except ValidationError as exc:
+                        return _validation_response(exc)
                 try:
-                    receipt_path = save_pending_debt_receipt_photo(receipt_image)
+                    pending = queue_debt_collection(
+                        request,
+                        customer,
+                        amount=data['amount'],
+                        payment_method=data['payment_method'],
+                        reference=data.get('reference', ''),
+                        notes=data.get('notes', ''),
+                        payer_name=data.get('payer_name', ''),
+                        payer_phone=data.get('payer_phone', ''),
+                        mpesa_destination=data.get('mpesa_destination', ''),
+                        occurred_at=occurred_at,
+                        receipt_image_path=receipt_path,
+                    )
                 except ValidationError as exc:
-                    payload = getattr(exc, 'message_dict', None) or {
-                        'error': validation_error_message(exc)
-                    }
-                    return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+                    return _validation_response(exc)
+                return Response(
+                    {
+                        'message': (
+                            'Debt collection submitted for manager approval — '
+                            'the customer wallet stays unchanged until it is approved.'
+                        ),
+                        'pending_change': PendingChangeSerializer(pending).data,
+                        'wallet_balance': str(customer.wallet_balance),
+                    },
+                    status=status.HTTP_202_ACCEPTED,
+                )
+
+            service = CustomerService()
             try:
-                pending = queue_debt_collection(
-                    request,
-                    customer,
+                txn = service.record_wallet_payment(
+                    customer=customer,
                     amount=data['amount'],
                     payment_method=data['payment_method'],
                     reference=data.get('reference', ''),
                     notes=data.get('notes', ''),
+                    user=request.user if request.user.is_authenticated else None,
                     payer_name=data.get('payer_name', ''),
                     payer_phone=data.get('payer_phone', ''),
                     mpesa_destination=data.get('mpesa_destination', ''),
                     occurred_at=occurred_at,
-                    receipt_image_path=receipt_path,
+                    receipt_image=receipt_image,
                 )
             except ValidationError as exc:
-                payload = getattr(exc, 'message_dict', None) or {
-                    'error': validation_error_message(exc)
-                }
-                return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+                return _validation_response(exc)
+            customer.refresh_from_db()
+            try:
+                from utils.audit_events import log_debt_settlement_posted
+
+                log_debt_settlement_posted(
+                    request,
+                    customer=customer,
+                    txn=txn,
+                    amount=data['amount'],
+                    payment_method=data['payment_method'],
+                    reference=data.get('reference', ''),
+                    via='direct',
+                )
+            except Exception:
+                pass
             return Response(
                 {
-                    'message': (
-                        'Debt collection submitted for manager approval — '
-                        'the customer wallet stays unchanged until it is approved.'
-                    ),
-                    'pending_change': PendingChangeSerializer(pending).data,
+                    'transaction': CustomerWalletTransactionSerializer(
+                        txn, context={'request': request}
+                    ).data,
                     'wallet_balance': str(customer.wallet_balance),
                 },
-                status=status.HTTP_202_ACCEPTED,
+                status=status.HTTP_201_CREATED,
             )
-
-        service = CustomerService()
-        try:
-            txn = service.record_wallet_payment(
-                customer=customer,
-                amount=data['amount'],
-                payment_method=data['payment_method'],
-                reference=data.get('reference', ''),
-                notes=data.get('notes', ''),
-                user=request.user if request.user.is_authenticated else None,
-                payer_name=data.get('payer_name', ''),
-                payer_phone=data.get('payer_phone', ''),
-                mpesa_destination=data.get('mpesa_destination', ''),
-                occurred_at=occurred_at,
-                receipt_image=receipt_image,
-            )
+        except serializers.ValidationError:
+            raise
         except ValidationError as exc:
-            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        customer.refresh_from_db()
-        try:
-            from utils.audit_events import log_debt_settlement_posted
-
-            log_debt_settlement_posted(
-                request,
-                customer=customer,
-                txn=txn,
-                amount=data['amount'],
-                payment_method=data['payment_method'],
-                reference=data.get('reference', ''),
-                via='direct',
+            return _validation_response(exc)
+        except Exception as e:
+            logger.error('Error recording wallet payment: %s', e, exc_info=True)
+            transaction.set_rollback(True)
+            return Response(
+                {
+                    'error': (
+                        f'Failed to record payment: '
+                        f'{str(e) or e.__class__.__name__}'
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
             )
-        except Exception:
-            pass
-        return Response(
-            {
-                'transaction': CustomerWalletTransactionSerializer(
-                    txn, context={'request': request}
-                ).data,
-                'wallet_balance': str(customer.wallet_balance),
-            },
-            status=status.HTTP_201_CREATED,
-        )
 
     @transaction.atomic
     @action(
