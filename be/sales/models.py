@@ -239,8 +239,15 @@ class Sale(models.Model):
     PAYMENT_METHODS = [
         ('cash', 'Cash'),
         ('mpesa', 'M-PESA'),
+        ('on_account', 'Pay later'),
         ('card', 'Card'),
         ('other', 'Other'),
+    ]
+
+    MPESA_DESTINATION_CHOICES = [
+        ('', '—'),
+        ('till', 'Till'),
+        ('bank', 'Bank'),
     ]
 
     sale_number = models.CharField(max_length=50, unique=True, editable=False, db_index=True)
@@ -306,6 +313,19 @@ class Sale(models.Model):
         max_length=100,
         blank=True,
         help_text='M-Pesa confirmation code for non-cash collection',
+    )
+    mpesa_destination = models.CharField(
+        max_length=16,
+        choices=MPESA_DESTINATION_CHOICES,
+        blank=True,
+        default='',
+        help_text='Till or bank when collecting M-Pesa at the sale.',
+    )
+    payment_receipt_image = models.ImageField(
+        upload_to='sale_payment_receipts/',
+        blank=True,
+        null=True,
+        help_text='Screenshot of the M-Pesa / bank payment confirmation at checkout.',
     )
     amount_paid = models.DecimalField(
         max_digits=10, 

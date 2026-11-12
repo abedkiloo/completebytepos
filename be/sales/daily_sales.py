@@ -13,6 +13,8 @@ from django.utils import timezone
 
 from sales.debt_management import list_debt_collections
 from sales.models import CustomerWalletTransaction, Sale
+from sales.sale_payment_method import sale_payment_method_label
+from sales.sale_payment_receipt import sale_payment_receipt_url
 
 _MONEY = DecimalField(max_digits=14, decimal_places=2)
 
@@ -149,6 +151,14 @@ def serialize_daily_order(sale: Sale) -> Dict[str, Any]:
         'debt_amount': str(debt_amount.quantize(Decimal('0.01'))),
         'payment_status': 'needs_correction' if needs_correction else payment_status,
         'payment_method': sale.payment_method,
+        'payment_method_label': sale_payment_method_label(
+            sale.payment_method,
+            amount_paid=sale.amount_paid,
+            total=sale.total,
+            mpesa_destination=getattr(sale, 'mpesa_destination', '') or '',
+        ),
+        'mpesa_destination': getattr(sale, 'mpesa_destination', '') or '',
+        'payment_receipt_image_url': sale_payment_receipt_url(sale),
         'payment_reference': sale.payment_reference or '',
         'item_count': _daily_item_count(sale),
         'refund_status': sale.refund_status,

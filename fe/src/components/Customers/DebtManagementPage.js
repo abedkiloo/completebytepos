@@ -43,6 +43,7 @@ import { customerDetailPath } from '../../utils/customerDetail';
 import ReceiveWalletPaymentDialog from './ReceiveWalletPaymentDialog';
 import CorrectCollectionAmountDialog from './CorrectCollectionAmountDialog';
 import DebtReminderDialog from './DebtReminderDialog';
+import PaymentDetailDialog from './PaymentDetailDialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
@@ -98,6 +99,25 @@ export default function DebtManagementPage() {
 
   const [summary, setSummary] = useState(emptyDebtSummary());
   const [correctingCollection, setCorrectingCollection] = useState(null);
+  const [selectedPayment, setSelectedPayment] = useState(null);
+  const [paymentDetailOpen, setPaymentDetailOpen] = useState(false);
+  const [paymentDetailLoading, setPaymentDetailLoading] = useState(false);
+
+  const openPayment = async (row) => {
+    if (!row?.id) return;
+    const seed = { ...row, kind: 'debt_settlement' };
+    setSelectedPayment(seed);
+    setPaymentDetailOpen(true);
+    setPaymentDetailLoading(true);
+    try {
+      const res = await customersAPI.walletSettlementDetail(row.id);
+      setSelectedPayment(res.data);
+    } catch {
+      /* list row is enough */
+    } finally {
+      setPaymentDetailLoading(false);
+    }
+  };
   const [debtors, setDebtors] = useState([]);
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -415,8 +435,16 @@ export default function DebtManagementPage() {
                     const stillOwes = !Number.isNaN(remaining) && remaining < 0;
                     const method = settlementMethodLabel(row);
                     return (
-                      <DataTableRow key={row.id}>
-                        <DataTableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                      <DataTableRow
+                        key={row.id}
+                        className="cursor-pointer"
+                        onClick={() => openPayment(row)}
+                        data-testid={`debt-collection-row-${row.id}`}
+                      >
+                        <DataTableCell
+                          className="whitespace-nowrap text-sm text-muted-foreground"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <div>
                             {row.occurred_at || row.created_at
                               ? formatDateTime(row.occurred_at || row.created_at)
@@ -438,6 +466,7 @@ export default function DebtManagementPage() {
                           <Link
                             to={customerDetailPath(row.customer_id, { tab: 'ledger' })}
                             className="font-medium hover:underline"
+                            onClick={(e) => e.stopPropagation()}
                           >
                             {row.customer_name || 'Customer'}
                           </Link>
@@ -474,7 +503,7 @@ export default function DebtManagementPage() {
                           {row.notes || '—'}
                         </DataTableCell>
                         {canCorrectCollection ? (
-                          <DataTableCell>
+                          <DataTableCell onClick={(e) => e.stopPropagation()}>
                             <Button
                               type="button"
                               variant="ghost"
@@ -653,6 +682,20 @@ export default function DebtManagementPage() {
         onSaved={() => {
           setCorrectingCollection(null);
           refreshAll();
+        }}
+      />
+      <PaymentDetailDialog
+        payment={selectedPayment}
+        open={paymentDetailOpen}
+        loading={paymentDetailLoading}
+        canCorrect={canCorrectCollection}
+        onCorrect={() => {
+          if (selectedPayment) setCorrectingCollection(selectedPayment);
+          setPaymentDetailOpen(false);
+        }}
+        onOpenChange={(open) => {
+          setPaymentDetailOpen(open);
+          if (!open) setSelectedPayment(null);
         }}
       />
       {canSendReminders ? (

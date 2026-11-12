@@ -497,6 +497,9 @@ export const customersAPI = {
           headers: { 'Content-Type': 'multipart/form-data' },
         })
       : api.post(`/sales/customers/${id}/receive-wallet-payment/`, data),
+  /** Full debt-collection payment detail (proof, payer, till/bank, allocations). */
+  walletSettlementDetail: (txnId) =>
+    api.get(`/sales/customers/wallet-settlements/${txnId}/`),
   /** Admin-only: correct cash collected on a posted debt settlement. */
   correctWalletSettlementAmount: (txnId, data) =>
     api.patch(`/sales/customers/wallet-settlements/${txnId}/amount/`, data),

@@ -425,6 +425,10 @@ export default function POSPage() {
             setReceivedAmount={state.setReceivedAmount}
             paymentReference={state.paymentReference}
             setPaymentReference={state.setPaymentReference}
+            mpesaDestination={state.mpesaDestination}
+            setMpesaDestination={state.setMpesaDestination}
+            paymentReceiptFile={state.paymentReceiptFile}
+            setPaymentReceiptFile={state.setPaymentReceiptFile}
             customerPhone={state.selectedCustomer?.phone || ''}
             customerId={
               isRegisteredPosCustomer(state.selectedCustomer)

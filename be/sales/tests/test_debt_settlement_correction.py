@@ -75,6 +75,32 @@ class DebtSettlementCorrectionTests(SuperAdminAPITestCase):
         self.customer.refresh_from_db()
         self.sale.refresh_from_db()
 
+    def test_wallet_settlement_detail_api(self):
+        self.txn.payer_name = 'Payor'
+        self.txn.payer_phone = '0700123456'
+        self.txn.mpesa_destination = 'till'
+        self.txn.payment_method = 'mpesa'
+        self.txn.reference = 'QHX7K2L9M1'
+        self.txn.save(
+            update_fields=[
+                'payer_name',
+                'payer_phone',
+                'mpesa_destination',
+                'payment_method',
+                'reference',
+            ]
+        )
+        res = self.client.get(
+            f'/api/sales/customers/wallet-settlements/{self.txn.id}/',
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['kind'], 'debt_settlement')
+        self.assertEqual(res.data['id'], self.txn.id)
+        self.assertEqual(res.data['payer_name'], 'Payor')
+        self.assertEqual(res.data['mpesa_destination'], 'till')
+        self.assertEqual(res.data['reference'], 'QHX7K2L9M1')
+        self.assertIn('paid_towards', res.data)
+
     def test_service_corrects_amount_and_reallocates(self):
         self.assertEqual(self.customer.wallet_balance, Decimal('0.00'))
         self.assertEqual(self.sale.amount_paid, Decimal('100.00'))

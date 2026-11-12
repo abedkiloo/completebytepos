@@ -202,8 +202,14 @@ except ImportError:
     pass
 
 MEDIA_URL = env_str('MEDIA_URL', '/media/')
-# Avoid Docker /app paths during manage.py test (local .env often sets MEDIA_ROOT=/app/media).
-if 'test' in sys.argv:
+# Avoid Docker /app paths during manage.py test / pytest (local .env often sets MEDIA_ROOT=/app/media).
+_argv0 = Path(sys.argv[0]).name if sys.argv else ''
+_running_tests = (
+    'test' in sys.argv
+    or 'pytest' in _argv0
+    or any('pytest' in (a or '') for a in sys.argv)
+)
+if _running_tests:
     MEDIA_ROOT = BASE_DIR / 'test_media'
 else:
     MEDIA_ROOT = env_path('MEDIA_ROOT', BASE_DIR / 'media')

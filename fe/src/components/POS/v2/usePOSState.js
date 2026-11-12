@@ -146,6 +146,8 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
   const [paymentOnAccount, setPaymentOnAccount] = useState(false);
   const [paymentOnAccountCustomerPrompt, setPaymentOnAccountCustomerPrompt] = useState(false);
   const [paymentReference, setPaymentReference] = useState('');
+  const [mpesaDestination, setMpesaDestination] = useState('');
+  const [paymentReceiptFile, setPaymentReceiptFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);     // double-submit guard
 
   const attemptSetPaymentOnAccount = useCallback((checked) => {
@@ -877,6 +879,8 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
     setPaymentOnAccount(false);
     setPaymentOnAccountCustomerPrompt(false);
     setPaymentReference('');
+    setMpesaDestination('');
+    setPaymentReceiptFile(null);
     setDiscount(0);
     setTaxPct(0);
     setDeliveryEnabled(false);
@@ -891,7 +895,14 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
   }, [cartDraftKey]);
 
   const buildSalePayload = useCallback(
-    ({ confirmedReceived, allowPartial, excessChoice, paymentReference: refOverride } = {}) => {
+    ({
+      confirmedReceived,
+      allowPartial,
+      excessChoice,
+      paymentReference: refOverride,
+      mpesaDestination: destOverride,
+      paymentReceiptFile: receiptOverride,
+    } = {}) => {
       const received =
         confirmedReceived !== undefined
           ? confirmedReceived
@@ -907,6 +918,15 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
       };
 
       const reference = String(refOverride ?? paymentReference ?? '').trim();
+      const amountPaid = isTendered
+        ? formatAmountPaid(received)
+        : formatAmountPaid(total);
+      const payLater = !!allowPartial && amountPaid <= 0;
+      const method = payLater ? 'on_account' : paymentMethod;
+      const dest =
+        method === 'mpesa' && amountPaid > 0
+          ? String(destOverride ?? mpesaDestination ?? '').trim().toLowerCase()
+          : '';
 
       return {
         items: cart.map((item) => ({
@@ -920,11 +940,13 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
         delivery_method: deliveryEnabled ? deliveryMethod : 'pickup',
         delivery_cost: parseFloat((deliveryEnabled ? deliveryCost : 0).toFixed(2)),
         shipping_address: deliveryEnabled && shippingAddress ? shippingAddress : null,
-        payment_method: paymentMethod,
-        payment_reference: paymentReferenceRequired(paymentMethod) ? reference : '',
-        amount_paid: isTendered
-          ? formatAmountPaid(received)
-          : formatAmountPaid(total),
+        payment_method: method,
+        payment_reference:
+          method === 'mpesa' && amountPaid > 0 && paymentReferenceRequired('mpesa')
+            ? reference
+            : '',
+        mpesa_destination: dest,
+        amount_paid: amountPaid,
         customer_id:
           selectedCustomer?.id && selectedCustomer.id !== 'walk-in'
             ? selectedCustomer.id
@@ -933,6 +955,10 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
         client_channel: 'web',
         allow_partial_payment: !!allowPartial,
         excess_payment_choice: excessChoice || 'change',
+        payment_receipt_file:
+          method === 'mpesa' && amountPaid > 0
+            ? (receiptOverride ?? paymentReceiptFile)
+            : null,
       };
     },
     [
@@ -945,6 +971,8 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
       shippingAddress,
       paymentMethod,
       paymentReference,
+      mpesaDestination,
+      paymentReceiptFile,
       receivedAmount,
       selectedCustomer,
       total,
@@ -962,7 +990,19 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
           allowPartial,
           excessChoice,
           paymentReference: pendingSaleData?.paymentReference,
+          mpesaDestination: pendingSaleData?.mpesaDestination,
+          paymentReceiptFile: pendingSaleData?.paymentReceiptFile,
         });
+        const toCheckoutBody = (base) => {
+          if (!payload.payment_receipt_file) return base;
+          const body = new FormData();
+          Object.entries(base).forEach(([key, value]) => {
+            if (value === undefined || value === null) return;
+            body.append(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
+          });
+          body.append('payment_receipt_image', payload.payment_receipt_file);
+          return body;
+        };
         let res;
         if (holdingId) {
           let customerId = customerIdForSale(selectedCustomer);
@@ -988,17 +1028,37 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
             holdingPayload.amount_paid = payload.amount_paid;
           }
           await salesAPI.saveHolding(holdingPayload);
-          res = await salesAPI.checkout(holdingId, {
-            payment_method: payload.payment_method,
-            payment_reference: payload.payment_reference,
-            amount_paid: payload.amount_paid,
-            allow_partial_payment: payload.allow_partial_payment,
-            excess_payment_choice: payload.excess_payment_choice,
-            client_channel: 'web',
-            confirm_unchanged: Boolean(pendingSaleData?.unchangedCorrection),
-          });
+          res = await salesAPI.checkout(
+            holdingId,
+            toCheckoutBody({
+              payment_method: payload.payment_method,
+              payment_reference: payload.payment_reference,
+              mpesa_destination: payload.mpesa_destination || '',
+              amount_paid: payload.amount_paid,
+              allow_partial_payment: payload.allow_partial_payment,
+              excess_payment_choice: payload.excess_payment_choice,
+              client_channel: 'web',
+              confirm_unchanged: Boolean(pendingSaleData?.unchangedCorrection),
+            }),
+          );
         } else {
-          res = await salesAPI.create(payload);
+          const { payment_receipt_file: receiptFile, ...jsonPayload } = payload;
+          if (receiptFile) {
+            const body = new FormData();
+            body.append('items', JSON.stringify(jsonPayload.items));
+            Object.entries(jsonPayload).forEach(([key, value]) => {
+              if (key === 'items' || value === undefined || value === null) return;
+              if (typeof value === 'object') {
+                body.append(key, JSON.stringify(value));
+              } else {
+                body.append(key, String(value));
+              }
+            });
+            body.append('payment_receipt_image', receiptFile);
+            res = await salesAPI.create(body);
+          } else {
+            res = await salesAPI.create(jsonPayload);
+          }
         }
         const backendTotal = parseFloat(res.data.total) || 0;
         const received =
@@ -1096,6 +1156,21 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
     if (overrides.paymentReference != null) {
       setPaymentReference(paymentRef);
     }
+    const dest = String(
+      overrides.mpesaDestination ?? mpesaDestination ?? '',
+    )
+      .trim()
+      .toLowerCase();
+    if (overrides.mpesaDestination != null) {
+      setMpesaDestination(dest);
+    }
+    const receipt =
+      overrides.paymentReceiptFile !== undefined
+        ? overrides.paymentReceiptFile
+        : paymentReceiptFile;
+    if (overrides.paymentReceiptFile !== undefined) {
+      setPaymentReceiptFile(receipt);
+    }
 
     if (paymentMethod === 'mpesa') {
       const receivedCheck = evaluatePosAmountReceived(receivedAmount, {
@@ -1104,6 +1179,14 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
         paymentOnAccount,
       });
       if (mpesaCollectingNow(paymentMethod, receivedCheck)) {
+        if (!dest) {
+          toast.warning('Choose till or bank before entering the M-Pesa code.');
+          return;
+        }
+        if (!receipt) {
+          toast.warning('Attach a screenshot of the M-Pesa payment (till or bank).');
+          return;
+        }
         const codeError = mpesaReceiptMessage(paymentRef);
         if (codeError) {
           toast.warning(codeError);
@@ -1151,6 +1234,8 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
           received,
           balance: total - received,
           paymentReference: paymentRef,
+          mpesaDestination: dest,
+          paymentReceiptFile: receipt,
         });
         setShowPartialPaymentConfirm(true);
         return;
@@ -1163,6 +1248,8 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
             received,
             excess: received - total,
             paymentReference: paymentRef,
+            mpesaDestination: dest,
+            paymentReceiptFile: receipt,
           });
           setShowExcessPaymentConfirm(true);
           return;
@@ -1174,11 +1261,11 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
           ? selectedCustomer.name
           : null;
       const itemCount = cart.reduce((n, i) => n + (Number(i.quantity) || 0), 0);
-      setPendingSaleData(
-        buildSaleCommitSummary({
+      setPendingSaleData({
+        ...buildSaleCommitSummary({
           total,
           received,
-          paymentMethod,
+          paymentMethod: received <= 0 && paymentOnAccount ? 'on_account' : paymentMethod,
           itemCount,
           customerName,
           paymentReference: paymentRef,
@@ -1192,8 +1279,10 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
               paymentMethod,
             }),
           ),
-        })
-      );
+        }),
+        mpesaDestination: dest,
+        paymentReceiptFile: receipt,
+      });
       setShowSaleCommitConfirm(true);
       return;
     }
@@ -1233,6 +1322,8 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
     hasOversell,
     paymentMethod,
     paymentReference,
+    mpesaDestination,
+    paymentReceiptFile,
     receivedAmount,
     total,
     selectedCustomer,
@@ -1242,6 +1333,7 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
     paymentOnAccount,
     allowExcessToWallet,
     sendForApproval,
+    buildSalePayload,
   ]);
 
   return {
@@ -1304,6 +1396,8 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
     paymentOnAccountCustomerPrompt,
     setPaymentOnAccountCustomerPrompt,
     paymentReference, setPaymentReference,
+    mpesaDestination, setMpesaDestination,
+    paymentReceiptFile, setPaymentReceiptFile,
     submitting,
     requestPayment,
     submitSale,

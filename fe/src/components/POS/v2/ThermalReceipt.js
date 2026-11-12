@@ -64,7 +64,7 @@ export const ThermalReceipt = forwardRef(function ThermalReceipt(
   const isPaymentMpesa = sale.payment_method === 'mpesa';
   const isPaymentCash = sale.payment_method === 'cash';
   const isPaymentWallet = sale.payment_method === 'wallet';
-  const paymentLabel = friendlyPaymentLabel(sale.payment_method);
+  const paymentLabel = friendlyPaymentLabel(sale);
 
   return (
     <article
@@ -275,10 +275,24 @@ function SingleRule() {
   return <div className="receipt-thermal__rule" aria-hidden="true" />;
 }
 
-function friendlyPaymentLabel(method) {
-  switch (method) {
+function friendlyPaymentLabel(saleOrMethod) {
+  if (saleOrMethod && typeof saleOrMethod === 'object') {
+    const method = String(saleOrMethod.payment_method || '').toLowerCase();
+    const paid = Number(saleOrMethod.amount_paid || 0);
+    const total = Number(saleOrMethod.total || 0);
+    if (method === 'on_account' || (paid <= 0 && total > 0)) return 'Pay later';
+    if (method === 'mpesa') {
+      const dest = String(saleOrMethod.mpesa_destination || '').toLowerCase();
+      if (dest === 'till') return 'M-Pesa · Till';
+      if (dest === 'bank') return 'M-Pesa · Bank';
+      return 'M-Pesa';
+    }
+    return friendlyPaymentLabel(method);
+  }
+  switch (saleOrMethod) {
     case 'cash': return 'Cash';
     case 'mpesa': return 'M-Pesa';
+    case 'on_account': return 'Pay later';
     case 'wallet': return 'Wallet';
     case 'card': return 'Card';
     case 'bank_transfer': return 'Bank Transfer';

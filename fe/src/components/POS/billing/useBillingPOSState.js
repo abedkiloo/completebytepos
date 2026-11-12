@@ -93,8 +93,18 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
   const [taxPct, setTaxPct] = useState(0);
   const [discount, setDiscount] = useState(0);
   const [discountType, setDiscountType] = useState('flat'); // flat | percentage
-  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [paymentMethod, setPaymentMethodState] = useState('cash');
   const [paymentReference, setPaymentReference] = useState('');
+  const [mpesaDestination, setMpesaDestination] = useState('');
+  const [paymentReceiptFile, setPaymentReceiptFile] = useState(null);
+
+  const setPaymentMethod = useCallback((method) => {
+    setPaymentMethodState(method);
+    if (method !== 'mpesa') {
+      setMpesaDestination('');
+      setPaymentReceiptFile(null);
+    }
+  }, []);
   const [partialPayment, setPartialPayment] = useState(false);
   const [partialPaymentCustomerPrompt, setPartialPaymentCustomerPrompt] = useState(false);
   const [amountPaid, setAmountPaid] = useState('');
@@ -700,8 +710,32 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
       hasRegisteredCustomer: isRegisteredPosCustomer(selectedCustomer),
       total,
     });
+    const dest = String(
+      overrides.mpesaDestination ?? mpesaDestination ?? '',
+    )
+      .trim()
+      .toLowerCase();
+    if (overrides.mpesaDestination != null) {
+      setMpesaDestination(dest);
+    }
+    const receipt =
+      overrides.paymentReceiptFile !== undefined
+        ? overrides.paymentReceiptFile
+        : paymentReceiptFile;
+    if (overrides.paymentReceiptFile !== undefined) {
+      setPaymentReceiptFile(receipt);
+    }
+
     if (paymentMethod === 'mpesa') {
       if (mpesaCollectingNow(paymentMethod, paidCheck)) {
+        if (!dest) {
+          toast.warning('Choose till or bank before entering the M-Pesa code.');
+          return;
+        }
+        if (!receipt) {
+          toast.warning('Attach a screenshot of the M-Pesa payment (till or bank).');
+          return;
+        }
         const codeError = mpesaReceiptMessage(paymentRef);
         if (codeError) {
           toast.warning(codeError);
@@ -753,19 +787,24 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
         paymentMethod,
       }),
     );
+    const payLater = !!partialPayment && amountPaidValue <= 0;
+    const storedMethod = payLater ? 'on_account' : paymentMethod;
     setPendingCheckout({
       holdingId: id,
       paid: amountPaidValue,
-      paymentMethod,
-      paymentReference: paymentMethod === 'mpesa' || paymentReferenceRequired(paymentMethod)
-        ? paymentRef
-        : '',
+      paymentMethod: storedMethod,
+      paymentReference:
+        storedMethod === 'mpesa' || paymentReferenceRequired(paymentMethod)
+          ? paymentRef
+          : '',
+      mpesaDestination: storedMethod === 'mpesa' && amountPaidValue > 0 ? dest : '',
+      paymentReceiptFile: storedMethod === 'mpesa' && amountPaidValue > 0 ? receipt : null,
       partialPayment,
       confirmUnchanged: unchangedCorrection,
       summary: buildSaleCommitSummary({
         total,
         received: amountPaidValue,
-        paymentMethod,
+        paymentMethod: storedMethod,
         itemCount,
         customerName,
         paymentReference: paymentRef,
@@ -780,6 +819,8 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
     buildHoldingPayload,
     amountPaid,
     paymentReference,
+    mpesaDestination,
+    paymentReceiptFile,
     paymentMethod,
     partialPayment,
     allowPartialPayment,
@@ -797,6 +838,8 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
       paid,
       paymentMethod: method,
       paymentReference: reference,
+      mpesaDestination: dest,
+      paymentReceiptFile: receipt,
       partialPayment: allowPartial,
       confirmUnchanged,
     } = pendingCheckout;
@@ -804,15 +847,26 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
 
     setSubmitting(true);
     try {
-      const res = await salesAPI.checkout(id, {
+      const checkoutPayload = {
         payment_method: method,
-        payment_reference: reference,
+        payment_reference: reference || '',
+        mpesa_destination: dest || '',
         amount_paid: paid,
         allow_partial_payment: allowPartial,
         excess_payment_choice: 'change',
         client_channel: 'web',
         confirm_unchanged: Boolean(confirmUnchanged),
-      });
+      };
+      let body = checkoutPayload;
+      if (receipt) {
+        body = new FormData();
+        Object.entries(checkoutPayload).forEach(([key, value]) => {
+          if (value === undefined || value === null) return;
+          body.append(key, String(value));
+        });
+        body.append('payment_receipt_image', receipt);
+      }
+      const res = await salesAPI.checkout(id, body);
       const sale = {
         ...res.data,
         change: Math.max(0, paid - parseFloat(res.data.total)),
@@ -824,6 +878,8 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
       setHoldingNumber('');
       setAmountPaid('');
       setPaymentReference('');
+      setMpesaDestination('');
+      setPaymentReceiptFile(null);
       setDiscount(0);
       setTaxPct(0);
       setSelectedCustomer(WALK_IN_CUSTOMER);
@@ -898,6 +954,10 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
     setAmountPaid,
     paymentReference,
     setPaymentReference,
+    mpesaDestination,
+    setMpesaDestination,
+    paymentReceiptFile,
+    setPaymentReceiptFile,
     selectedCustomer,
     setSelectedCustomer,
     addCustomerAndSelect,

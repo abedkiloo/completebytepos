@@ -500,6 +500,58 @@ def _hydrate_page(page_index: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return results
 
 
+def get_wallet_settlement_detail(txn_id: int, *, user=None) -> Dict[str, Any]:
+    """
+    Load one posted debt settlement for the payment detail dialog.
+
+    Args:
+        txn_id: CustomerWalletTransaction primary key (1+).
+        user: Optional request user for debtor visibility scoping.
+
+    Returns:
+        Same shape as a payments-trail ``debt_settlement`` row, including
+        ``paid_towards`` allocations when present.
+
+    Raises:
+        CustomerWalletTransaction.DoesNotExist: Missing or not a settlement.
+        PermissionError: Caller cannot see this customer's settlements.
+    """
+    txn = (
+        CustomerWalletTransaction.objects.select_related(
+            'customer', 'created_by', 'sale',
+        )
+        .get(pk=txn_id)
+    )
+    if (txn.source_type or '') != 'debt_settlement':
+        raise CustomerWalletTransaction.DoesNotExist(
+            'Settlement not found.'
+        )
+    visible_ids = _visible_debtor_customer_ids(user)
+    if visible_ids is not None and txn.customer_id not in visible_ids:
+        raise PermissionError('You cannot view this settlement.')
+
+    targets: List[Dict[str, Any]] = []
+    for alloc in (
+        DebtSettlementAllocation.objects.filter(wallet_transaction_id=txn.id)
+        .select_related('sale')
+        .order_by('id')
+    ):
+        targets.append(
+            {
+                'type': 'sale',
+                'sale_id': alloc.sale_id,
+                'sale_number': alloc.sale.sale_number if alloc.sale_id else None,
+                'amount': str(_q(alloc.amount)),
+                'label': (
+                    f'Sale {alloc.sale.sale_number}'
+                    if alloc.sale_id and alloc.sale
+                    else 'Sale'
+                ),
+            }
+        )
+    return _serialize_settlement(txn, targets)
+
+
 def _serialize_settlement(txn: CustomerWalletTransaction, targets: List[Dict[str, Any]]) -> Dict[str, Any]:
     method = resolve_settlement_payment_method(txn)
     flow = debt_flow_for_txn(

@@ -33,6 +33,10 @@ import {
   normalizeMpesaReceipt,
   phoneMessage,
 } from '../../../utils/formValidation';
+import {
+  MPESA_DESTINATION_OPTIONS,
+  mpesaDestinationLabel,
+} from '../../../utils/collectionPayer';
 
 export function CheckoutPanel({
   // totals
@@ -61,6 +65,10 @@ export function CheckoutPanel({
   setReceivedAmount,
   paymentReference,
   setPaymentReference,
+  mpesaDestination = '',
+  setMpesaDestination,
+  paymentReceiptFile = null,
+  setPaymentReceiptFile,
   customerPhone = '',
   customerId = null,
   customerName = '',
@@ -127,14 +135,22 @@ export function CheckoutPanel({
     paymentOnAccount,
   });
   const collectNow = mpesaCollectingNow(paymentMethod, receivedCheck);
+  const collectingMpesaNow =
+    isMpesa && collectNow && !isLiveMpesaPrompt(mpesaMode);
+  const codeUnlocked =
+    !collectingMpesaNow || Boolean(String(mpesaDestination || '').trim());
   const needsReference = paymentReferenceRequired(paymentMethod) && !isMpesa;
   const referenceOk =
     isMpesa || !needsReference || String(paymentReference || '').trim().length > 0;
+  const destinationOk = !collectingMpesaNow || Boolean(String(mpesaDestination || '').trim());
+  const receiptOk = !collectingMpesaNow || Boolean(paymentReceiptFile);
   const canPay =
     !hasOversell &&
     itemCount > 0 &&
     total > 0 &&
     referenceOk &&
+    destinationOk &&
+    receiptOk &&
     (!isCashLike || receivedCheck.ok);
 
   const handlePay = () => {
@@ -146,9 +162,13 @@ export function CheckoutPanel({
     }
     if (isMpesa && collectNow) {
       setShowMpesaErrors(true);
+      if (!String(mpesaDestination || '').trim()) return;
+      if (!paymentReceiptFile) return;
       if (mpesaReceiptMessage(paymentReference)) return;
       onPay({
         paymentReference: normalizeMpesaReceipt(paymentReference),
+        mpesaDestination,
+        paymentReceiptFile,
       });
       return;
     }
@@ -297,17 +317,81 @@ export function CheckoutPanel({
       </div>
 
       {isMpesa ? (
-        <div className="px-3 pt-2">
-          <MpesaCapture
-            mode={mpesaMode}
-            onModeChange={setMpesaMode}
-            phone={mpesaPhone}
-            onPhoneChange={setMpesaPhone}
-            code={paymentReference}
-            onCodeChange={setPaymentReference}
-            disabled={submitting}
-            showErrors={showMpesaErrors}
-          />
+        <div className="space-y-3 px-3 pt-2">
+          {collectingMpesaNow ? (
+            <div className="space-y-2">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                Till or bank *
+              </Label>
+              <div className="grid grid-cols-2 gap-2">
+                {MPESA_DESTINATION_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    disabled={submitting || !setMpesaDestination}
+                    onClick={() => setMpesaDestination?.(opt.value)}
+                    className={
+                      mpesaDestination === opt.value
+                        ? 'rounded-md border border-primary bg-primary/10 px-2 py-2 text-xs font-medium text-primary'
+                        : 'rounded-md border border-border bg-background px-2 py-2 text-xs font-medium hover:bg-accent'
+                    }
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              {showMpesaErrors && !mpesaDestination ? (
+                <p className="text-xs text-destructive">
+                  Choose till or bank before entering the code.
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Choose till or bank first, then enter the M-Pesa code.
+                  {mpesaDestination
+                    ? ` Selected: ${mpesaDestinationLabel(mpesaDestination)}.`
+                    : ''}
+                </p>
+              )}
+            </div>
+          ) : null}
+          {codeUnlocked ? (
+            <MpesaCapture
+              mode={mpesaMode}
+              onModeChange={setMpesaMode}
+              phone={mpesaPhone}
+              onPhoneChange={setMpesaPhone}
+              code={paymentReference}
+              onCodeChange={setPaymentReference}
+              disabled={submitting}
+              showErrors={showMpesaErrors}
+            />
+          ) : null}
+          {collectingMpesaNow && codeUnlocked ? (
+            <div className="space-y-2">
+              <Label htmlFor="pos-payment-receipt" className="text-xs uppercase tracking-wide text-muted-foreground">
+                Payment screenshot *
+              </Label>
+              <Input
+                id="pos-payment-receipt"
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                disabled={submitting || !setPaymentReceiptFile}
+                onChange={(e) =>
+                  setPaymentReceiptFile?.(e.target.files?.[0] || null)
+                }
+                data-testid="pos-payment-receipt"
+              />
+              {showMpesaErrors && !paymentReceiptFile ? (
+                <p className="text-xs text-destructive">
+                  Attach a screenshot of the M-Pesa payment (till or bank).
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Required for till and bank payments — used when reviewing the sale later.
+                </p>
+              )}
+            </div>
+          ) : null}
         </div>
       ) : needsReference ? (
         <div className="px-3 pt-2">

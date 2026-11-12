@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Banknote, Calculator, FileSpreadsheet, Search } from 'lucide-react';
 
-import { customersAPI } from '../../services/api';
+import { customersAPI, salesAPI } from '../../services/api';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { toast } from '../../utils/toast';
 import { getStoredAuth, hasPermission } from '../../utils/roleAccess';
@@ -38,6 +38,8 @@ import {
 } from '../page';
 import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import ReceiptImageLink from '../Shared/ReceiptImageLink';
+import PaymentDetailDialog from './PaymentDetailDialog';
+import SaleDetailDialog from '../Sales/SaleDetailDialog';
 
 const KIND_OPTIONS = [
   { id: 'all', name: 'All payments' },
@@ -80,6 +82,42 @@ export default function PaymentsTrailPage() {
   const [rangeTotal, setRangeTotal] = useState(null);
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
+  const [selectedPayment, setSelectedPayment] = useState(null);
+  const [paymentDetailOpen, setPaymentDetailOpen] = useState(false);
+  const [paymentDetailLoading, setPaymentDetailLoading] = useState(false);
+  const [selectedSale, setSelectedSale] = useState(null);
+  const [saleDetailOpen, setSaleDetailOpen] = useState(false);
+
+  const openPayment = async (row) => {
+    if (!row?.id) return;
+    if (row.kind === 'sale_payment') {
+      try {
+        const res = await salesAPI.get(row.id);
+        setSelectedSale(res.data);
+        setSaleDetailOpen(true);
+      } catch (err) {
+        toast.error(err.response?.data?.error || 'Could not open sale detail');
+      }
+      return;
+    }
+    if (row.kind === 'debt_settlement') {
+      setSelectedPayment({ ...row, kind: 'debt_settlement' });
+      setPaymentDetailOpen(true);
+      setPaymentDetailLoading(true);
+      try {
+        const res = await customersAPI.walletSettlementDetail(row.id);
+        setSelectedPayment(res.data);
+      } catch {
+        /* list row is enough when refresh fails */
+      } finally {
+        setPaymentDetailLoading(false);
+      }
+      return;
+    }
+    setSelectedPayment(row);
+    setPaymentDetailOpen(true);
+    setPaymentDetailLoading(false);
+  };
 
   const trailFilterParams = useCallback(() => {
     const params = {
@@ -313,7 +351,12 @@ export default function PaymentsTrailPage() {
             </DataTableHeader>
             <DataTableBody>
               {rows.map((row) => (
-                <DataTableRow key={`${row.kind}-${row.id}`}>
+                <DataTableRow
+                  key={`${row.kind}-${row.id}`}
+                  className="cursor-pointer"
+                  onClick={() => openPayment(row)}
+                  data-testid={`payment-trail-row-${row.kind}-${row.id}`}
+                >
                   <DataTableCell className="whitespace-nowrap text-sm text-muted-foreground">
                     {row.occurred_at ? formatDateTime(row.occurred_at) : '—'}
                   </DataTableCell>
@@ -327,6 +370,7 @@ export default function PaymentsTrailPage() {
                       <Link
                         to={customerDetailPath(row.customer_id, { tab: 'ledger' })}
                         className="font-medium hover:underline"
+                        onClick={(e) => e.stopPropagation()}
                       >
                         {row.customer_name || 'Customer'}
                       </Link>
@@ -349,7 +393,7 @@ export default function PaymentsTrailPage() {
                   <DataTableCell className="font-mono text-sm">
                     {settlementReferenceLabel(row)}
                   </DataTableCell>
-                  <DataTableCell className="text-sm">
+                  <DataTableCell className="text-sm" onClick={(e) => e.stopPropagation()}>
                     {row.receipt_image_url ? (
                       <ReceiptImageLink
                         url={row.receipt_image_url}
@@ -388,6 +432,24 @@ export default function PaymentsTrailPage() {
           </DataTable>
         </ListPaginationRail>
       )}
+
+      <PaymentDetailDialog
+        payment={selectedPayment}
+        open={paymentDetailOpen}
+        loading={paymentDetailLoading}
+        onOpenChange={(open) => {
+          setPaymentDetailOpen(open);
+          if (!open) setSelectedPayment(null);
+        }}
+      />
+      <SaleDetailDialog
+        sale={selectedSale}
+        open={saleDetailOpen}
+        onOpenChange={(open) => {
+          setSaleDetailOpen(open);
+          if (!open) setSelectedSale(null);
+        }}
+      />
     </PageShell>
   );
 }

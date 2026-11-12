@@ -248,7 +248,10 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         """Create a sale with items and update inventory."""
-        serializer = SaleCreateSerializer(data=request.data)
+        serializer = SaleCreateSerializer(
+            data=request.data,
+            context={'request': request},
+        )
         serializer.is_valid(raise_exception=True)
 
         try:
@@ -264,7 +267,18 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             )
 
         sale = result['sale']
-        response_data = SaleSerializer(sale).data
+        receipt_file = request.FILES.get('payment_receipt_image')
+        if receipt_file:
+            from sales.sale_payment_receipt import attach_sale_payment_receipt
+
+            try:
+                attach_sale_payment_receipt(sale, receipt_file)
+            except ValidationError as e:
+                return Response(
+                    getattr(e, 'message_dict', {'error': validation_error_message(e)}),
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        response_data = SaleSerializer(sale, context={'request': request}).data
         invoice = result.get('invoice')
         if invoice:
             response_data['invoice'] = InvoiceSerializer(invoice).data
@@ -850,7 +864,10 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     def checkout(self, request, pk=None):
         """Complete a holding sale: stock, accounting, receipt."""
         holding = self.get_object()
-        serializer = CheckoutHoldingSerializer(data=request.data)
+        serializer = CheckoutHoldingSerializer(
+            data=request.data,
+            context={'request': request},
+        )
         serializer.is_valid(raise_exception=True)
 
         try:
@@ -868,6 +885,7 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 holding,
                 payment_method=serializer.validated_data['payment_method'],
                 payment_reference=serializer.validated_data.get('payment_reference', ''),
+                mpesa_destination=serializer.validated_data.get('mpesa_destination', ''),
                 amount_paid=Decimal(str(serializer.validated_data.get('amount_paid', 0))),
                 user=request.user,
                 branch=branch,
@@ -881,6 +899,11 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                     serializer.validated_data.get('confirm_unchanged')
                 ),
             )
+            receipt_file = request.FILES.get('payment_receipt_image')
+            if receipt_file:
+                from sales.sale_payment_receipt import attach_sale_payment_receipt
+
+                attach_sale_payment_receipt(sale, receipt_file)
         except ValidationError as e:
             return Response(
                 {'error': validation_error_message(e)},
@@ -1911,6 +1934,46 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+    @action(
+        detail=False,
+        methods=['get'],
+        url_path=r'wallet-settlements/(?P<txn_id>[0-9]+)',
+        permission_classes=[
+            IsAuthenticated,
+            RequirePerm('debt_management', 'view'),
+        ],
+    )
+    def wallet_settlement_detail(self, request, txn_id=None):
+        """
+        Full detail for one posted debt collection (proof, payer, till/bank).
+
+        Used by the payment detail dialog after a settlement is received.
+        """
+        from sales.customer_module_settings import customers_show_wallet_balance
+        from sales.models import CustomerWalletTransaction
+        from sales.payments_trail import get_wallet_settlement_detail
+
+        if not customers_show_wallet_balance():
+            return self._feature_disabled_response('Wallet balance')
+        try:
+            payload = get_wallet_settlement_detail(int(txn_id), user=request.user)
+        except CustomerWalletTransaction.DoesNotExist:
+            return Response(
+                {'error': 'Settlement not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except PermissionError:
+            return Response(
+                {'error': 'You cannot view this settlement.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        except (TypeError, ValueError):
+            return Response(
+                {'error': 'Invalid settlement id.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(payload)
 
     @transaction.atomic
     @action(

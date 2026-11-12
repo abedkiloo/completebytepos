@@ -50,6 +50,10 @@ import {
   normalizeMpesaReceipt,
   phoneMessage,
 } from '../../../utils/formValidation';
+import {
+  MPESA_DESTINATION_OPTIONS,
+  mpesaDestinationLabel,
+} from '../../../utils/collectionPayer';
 import MpesaCapture from '../../Payments/MpesaCapture';
 import StkWaitDialog from '../../Payments/StkWaitDialog';
 import {
@@ -112,6 +116,10 @@ export default function BillingPOSPage() {
     total: state.total,
   });
   const collectNow = mpesaCollectingNow(state.paymentMethod, paidCheck);
+  const collectingMpesaNow =
+    isMpesa && collectNow && !isLiveMpesaPrompt(mpesaMode);
+  const codeUnlocked =
+    !collectingMpesaNow || Boolean(String(state.mpesaDestination || '').trim());
 
   useEffect(() => {
     if (state.selectedCustomer?.phone) {
@@ -140,6 +148,14 @@ export default function BillingPOSPage() {
     }
     if (isMpesa && collectNow) {
       setShowMpesaErrors(true);
+      if (!String(state.mpesaDestination || '').trim()) {
+        toast.warning('Choose till or bank before entering the M-Pesa code.');
+        return;
+      }
+      if (!state.paymentReceiptFile) {
+        toast.warning('Attach a screenshot of the M-Pesa payment (till or bank).');
+        return;
+      }
       const codeError = mpesaReceiptMessage(state.paymentReference);
       if (codeError) {
         toast.warning(codeError);
@@ -147,6 +163,8 @@ export default function BillingPOSPage() {
       }
       state.checkout({
         paymentReference: normalizeMpesaReceipt(state.paymentReference),
+        mpesaDestination: state.mpesaDestination,
+        paymentReceiptFile: state.paymentReceiptFile,
       });
       return;
     }
@@ -697,17 +715,84 @@ export default function BillingPOSPage() {
                 </div>
 
                 {isMpesa ? (
-                  <div className="mt-3">
-                    <MpesaCapture
-                      mode={mpesaMode}
-                      onModeChange={setMpesaMode}
-                      phone={mpesaPhone}
-                      onPhoneChange={setMpesaPhone}
-                      code={state.paymentReference}
-                      onCodeChange={state.setPaymentReference}
-                      disabled={state.submitting}
-                      showErrors={showMpesaErrors}
-                    />
+                  <div className="mt-3 space-y-3">
+                    {collectingMpesaNow ? (
+                      <div className="space-y-2">
+                        <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                          Till or bank *
+                        </Label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {MPESA_DESTINATION_OPTIONS.map((opt) => (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              disabled={state.submitting}
+                              onClick={() => state.setMpesaDestination(opt.value)}
+                              className={
+                                state.mpesaDestination === opt.value
+                                  ? 'rounded-md border border-primary bg-primary/10 px-2 py-2 text-xs font-medium text-primary'
+                                  : 'rounded-md border border-border bg-background px-2 py-2 text-xs font-medium hover:bg-accent'
+                              }
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                        {showMpesaErrors && !state.mpesaDestination ? (
+                          <p className="text-xs text-destructive">
+                            Choose till or bank before entering the code.
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            Choose till or bank first, then enter the M-Pesa code.
+                            {state.mpesaDestination
+                              ? ` Selected: ${mpesaDestinationLabel(state.mpesaDestination)}.`
+                              : ''}
+                          </p>
+                        )}
+                      </div>
+                    ) : null}
+                    {codeUnlocked ? (
+                      <MpesaCapture
+                        mode={mpesaMode}
+                        onModeChange={setMpesaMode}
+                        phone={mpesaPhone}
+                        onPhoneChange={setMpesaPhone}
+                        code={state.paymentReference}
+                        onCodeChange={state.setPaymentReference}
+                        disabled={state.submitting}
+                        showErrors={showMpesaErrors}
+                      />
+                    ) : null}
+                    {collectingMpesaNow && codeUnlocked ? (
+                      <div className="space-y-2">
+                        <Label
+                          htmlFor="billing-payment-receipt"
+                          className="text-xs uppercase tracking-wide text-muted-foreground"
+                        >
+                          Payment screenshot *
+                        </Label>
+                        <Input
+                          id="billing-payment-receipt"
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,image/gif"
+                          disabled={state.submitting}
+                          onChange={(e) =>
+                            state.setPaymentReceiptFile(e.target.files?.[0] || null)
+                          }
+                          data-testid="billing-payment-receipt"
+                        />
+                        {showMpesaErrors && !state.paymentReceiptFile ? (
+                          <p className="text-xs text-destructive">
+                            Attach a screenshot of the M-Pesa payment (till or bank).
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            Required for till and bank payments — used when reviewing the sale later.
+                          </p>
+                        )}
+                      </div>
+                    ) : null}
                   </div>
                 ) : paymentReferenceRequired(state.paymentMethod) ? (
                   <div className="mt-3 space-y-1">

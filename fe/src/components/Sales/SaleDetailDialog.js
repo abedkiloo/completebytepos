@@ -47,6 +47,7 @@ import { useStoreSettings } from '../../hooks/useStoreSettings';
 import { resolveStoreName, resolveReceiptLogoUrl, DEFAULT_STORE_TAGLINE } from '../../utils/storeBranding';
 import StoreLogo from '../Shared/StoreLogo';
 import ReceiptImageLink from '../Shared/ReceiptImageLink';
+import { salePaymentMethodLabel } from '../../utils/saleItemDisplay';
 import SaleActivityTrail from './SaleActivityTrail';
 
 export default function SaleDetailDialog({
@@ -378,7 +379,20 @@ export default function SaleDetailDialog({
               />
             ) : null}
             <SummaryRow label="Total" value={formatCurrency(receiptSale.total)} strong />
-            <SummaryRow label="Payment method" value={sale.payment_method || '—'} />
+            <SummaryRow
+              label="Payment method"
+              value={salePaymentMethodLabel(sale)}
+            />
+            {sale.payment_receipt_image_url ? (
+              <div className="space-y-1 pt-1">
+                <p className="text-muted-foreground">Payment screenshot</p>
+                <ReceiptImageLink
+                  url={sale.payment_receipt_image_url}
+                  label="Payment screenshot"
+                  variant="card"
+                />
+              </div>
+            ) : null}
             <SummaryRow label="Amount paid" value={formatCurrency(saleAppliedPaid(receiptSale))} />
             {saleChangeDue(receiptSale) > 0 ? (
               <SummaryRow label="Change" value={formatCurrency(saleChangeDue(receiptSale))} />

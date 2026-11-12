@@ -54,6 +54,7 @@ import SaleDetailDialog from './SaleDetailDialog';
 import RefundSaleDialog from './RefundSaleDialog';
 import SaleRollbackDialog from './SaleRollbackDialog';
 import ReceiveWalletPaymentDialog from '../Customers/ReceiveWalletPaymentDialog';
+import PaymentDetailDialog from '../Customers/PaymentDetailDialog';
 import CheckpointMarkersStrip from '../Inventory/CheckpointMarkersStrip';
 
 import {
@@ -247,6 +248,24 @@ export default function DailySalesPage() {
   // Modal dialog states
   const [selectedSale, setSelectedSale] = useState(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState(null);
+  const [paymentDetailOpen, setPaymentDetailOpen] = useState(false);
+  const [paymentDetailLoading, setPaymentDetailLoading] = useState(false);
+
+  const openPayment = async (row) => {
+    if (!row?.id) return;
+    setSelectedPayment({ ...row, kind: 'debt_settlement' });
+    setPaymentDetailOpen(true);
+    setPaymentDetailLoading(true);
+    try {
+      const res = await customersAPI.walletSettlementDetail(row.id);
+      setSelectedPayment(res.data);
+    } catch {
+      /* list row is enough */
+    } finally {
+      setPaymentDetailLoading(false);
+    }
+  };
   const [refundSale, setRefundSale] = useState(null);
   const [refundSubmitting, setRefundSubmitting] = useState(false);
   const [rollbackSale, setRollbackSale] = useState(null);
@@ -789,8 +808,16 @@ export default function DailySalesPage() {
                 const remaining = Number(row.balance_after);
                 const stillOwes = !Number.isNaN(remaining) && remaining < 0;
                 return (
-                  <DataTableRow key={row.id}>
-                    <DataTableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                  <DataTableRow
+                    key={row.id}
+                    className="cursor-pointer"
+                    onClick={() => openPayment(row)}
+                    data-testid={`daily-collection-row-${row.id}`}
+                  >
+                    <DataTableCell
+                      className="whitespace-nowrap text-sm text-muted-foreground"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <div>
                         {row.occurred_at || row.created_at
                           ? formatDateTime(row.occurred_at || row.created_at)
@@ -814,6 +841,7 @@ export default function DailySalesPage() {
                           <Link
                             to={dailySalesCustomerPath(row.customer_id, date)}
                             className="font-medium text-primary hover:underline"
+                            onClick={(e) => e.stopPropagation()}
                           >
                             {row.customer_name || 'Customer'}
                           </Link>
@@ -1001,7 +1029,7 @@ export default function DailySalesPage() {
 
                     <DataTableCell>
                       <Badge variant="secondary" className="capitalize">
-                        {order.payment_method}
+                        {order.payment_method_label || order.payment_method}
                       </Badge>
                       {order.payment_reference ? (
                         <div className="mt-0.5 text-[11px] text-muted-foreground font-mono">
@@ -1062,6 +1090,15 @@ export default function DailySalesPage() {
       )}
 
       {/* Modals */}
+      <PaymentDetailDialog
+        payment={selectedPayment}
+        open={paymentDetailOpen}
+        loading={paymentDetailLoading}
+        onOpenChange={(open) => {
+          setPaymentDetailOpen(open);
+          if (!open) setSelectedPayment(null);
+        }}
+      />
       <SaleDetailDialog
         sale={selectedSale}
         open={showReceiptModal}

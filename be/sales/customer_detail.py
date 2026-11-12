@@ -105,15 +105,26 @@ def serialize_ledger_entry(txn: CustomerWalletTransaction) -> Dict[str, Any]:
     created_by_name = user_display_name(txn.created_by) if txn.created_by_id else ''
     method = ''
     method_label = ''
+    payer_name = ''
+    payer_phone = ''
+    mpesa_destination = ''
+    mpesa_destination_label = ''
     if txn.source_type == 'debt_settlement':
         method = resolve_settlement_payment_method(txn)
         method_label = payment_method_label(method)
+        from sales.collection_payer import mpesa_destination_label as dest_label
+
+        payer_name = (getattr(txn, 'payer_name', None) or '').strip()
+        payer_phone = (getattr(txn, 'payer_phone', None) or '').strip()
+        mpesa_destination = (getattr(txn, 'mpesa_destination', None) or '').strip().lower()
+        mpesa_destination_label = dest_label(mpesa_destination)
 
     from sales.wallet_receipt import is_backdated_wallet_txn, receipt_image_url
 
     when = txn.effective_occurred_at
     return {
         'id': txn.id,
+        'kind': 'debt_settlement' if txn.source_type == 'debt_settlement' else '',
         'transaction_type': txn.transaction_type,
         'source_type': txn.source_type,
         'amount': str(_q(txn.amount)),
@@ -121,12 +132,17 @@ def serialize_ledger_entry(txn: CustomerWalletTransaction) -> Dict[str, Any]:
         'payment_method_label': method_label,
         'reference': txn.reference or '',
         'notes': txn.notes or '',
+        'payer_name': payer_name,
+        'payer_phone': payer_phone,
+        'mpesa_destination': mpesa_destination,
+        'mpesa_destination_label': mpesa_destination_label,
         'sale': txn.sale_id,
         'sale_number': txn.sale.sale_number if txn.sale_id and txn.sale else None,
         'receipt_image_url': receipt_image_url(txn),
         'occurred_at': when.isoformat() if when else None,
         'is_backdated': is_backdated_wallet_txn(txn),
         'created_by_name': created_by_name,
+        'received_by': created_by_name,
         'created_at': txn.created_at.isoformat() if txn.created_at else None,
         **flow,
     }

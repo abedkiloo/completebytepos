@@ -32,6 +32,7 @@ import { getWalletDebtAmount } from '../../utils/walletDisplay';
 import { formatPurchaseCount } from '../../utils/customerIntelligence';
 import { CustomerClassificationBadges } from './ClassificationBadge';
 import ReceiptImageLink from '../Shared/ReceiptImageLink';
+import PaymentDetailDialog from './PaymentDetailDialog';
 import { customerCommitRows } from '../../utils/formCommitSummary';
 import {
   EMPTY_CUSTOMER_FORM,
@@ -97,6 +98,9 @@ export default function CustomerDetailPage() {
   const { ordering: ledgerOrdering, setOrdering: setLedgerOrdering } = useListOrdering();
   const [selectedSale, setSelectedSale] = useState(null);
   const [saleDetailOpen, setSaleDetailOpen] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState(null);
+  const [paymentDetailOpen, setPaymentDetailOpen] = useState(false);
+  const [paymentDetailLoading, setPaymentDetailLoading] = useState(false);
   const [refundSale, setRefundSale] = useState(null);
   const [refundSubmitting, setRefundSubmitting] = useState(false);
   const [rollbackSale, setRollbackSale] = useState(null);
@@ -179,6 +183,35 @@ export default function CustomerDetailPage() {
       setSaleDetailOpen(true);
     } catch (err) {
       toast.error(err.response?.data?.error || err.message);
+    }
+  };
+
+  const openPayment = async (entry) => {
+    if (!entry?.id || !isDebtRepaymentRow(entry)) return;
+    const seed = {
+      ...entry,
+      kind: 'debt_settlement',
+      customer_id: customer?.id || Number(id),
+      customer_name: customer?.name || '',
+      customer_phone: customer?.phone || '',
+      customer_code: customer?.customer_code || '',
+    };
+    setSelectedPayment(seed);
+    setPaymentDetailOpen(true);
+    setPaymentDetailLoading(true);
+    try {
+      const res = await customersAPI.walletSettlementDetail(entry.id);
+      setSelectedPayment({
+        ...res.data,
+        customer_id: res.data.customer_id || seed.customer_id,
+        customer_name: res.data.customer_name || seed.customer_name,
+        customer_phone: res.data.customer_phone || seed.customer_phone,
+        customer_code: res.data.customer_code || seed.customer_code,
+      });
+    } catch {
+      /* ledger row is enough */
+    } finally {
+      setPaymentDetailLoading(false);
     }
   };
 
@@ -515,11 +548,16 @@ export default function CustomerDetailPage() {
                       return (
                       <DataTableRow
                         key={entry.id}
-                        className={isRepayment ? 'bg-muted/60 hover:bg-muted/80' : undefined}
+                        className={
+                          isRepayment
+                            ? 'cursor-pointer bg-muted/60 hover:bg-muted/80'
+                            : undefined
+                        }
+                        onClick={isRepayment ? () => openPayment(entry) : undefined}
                         data-testid={isRepayment ? `debt-repayment-row-${entry.id}` : undefined}
                       >
                         <DataTableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                          {formatDateTime(entry.created_at)}
+                          {formatDateTime(entry.occurred_at || entry.created_at)}
                         </DataTableCell>
                         <DataTableCell>
                           <div className="font-medium text-sm">
@@ -531,7 +569,10 @@ export default function CustomerDetailPage() {
                             </div>
                           )}
                         </DataTableCell>
-                        <DataTableCell className="text-sm text-muted-foreground max-w-xs">
+                        <DataTableCell
+                          className="text-sm text-muted-foreground max-w-xs"
+                          onClick={isRepayment ? (e) => e.stopPropagation() : undefined}
+                        >
                           {isRepayment ? (
                             <div className="space-y-1">
                               <div>{formatSettlementMeta(entry) || '—'}</div>
@@ -652,6 +693,15 @@ export default function CustomerDetailPage() {
         </aside>
       </section>
 
+      <PaymentDetailDialog
+        payment={selectedPayment}
+        open={paymentDetailOpen}
+        loading={paymentDetailLoading}
+        onOpenChange={(open) => {
+          setPaymentDetailOpen(open);
+          if (!open) setSelectedPayment(null);
+        }}
+      />
       <SaleDetailDialog
         sale={selectedSale}
         open={saleDetailOpen}

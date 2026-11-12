@@ -13,6 +13,7 @@ import {
   saleItemVariantLabel,
   saleNetItemCount,
   saleNetTotal,
+  salePaymentMethodLabel,
   salePaymentStatusLabel,
   saleStatusBadgeTone,
   normalizeSaleForReceipt,
@@ -123,6 +124,46 @@ describe('saleItemDisplay', () => {
     expect(receipt.total).toBe(500);
     expect(receipt.subtotal).toBe(500);
     expect(saleNetBalanceDue(sale)).toBe(0);
+  });
+
+  it('labels pay-later and M-Pesa till/bank without calling unpaid cash', () => {
+    expect(
+      salePaymentMethodLabel({
+        payment_method: 'cash',
+        amount_paid: 0,
+        total: 500,
+      })
+    ).toBe('Pay later');
+    expect(
+      salePaymentMethodLabel({
+        payment_method: 'on_account',
+        amount_paid: 0,
+        total: 500,
+      })
+    ).toBe('Pay later');
+    expect(
+      salePaymentMethodLabel({
+        payment_method: 'mpesa',
+        amount_paid: 500,
+        total: 500,
+        mpesa_destination: 'till',
+      })
+    ).toBe('M-Pesa · Till');
+    expect(
+      salePaymentMethodLabel({
+        payment_method: 'mpesa',
+        amount_paid: 500,
+        total: 500,
+        mpesa_destination: 'bank',
+      })
+    ).toBe('M-Pesa · Bank');
+    expect(
+      salePaymentMethodLabel({
+        payment_method: 'cash',
+        amount_paid: 500,
+        total: 500,
+      })
+    ).toBe('Cash');
   });
 
   it('maps badge tone from sale and refund status', () => {

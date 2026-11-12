@@ -31,7 +31,13 @@ import {
   saleReceiptBlockedReason,
   userHasAdminSaleOverride,
 } from '../../utils/saleCompletionApproval';
-import { saleDisplayItemCount, saleDisplayTotal, saleFinalStatusLabel, saleStatusBadgeTone } from '../../utils/saleItemDisplay';
+import {
+  saleDisplayItemCount,
+  saleDisplayTotal,
+  saleFinalStatusLabel,
+  salePaymentMethodLabel,
+  saleStatusBadgeTone,
+} from '../../utils/saleItemDisplay';
 import RefundSaleDialog from './RefundSaleDialog';
 import SaleRollbackDialog from './SaleRollbackDialog';
 import SaleDetailDialog from './SaleDetailDialog';
@@ -681,7 +687,7 @@ const Sales = () => {
                     </DataTableCell>
                     <DataTableCell>
                       <Badge variant="outline" className="capitalize">
-                        {sale.payment_method}
+                        {salePaymentMethodLabel(sale)}
                       </Badge>
                     </DataTableCell>
                     <DataTableCell>

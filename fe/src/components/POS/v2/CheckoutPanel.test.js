@@ -51,6 +51,8 @@ function MpesaHarness({ onPay, receivedAmount = '100', customerPhone = '' }) {
   const [paymentMethod, setPaymentMethod] = useState('mpesa');
   const [paymentReference, setPaymentReference] = useState('');
   const [received, setReceived] = useState(receivedAmount);
+  const [mpesaDestination, setMpesaDestination] = useState('');
+  const [paymentReceiptFile, setPaymentReceiptFile] = useState(null);
   return (
     <CheckoutPanel
       {...baseProps}
@@ -60,6 +62,10 @@ function MpesaHarness({ onPay, receivedAmount = '100', customerPhone = '' }) {
       setReceivedAmount={setReceived}
       paymentReference={paymentReference}
       setPaymentReference={setPaymentReference}
+      mpesaDestination={mpesaDestination}
+      setMpesaDestination={setMpesaDestination}
+      paymentReceiptFile={paymentReceiptFile}
+      setPaymentReceiptFile={setPaymentReceiptFile}
       onPay={onPay}
       enabledPaymentMethods={['cash', 'mpesa']}
       customerPhone={customerPhone}
@@ -103,32 +109,46 @@ describe('CheckoutPanel', () => {
     expect(send).toBeDisabled();
   });
 
-  it('lets the cashier type an M-Pesa code and shows coming soon for prompt', () => {
+  it('requires till or bank before the M-Pesa code and screenshot', async () => {
     const onPay = jest.fn();
-    render(<MpesaHarness onPay={onPay} customerPhone="0712345678" />);
+    const { container } = render(
+      <MpesaHarness onPay={onPay} customerPhone="0712345678" />
+    );
 
-    expect(screen.getByTestId('mpesa-capture-prompt')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Complete sale/i })).toBeInTheDocument();
+    expect(screen.getByText(/Choose till or bank first/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/M-Pesa code/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Till$/i }));
     expect(screen.getByLabelText(/M-Pesa code/i)).toBeInTheDocument();
-    expect(screen.queryByLabelText(/Safaricom number/i)).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByTestId('mpesa-capture-prompt'));
-    expect(screen.queryByText('mock-stk-paid')).not.toBeInTheDocument();
+    expect(screen.getByTestId('pos-payment-receipt')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText(/M-Pesa code/i), {
       target: { value: ' qhx 7k2 l9m1 ' },
     });
+    const file = new File(['receipt'], 'mpesa.png', { type: 'image/png' });
+    fireEvent.change(screen.getByTestId('pos-payment-receipt'), {
+      target: { files: [file] },
+    });
     fireEvent.click(screen.getByRole('button', { name: /Complete sale/i }));
-    expect(onPay).toHaveBeenCalledWith({ paymentReference: 'QHX7K2L9M1' });
+    expect(onPay).toHaveBeenCalledWith({
+      paymentReference: 'QHX7K2L9M1',
+      mpesaDestination: 'till',
+      paymentReceiptFile: expect.any(File),
+    });
+    expect(container.querySelector('[data-testid="mpesa-capture-prompt"]')).toBeTruthy();
   });
 
   it('requires an M-Pesa code before completing the sale', () => {
     const onPay = jest.fn();
     render(<MpesaHarness onPay={onPay} />);
 
+    fireEvent.click(screen.getByRole('button', { name: /^Till$/i }));
+    const file = new File(['receipt'], 'mpesa.png', { type: 'image/png' });
+    fireEvent.change(screen.getByTestId('pos-payment-receipt'), {
+      target: { files: [file] },
+    });
     fireEvent.click(screen.getByRole('button', { name: /Complete sale/i }));
     expect(onPay).not.toHaveBeenCalled();
-    expect(screen.queryByText('mock-stk-paid')).not.toBeInTheDocument();
     expect(screen.getByText(/Enter the M-Pesa code from the SMS/i)).toBeInTheDocument();
   });
 });

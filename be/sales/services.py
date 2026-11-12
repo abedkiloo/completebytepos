@@ -726,6 +726,7 @@ class SaleService(BaseService):
         use_wallet: bool = False,
         wallet_amount: Decimal = Decimal('0'),
         payment_reference: str = '',
+        mpesa_destination: str = '',
         client_channel: Optional[str] = None,
         request=None,
         confirm_unchanged: bool = False,
@@ -733,6 +734,17 @@ class SaleService(BaseService):
         """Finalise a holding sale: stock, journal entry, status=completed."""
         if holding.status != 'holding':
             raise ValidationError('This sale is not a holding invoice.')
+
+        from sales.sale_payment_method import normalize_sale_payment_method
+
+        payment_method = normalize_sale_payment_method(
+            payment_method=payment_method,
+            amount_paid=amount_paid,
+            allow_partial=allow_partial,
+        )
+        mpesa_destination = (mpesa_destination or '').strip().lower()
+        if payment_method != 'mpesa':
+            mpesa_destination = ''
 
         items_data = [
             {
@@ -821,6 +833,7 @@ class SaleService(BaseService):
         holding.total = total
         holding.payment_method = payment_method
         holding.payment_reference = payment_reference
+        holding.mpesa_destination = mpesa_destination
         holding.amount_paid = amount_paid
         holding.change = payment_result['change']
         holding.status = 'pending_approval' if defer_complete else 'completed'
@@ -896,8 +909,18 @@ class SaleService(BaseService):
         
         # Get sale type
         sale_type = sale_data.get('sale_type', 'pos')
-        payment_method = sale_data.get('payment_method', 'cash')
         amount_paid = sale_data.get('amount_paid', Decimal('0')) or Decimal('0')
+        allow_partial = bool(sale_data.get('allow_partial_payment', False))
+        from sales.sale_payment_method import normalize_sale_payment_method
+
+        payment_method = normalize_sale_payment_method(
+            payment_method=sale_data.get('payment_method', 'cash'),
+            amount_paid=amount_paid,
+            allow_partial=allow_partial,
+        )
+        mpesa_destination = (sale_data.get('mpesa_destination') or '').strip().lower()
+        if payment_method != 'mpesa':
+            mpesa_destination = ''
         
         # Calculate change for POS sales
         change = Decimal('0')
@@ -936,6 +959,7 @@ class SaleService(BaseService):
             shipping_location=sale_data.get('shipping_location'),
             payment_method=payment_method,
             payment_reference=sale_data.get('payment_reference', ''),
+            mpesa_destination=mpesa_destination,
             amount_paid=amount_paid,
             change=change,
             notes=sale_data.get('notes', ''),
@@ -1143,10 +1167,12 @@ class SaleService(BaseService):
         customer: Optional[Customer],
         allow_partial: bool,
     ) -> None:
-        if payment_method not in ('cash', 'mpesa'):
+        if payment_method not in ('cash', 'mpesa', 'on_account'):
             return
         if amount_paid <= 0:
             if allow_partial and customer:
+                return
+            if payment_method == 'on_account' and customer:
                 return
             raise ValidationError('Enter the amount received from the customer.')
         if amount_paid < total and not allow_partial:

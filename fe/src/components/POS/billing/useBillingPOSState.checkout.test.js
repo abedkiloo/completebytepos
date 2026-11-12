@@ -118,7 +118,7 @@ describe('useBillingPOSState checkout — payment on account', () => {
     expect(salesAPI.checkout).toHaveBeenCalledWith(
       55,
       expect.objectContaining({
-        payment_method: 'cash',
+        payment_method: 'on_account',
         amount_paid: 0,
         allow_partial_payment: true,
       })

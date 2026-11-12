@@ -147,6 +147,35 @@ export function salePaymentStatusLabel(sale) {
   return 'Unpaid';
 }
 
+/**
+ * Tender label for lists, detail, and receipts.
+ * Pay-later / unpaid must never show as Cash.
+ *
+ * @param {object|null|undefined} sale
+ * @returns {string}
+ */
+export function salePaymentMethodLabel(sale) {
+  if (!sale) return '—';
+  if (sale.payment_method_label) return String(sale.payment_method_label);
+  const method = String(sale.payment_method || '').toLowerCase();
+  const paid = parseFloat(sale.amount_paid ?? 0) || 0;
+  const total = parseFloat(sale.total ?? 0) || 0;
+  const unpaid =
+    method === 'on_account' ||
+    (paid <= 0.009 && (total > 0.009 || method === 'cash' || !method));
+  if (unpaid) return 'Pay later';
+  if (method === 'mpesa') {
+    const dest = String(sale.mpesa_destination || '').toLowerCase();
+    if (dest === 'till') return 'M-Pesa · Till';
+    if (dest === 'bank') return 'M-Pesa · Bank';
+    return 'M-Pesa';
+  }
+  if (method === 'cash') return 'Cash';
+  if (method === 'wallet') return 'Wallet';
+  if (method === 'card') return 'Card';
+  return method ? method.replace(/_/g, ' ') : '—';
+}
+
 /** Balance due against the current (post-refund) sale total. */
 export function saleNetBalanceDue(sale) {
   const total = saleNetTotal(sale);

@@ -21,6 +21,7 @@ from .models import (
 from products.serializers import ProductSerializer
 from sales.payment_reference import mpesa_receipt_error, normalize_mpesa_receipt
 from settings.store_settings_helpers import COLLECTION_PAYMENT_CHOICES
+from sales.sale_payment_method import SALE_PAYMENT_METHOD_CHOICES
 from utils.field_types import (
     NAME_EXAMPLE,
     email_error,
@@ -458,7 +459,8 @@ class ReceiveWalletPaymentSerializer(serializers.Serializer):
                 payer_phone=attrs.get('payer_phone') or '',
                 mpesa_destination=attrs.get('mpesa_destination') or '',
                 require_payer=require_payer,
-                require_mpesa_destination_for_code=require_payer,
+                # Always require till/bank before an M-Pesa code (debt collections).
+                require_mpesa_destination_for_code=True,
             )
         except Exception as exc:
             from django.core.exceptions import ValidationError as DjangoValidationError
@@ -655,6 +657,8 @@ class SaleSerializer(serializers.ModelSerializer):
     served_by_name = serializers.SerializerMethodField()
     is_late_entry = serializers.SerializerMethodField()
     backfill_receipt_photo_url = serializers.SerializerMethodField()
+    payment_receipt_image_url = serializers.SerializerMethodField()
+    payment_method_label = serializers.SerializerMethodField()
     item_count = serializers.SerializerMethodField()
     amount_refunded = serializers.SerializerMethodField()
     refundable_remaining = serializers.SerializerMethodField()
@@ -679,7 +683,9 @@ class SaleSerializer(serializers.ModelSerializer):
             'subtotal', 'tax_amount', 'discount_amount', 'total',
             'delivery_method', 'delivery_cost',
             'shipping_address', 'shipping_location',
-            'payment_method', 'payment_reference', 'amount_paid', 'change', 'notes',
+            'payment_method', 'payment_method_label', 'payment_reference',
+            'mpesa_destination', 'payment_receipt_image_url',
+            'amount_paid', 'change', 'notes',
             'occurred_at', 'entry_source', 'is_field_sale', 'sale_origin',
             'client_channel', 'backfill_reason', 'is_late_entry',
             'backfill_receipt_photo_url',
@@ -780,6 +786,21 @@ class SaleSerializer(serializers.ModelSerializer):
         from config.media_urls import absolute_media_url
 
         return absolute_media_url(request, obj.backfill_receipt_photo.url)
+
+    def get_payment_receipt_image_url(self, obj):
+        from sales.sale_payment_receipt import sale_payment_receipt_url
+
+        return sale_payment_receipt_url(obj, request=self.context.get('request'))
+
+    def get_payment_method_label(self, obj):
+        from sales.sale_payment_method import sale_payment_method_label
+
+        return sale_payment_method_label(
+            obj.payment_method,
+            amount_paid=obj.amount_paid,
+            total=obj.total,
+            mpesa_destination=getattr(obj, 'mpesa_destination', '') or '',
+        )
 
     def get_amount_refunded(self, obj):
         cache = getattr(obj, '_prefetched_objects_cache', {})
@@ -960,8 +981,14 @@ class HoldingSaleSerializer(serializers.Serializer):
 
 class CheckoutHoldingSerializer(serializers.Serializer):
     """Complete a holding sale and print receipt."""
-    payment_method = serializers.ChoiceField(choices=COLLECTION_PAYMENT_CHOICES, default='cash')
+    payment_method = serializers.ChoiceField(choices=SALE_PAYMENT_METHOD_CHOICES, default='cash')
     payment_reference = serializers.CharField(required=False, allow_blank=True, default='')
+    mpesa_destination = serializers.ChoiceField(
+        choices=[('', '—'), ('till', 'Till'), ('bank', 'Bank')],
+        required=False,
+        allow_blank=True,
+        default='',
+    )
     amount_paid = serializers.DecimalField(max_digits=10, decimal_places=2, default=0)
     allow_partial_payment = serializers.BooleanField(default=False)
     excess_payment_choice = serializers.ChoiceField(
@@ -976,19 +1003,57 @@ class CheckoutHoldingSerializer(serializers.Serializer):
     confirm_unchanged = serializers.BooleanField(required=False, default=False)
 
     def validate(self, attrs):
-        from sales.module_settings import apply_sale_module_settings
-        from sales.payment_reference import validate_sale_payment_reference
-
-        attrs = apply_sale_module_settings(attrs)
         from django.core.exceptions import ValidationError as DjangoValidationError
 
+        from sales.module_settings import apply_sale_module_settings
+        from sales.payment_reference import (
+            validate_sale_mpesa_destination,
+            validate_sale_payment_reference,
+        )
+        from sales.sale_payment_method import normalize_sale_payment_method
+        from sales.sale_payment_receipt import require_sale_payment_receipt_image
+
+        attrs = apply_sale_module_settings(attrs)
+        amount_paid = attrs.get('amount_paid', 0) or 0
+        allow_partial = bool(attrs.get('allow_partial_payment', False))
+        attrs['payment_method'] = normalize_sale_payment_method(
+            payment_method=attrs.get('payment_method', 'cash'),
+            amount_paid=amount_paid,
+            allow_partial=allow_partial,
+        )
         try:
+            attrs['mpesa_destination'] = validate_sale_mpesa_destination(
+                attrs['payment_method'],
+                attrs.get('mpesa_destination'),
+                amount_paid=amount_paid,
+            )
             attrs['payment_reference'] = validate_sale_payment_reference(
-                attrs.get('payment_method', 'cash'),
+                attrs['payment_method'],
                 attrs.get('payment_reference'),
+                amount_paid=amount_paid,
             )
         except DjangoValidationError as exc:
+            detail = getattr(exc, 'message_dict', None)
+            if detail:
+                raise serializers.ValidationError(detail)
             raise serializers.ValidationError({'payment_reference': str(exc)})
+
+        # Multipart file is validated in the view when present; enforce presence here
+        # when the request context includes FILES.
+        request = self.context.get('request')
+        receipt = None
+        if request is not None:
+            receipt = request.FILES.get('payment_receipt_image')
+        try:
+            require_sale_payment_receipt_image(
+                receipt,
+                payment_method=attrs['payment_method'],
+                amount_paid=amount_paid,
+            )
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(
+                getattr(exc, 'message_dict', {'payment_receipt_image': str(exc)})
+            )
         return attrs
 
 
@@ -999,8 +1064,14 @@ class SaleCreateSerializer(serializers.Serializer):
         write_only=True
     )
     sale_type = serializers.ChoiceField(choices=Sale.SALE_TYPES, default='pos')
-    payment_method = serializers.ChoiceField(choices=COLLECTION_PAYMENT_CHOICES, default='cash')
+    payment_method = serializers.ChoiceField(choices=SALE_PAYMENT_METHOD_CHOICES, default='cash')
     payment_reference = serializers.CharField(required=False, allow_blank=True, default='')
+    mpesa_destination = serializers.ChoiceField(
+        choices=[('', '—'), ('till', 'Till'), ('bank', 'Bank')],
+        required=False,
+        allow_blank=True,
+        default='',
+    )
     amount_paid = serializers.DecimalField(
         max_digits=10, 
         decimal_places=2, 
@@ -1092,6 +1163,43 @@ class SaleCreateSerializer(serializers.Serializer):
     )
     client_channel = serializers.CharField(required=False, allow_blank=True, max_length=16)
 
+    def to_internal_value(self, data):
+        """
+        Parse multipart FormData ``items`` JSON string before ListField runs.
+
+        Args:
+            data: Request data mapping (dict / QueryDict). Empty → empty mapping.
+
+        Returns:
+            Normalized attrs dict from the parent serializer.
+
+        Raises:
+            ValidationError: When ``items`` is a non-JSON string.
+        """
+        import json
+
+        if hasattr(data, 'copy'):
+            mutable = data.copy()
+        elif isinstance(data, dict):
+            mutable = dict(data)
+        else:
+            mutable = data
+        items = None
+        if hasattr(mutable, 'get'):
+            items = mutable.get('items')
+        if isinstance(items, str):
+            try:
+                parsed = json.loads(items)
+            except json.JSONDecodeError as exc:
+                raise serializers.ValidationError(
+                    {'items': 'Invalid items payload.'}
+                ) from exc
+            if hasattr(mutable, 'setlist') and hasattr(mutable, '__setitem__'):
+                mutable['items'] = parsed
+            elif isinstance(mutable, dict):
+                mutable['items'] = parsed
+        return super().to_internal_value(mutable)
+
     def validate_customer_phone(self, value):
         from utils.phone import validate_optional_phone
 
@@ -1176,13 +1284,46 @@ class SaleCreateSerializer(serializers.Serializer):
         from sales.module_settings import apply_sale_module_settings
         from sales.payment_reference import validate_sale_payment_reference
 
+        from sales.payment_reference import validate_sale_mpesa_destination
+        from sales.sale_payment_method import normalize_sale_payment_method
+        from sales.sale_payment_receipt import require_sale_payment_receipt_image
+
+        attrs['payment_method'] = normalize_sale_payment_method(
+            payment_method=payment_method,
+            amount_paid=amount_paid,
+            allow_partial=allow_partial,
+        )
+        payment_method = attrs['payment_method']
+
         try:
+            attrs['mpesa_destination'] = validate_sale_mpesa_destination(
+                payment_method,
+                attrs.get('mpesa_destination'),
+                amount_paid=amount_paid,
+            )
             attrs['payment_reference'] = validate_sale_payment_reference(
                 payment_method,
                 attrs.get('payment_reference'),
+                amount_paid=amount_paid,
             )
         except DjangoValidationError as exc:
+            detail = getattr(exc, 'message_dict', None)
+            if detail:
+                raise serializers.ValidationError(detail)
             raise serializers.ValidationError({'payment_reference': str(exc)})
+
+        request = self.context.get('request')
+        receipt = request.FILES.get('payment_receipt_image') if request is not None else None
+        try:
+            require_sale_payment_receipt_image(
+                receipt,
+                payment_method=payment_method,
+                amount_paid=amount_paid,
+            )
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(
+                getattr(exc, 'message_dict', {'payment_receipt_image': str(exc)})
+            )
 
         return apply_sale_module_settings(attrs)
 

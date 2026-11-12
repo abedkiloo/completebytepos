@@ -19,8 +19,18 @@ def normalize_payment_reference(value: str | None) -> str:
     return str(value or '').strip()
 
 
-def payment_reference_required(payment_method: str) -> bool:
-    return payment_method == 'mpesa'
+def payment_reference_required(payment_method: str, *, amount_paid=None) -> bool:
+    """M-Pesa code required only when collecting M-Pesa now (not pay later)."""
+    if payment_method != 'mpesa':
+        return False
+    if amount_paid is None:
+        return True
+    try:
+        from decimal import Decimal
+
+        return Decimal(str(amount_paid)) > 0
+    except Exception:
+        return True
 
 
 def normalize_mpesa_receipt(value: str | None) -> str:
@@ -45,11 +55,45 @@ def mpesa_receipt_error(value: str | None) -> str | None:
     return None
 
 
-def validate_sale_payment_reference(payment_method: str, reference: str | None) -> str:
+def validate_sale_payment_reference(
+    payment_method: str,
+    reference: str | None,
+    *,
+    amount_paid=None,
+) -> str:
     """Return stripped reference; raise ValidationError when required but missing."""
     ref = normalize_payment_reference(reference)
-    if payment_reference_required(payment_method) and not ref:
+    if payment_reference_required(payment_method, amount_paid=amount_paid) and not ref:
         raise ValidationError(
             'Enter the M-Pesa confirmation code from the SMS.'
         )
+    if payment_method == 'mpesa' and ref:
+        err = mpesa_receipt_error(ref)
+        if err:
+            raise ValidationError(err)
+        return normalize_mpesa_receipt(ref)
     return ref
+
+
+def validate_sale_mpesa_destination(
+    payment_method: str,
+    destination: str | None,
+    *,
+    amount_paid=None,
+) -> str:
+    """
+    Require till/bank before an M-Pesa code when collecting now.
+
+    Returns:
+        Normalized ``till`` / ``bank`` / ``''``.
+    """
+    method = (payment_method or '').strip().lower()
+    dest = (destination or '').strip().lower()
+    collecting = payment_reference_required(method, amount_paid=amount_paid)
+    if not collecting:
+        return ''
+    if dest not in ('till', 'bank'):
+        raise ValidationError(
+            'Choose whether this M-Pesa payment came via till or bank before entering the code.'
+        )
+    return dest
