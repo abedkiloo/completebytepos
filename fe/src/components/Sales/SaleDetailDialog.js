@@ -46,6 +46,7 @@ import { hasDuplicateSaleLines } from '../../utils/detectDuplicateSaleLines';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import { resolveStoreName, resolveReceiptLogoUrl, DEFAULT_STORE_TAGLINE } from '../../utils/storeBranding';
 import StoreLogo from '../Shared/StoreLogo';
+import ReceiptImageLink from '../Shared/ReceiptImageLink';
 import SaleActivityTrail from './SaleActivityTrail';
 
 export default function SaleDetailDialog({
@@ -459,18 +460,11 @@ export default function SaleDetailDialog({
             {sale.backfill_receipt_photo_url ? (
               <div className="space-y-1 pt-1">
                 <p className="text-muted-foreground">Paper receipt</p>
-                <a
-                  href={sale.backfill_receipt_photo_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-block"
-                >
-                  <img
-                    src={sale.backfill_receipt_photo_url}
-                    alt="Paper receipt"
-                    className="max-h-40 rounded border object-contain"
-                  />
-                </a>
+                <ReceiptImageLink
+                  url={sale.backfill_receipt_photo_url}
+                  label="Paper receipt"
+                  variant="card"
+                />
               </div>
             ) : null}
             <SummaryRow label="Status" value={finalStatus} />

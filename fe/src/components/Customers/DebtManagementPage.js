@@ -17,8 +17,8 @@ import {
 
 import { customersAPI } from '../../services/api';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
-import { resolveMediaUrl } from '../../utils/mediaUrl';
 import { toast } from '../../utils/toast';
+import ReceiptImageLink from '../Shared/ReceiptImageLink';
 import { getStoredAuth, hasPermission } from '../../utils/roleAccess';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
@@ -428,15 +428,10 @@ export default function DebtManagementPage() {
                             </Badge>
                           ) : null}
                           {row.receipt_image_url ? (
-                            <a
-                              href={resolveMediaUrl(row.receipt_image_url)}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                            >
-                              Receipt
-                              <ExternalLink className="h-3 w-3" />
-                            </a>
+                            <ReceiptImageLink
+                              url={row.receipt_image_url}
+                              label="Payment screenshot"
+                            />
                           ) : null}
                         </DataTableCell>
                         <DataTableCell>

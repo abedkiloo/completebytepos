@@ -31,6 +31,7 @@ import {
 import { getWalletDebtAmount } from '../../utils/walletDisplay';
 import { formatPurchaseCount } from '../../utils/customerIntelligence';
 import { CustomerClassificationBadges } from './ClassificationBadge';
+import ReceiptImageLink from '../Shared/ReceiptImageLink';
 import { customerCommitRows } from '../../utils/formCommitSummary';
 import {
   EMPTY_CUSTOMER_FORM,
@@ -531,9 +532,19 @@ export default function CustomerDetailPage() {
                           )}
                         </DataTableCell>
                         <DataTableCell className="text-sm text-muted-foreground max-w-xs">
-                          {isRepayment
-                            ? formatSettlementMeta(entry) || '—'
-                            : '—'}
+                          {isRepayment ? (
+                            <div className="space-y-1">
+                              <div>{formatSettlementMeta(entry) || '—'}</div>
+                              {entry.receipt_image_url ? (
+                                <ReceiptImageLink
+                                  url={entry.receipt_image_url}
+                                  label="Payment screenshot"
+                                />
+                              ) : null}
+                            </div>
+                          ) : (
+                            '—'
+                          )}
                         </DataTableCell>
                         <DataTableCell className="text-sm text-muted-foreground max-w-md">
                           {formatDebtTrail(entry)}

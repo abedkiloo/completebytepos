@@ -17,12 +17,12 @@ import {
 
 import { customersAPI, salesAPI } from '../../services/api';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
-import { resolveMediaUrl } from '../../utils/mediaUrl';
 import {
   settlementMethodLabel,
   settlementReferenceLabel,
 } from '../../utils/debtManagement';
 import { toast } from '../../utils/toast';
+import ReceiptImageLink from '../Shared/ReceiptImageLink';
 import {
   getStoredAuth,
   hasPermission,
@@ -802,14 +802,10 @@ export default function DailySalesPage() {
                         </Badge>
                       ) : null}
                       {row.receipt_image_url ? (
-                        <a
-                          href={resolveMediaUrl(row.receipt_image_url)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-1 inline-flex text-xs text-primary hover:underline"
-                        >
-                          Receipt
-                        </a>
+                        <ReceiptImageLink
+                          url={row.receipt_image_url}
+                          label="Payment screenshot"
+                        />
                       ) : null}
                     </DataTableCell>
                     <DataTableCell>

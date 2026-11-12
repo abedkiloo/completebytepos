@@ -37,6 +37,7 @@ import {
   ListPaginationRail,
 } from '../page';
 import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
+import ReceiptImageLink from '../Shared/ReceiptImageLink';
 
 const KIND_OPTIONS = [
   { id: 'all', name: 'All payments' },
@@ -305,6 +306,7 @@ export default function PaymentsTrailPage() {
               <DataTableHead>Method</DataTableHead>
               <DataTableHead>Paid by</DataTableHead>
               <DataTableHead>Reference</DataTableHead>
+              <DataTableHead>Proof</DataTableHead>
               <DataTableHead>Paid towards</DataTableHead>
               <DataTableHead>Balance trail</DataTableHead>
               <DataTableHead>Collected by</DataTableHead>
@@ -346,6 +348,16 @@ export default function PaymentsTrailPage() {
                   </DataTableCell>
                   <DataTableCell className="font-mono text-sm">
                     {settlementReferenceLabel(row)}
+                  </DataTableCell>
+                  <DataTableCell className="text-sm">
+                    {row.receipt_image_url ? (
+                      <ReceiptImageLink
+                        url={row.receipt_image_url}
+                        label="Screenshot"
+                      />
+                    ) : (
+                      '—'
+                    )}
                   </DataTableCell>
                   <DataTableCell className="max-w-[14rem] text-sm">
                     <div className="font-medium">{row.paid_towards_label || '—'}</div>
