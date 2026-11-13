@@ -1,4 +1,4 @@
-"""Normalize and label sale tender methods (cash / M-Pesa / pay later)."""
+"""Normalize and label sale tender methods (cash / M-Pesa / debt)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Any
 SALE_PAYMENT_METHOD_CHOICES = (
     ('cash', 'Cash'),
     ('mpesa', 'M-PESA'),
-    ('on_account', 'Pay later'),
+    ('on_account', 'Debt'),
     ('card', 'Card'),
     ('other', 'Other'),
 )
@@ -20,6 +20,8 @@ MPESA_DESTINATION_CHOICES = (
     ('till', 'Till'),
     ('bank', 'Bank'),
 )
+
+_EPS = Decimal('0.009')
 
 
 def as_decimal(value: Any) -> Decimal:
@@ -44,7 +46,7 @@ def normalize_sale_payment_method(
 
     Args:
         payment_method: Requested tender (cash / mpesa / on_account / …).
-        amount_paid: Amount collected now (0 allowed for pay later).
+        amount_paid: Amount collected now (0 allowed for debt / pay later).
         allow_partial: True when balance may sit on the customer account.
 
     Returns:
@@ -69,13 +71,14 @@ def sale_payment_method_label(
     """
     Cashier-facing tender label for history / detail / receipts.
 
-    Unpaid sales (amount_paid ≈ 0 with balance due, or ``on_account``) →
-    ``Pay later``. M-Pesa with till/bank appends the destination.
+    Debt sales (``on_account`` or unpaid legacy cash+0) show as ``Debt``.
+    When that debt has been fully repaid, show ``Debt repaid`` — never
+    ``on account`` or Cash.
 
     Args:
         payment_method: Stored tender code.
         amount_paid: Collected amount (optional; used for legacy cash+0 rows).
-        total: Sale total (optional; with amount_paid detects unpaid).
+        total: Sale total (optional; with amount_paid detects unpaid / repaid).
         mpesa_destination: ``till`` / ``bank`` / blank.
 
     Returns:
@@ -85,16 +88,25 @@ def sale_payment_method_label(
     paid = as_decimal(amount_paid) if amount_paid is not None else None
     tot = as_decimal(total) if total is not None else None
 
-    unpaid = method == 'on_account'
-    if not unpaid and paid is not None and tot is not None and tot > 0 and paid <= 0:
-        unpaid = True
-    elif not unpaid and paid is not None and paid <= 0 and method in ('', 'cash'):
-        # Legacy rows: cash + 0 paid without total in context → still pay later.
-        if tot is None or tot > 0:
-            unpaid = True
+    is_debt_tender = method == 'on_account'
+    looks_unpaid_zero = False
+    if not is_debt_tender and paid is not None:
+        if tot is not None and tot > 0 and paid <= 0:
+            looks_unpaid_zero = True
+        elif paid <= 0 and method in ('', 'cash'):
+            # Legacy rows: cash + 0 paid without total in context → still debt.
+            if tot is None or tot > 0:
+                looks_unpaid_zero = True
 
-    if unpaid:
-        return 'Pay later'
+    if is_debt_tender or looks_unpaid_zero:
+        if (
+            paid is not None
+            and tot is not None
+            and tot > 0
+            and paid + _EPS >= tot
+        ):
+            return 'Debt repaid'
+        return 'Debt'
 
     if method == 'mpesa':
         dest = (mpesa_destination or '').strip().lower()

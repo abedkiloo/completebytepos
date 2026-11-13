@@ -126,21 +126,28 @@ describe('saleItemDisplay', () => {
     expect(saleNetBalanceDue(sale)).toBe(0);
   });
 
-  it('labels pay-later and M-Pesa till/bank without calling unpaid cash', () => {
+  it('labels debt and M-Pesa till/bank without calling unpaid cash or on account', () => {
     expect(
       salePaymentMethodLabel({
         payment_method: 'cash',
         amount_paid: 0,
         total: 500,
       })
-    ).toBe('Pay later');
+    ).toBe('Debt');
     expect(
       salePaymentMethodLabel({
         payment_method: 'on_account',
         amount_paid: 0,
         total: 500,
       })
-    ).toBe('Pay later');
+    ).toBe('Debt');
+    expect(
+      salePaymentMethodLabel({
+        payment_method: 'on_account',
+        amount_paid: 500,
+        total: 500,
+      })
+    ).toBe('Debt repaid');
     expect(
       salePaymentMethodLabel({
         payment_method: 'mpesa',
@@ -164,6 +171,36 @@ describe('saleItemDisplay', () => {
         total: 500,
       })
     ).toBe('Cash');
+  });
+
+  it('stress: debt vs debt repaid stay stable', () => {
+    for (let i = 0; i < 200; i += 1) {
+      expect(
+        salePaymentMethodLabel({
+          payment_method: 'on_account',
+          amount_paid: 0,
+          total: 10 + (i % 7),
+        })
+      ).toBe('Debt');
+      expect(
+        salePaymentMethodLabel({
+          payment_method: 'on_account',
+          amount_paid: 10 + (i % 7),
+          total: 10 + (i % 7),
+        })
+      ).toBe('Debt repaid');
+    }
+  });
+
+  it('security: debt labels never say on account or cash when unpaid', () => {
+    const label = salePaymentMethodLabel({
+      payment_method: 'on_account',
+      amount_paid: 0,
+      total: 80,
+    });
+    expect(label.toLowerCase()).not.toContain('on account');
+    expect(label.toLowerCase()).not.toBe('cash');
+    expect(label).toBe('Debt');
   });
 
   it('maps badge tone from sale and refund status', () => {

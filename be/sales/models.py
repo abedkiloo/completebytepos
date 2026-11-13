@@ -239,7 +239,7 @@ class Sale(models.Model):
     PAYMENT_METHODS = [
         ('cash', 'Cash'),
         ('mpesa', 'M-PESA'),
-        ('on_account', 'Pay later'),
+        ('on_account', 'Debt'),
         ('card', 'Card'),
         ('other', 'Other'),
     ]

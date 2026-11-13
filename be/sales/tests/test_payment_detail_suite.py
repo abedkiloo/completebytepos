@@ -53,7 +53,7 @@ class PaymentDetailUnitTests(SimpleTestCase):
     def test_sale_label_pay_later_and_mpesa_destination(self):
         self.assertEqual(
             sale_payment_method_label('cash', amount_paid=0, total=250),
-            'Pay later',
+            'Debt',
         )
         self.assertEqual(
             sale_payment_method_label(
@@ -93,7 +93,15 @@ class PaymentDetailCorrectedFunctionalityTests(SimpleTestCase):
         )
         self.assertEqual(
             sale_payment_method_label('cash', amount_paid=0, total=99),
-            'Pay later',
+            'Debt',
+        )
+        self.assertEqual(
+            sale_payment_method_label(
+                'on_account',
+                amount_paid=99,
+                total=99,
+            ),
+            'Debt repaid',
         )
         self.assertNotEqual(
             sale_payment_method_label('on_account', amount_paid=0, total=99),
@@ -131,7 +139,7 @@ class PaymentDetailStressUnitTests(SimpleTestCase):
                 amount_paid=0,
                 total=100 + (i % 50),
             )
-            self.assertEqual(unpaid, 'Pay later')
+            self.assertEqual(unpaid, 'Debt')
             dest = 'till' if i % 2 == 0 else 'bank'
             labeled = sale_payment_method_label(
                 'mpesa',

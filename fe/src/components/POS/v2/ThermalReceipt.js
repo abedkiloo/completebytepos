@@ -280,7 +280,10 @@ function friendlyPaymentLabel(saleOrMethod) {
     const method = String(saleOrMethod.payment_method || '').toLowerCase();
     const paid = Number(saleOrMethod.amount_paid || 0);
     const total = Number(saleOrMethod.total || 0);
-    if (method === 'on_account' || (paid <= 0 && total > 0)) return 'Pay later';
+    if (method === 'on_account' || (paid <= 0 && total > 0)) {
+      if (total > 0 && paid + 0.009 >= total) return 'Debt repaid';
+      return 'Debt';
+    }
     if (method === 'mpesa') {
       const dest = String(saleOrMethod.mpesa_destination || '').toLowerCase();
       if (dest === 'till') return 'M-Pesa · Till';
@@ -292,7 +295,7 @@ function friendlyPaymentLabel(saleOrMethod) {
   switch (saleOrMethod) {
     case 'cash': return 'Cash';
     case 'mpesa': return 'M-Pesa';
-    case 'on_account': return 'Pay later';
+    case 'on_account': return 'Debt';
     case 'wallet': return 'Wallet';
     case 'card': return 'Card';
     case 'bank_transfer': return 'Bank Transfer';

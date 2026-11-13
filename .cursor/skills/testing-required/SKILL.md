@@ -79,7 +79,8 @@ must cover:
 
 - Till vs bank chosen **before** M-Pesa code  
 - Screenshot required for non-cash till/bank on debt **and** sale  
-- Pay later / unpaid **not** labeled Cash in history/detail/receipts  
+- Debt / unpaid **not** labeled Cash or "on account" in history/detail/receipts  
+  (use **Debt**; fully settled debt sales → **Debt repaid**)  
 - Click payment → full detail (amount, payer, method, reference, proof) after receive  
 - Payment detail GET / correct stays permission-scoped (no IDOR, no unauth read)
 

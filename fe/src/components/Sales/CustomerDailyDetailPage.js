@@ -355,7 +355,7 @@ export default function CustomerDailyDetailPage() {
             label="Debt taken"
             value={formatCurrency(daySummary.total_debt_incurred)}
             tone={Number(daySummary.total_debt_incurred) > 0 ? 'destructive' : 'default'}
-            subtext={`${daySummary.debt_orders_count} on account`}
+            subtext={`${daySummary.debt_orders_count} debt`}
           />
           <SummaryCard
             icon={Wallet}

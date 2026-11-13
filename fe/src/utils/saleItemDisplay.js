@@ -149,21 +149,37 @@ export function salePaymentStatusLabel(sale) {
 
 /**
  * Tender label for lists, detail, and receipts.
- * Pay-later / unpaid must never show as Cash.
+ * Debt / unpaid must never show as Cash or "on account".
+ * Fully repaid debt sales show as "Debt repaid".
  *
  * @param {object|null|undefined} sale
  * @returns {string}
  */
 export function salePaymentMethodLabel(sale) {
   if (!sale) return '—';
-  if (sale.payment_method_label) return String(sale.payment_method_label);
   const method = String(sale.payment_method || '').toLowerCase();
   const paid = parseFloat(sale.amount_paid ?? 0) || 0;
   const total = parseFloat(sale.total ?? 0) || 0;
-  const unpaid =
-    method === 'on_account' ||
-    (paid <= 0.009 && (total > 0.009 || method === 'cash' || !method));
-  if (unpaid) return 'Pay later';
+  const isDebtTender = method === 'on_account';
+  const looksUnpaidZero =
+    !isDebtTender &&
+    paid <= 0.009 &&
+    (total > 0.009 || method === 'cash' || !method);
+  if (isDebtTender || looksUnpaidZero) {
+    if (total > 0.009 && paid + 0.009 >= total) return 'Debt repaid';
+    return 'Debt';
+  }
+  const apiLabel = sale.payment_method_label
+    ? String(sale.payment_method_label).trim()
+    : '';
+  // Prefer API label for cash/M-Pesa/etc., but never keep legacy debt wording.
+  if (
+    apiLabel &&
+    !/^pay later$/i.test(apiLabel) &&
+    !/^on account$/i.test(apiLabel)
+  ) {
+    return apiLabel;
+  }
   if (method === 'mpesa') {
     const dest = String(sale.mpesa_destination || '').toLowerCase();
     if (dest === 'till') return 'M-Pesa · Till';

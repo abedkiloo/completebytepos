@@ -79,12 +79,13 @@ describe('PaymentDetailDialog stress + corrected cases', () => {
         onOpenChange={jest.fn()}
         payment={basePayment({
           payment_method: 'on_account',
-          payment_method_label: 'Pay later',
+          payment_method_label: 'Debt',
           amount: '0.00',
         })}
       />
     );
-    expect(screen.getByText(/Pay later/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Debt$/i)).toBeInTheDocument();
+    expect(screen.queryByText(/on account/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Cash$/)).not.toBeInTheDocument();
   });
 
