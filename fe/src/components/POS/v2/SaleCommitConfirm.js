@@ -12,6 +12,7 @@ import {
 import { Button } from '../../ui/button';
 import { formatCurrency } from '../../../utils/formatters';
 import { paymentMethodLabel } from '../../../utils/paymentMethods';
+import { mpesaDestinationLabel } from '../../../utils/collectionPayer';
 import {
   saleCommitConfirmLabel,
   saleCommitTitle,
@@ -76,6 +77,14 @@ export function SaleCommitConfirm({
           ) : null}
           <dt className="text-muted-foreground">Payment method</dt>
           <dd className="text-right">{paymentMethodLabel(summary.paymentMethod)}</dd>
+          {summary.paymentMethod === 'mpesa' && summary.mpesaDestination ? (
+            <>
+              <dt className="text-muted-foreground">Via</dt>
+              <dd className="text-right" data-testid="sale-commit-mpesa-via">
+                {mpesaDestinationLabel(summary.mpesaDestination) || summary.mpesaDestination}
+              </dd>
+            </>
+          ) : null}
           {summary.paymentReference ? (
             <>
               <dt className="text-muted-foreground">Reference</dt>

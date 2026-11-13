@@ -23,6 +23,7 @@ describe('saleCommitSummary', () => {
       itemCount: 3,
       customerName: 'Ada',
       paymentReference: '',
+      mpesaDestination: '',
       kind: 'full',
       queuedForApproval: false,
       unchangedCorrection: false,
@@ -50,6 +51,7 @@ describe('saleCommitSummary', () => {
       itemCount: 0,
       customerName: null,
       paymentReference: '',
+      mpesaDestination: '',
       kind: 'full',
       queuedForApproval: false,
       unchangedCorrection: false,
@@ -72,10 +74,28 @@ describe('saleCommitSummary', () => {
       itemCount: 0,
       customerName: null,
       paymentReference: 'REF',
+      mpesaDestination: '',
       kind: 'full',
       queuedForApproval: false,
       unchangedCorrection: false,
     });
+  });
+
+  test('keeps till/bank destination on M-Pesa summaries only', () => {
+    expect(
+      buildSaleCommitSummary({
+        paymentMethod: 'mpesa',
+        mpesaDestination: ' Bank ',
+        received: 50,
+        total: 50,
+      }).mpesaDestination
+    ).toBe('bank');
+    expect(
+      buildSaleCommitSummary({
+        paymentMethod: 'cash',
+        mpesaDestination: 'till',
+      }).mpesaDestination
+    ).toBe('');
   });
 
   test('queuedForApproval uses send-for-approval labels', () => {

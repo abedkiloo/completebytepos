@@ -137,12 +137,16 @@ export function CheckoutPanel({
   const collectNow = mpesaCollectingNow(paymentMethod, receivedCheck);
   const collectingMpesaNow =
     isMpesa && collectNow && !isLiveMpesaPrompt(mpesaMode);
+  // Till/bank must appear as soon as M-Pesa is chosen (not only after amount > 0).
+  // Otherwise phones never see the chips — they sat above an empty amount field.
+  const needsTillBank = isMpesa && !receivedCheck.creditSale;
   const codeUnlocked =
-    !collectingMpesaNow || Boolean(String(mpesaDestination || '').trim());
+    !needsTillBank || Boolean(String(mpesaDestination || '').trim());
   const needsReference = paymentReferenceRequired(paymentMethod) && !isMpesa;
   const referenceOk =
     isMpesa || !needsReference || String(paymentReference || '').trim().length > 0;
-  const destinationOk = !collectingMpesaNow || Boolean(String(mpesaDestination || '').trim());
+  const destinationOk =
+    !needsTillBank || Boolean(String(mpesaDestination || '').trim());
   const receiptOk = !collectingMpesaNow || Boolean(paymentReceiptFile);
   const canPay =
     !hasOversell &&
@@ -156,6 +160,7 @@ export function CheckoutPanel({
   const handlePay = () => {
     if (isMpesa && collectNow && isLiveMpesaPrompt(mpesaMode)) {
       setShowMpesaErrors(true);
+      if (!String(mpesaDestination || '').trim()) return;
       if (phoneMessage(mpesaPhone, { required: true })) return;
       setStkOpen(true);
       return;
@@ -176,7 +181,11 @@ export function CheckoutPanel({
   };
 
   return (
-    <div className="flex flex-col border-t bg-background">
+    <div
+      className="flex max-h-[min(70vh,36rem)] flex-col border-t bg-background"
+      data-testid="pos-checkout-panel"
+    >
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
       {/* Totals */}
       <div className="space-y-1 px-3 py-2 text-sm">
         <Row label="Subtotal" value={formatCurrency(subtotal)} />
@@ -316,9 +325,53 @@ export function CheckoutPanel({
         </div>
       </div>
 
+      {/* Cash / M-Pesa: amount first so till/bank can unlock next */}
+      {isCashLike && (
+        <div className="px-3 pt-2">
+          <Label htmlFor="received" className="mb-1 block text-xs uppercase tracking-wide text-muted-foreground">
+            Amount received
+          </Label>
+          <Input
+            id="received"
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="0.01"
+            value={receivedAmount}
+            onChange={(e) => setReceivedAmount(e.target.value)}
+            placeholder="0.00"
+            className="h-11 text-right text-lg font-semibold tabular-nums"
+            autoComplete="off"
+          />
+
+          {change > 0 && (
+            <div className="mt-2 flex items-center justify-between rounded-md bg-success/10 px-3 py-2">
+              <span className="text-sm font-medium text-success">Change due</span>
+              <span className="text-base font-semibold tabular-nums text-success">
+                {formatCurrency(change)}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {allowPartialPayment && isCashLike ? (
+        <div className="px-3 pt-2">
+          <AccountPaymentBlock
+            visible
+            checked={paymentOnAccount}
+            onCheckedChange={onPaymentOnAccountChange}
+            hasRegisteredCustomer={hasRegisteredCustomer}
+            total={total}
+            amountPaid={receivedAmount}
+            onPayFullAmountLater={onPayFullAmountLater}
+          />
+        </div>
+      ) : null}
+
       {isMpesa ? (
-        <div className="space-y-3 px-3 pt-2">
-          {collectingMpesaNow ? (
+        <div className="space-y-3 px-3 pt-2" data-testid="pos-mpesa-destination-block">
+          {needsTillBank ? (
             <div className="space-y-2">
               <Label className="text-xs uppercase tracking-wide text-muted-foreground">
                 Till or bank *
@@ -328,6 +381,7 @@ export function CheckoutPanel({
                   <button
                     key={opt.value}
                     type="button"
+                    data-testid={`pos-mpesa-via-${opt.value}`}
                     disabled={submitting || !setMpesaDestination}
                     onClick={() => setMpesaDestination?.(opt.value)}
                     className={
@@ -413,50 +467,6 @@ export function CheckoutPanel({
         </div>
       ) : null}
 
-      {allowPartialPayment && isCashLike ? (
-        <div className="px-3 pt-2">
-          <AccountPaymentBlock
-            visible
-            checked={paymentOnAccount}
-            onCheckedChange={onPaymentOnAccountChange}
-            hasRegisteredCustomer={hasRegisteredCustomer}
-            total={total}
-            amountPaid={receivedAmount}
-            onPayFullAmountLater={onPayFullAmountLater}
-          />
-        </div>
-      ) : null}
-
-      {/* Cash / M-Pesa: amount tendered + quick-cash */}
-      {isCashLike && (
-        <div className="px-3 pt-2">
-          <Label htmlFor="received" className="mb-1 block text-xs uppercase tracking-wide text-muted-foreground">
-            Amount received
-          </Label>
-          <Input
-            id="received"
-            type="number"
-            inputMode="decimal"
-            min="0"
-            step="0.01"
-            value={receivedAmount}
-            onChange={(e) => setReceivedAmount(e.target.value)}
-            placeholder="0.00"
-            className="h-11 text-right text-lg font-semibold tabular-nums"
-            autoComplete="off"
-          />
-
-          {change > 0 && (
-            <div className="mt-2 flex items-center justify-between rounded-md bg-success/10 px-3 py-2">
-              <span className="text-sm font-medium text-success">Change due</span>
-              <span className="text-base font-semibold tabular-nums text-success">
-                {formatCurrency(change)}
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Oversell warning — visible above the Pay button so the cashier
           immediately understands why the button is disabled. */}
       {hasOversell && (
@@ -468,9 +478,10 @@ export function CheckoutPanel({
           </span>
         </div>
       )}
+      </div>
 
-      {/* Pay button — the primary CTA */}
-      <div className="p-3 pt-2">
+      {/* Pay button — sticky primary CTA */}
+      <div className="shrink-0 border-t bg-background p-3 pt-2">
         <Button
           size="cashier-lg"
           className="w-full text-base font-semibold"
@@ -505,7 +516,11 @@ export function CheckoutPanel({
         onPaid={(paid) => {
           const receipt = paid?.mpesa_receipt || paid?.invoice_number || '';
           setPaymentReference(receipt);
-          onPay({ paymentReference: receipt });
+          onPay({
+            paymentReference: receipt,
+            mpesaDestination,
+            paymentReceiptFile,
+          });
         }}
       />
     </div>

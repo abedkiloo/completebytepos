@@ -118,8 +118,9 @@ export default function BillingPOSPage() {
   const collectNow = mpesaCollectingNow(state.paymentMethod, paidCheck);
   const collectingMpesaNow =
     isMpesa && collectNow && !isLiveMpesaPrompt(mpesaMode);
+  const needsTillBank = isMpesa && !paidCheck.creditSale;
   const codeUnlocked =
-    !collectingMpesaNow || Boolean(String(state.mpesaDestination || '').trim());
+    !needsTillBank || Boolean(String(state.mpesaDestination || '').trim());
 
   useEffect(() => {
     if (state.selectedCustomer?.phone) {
@@ -715,8 +716,8 @@ export default function BillingPOSPage() {
                 </div>
 
                 {isMpesa ? (
-                  <div className="mt-3 space-y-3">
-                    {collectingMpesaNow ? (
+                  <div className="mt-3 space-y-3" data-testid="billing-mpesa-destination-block">
+                    {needsTillBank ? (
                       <div className="space-y-2">
                         <Label className="text-xs uppercase tracking-wide text-muted-foreground">
                           Till or bank *
@@ -726,6 +727,7 @@ export default function BillingPOSPage() {
                             <button
                               key={opt.value}
                               type="button"
+                              data-testid={`billing-mpesa-via-${opt.value}`}
                               disabled={state.submitting}
                               onClick={() => state.setMpesaDestination(opt.value)}
                               className={

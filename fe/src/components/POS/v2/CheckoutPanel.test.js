@@ -115,10 +115,11 @@ describe('CheckoutPanel', () => {
       <MpesaHarness onPay={onPay} customerPhone="0712345678" />
     );
 
+    expect(screen.getByTestId('pos-mpesa-destination-block')).toBeInTheDocument();
     expect(screen.getByText(/Choose till or bank first/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/M-Pesa code/i)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /^Till$/i }));
+    fireEvent.click(screen.getByTestId('pos-mpesa-via-till'));
     expect(screen.getByLabelText(/M-Pesa code/i)).toBeInTheDocument();
     expect(screen.getByTestId('pos-payment-receipt')).toBeInTheDocument();
 
@@ -138,11 +139,33 @@ describe('CheckoutPanel', () => {
     expect(container.querySelector('[data-testid="mpesa-capture-prompt"]')).toBeTruthy();
   });
 
+  it('corrected: shows till/bank even before amount is entered', () => {
+    render(<MpesaHarness onPay={jest.fn()} receivedAmount="" />);
+    expect(screen.getByTestId('pos-mpesa-via-till')).toBeInTheDocument();
+    expect(screen.getByTestId('pos-mpesa-via-bank')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/M-Pesa code/i)).not.toBeInTheDocument();
+  });
+
+  it('security: complete sale stays disabled until till/bank is chosen', () => {
+    render(<MpesaHarness onPay={jest.fn()} />);
+    expect(screen.getByRole('button', { name: /Complete sale/i })).toBeDisabled();
+    fireEvent.click(screen.getByTestId('pos-mpesa-via-bank'));
+    expect(screen.getByRole('button', { name: /Complete sale/i })).toBeDisabled();
+  });
+
+  it('stress: toggling till/bank repeatedly keeps code gate correct', () => {
+    render(<MpesaHarness onPay={jest.fn()} />);
+    for (let i = 0; i < 40; i += 1) {
+      fireEvent.click(screen.getByTestId(i % 2 === 0 ? 'pos-mpesa-via-till' : 'pos-mpesa-via-bank'));
+      expect(screen.getByLabelText(/M-Pesa code/i)).toBeInTheDocument();
+    }
+  });
+
   it('requires an M-Pesa code before completing the sale', () => {
     const onPay = jest.fn();
     render(<MpesaHarness onPay={onPay} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /^Till$/i }));
+    fireEvent.click(screen.getByTestId('pos-mpesa-via-till'));
     const file = new File(['receipt'], 'mpesa.png', { type: 'image/png' });
     fireEvent.change(screen.getByTestId('pos-payment-receipt'), {
       target: { files: [file] },

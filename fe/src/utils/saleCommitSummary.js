@@ -8,6 +8,7 @@ export function buildSaleCommitSummary({
   itemCount = 0,
   customerName = null,
   paymentReference = '',
+  mpesaDestination = '',
   kind: kindOverride,
   queuedForApproval = false,
   unchangedCorrection = false,
@@ -21,15 +22,22 @@ export function buildSaleCommitSummary({
   else if (balance > 0 && paid === 0) kind = 'pay_later';
   else if (balance > 0) kind = 'partial';
 
+  const method = String(paymentMethod || 'cash');
+  const dest =
+    method === 'mpesa'
+      ? String(mpesaDestination || '').trim().toLowerCase()
+      : '';
+
   return {
     total: tot,
     received: paid,
     change,
     balance,
-    paymentMethod: String(paymentMethod || 'cash'),
+    paymentMethod: method,
     itemCount: Number(itemCount) || 0,
     customerName: customerName || null,
     paymentReference: String(paymentReference || '').trim(),
+    mpesaDestination: dest,
     kind,
     queuedForApproval: Boolean(queuedForApproval),
     unchangedCorrection: Boolean(unchangedCorrection),

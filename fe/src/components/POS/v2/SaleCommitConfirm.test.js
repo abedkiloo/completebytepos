@@ -34,6 +34,26 @@ describe('SaleCommitConfirm', () => {
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
+  test('corrected: shows M-Pesa till/bank via on the confirm summary', () => {
+    render(
+      <SaleCommitConfirm
+        open
+        onOpenChange={jest.fn()}
+        summary={{
+          ...base,
+          kind: 'full',
+          paymentMethod: 'mpesa',
+          paymentReference: 'UKDA01HCUK',
+          mpesaDestination: 'till',
+        }}
+        submitting={false}
+        onConfirm={jest.fn()}
+      />
+    );
+    expect(screen.getByTestId('sale-commit-mpesa-via')).toHaveTextContent('Till');
+    expect(screen.getByText('UKDA01HCUK')).toBeInTheDocument();
+  });
+
   test('asks for explicit confirm when a returned sale is unchanged', () => {
     const onConfirm = jest.fn();
     render(

@@ -1269,6 +1269,7 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
           itemCount,
           customerName,
           paymentReference: paymentRef,
+          mpesaDestination: dest,
           queuedForApproval: sendForApproval,
           unchangedCorrection: Boolean(
             returnedSaleNotice
