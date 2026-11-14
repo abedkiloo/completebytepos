@@ -18,6 +18,7 @@ describe('accountPayment', () => {
   });
 
   test('ACCOUNT_PAYMENT_LABEL is stable for UI', () => {
-    expect(ACCOUNT_PAYMENT_LABEL).toMatch(/customer account/i);
+    expect(ACCOUNT_PAYMENT_LABEL).toMatch(/debt/i);
+    expect(ACCOUNT_PAYMENT_LABEL.toLowerCase()).not.toContain('on account');
   });
 });

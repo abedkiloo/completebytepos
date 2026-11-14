@@ -15,9 +15,9 @@ describe('PartialPaymentConfirm', () => {
       />
     );
 
-    expect(screen.getByText(/Record full amount as pay later/i)).toBeInTheDocument();
+    expect(screen.getByText(/Record full sale as debt/i)).toBeInTheDocument();
     expect(screen.getByText(/No payment is collected now/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Record sale — pay later/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Record sale as debt/i })).toBeInTheDocument();
   });
 
   test('shows partial balance copy when some amount received', () => {
@@ -49,7 +49,7 @@ describe('PartialPaymentConfirm', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Record sale — pay later/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Record sale as debt/i }));
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 });

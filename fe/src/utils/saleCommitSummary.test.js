@@ -36,9 +36,9 @@ describe('saleCommitSummary', () => {
     expect(buildSaleCommitSummary({ total: 200, received: 50 }).kind).toBe('partial');
     expect(buildSaleCommitSummary({ total: 200, received: 0 }).kind).toBe('pay_later');
     expect(saleCommitConfirmLabel('partial')).toBe('Confirm sale & debt');
-    expect(saleCommitConfirmLabel('pay_later')).toBe('Confirm — pay later');
+    expect(saleCommitConfirmLabel('pay_later')).toBe('Confirm — record as debt');
     expect(saleCommitTitle('partial')).toBe('Confirm partial payment?');
-    expect(saleCommitTitle('pay_later')).toBe('Confirm pay-later sale?');
+    expect(saleCommitTitle('pay_later')).toBe('Confirm debt sale?');
   });
 
   test('normalizes empty defaults and invalid numbers', () => {

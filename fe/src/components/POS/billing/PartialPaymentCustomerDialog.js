@@ -27,7 +27,7 @@ export default function PartialPaymentCustomerDialog({
         if (!next) onClose?.();
       }}
     >
-      <DialogContent className="sm:max-w-md" description="Select a customer before payment on account.">
+      <DialogContent className="sm:max-w-md" description="Select a customer before recording debt.">
         <DialogHeader>
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
@@ -36,9 +36,9 @@ export default function PartialPaymentCustomerDialog({
             <div className="min-w-0 flex-1 space-y-1">
               <DialogTitle>Select a customer first</DialogTitle>
               <DialogDescription className="text-sm leading-relaxed">
-                Partial payments and pay-later sales post the balance to a customer account.
-                Search for an existing customer below, or add a new one — then enable payment on
-                account again.
+                Partial payments and full-debt sales need a registered customer. Search for an
+                existing customer below, or add a new one — then enable Allow debt / partial
+                payment again.
               </DialogDescription>
             </div>
           </div>

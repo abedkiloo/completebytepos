@@ -757,7 +757,7 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
     }
     if (paid < total && !partialPayment) {
       toast.warning(
-        'Enable "Payment on customer account" for a partial payment or pay later.'
+        'Enable "Allow debt / partial payment" to record unpaid balance as debt.'
       );
       return;
     }
@@ -767,7 +767,7 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
         return;
       }
       if (isWalkInCustomer(selectedCustomer)) {
-        toast.warning('Select a registered customer to record a balance on account.');
+        toast.warning('Select a registered customer to record balance as debt.');
         return;
       }
     }
@@ -892,9 +892,9 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
         saleCheckoutSuccessToast(sale, {
           completedMessage:
             paid === 0 && parseFloat(res.data.total) > 0
-              ? 'Sale completed. Full amount added to customer account.'
+              ? 'Sale completed. Full amount recorded as debt.'
               : paid < parseFloat(res.data.total)
-                ? 'Sale completed. Balance added to customer account.'
+                ? 'Sale completed. Balance recorded as debt.'
                 : 'Sale completed',
         })
       );

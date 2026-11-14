@@ -1,5 +1,5 @@
 /**
- * Customer account payment helpers — partial pay now + balance on account, or full pay later.
+ * Debt / partial-payment helpers — collect some now, or record the full sale as debt.
  */
 
 export function computeAccountBalanceDue(total, amountPaid) {
@@ -13,6 +13,6 @@ export function isFullPayLater(total, amountPaid) {
   return paid === 0 && (Number(total) || 0) > 0;
 }
 
-export const ACCOUNT_PAYMENT_LABEL = 'Payment on customer account';
+export const ACCOUNT_PAYMENT_LABEL = 'Allow debt / partial payment';
 export const ACCOUNT_PAYMENT_HINT =
-  'Collect part of the total now or use Pay full amount later — the balance is added to the customer account.';
+  'Collect part of the total now, or record the full sale as debt for this customer.';

@@ -114,7 +114,7 @@ export function SaleCommitConfirm({
           {kind !== 'full' ? (
             <>
               <dt className="font-medium text-foreground">
-                {kind === 'pay_later' ? 'Amount due (pay later)' : 'Balance (debt)'}
+                {kind === 'pay_later' ? 'Amount due (debt)' : 'Balance (debt)'}
               </dt>
               <dd className="text-right text-base font-semibold tabular-nums text-warning">
                 {formatCurrency(summary.balance)}

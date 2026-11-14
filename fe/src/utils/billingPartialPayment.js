@@ -1,6 +1,6 @@
 import { isWalkInCustomer } from './walkInCustomer';
 
-/** Partial payment posts balance to a registered customer account — not walk-in. */
+/** Partial payment posts balance as debt on a registered customer — not walk-in. */
 export function canEnablePartialPayment(customer) {
   return !isWalkInCustomer(customer);
 }

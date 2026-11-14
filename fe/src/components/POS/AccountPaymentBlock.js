@@ -51,7 +51,7 @@ export function AccountPaymentBlock({
 
       {!hasRegisteredCustomer ? (
         <p id={customerHintId} className="text-xs leading-relaxed text-muted-foreground">
-          Select or add a registered customer to charge a balance to their account.
+          Select or add a registered customer before recording debt.
         </p>
       ) : (
         <p id={customerHintId} className="text-xs leading-relaxed text-muted-foreground">
@@ -72,7 +72,7 @@ export function AccountPaymentBlock({
           }}
         >
           <Clock className="h-4 w-4" />
-          Pay full amount later
+          Record full sale as debt
         </Button>
       ) : null}
 
@@ -80,13 +80,13 @@ export function AccountPaymentBlock({
         <div className="rounded-md border border-amber-200/80 bg-amber-50 px-3 py-2 text-sm text-amber-950">
           {fullLater ? (
             <p>
-              <span className="font-medium">Pay later:</span> entire{' '}
+              <span className="font-medium">Debt:</span> entire{' '}
               <span className="font-semibold tabular-nums">{formatCurrency(total)}</span> will be
-              added to the customer account.
+              recorded as customer debt.
             </p>
           ) : (
             <p>
-              <span className="font-medium">Balance on account:</span>{' '}
+              <span className="font-medium">Balance (debt):</span>{' '}
               <span className="font-semibold tabular-nums">
                 {formatCurrency(computeAccountBalanceDue(total, paidN))}
               </span>

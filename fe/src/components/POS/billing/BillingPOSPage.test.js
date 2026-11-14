@@ -142,7 +142,7 @@ describe('BillingPOSPage invoice layout', () => {
 
     expect(screen.getByLabelText(/Amount received/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/Payment on customer account/i)
+      screen.getByText(/Allow debt \/ partial payment/i)
     ).toBeInTheDocument();
   });
 
@@ -152,11 +152,11 @@ describe('BillingPOSPage invoice layout', () => {
     );
     render(<BillingPOSPage />);
 
-    expect(screen.queryByText(/Payment on customer account/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Allow debt \/ partial payment/i)).not.toBeInTheDocument();
     expect(screen.getByTestId('billing-amount-received')).toBeInTheDocument();
   });
 
-  it('pay later button invokes handler when customer selected', () => {
+  it('record-as-debt button invokes handler when customer selected', () => {
     const payFullAmountLater = jest.fn();
     useBillingPOSState.mockReturnValue(
       buildMockState({
@@ -167,7 +167,7 @@ describe('BillingPOSPage invoice layout', () => {
     );
     render(<BillingPOSPage />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Pay full amount later/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Record full sale as debt/i }));
     expect(payFullAmountLater).toHaveBeenCalledTimes(1);
   });
 

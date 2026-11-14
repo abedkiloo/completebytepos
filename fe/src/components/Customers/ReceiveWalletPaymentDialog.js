@@ -695,7 +695,7 @@ export default function ReceiveWalletPaymentDialog({
       title="Proceed with this payment?"
       description={
         canApproveCollection
-          ? 'Do you really want to continue with this transaction? This records the payment on the customer account.'
+          ? 'Do you really want to continue with this transaction? This records a debt repayment for the customer.'
           : 'Do you really want to continue with this transaction? A manager must approve it before the wallet is updated.'
       }
       rows={commitRows}

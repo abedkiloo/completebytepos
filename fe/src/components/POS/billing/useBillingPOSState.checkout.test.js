@@ -124,7 +124,7 @@ describe('useBillingPOSState checkout — payment on account', () => {
       })
     );
     expect(toast.success).toHaveBeenCalledWith(
-      'Sale completed. Full amount added to customer account.'
+      'Sale completed. Full amount recorded as debt.'
     );
   });
 
@@ -164,7 +164,7 @@ describe('useBillingPOSState checkout — payment on account', () => {
       })
     );
     expect(toast.success).toHaveBeenCalledWith(
-      'Sale completed. Balance added to customer account.'
+      'Sale completed. Balance recorded as debt.'
     );
   });
 
@@ -183,7 +183,7 @@ describe('useBillingPOSState checkout — payment on account', () => {
 
     expect(salesAPI.checkout).not.toHaveBeenCalled();
     expect(toast.warning).toHaveBeenCalledWith(
-      'Enable "Payment on customer account" for a partial payment or pay later.'
+      'Enable "Allow debt / partial payment" to record unpaid balance as debt.'
     );
   });
 

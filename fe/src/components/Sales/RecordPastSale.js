@@ -407,7 +407,7 @@ function SinglePastSaleForm({
       return;
     }
     if (allowPartial && !customerId) {
-      toast.error('Select a customer for partial payment or balance on account.');
+      toast.error('Select a customer for partial payment or debt.');
       return;
     }
     setShowCommitConfirm(true);
@@ -481,7 +481,7 @@ function SinglePastSaleForm({
       tone: 'success',
     },
     { label: 'Method', value: paymentMethod },
-    allowPartial ? { label: 'Partial', value: 'Yes — balance on account' } : null,
+    allowPartial ? { label: 'Partial', value: 'Yes — balance as debt' } : null,
     {
       label: 'Customer SMS',
       value:
@@ -856,7 +856,7 @@ function SinglePastSaleForm({
             checked={allowPartial}
             onChange={(e) => setAllowPartial(e.target.checked)}
           />
-          Allow partial payment / balance on customer account
+          Allow partial payment / record balance as debt
         </label>
         <div className="flex items-start justify-between gap-3 rounded-md border border-border/70 bg-muted/30 px-3 py-2 sm:col-span-2">
           <div className="min-w-0 space-y-0.5">

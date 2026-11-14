@@ -1081,13 +1081,13 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
           if (pendingSaleData.received === 0) {
             toast.success(
               saleCheckoutSuccessToast(sale, {
-                completedMessage: 'Sale completed. Full amount added to customer account.',
+                completedMessage: 'Sale completed. Full amount recorded as debt.',
               })
             );
           } else {
             toast.success(
               saleCheckoutSuccessToast(sale, {
-                completedMessage: 'Sale completed. Balance added to customer account.',
+                completedMessage: 'Sale completed. Balance recorded as debt.',
               })
             );
           }
@@ -1214,18 +1214,18 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
 
       if (receivedCheck.creditSale || received < total) {
         if (!allowPartialPayment) {
-          toast.warning('Payment on account is disabled in store settings.');
+          toast.warning('Debt / partial payment is disabled in store settings.');
           return;
         }
         if (!paymentOnAccount) {
           toast.warning(
-            'Enable "Payment on customer account" for a partial payment or pay later.'
+            'Enable "Allow debt / partial payment" to record unpaid balance as debt.'
           );
           return;
         }
         if (!isRegisteredPosCustomer(selectedCustomer)) {
           toast.warning(
-            'Pick a registered customer before recording a balance on their account.'
+            'Pick a registered customer before recording balance as debt.'
           );
           return;
         }

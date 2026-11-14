@@ -240,7 +240,7 @@ export default function DebtManagementPage() {
       <PageShell>
         <PageHeader
           title="Debt Management"
-          description="Track customers who owe money from pay-later and partial payments."
+          description="Track customers who owe money from debt and partial payments."
         />
         <EmptyState
           icon={Wallet}
@@ -574,8 +574,8 @@ export default function DebtManagementPage() {
           title="No customers with debt"
           description={
             search || agingBucket
-              ? 'Try clearing filters, or check Sales for pay-later balances.'
-              : 'When sales are put on account, debtors will appear here.'
+              ? 'Try clearing filters, or check Sales for outstanding debt balances.'
+              : 'When sales are recorded as debt, debtors will appear here.'
           }
         />
       ) : (

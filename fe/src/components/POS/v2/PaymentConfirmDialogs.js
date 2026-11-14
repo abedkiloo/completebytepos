@@ -32,19 +32,18 @@ export function PartialPaymentConfirm({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-warning" />
-            {fullPayLater ? 'Record full amount as pay later?' : 'Record balance as debt?'}
+            {fullPayLater ? 'Record full sale as debt?' : 'Record balance as debt?'}
           </DialogTitle>
           <DialogDescription>
             {fullPayLater ? (
               <>
-                No payment is collected now. The full sale total will be added to{' '}
-                <strong className="text-foreground">{customer?.name}</strong>&apos;s account as
-                amount due.
+                No payment is collected now. The full sale total will be recorded as debt for{' '}
+                <strong className="text-foreground">{customer?.name}</strong>.
               </>
             ) : (
               <>
-                The customer is paying less than the total. The unpaid balance will be added to{' '}
-                <strong className="text-foreground">{customer?.name}</strong>&apos;s account.
+                The customer is paying less than the total. The unpaid balance will be recorded as
+                debt for <strong className="text-foreground">{customer?.name}</strong>.
               </>
             )}
           </DialogDescription>
@@ -56,7 +55,7 @@ export function PartialPaymentConfirm({
           <dt className="text-muted-foreground">{fullPayLater ? 'Collected now' : 'Received'}</dt>
           <dd className="text-right tabular-nums">{formatCurrency(pending.received)}</dd>
           <dt className="font-medium text-foreground">
-            {fullPayLater ? 'Amount due (pay later)' : 'Balance (debt)'}
+            {fullPayLater ? 'Amount due (debt)' : 'Balance (debt)'}
           </dt>
           <dd className="text-right text-base font-semibold tabular-nums text-warning">
             {formatCurrency(pending.balance)}
@@ -68,7 +67,7 @@ export function PartialPaymentConfirm({
             Cancel
           </Button>
           <Button onClick={onConfirm} disabled={submitting}>
-            {fullPayLater ? 'Record sale — pay later' : 'Record sale & debt'}
+            {fullPayLater ? 'Record sale as debt' : 'Record sale & debt'}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -6,7 +6,7 @@ export function isRegisteredPosCustomer(customer) {
 
 /**
  * Validate "amount received" for cash/M-Pesa before completing or opening debt confirm.
- * When paymentOnAccount is on, empty amount means full pay later (0 received).
+ * When paymentOnAccount is on, empty amount means full debt sale (0 received).
  */
 export function evaluatePosAmountReceived(receivedAmount, options = {}) {
   const {

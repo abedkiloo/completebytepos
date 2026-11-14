@@ -119,10 +119,10 @@ describe('SaleCommitConfirm', () => {
       />
     );
 
-    expect(screen.getByText(/Confirm pay-later sale/i)).toBeInTheDocument();
-    expect(screen.getByText(/Amount due \(pay later\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Confirm debt sale/i)).toBeInTheDocument();
+    expect(screen.getByText(/Amount due \(debt\)/i)).toBeInTheDocument();
     expect(screen.getByText(/Collected now/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Confirm — pay later/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Confirm — record as debt/i })).toBeInTheDocument();
   });
 
   test('shows partial debt wording and cancel closes', () => {

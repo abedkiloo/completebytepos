@@ -51,7 +51,7 @@ export function saleCommitConfirmLabel(
 ) {
   if (unchangedCorrection) return 'Yes — send without changes';
   if (queuedForApproval || kind === 'approval') return 'Send for approval';
-  if (kind === 'pay_later') return 'Confirm — pay later';
+  if (kind === 'pay_later') return 'Confirm — record as debt';
   if (kind === 'partial') return 'Confirm sale & debt';
   return 'Confirm & complete sale';
 }
@@ -63,7 +63,7 @@ export function saleCommitTitle(
 ) {
   if (unchangedCorrection) return 'Send this sale back unchanged?';
   if (queuedForApproval || kind === 'approval') return 'Send this sale for approval?';
-  if (kind === 'pay_later') return 'Confirm pay-later sale?';
+  if (kind === 'pay_later') return 'Confirm debt sale?';
   if (kind === 'partial') return 'Confirm partial payment?';
   return 'Confirm sale?';
 }

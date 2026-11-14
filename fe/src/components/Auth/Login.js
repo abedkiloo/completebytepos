@@ -37,7 +37,7 @@ const LANDING_POINTS = [
   {
     icon: ShoppingCart,
     title: 'A till that keeps up',
-    body: 'Find items by name, SKU, or barcode. Cash, card, or pay later — without leaving the sale.',
+    body: 'Find items by name, SKU, or barcode. Cash, card, or debt — without leaving the sale.',
   },
   {
     icon: Package,
