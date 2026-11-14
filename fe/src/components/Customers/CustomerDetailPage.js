@@ -191,7 +191,7 @@ export default function CustomerDetailPage() {
     const seed = {
       ...entry,
       kind: 'debt_settlement',
-      customer_id: customer?.id || Number(id),
+      customer_id: customer?.id || Number(customerId),
       customer_name: customer?.name || '',
       customer_phone: customer?.phone || '',
       customer_code: customer?.customer_code || '',
