@@ -11,7 +11,9 @@ import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { customerDetailPath, formatDebtTrail } from '../../utils/customerDetail';
 import {
   getTodayDateString,
-  shiftDate,
+  isPaymentsTrailTodayRange,
+  paymentsTrailLast30DaysRange,
+  paymentsTrailTodayRange,
   settlementMethodLabel,
   settlementPayerLabel,
   settlementReferenceLabel,
@@ -61,7 +63,7 @@ const KIND_LABELS = {
 };
 
 function defaultDateFrom() {
-  return shiftDate(getTodayDateString(), -30);
+  return paymentsTrailLast30DaysRange().dateFrom;
 }
 
 export default function PaymentsTrailPage() {
@@ -72,6 +74,7 @@ export default function PaymentsTrailPage() {
   const [mpesaDestination, setMpesaDestination] = useState('');
   const [dateFrom, setDateFrom] = useState(defaultDateFrom);
   const [dateTo, setDateTo] = useState(getTodayDateString);
+  const todaySelected = isPaymentsTrailTodayRange(dateFrom, dateTo);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 300);
   const [page, setPage] = useState(1);
@@ -265,6 +268,35 @@ export default function PaymentsTrailPage() {
             className="h-9 w-[11.5rem]"
           />
         </FilterField>
+        <div className="flex flex-wrap items-end gap-2 self-end pb-0.5">
+          <Button
+            type="button"
+            variant={todaySelected ? 'default' : 'outline'}
+            size="sm"
+            data-testid="payments-trail-today"
+            aria-pressed={todaySelected}
+            onClick={() => {
+              const range = paymentsTrailTodayRange();
+              setDateFrom(range.dateFrom);
+              setDateTo(range.dateTo);
+            }}
+          >
+            Today
+          </Button>
+          <Button
+            type="button"
+            variant={!todaySelected ? 'secondary' : 'outline'}
+            size="sm"
+            data-testid="payments-trail-last-30"
+            onClick={() => {
+              const range = paymentsTrailLast30DaysRange();
+              setDateFrom(range.dateFrom);
+              setDateTo(range.dateTo);
+            }}
+          >
+            Last 30 days
+          </Button>
+        </div>
         <FilterField label="Search" className="min-w-[14rem] flex-1">
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />

@@ -59,6 +59,45 @@ export function shiftDate(dateStr, offsetDays) {
   return `${ry}-${rm}-${rd}`;
 }
 
+/**
+ * Payments trail date presets (From / To).
+ *
+ * @param {string} [today]
+ * @returns {{ dateFrom: string, dateTo: string }}
+ */
+export function paymentsTrailTodayRange(today = getTodayDateString()) {
+  const day = String(today || getTodayDateString());
+  return { dateFrom: day, dateTo: day };
+}
+
+/**
+ * Default payments trail window: last 30 days through today.
+ *
+ * @param {string} [today]
+ * @returns {{ dateFrom: string, dateTo: string }}
+ */
+export function paymentsTrailLast30DaysRange(today = getTodayDateString()) {
+  const day = String(today || getTodayDateString());
+  return { dateFrom: shiftDate(day, -30), dateTo: day };
+}
+
+/**
+ * True when From and To are both today.
+ *
+ * @param {string} dateFrom
+ * @param {string} dateTo
+ * @param {string} [today]
+ * @returns {boolean}
+ */
+export function isPaymentsTrailTodayRange(
+  dateFrom,
+  dateTo,
+  today = getTodayDateString()
+) {
+  const day = String(today || getTodayDateString());
+  return String(dateFrom || '') === day && String(dateTo || '') === day;
+}
+
 export function formatDateLabel(dateStr) {
   if (!dateStr) return '';
   const todayStr = getTodayDateString();

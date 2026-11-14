@@ -5,6 +5,9 @@ import {
   getTodayDateString,
   shiftDate,
   formatDateLabel,
+  isPaymentsTrailTodayRange,
+  paymentsTrailLast30DaysRange,
+  paymentsTrailTodayRange,
   settlementMethodLabel,
   settlementPayerLabel,
   settlementReferenceLabel,
@@ -35,6 +38,26 @@ describe('debtManagement utils', () => {
   it('labels today in formatDateLabel', () => {
     const today = getTodayDateString();
     expect(formatDateLabel(today)).toContain('Today');
+  });
+
+  it('paymentsTrailTodayRange sets from and to to the same day', () => {
+    expect(paymentsTrailTodayRange('2026-11-14')).toEqual({
+      dateFrom: '2026-11-14',
+      dateTo: '2026-11-14',
+    });
+  });
+
+  it('paymentsTrailLast30DaysRange ends today and starts 30 days earlier', () => {
+    expect(paymentsTrailLast30DaysRange('2026-11-14')).toEqual({
+      dateFrom: '2026-10-15',
+      dateTo: '2026-11-14',
+    });
+  });
+
+  it('isPaymentsTrailTodayRange is true only when both bounds are today', () => {
+    expect(isPaymentsTrailTodayRange('2026-11-14', '2026-11-14', '2026-11-14')).toBe(true);
+    expect(isPaymentsTrailTodayRange('2026-10-15', '2026-11-14', '2026-11-14')).toBe(false);
+    expect(isPaymentsTrailTodayRange('', '2026-11-14', '2026-11-14')).toBe(false);
   });
 
   it('labels method with till/bank and payer', () => {
