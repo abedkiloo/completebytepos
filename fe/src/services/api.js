@@ -944,6 +944,19 @@ export const permissionsAPI = {
 };
 
 /** Field / visit orders — admin pack board under Sales. */
+/** Stock a field agent carries out, sells from, and accounts for on return. */
+export const fieldLoadsAPI = {
+  list: () => api.get('/agents/field-loads/'),
+  agents: () => api.get('/agents/field-loads/agents/'),
+  create: (data) => api.post('/agents/field-loads/', data),
+  get: (id) => api.get(`/agents/field-loads/${id}/`),
+  addLine: (id, data) => api.post(`/agents/field-loads/${id}/lines/`, data),
+  sell: (id, data) => api.post(`/agents/field-loads/${id}/sell/`, data),
+  returnCount: (id, data) => api.post(`/agents/field-loads/${id}/return/`, data),
+  accept: (id, data) => api.post(`/agents/field-loads/${id}/accept/`, data),
+  reject: (id, data) => api.post(`/agents/field-loads/${id}/reject/`, data),
+};
+
 export const dispatchAPI = {
   list: (params) => api.get('/dispatch/field-orders/', { params }),
   get: (id) => api.get(`/dispatch/field-orders/${id}/`),

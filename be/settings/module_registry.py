@@ -134,6 +134,12 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
                 '(sale tender, invoice payments, debt collections).',
                 10,
             ),
+            _f(
+                'field_load',
+                'Field loads',
+                'Stock a field agent carries out, sells from, and accounts for on return.',
+                11,
+            ),
         ],
     },
     {
@@ -546,6 +552,7 @@ PRESETS: dict[str, dict[str, Any]] = {
                 'camera_barcode_scan',
                 'history_export',
                 'payments_trail_export',
+                'field_load',
             ],
             'products': ['barcode_printing'],
             'customers': ['call_book'],

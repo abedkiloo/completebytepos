@@ -107,6 +107,9 @@ describe('permissionRoutes registry', () => {
     expect(routePermissionGateForPath('/sales/daily/customers/9')).toEqual(
       expect.objectContaining({ module: 'sales', action: 'daily_sales' })
     );
+    expect(routePermissionGateForPath('/sales/field-loads')).toEqual(
+      expect.objectContaining({ module: 'agents', action: 'field_load' }),
+    );
     expect(routePermissionGateForPath('/sales/field')).toEqual(
       expect.objectContaining({ module: 'dispatch', action: 'view' })
     );

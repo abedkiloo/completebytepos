@@ -3,9 +3,10 @@ Weekly customer call book.
 
 Monday–Friday in Africa/Nairobi. Saturday and Sunday are not call days.
 "Called this week" is derived from ``CustomerCall.week_start`` (that week's
-Monday), so the list resets itself on Monday. A short hold stops two staff
-members dialling the same shop. Customers with no usable phone are counted
-as cannot-call and are left off the dial list.
+Monday), so the list resets itself on Monday. Staff copy the number and
+call on their own cell phone. The system only records the result. A short
+hold stops two staff members working the same shop. Customers with no
+usable phone are counted as cannot-call and are left off the list.
 
 Bounds: summaries are 0–500 characters. Hold is 1–30 minutes. A day plan
 has at most 200 location rows. Weekday indexes are 0 (Monday) through 4
@@ -15,11 +16,12 @@ has at most 200 location rows. Weekday indexes are 0 (Monday) through 4
 from __future__ import annotations
 
 import zlib
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 
 from django.db import transaction
 from django.utils import timezone
 
+from sales.call_day_algorithm import MIN_PINS, assign_ward_weekdays
 from sales.kenya_admin import classify_admin_location
 from sales.models import CallBookSettings, CallDayPlan, CallHold, Customer, CustomerCall
 
@@ -32,7 +34,9 @@ OUTCOMES = {
     CustomerCall.OUTCOME_CALLED,
     CustomerCall.OUTCOME_ASK_LATER,
     CustomerCall.OUTCOME_NO_ANSWER,
+    CustomerCall.OUTCOME_UNREACHABLE,
 }
+FOLLOW_UP_DAYS = 90
 SEGMENT_RANK = {
     'dormant': 0,
     'at_risk': 1,
@@ -96,6 +100,70 @@ def usable_phone(phone: str | None) -> bool:
     return 9 <= len(digits) <= 15
 
 
+def ward_call_groups(customers) -> list[dict]:
+    """
+    Collapse customers into one ward group for the day algorithm.
+
+    Args:
+        customers: Active customers. Each needs county, sub_county, ward,
+            phone, and optional latitude and longitude. A customer with an
+            invalid admin triple or fewer than 9 phone digits is left out,
+            so they do not pull a ward onto a day.
+
+    Returns:
+        list[dict]: At most one row per ward. ``weight`` is the number of
+        included customers, 1–100000. ``latitude`` and ``longitude`` are the
+        median pin when at least ``MIN_PINS`` shops in the ward have a pin,
+        otherwise None. The median ignores one pin that sits far from the
+        rest. No writes.
+
+    Raises:
+        None.
+    """
+    from statistics import median
+
+    buckets: dict[tuple[str, str, str], dict] = {}
+    for customer in customers:
+        ok, _issue = classify_admin_location(
+            getattr(customer, 'county', ''),
+            getattr(customer, 'sub_county', ''),
+            getattr(customer, 'ward', ''),
+        )
+        if not ok or not usable_phone(getattr(customer, 'phone', '')):
+            continue
+        key = (
+            _norm(customer.county),
+            _norm(customer.sub_county),
+            _norm(customer.ward),
+        )
+        bucket = buckets.setdefault(key, {'lats': [], 'lons': [], 'weight': 0})
+        bucket['weight'] += 1
+        lat = getattr(customer, 'latitude', None)
+        lon = getattr(customer, 'longitude', None)
+        if lat is None or lon is None:
+            continue
+        try:
+            bucket['lats'].append(float(lat))
+            bucket['lons'].append(float(lon))
+        except (TypeError, ValueError):
+            continue
+    groups = []
+    for (county, sub, ward), bucket in buckets.items():
+        lat = lon = None
+        if len(bucket['lats']) >= MIN_PINS:
+            lat = float(median(bucket['lats']))
+            lon = float(median(bucket['lons']))
+        groups.append({
+            'county': county,
+            'sub_county': sub,
+            'ward': ward,
+            'weight': bucket['weight'],
+            'latitude': lat,
+            'longitude': lon,
+        })
+    return groups
+
+
 def _norm(value: str | None) -> str:
     """
     Compare locations without case or surrounding space.
@@ -109,7 +177,7 @@ def _norm(value: str | None) -> str:
     return (value or '').strip().lower()
 
 
-def weekday_for_customer(customer, plans, unlocated_weekday: int) -> int:
+def weekday_for_customer(customer, plans, unlocated_weekday: int, assignments=None) -> int:
     """
     Resolve which Monday–Friday this customer is phoned on.
 
@@ -117,12 +185,15 @@ def weekday_for_customer(customer, plans, unlocated_weekday: int) -> int:
         customer: Object with ``county``, ``sub_county``, and ``ward``.
         plans: Iterable of plan rows with those fields plus ``weekday``.
         unlocated_weekday: 0–4. Used when the Kenya admin triple is missing
-        or invalid.
+            or invalid.
+        assignments: Optional map from ``(county, sub_county, ward)`` in
+            lower case to weekday 0–4, produced by the ward algorithm.
+            None skips it. A matching plan still wins.
 
     Returns:
-        int: Weekday 0–4. A matching plan wins (ward, then sub-county, then
-        county). Otherwise a stable hash of the location spreads customers
-        across the five days. Invalid locations use ``unlocated_weekday``.
+        int: Weekday 0–4. Order: matching plan (ward, then sub-county, then
+        county), then the ward algorithm, then a stable hash of the
+        location. Invalid locations use ``unlocated_weekday``.
 
     Raises:
         None. Out-of-range ``unlocated_weekday`` is clamped to 0–4.
@@ -147,6 +218,10 @@ def weekday_for_customer(customer, plans, unlocated_weekday: int) -> int:
             best_score = score
     if best is not None and best_score > 0:
         return min(4, max(0, best))
+    if assignments:
+        found = assignments.get((county, sub, ward))
+        if found is not None:
+            return min(4, max(0, int(found)))
     key = f'{county}|{sub}|{ward}'.encode('utf-8')
     return zlib.crc32(key) % WEEKDAY_COUNT
 
@@ -238,10 +313,11 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
         viewer_id: User id used to flag holds that belong to the viewer.
 
     Returns:
-        dict: ``summary`` counts plus ``results`` for this page. Not-called
-        rows come first. Inside not-called, dormant then at-risk, then the
-        rest. Each row includes phone, place, this week's mark, and the
-        previous request summary. No side effects.
+        dict: ``summary`` counts plus ``results`` for this page. Customers
+        whose call-later time has been reached come first, earliest time
+        first. Then customers not yet called, dormant before at-risk. Each
+        row includes phone, place, this week's mark, the callback time, and
+        whether that time has been reached. No side effects.
 
     Raises:
         None. Unknown scope/status fall back to today/all.
@@ -263,9 +339,11 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
     plans = list(CallDayPlan.objects.all())
     customers = list(
         Customer.objects.filter(is_active=True).only(
-            'id', 'name', 'phone', 'county', 'sub_county', 'ward', 'buyer_segment',
+            'id', 'name', 'phone', 'county', 'sub_county', 'ward',
+            'latitude', 'longitude', 'buyer_segment',
         )
     )
+    assignments = assign_ward_weekdays(ward_call_groups(customers))
     week_calls = (
         CustomerCall.objects.filter(week_start=monday)
         .select_related('called_by')
@@ -293,10 +371,21 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
         if not usable_phone(customer.phone):
             cannot_call += 1
             continue
-        weekday = weekday_for_customer(customer, plans, settings_row.unlocated_weekday)
+        weekday = weekday_for_customer(
+            customer,
+            plans,
+            settings_row.unlocated_weekday,
+            assignments,
+        )
         call = this_week.get(customer.id)
         prior = previous.get(customer.id)
         hold = holds.get(customer.id)
+        due_at = _due_moment(call, prior)
+        due = call_later_due(
+            call.outcome if call else (prior.outcome if prior and call is None else ''),
+            due_at,
+            now,
+        )
         rows.append({
             'customer_id': customer.id,
             'name': customer.name,
@@ -313,13 +402,21 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
             'called_by': _display_name(call.called_by) if call else '',
             'previous_summary': prior.request_summary if prior else '',
             'previous_outcome': prior.outcome if prior else '',
+            'follow_up_on': call.follow_up_on.isoformat() if call and call.follow_up_on else '',
+            'follow_up_at': due_at.isoformat() if due_at else (
+                call.follow_up_at.isoformat() if call and call.follow_up_at else ''
+            ),
+            'previous_follow_up_on': prior.follow_up_on.isoformat() if prior and prior.follow_up_on else '',
+            'call_later_due': due,
             'hold': _hold_payload(hold, viewer_id) if hold else None,
         })
 
     def sort_key(row):
-        called_rank = 1 if row['called_this_week'] else 0
+        due_rank = 0 if row['call_later_due'] else 1
+        due_when = row['follow_up_at'] if row['call_later_due'] else ''
+        called_rank = 0 if (not row['called_this_week'] or row['call_later_due']) else 1
         segment = SEGMENT_RANK.get(row['buyer_segment'], 9)
-        return (called_rank, segment, (row['name'] or '').lower(), row['customer_id'])
+        return (due_rank, due_when, called_rank, segment, (row['name'] or '').lower(), row['customer_id'])
 
     rows.sort(key=sort_key)
     callable_count = len(rows)
@@ -327,7 +424,7 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
     today_rows = [row for row in rows if row['weekday'] == day.weekday()] if call_day else []
     scoped = today_rows if scope == 'today' else rows
     if status == 'not_called':
-        scoped = [row for row in scoped if not row['called_this_week']]
+        scoped = [row for row in scoped if not row['called_this_week'] or row['call_later_due']]
     elif status == 'called':
         scoped = [row for row in scoped if row['called_this_week']]
     total = len(scoped)
@@ -346,12 +443,161 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
             'cannot_call': cannot_call,
             'today_callable': len(today_rows),
             'today_not_called': sum(1 for row in today_rows if not row['called_this_week']),
+            'follow_ups': sum(1 for row in rows if row['outcome'] == CustomerCall.OUTCOME_ASK_LATER),
+            'days': _day_counts(rows),
         },
         'count': total,
         'page': page,
         'page_size': page_size,
         'results': page_rows,
     }
+
+
+def _day_counts(rows: list) -> list:
+    """
+    Monday–Friday coverage for the week planner.
+
+    Args:
+        rows: Every callable customer this week, before paging. Each row
+        has ``weekday`` 0–4 and ``called_this_week``.
+
+    Returns:
+        list: Five dicts, Monday first. Each has ``weekday``, ``callable``,
+        ``called``, and ``not_called``. Counts are 0–100000. No writes.
+    """
+    days = []
+    for index in range(WEEKDAY_COUNT):
+        day_rows = [row for row in rows if row['weekday'] == index]
+        called = sum(1 for row in day_rows if row['called_this_week'])
+        days.append({
+            'weekday': index,
+            'callable': len(day_rows),
+            'called': called,
+            'not_called': len(day_rows) - called,
+        })
+    return days
+
+
+def _parse_follow_up(value, today: date):
+    """
+    Parse an optional follow-up date.
+
+    Args:
+        value: Blank, or an ISO date string of at most 10 characters.
+        today: Nairobi date. The follow-up must fall on this day or within
+        the next 90 days.
+
+    Returns:
+        date or None: None when the value is blank.
+
+    Raises:
+        ValueError: When the text is not a date in that window.
+    """
+    if value in (None, ''):
+        return None
+    text = str(value).strip()
+    if len(text) != 10:
+        raise ValueError('date')
+    try:
+        parsed = datetime.strptime(text, '%Y-%m-%d').date()
+    except ValueError:
+        raise ValueError('date')
+    if parsed < today or parsed > today + timedelta(days=FOLLOW_UP_DAYS):
+        raise ValueError('date')
+    return parsed
+
+
+def _parse_clock(value):
+    """
+    Parse a call-later clock time.
+
+    Args:
+        value: Blank, or ``HH:MM`` using a 24-hour clock. Hours 00–23,
+            minutes 00–59. Anything else is rejected, including a phone number.
+
+    Returns:
+        time or None: None when the value is blank.
+
+    Raises:
+        ValueError: When the text is not a clock time. The message is
+        ``time`` and does not repeat the input.
+    """
+    if value in (None, ''):
+        return None
+    text = str(value).strip()
+    if len(text) != 5 or text[2] != ':':
+        raise ValueError('time')
+    hour, minute = text[:2], text[3:]
+    if not (hour.isdigit() and minute.isdigit()):
+        raise ValueError('time')
+    hours, minutes = int(hour), int(minute)
+    if hours > 23 or minutes > 59:
+        raise ValueError('time')
+    return time(hours, minutes)
+
+
+def _combine_follow_up(day: date, clock: time) -> datetime:
+    """
+    Build the Nairobi moment when a call-later becomes due.
+
+    Args:
+        day: Follow-up date, today through 90 days.
+        clock: Time of day, 00:00–23:59.
+
+    Returns:
+        datetime: Timezone-aware in the active Django timezone. No writes.
+    """
+    local = datetime.combine(day, clock)
+    if timezone.is_naive(local):
+        return timezone.make_aware(local, timezone.get_current_timezone())
+    return local
+
+
+def call_later_due(outcome: str, follow_up_at, now: datetime) -> bool:
+    """
+    Whether a call-later should sit at the top of the list.
+
+    Args:
+        outcome: Stored outcome. Only ``ask_later`` can be due.
+        follow_up_at: Aware datetime, or None when no time was stored.
+        now: Aware clock used for this page load.
+
+    Returns:
+        bool: True when the outcome is call later and ``follow_up_at`` is
+        at or before ``now``. False when the time is still ahead, missing,
+        or the outcome is anything else.
+
+    Raises:
+        None.
+    """
+    if outcome != CustomerCall.OUTCOME_ASK_LATER or follow_up_at is None or now is None:
+        return False
+    return follow_up_at <= now
+
+
+def _due_moment(call, prior):
+    """
+    Callback time that can move a customer to the top.
+
+    Args:
+        call: This week's ``CustomerCall``, or None.
+        prior: The newest call from an earlier week, or None.
+
+    Returns:
+        datetime or None: This week's call-later time. When this week has
+        no call, the previous call-later time. None when the latest relevant
+        outcome is not call later or no time was stored.
+
+    Raises:
+        None.
+    """
+    if call is not None:
+        if call.outcome == CustomerCall.OUTCOME_ASK_LATER:
+            return call.follow_up_at
+        return None
+    if prior is not None and prior.outcome == CustomerCall.OUTCOME_ASK_LATER:
+        return prior.follow_up_at
+    return None
 
 
 def _hold_payload(hold, viewer_id: int | None) -> dict:
@@ -372,24 +618,28 @@ def _hold_payload(hold, viewer_id: int | None) -> dict:
     }
 
 
-def mark_called(*, customer_id: int, user, outcome: str, request_summary: str, today: date | None = None) -> tuple[str, dict]:
+def mark_called(*, customer_id: int, user, outcome: str, request_summary: str, follow_up_on=None, follow_up_time=None, today: date | None = None) -> tuple[str, dict]:
     """
     Record a call for this week.
 
     Args:
         customer_id: Active customer primary key. Positive integer.
         user: Authenticated staff member.
-        outcome: ``called``, ``ask_later``, or ``no_answer``.
-        request_summary: 0–500 characters. Blank is allowed. "Ask later"
-        still counts as called this week.
+        outcome: ``called``, ``ask_later``, ``no_answer``, or ``unreachable``.
+        request_summary: 0–500 characters. Blank is allowed. Every outcome
+            counts as covered this week.
+        follow_up_on: Blank, or an ISO date from today through 90 days.
+            Call later with a blank date uses ``today``.
+        follow_up_time: ``HH:MM``. Required when the outcome is call later.
+            Ignored for the other outcomes.
         today: Nairobi date override for tests.
 
     Returns:
         tuple: ``(code, payload)``. Codes are ``ok``, ``weekend``,
         ``not_found``, ``no_phone``, ``bad_outcome``, ``too_long``,
-        ``held``. Payloads never include the phone number.
-        Side effect on ``ok``: inserts one ``CustomerCall`` and deletes
-        any hold on that customer.
+        ``held``, ``bad_date``, or ``bad_time``. Payloads never include the
+        phone number. Side effect on ``ok``: inserts one ``CustomerCall``
+        and deletes any hold on that customer.
 
     Raises:
         None. Failures are returned as codes.
@@ -398,10 +648,23 @@ def mark_called(*, customer_id: int, user, outcome: str, request_summary: str, t
     if not is_call_day(day):
         return 'weekend', {'error': 'Calls are marked Monday to Friday.'}
     if outcome not in OUTCOMES:
-        return 'bad_outcome', {'error': 'Choose called, ask later, or no answer.'}
+        return 'bad_outcome', {'error': 'Choose called, call later, no answer, or unreachable.'}
     summary = (request_summary or '').strip()
     if len(summary) > SUMMARY_MAX:
         return 'too_long', {'error': 'Request summary must be 500 characters or fewer.'}
+    try:
+        follow_up = _parse_follow_up(follow_up_on, day)
+        clock = _parse_clock(follow_up_time)
+    except ValueError as exc:
+        if str(exc) == 'time':
+            return 'bad_time', {'error': 'Call later needs a time, as HH:MM.'}
+        return 'bad_date', {'error': 'Follow-up must be today or within 90 days.'}
+    follow_at = None
+    if outcome == CustomerCall.OUTCOME_ASK_LATER:
+        if clock is None:
+            return 'bad_time', {'error': 'Call later needs a time, as HH:MM.'}
+        follow_up = follow_up or day
+        follow_at = _combine_follow_up(follow_up, clock)
     with transaction.atomic():
         customer = (
             Customer.objects.select_for_update()
@@ -424,10 +687,18 @@ def mark_called(*, customer_id: int, user, outcome: str, request_summary: str, t
             week_start=week_monday(day),
             outcome=outcome,
             request_summary=summary,
+            follow_up_on=follow_up,
+            follow_up_at=follow_at,
         )
         if hold is not None:
             hold.delete()
-    return 'ok', {'called_this_week': True, 'outcome': outcome, 'request_summary': summary}
+    return 'ok', {
+        'called_this_week': True,
+        'outcome': outcome,
+        'request_summary': summary,
+        'follow_up_on': follow_up.isoformat() if follow_up else '',
+        'follow_up_at': follow_at.isoformat() if follow_at else '',
+    }
 
 
 def hold_customer(*, customer_id: int, user, today: date | None = None) -> tuple[str, dict]:

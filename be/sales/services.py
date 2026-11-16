@@ -134,8 +134,10 @@ class SaleService(BaseService):
         sale_origin = filters.get('sale_origin')
         if sale_origin == 'field':
             queryset = queryset.filter(entry_source='field')
+        elif sale_origin == 'field_load':
+            queryset = queryset.filter(entry_source='field_load')
         elif sale_origin == 'shop':
-            queryset = queryset.exclude(entry_source='field')
+            queryset = queryset.exclude(entry_source__in=('field', 'field_load'))
 
         # Status first so voided/cancelled date filters use void/cancel day, not sale day.
         from sales.sale_completion_approval import (
@@ -238,7 +240,7 @@ class SaleService(BaseService):
                     queryset = queryset.filter(own_sales_q(user))
 
                 if is_field_sales_user(user) and not user_sees_all_sales(user):
-                    queryset = queryset.filter(entry_source='field')
+                    queryset = queryset.filter(entry_source__in=('field', 'field_load'))
 
         return queryset
     

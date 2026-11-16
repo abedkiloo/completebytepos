@@ -228,6 +228,7 @@ class Sale(models.Model):
         ('normal', 'Normal sale'),
         ('backfill', 'Past sale entry'),
         ('field', 'Field sale'),
+        ('field_load', 'Field load sale'),
     ]
 
     CLIENT_CHANNEL_CHOICES = [
@@ -376,12 +377,40 @@ class Sale(models.Model):
 
     @property
     def is_field_sale(self) -> bool:
+        """
+        Whether this sale came from a packed field order.
+
+        Returns:
+            bool: True only when ``entry_source`` is ``field``. A sale of stock
+            the agent was already carrying is not a field order.
+        """
         return self.entry_source == 'field'
 
     @property
+    def is_field_load_sale(self) -> bool:
+        """
+        Whether this sale consumed stock already issued on a field load.
+
+        Returns:
+            bool: True only when ``entry_source`` is ``field_load``. Shop stock
+            was removed when the load was issued, not when this sale was recorded.
+        """
+        return self.entry_source == 'field_load'
+
+    @property
     def sale_origin(self) -> str:
-        """'field' for sales from field orders, 'shop' for everything sold in store."""
-        return 'field' if self.is_field_sale else 'shop'
+        """
+        Where the sale belongs in reports.
+
+        Returns:
+            str: ``field`` for a packed field order, ``field_load`` for a sale
+            from carried stock, otherwise ``shop``. Length 4–10.
+        """
+        if self.entry_source == 'field_load':
+            return 'field_load'
+        if self.entry_source == 'field':
+            return 'field'
+        return 'shop'
     client_channel = models.CharField(
         max_length=16,
         choices=CLIENT_CHANNEL_CHOICES,
@@ -1307,8 +1336,8 @@ class CallBookSettings(models.Model):
     Store tuning for the weekly call book.
 
     One row (pk=1). ``unlocated_weekday`` is where customers with a blank or
-    invalid Kenya location are phoned so they are not skipped. ``hold_minutes``
-    is how long a dial reserves that customer for one staff member.
+    invalid Kenya location are listed so they are not skipped. ``hold_minutes``
+    is how long copying a number reserves that customer for one staff member.
     """
 
     unlocated_weekday = models.PositiveSmallIntegerField(
@@ -1319,7 +1348,7 @@ class CallBookSettings(models.Model):
     hold_minutes = models.PositiveSmallIntegerField(
         default=5,
         validators=[MinValueValidator(1), MaxValueValidator(30)],
-        help_text='Minutes a Call button reserves the customer. Range 1–30.',
+        help_text='Minutes copying a number reserves the customer. Range 1–30.',
     )
 
     class Meta:
@@ -1411,10 +1440,12 @@ class CustomerCall(models.Model):
     OUTCOME_CALLED = 'called'
     OUTCOME_ASK_LATER = 'ask_later'
     OUTCOME_NO_ANSWER = 'no_answer'
+    OUTCOME_UNREACHABLE = 'unreachable'
     OUTCOME_CHOICES = [
         (OUTCOME_CALLED, 'Called'),
-        (OUTCOME_ASK_LATER, 'Ask later'),
+        (OUTCOME_ASK_LATER, 'Call later'),
         (OUTCOME_NO_ANSWER, 'No answer'),
+        (OUTCOME_UNREACHABLE, 'Unreachable'),
     ]
 
     customer = models.ForeignKey(
@@ -1440,6 +1471,16 @@ class CustomerCall(models.Model):
         blank=True,
         default='',
         help_text='What they asked for, or a note to ask later. 0–500 characters.',
+    )
+    follow_up_on = models.DateField(
+        null=True,
+        blank=True,
+        help_text='Optional date to call again. Blank, or today through 90 days ahead.',
+    )
+    follow_up_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When a call-later should return to the top of the list. Blank unless the outcome is call later.',
     )
 
     class Meta:

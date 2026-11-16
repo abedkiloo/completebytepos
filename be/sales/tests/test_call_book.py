@@ -1,6 +1,6 @@
 """Weekly call book: Monday–Friday coverage that resets from the call date."""
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
@@ -11,11 +11,13 @@ from rest_framework.test import APIClient
 from accounts.models import Role, UserProfile
 from accounts.role_definitions import (
     ROLE_DELIVERY_AGENT,
+    ROLE_FIELD_AGENT,
     ensure_permissions,
     sync_default_roles,
 )
 from sales.call_book import (
     build_call_book,
+    call_later_due,
     usable_phone,
     weekday_for_customer,
 )
@@ -108,6 +110,14 @@ class CallBookUnitTests(SuperAdminAPITestCase):
         )
         self.assertEqual(weekday_for_customer(customer, [plan], 0), 2)
 
+    def test_call_later_is_due_only_after_its_time(self):
+        moment = timezone.make_aware(datetime(2026, 11, 16, 9, 0))
+        before = timezone.make_aware(datetime(2026, 11, 16, 8, 59))
+        self.assertFalse(call_later_due('ask_later', moment, before))
+        self.assertTrue(call_later_due('ask_later', moment, moment))
+        self.assertFalse(call_later_due('called', moment, moment))
+        self.assertFalse(call_later_due('ask_later', None, moment))
+
 
 class CallBookCorrectedTests(SuperAdminAPITestCase):
     """The book the shop described: week, ask later, Saturday, not-called first."""
@@ -121,10 +131,15 @@ class CallBookCorrectedTests(SuperAdminAPITestCase):
         with patch('sales.call_book.nairobi_today', return_value=MONDAY):
             marked = self.client.post(
                 f'/api/sales/call-book/{shop.id}/mark/',
-                {'outcome': 'ask_later', 'request_summary': 'Wants No 10 zippers'},
+                {
+                    'outcome': 'ask_later',
+                    'request_summary': 'Wants No 10 zippers',
+                    'follow_up_time': '16:00',
+                },
                 format='json',
             )
             self.assertEqual(marked.status_code, status.HTTP_200_OK)
+            self.assertIn('16:00', marked.json()['follow_up_at'])
             book = self.client.get('/api/sales/call-book/', {'scope': 'week'}).json()
         row = next(item for item in book['results'] if item['customer_id'] == shop.id)
         self.assertTrue(row['called_this_week'])
@@ -137,6 +152,32 @@ class CallBookCorrectedTests(SuperAdminAPITestCase):
         self.assertFalse(again['called_this_week'])
         self.assertEqual(again['previous_summary'], 'Wants No 10 zippers')
         self.assertEqual(nxt['summary']['not_called'], 1)
+
+    def test_unreachable_and_a_follow_up_count_without_echoing_the_number(self):
+        shop = _customer('Silent Duka', '0718000019')
+        with patch('sales.call_book.nairobi_today', return_value=MONDAY):
+            marked = self.client.post(
+                f'/api/sales/call-book/{shop.id}/mark/',
+                {
+                    'outcome': 'unreachable',
+                    'request_summary': 'Number does not connect',
+                    'follow_up_on': '2026-11-20',
+                },
+                format='json',
+            )
+            self.assertEqual(marked.status_code, status.HTTP_200_OK, marked.content)
+            self.assertEqual(marked.json()['follow_up_on'], '2026-11-20')
+            self.assertNotIn(shop.phone, marked.content.decode())
+            book = self.client.get('/api/sales/call-book/', {'scope': 'week'}).json()
+            late = self.client.post(
+                f'/api/sales/call-book/{shop.id}/mark/',
+                {'outcome': 'called', 'follow_up_on': '2027-06-01', 'request_summary': shop.phone},
+                format='json',
+            )
+        self.assertEqual(late.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertNotIn(shop.phone, late.json().get('error', ''))
+        self.assertEqual(len(book['summary']['days']), 5)
+        self.assertEqual(sum(item['called'] for item in book['summary']['days']), 1)
 
     def test_saturday_can_be_read_and_cannot_be_marked(self):
         shop = _customer('Saturday Duka', '0718000012')
@@ -170,6 +211,41 @@ class CallBookCorrectedTests(SuperAdminAPITestCase):
         names = [row['name'] for row in book['results']]
         self.assertLess(names.index('Dormant Duka'), names.index('Cooling Duka'))
         self.assertLess(names.index('Cooling Duka'), names.index('Done Duka'))
+
+    def test_a_reached_call_later_time_is_first_on_load(self):
+        waiting = _customer('Alpha Waiting', '0718000061')
+        first_due = _customer('Bravo Callback', '0718000062')
+        second_due = _customer('Zulu Callback', '0718000063')
+        ahead = _customer('Charlie Later', '0718000064')
+        before = timezone.make_aware(datetime(2026, 11, 16, 7, 30))
+        after = timezone.make_aware(datetime(2026, 11, 16, 10, 0))
+        with patch('sales.call_book.nairobi_today', return_value=MONDAY):
+            for shop, clock in (
+                (first_due, '08:00'),
+                (second_due, '09:00'),
+                (ahead, '18:00'),
+            ):
+                marked = self.client.post(
+                    f'/api/sales/call-book/{shop.id}/mark/',
+                    {'outcome': 'ask_later', 'request_summary': 'Ring back', 'follow_up_time': clock},
+                    format='json',
+                )
+                self.assertEqual(marked.status_code, status.HTTP_200_OK, marked.content)
+            with patch('sales.call_book.timezone.now', return_value=before):
+                early = self.client.get('/api/sales/call-book/', {'scope': 'week'}).json()
+            with patch('sales.call_book.timezone.now', return_value=after):
+                late = self.client.get('/api/sales/call-book/', {'scope': 'week'}).json()
+
+        def names(payload):
+            wanted = {waiting.id, first_due.id, second_due.id, ahead.id}
+            return [row['name'] for row in payload['results'] if row['customer_id'] in wanted]
+
+        self.assertEqual(names(early)[0], 'Alpha Waiting')
+        self.assertFalse(next(row for row in early['results'] if row['name'] == 'Bravo Callback')['call_later_due'])
+        self.assertEqual(names(late)[:3], ['Bravo Callback', 'Zulu Callback', 'Alpha Waiting'])
+        self.assertGreater(names(late).index('Charlie Later'), names(late).index('Alpha Waiting'))
+        self.assertTrue(next(row for row in late['results'] if row['name'] == 'Bravo Callback')['call_later_due'])
+        self.assertNotIn('0718000062', str(late['summary']))
 
     def test_customer_without_a_number_is_cannot_call(self):
         _customer('No Number', '')
@@ -242,6 +318,24 @@ class CallBookSecurityTests(SalesAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertNotIn(shop.phone, response.json().get('error', ''))
 
+    def test_a_bad_call_later_time_does_not_echo_the_phone(self):
+        shop = _customer('Timed Shop', '0718000044')
+        with patch('sales.call_book.nairobi_today', return_value=MONDAY):
+            missing = self.client.post(
+                f'/api/sales/call-book/{shop.id}/mark/',
+                {'outcome': 'ask_later', 'request_summary': shop.phone},
+                format='json',
+            )
+            bad = self.client.post(
+                f'/api/sales/call-book/{shop.id}/mark/',
+                {'outcome': 'ask_later', 'follow_up_time': shop.phone, 'request_summary': shop.phone},
+                format='json',
+            )
+        self.assertEqual(missing.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(bad.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertNotIn(shop.phone, missing.content.decode())
+        self.assertNotIn(shop.phone, bad.content.decode())
+
     def test_a_hold_blocks_the_second_caller(self):
         shop = _customer('Held Shop', '0718000043')
         other = User.objects.create_user(username='call_book_other', password='x')
@@ -294,6 +388,32 @@ class CallBookSecurityTests(SalesAPITestCase):
             format='json',
         )
         self.assertEqual(plan.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_field_sales_cannot_open_the_book_or_see_a_number(self):
+        ensure_permissions()
+        sync_default_roles()
+        shop = _customer('Hidden Shop', '0718000099')
+        agent = User.objects.create_user(username='call_book_field', password='x')
+        UserProfile.objects.create(
+            user=agent,
+            role='cashier',
+            custom_role=Role.objects.get(name=ROLE_FIELD_AGENT),
+            is_active=True,
+        )
+        client = APIClient()
+        from rest_framework_simplejwt.tokens import RefreshToken
+        token = RefreshToken.for_user(agent)
+        client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+        opened = client.get('/api/sales/call-book/')
+        self.assertEqual(opened.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertNotIn(shop.phone, opened.content.decode())
+        marked = client.post(
+            f'/api/sales/call-book/{shop.id}/mark/',
+            {'outcome': 'called', 'request_summary': shop.phone},
+            format='json',
+        )
+        self.assertEqual(marked.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertNotIn(shop.phone, marked.content.decode())
 
 
 class CallBookIntegrationTests(SuperAdminAPITestCase):
@@ -360,3 +480,36 @@ class CallBookStressTests(SuperAdminAPITestCase):
         first = book['results'][0]['weekday']
         self.assertGreaterEqual(first, 0)
         self.assertLessEqual(first, 4)
+
+    def test_three_hundred_due_callbacks_stay_earliest_first(self):
+        shops = Customer.objects.bulk_create([
+            Customer(
+                name=f'Due {index:03d}',
+                customer_code=f'CBD-{index:06d}',
+                phone=f'0728{index:06d}',
+                county=DEFAULT_COUNTY,
+                sub_county=DEFAULT_SUB_COUNTY,
+                ward=DEFAULT_WARD,
+                is_active=True,
+            )
+            for index in range(300)
+        ])
+        CustomerCall.objects.bulk_create([
+            CustomerCall(
+                customer=shop,
+                week_start=MONDAY,
+                outcome=CustomerCall.OUTCOME_ASK_LATER,
+                request_summary='',
+                follow_up_on=MONDAY,
+                follow_up_at=timezone.make_aware(datetime(2026, 11, 16, 8 + (index // 60), index % 60)),
+            )
+            for index, shop in enumerate(shops)
+        ])
+        clock = timezone.make_aware(datetime(2026, 11, 16, 15, 0))
+        with patch('sales.call_book.timezone.now', return_value=clock):
+            book = build_call_book(today=MONDAY, scope='week', page_size=200)
+        due = [row['follow_up_at'] for row in book['results'] if row['call_later_due']]
+        self.assertEqual(len(due), 200)
+        self.assertEqual(due, sorted(due))
+        self.assertTrue(book['results'][0]['call_later_due'])
+        self.assertNotIn('0728', str(book['summary']))

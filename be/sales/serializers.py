@@ -672,6 +672,7 @@ class SaleSerializer(serializers.ModelSerializer):
     approval_details = serializers.SerializerMethodField()
     activity = serializers.SerializerMethodField()
     is_field_sale = serializers.BooleanField(read_only=True)
+    is_field_load_sale = serializers.BooleanField(read_only=True)
     sale_origin = serializers.CharField(read_only=True)
 
     class Meta:
@@ -686,7 +687,7 @@ class SaleSerializer(serializers.ModelSerializer):
             'payment_method', 'payment_method_label', 'payment_reference',
             'mpesa_destination', 'payment_receipt_image_url',
             'amount_paid', 'change', 'notes',
-            'occurred_at', 'entry_source', 'is_field_sale', 'sale_origin',
+            'occurred_at', 'entry_source', 'is_field_sale', 'is_field_load_sale', 'sale_origin',
             'client_channel', 'backfill_reason', 'is_late_entry',
             'backfill_receipt_photo_url',
             'items', 'item_count', 'amount_refunded', 'refundable_remaining', 'can_refund',

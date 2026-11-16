@@ -1,47 +1,62 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Check, Clock, Copy, PhoneOff, X } from 'lucide-react';
 
 import { customersAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import { isManagerOrAdminFromStorage } from '../../utils/roleAccess';
 import {
   CALL_OUTCOMES,
-  callBookCountLine,
+  WEEKDAY_LABELS,
+  callCoveragePercent,
+  customerCategoryLabel,
   outcomeLabel,
   weekdayLabel,
 } from '../../utils/callBook';
+import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { PageHeader, PageShell } from '../page';
 
 const EMPTY_PLAN_ROW = { weekday: 0, county: '', sub_county: '', ward: '' };
+const OUTCOME_ICON = {
+  called: Check,
+  ask_later: Clock,
+  no_answer: PhoneOff,
+  unreachable: X,
+};
 
 /**
- * Weekly shared call book.
+ * Shared call centre.
  *
- * Opens on customers who have not been called this week. Saturday and
- * Sunday stay readable and do not offer a mark. Managers can edit which
- * wards fall on which weekday.
+ * Staff copy a number and call on their own phone, then record the result.
+ * Saturday and Sunday stay readable and do not offer a mark. Managers can
+ * edit which wards fall on which weekday.
  */
 export default function CallBookPage() {
   const [book, setBook] = useState(null);
-  const [scope, setScope] = useState('today');
-  const [status, setStatus] = useState('all');
+  const [view, setView] = useState('queue');
+  const [day, setDay] = useState(0);
   const [loading, setLoading] = useState(true);
   const [plan, setPlan] = useState(null);
-  const [savingId, setSavingId] = useState(null);
+  const [index, setIndex] = useState(0);
   const canEditPlan = isManagerOrAdminFromStorage();
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await customersAPI.callBook({ scope, status, page_size: 200 });
+      const { data } = await customersAPI.callBook({
+        scope: 'week',
+        status: 'all',
+        page_size: 200,
+      });
       setBook(data);
+      setDay(data?.summary?.is_call_day ? data.summary.weekday : 0);
     } catch (error) {
-      toast.error(error?.response?.data?.error || 'Could not open the call book.');
+      toast.error(error?.response?.data?.error || 'Could not open the call centre.');
     } finally {
       setLoading(false);
     }
-  }, [scope, status]);
+  }, []);
 
   useEffect(() => {
     load();
@@ -62,46 +77,58 @@ export default function CallBookPage() {
 
   const summary = book?.summary;
   const markingOpen = Boolean(summary?.is_call_day);
+  const results = book?.results || [];
+  const queue = useMemo(
+    () => results.filter((row) => row.call_later_due || (row.weekday === day && !row.called_this_week)),
+    [results, day],
+  );
+  const dayRows = useMemo(
+    () => results.filter((row) => row.weekday === day),
+    [results, day],
+  );
+  const current = queue[Math.min(index, Math.max(queue.length - 1, 0))] || null;
 
   return (
     <PageShell>
       <PageHeader
         eyebrow="Customers"
-        title="Call book"
-        description="Monday to Friday. Open the list, call the number, then mark it with what they asked for. Ask later still counts for this week."
+        title="Call centre"
+        description="Copy the number and call on your phone. Then record what happened. The system does not place the call."
       />
-      {summary && (
-        <p className="text-sm text-foreground" data-testid="call-book-counts">
-          {callBookCountLine(summary)}
-          {summary.is_call_day
-            ? ` ${summary.today_not_called} still to call today.`
-            : ' The weekend shows who was missed. Marking opens again on Monday.'}
-        </p>
-      )}
-      <div className="flex flex-wrap gap-2">
-        <FilterButton active={scope === 'today'} onClick={() => setScope('today')} label="Today" />
-        <FilterButton active={scope === 'week'} onClick={() => setScope('week')} label="This week" />
-        <FilterButton active={status === 'not_called'} onClick={() => setStatus('not_called')} label="Not called" />
-        <FilterButton active={status === 'called'} onClick={() => setStatus('called')} label="Called" />
-        <FilterButton active={status === 'all'} onClick={() => setStatus('all')} label="All" />
+      <div className="flex flex-wrap gap-2" role="tablist" aria-label="Call centre">
+        <FilterButton active={view === 'overview'} onClick={() => setView('overview')} label="Overview" />
+        <FilterButton active={view === 'week'} onClick={() => setView('week')} label="Weekly schedule" />
+        <FilterButton active={view === 'queue'} onClick={() => setView('queue')} label="Call queue" />
       </div>
       {loading && <p className="text-sm text-muted-foreground">Opening the book…</p>}
-      {!loading && (book?.results || []).length === 0 && (
-        <p className="text-sm text-muted-foreground">No customers in this list.</p>
+      {!loading && view === 'overview' && summary && (
+        <Overview summary={summary} onOpenQueue={() => { setDay(summary.weekday); setView('queue'); }} />
       )}
-      <ul className="space-y-3">
-        {(book?.results || []).map((row) => (
-          <CallRow
-            key={row.customer_id}
-            row={row}
-            markingOpen={markingOpen}
-            saving={savingId === row.customer_id}
-            onSaved={load}
-            onSaving={setSavingId}
-          />
-        ))}
-      </ul>
-      {canEditPlan && plan && (
+      {!loading && view === 'week' && summary && (
+        <WeekPlan
+          summary={summary}
+          day={day}
+          rows={dayRows}
+          onDay={(next) => { setDay(next); setIndex(0); }}
+          onOpen={(weekday) => { setDay(weekday); setIndex(0); setView('queue'); }}
+        />
+      )}
+      {!loading && view === 'queue' && (
+        <Workspace
+          summary={summary}
+          current={current}
+          position={queue.length ? Math.min(index, queue.length - 1) + 1 : 0}
+          total={queue.length}
+          markingOpen={markingOpen}
+          dayLabel={weekdayLabel(day)}
+          onPrevious={() => setIndex((value) => Math.max(0, value - 1))}
+          onSaved={() => {
+            setIndex(0);
+            load();
+          }}
+        />
+      )}
+      {canEditPlan && plan && view === 'week' && (
         <PlanEditor
           plan={plan}
           onChange={setPlan}
@@ -116,117 +143,367 @@ export default function CallBookPage() {
 }
 
 /**
- * One customer row: number, last request, and the mark form.
+ * Week totals and a bar for each weekday.
  *
- * @param {object} props.row Book row from the API.
- * @param {boolean} props.markingOpen False on Saturday and Sunday.
- * @param {boolean} props.saving True while this row is posting.
- * @param {Function} props.onSaved Reloads the book.
- * @param {Function} props.onSaving Sets the row id currently saving.
+ * @param {object} props.summary API summary with days, called, and callable.
+ * @param {Function} props.onOpenQueue Opens today's queue.
  */
-function CallRow({ row, markingOpen, saving, onSaved, onSaving }) {
-  const [outcome, setOutcome] = useState(row.outcome || 'called');
-  const [summary, setSummary] = useState(row.request_summary || row.previous_summary || '');
-  const place = [row.ward, row.sub_county, row.county].filter(Boolean).join(', ');
-  const note = row.called_this_week ? row.request_summary : row.previous_summary;
-
-  const dial = async () => {
-    try {
-      await customersAPI.holdCall(row.customer_id);
-    } catch (error) {
-      toast.error(error?.response?.data?.error || 'Could not hold this customer.');
-      return;
-    }
-    window.location.href = `tel:${row.phone}`;
-  };
-
-  const mark = async () => {
-    onSaving(row.customer_id);
-    try {
-      await customersAPI.markCall(row.customer_id, {
-        outcome,
-        request_summary: summary,
-      });
-      toast.success(outcome === 'ask_later' ? 'Saved to ask later.' : 'Marked called this week.');
-      onSaved();
-    } catch (error) {
-      toast.error(error?.response?.data?.error || 'Could not mark this call.');
-    } finally {
-      onSaving(null);
-    }
-  };
-
+function Overview({ summary, onOpenQueue }) {
+  const percent = callCoveragePercent(summary.called, summary.callable);
+  const days = summary.days || [];
   return (
-    <li className="rounded-md border border-border p-3" data-testid={`call-row-${row.customer_id}`}>
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <p className="font-medium text-foreground">{row.name}</p>
-          <p className="text-sm text-muted-foreground">
-            {place || 'No location'} · {weekdayLabel(row.weekday)}
-            {row.buyer_segment === 'dormant' || row.buyer_segment === 'at_risk'
-              ? ` · ${row.buyer_segment === 'dormant' ? 'Dormant' : 'Cooling off'}`
-              : ''}
-          </p>
-        </div>
-        <a className="text-sm font-medium text-primary" href={`tel:${row.phone}`}>
-          {row.phone}
-        </a>
+    <section className="space-y-4" data-testid="call-book-counts">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Stat label="Scheduled this week" value={summary.callable} hint="Customers with a number" />
+        <Stat label="Recorded" value={summary.called} hint={`${percent}% of the week`} tone="text-success" />
+        <Stat label="Call later" value={summary.follow_ups || 0} hint="Need another call" tone="text-warning" />
+        <Stat label="Not yet called" value={summary.not_called} hint="Still on the list" tone="text-destructive" />
       </div>
-      {note && (
-        <p className="mt-2 text-sm text-foreground">
-          {row.called_this_week ? outcomeLabel(row.outcome) : 'Last request'}: {note}
-        </p>
-      )}
-      {row.called_this_week && (
-        <p className="mt-1 text-xs text-muted-foreground">Called this week{row.called_by ? ` by ${row.called_by}` : ''}.</p>
-      )}
-      {row.hold && !row.hold.held_by_me && (
-        <p className="mt-1 text-xs text-muted-foreground">{row.hold.held_by} is calling them now.</p>
-      )}
-      {markingOpen && !row.called_this_week && (
-        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
-          <Button type="button" variant="outline" onClick={dial}>Call</Button>
-          <label className="text-sm">
-            <span className="mb-1 block text-muted-foreground">Outcome</span>
-            <select
-              className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-              value={outcome}
-              aria-label={`Outcome for ${row.name}`}
-              onChange={(event) => setOutcome(event.target.value)}
-            >
-              {CALL_OUTCOMES.map((item) => (
-                <option key={item.value} value={item.value}>{item.label}</option>
-              ))}
-            </select>
-          </label>
-          <label className="min-w-0 flex-1 text-sm">
-            <span className="mb-1 block text-muted-foreground">Request, or ask later</span>
-            <Input
-              value={summary}
-              maxLength={500}
-              aria-label={`Request for ${row.name}`}
-              onChange={(event) => setSummary(event.target.value)}
-            />
-          </label>
-          <Button type="button" onClick={mark} disabled={saving}>
-            {saving ? 'Saving…' : 'Mark called'}
-          </Button>
+      <div className="rounded-md border border-border p-3">
+        <div className="mb-2 flex items-center justify-between text-sm">
+          <span>Weekly completion</span>
+          <span>{summary.called} of {summary.callable} · {percent}%</span>
         </div>
-      )}
-    </li>
+        <div className="h-2 overflow-hidden rounded-full bg-muted">
+          <div className="h-full bg-success" style={{ width: `${percent}%` }} />
+        </div>
+        <ul className="mt-4 space-y-3">
+          {days.map((item) => {
+            const share = callCoveragePercent(item.called, item.callable);
+            return (
+              <li key={item.weekday}>
+                <div className="mb-1 flex justify-between text-sm">
+                  <span>{weekdayLabel(item.weekday)}</span>
+                  <span className="text-muted-foreground">{item.called}/{item.callable} recorded</span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                  <div className="h-full bg-success" style={{ width: `${share}%` }} />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+      <Button type="button" className="w-full" onClick={onOpenQueue}>Open call queue</Button>
+    </section>
   );
 }
 
 /**
- * Toggle chip for scope and status.
+ * One number on the overview.
  *
- * @param {object} props.active Whether this chip is the current filter.
- * @param {Function} props.onClick Selects the filter.
+ * @param {string} props.label Caption, at most 40 characters.
+ * @param {number} props.value Count, 0 or more.
+ * @param {string} props.hint Short explanation.
+ * @param {string} [props.tone] Text color class.
+ */
+function Stat({ label, value, hint, tone = 'text-foreground' }) {
+  return (
+    <div className="rounded-md border border-border p-3">
+      <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className={`mt-1 text-2xl font-semibold tabular-nums ${tone}`}>{value}</p>
+      <p className="text-xs text-muted-foreground">{hint}</p>
+    </div>
+  );
+}
+
+/**
+ * Monday–Friday counts and the selected day's customers.
+ *
+ * @param {object} props.summary Week summary.
+ * @param {number} props.day Selected weekday, 0–4.
+ * @param {Array} props.rows Customers on that day, at most 200.
+ * @param {Function} props.onDay Selects a weekday.
+ * @param {Function} props.onOpen Opens that day's queue.
+ */
+function WeekPlan({ summary, day, rows, onDay, onOpen }) {
+  const days = summary.days || WEEKDAY_LABELS.map((label, weekday) => ({
+    weekday,
+    callable: 0,
+    called: 0,
+    not_called: 0,
+    label,
+  }));
+  const range = summary.week_start && summary.week_end
+    ? `${summary.week_start.slice(8)}–${summary.week_end.slice(8)} ${summary.week_start.slice(5, 7)}`
+    : '';
+  return (
+    <section className="space-y-3 rounded-md border border-border p-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-base font-semibold">Weekly planner</h2>
+        {range && <Badge variant="secondary">{range}</Badge>}
+      </div>
+      <div className="grid grid-cols-5 gap-2">
+        {days.map((item) => (
+          <button
+            key={item.weekday}
+            type="button"
+            className={item.weekday === day
+              ? 'rounded-md bg-primary px-2 py-3 text-primary-foreground'
+              : 'rounded-md px-2 py-3 text-foreground'}
+            onClick={() => onDay(item.weekday)}
+          >
+            <span className="block text-xs">{weekdayLabel(item.weekday).slice(0, 3).toUpperCase()}</span>
+            <span className="block text-xl font-semibold tabular-nums">{item.callable}</span>
+            <span className="block text-xs opacity-80">Calls</span>
+          </button>
+        ))}
+      </div>
+      <h3 className="text-sm font-medium">{weekdayLabel(day)} — call schedule</h3>
+      {rows.length === 0 && <p className="text-sm text-muted-foreground">No customers on this day.</p>}
+      <ul className="space-y-2">
+        {rows.map((row) => (
+          <li key={row.customer_id} className="flex items-center justify-between gap-2 border-b border-border py-2">
+            <div>
+              <p className="font-medium">{row.name}</p>
+              <p className="text-xs text-muted-foreground">Shared customer queue</p>
+            </div>
+            <Badge variant={row.called_this_week ? outcomeTone(row.outcome) : 'destructive'}>
+              {row.called_this_week ? outcomeLabel(row.outcome) : 'Pending'}
+            </Badge>
+          </li>
+        ))}
+      </ul>
+      <Button type="button" className="w-full" variant="outline" onClick={() => onOpen(day)}>
+        Open this day's queue
+      </Button>
+    </section>
+  );
+}
+
+/**
+ * Badge tone for a stored outcome.
+ *
+ * @param {string} outcome Outcome key.
+ * @returns {string} Badge variant.
+ */
+function outcomeTone(outcome) {
+  return CALL_OUTCOMES.find((item) => item.value === outcome)?.tone || 'outline';
+}
+
+/**
+ * One customer: copy the number, then record the cell-phone call.
+ *
+ * @param {object|null} props.summary Week summary.
+ * @param {object|null} props.current Customer row, or null when the day is done.
+ * @param {number} props.position 1-based index in the remaining queue.
+ * @param {number} props.total Remaining customers on the selected day.
+ * @param {boolean} props.markingOpen False on Saturday and Sunday.
+ * @param {string} props.dayLabel Weekday name.
+ * @param {Function} props.onPrevious Moves to the previous remaining customer.
+ * @param {Function} props.onSaved Reloads after a record is saved.
+ */
+function Workspace({ summary, current, position, total, markingOpen, dayLabel, onPrevious, onSaved }) {
+  return (
+    <section className="space-y-4 rounded-md border border-border p-3" data-testid="call-workspace">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Customer call workspace</p>
+          <p className="text-xs text-muted-foreground">
+            {total ? `Current customer · ${position} of ${total}` : 'No customers left on this day'}
+          </p>
+        </div>
+        <Badge variant={current?.called_this_week ? 'success' : 'warning'}>
+          {current?.called_this_week ? 'Recorded' : 'Pending'}
+        </Badge>
+      </div>
+      {!summary?.is_call_day && (
+        <p className="text-sm text-muted-foreground">
+          The weekend shows who was missed. Recording opens again on Monday.
+        </p>
+      )}
+      {!current && (
+        <p className="text-sm text-muted-foreground">Everyone on this day already has a result, or the list is empty.</p>
+      )}
+      {current && (
+        <CustomerCard
+          row={current}
+          dayLabel={dayLabel}
+          markingOpen={markingOpen}
+          canGoBack={position > 1}
+          onPrevious={onPrevious}
+          onSaved={onSaved}
+        />
+      )}
+    </section>
+  );
+}
+
+/**
+ * The customer being called, and the form that records the result.
+ *
+ * @param {object} props.row Book row. Phone is shown so staff can dial it themselves.
+ * @param {string} props.dayLabel Scheduled weekday.
+ * @param {boolean} props.markingOpen Whether a result can be saved.
+ * @param {boolean} props.canGoBack Whether a previous customer is still in the queue.
+ * @param {Function} props.onPrevious Goes back one customer.
+ * @param {Function} props.onSaved Reloads the book.
+ */
+function CustomerCard({ row, dayLabel, markingOpen, canGoBack, onPrevious, onSaved }) {
+  const [outcome, setOutcome] = useState('called');
+  const [summary, setSummary] = useState(row.previous_summary || '');
+  const [followUp, setFollowUp] = useState('');
+  const [followUpTime, setFollowUpTime] = useState('');
+  const [saving, setSaving] = useState(false);
+  const place = [row.ward, row.sub_county, row.county].filter(Boolean).join(', ');
+
+  const copyNumber = async () => {
+    try {
+      await customersAPI.holdCall(row.customer_id);
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'Could not reserve this customer.');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(row.phone);
+      toast.success('Number copied. Call from your phone, then record the result.');
+    } catch (error) {
+      toast.error('Could not copy the number. Read it from the screen and dial it on your phone.');
+    }
+  };
+
+  const save = async () => {
+    if (outcome === 'ask_later' && !followUpTime) {
+      toast.error('Choose the time to call again.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await customersAPI.markCall(row.customer_id, {
+        outcome,
+        request_summary: summary,
+        follow_up_on: followUp,
+        follow_up_time: outcome === 'ask_later' ? followUpTime : '',
+      });
+      toast.success('Call recorded.');
+      onSaved();
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'Could not record this call.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div data-testid={`call-row-${row.customer_id}`}>
+      <h2 className="text-xl font-semibold">{row.name}</h2>
+      <p className="text-lg tabular-nums">{row.phone}</p>
+      {row.call_later_due && (
+        <p className="mt-2 text-sm font-medium text-warning">The time to call again has been reached.</p>
+      )}
+      <dl className="mt-3 space-y-2 text-sm">
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted-foreground">Scheduled</dt>
+          <dd>{dayLabel}</dd>
+        </div>
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted-foreground">Queue</dt>
+          <dd>Shared queue</dd>
+        </div>
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted-foreground">Customer category</dt>
+          <dd>{customerCategoryLabel(row.buyer_segment)}</dd>
+        </div>
+        {place && (
+          <div className="flex justify-between gap-3">
+            <dt className="text-muted-foreground">Location</dt>
+            <dd className="text-right">{place}</dd>
+          </div>
+        )}
+      </dl>
+      {row.previous_summary && !row.called_this_week && (
+        <p className="mt-3 text-sm">Last note: {row.previous_summary}</p>
+      )}
+      {row.hold && !row.hold.held_by_me && (
+        <p className="mt-2 text-xs text-muted-foreground">{row.hold.held_by} is on this customer now.</p>
+      )}
+      <Button type="button" variant="secondary" className="mt-4 w-full" onClick={copyNumber}>
+        <Copy className="h-4 w-4" aria-hidden />
+        Copy phone number
+      </Button>
+      {markingOpen && (
+        <>
+          <p className="mb-2 mt-4 text-sm font-medium">Record call outcome</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {CALL_OUTCOMES.map((item) => {
+              const Icon = OUTCOME_ICON[item.value];
+              const selected = outcome === item.value;
+              const variant = !selected
+                ? 'outline'
+                : item.tone === 'success' || item.tone === 'destructive'
+                  ? item.tone
+                  : 'default';
+              return (
+                <Button
+                  key={item.value}
+                  type="button"
+                  variant={variant}
+                  className={selected && item.tone === 'warning' ? 'bg-warning text-warning-foreground hover:bg-warning/90' : undefined}
+                  aria-pressed={selected}
+                  onClick={() => setOutcome(item.value)}
+                >
+                  {Icon && <Icon className="h-4 w-4" aria-hidden />}
+                  {item.label}
+                </Button>
+              );
+            })}
+          </div>
+          <label className="mt-4 block text-sm">
+            <span className="mb-1 block text-muted-foreground">Call notes</span>
+            <textarea
+              className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              maxLength={500}
+              aria-label={`Notes for ${row.name}`}
+              placeholder="What they asked for, or why to call again"
+              value={summary}
+              onChange={(event) => setSummary(event.target.value)}
+            />
+          </label>
+          <label className="mt-3 block text-sm">
+            <span className="mb-1 block text-muted-foreground">Follow-up date, if you need one</span>
+            <Input
+              type="date"
+              aria-label={`Follow-up for ${row.name}`}
+              value={followUp}
+              onChange={(event) => setFollowUp(event.target.value)}
+            />
+          </label>
+          {outcome === 'ask_later' && (
+            <label className="mt-3 block text-sm">
+              <span className="mb-1 block text-muted-foreground">Time to call again</span>
+              <Input
+                type="time"
+                aria-label={`Time to call ${row.name}`}
+                value={followUpTime}
+                onChange={(event) => setFollowUpTime(event.target.value)}
+                required
+              />
+            </label>
+          )}
+          <div className="mt-3 flex gap-2">
+            {canGoBack && (
+              <Button type="button" variant="outline" onClick={onPrevious}>Previous</Button>
+            )}
+            <Button type="button" className="flex-1" onClick={save} disabled={saving}>
+              {saving ? 'Saving…' : 'Save record'}
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Toggle for the three call-centre views.
+ *
+ * @param {boolean} props.active Whether this view is open.
+ * @param {Function} props.onClick Selects the view.
  * @param {string} props.label Visible label, at most 20 characters.
  */
 function FilterButton({ active, onClick, label }) {
   return (
-    <Button type="button" variant={active ? 'default' : 'outline'} onClick={onClick}>
+    <Button type="button" variant={active ? 'default' : 'outline'} onClick={onClick} role="tab" aria-selected={active}>
       {label}
     </Button>
   );
@@ -266,7 +543,7 @@ function PlanEditor({ plan, onChange, onSaved }) {
     <section className="space-y-3 rounded-md border border-border p-3">
       <h2 className="text-base font-semibold">Day plan</h2>
       <p className="text-sm text-muted-foreground">
-        Customers with no valid location are called on the weekday you pick. A ward row beats a sub-county row, which beats a county row. Locations with no row are spread across Monday to Friday.
+        Customers with no valid location are listed on the weekday you pick. A ward row beats a sub-county row, which beats a county row.
       </p>
       <div className="flex flex-wrap gap-3">
         <label className="text-sm">
@@ -277,7 +554,7 @@ function PlanEditor({ plan, onChange, onSaved }) {
             value={plan.unlocated_weekday}
             onChange={(event) => onChange({ ...plan, unlocated_weekday: Number(event.target.value) })}
           >
-            {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map((label, index) => (
+            {WEEKDAY_LABELS.map((label, index) => (
               <option key={label} value={index}>{label}</option>
             ))}
           </select>
@@ -302,8 +579,8 @@ function PlanEditor({ plan, onChange, onSaved }) {
             value={row.weekday}
             onChange={(event) => updateRow(index, 'weekday', Number(event.target.value))}
           >
-            {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map((label, day) => (
-              <option key={label} value={day}>{label}</option>
+            {WEEKDAY_LABELS.map((label, weekday) => (
+              <option key={label} value={weekday}>{label}</option>
             ))}
           </select>
           <Input aria-label={`County ${index + 1}`} placeholder="County" value={row.county} onChange={(event) => updateRow(index, 'county', event.target.value)} />

@@ -1,15 +1,19 @@
 """
-Field-agent visit sites, media, and packable field orders.
+Field-agent visit sites, media, packable field orders, and field loads.
 
 Public entry points:
     - ``CustomerSite`` / ``SiteMedia`` — visit location and driver-recognition photos
     - ``FieldOrder`` / ``FieldOrderLine`` — order lifecycle; pack creates one sale
+    - ``FieldLoad`` / ``FieldLoadLine`` / ``FieldLoadSale`` — stock an agent carries
     - ``order_services.pack_order`` / ``field_sale.record_field_sale`` — sale path
+    - ``field_load_service`` — issue, sell from, return, and accept a load
 
 Side effects: none at model layer. Packing (services) moves stock, posts journals,
-and records customer debt via ``sales.Sale``. Stock is not reserved in draft/submitted.
+and records customer debt via ``sales.Sale``. Issuing a field load moves stock
+in ``field_load_service``. Stock is not reserved in draft/submitted orders.
 
 Invariants: at most one ``Sale`` per ``FieldOrder`` (``OneToOne`` on ``sale``).
+One open or pending ``FieldLoad`` per agent is enforced in the service.
 """
 
 from django.conf import settings
@@ -247,6 +251,147 @@ class FieldOrderLine(models.Model):
 
     def __str__(self):
         return f'Line {self.pk} order={self.order_id}'
+
+
+class FieldLoad(models.Model):
+    """
+    Stock a field agent carries out of the shop.
+
+    Shop stock drops when the load is issued. Field sales on the load do
+    not drop stock again. Returned units go back to the shelf only when a
+    manager accepts the count. One agent may have one open or pending load.
+
+    Attributes:
+        status: ``open`` while they are out, ``pending_review`` after the
+            return count, ``accepted`` when the manager confirms it.
+    """
+
+    STATUS_OPEN = 'open'
+    STATUS_PENDING = 'pending_review'
+    STATUS_ACCEPTED = 'accepted'
+    STATUS_CHOICES = [
+        (STATUS_OPEN, 'Out'),
+        (STATUS_PENDING, 'Waiting for manager'),
+        (STATUS_ACCEPTED, 'Accepted'),
+    ]
+
+    agent = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name='field_loads',
+    )
+    status = models.CharField(
+        max_length=32,
+        choices=STATUS_CHOICES,
+        default=STATUS_OPEN,
+        db_index=True,
+    )
+    issued_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='field_loads_issued',
+    )
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='field_loads_reviewed',
+    )
+    review_note = models.CharField(max_length=500, blank=True, default='')
+    issued_at = models.DateTimeField(auto_now_add=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-issued_at']
+        indexes = [
+            models.Index(fields=['agent', 'status'], name='agents_fldload_agent_status'),
+        ]
+
+    def __str__(self):
+        """
+        Returns:
+            str: Load id, agent id, and status. Under 80 characters.
+        """
+        return f'Field load {self.pk} agent={self.agent_id} {self.status}'
+
+
+class FieldLoadLine(models.Model):
+    """
+    One product on a field load.
+
+    ``quantity_taken`` is what left the shop (1–100000). ``quantity_returned``
+    is null until the return count is submitted, then 0 up to what was not sold.
+    """
+
+    load = models.ForeignKey(
+        FieldLoad,
+        on_delete=models.CASCADE,
+        related_name='lines',
+    )
+    product = models.ForeignKey(
+        'products.Product',
+        on_delete=models.PROTECT,
+        related_name='field_load_lines',
+    )
+    variant = models.ForeignKey(
+        'products.ProductVariant',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='field_load_lines',
+    )
+    quantity_taken = models.PositiveIntegerField()
+    quantity_returned = models.PositiveIntegerField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['load', 'product', 'variant'],
+                name='fieldloadline_product_uniq',
+            ),
+        ]
+
+    def __str__(self):
+        """
+        Returns:
+            str: Line id and quantity taken. Under 80 characters.
+        """
+        return f'Load line {self.pk} took {self.quantity_taken}'
+
+
+class FieldLoadSale(models.Model):
+    """
+    A completed field sale drawn from one load.
+
+    Stock was already removed at issue, so the sale does not move stock.
+    """
+
+    load = models.ForeignKey(
+        FieldLoad,
+        on_delete=models.PROTECT,
+        related_name='load_sales',
+    )
+    sale = models.OneToOneField(
+        'sales.Sale',
+        on_delete=models.PROTECT,
+        related_name='field_load_sale',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['id']
+
+    def __str__(self):
+        """
+        Returns:
+            str: Load id and sale id. Under 80 characters.
+        """
+        return f'Load {self.load_id} sale {self.sale_id}'
 
     @property
     def line_total(self):

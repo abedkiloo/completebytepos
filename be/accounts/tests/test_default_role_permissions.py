@@ -134,6 +134,8 @@ class DefaultRolePermissionTests(TestCase):
             )
         self.assertFalse(self._has(self.field_role, 'products', 'create'))
         self.assertFalse(self._has(self.field_role, 'products', 'update'))
+        self.assertFalse(self._has(self.field_role, 'customers', 'call_book'))
+        self.assertTrue(self._has(self.sales_role, 'customers', 'call_book'))
 
     def test_sales_role_has_catalog_create_import_only(self):
         self.assertTrue(self._has(self.sales_role, 'products', 'create'))

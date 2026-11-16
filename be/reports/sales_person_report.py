@@ -101,6 +101,8 @@ class SalesPersonReportService:
                 not_collected=Coalesce(Sum(debt_expr), zero),
                 field_sales_count=Count('id', filter=Q(entry_source='field'), distinct=True),
                 field_sales=Sum('total', filter=Q(entry_source='field')),
+                field_load_sales_count=Count('id', filter=Q(entry_source='field_load'), distinct=True),
+                field_load_sales=Sum('total', filter=Q(entry_source='field_load')),
             )
             .order_by('-gross_sales')
         )
@@ -152,6 +154,8 @@ class SalesPersonReportService:
             'items_sold': 0,
             'field_sales_count': 0,
             'field_sales': 0.0,
+            'field_load_sales_count': 0,
+            'field_load_sales': 0.0,
             'shop_sales_count': 0,
             'shop_sales': 0.0,
             'collected': 0.0,
@@ -177,6 +181,8 @@ class SalesPersonReportService:
             avg_ticket = (gross / count) if count else 0.0
             field_count = row.get('field_sales_count') or 0
             field_gross = _decimal_float(row.get('field_sales'))
+            load_count = row.get('field_load_sales_count') or 0
+            load_gross = _decimal_float(row.get('field_load_sales'))
 
             user_stub = users_by_id.get(sid) if sid else None
             name = _display_name(user_stub) if user_stub else 'Unassigned'
@@ -197,8 +203,10 @@ class SalesPersonReportService:
                 'avg_ticket': round(avg_ticket, 2),
                 'field_sales_count': field_count,
                 'field_sales': round(field_gross, 2),
-                'shop_sales_count': count - field_count,
-                'shop_sales': round(gross - field_gross, 2),
+                'field_load_sales_count': load_count,
+                'field_load_sales': round(load_gross, 2),
+                'shop_sales_count': count - field_count - load_count,
+                'shop_sales': round(gross - field_gross - load_gross, 2),
             })
 
             totals['sales_count'] += count
@@ -211,14 +219,17 @@ class SalesPersonReportService:
             totals['items_sold'] += items
             totals['field_sales_count'] += field_count
             totals['field_sales'] += field_gross
-            totals['shop_sales_count'] += count - field_count
-            totals['shop_sales'] += gross - field_gross
+            totals['field_load_sales_count'] += load_count
+            totals['field_load_sales'] += load_gross
+            totals['shop_sales_count'] += count - field_count - load_count
+            totals['shop_sales'] += gross - field_gross - load_gross
 
         for key in (
             'gross_sales',
             'refunds_total',
             'net_sales',
             'field_sales',
+            'field_load_sales',
             'shop_sales',
             'collected',
             'not_collected',

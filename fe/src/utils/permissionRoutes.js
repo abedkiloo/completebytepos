@@ -26,6 +26,7 @@ export const ROUTE_MODULE_MAP = {
   '/normal-sale': 'sales',
   '/sales/approvals': 'sales',
   '/sales/daily': 'sales',
+  '/sales/field-loads': 'sales',
   '/sales/field': 'sales',
   '/sales': 'sales',
   '/customers/payments': 'debt_management',
@@ -108,6 +109,7 @@ export const ROUTE_PERMISSION_GATES = [
     module: 'sales',
     action: 'daily_sales',
   },
+  { prefix: '/sales/field-loads', module: 'agents', action: 'field_load' },
   { prefix: '/sales/field', module: 'dispatch', action: 'view' },
 ];
 

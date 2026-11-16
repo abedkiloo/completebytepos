@@ -30,6 +30,7 @@ const Categories = lazy(() => import('./components/Categories/Categories'));
 const ProductAttributes = lazy(() => import('./components/Products/ProductAttributes'));
 const Sales = lazy(() => import('./components/Sales/Sales'));
 const FieldSales = lazy(() => import('./components/Sales/FieldSalesPage'));
+const FieldLoadsPage = lazy(() => import('./components/Sales/FieldLoadsPage'));
 const DailySales = lazy(() => import('./components/Sales/DailySalesPage'));
 const CustomerDailyDetail = lazy(() => import('./components/Sales/CustomerDailyDetailPage'));
 const RecordPastSale = lazy(() => import('./components/Sales/RecordPastSale'));
@@ -195,6 +196,7 @@ function App() {
                 <Route path="/sales" element={<Sales />} />
                 <Route path="/sales/approvals" element={<SaleApprovalsPage />} />
                 <Route path="/sales/field" element={<FieldSales />} />
+                <Route path="/sales/field-loads" element={<FieldLoadsPage />} />
                 <Route path="/sales/daily" element={<DailySales />} />
                 <Route path="/sales/daily/customers/:customerId" element={<CustomerDailyDetail />} />
                 <Route path="/sales/record-past" element={<RecordPastSale />} />

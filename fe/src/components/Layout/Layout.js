@@ -155,6 +155,13 @@ export const NAV_SECTIONS = [
         ],
       },
       { to: '/sales/field', label: 'Field sales', icon: MapPin, permission: ['dispatch', 'view'] },
+      {
+        to: '/sales/field-loads',
+        label: 'Field loads',
+        icon: Boxes,
+        permission: ['agents', 'field_load'],
+        feature: ['sales', 'field_load'],
+      },
     ],
   },
   {
@@ -165,7 +172,7 @@ export const NAV_SECTIONS = [
       { to: '/customers', label: 'Customers', icon: UsersIcon, permission: ['customers', 'view'] },
       {
         to: '/customers/call-book',
-        label: 'Call book',
+        label: 'Call centre',
         icon: Phone,
         permission: ['customers', 'call_book'],
         feature: ['customers', 'call_book'],

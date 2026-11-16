@@ -167,6 +167,7 @@ def serialize_daily_order(sale: Sale) -> Dict[str, Any]:
         'client_channel': sale.client_channel or 'unknown',
         'entry_source': sale.entry_source,
         'is_field_sale': sale.is_field_sale,
+        'is_field_load_sale': sale.is_field_load_sale,
         'sale_origin': sale.sale_origin,
         'notes': sale.notes or '',
     }
@@ -239,6 +240,8 @@ def get_daily_sales_report(
     partial_orders_count = 0
     field_orders_count = 0
     field_sales_total = Decimal('0.00')
+    field_load_orders_count = 0
+    field_load_sales_total = Decimal('0.00')
     by_method_breakdown: Dict[str, Dict[str, Any]] = {}
 
     for s in summary_rows:
@@ -261,6 +264,9 @@ def get_daily_sales_report(
         if s.get('entry_source') == 'field':
             field_orders_count += 1
             field_sales_total += s_total
+        elif s.get('entry_source') == 'field_load':
+            field_load_orders_count += 1
+            field_load_sales_total += s_total
 
         if p_status == 'paid':
             paid_orders_count += 1
@@ -386,8 +392,10 @@ def get_daily_sales_report(
             'partial_orders_count': partial_orders_count,
             'field_orders_count': field_orders_count,
             'field_sales_total': str(field_sales_total.quantize(Decimal('0.01'))),
-            'shop_orders_count': orders_count - field_orders_count,
-            'shop_sales_total': str((total_sales - field_sales_total).quantize(Decimal('0.01'))),
+            'field_load_orders_count': field_load_orders_count,
+            'field_load_sales_total': str(field_load_sales_total.quantize(Decimal('0.01'))),
+            'shop_orders_count': orders_count - field_orders_count - field_load_orders_count,
+            'shop_sales_total': str((total_sales - field_sales_total - field_load_sales_total).quantize(Decimal('0.01'))),
             'total_debt_collected': str(Decimal(str(total_debt_collected)).quantize(Decimal('0.01'))),
             'debt_settlement_count': debt_settlement_count,
             'total_collected': str(total_cash_in.quantize(Decimal('0.01'))),

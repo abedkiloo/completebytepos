@@ -251,6 +251,7 @@ export function canAccessRoute(persona, pathname, options = {}) {
     if (
       pathname.startsWith('/customers/debt') ||
       pathname.startsWith('/customers/payments') ||
+      pathname.startsWith('/customers/call-book') ||
       pathname.startsWith('/pos') ||
       pathname.startsWith('/invoices') ||
       pathname.startsWith('/daily-notes') ||

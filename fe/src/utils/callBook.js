@@ -1,16 +1,18 @@
 /**
  * Labels and summary text for the weekly call book.
  *
- * Weekdays are Monday–Friday only (indexes 0–4). Outcomes are the three
+ * Weekdays are Monday–Friday only (indexes 0–4). Outcomes are the four
  * marks the API accepts. Count lines never include a phone number.
+ * The screen copies a number. It does not place the call.
  */
 
 export const WEEKDAY_LABELS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
 export const CALL_OUTCOMES = [
-  { value: 'called', label: 'Called' },
-  { value: 'ask_later', label: 'Ask later' },
-  { value: 'no_answer', label: 'No answer' },
+  { value: 'called', label: 'Called', tone: 'success' },
+  { value: 'ask_later', label: 'Call later', tone: 'warning' },
+  { value: 'no_answer', label: 'No answer', tone: 'outline' },
+  { value: 'unreachable', label: 'Unreachable', tone: 'destructive' },
 ];
 
 /**
@@ -27,7 +29,7 @@ export function weekdayLabel(index) {
 /**
  * Staff-facing name for a call outcome.
  *
- * @param {string} outcome `called`, `ask_later`, or `no_answer`.
+ * @param {string} outcome `called`, `ask_later`, `no_answer`, or `unreachable`.
  * @returns {string} Short label, or an empty string when unknown.
  */
 export function outcomeLabel(outcome) {
@@ -47,4 +49,31 @@ export function callBookCountLine(summary) {
   const callable = Number(summary.callable) || 0;
   const cannot = Number(summary.cannot_call) || 0;
   return `Called ${called} of ${callable}. ${cannot} cannot be called.`;
+}
+
+/**
+ * Share of the week already recorded, as a whole percent.
+ *
+ * @param {number} called Customers with a result this week. 0 or more.
+ * @param {number} callable Customers with a usable number. 0 or more.
+ * @returns {number} 0–100. Zero when there is nobody to call.
+ */
+export function callCoveragePercent(called, callable) {
+  const done = Number(called) || 0;
+  const total = Number(callable) || 0;
+  if (total <= 0 || done <= 0) return 0;
+  return Math.min(100, Math.round((done / total) * 100));
+}
+
+/**
+ * Short customer type for the call workspace.
+ *
+ * @param {string} segment Buyer segment from the book row.
+ * @returns {string} At most 20 characters. Never a phone number.
+ */
+export function customerCategoryLabel(segment) {
+  if (segment === 'dormant') return 'Dormant';
+  if (segment === 'at_risk') return 'Cooling off';
+  if (!segment || segment === 'none') return 'Not yet a buyer';
+  return 'Existing customer';
 }

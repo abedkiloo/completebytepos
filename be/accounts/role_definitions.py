@@ -75,6 +75,21 @@ PERMISSIONS_DATA = [
     ('agents', 'view', 'View customer sites and visit media'),
     ('agents', 'create', 'Create customer sites and media'),
     ('agents', 'update', 'Update sites, upload media, finalize visits'),
+    (
+        'agents',
+        'field_load',
+        'See field loads, sell from the load, and submit the return count',
+    ),
+    (
+        'agents',
+        'field_load_issue',
+        'Issue shop stock onto a field agent load and add more while they are out',
+    ),
+    (
+        'agents',
+        'field_load_approve',
+        'Accept a field load return or send the count back',
+    ),
     ('dispatch', 'view', 'View field-order dispatch queue'),
     ('dispatch', 'update', 'Pack and assign field orders'),
     ('delivery', 'view', 'View delivery routes and stops (sales and drivers)'),
@@ -370,9 +385,10 @@ def _field_agent_queryset():
     - Agents: visit pin / site / field sale flow.
     - Products/categories view: pick items on a visit (no catalog edit).
     - Payroll view_own: locked payslips including sales commission.
-    - customers.call_book: shared Monday–Friday phone book (not a field visit).
 
-    No POS, debt board, delivery, invoicing, messaging, daily notes, or appraisals.
+    No POS, debt board, delivery, invoicing, messaging, daily notes, appraisals,
+    or the call centre. Field agents sell in person. Other staff call on a
+    cell phone and record the result.
     """
     return (
         Permission.objects.filter(
@@ -385,7 +401,7 @@ def _field_agent_queryset():
         )
         | Permission.objects.filter(
             module='agents',
-            action__in=['view', 'create', 'update'],
+            action__in=['view', 'create', 'update', 'field_load'],
         )
         | Permission.objects.filter(
             module='products',
@@ -398,10 +414,6 @@ def _field_agent_queryset():
         | Permission.objects.filter(
             module='payroll',
             action='view_own',
-        )
-        | Permission.objects.filter(
-            module='customers',
-            action='call_book',
         )
     )
 
@@ -509,25 +521,66 @@ def grant_appraisals_to_sales_roles():
 
 def grant_call_book_to_all_roles():
     """
-    Every active role may open and mark the weekly call book.
+    Every active role except Field Sales may open and mark the call centre.
 
-    Additive. Does not grant customer edit, debt, or the day-plan editor.
-    Day-plan edits stay with Manager and Super Admin by role name, not this
-    permission. Field Sales is included: phone coverage is separate from
-    field visits.
+    Staff call on their own cell phone and record the result. Field Sales
+    are removed if they already have the permission, because they meet
+    customers in person. Additive for every other role. Does not grant
+    customer edit, debt, or the day-plan editor. Day-plan edits stay with
+    Manager and Super Admin by role name.
 
     Returns:
         int: Roles that gained ``customers.call_book``. Range 0–10_000.
+        A removal from Field Sales counts as 0.
     """
     perm = Permission.objects.filter(module='customers', action='call_book').first()
     if not perm:
         return 0
+    field = Role.objects.filter(name=ROLE_FIELD_AGENT, is_active=True).first()
+    if field is not None:
+        field.permissions.remove(perm)
     granted = 0
-    for role in Role.objects.filter(is_active=True):
+    for role in Role.objects.filter(is_active=True).exclude(name=ROLE_FIELD_AGENT):
         if role.permissions.filter(pk=perm.pk).exists():
             continue
         role.permissions.add(perm)
         granted += 1
+    return granted
+
+
+def grant_field_load_to_roles():
+    """
+    Give field loads to the roles that carry or check stock.
+
+    Field Sales can see their load, sell, and submit a return. Sales
+    Personnel can also issue stock. Manager and Super Admin can issue
+    and accept the count. Additive for Sales and Manager. Field Sales is
+    reset earlier in ``sync_default_roles`` and then receives ``field_load``
+    here.
+
+    Returns:
+        int: Roles that gained at least one field-load permission. Range 0–10_000.
+    """
+    wanted = {
+        'Field Sales': ['field_load'],
+        'Sales Personnel': ['field_load', 'field_load_issue'],
+        'Manager': ['field_load', 'field_load_issue', 'field_load_approve'],
+        'Super Admin': ['field_load', 'field_load_issue', 'field_load_approve'],
+    }
+    granted = 0
+    for name, actions in wanted.items():
+        role = Role.objects.filter(name=name, is_active=True).first()
+        if role is None:
+            continue
+        perms = list(
+            Permission.objects.filter(module='agents', action__in=actions)
+        )
+        if not perms:
+            continue
+        before = role.permissions.filter(module='agents', action__in=actions).count()
+        role.permissions.add(*perms)
+        if before < len(perms):
+            granted += 1
     return granted
 
 
@@ -692,6 +745,7 @@ def sync_default_roles(created_by=None):
     grant_appraisals_to_sales_roles()
     grant_payroll_view_own_to_all_roles()
     grant_call_book_to_all_roles()
+    grant_field_load_to_roles()
 
     return {
         ROLE_SUPER_ADMIN: super_admin,

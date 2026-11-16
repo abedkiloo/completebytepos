@@ -45,6 +45,8 @@ _STATUS = {
     'no_phone': status.HTTP_400_BAD_REQUEST,
     'bad_outcome': status.HTTP_400_BAD_REQUEST,
     'too_long': status.HTTP_400_BAD_REQUEST,
+    'bad_date': status.HTTP_400_BAD_REQUEST,
+    'bad_time': status.HTTP_400_BAD_REQUEST,
     'held': status.HTTP_409_CONFLICT,
     'bad_plan': status.HTTP_400_BAD_REQUEST,
 }
@@ -100,12 +102,15 @@ class CallBookMarkView(APIView):
         Record an outcome and an optional request summary.
 
         Args:
-            request: JSON ``outcome`` and ``request_summary`` (0–500 chars).
+            request: JSON ``outcome``, ``request_summary`` (0–500 chars), and
+            optional ``follow_up_on`` (blank or YYYY-MM-DD within 90 days) and
+            ``follow_up_time`` (HH:MM, required for call later).
             customer_id: Customer primary key, positive integer.
 
         Returns:
             Response: 200 on success. 400 on the weekend, a bad outcome, a
-            summary over 500 characters, or no usable phone. 404 when the
+            summary over 500 characters, a bad follow-up date, a missing or
+            invalid call-later time, or no usable phone. 404 when the
             customer is missing. 409 when another staff member holds the
             customer. Bodies do not include the phone number.
 
@@ -117,6 +122,8 @@ class CallBookMarkView(APIView):
             user=request.user,
             outcome=(request.data.get('outcome') or ''),
             request_summary=request.data.get('request_summary') or '',
+            follow_up_on=request.data.get('follow_up_on') or '',
+            follow_up_time=request.data.get('follow_up_time') or '',
         )
         http = status.HTTP_200_OK if code == 'ok' else _STATUS.get(code, 400)
         return Response(payload, status=http)

@@ -224,7 +224,7 @@ def _load_agent_sales(
         occurred_at__lte=end,
     )
     if template.get('field_only', True):
-        qs = qs.filter(entry_source='field')
+        qs = qs.filter(entry_source__in=('field', 'field_load'))
     if template.get('require_full_payment_same_day', True):
         qs = qs.filter(amount_paid__gte=F('total'))
     return list(

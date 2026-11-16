@@ -68,7 +68,7 @@ def net_field_sales_for_user(user_id: int, *, year: int, month: int) -> Decimal:
     start, end = _period_bounds(year, month)
     sales_qs = (
         posted_sales()
-        .filter(_staff_sale_q(user_id), entry_source='field')
+        .filter(_staff_sale_q(user_id), entry_source__in=('field', 'field_load'))
         .filter(occurred_at__gte=start, occurred_at__lte=end)
     )
     gross = sales_qs.aggregate(total=Sum('total'))['total'] or Decimal('0')
