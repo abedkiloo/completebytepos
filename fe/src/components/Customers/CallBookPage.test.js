@@ -174,6 +174,16 @@ describe('CallBookPage', () => {
     expect(screen.queryByRole('button', { name: 'Save record' })).not.toBeInTheDocument();
   });
 
+  test('opens the call form when a customer on the week list is clicked', async () => {
+    render(<CallBookPage />);
+    await screen.findByText('Not Called Shop');
+    await userEvent.click(screen.getByRole('tab', { name: 'Weekly schedule' }));
+    expect(screen.queryByRole('button', { name: 'Save record' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /Not Called Shop/ }));
+    expect(screen.getByRole('button', { name: 'Save record' })).toBeInTheDocument();
+    expect(screen.getByText('0718000001')).toBeInTheDocument();
+  });
+
   test('overview uses the week counts', async () => {
     render(<CallBookPage />);
     await screen.findByText('Not Called Shop');

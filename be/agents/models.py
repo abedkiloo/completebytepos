@@ -257,22 +257,30 @@ class FieldLoad(models.Model):
     """
     Stock a field agent carries out of the shop.
 
-    Shop stock drops when the load is issued. Field sales on the load do
+    A sales person writes the quantities. Shop stock drops only when a
+    different manager confirms those quantities. Field sales on the load do
     not drop stock again. Returned units go back to the shelf only when a
-    manager accepts the count. One agent may have one open or pending load.
+    manager accepts the count. One agent may have one load that is waiting
+    for confirmation, out, or waiting for the return to be accepted.
 
     Attributes:
-        status: ``open`` while they are out, ``pending_review`` after the
-            return count, ``accepted`` when the manager confirms it.
+        status: ``awaiting_issue`` until a manager confirms the quantities,
+            ``open`` while the agent is out, ``pending_review`` after the
+            return count, ``accepted`` when that count is confirmed, and
+            ``issue_rejected`` when the written load is sent back.
     """
 
+    STATUS_AWAITING = 'awaiting_issue'
     STATUS_OPEN = 'open'
     STATUS_PENDING = 'pending_review'
     STATUS_ACCEPTED = 'accepted'
+    STATUS_ISSUE_REJECTED = 'issue_rejected'
     STATUS_CHOICES = [
+        (STATUS_AWAITING, 'Waiting for quantity confirmation'),
         (STATUS_OPEN, 'Out'),
         (STATUS_PENDING, 'Waiting for manager'),
         (STATUS_ACCEPTED, 'Accepted'),
+        (STATUS_ISSUE_REJECTED, 'Sent back'),
     ]
 
     agent = models.ForeignKey(
@@ -300,6 +308,14 @@ class FieldLoad(models.Model):
         blank=True,
         related_name='field_loads_reviewed',
     )
+    issue_approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='field_loads_issue_approved',
+    )
+    issue_approved_at = models.DateTimeField(null=True, blank=True)
     review_note = models.CharField(max_length=500, blank=True, default='')
     issued_at = models.DateTimeField(auto_now_add=True)
     submitted_at = models.DateTimeField(null=True, blank=True)

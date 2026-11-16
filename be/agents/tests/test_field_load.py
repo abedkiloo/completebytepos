@@ -89,6 +89,8 @@ class FieldLoadUnitTests(SimpleTestCase):
         self.assertEqual(display_status('pending_review', 2), 'shortage')
         self.assertEqual(display_status('pending_review', 0), 'pending_review')
         self.assertEqual(display_status('open', 9), 'open')
+        self.assertEqual(display_status('awaiting_issue', 0), 'awaiting_issue')
+        self.assertEqual(display_status('issue_rejected', 0), 'issue_rejected')
         self.assertEqual(missing_units(40, 5, 35), 0)
         self.assertIsNone(missing_units(40, 5, None))
         label = load_reference(type('Load', (), {'pk': 125, 'issued_at': None})())
@@ -349,6 +351,53 @@ class FieldLoadSecurityTests(SuperAdminAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         self.assertNotIn('0718', response.content.decode())
 
+    def test_the_agent_list_is_sales_employees_from_the_roster(self):
+        from datetime import date
+
+        from employees.models import Employee
+
+        seller = User.objects.create_user(username='sales_emp_load', password='x')
+        Employee.objects.create(
+            user=seller,
+            employee_id='EMP-SALE-1',
+            first_name='Amina',
+            last_name='Seller',
+            phone='0718999001',
+            position='Sales',
+            department='sales',
+            hire_date=date(2026, 1, 1),
+            status='active',
+        )
+        Employee.objects.create(
+            user=User.objects.create_user(username='prod_emp_load', password='x'),
+            employee_id='EMP-PROD-1',
+            first_name='Petro',
+            last_name='Maker',
+            phone='0718999002',
+            position='Maker',
+            department='production',
+            hire_date=date(2026, 1, 1),
+            status='active',
+        )
+        Employee.objects.create(
+            user=User.objects.create_user(username='gone_emp_load', password='x'),
+            employee_id='EMP-GONE-1',
+            first_name='Gone',
+            last_name='Seller',
+            position='Sales',
+            department='sales',
+            hire_date=date(2026, 1, 1),
+            status='inactive',
+        )
+        response = self.client.get('/api/agents/field-loads/agents/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        names = [row['name'] for row in response.json()['results']]
+        self.assertEqual(names, ['Amina Seller'])
+        self.assertEqual(response.json()['results'][0]['id'], seller.id)
+        body = response.content.decode()
+        self.assertNotIn('0718999001', body)
+        self.assertNotIn('0718999002', body)
+
 
 class FieldLoadCorrectedTests(SuperAdminAPITestCase):
     """A field-load sale stays distinct from a packed field order."""
@@ -388,8 +437,7 @@ class FieldLoadCorrectedTests(SuperAdminAPITestCase):
                 'quantity': 10,
                 'customer_id': self.customer.id,
                 'amount_paid': '200.00',
-                'payment_method': 'split',
-                'tender': 'mpesa',
+                'payment_method': 'cash',
             },
             format='json',
         )
@@ -399,8 +447,8 @@ class FieldLoadCorrectedTests(SuperAdminAPITestCase):
         self.assertFalse(sale.is_field_sale)
         self.assertTrue(sale.is_field_load_sale)
         self.assertEqual(sale.sale_origin, 'field_load')
-        self.assertEqual(sale.payment_method, 'mpesa')
-        self.assertEqual(sold.data['money']['mpesa'], '200.00')
+        self.assertEqual(sale.payment_method, 'cash')
+        self.assertEqual(sold.data['money']['cash'], '200.00')
         self.assertEqual(sold.data['money']['credit'], '300.00')
         self.assertEqual(Sale.objects.filter(entry_source='field').count(), 0)
         line_id = sold.data['lines'][0]['id']
@@ -437,6 +485,30 @@ class FieldLoadCorrectedTests(SuperAdminAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertNotIn(self.customer.phone, response.content.decode())
         self.assertFalse(response.data['error'].__contains__(self.customer.phone))
+
+    def test_a_split_payment_is_rejected_without_echoing_the_phone(self):
+        issued = self.client.post(
+            '/api/agents/field-loads/',
+            {
+                'agent_id': self.agent.id,
+                'lines': [{'product_id': self.cups.id, 'quantity': 4}],
+            },
+            format='json',
+        )
+        response = self.client.post(
+            f"/api/agents/field-loads/{issued.data['id']}/sell/",
+            {
+                'product_id': self.cups.id,
+                'quantity': 1,
+                'customer_id': self.customer.id,
+                'amount_paid': '10.00',
+                'payment_method': 'split',
+                'notes': self.customer.phone,
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertNotIn(self.customer.phone, response.content.decode())
 
 
 class FieldLoadStressTests(SimpleTestCase):
@@ -517,10 +589,8 @@ class FieldLoadCoverageTests(SuperAdminAPITestCase):
             _resolve_tender(payment_method='split', paid=Decimal('0'), total=Decimal('5'), has_customer=True, tender='cash')
         with self.assertRaises(FieldLoadError):
             _resolve_tender(payment_method='split', paid=Decimal('1'), total=Decimal('5'), has_customer=True, tender='card')
-        self.assertEqual(
-            _resolve_tender(payment_method='split', paid=Decimal('1'), total=Decimal('5'), has_customer=True, tender='cash')[0],
-            'cash',
-        )
+        with self.assertRaises(FieldLoadError):
+            _resolve_tender(payment_method='split', paid=Decimal('1'), total=Decimal('5'), has_customer=True, tender='cash')
         with self.assertRaises(FieldLoadError):
             _resolve_tender(payment_method='cash', paid=Decimal('9'), total=Decimal('5'), has_customer=True, tender='cash')
         with self.assertRaises(FieldLoadError):

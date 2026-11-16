@@ -110,7 +110,8 @@ class FieldLoadViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'], url_path='agents')
     def agents(self, request):
         """
-        Active field agents for the issue form.
+        Active field agents for the issue form. The rows are sales
+        employees from the staff roster who have a login.
 
         Args:
             request: User who may issue loads.

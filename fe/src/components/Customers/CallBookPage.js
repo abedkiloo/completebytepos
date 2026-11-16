@@ -47,7 +47,7 @@ export default function CallBookPage() {
       const { data } = await customersAPI.callBook({
         scope: 'week',
         status: 'all',
-        page_size: 200,
+        page_size: 1000,
       });
       setBook(data);
       setDay(data?.summary?.is_call_day ? data.summary.weekday : 0);
@@ -111,6 +111,14 @@ export default function CallBookPage() {
           rows={dayRows}
           onDay={(next) => { setDay(next); setIndex(0); }}
           onOpen={(weekday) => { setDay(weekday); setIndex(0); setView('queue'); }}
+          onSelect={(customerId) => {
+            const next = results.filter((row) => (
+              row.call_later_due || (row.weekday === day && !row.called_this_week)
+            ));
+            const at = next.findIndex((row) => row.customer_id === customerId);
+            setIndex(at >= 0 ? at : 0);
+            setView('queue');
+          }}
         />
       )}
       {!loading && view === 'queue' && (
@@ -215,8 +223,9 @@ function Stat({ label, value, hint, tone = 'text-foreground' }) {
  * @param {Array} props.rows Customers on that day, at most 200.
  * @param {Function} props.onDay Selects a weekday.
  * @param {Function} props.onOpen Opens that day's queue.
+ * @param {Function} props.onSelect Opens the call form for one customer id.
  */
-function WeekPlan({ summary, day, rows, onDay, onOpen }) {
+function WeekPlan({ summary, day, rows, onDay, onOpen, onSelect }) {
   const days = summary.days || WEEKDAY_LABELS.map((label, weekday) => ({
     weekday,
     callable: 0,
@@ -253,14 +262,20 @@ function WeekPlan({ summary, day, rows, onDay, onOpen }) {
       {rows.length === 0 && <p className="text-sm text-muted-foreground">No customers on this day.</p>}
       <ul className="space-y-2">
         {rows.map((row) => (
-          <li key={row.customer_id} className="flex items-center justify-between gap-2 border-b border-border py-2">
-            <div>
-              <p className="font-medium">{row.name}</p>
-              <p className="text-xs text-muted-foreground">Shared customer queue</p>
-            </div>
-            <Badge variant={row.called_this_week ? outcomeTone(row.outcome) : 'destructive'}>
-              {row.called_this_week ? outcomeLabel(row.outcome) : 'Pending'}
-            </Badge>
+          <li key={row.customer_id} className="border-b border-border">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-2 py-2 text-left"
+              onClick={() => onSelect(row.customer_id)}
+            >
+              <span>
+                <span className="block font-medium">{row.name}</span>
+                <span className="block text-xs text-muted-foreground">Open to record the call</span>
+              </span>
+              <Badge variant={row.called_this_week ? outcomeTone(row.outcome) : 'destructive'}>
+                {row.called_this_week ? outcomeLabel(row.outcome) : 'Pending'}
+              </Badge>
+            </button>
           </li>
         ))}
       </ul>
@@ -543,7 +558,7 @@ function PlanEditor({ plan, onChange, onSaved }) {
     <section className="space-y-3 rounded-md border border-border p-3">
       <h2 className="text-base font-semibold">Day plan</h2>
       <p className="text-sm text-muted-foreground">
-        Customers with no valid location are listed on the weekday you pick. A ward row beats a sub-county row, which beats a county row.
+        Customers in one sub-county share a day. Sub-counties take turns from Monday to Friday. A saved ward row still chooses that ward's day.
       </p>
       <div className="flex flex-wrap gap-3">
         <label className="text-sm">

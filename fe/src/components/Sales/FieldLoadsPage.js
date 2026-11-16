@@ -225,10 +225,10 @@ function IssueForm({ onCreated }) {
     <section className="space-y-3 rounded-xl border border-border bg-card p-4">
       <h2 className="text-base font-semibold">Create new field load</h2>
       <label className="block text-sm">
-        <span className="mb-1 block text-muted-foreground">Field agent</span>
+        <span className="mb-1 block text-muted-foreground">Sales employee</span>
         <select
           className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-          aria-label="Agent"
+          aria-label="Sales employee"
           value={agentId}
           onChange={(event) => setAgentId(event.target.value)}
         >
@@ -462,7 +462,6 @@ function LoadDetail({ load, canApprove, onChange }) {
               ['cash', 'Cash'],
               ['mpesa', 'M-Pesa'],
               ['credit', 'Credit'],
-              ['split', 'Split payment'],
             ].map(([value, label]) => (
               <label key={value} className="flex items-center gap-2">
                 <input
@@ -500,7 +499,6 @@ function LoadDetail({ load, canApprove, onChange }) {
                 customer_id: customerId ? Number(customerId) : null,
                 amount_paid: payment === 'credit' ? 0 : (paid || 0),
                 payment_method: payment,
-                tender: 'cash',
                 client_channel: 'web',
                 notes: note,
               }),

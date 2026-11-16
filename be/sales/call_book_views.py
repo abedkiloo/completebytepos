@@ -63,7 +63,7 @@ class CallBookView(APIView):
 
         Args:
             request: Query ``scope`` (today|week), ``status``
-            (not_called|called|all), ``page`` (1+), ``page_size`` (1–200).
+            (not_called|called|all), ``page`` (1+), ``page_size`` (1–1000).
 
         Returns:
             Response: Summary counts and one page of rows. Weekend requests

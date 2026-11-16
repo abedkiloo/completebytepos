@@ -21,15 +21,14 @@ from datetime import date, datetime, time, timedelta
 from django.db import transaction
 from django.utils import timezone
 
-from sales.call_day_algorithm import MIN_PINS, assign_ward_weekdays
-from sales.kenya_admin import classify_admin_location
+from sales.call_day_algorithm import assign_sub_county_weekdays
 from sales.models import CallBookSettings, CallDayPlan, CallHold, Customer, CustomerCall
 
 WEEKDAY_COUNT = 5
 SUMMARY_MAX = 500
 PLAN_ROW_MAX = 200
 PAGE_SIZE_DEFAULT = 100
-PAGE_SIZE_MAX = 200
+PAGE_SIZE_MAX = 1000
 OUTCOMES = {
     CustomerCall.OUTCOME_CALLED,
     CustomerCall.OUTCOME_ASK_LATER,
@@ -100,68 +99,41 @@ def usable_phone(phone: str | None) -> bool:
     return 9 <= len(digits) <= 15
 
 
-def ward_call_groups(customers) -> list[dict]:
+def sub_county_call_groups(customers) -> list[dict]:
     """
-    Collapse customers into one ward group for the day algorithm.
+    Collapse customers into one group per stored sub-county.
+
+    The sub-county already saved on the customer is the group. Every ward
+    inside that sub-county stays on the same call day. The official Kenya
+    list is not required.
 
     Args:
-        customers: Active customers. Each needs county, sub_county, ward,
-            phone, and optional latitude and longitude. A customer with an
-            invalid admin triple or fewer than 9 phone digits is left out,
-            so they do not pull a ward onto a day.
+        customers: Active customers. Each needs a phone. County and
+            sub-county may be blank. A customer with fewer than 9 phone
+            digits is left out.
 
     Returns:
-        list[dict]: At most one row per ward. ``weight`` is the number of
-        included customers, 1–100000. ``latitude`` and ``longitude`` are the
-        median pin when at least ``MIN_PINS`` shops in the ward have a pin,
-        otherwise None. The median ignores one pin that sits far from the
-        rest. No writes.
+        list[dict]: At most one row per county and sub-county. ``weight``
+        is the number of included customers, 1–100000. A blank sub-county
+        is its own group so those shops are not mixed into a named one.
+        No writes.
 
     Raises:
         None.
     """
-    from statistics import median
-
-    buckets: dict[tuple[str, str, str], dict] = {}
+    buckets: dict[tuple[str, str], int] = {}
     for customer in customers:
-        ok, _issue = classify_admin_location(
-            getattr(customer, 'county', ''),
-            getattr(customer, 'sub_county', ''),
-            getattr(customer, 'ward', ''),
-        )
-        if not ok or not usable_phone(getattr(customer, 'phone', '')):
+        if not usable_phone(getattr(customer, 'phone', '')):
             continue
         key = (
-            _norm(customer.county),
-            _norm(customer.sub_county),
-            _norm(customer.ward),
+            _norm(getattr(customer, 'county', '')),
+            _norm(getattr(customer, 'sub_county', '')),
         )
-        bucket = buckets.setdefault(key, {'lats': [], 'lons': [], 'weight': 0})
-        bucket['weight'] += 1
-        lat = getattr(customer, 'latitude', None)
-        lon = getattr(customer, 'longitude', None)
-        if lat is None or lon is None:
-            continue
-        try:
-            bucket['lats'].append(float(lat))
-            bucket['lons'].append(float(lon))
-        except (TypeError, ValueError):
-            continue
-    groups = []
-    for (county, sub, ward), bucket in buckets.items():
-        lat = lon = None
-        if len(bucket['lats']) >= MIN_PINS:
-            lat = float(median(bucket['lats']))
-            lon = float(median(bucket['lons']))
-        groups.append({
-            'county': county,
-            'sub_county': sub,
-            'ward': ward,
-            'weight': bucket['weight'],
-            'latitude': lat,
-            'longitude': lon,
-        })
-    return groups
+        buckets[key] = buckets.get(key, 0) + 1
+    return [
+        {'county': county, 'sub_county': sub, 'weight': weight}
+        for (county, sub), weight in buckets.items()
+    ]
 
 
 def _norm(value: str | None) -> str:
@@ -184,31 +156,26 @@ def weekday_for_customer(customer, plans, unlocated_weekday: int, assignments=No
     Args:
         customer: Object with ``county``, ``sub_county``, and ``ward``.
         plans: Iterable of plan rows with those fields plus ``weekday``.
-        unlocated_weekday: 0–4. Used when the Kenya admin triple is missing
-            or invalid.
-        assignments: Optional map from ``(county, sub_county, ward)`` in
-            lower case to weekday 0–4, produced by the ward algorithm.
+        unlocated_weekday: 0–4. Kept for callers. A customer with no county
+            and no sub-county is spread by a fixed hash of their id.
+        assignments: Optional map from ``(county, sub_county)`` in lower
+            case to weekday 0–4, produced by the sub-county round robin.
             None skips it. A matching plan still wins.
 
     Returns:
-        int: Weekday 0–4. Order: matching plan (ward, then sub-county, then
-        county), then the ward algorithm, then a stable hash of the
-        location. Invalid locations use ``unlocated_weekday``.
+        int: Weekday 0–4. Order: matching plan, then the sub-county round
+        robin, then a stable hash of the county and sub-county. Every shop
+        in one sub-county shares that day, whichever ward they are in.
 
     Raises:
-        None. Out-of-range ``unlocated_weekday`` is clamped to 0–4.
+        None. Out-of-range ``unlocated_weekday`` is ignored.
     """
-    unlocated = min(4, max(0, int(unlocated_weekday)))
-    ok, _issue = classify_admin_location(
-        getattr(customer, 'county', ''),
-        getattr(customer, 'sub_county', ''),
-        getattr(customer, 'ward', ''),
-    )
-    if not ok:
-        return unlocated
-    county = _norm(customer.county)
-    sub = _norm(customer.sub_county)
-    ward = _norm(customer.ward)
+    county = _norm(getattr(customer, 'county', ''))
+    sub = _norm(getattr(customer, 'sub_county', ''))
+    ward = _norm(getattr(customer, 'ward', ''))
+    if not county and not sub:
+        token = f"{getattr(customer, 'id', '')}|{_norm(getattr(customer, 'name', ''))}"
+        return zlib.crc32(token.encode('utf-8')) % WEEKDAY_COUNT
     best = None
     best_score = -1
     for plan in plans:
@@ -219,10 +186,10 @@ def weekday_for_customer(customer, plans, unlocated_weekday: int, assignments=No
     if best is not None and best_score > 0:
         return min(4, max(0, best))
     if assignments:
-        found = assignments.get((county, sub, ward))
+        found = assignments.get((county, sub))
         if found is not None:
             return min(4, max(0, int(found)))
-    key = f'{county}|{sub}|{ward}'.encode('utf-8')
+    key = f'{county}|{sub}'.encode('utf-8')
     return zlib.crc32(key) % WEEKDAY_COUNT
 
 
@@ -309,7 +276,7 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
         uses the week so the leftover list stays visible.
         status: ``not_called``, ``called``, or ``all``.
         page: 1-based page. Values below 1 are treated as 1.
-        page_size: 1–200. Out of range is clamped.
+        page_size: 1–1000. Out of range is clamped.
         viewer_id: User id used to flag holds that belong to the viewer.
 
     Returns:
@@ -343,7 +310,7 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
             'latitude', 'longitude', 'buyer_segment',
         )
     )
-    assignments = assign_ward_weekdays(ward_call_groups(customers))
+    assignments = assign_sub_county_weekdays(sub_county_call_groups(customers))
     week_calls = (
         CustomerCall.objects.filter(week_start=monday)
         .select_related('called_by')

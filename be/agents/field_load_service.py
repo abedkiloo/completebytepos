@@ -1,10 +1,11 @@
 """
 Field loads: stock an agent carries, sells from that load, and returns.
 
-Issuing a line removes that quantity from shop stock. A field-load sale
-does not remove it again, and it is not a field order. Accepting the return
-puts ``quantity_returned`` back on the shelf. Missing units stay out:
-``taken - sold - returned``.
+Issuing a line removes that quantity from shop stock. The person the load
+is written for is an active sales employee from the staff roster. A
+field-load sale does not remove stock again, and it is not a field order.
+Accepting the return puts ``quantity_returned`` back on the shelf.
+Missing units stay out: ``taken - sold - returned``.
 
 Bounds: 1–40 lines on a load. Each quantity is an integer from 1 to 100000
 when issuing, and 0 to the unsold quantity when returning. Notes are 0–500
@@ -25,8 +26,12 @@ from agents.models import FieldLoad, FieldLoadLine, FieldLoadSale
 MAX_LINES = 40
 MAX_QTY = 100000
 NOTE_MAX = 500
-OPEN_STATUSES = (FieldLoad.STATUS_OPEN, FieldLoad.STATUS_PENDING)
-LOAD_PAYMENTS = ('cash', 'mpesa', 'credit', 'split')
+OPEN_STATUSES = (
+    FieldLoad.STATUS_AWAITING,
+    FieldLoad.STATUS_OPEN,
+    FieldLoad.STATUS_PENDING,
+)
+LOAD_PAYMENTS = ('cash', 'mpesa', 'credit')
 
 
 class FieldLoadError(Exception):
@@ -45,7 +50,7 @@ class FieldLoadError(Exception):
 
 def user_may_issue(user) -> bool:
     """
-    Whether this user may put shop stock on a load.
+    Whether this user may write a field load for a manager to confirm.
 
     Args:
         user: Authenticated user.
@@ -65,7 +70,7 @@ def user_may_issue(user) -> bool:
 
 def user_may_approve(user) -> bool:
     """
-    Whether this user may accept or send back a return count.
+    Whether this user may confirm a written load or accept a return count.
 
     Args:
         user: Authenticated user.
@@ -241,7 +246,9 @@ def serialize_load(load: FieldLoad) -> dict:
         'units_sold': sum(line['quantity_sold'] for line in lines),
         'agent_id': load.agent_id,
         'agent_name': _display_name(load.agent),
+        'issued_by_id': load.issued_by_id,
         'issued_by': _display_name(load.issued_by),
+        'issue_approved_by': _display_name(load.issue_approved_by),
         'issued_at': load.issued_at.isoformat() if load.issued_at else None,
         'submitted_at': load.submitted_at.isoformat() if load.submitted_at else None,
         'reviewed_by': _display_name(load.reviewed_by),
@@ -279,12 +286,18 @@ def display_status(status: str, shortage_units: int) -> str:
     Screen status. Shortage is a pending count that does not balance.
 
     Args:
-        status: Stored status, one of ``open``, ``pending_review``, ``accepted``.
+        status: Stored status. One of ``awaiting_issue``, ``open``,
+            ``pending_review``, ``accepted``, or ``issue_rejected``.
         shortage_units: Units still unaccounted, 0–100000.
 
     Returns:
-        str: ``open``, ``accepted``, ``shortage``, or ``pending_review``.
+        str: ``awaiting_issue``, ``issue_rejected``, ``open``, ``accepted``,
+        ``shortage``, or ``pending_review``.
     """
+    if status == FieldLoad.STATUS_AWAITING:
+        return 'awaiting_issue'
+    if status == FieldLoad.STATUS_ISSUE_REJECTED:
+        return 'issue_rejected'
     if status == FieldLoad.STATUS_ACCEPTED:
         return 'accepted'
     if status == FieldLoad.STATUS_OPEN:
@@ -409,28 +422,37 @@ def _product_for_line(product_id, variant_id):
 
 def list_field_agents():
     """
-    Active field agents an issuer can put stock on.
+    Active sales employees a load can be written for.
+
+    The list is the staff roster, not the Field Sales login role. Only
+    employees in the sales department with an active login are returned,
+    because the load is carried by that login.
 
     Returns:
-        list[dict]: Up to 200 rows of ``id`` and ``name``. Names are 1–150
-        characters. Phone numbers are not included. No writes.
+        list[dict]: Up to 200 rows of ``id`` (the login user id) and
+        ``name`` (1–150 characters). Phone numbers are not included.
+        No writes.
 
     Raises:
-        None. An empty list means no active Field Sales users exist.
+        None. An empty list means no active sales employee has a login.
     """
-    from accounts.models import UserProfile
-    from accounts.role_definitions import ROLE_FIELD_AGENT
+    from employees.models import Employee
 
-    profiles = (
-        UserProfile.objects.filter(
-            is_active=True,
+    rows = (
+        Employee.objects.filter(
+            status='active',
+            department='sales',
+            user__isnull=False,
             user__is_active=True,
-            custom_role__name=ROLE_FIELD_AGENT,
         )
         .select_related('user')
-        .order_by('user__first_name', 'user__username')[:200]
+        .order_by('first_name', 'last_name', 'employee_id')[:200]
     )
-    return [{'id': profile.user_id, 'name': _display_name(profile.user)} for profile in profiles]
+    result = []
+    for row in rows:
+        name = f'{row.first_name} {row.last_name}'.strip()[:150]
+        result.append({'id': row.user_id, 'name': name or 'Sales employee'})
+    return result
 
 
 def issue_load(*, agent_id: int, lines: list, user) -> FieldLoad:
@@ -574,9 +596,8 @@ def sell_from_load(
         quantity: Whole units, 1 up to the unsold remainder.
         amount_paid: Money received now, 0 up to the line total.
         variant_id: Optional variant, matching the load line.
-        payment_method: ``cash``, ``mpesa``, ``credit``, or ``split``.
-        tender: When ``payment_method`` is ``split``, ``cash`` or ``mpesa``
-            for the amount received now.
+        payment_method: ``cash``, ``mpesa``, or ``credit``.
+        tender: Ignored. Kept so older clients can still send it.
         notes: Optional staff note, 0–500 characters. No phone numbers.
         client_channel: ``web`` or ``mobile``. Anything else is stored as ``web``.
 
@@ -666,21 +687,23 @@ def _resolve_tender(*, payment_method, paid: Decimal, total: Decimal, has_custom
     Map the screen's payment choice onto a stored sale tender.
 
     Args:
-        payment_method: ``cash``, ``mpesa``, ``credit``, or ``split``.
+        payment_method: ``cash``, ``mpesa``, or ``credit``.
         paid: Amount the caller says was received, 2 dp, 0 through ``total``.
         total: Sale total, 2 dp, zero or more.
         has_customer: Whether a customer is attached.
-        tender: ``cash`` or ``mpesa`` for the received part of a split.
+        tender: Kept for callers. Ignored. Cash and M-Pesa are chosen by
+            ``payment_method``.
 
     Returns:
         tuple: Stored payment method and the amount to record as paid.
 
     Raises:
-        FieldLoadError: ``bad_money`` or ``bad_customer``.
+        FieldLoadError: ``bad_money`` or ``bad_customer``. A ``split``
+        choice is rejected.
     """
     method = (payment_method or 'cash').strip().lower()
     if method not in LOAD_PAYMENTS:
-        raise FieldLoadError('bad_money', 'Choose cash, M-Pesa, credit, or a split payment.')
+        raise FieldLoadError('bad_money', 'Choose cash, M-Pesa, or credit.')
     if method == 'credit':
         if paid != 0:
             raise FieldLoadError('bad_money', 'Credit records nothing received now.')
@@ -691,15 +714,6 @@ def _resolve_tender(*, payment_method, paid: Decimal, total: Decimal, has_custom
         if paid != total:
             raise FieldLoadError('bad_money', 'M-Pesa pays this field load sale in full.')
         return 'mpesa', paid
-    if method == 'split':
-        if not has_customer:
-            raise FieldLoadError('bad_customer', 'Choose a customer when the sale is not fully paid.')
-        if paid <= 0 or paid >= total:
-            raise FieldLoadError('bad_money', 'A split payment needs some money now and a balance.')
-        part = (tender or 'cash').strip().lower()
-        if part not in ('cash', 'mpesa'):
-            raise FieldLoadError('bad_money', 'The amount received is cash or M-Pesa.')
-        return part, paid
     if paid > total:
         raise FieldLoadError('bad_money', 'Amount paid cannot be more than the sale.')
     if paid < total and not has_customer:

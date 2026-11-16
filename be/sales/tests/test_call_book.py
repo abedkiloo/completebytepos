@@ -1,6 +1,7 @@
 """Weekly call book: Monday–Friday coverage that resets from the call date."""
 
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
@@ -18,6 +19,7 @@ from accounts.role_definitions import (
 from sales.call_book import (
     build_call_book,
     call_later_due,
+    sub_county_call_groups,
     usable_phone,
     weekday_for_customer,
 )
@@ -87,10 +89,31 @@ class CallBookUnitTests(SuperAdminAPITestCase):
         self.assertTrue(usable_phone('0718 515 142'))
         self.assertFalse(usable_phone('1' * 16))
 
-    def test_blank_location_lands_on_the_unlocated_weekday(self):
-        customer = _customer('No place', '0718000001', county='', sub_county='', ward='')
-        self.assertEqual(weekday_for_customer(customer, [], 0), 0)
-        self.assertEqual(weekday_for_customer(customer, [], 3), 3)
+    def test_blank_locations_are_spread_across_the_week(self):
+        days = set()
+        first = None
+        for index in range(30):
+            customer = _customer(
+                f'No place {index}',
+                f'0728{index:06d}',
+                county='',
+                sub_county='',
+                ward='',
+            )
+            day = weekday_for_customer(customer, [], 0)
+            self.assertIn(day, range(5))
+            self.assertEqual(day, weekday_for_customer(customer, [], 3))
+            days.add(day)
+            if first is None:
+                first = day
+        self.assertGreater(len(days), 1)
+
+    def test_the_same_stored_ward_shares_a_day_without_the_official_list(self):
+        one = _customer('Belt One', '0728001001', county='Nairobi', sub_county='Roysambu', ward='Custom Belt')
+        two = _customer('Belt Two', '0728001002', county='Nairobi', sub_county='Roysambu', ward='Custom Belt')
+        other = _customer('Other Belt', '0728001003', county='Nairobi', sub_county='Westlands', ward='Other Belt')
+        self.assertEqual(weekday_for_customer(one, [], 0), weekday_for_customer(two, [], 0))
+        self.assertEqual(len(sub_county_call_groups([one, two, other])), 2)
 
     def test_same_ward_keeps_the_same_weekday(self):
         one = _customer('A', '0718000001')
@@ -513,3 +536,119 @@ class CallBookStressTests(SuperAdminAPITestCase):
         self.assertEqual(due, sorted(due))
         self.assertTrue(book['results'][0]['call_later_due'])
         self.assertNotIn('0728', str(book['summary']))
+
+
+class CallBookCoverageTests(SuperAdminAPITestCase):
+    """Branches the week book uses for bad input, plans, and holds."""
+
+    def test_plan_scores_holds_and_rejected_inputs(self):
+        from datetime import time
+        from types import SimpleNamespace
+
+        from accounts.models import UserProfile
+        from sales.call_book import (
+            _combine_follow_up,
+            _display_name,
+            _parse_clock,
+            _parse_follow_up,
+            hold_customer,
+            mark_called,
+            plan_payload,
+            replace_plan,
+            sub_county_call_groups,
+            user_may_edit_call_plan,
+        )
+
+        blank = _customer('Blank ward', '0728100001', county='Nairobi', sub_county='', ward='')
+        starehe = _customer(
+            'Starehe shop', '0728100002', county='Nairobi', sub_county='Starehe', ward='Custom Belt',
+        )
+        groups = sub_county_call_groups([blank, starehe])
+        self.assertEqual(len(groups), 2)
+        self.assertEqual(sum(group['weight'] for group in groups), 2)
+
+        county_plan = SimpleNamespace(county='Nairobi', sub_county='', ward='', weekday=1)
+        sub_plan = SimpleNamespace(county='Nairobi', sub_county='Starehe', ward='', weekday=2)
+        self.assertEqual(weekday_for_customer(starehe, [county_plan], 0), 1)
+        self.assertEqual(weekday_for_customer(starehe, [sub_plan], 0), 2)
+
+        self.assertFalse(user_may_edit_call_plan(None))
+        stranger = User.objects.create_user(username='cover_stranger', password='x')
+        self.assertFalse(user_may_edit_call_plan(stranger))
+        UserProfile.objects.create(user=stranger, role='manager', is_active=True)
+        self.assertTrue(user_may_edit_call_plan(stranger))
+        named = User.objects.create_user(
+            username='cover_named', password='x', first_name='Ada', last_name='Lovelace',
+        )
+        self.assertEqual(_display_name(named), 'Ada Lovelace')
+        self.assertFalse(call_later_due('ask_later', None, None))
+
+        odd = build_call_book(today=MONDAY, scope='nope', status='nope', page_size=10)
+        self.assertEqual(odd['summary']['scope'], 'today')
+        called = build_call_book(today=MONDAY, scope='week', status='called', page_size=10)
+        self.assertIsInstance(called['results'], list)
+
+        with self.assertRaises(ValueError):
+            _parse_follow_up('2026', MONDAY)
+        with self.assertRaises(ValueError):
+            _parse_follow_up('2026-13-40', MONDAY)
+        with self.assertRaises(ValueError):
+            _parse_clock('ab:cd')
+        with self.assertRaises(ValueError):
+            _parse_clock('25:00')
+        with patch('sales.call_book.timezone.is_naive', return_value=False):
+            same = _combine_follow_up(MONDAY, time(9, 0))
+        self.assertEqual(same.hour, 9)
+
+        missing = mark_called(
+            customer_id=999999, user=self.admin, outcome='called', request_summary='', today=MONDAY,
+        )
+        self.assertEqual(missing[0], 'not_found')
+        nophone = _customer('No phone cover', '')
+        self.assertEqual(
+            mark_called(
+                customer_id=nophone.id, user=self.admin, outcome='called', request_summary='', today=MONDAY,
+            )[0],
+            'no_phone',
+        )
+        shop = _customer('Long note', '0728100004')
+        self.assertEqual(
+            mark_called(
+                customer_id=shop.id, user=self.admin, outcome='called', request_summary='x' * 501, today=MONDAY,
+            )[0],
+            'too_long',
+        )
+        self.assertEqual(hold_customer(customer_id=shop.id, user=self.admin, today=SATURDAY)[0], 'weekend')
+        self.assertEqual(hold_customer(customer_id=999999, user=self.admin, today=MONDAY)[0], 'not_found')
+        self.assertEqual(hold_customer(customer_id=nophone.id, user=self.admin, today=MONDAY)[0], 'no_phone')
+        self.assertEqual(hold_customer(customer_id=shop.id, user=self.admin, today=MONDAY)[0], 'ok')
+        self.assertEqual(hold_customer(customer_id=shop.id, user=self.admin, today=MONDAY)[0], 'ok')
+        shown = build_call_book(today=MONDAY, scope='week', viewer_id=self.admin.id)
+        row = next(item for item in shown['results'] if item['customer_id'] == shop.id)
+        self.assertTrue(row['hold']['held_by_me'])
+
+        self.assertEqual(replace_plan(unlocated_weekday='nope', hold_minutes=5, rows=[])[0], 'bad_plan')
+        self.assertEqual(replace_plan(unlocated_weekday=9, hold_minutes=5, rows=[])[0], 'bad_plan')
+        self.assertEqual(replace_plan(unlocated_weekday=0, hold_minutes=0, rows=[])[0], 'bad_plan')
+        self.assertEqual(replace_plan(unlocated_weekday=0, hold_minutes=5, rows='nope')[0], 'bad_plan')
+        self.assertEqual(replace_plan(unlocated_weekday=0, hold_minutes=5, rows=['nope'])[0], 'bad_plan')
+        self.assertEqual(
+            replace_plan(unlocated_weekday=0, hold_minutes=5, rows=[{'weekday': 'x'}])[0],
+            'bad_plan',
+        )
+        self.assertEqual(
+            replace_plan(
+                unlocated_weekday=0, hold_minutes=5, rows=[{'weekday': 8, 'county': 'Nairobi'}],
+            )[0],
+            'bad_plan',
+        )
+        self.assertEqual(
+            replace_plan(unlocated_weekday=0, hold_minutes=5, rows=[{'weekday': 0}])[0],
+            'bad_plan',
+        )
+        duplicate = {'weekday': 0, 'county': 'Nairobi', 'sub_county': '', 'ward': ''}
+        self.assertEqual(
+            replace_plan(unlocated_weekday=0, hold_minutes=5, rows=[duplicate, duplicate])[0],
+            'bad_plan',
+        )
+        self.assertIn('rows', plan_payload())

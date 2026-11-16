@@ -88,7 +88,6 @@ describe('FieldLoadsPage', () => {
       customer_id: 3,
       amount_paid: '50',
       payment_method: 'cash',
-      tender: 'cash',
       client_channel: 'web',
       notes: '',
     }));
