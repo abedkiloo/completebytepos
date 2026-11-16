@@ -17,6 +17,8 @@ export function SummaryCard({
   tone = 'default',
   className,
   onClick,
+  pressed = false,
+  testId,
 }) {
   const clickable = typeof onClick === 'function';
   const inner = (
@@ -48,6 +50,7 @@ export function SummaryCard({
       className={cn(
         'overflow-hidden',
         clickable && 'transition-colors hover:border-primary/40 hover:bg-muted/30',
+        pressed && 'ring-2 ring-primary',
         className
       )}
     >
@@ -55,6 +58,8 @@ export function SummaryCard({
         <button
           type="button"
           onClick={onClick}
+          aria-pressed={pressed}
+          data-testid={testId}
           className="flex w-full items-center gap-3 p-3 text-left"
         >
           {inner}

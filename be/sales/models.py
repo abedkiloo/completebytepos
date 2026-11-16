@@ -1300,3 +1300,186 @@ class DebtSettlementAllocation(models.Model):
 
     def __str__(self):
         return f'{self.wallet_transaction_id} → {self.sale_id}: {self.amount}'
+
+
+class CallBookSettings(models.Model):
+    """
+    Store tuning for the weekly call book.
+
+    One row (pk=1). ``unlocated_weekday`` is where customers with a blank or
+    invalid Kenya location are phoned so they are not skipped. ``hold_minutes``
+    is how long a dial reserves that customer for one staff member.
+    """
+
+    unlocated_weekday = models.PositiveSmallIntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(4)],
+        help_text='0=Monday … 4=Friday. Customers with no valid ward land here.',
+    )
+    hold_minutes = models.PositiveSmallIntegerField(
+        default=5,
+        validators=[MinValueValidator(1), MaxValueValidator(30)],
+        help_text='Minutes a Call button reserves the customer. Range 1–30.',
+    )
+
+    class Meta:
+        verbose_name = 'Call book settings'
+        verbose_name_plural = 'Call book settings'
+
+    def save(self, *args, **kwargs):
+        """
+        Persist the singleton row.
+
+        Args:
+            *args: Passed to ``Model.save``.
+            **kwargs: Passed to ``Model.save``.
+
+        Returns:
+            None. Forces ``pk`` to 1. Side effect: writes one settings row.
+        """
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        """
+        Returns:
+            str: Weekday index and hold length. Under 80 characters.
+        """
+        return f'Call book: unlocated day {self.unlocated_weekday}, hold {self.hold_minutes}m'
+
+    @classmethod
+    def load(cls):
+        """
+        Return the singleton, creating it with defaults when missing.
+
+        Returns:
+            CallBookSettings: The pk=1 row. Side effect: may insert one row.
+        """
+        obj, _created = cls.objects.get_or_create(
+            pk=1,
+            defaults={'unlocated_weekday': 0, 'hold_minutes': 5},
+        )
+        return obj
+
+
+class CallDayPlan(models.Model):
+    """
+    Assigns a county, sub-county, or ward to a Monday–Friday call day.
+
+    A row with a ward is the most specific. A row with only a county covers
+    that county where no tighter row matches. Customers that match nothing
+    fall through to a stable hash of their location across Monday–Friday.
+    """
+
+    weekday = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(0), MaxValueValidator(4)],
+        help_text='0=Monday … 4=Friday. Saturday and Sunday are not call days.',
+    )
+    county = models.CharField(max_length=100, blank=True, default='')
+    sub_county = models.CharField(max_length=100, blank=True, default='')
+    ward = models.CharField(max_length=100, blank=True, default='')
+
+    class Meta:
+        ordering = ['weekday', 'county', 'sub_county', 'ward']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['county', 'sub_county', 'ward'],
+                name='calldayplan_location_uniq',
+            ),
+        ]
+
+    def __str__(self):
+        """
+        Returns:
+            str: Weekday and location, at most 200 characters.
+        """
+        place = ', '.join(
+            part for part in (self.ward, self.sub_county, self.county) if part
+        )
+        return f'{self.weekday}: {place or "blank"}'
+
+
+class CustomerCall(models.Model):
+    """
+    One phone attempt. Any outcome this Monday–Sunday counts as called.
+
+    ``week_start`` is the Monday (Africa/Nairobi) of ``called_at``. The book
+    derives “called this week” from that date, so Monday starts a fresh list
+    without anyone clearing a checkbox. The summary stays for the next week.
+    """
+
+    OUTCOME_CALLED = 'called'
+    OUTCOME_ASK_LATER = 'ask_later'
+    OUTCOME_NO_ANSWER = 'no_answer'
+    OUTCOME_CHOICES = [
+        (OUTCOME_CALLED, 'Called'),
+        (OUTCOME_ASK_LATER, 'Ask later'),
+        (OUTCOME_NO_ANSWER, 'No answer'),
+    ]
+
+    customer = models.ForeignKey(
+        Customer,
+        on_delete=models.CASCADE,
+        related_name='calls',
+    )
+    called_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='customer_calls',
+    )
+    called_at = models.DateTimeField(auto_now_add=True)
+    week_start = models.DateField(
+        db_index=True,
+        help_text='Monday of the call week in Africa/Nairobi.',
+    )
+    outcome = models.CharField(max_length=20, choices=OUTCOME_CHOICES)
+    request_summary = models.CharField(
+        max_length=500,
+        blank=True,
+        default='',
+        help_text='What they asked for, or a note to ask later. 0–500 characters.',
+    )
+
+    class Meta:
+        ordering = ['-called_at']
+        indexes = [
+            models.Index(fields=['customer', 'week_start']),
+            models.Index(fields=['week_start', 'called_at']),
+        ]
+
+    def __str__(self):
+        """
+        Returns:
+            str: Customer id, outcome, and week start. Under 80 characters.
+        """
+        return f'{self.customer_id} {self.outcome} {self.week_start}'
+
+
+class CallHold(models.Model):
+    """
+    Short reservation so two people do not dial the same shop together.
+
+    One row per customer. Expired rows do not block. Marking the call
+    deletes the hold.
+    """
+
+    customer = models.OneToOneField(
+        Customer,
+        on_delete=models.CASCADE,
+        related_name='call_hold',
+    )
+    held_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='call_holds',
+    )
+    expires_at = models.DateTimeField(db_index=True)
+
+    def __str__(self):
+        """
+        Returns:
+            str: Customer id and expiry. Under 80 characters.
+        """
+        return f'hold {self.customer_id} until {self.expires_at}'

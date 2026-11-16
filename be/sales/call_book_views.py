@@ -1,0 +1,193 @@
+"""
+HTTP API for the weekly call book.
+
+Every signed-in role with ``customers.call_book`` may read the book, hold a
+customer, and mark a call while the ``customers.call_book`` feature is on.
+Replacing the day plan is limited to Manager and Super Admin. Error bodies
+do not include phone numbers.
+"""
+
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from accounts.permissions import RequirePerm
+from sales.call_book import (
+    build_call_book,
+    hold_customer,
+    mark_called,
+    plan_payload,
+    replace_plan,
+    user_may_edit_call_plan,
+)
+from settings.feature_permissions import RequireModuleFeature
+
+class _CallBookFeature(RequireModuleFeature):
+    """Gate the call book on the customers.call_book package toggle."""
+
+    def __init__(self):
+        """
+        Bind this permission to the customers call book feature.
+
+        Returns:
+            None.
+        """
+        super().__init__('customers', 'call_book')
+
+
+_PERM = RequirePerm('customers', 'call_book')
+
+_STATUS = {
+    'ok': status.HTTP_200_OK,
+    'weekend': status.HTTP_400_BAD_REQUEST,
+    'not_found': status.HTTP_404_NOT_FOUND,
+    'no_phone': status.HTTP_400_BAD_REQUEST,
+    'bad_outcome': status.HTTP_400_BAD_REQUEST,
+    'too_long': status.HTTP_400_BAD_REQUEST,
+    'held': status.HTTP_409_CONFLICT,
+    'bad_plan': status.HTTP_400_BAD_REQUEST,
+}
+
+
+class CallBookView(APIView):
+    """Shared Monday–Friday book. Not-called customers are listed first."""
+
+    permission_classes = [IsAuthenticated, _PERM, _CallBookFeature]
+
+    def get(self, request):
+        """
+        List this week's book.
+
+        Args:
+            request: Query ``scope`` (today|week), ``status``
+            (not_called|called|all), ``page`` (1+), ``page_size`` (1–200).
+
+        Returns:
+            Response: Summary counts and one page of rows. Weekend requests
+            are forced to the week view. Phone numbers appear only on rows
+            the caller is allowed to dial.
+
+        Raises:
+            None. Missing feature or permission is a 403 from the permission
+            classes. Anonymous callers receive 401.
+        """
+        try:
+            page = int(request.query_params.get('page') or 1)
+        except (TypeError, ValueError):
+            page = 1
+        try:
+            page_size = int(request.query_params.get('page_size') or 100)
+        except (TypeError, ValueError):
+            page_size = 100
+        payload = build_call_book(
+            scope=request.query_params.get('scope') or 'today',
+            status=request.query_params.get('status') or 'all',
+            page=page,
+            page_size=page_size,
+            viewer_id=request.user.id,
+        )
+        return Response(payload)
+
+
+class CallBookMarkView(APIView):
+    """Mark one customer called for the current Monday–Friday week."""
+
+    permission_classes = [IsAuthenticated, _PERM, _CallBookFeature]
+
+    def post(self, request, customer_id: int):
+        """
+        Record an outcome and an optional request summary.
+
+        Args:
+            request: JSON ``outcome`` and ``request_summary`` (0–500 chars).
+            customer_id: Customer primary key, positive integer.
+
+        Returns:
+            Response: 200 on success. 400 on the weekend, a bad outcome, a
+            summary over 500 characters, or no usable phone. 404 when the
+            customer is missing. 409 when another staff member holds the
+            customer. Bodies do not include the phone number.
+
+        Raises:
+            None.
+        """
+        code, payload = mark_called(
+            customer_id=customer_id,
+            user=request.user,
+            outcome=(request.data.get('outcome') or ''),
+            request_summary=request.data.get('request_summary') or '',
+        )
+        http = status.HTTP_200_OK if code == 'ok' else _STATUS.get(code, 400)
+        return Response(payload, status=http)
+
+
+class CallBookHoldView(APIView):
+    """Reserve one customer for a few minutes while the caller dials."""
+
+    permission_classes = [IsAuthenticated, _PERM, _CallBookFeature]
+
+    def post(self, request, customer_id: int):
+        """
+        Hold the customer for the configured number of minutes.
+
+        Args:
+            request: Authenticated call. Body is ignored.
+            customer_id: Customer primary key.
+
+        Returns:
+            Response: 200 with expiry, 409 if someone else holds them, 400
+            on the weekend or when there is no number. No phone in the body.
+
+        Raises:
+            None.
+        """
+        code, payload = hold_customer(customer_id=customer_id, user=request.user)
+        http = status.HTTP_200_OK if code == 'ok' else _STATUS.get(code, 400)
+        return Response(payload, status=http)
+
+
+class CallBookPlanView(APIView):
+    """Read the day plan, or replace it when the user is a manager."""
+
+    permission_classes = [IsAuthenticated, _PERM, _CallBookFeature]
+
+    def get(self, request):
+        """
+        Return the current plan.
+
+        Args:
+            request: Authenticated call-book user.
+
+        Returns:
+            Response: Unlocated weekday, hold minutes, and location rows.
+        """
+        return Response(plan_payload())
+
+    def put(self, request):
+        """
+        Replace the plan.
+
+        Args:
+            request: JSON ``unlocated_weekday`` (0–4), ``hold_minutes``
+            (1–30), and ``rows`` (at most 200).
+
+        Returns:
+            Response: 200 with the saved plan, 400 when the plan is invalid,
+            403 when the user is not a manager or super admin.
+
+        Raises:
+            None.
+        """
+        if not user_may_edit_call_plan(request.user):
+            return Response(
+                {'error': 'Only a manager can change the call plan.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        code, payload = replace_plan(
+            unlocated_weekday=request.data.get('unlocated_weekday', 0),
+            hold_minutes=request.data.get('hold_minutes', 5),
+            rows=request.data.get('rows') or [],
+        )
+        http = status.HTTP_200_OK if code == 'ok' else _STATUS.get(code, 400)
+        return Response(payload, status=http)

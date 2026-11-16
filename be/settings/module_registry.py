@@ -180,6 +180,13 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
                 'M-Pesa codes as till or bank so payments can be filtered.',
                 5,
             ),
+            _f(
+                'call_book',
+                'Weekly call book',
+                'Monday–Friday phone book by ward. Shared across staff. '
+                'Called this week resets each Monday.',
+                6,
+            ),
         ],
     },
     {
@@ -541,6 +548,7 @@ PRESETS: dict[str, dict[str, Any]] = {
                 'payments_trail_export',
             ],
             'products': ['barcode_printing'],
+            'customers': ['call_book'],
             'invoicing': ['partial_payments'],
             'suppliers': ['supplier_management'],
             'barcodes': ['barcode_generation', 'label_printing'],

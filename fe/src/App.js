@@ -47,6 +47,7 @@ const Accounting = lazy(() => import('./components/Accounting/Accounting'));
 const Users = lazy(() => import('./components/Users/Users'));
 const Roles = lazy(() => import('./components/Roles/Roles'));
 const Customers = lazy(() => import('./components/Customers/Customers'));
+const CallBookPage = lazy(() => import('./components/Customers/CallBookPage'));
 const CustomerDetail = lazy(() => import('./components/Customers/CustomerDetailPage'));
 const DebtManagement = lazy(() => import('./components/Customers/DebtManagementPage'));
 const PaymentsTrail = lazy(() => import('./components/Customers/PaymentsTrailPage'));
@@ -210,6 +211,7 @@ function App() {
                 <Route path="/users" element={<Users />} />
                 <Route path="/roles" element={<Roles />} />
                 <Route path="/customers" element={<Customers />} />
+                <Route path="/customers/call-book" element={<CallBookPage />} />
                 <Route path="/customers/debt" element={<DebtManagement />} />
                 <Route path="/customers/payments" element={<PaymentsTrail />} />
                 <Route path="/customers/:customerId" element={<CustomerDetail />} />

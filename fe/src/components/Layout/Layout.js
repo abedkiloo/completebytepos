@@ -45,6 +45,7 @@ import {
   Wallet,
   Banknote,
   MapPin,
+  Phone,
   Newspaper,
   Inbox,
 } from 'lucide-react';
@@ -162,6 +163,13 @@ export const NAV_SECTIONS = [
     module: 'customers',
     items: [
       { to: '/customers', label: 'Customers', icon: UsersIcon, permission: ['customers', 'view'] },
+      {
+        to: '/customers/call-book',
+        label: 'Call book',
+        icon: Phone,
+        permission: ['customers', 'call_book'],
+        feature: ['customers', 'call_book'],
+      },
       {
         to: '/customers/debt',
         label: 'Debt Management',

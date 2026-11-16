@@ -64,7 +64,7 @@ import {
   isFieldSalesFromStorage,
   isManagerOrAdminFromStorage,
 } from '../../utils/roleAccess';
-import { getWalletDebtAmount } from '../../utils/walletDisplay';
+import { getWalletCreditAmount, getWalletDebtAmount } from '../../utils/walletDisplay';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 import {
   ENGAGEMENT_TIERS,
@@ -136,6 +136,9 @@ const Customers = () => {
   const [filterWard, setFilterWard] = useState('');
   /** '' | 'valid' | 'invalid' — catalog match quality before drilling by level */
   const [locationStatus, setLocationStatus] = useState('');
+  /** '' | 'wallet_debt' | 'wallet_credit' | 'invoice' — summary card filter */
+  const [balanceFilter, setBalanceFilter] = useState('');
+  const [balanceSummary, setBalanceSummary] = useState(null);
   const { counties: kenyaCounties, loading: kenyaLoading } = useKenyaAdminUnits();
   const todayStr = getTodayDateString();
   const needsLocationFix = locationStatus === 'invalid';
@@ -206,10 +209,18 @@ const Customers = () => {
           params.location_status = locationStatus;
         }
       }
+      if (
+        balanceFilter === 'wallet_debt' ||
+        balanceFilter === 'wallet_credit' ||
+        balanceFilter === 'invoice'
+      ) {
+        params.balance = balanceFilter;
+      }
       const response = await customersAPI.list(params);
       if (signal?.aborted) return;
       const data = response.data.results || response.data || [];
       setCustomers(Array.isArray(data) ? data : []);
+      setBalanceSummary(response.data?.balance_summary || null);
       setPagination((prev) => ({
         ...prev,
         count: response.data?.count ?? (Array.isArray(data) ? data.length : 0),
@@ -230,6 +241,7 @@ const Customers = () => {
     filterSubCounty,
     filterWard,
     locationStatus,
+    balanceFilter,
     pagination.page,
     pagination.page_size,
     ordering,
@@ -247,6 +259,7 @@ const Customers = () => {
     filterSubCounty,
     filterWard,
     locationStatus,
+    balanceFilter,
   ]);
 
   useEffect(() => {
@@ -263,23 +276,52 @@ const Customers = () => {
 
   // --- Derived ---
   const totals = useMemo(
-    () => ({
-      count: pagination.count,
-      withDebt: showOutstanding
-        ? customers.filter((c) => (c.total_outstanding || 0) > 0).length
-        : 0,
-      totalOwed: showOutstanding
-        ? customers.reduce((sum, c) => sum + parseFloat(c.total_outstanding || 0), 0)
-        : 0,
-      withWalletDebt: showWallet
-        ? customers.filter((c) => getWalletDebtAmount(c.wallet_balance) > 0).length
-        : 0,
-      totalWalletDebt: showWallet
-        ? customers.reduce((sum, c) => sum + getWalletDebtAmount(c.wallet_balance), 0)
-        : 0,
-    }),
-    [customers, pagination.count, showOutstanding, showWallet]
+    () => {
+      if (balanceSummary) {
+        return {
+          count: Number(balanceSummary.count ?? pagination.count) || 0,
+          withDebt: Number(balanceSummary.with_invoice) || 0,
+          totalOwed: Number(balanceSummary.invoice_outstanding) || 0,
+          withWalletDebt: Number(balanceSummary.with_wallet_debt) || 0,
+          totalWalletDebt: Number(balanceSummary.total_wallet_debt) || 0,
+          withWalletCredit: Number(balanceSummary.with_wallet_credit) || 0,
+          totalWalletCredit: Number(balanceSummary.total_wallet_credit) || 0,
+        };
+      }
+      return {
+        count: pagination.count,
+        withDebt: showOutstanding
+          ? customers.filter((c) => (c.total_outstanding || 0) > 0).length
+          : 0,
+        totalOwed: showOutstanding
+          ? customers.reduce((sum, c) => sum + parseFloat(c.total_outstanding || 0), 0)
+          : 0,
+        withWalletDebt: showWallet
+          ? customers.filter((c) => getWalletDebtAmount(c.wallet_balance) > 0).length
+          : 0,
+        totalWalletDebt: showWallet
+          ? customers.reduce((sum, c) => sum + getWalletDebtAmount(c.wallet_balance), 0)
+          : 0,
+        withWalletCredit: showWallet
+          ? customers.filter((c) => getWalletCreditAmount(c.wallet_balance) > 0).length
+          : 0,
+        totalWalletCredit: showWallet
+          ? customers.reduce((sum, c) => sum + getWalletCreditAmount(c.wallet_balance), 0)
+          : 0,
+      };
+    },
+    [balanceSummary, customers, pagination.count, showOutstanding, showWallet]
   );
+
+  /**
+   * Select a balance card, or clear it when that card is already selected.
+   *
+   * @param {string} key `wallet_debt`, `wallet_credit`, or `invoice`.
+   * @returns {void}
+   */
+  const toggleBalance = (key) => {
+    setBalanceFilter((current) => (current === key ? '' : key));
+  };
 
   const tableColumnCount =
     4 +
@@ -416,7 +458,7 @@ const Customers = () => {
           className={cn(
             'grid grid-cols-1 gap-3',
             showOutstanding && showWallet
-              ? 'sm:grid-cols-2 lg:grid-cols-5'
+              ? 'sm:grid-cols-2 xl:grid-cols-4'
               : showOutstanding || showWallet
                 ? 'sm:grid-cols-3'
                 : 'sm:grid-cols-1'
@@ -426,6 +468,9 @@ const Customers = () => {
             icon={UsersIcon}
             label="Total customers"
             value={totals.count.toLocaleString()}
+            onClick={() => setBalanceFilter('')}
+            pressed={balanceFilter === ''}
+            testId="customers-balance-all"
           />
           {showOutstanding && (
             <>
@@ -434,12 +479,18 @@ const Customers = () => {
                 label="With invoice balance"
                 value={totals.withDebt.toLocaleString()}
                 tone={totals.withDebt > 0 ? 'warning' : 'default'}
+                onClick={() => toggleBalance('invoice')}
+                pressed={balanceFilter === 'invoice'}
+                testId="customers-balance-invoice-count"
               />
               <SummaryCard
                 icon={UsersIcon}
                 label="Invoice outstanding"
                 value={formatCurrency(totals.totalOwed)}
                 tone={totals.totalOwed > 0 ? 'destructive' : 'default'}
+                onClick={() => toggleBalance('invoice')}
+                pressed={balanceFilter === 'invoice'}
+                testId="customers-balance-invoice"
               />
             </>
           )}
@@ -450,12 +501,36 @@ const Customers = () => {
                 label="With wallet debt"
                 value={totals.withWalletDebt.toLocaleString()}
                 tone={totals.withWalletDebt > 0 ? 'warning' : 'default'}
+                onClick={() => toggleBalance('wallet_debt')}
+                pressed={balanceFilter === 'wallet_debt'}
+                testId="customers-balance-wallet-count"
               />
               <SummaryCard
                 icon={Wallet}
                 label="Total wallet debt"
                 value={formatCurrency(totals.totalWalletDebt)}
                 tone={totals.totalWalletDebt > 0 ? 'destructive' : 'default'}
+                onClick={() => toggleBalance('wallet_debt')}
+                pressed={balanceFilter === 'wallet_debt'}
+                testId="customers-balance-wallet"
+              />
+              <SummaryCard
+                icon={Wallet}
+                label="Holding their money"
+                value={totals.withWalletCredit.toLocaleString()}
+                tone={totals.withWalletCredit > 0 ? 'success' : 'default'}
+                onClick={() => toggleBalance('wallet_credit')}
+                pressed={balanceFilter === 'wallet_credit'}
+                testId="customers-balance-credit-count"
+              />
+              <SummaryCard
+                icon={Wallet}
+                label="Money we hold"
+                value={formatCurrency(totals.totalWalletCredit)}
+                tone={totals.totalWalletCredit > 0 ? 'success' : 'default'}
+                onClick={() => toggleBalance('wallet_credit')}
+                pressed={balanceFilter === 'wallet_credit'}
+                testId="customers-balance-credit"
               />
             </>
           )}
@@ -808,6 +883,7 @@ const Customers = () => {
                         needsLocationFix={needsLocationFix}
                         locationOkOnly={locationOkOnly}
                         filterCounty={filterCounty}
+                        balanceFilter={balanceFilter}
                       />
                     </td>
                   </tr>
@@ -901,14 +977,37 @@ const Customers = () => {
   );
 };
 
-function SummaryCard({ icon: Icon, label, value, tone = 'default' }) {
+/**
+ * One customer-list total. Click filters the table to that balance.
+ *
+ * @param {object} props
+ * @param {React.ComponentType} props.icon Lucide icon component.
+ * @param {string} props.label Card title, at most 40 characters.
+ * @param {string|number} props.value Display value.
+   * @param {'default'|'warning'|'destructive'|'success'} [props.tone]
+ * @param {Function} [props.onClick] Selects this card.
+ * @param {boolean} [props.pressed] True when this filter is active.
+ * @param {string} [props.testId] Test hook.
+ * @returns {JSX.Element}
+ */
+function SummaryCard({ icon: Icon, label, value, tone = 'default', onClick, pressed = false, testId }) {
   const toneClasses = {
     default: 'text-foreground',
     warning: 'text-warning',
     destructive: 'text-destructive',
+    success: 'text-success',
   };
   return (
-    <div className="flex items-center gap-3 rounded-lg border bg-background px-4 py-3">
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={pressed}
+      data-testid={testId}
+      className={cn(
+        'flex w-full items-center gap-3 rounded-lg border bg-background px-4 py-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/30',
+        pressed && 'ring-2 ring-primary'
+      )}
+    >
       <div className="flex h-9 w-9 items-center justify-center rounded-md bg-muted">
         <Icon className="h-4 w-4 text-muted-foreground" />
       </div>
@@ -920,7 +1019,7 @@ function SummaryCard({ icon: Icon, label, value, tone = 'default' }) {
           {value}
         </div>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -1091,6 +1190,7 @@ function EmptyState({
   needsLocationFix = false,
   locationOkOnly = false,
   filterCounty = '',
+  balanceFilter = '',
 }) {
   if (searchQuery) {
     return (
@@ -1098,6 +1198,36 @@ function EmptyState({
         <UsersIcon className="h-8 w-8 opacity-50" />
         <p className="font-medium text-foreground">No customers match “{searchQuery}”</p>
         <p className="text-sm">Try a different name, phone, or email.</p>
+      </div>
+    );
+  }
+
+  if (balanceFilter === 'wallet_debt') {
+    return (
+      <div className="flex flex-col items-center gap-2 text-muted-foreground">
+        <Wallet className="h-8 w-8 opacity-50" />
+        <p className="font-medium text-foreground">No customers with wallet debt</p>
+        <p className="text-sm">Tap Total customers to see the full list.</p>
+      </div>
+    );
+  }
+
+  if (balanceFilter === 'wallet_credit') {
+    return (
+      <div className="flex flex-col items-center gap-2 text-muted-foreground">
+        <Wallet className="h-8 w-8 opacity-50" />
+        <p className="font-medium text-foreground">No customers with money we are holding</p>
+        <p className="text-sm">Tap Total customers to see the full list.</p>
+      </div>
+    );
+  }
+
+  if (balanceFilter === 'invoice') {
+    return (
+      <div className="flex flex-col items-center gap-2 text-muted-foreground">
+        <UsersIcon className="h-8 w-8 opacity-50" />
+        <p className="font-medium text-foreground">No customers with an invoice balance</p>
+        <p className="text-sm">Tap Total customers to see the full list.</p>
       </div>
     );
   }

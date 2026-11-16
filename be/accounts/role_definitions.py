@@ -101,6 +101,11 @@ PERMISSIONS_DATA = [
     ('customers', 'update', 'Update customers'),
     ('customers', 'delete', 'Delete customers'),
     ('customers', 'export', 'Export customers'),
+    (
+        'customers',
+        'call_book',
+        'Open the weekly call book, see numbers, and mark a customer called',
+    ),
     ('debt_management', 'view', 'View debt management and aging reports'),
     ('debt_management', 'update', 'Collect customer debt payments (queued for manager approval unless you can approve)'),
     ('debt_management', 'approve', 'Approve salesperson debt collections (same Approve sales screen as cashier sales)'),
@@ -365,6 +370,7 @@ def _field_agent_queryset():
     - Agents: visit pin / site / field sale flow.
     - Products/categories view: pick items on a visit (no catalog edit).
     - Payroll view_own: locked payslips including sales commission.
+    - customers.call_book: shared Monday–Friday phone book (not a field visit).
 
     No POS, debt board, delivery, invoicing, messaging, daily notes, or appraisals.
     """
@@ -392,6 +398,10 @@ def _field_agent_queryset():
         | Permission.objects.filter(
             module='payroll',
             action='view_own',
+        )
+        | Permission.objects.filter(
+            module='customers',
+            action='call_book',
         )
     )
 
@@ -494,6 +504,30 @@ def grant_appraisals_to_sales_roles():
     manager = Role.objects.filter(name=ROLE_MANAGER).first()
     if manager and view_all:
         manager.permissions.add(*view, *view_all)
+    return granted
+
+
+def grant_call_book_to_all_roles():
+    """
+    Every active role may open and mark the weekly call book.
+
+    Additive. Does not grant customer edit, debt, or the day-plan editor.
+    Day-plan edits stay with Manager and Super Admin by role name, not this
+    permission. Field Sales is included: phone coverage is separate from
+    field visits.
+
+    Returns:
+        int: Roles that gained ``customers.call_book``. Range 0–10_000.
+    """
+    perm = Permission.objects.filter(module='customers', action='call_book').first()
+    if not perm:
+        return 0
+    granted = 0
+    for role in Role.objects.filter(is_active=True):
+        if role.permissions.filter(pk=perm.pk).exists():
+            continue
+        role.permissions.add(perm)
+        granted += 1
     return granted
 
 
@@ -657,6 +691,7 @@ def sync_default_roles(created_by=None):
     grant_daily_notes_to_sales_roles()
     grant_appraisals_to_sales_roles()
     grant_payroll_view_own_to_all_roles()
+    grant_call_book_to_all_roles()
 
     return {
         ROLE_SUPER_ADMIN: super_admin,

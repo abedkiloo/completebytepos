@@ -1524,6 +1524,60 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         queryset = apply_customer_location_filters(queryset, self.request.query_params)
         return queryset
 
+    def list(self, request, *args, **kwargs):
+        """
+        List customers and the balance totals for the summary cards.
+
+        Args:
+            request: May include ``balance`` of ``wallet_debt``,
+                ``wallet_credit``, or ``invoice``. Other list filters still
+                apply. The totals
+                ignore ``balance`` so the cards keep the full matching set.
+            *args: Unused DRF args.
+            **kwargs: Unused DRF kwargs.
+
+        Returns:
+            Response: Paginated customers plus ``balance_summary``. Wallet
+            or invoice figures are zero when that display flag is off, and
+            the matching filter is ignored. No writes.
+
+        Raises:
+            None beyond the view permissions. Anonymous callers are 401.
+            Users without ``customers.view`` are 403.
+        """
+        from sales.customer_balance import (
+            apply_customer_balance_filter,
+            customer_balance_summary,
+            normalize_balance_filter,
+        )
+        from sales.customer_module_settings import (
+            customers_show_outstanding_balance,
+            customers_show_wallet_balance,
+        )
+
+        queryset = self.filter_queryset(self.get_queryset())
+        wallet_visible = customers_show_wallet_balance()
+        invoice_visible = customers_show_outstanding_balance()
+        summary = customer_balance_summary(
+            queryset,
+            include_wallet=wallet_visible,
+            include_invoice=invoice_visible,
+        )
+        balance = normalize_balance_filter(
+            request.query_params.get('balance'),
+            wallet_visible=wallet_visible,
+            invoice_visible=invoice_visible,
+        )
+        queryset = apply_customer_balance_filter(queryset, balance)
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            response = self.get_paginated_response(serializer.data)
+            response.data['balance_summary'] = summary
+            return response
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({'results': serializer.data, 'balance_summary': summary})
+
     @action(
         detail=False,
         methods=['get'],

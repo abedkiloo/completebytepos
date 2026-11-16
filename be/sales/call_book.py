@@ -1,0 +1,569 @@
+"""
+Weekly customer call book.
+
+Monday–Friday in Africa/Nairobi. Saturday and Sunday are not call days.
+"Called this week" is derived from ``CustomerCall.week_start`` (that week's
+Monday), so the list resets itself on Monday. A short hold stops two staff
+members dialling the same shop. Customers with no usable phone are counted
+as cannot-call and are left off the dial list.
+
+Bounds: summaries are 0–500 characters. Hold is 1–30 minutes. A day plan
+has at most 200 location rows. Weekday indexes are 0 (Monday) through 4
+(Friday).
+"""
+
+from __future__ import annotations
+
+import zlib
+from datetime import date, timedelta
+
+from django.db import transaction
+from django.utils import timezone
+
+from sales.kenya_admin import classify_admin_location
+from sales.models import CallBookSettings, CallDayPlan, CallHold, Customer, CustomerCall
+
+WEEKDAY_COUNT = 5
+SUMMARY_MAX = 500
+PLAN_ROW_MAX = 200
+PAGE_SIZE_DEFAULT = 100
+PAGE_SIZE_MAX = 200
+OUTCOMES = {
+    CustomerCall.OUTCOME_CALLED,
+    CustomerCall.OUTCOME_ASK_LATER,
+    CustomerCall.OUTCOME_NO_ANSWER,
+}
+SEGMENT_RANK = {
+    'dormant': 0,
+    'at_risk': 1,
+    'active': 2,
+    'new': 3,
+    'champion': 4,
+    'none': 5,
+}
+
+
+def nairobi_today() -> date:
+    """
+    Calendar date in the active Django timezone (Africa/Nairobi).
+
+    Returns:
+        date: Local today. No side effects.
+    """
+    return timezone.localdate()
+
+
+def week_monday(day: date) -> date:
+    """
+    Monday of the week that contains ``day``.
+
+    Args:
+        day: Any calendar date.
+
+    Returns:
+        date: The Monday on or before ``day``. The returned date is always
+        0–6 days earlier than ``day``.
+    """
+    return day - timedelta(days=day.weekday())
+
+
+def is_call_day(day: date) -> bool:
+    """
+    Whether staff may mark calls on ``day``.
+
+    Args:
+        day: Calendar date.
+
+    Returns:
+        bool: True for Monday–Friday (weekday 0–4). False for Saturday
+        and Sunday.
+    """
+    return day.weekday() < WEEKDAY_COUNT
+
+
+def usable_phone(phone: str | None) -> bool:
+    """
+    Whether a stored phone can be dialled.
+
+    Args:
+        phone: Raw customer phone. May be blank. At most the model cap
+        of 20 characters is expected.
+
+    Returns:
+        bool: True when the digit count is between 9 and 15 inclusive.
+    """
+    digits = ''.join(ch for ch in (phone or '') if ch.isdigit())
+    return 9 <= len(digits) <= 15
+
+
+def _norm(value: str | None) -> str:
+    """
+    Compare locations without case or surrounding space.
+
+    Args:
+        value: Location fragment. May be blank.
+
+    Returns:
+        str: Lowercased strip. Length 0–100.
+    """
+    return (value or '').strip().lower()
+
+
+def weekday_for_customer(customer, plans, unlocated_weekday: int) -> int:
+    """
+    Resolve which Monday–Friday this customer is phoned on.
+
+    Args:
+        customer: Object with ``county``, ``sub_county``, and ``ward``.
+        plans: Iterable of plan rows with those fields plus ``weekday``.
+        unlocated_weekday: 0–4. Used when the Kenya admin triple is missing
+        or invalid.
+
+    Returns:
+        int: Weekday 0–4. A matching plan wins (ward, then sub-county, then
+        county). Otherwise a stable hash of the location spreads customers
+        across the five days. Invalid locations use ``unlocated_weekday``.
+
+    Raises:
+        None. Out-of-range ``unlocated_weekday`` is clamped to 0–4.
+    """
+    unlocated = min(4, max(0, int(unlocated_weekday)))
+    ok, _issue = classify_admin_location(
+        getattr(customer, 'county', ''),
+        getattr(customer, 'sub_county', ''),
+        getattr(customer, 'ward', ''),
+    )
+    if not ok:
+        return unlocated
+    county = _norm(customer.county)
+    sub = _norm(customer.sub_county)
+    ward = _norm(customer.ward)
+    best = None
+    best_score = -1
+    for plan in plans:
+        score = _plan_score(plan, county, sub, ward)
+        if score > best_score:
+            best = int(plan.weekday)
+            best_score = score
+    if best is not None and best_score > 0:
+        return min(4, max(0, best))
+    key = f'{county}|{sub}|{ward}'.encode('utf-8')
+    return zlib.crc32(key) % WEEKDAY_COUNT
+
+
+def _plan_score(plan, county: str, sub: str, ward: str) -> int:
+    """
+    How specifically a plan row matches a customer location.
+
+    Args:
+        plan: Row with county, sub_county, ward.
+        county: Normalised customer county.
+        sub: Normalised customer sub-county.
+        ward: Normalised customer ward.
+
+    Returns:
+        int: 3 ward, 2 sub-county, 1 county, 0 no match.
+    """
+    plan_county = _norm(plan.county)
+    plan_sub = _norm(plan.sub_county)
+    plan_ward = _norm(plan.ward)
+    if plan_ward:
+        if plan_county == county and plan_sub == sub and plan_ward == ward:
+            return 3
+        return 0
+    if plan_sub:
+        if plan_county == county and plan_sub == sub:
+            return 2
+        return 0
+    if plan_county and plan_county == county:
+        return 1
+    return 0
+
+
+def user_may_edit_call_plan(user) -> bool:
+    """
+    Whether this user may replace the day plan and hold settings.
+
+    Args:
+        user: Authenticated user or anonymous.
+
+    Returns:
+        bool: True for a superuser, or a profile whose role or custom role
+        is Super Admin or Manager. Everyone else may still view and mark.
+    """
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+    if getattr(user, 'is_superuser', False):
+        return True
+    profile = getattr(user, 'profile', None)
+    if profile is None:
+        return False
+    legacy = (getattr(profile, 'role', '') or '').strip()
+    if legacy in ('super_admin', 'manager'):
+        return True
+    role = getattr(profile, 'custom_role', None)
+    name = (getattr(role, 'name', '') or '').strip()
+    return name in ('Super Admin', 'Manager')
+
+
+def _display_name(user) -> str:
+    """
+    Staff label stored on a call or hold.
+
+    Args:
+        user: User or None.
+
+    Returns:
+        str: Full name, else username, else "Staff". Length 1–150.
+    """
+    if user is None:
+        return 'Staff'
+    full = (user.get_full_name() or '').strip()
+    if full:
+        return full[:150]
+    return (getattr(user, 'username', '') or 'Staff')[:150]
+
+
+def build_call_book(*, today: date | None = None, scope: str = 'today', status: str = 'all', page: int = 1, page_size: int = PAGE_SIZE_DEFAULT, viewer_id: int | None = None) -> dict:
+    """
+    Build the shared book for one week.
+
+    Args:
+        today: Nairobi date. Defaults to ``nairobi_today``.
+        scope: ``today`` or ``week``. On Saturday and Sunday the book always
+        uses the week so the leftover list stays visible.
+        status: ``not_called``, ``called``, or ``all``.
+        page: 1-based page. Values below 1 are treated as 1.
+        page_size: 1–200. Out of range is clamped.
+        viewer_id: User id used to flag holds that belong to the viewer.
+
+    Returns:
+        dict: ``summary`` counts plus ``results`` for this page. Not-called
+        rows come first. Inside not-called, dormant then at-risk, then the
+        rest. Each row includes phone, place, this week's mark, and the
+        previous request summary. No side effects.
+
+    Raises:
+        None. Unknown scope/status fall back to today/all.
+    """
+    day = today or nairobi_today()
+    monday = week_monday(day)
+    friday = monday + timedelta(days=4)
+    call_day = is_call_day(day)
+    if scope not in ('today', 'week'):
+        scope = 'today'
+    if not call_day:
+        scope = 'week'
+    if status not in ('not_called', 'called', 'all'):
+        status = 'all'
+    page = max(1, int(page or 1))
+    page_size = min(PAGE_SIZE_MAX, max(1, int(page_size or PAGE_SIZE_DEFAULT)))
+
+    settings_row = CallBookSettings.load()
+    plans = list(CallDayPlan.objects.all())
+    customers = list(
+        Customer.objects.filter(is_active=True).only(
+            'id', 'name', 'phone', 'county', 'sub_county', 'ward', 'buyer_segment',
+        )
+    )
+    week_calls = (
+        CustomerCall.objects.filter(week_start=monday)
+        .select_related('called_by')
+        .order_by('called_at')
+    )
+    this_week = {}
+    for call in week_calls:
+        this_week[call.customer_id] = call
+    previous = {}
+    older = (
+        CustomerCall.objects.filter(week_start__lt=monday)
+        .order_by('called_at')
+    )
+    for call in older:
+        previous[call.customer_id] = call
+    now = timezone.now()
+    holds = {
+        hold.customer_id: hold
+        for hold in CallHold.objects.filter(expires_at__gt=now).select_related('held_by')
+    }
+
+    rows = []
+    cannot_call = 0
+    for customer in customers:
+        if not usable_phone(customer.phone):
+            cannot_call += 1
+            continue
+        weekday = weekday_for_customer(customer, plans, settings_row.unlocated_weekday)
+        call = this_week.get(customer.id)
+        prior = previous.get(customer.id)
+        hold = holds.get(customer.id)
+        rows.append({
+            'customer_id': customer.id,
+            'name': customer.name,
+            'phone': customer.phone,
+            'county': customer.county or '',
+            'sub_county': customer.sub_county or '',
+            'ward': customer.ward or '',
+            'buyer_segment': customer.buyer_segment or 'none',
+            'weekday': weekday,
+            'called_this_week': call is not None,
+            'outcome': call.outcome if call else '',
+            'request_summary': call.request_summary if call else '',
+            'called_at': call.called_at.isoformat() if call else None,
+            'called_by': _display_name(call.called_by) if call else '',
+            'previous_summary': prior.request_summary if prior else '',
+            'previous_outcome': prior.outcome if prior else '',
+            'hold': _hold_payload(hold, viewer_id) if hold else None,
+        })
+
+    def sort_key(row):
+        called_rank = 1 if row['called_this_week'] else 0
+        segment = SEGMENT_RANK.get(row['buyer_segment'], 9)
+        return (called_rank, segment, (row['name'] or '').lower(), row['customer_id'])
+
+    rows.sort(key=sort_key)
+    callable_count = len(rows)
+    called_count = sum(1 for row in rows if row['called_this_week'])
+    today_rows = [row for row in rows if row['weekday'] == day.weekday()] if call_day else []
+    scoped = today_rows if scope == 'today' else rows
+    if status == 'not_called':
+        scoped = [row for row in scoped if not row['called_this_week']]
+    elif status == 'called':
+        scoped = [row for row in scoped if row['called_this_week']]
+    total = len(scoped)
+    start = (page - 1) * page_size
+    page_rows = scoped[start:start + page_size]
+    return {
+        'summary': {
+            'week_start': monday.isoformat(),
+            'week_end': friday.isoformat(),
+            'is_call_day': call_day,
+            'weekday': day.weekday(),
+            'scope': scope,
+            'callable': callable_count,
+            'called': called_count,
+            'not_called': callable_count - called_count,
+            'cannot_call': cannot_call,
+            'today_callable': len(today_rows),
+            'today_not_called': sum(1 for row in today_rows if not row['called_this_week']),
+        },
+        'count': total,
+        'page': page,
+        'page_size': page_size,
+        'results': page_rows,
+    }
+
+
+def _hold_payload(hold, viewer_id: int | None) -> dict:
+    """
+    Describe an active hold without the customer's phone.
+
+    Args:
+        hold: ``CallHold`` with ``held_by`` loaded.
+        viewer_id: Current user id, or None.
+
+    Returns:
+        dict: Holder name, whether it is the viewer, and expiry ISO time.
+    """
+    return {
+        'held_by': _display_name(hold.held_by),
+        'held_by_me': viewer_id is not None and hold.held_by_id == viewer_id,
+        'expires_at': hold.expires_at.isoformat(),
+    }
+
+
+def mark_called(*, customer_id: int, user, outcome: str, request_summary: str, today: date | None = None) -> tuple[str, dict]:
+    """
+    Record a call for this week.
+
+    Args:
+        customer_id: Active customer primary key. Positive integer.
+        user: Authenticated staff member.
+        outcome: ``called``, ``ask_later``, or ``no_answer``.
+        request_summary: 0–500 characters. Blank is allowed. "Ask later"
+        still counts as called this week.
+        today: Nairobi date override for tests.
+
+    Returns:
+        tuple: ``(code, payload)``. Codes are ``ok``, ``weekend``,
+        ``not_found``, ``no_phone``, ``bad_outcome``, ``too_long``,
+        ``held``. Payloads never include the phone number.
+        Side effect on ``ok``: inserts one ``CustomerCall`` and deletes
+        any hold on that customer.
+
+    Raises:
+        None. Failures are returned as codes.
+    """
+    day = today or nairobi_today()
+    if not is_call_day(day):
+        return 'weekend', {'error': 'Calls are marked Monday to Friday.'}
+    if outcome not in OUTCOMES:
+        return 'bad_outcome', {'error': 'Choose called, ask later, or no answer.'}
+    summary = (request_summary or '').strip()
+    if len(summary) > SUMMARY_MAX:
+        return 'too_long', {'error': 'Request summary must be 500 characters or fewer.'}
+    with transaction.atomic():
+        customer = (
+            Customer.objects.select_for_update()
+            .filter(pk=customer_id, is_active=True)
+            .first()
+        )
+        if customer is None:
+            return 'not_found', {'error': 'Customer not found.'}
+        if not usable_phone(customer.phone):
+            return 'no_phone', {'error': 'This customer has no number to call.'}
+        now = timezone.now()
+        hold = CallHold.objects.select_for_update().filter(customer=customer).first()
+        if hold is not None and hold.expires_at > now and hold.held_by_id != user.id:
+            return 'held', {
+                'error': 'Another staff member is calling this customer. Try again in a few minutes.',
+            }
+        CustomerCall.objects.create(
+            customer=customer,
+            called_by=user,
+            week_start=week_monday(day),
+            outcome=outcome,
+            request_summary=summary,
+        )
+        if hold is not None:
+            hold.delete()
+    return 'ok', {'called_this_week': True, 'outcome': outcome, 'request_summary': summary}
+
+
+def hold_customer(*, customer_id: int, user, today: date | None = None) -> tuple[str, dict]:
+    """
+    Reserve a customer for this user for the configured hold.
+
+    Args:
+        customer_id: Active customer primary key.
+        user: Authenticated staff member.
+        today: Nairobi date override. Holds are refused on the weekend.
+
+    Returns:
+        tuple: ``(code, payload)`` with the same codes as ``mark_called``
+        plus ``ok`` carrying ``expires_at``. No phone number in the payload.
+        Side effect on ``ok``: creates or refreshes one ``CallHold``.
+    """
+    day = today or nairobi_today()
+    if not is_call_day(day):
+        return 'weekend', {'error': 'Calls are marked Monday to Friday.'}
+    settings_row = CallBookSettings.load()
+    minutes = min(30, max(1, int(settings_row.hold_minutes)))
+    with transaction.atomic():
+        customer = (
+            Customer.objects.select_for_update()
+            .filter(pk=customer_id, is_active=True)
+            .first()
+        )
+        if customer is None:
+            return 'not_found', {'error': 'Customer not found.'}
+        if not usable_phone(customer.phone):
+            return 'no_phone', {'error': 'This customer has no number to call.'}
+        now = timezone.now()
+        hold = CallHold.objects.select_for_update().filter(customer=customer).first()
+        if hold is not None and hold.expires_at > now and hold.held_by_id != user.id:
+            return 'held', {
+                'error': 'Another staff member is calling this customer. Try again in a few minutes.',
+            }
+        expires = now + timedelta(minutes=minutes)
+        if hold is None:
+            CallHold.objects.create(customer=customer, held_by=user, expires_at=expires)
+        else:
+            hold.held_by = user
+            hold.expires_at = expires
+            hold.save(update_fields=['held_by', 'expires_at'])
+    return 'ok', {'expires_at': expires.isoformat(), 'hold_minutes': minutes}
+
+
+def plan_payload() -> dict:
+    """
+    Current day plan and tuning.
+
+    Returns:
+        dict: ``unlocated_weekday`` 0–4, ``hold_minutes`` 1–30, and ``rows``.
+        Side effect: may create the settings singleton.
+    """
+    settings_row = CallBookSettings.load()
+    rows = [
+        {
+            'weekday': row.weekday,
+            'county': row.county,
+            'sub_county': row.sub_county,
+            'ward': row.ward,
+        }
+        for row in CallDayPlan.objects.all()
+    ]
+    return {
+        'unlocated_weekday': settings_row.unlocated_weekday,
+        'hold_minutes': settings_row.hold_minutes,
+        'rows': rows,
+    }
+
+
+def replace_plan(*, unlocated_weekday: int, hold_minutes: int, rows: list) -> tuple[str, dict]:
+    """
+    Replace the day plan and tuning.
+
+    Args:
+        unlocated_weekday: 0–4.
+        hold_minutes: 1–30.
+        rows: List of dicts with weekday, county, sub_county, ward.
+        At most 200 rows. Each row needs a weekday 0–4 and at least one
+        location part, each part at most 100 characters.
+
+    Returns:
+        tuple: ``(code, payload)``. ``ok`` returns ``plan_payload``.
+        ``bad_plan`` returns an error string and does not write.
+        Side effect on ``ok``: updates the singleton and replaces every
+        ``CallDayPlan`` row.
+
+    Raises:
+        None.
+    """
+    try:
+        weekday = int(unlocated_weekday)
+        minutes = int(hold_minutes)
+    except (TypeError, ValueError):
+        return 'bad_plan', {'error': 'Weekday and hold minutes must be numbers.'}
+    if weekday < 0 or weekday > 4:
+        return 'bad_plan', {'error': 'Unlocated customers must sit on Monday to Friday.'}
+    if minutes < 1 or minutes > 30:
+        return 'bad_plan', {'error': 'Hold minutes must be between 1 and 30.'}
+    if not isinstance(rows, list) or len(rows) > PLAN_ROW_MAX:
+        return 'bad_plan', {'error': 'The day plan can have at most 200 locations.'}
+    cleaned = []
+    seen = set()
+    for raw in rows:
+        if not isinstance(raw, dict):
+            return 'bad_plan', {'error': 'Each plan row must be an object.'}
+        try:
+            row_day = int(raw.get('weekday'))
+        except (TypeError, ValueError):
+            return 'bad_plan', {'error': 'Each location needs a Monday–Friday day.'}
+        if row_day < 0 or row_day > 4:
+            return 'bad_plan', {'error': 'Each location needs a Monday–Friday day.'}
+        county = str(raw.get('county') or '').strip()[:100]
+        sub = str(raw.get('sub_county') or '').strip()[:100]
+        ward = str(raw.get('ward') or '').strip()[:100]
+        if not county and not sub and not ward:
+            return 'bad_plan', {'error': 'Each plan row needs a county, sub-county, or ward.'}
+        key = (county.lower(), sub.lower(), ward.lower())
+        if key in seen:
+            return 'bad_plan', {'error': 'That location is already on the plan.'}
+        seen.add(key)
+        cleaned.append({
+            'weekday': row_day,
+            'county': county,
+            'sub_county': sub,
+            'ward': ward,
+        })
+    with transaction.atomic():
+        settings_row = CallBookSettings.load()
+        settings_row.unlocated_weekday = weekday
+        settings_row.hold_minutes = minutes
+        settings_row.save(update_fields=['unlocated_weekday', 'hold_minutes'])
+        CallDayPlan.objects.all().delete()
+        CallDayPlan.objects.bulk_create([
+            CallDayPlan(**row) for row in cleaned
+        ])
+    return 'ok', plan_payload()

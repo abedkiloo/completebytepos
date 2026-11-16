@@ -482,6 +482,11 @@ export const salesAPI = {
 
 export const customersAPI = {
   list: (params) => api.get('/sales/customers/', { params }),
+  callBook: (params) => api.get('/sales/call-book/', { params }),
+  markCall: (customerId, data) => api.post(`/sales/call-book/${customerId}/mark/`, data),
+  holdCall: (customerId) => api.post(`/sales/call-book/${customerId}/hold/`, {}),
+  callBookPlan: () => api.get('/sales/call-book/plan/'),
+  saveCallBookPlan: (data) => api.put('/sales/call-book/plan/', data),
   get: (id) => api.get(`/sales/customers/${id}/`),
   /** Lifetime profile: standing, orders, debt/payment trail. */
   detail: (id, params) => api.get(`/sales/customers/${id}/detail/`, { params }),

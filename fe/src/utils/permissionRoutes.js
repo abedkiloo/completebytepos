@@ -30,6 +30,7 @@ export const ROUTE_MODULE_MAP = {
   '/sales': 'sales',
   '/customers/payments': 'debt_management',
   '/customers/debt': 'debt_management',
+  '/customers/call-book': 'customers',
   '/customers': 'customers',
   '/invoices': 'invoicing',
   '/reports': 'reports',
@@ -91,6 +92,7 @@ export const ROUTE_PERMISSION_GATES = [
   { prefix: '/inventory/checkpoints', module: 'inventory', action: 'manage' },
   { prefix: '/customers/payments', module: 'debt_management', action: 'payments_trail' },
   { prefix: '/customers/debt', module: 'debt_management', action: 'view' },
+  { prefix: '/customers/call-book', module: 'customers', action: 'call_book' },
   { prefix: '/normal-sale', module: 'sales', action: 'create' },
   {
     prefix: '/sales/approvals',

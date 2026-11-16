@@ -27,6 +27,7 @@ import { NAV_SECTION_MODULES, navSectionGrantedByPermissions } from './permissio
 const FIELD_SALES_NAV_PATHS = new Set([
   '/',
   '/customers',
+  '/customers/call-book',
   '/sales',
   '/sales/daily',
   '/payroll',
