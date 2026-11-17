@@ -137,6 +137,8 @@ describe('FieldLoadsPage', () => {
     fieldLoadsAPI.agents.mockResolvedValue({ data: { results: [{ id: 2, name: 'Asha' }] } });
     render(<FieldLoadsPage />);
     await userEvent.click(await screen.findByRole('button', { name: /Asha/ }));
+    expect((await screen.findAllByRole('button', { name: /Sell/ })).length).toBeGreaterThan(0);
+    expect(screen.getByText('Tap Sell on a product. Those pieces are already on this load.')).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: /Legs/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Submit for approval' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Create new field load' })).not.toBeInTheDocument();

@@ -12,7 +12,63 @@ from utils.image_upload import (
 )
 
 
-def require_sale_payment_receipt_image(uploaded_file, *, payment_method: str, amount_paid) -> None:
+def actor_is_sales_personnel(user) -> bool:
+    """
+    Whether this person is Sales Personnel.
+
+    Args:
+        user: Authenticated user or None. The custom role name is read when
+            a profile exists. Length of that name is 0–150.
+
+    Returns:
+        bool: True only for the Sales Personnel role. Missing profile is False.
+
+    Raises:
+        None.
+    """
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+    profile = getattr(user, 'profile', None)
+    if profile is None:
+        return False
+    custom = getattr(profile, 'custom_role', None)
+    name = (getattr(custom, 'name', '') or '') if custom is not None else ''
+    if name == 'Sales Personnel':
+        return True
+    return (getattr(profile, 'role', '') or '') == 'sales'
+
+
+def terminal_mpesa_screenshot_optional(request) -> bool:
+    """
+    Terminal POS may skip the M-Pesa screenshot. A sales person may not.
+
+    Args:
+        request: DRF request or None. ``pos_surface`` must be the string
+            ``terminal`` (max 16 characters). Any other value stays required.
+
+    Returns:
+        bool: True only for a terminal checkout by someone who is not
+        Sales Personnel. No writes.
+
+    Raises:
+        None.
+    """
+    if request is None:
+        return False
+    data = getattr(request, 'data', None) or {}
+    surface = str(data.get('pos_surface') or '').strip().lower()[:16]
+    if surface != 'terminal':
+        return False
+    return not actor_is_sales_personnel(getattr(request, 'user', None))
+
+
+def require_sale_payment_receipt_image(
+    uploaded_file,
+    *,
+    payment_method: str,
+    amount_paid,
+    optional: bool = False,
+) -> None:
     """
     Require a payment screenshot when collecting M-Pesa now.
 
@@ -20,9 +76,13 @@ def require_sale_payment_receipt_image(uploaded_file, *, payment_method: str, am
         uploaded_file: UploadedFile or None.
         payment_method: Sale tender code.
         amount_paid: Amount collected (0 → pay later, no receipt).
+        optional: When True, a missing file is allowed. A file that is sent
+            is still stored by ``attach_sale_payment_receipt``. Default False
+            keeps every other checkout mandatory.
 
     Raises:
-        ValidationError: When M-Pesa is collected without a screenshot.
+        ValidationError: When M-Pesa is collected without a screenshot and
+            ``optional`` is False.
     """
     from sales.sale_payment_method import as_decimal
 
@@ -31,6 +91,8 @@ def require_sale_payment_receipt_image(uploaded_file, *, payment_method: str, am
     if method != 'mpesa' or paid <= 0:
         return
     if uploaded_file is None:
+        if optional:
+            return
         raise ValidationError({
             'payment_receipt_image': (
                 'Attach a screenshot of the M-Pesa payment (till or bank).'

@@ -605,6 +605,11 @@ function StockCard({ item, selected, onChoose }) {
       <div className="mt-2 h-1.5 rounded-full bg-secondary">
         <div className="h-1.5 rounded-full bg-success" style={{ width: `${width}%` }} />
       </div>
+      {onChoose && (
+        <span className="mt-3 inline-block rounded-md bg-success px-3 py-1 text-sm font-medium text-success-foreground">
+          Sell
+        </span>
+      )}
     </>
   );
   if (!onChoose) return <div className={className}>{body}</div>;
@@ -981,7 +986,7 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
             </div>
           )}
           {!load.can_confirm_issue && (
-            <p className="text-sm">Waiting for a manager.</p>
+            <p className="text-sm">Waiting for a manager. Selling starts after this load is approved. It will then be under Open.</p>
           )}
         </div>
       )}
@@ -994,7 +999,10 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
                 Back to stock
               </Button>
             )}
-            <h3 className="text-sm font-semibold">{focused && !wide ? line.product_name : 'Available stock'}</h3>
+            <h3 className="text-sm font-semibold">{focused && !wide ? line.product_name : 'Sell from this load'}</h3>
+            {!focused && (
+              <p className="text-sm text-muted-foreground">Tap Sell on a product. Those pieces are already on this load.</p>
+            )}
             {linesOnScreen.map((item) => {
               const available = item.available ?? (Number(item.quantity_taken) - Number(item.quantity_sold || 0));
               const canChoose = load.status === 'open' && available > 0 && !(focused && !wide);
@@ -1007,9 +1015,6 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
                 />
               );
             })}
-            {load.status === 'open' && !focused && (
-              <p className="text-sm text-muted-foreground">Choose a product to record a sale.</p>
-            )}
           </div>
 
       {focused && load.status === 'open' && (

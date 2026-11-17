@@ -6,6 +6,8 @@ import {
   isManagerOrAdminFromStorage,
   userSeesAllSalesFromStorage,
   userMayViewDeliveryHistory,
+  isSalesPersonnelProfile,
+  terminalMpesaScreenshotRequired,
 } from './roleAccess';
 import { cacheModuleSettings } from './moduleSettingsCache';
 import { cacheStoreSettings } from './storeSettingsCache';
@@ -360,5 +362,16 @@ describe('roleAccess', () => {
   test('sales cannot access invoices without invoicing permissions', () => {
     localStorage.setItem('permissions', JSON.stringify([]));
     expect(canAccessRoute(PERSONA.SALES, '/invoices')).toBe(false);
+  });
+
+  test('terminal M-Pesa screenshot is optional except for a sales person', () => {
+    expect(isSalesPersonnelProfile(null)).toBe(false);
+    expect(isSalesPersonnelProfile({ role: 'manager', custom_role: { name: 'Manager' } })).toBe(false);
+    expect(isSalesPersonnelProfile({ role: 'cashier', custom_role: { name: 'Sales Personnel' } })).toBe(true);
+    expect(terminalMpesaScreenshotRequired()).toBe(true);
+    localStorage.setItem('profile', JSON.stringify({ role: 'manager', custom_role: { name: 'Manager' } }));
+    expect(terminalMpesaScreenshotRequired()).toBe(false);
+    localStorage.setItem('profile', JSON.stringify({ role: 'cashier', custom_role: { name: 'Sales Personnel' } }));
+    expect(terminalMpesaScreenshotRequired()).toBe(true);
   });
 });

@@ -19,6 +19,7 @@ import { cn } from '../../../lib/cn';
 import { formatCurrency } from '../../../utils/formatters';
 import { cartVariantLabel } from '../../../utils/variantCombinations';
 import { useBillingPOSState } from './useBillingPOSState';
+import { terminalMpesaScreenshotRequired } from '../../../utils/roleAccess';
 import VariantSelector from '../VariantSelector';
 import { CartQtyInput } from '../CartQtyInput';
 import { getLineStockCap } from '../v2/usePOSState';
@@ -153,7 +154,7 @@ export default function BillingPOSPage() {
         toast.warning('Choose till or bank before entering the M-Pesa code.');
         return;
       }
-      if (!state.paymentReceiptFile) {
+      if (terminalMpesaScreenshotRequired() && !state.paymentReceiptFile) {
         toast.warning('Attach a screenshot of the M-Pesa payment (till or bank).');
         return;
       }
@@ -772,7 +773,9 @@ export default function BillingPOSPage() {
                           htmlFor="billing-payment-receipt"
                           className="text-xs uppercase tracking-wide text-muted-foreground"
                         >
-                          Payment screenshot *
+                          {terminalMpesaScreenshotRequired()
+                            ? 'Payment screenshot *'
+                            : 'Payment screenshot'}
                         </Label>
                         <Input
                           id="billing-payment-receipt"
@@ -784,13 +787,15 @@ export default function BillingPOSPage() {
                           }
                           data-testid="billing-payment-receipt"
                         />
-                        {showMpesaErrors && !state.paymentReceiptFile ? (
+                        {terminalMpesaScreenshotRequired() && showMpesaErrors && !state.paymentReceiptFile ? (
                           <p className="text-xs text-destructive">
                             Attach a screenshot of the M-Pesa payment (till or bank).
                           </p>
                         ) : (
                           <p className="text-xs text-muted-foreground">
-                            Required for till and bank payments — used when reviewing the sale later.
+                            {terminalMpesaScreenshotRequired()
+                              ? 'Required for till and bank payments — used when reviewing the sale later.'
+                              : 'Optional on Terminal POS. You can attach a screenshot, or finish the sale without one.'}
                           </p>
                         )}
                       </div>

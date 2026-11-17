@@ -80,6 +80,31 @@ export const ALLOWED_ROUTE_PREFIXES = {
   [PERSONA.SALES]: ['/', '/change-password', '/pos', '/customers'],
 };
 
+/**
+ * Sales Personnel must still attach an M-Pesa screenshot on Terminal POS.
+ *
+ * @param {object|null} profile Profile from login. `custom_role.name` is 0–150 characters.
+ * @returns {boolean} True for Sales Personnel. A missing profile is false.
+ */
+export function isSalesPersonnelProfile(profile) {
+  if (!profile) return false;
+  const customName = profile.custom_role?.name || '';
+  return customName === 'Sales Personnel' || profile.role === 'sales';
+}
+
+/**
+ * Terminal POS can skip the M-Pesa screenshot unless the seller is Sales Personnel.
+ *
+ * A missing profile stays required, so an empty login cache does not drop the rule.
+ *
+ * @returns {boolean} True when the screenshot must be attached.
+ */
+export function terminalMpesaScreenshotRequired() {
+  const { profile } = getStoredAuth();
+  if (!profile) return true;
+  return isSalesPersonnelProfile(profile);
+}
+
 export function getStoredAuth() {
   try {
     const user = JSON.parse(localStorage.getItem('user') || 'null');

@@ -6,6 +6,7 @@ import {
 } from '../../../services/api';
 import { toast } from '../../../utils/toast';
 import { saleCheckoutSuccessToast } from '../../../utils/saleCompletionApproval';
+import { terminalMpesaScreenshotRequired } from '../../../utils/roleAccess';
 import { cartItemKey, getLineStockCap } from '../v2/usePOSState';
 import { isProductVariantsEnabled, normalizeProductForSale } from '../../../utils/moduleFeatures';
 import { isProductOutOfStock } from '../../../utils/productStock';
@@ -732,7 +733,7 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
           toast.warning('Choose till or bank before entering the M-Pesa code.');
           return;
         }
-        if (!receipt) {
+        if (terminalMpesaScreenshotRequired() && !receipt) {
           toast.warning('Attach a screenshot of the M-Pesa payment (till or bank).');
           return;
         }
@@ -856,6 +857,7 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
         excess_payment_choice: 'change',
         client_channel: 'web',
         confirm_unchanged: Boolean(confirmUnchanged),
+        pos_surface: 'terminal',
       };
       let body = checkoutPayload;
       if (receipt) {

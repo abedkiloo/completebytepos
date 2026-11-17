@@ -77,6 +77,19 @@ class PaymentDetailUnitTests(SimpleTestCase):
             payment_method='on_account',
             amount_paid=Decimal('0'),
         )
+        require_sale_payment_receipt_image(
+            None,
+            payment_method='mpesa',
+            amount_paid=Decimal('50.00'),
+            optional=True,
+        )
+        for _ in range(200):
+            require_sale_payment_receipt_image(
+                None,
+                payment_method='cash',
+                amount_paid=Decimal('10.00'),
+                optional=False,
+            )
 
 
 class PaymentDetailCorrectedFunctionalityTests(SimpleTestCase):

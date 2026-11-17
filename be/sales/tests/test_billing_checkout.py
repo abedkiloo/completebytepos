@@ -132,6 +132,90 @@ class BillingCheckoutAPITestCase(APITestCase):
         self.assertEqual(holding.status, 'completed')
         self.assertEqual(Sale.objects.filter(status='holding', pk=holding.pk).count(), 0)
 
+    def _mpesa_body(self, **extra):
+        body = {
+            'payment_method': 'mpesa',
+            'amount_paid': '80.00',
+            'payment_reference': 'QGH7K2L',
+            'mpesa_destination': 'till',
+            'allow_partial_payment': False,
+        }
+        body.update(extra)
+        return body
+
+    def test_terminal_pos_mpesa_screenshot_is_optional_for_a_manager(self):
+        holding = self.sale_service.save_holding_sale(
+            self.user,
+            [{'product_id': self.product.id, 'quantity': 1, 'unit_price': '80.00'}],
+            branch=self.branch,
+        )
+        skipped = self.client.post(
+            f'/api/sales/{holding.id}/checkout/',
+            self._mpesa_body(pos_surface='terminal'),
+            format='json',
+        )
+        self.assertEqual(skipped.status_code, status.HTTP_200_OK, skipped.data)
+        holding.refresh_from_db()
+        self.assertEqual(holding.payment_method, 'mpesa')
+        self.assertFalse(holding.payment_receipt_image)
+
+    def test_mpesa_screenshot_stays_required_off_the_terminal(self):
+        holding = self.sale_service.save_holding_sale(
+            self.user,
+            [{'product_id': self.product.id, 'quantity': 1, 'unit_price': '80.00'}],
+            branch=self.branch,
+        )
+        required = self.client.post(
+            f'/api/sales/{holding.id}/checkout/',
+            self._mpesa_body(),
+            format='json',
+        )
+        self.assertEqual(required.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('screenshot', str(required.data).lower())
+        self.assertNotIn('0700111222', str(required.data))
+        holding.refresh_from_db()
+        self.assertEqual(holding.status, 'holding')
+
+    def test_sales_person_must_attach_mpesa_screenshot_on_terminal_pos(self):
+        from accounts.models import UserProfile
+        from accounts.role_definitions import ROLE_SALES, ensure_permissions, sync_default_roles
+
+        ensure_permissions()
+        roles = sync_default_roles()
+        sales = User.objects.create_user(username='billing_sales', password='sales123')
+        UserProfile.objects.create(
+            user=sales,
+            role='cashier',
+            custom_role=roles[ROLE_SALES],
+            phone_number='0718123456',
+            is_active=True,
+        )
+        holding = self.sale_service.save_holding_sale(
+            sales,
+            [{'product_id': self.product.id, 'quantity': 1, 'unit_price': '80.00'}],
+            branch=self.branch,
+        )
+        token = RefreshToken.for_user(sales)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+        denied = self.client.post(
+            f'/api/sales/{holding.id}/checkout/',
+            self._mpesa_body(pos_surface='terminal'),
+            format='json',
+        )
+        self.assertEqual(denied.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('screenshot', str(denied.data).lower())
+        self.assertNotIn('0718123456', str(denied.data))
+        holding.refresh_from_db()
+        self.assertEqual(holding.status, 'holding')
+
+        guest = self.client_class()
+        hidden = guest.post(
+            f'/api/sales/{holding.id}/checkout/',
+            self._mpesa_body(pos_surface='terminal'),
+            format='json',
+        )
+        self.assertEqual(hidden.status_code, status.HTTP_401_UNAUTHORIZED)
+
     def test_checkout_uses_variant_stock_when_variants_disabled(self):
         """When the variants feature is off, stock is drawn from variant rows."""
         disable_product_variants()

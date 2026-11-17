@@ -1012,7 +1012,10 @@ class CheckoutHoldingSerializer(serializers.Serializer):
             validate_sale_payment_reference,
         )
         from sales.sale_payment_method import normalize_sale_payment_method
-        from sales.sale_payment_receipt import require_sale_payment_receipt_image
+        from sales.sale_payment_receipt import (
+            require_sale_payment_receipt_image,
+            terminal_mpesa_screenshot_optional,
+        )
 
         attrs = apply_sale_module_settings(attrs)
         amount_paid = attrs.get('amount_paid', 0) or 0
@@ -1050,6 +1053,7 @@ class CheckoutHoldingSerializer(serializers.Serializer):
                 receipt,
                 payment_method=attrs['payment_method'],
                 amount_paid=amount_paid,
+                optional=terminal_mpesa_screenshot_optional(request),
             )
         except DjangoValidationError as exc:
             raise serializers.ValidationError(
