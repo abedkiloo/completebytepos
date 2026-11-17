@@ -1,4 +1,4 @@
-import { displayStatus, loadBuckets, missingUnits, saleTotal, statusLabel } from './fieldLoad';
+import { displayStatus, loadBuckets, loadMatchesFilter, missingUnits, saleTotal, statusLabel } from './fieldLoad';
 
 describe('field load math', () => {
   test('missing is taken minus sold minus returned, and blank means not counted', () => {
@@ -27,5 +27,22 @@ describe('field load math', () => {
     const buckets = loadBuckets(loads);
     expect(buckets.active + buckets.accepted).toBe(300);
     expect(buckets.shortage).toBe(0);
+  });
+
+  test('each tab keeps only its own loads, including 300 mixed rows', () => {
+    const waiting = { status: 'awaiting_issue', lines: [] };
+    const open = { status: 'open', lines: [] };
+    const shortage = { status: 'pending_review', lines: [{ quantity_missing: 2 }] };
+    expect(loadMatchesFilter(waiting, 'awaiting')).toBe(true);
+    expect(loadMatchesFilter(waiting, 'open')).toBe(false);
+    expect(loadMatchesFilter(open, 'awaiting')).toBe(false);
+    expect(loadMatchesFilter(shortage, 'shortage')).toBe(true);
+    expect(loadMatchesFilter(shortage, 'awaiting')).toBe(false);
+    expect(loadMatchesFilter(null, 'all')).toBe(false);
+    const mixed = Array.from({ length: 300 }, (_, index) => (
+      index % 2 === 0 ? waiting : open
+    ));
+    expect(mixed.filter((row) => loadMatchesFilter(row, 'awaiting'))).toHaveLength(150);
+    expect(mixed.filter((row) => loadMatchesFilter(row, 'open'))).toHaveLength(150);
   });
 });

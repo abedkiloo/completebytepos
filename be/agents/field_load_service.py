@@ -727,6 +727,74 @@ def decline_issue(*, load_id: int, user, note: str = '') -> FieldLoad:
     return load
 
 
+def revise_issue(*, load_id: int, lines: list, user) -> FieldLoad:
+    """
+    Let the person who wrote a sent-back load change it and send it again.
+
+    Args:
+        load_id: Load in ``issue_rejected``.
+        lines: 1–40 dicts with ``product_id``, optional ``variant_id``, and
+            ``quantity`` 1–100000. The same product cannot appear twice.
+            These lines replace the previous ones.
+        user: The user who wrote the load, and who may issue loads.
+
+    Returns:
+        FieldLoad: The same load, status ``awaiting_issue``, with the new lines.
+
+    Raises:
+        FieldLoadError: ``forbidden`` when someone else tries to change it,
+        ``not_found``, ``not_pending`` when it was not sent back, ``open_load``
+        when this person already has another load waiting, ``bad_lines``,
+        ``bad_qty``, ``bad_product``, or ``no_stock``.
+
+    Side effects:
+        Replaces the lines. Clears the send-back note. Does not move shop stock.
+    """
+    if not user_may_issue(user):
+        raise FieldLoadError('forbidden', 'You cannot change this load.')
+    if not isinstance(lines, list) or not lines or len(lines) > MAX_LINES:
+        raise FieldLoadError('bad_lines', 'A load needs between 1 and 40 products.')
+    parsed = []
+    seen = set()
+    for raw in lines:
+        if not isinstance(raw, dict):
+            raise FieldLoadError('bad_lines', 'Each line needs a product and a quantity.')
+        qty = _parse_qty(raw.get('quantity'), allow_zero=False)
+        product, variant = _product_for_line(raw.get('product_id'), raw.get('variant_id'))
+        key = (product.id, variant.id if variant else None)
+        if key in seen:
+            raise FieldLoadError('bad_lines', f'{product.name} is already on this load.')
+        seen.add(key)
+        on_hand = int(product.stock_quantity or 0)
+        if on_hand < qty:
+            raise FieldLoadError('no_stock', f'{product.name} does not have enough stock in the shop.')
+        parsed.append((product, variant, qty))
+    with transaction.atomic():
+        load = FieldLoad.objects.select_for_update().filter(pk=load_id).first()
+        if load is None:
+            raise FieldLoadError('not_found', 'Load not found.')
+        if load.issued_by_id != getattr(user, 'id', None):
+            raise FieldLoadError('forbidden', 'Only the person who wrote this load can change it.')
+        if load.status != FieldLoad.STATUS_ISSUE_REJECTED:
+            raise FieldLoadError('not_pending', 'Only a load that was sent back can be changed.')
+        if FieldLoad.objects.filter(agent=load.agent, status__in=OPEN_STATUSES).exclude(pk=load.pk).exists():
+            raise FieldLoadError('open_load', 'This person already has a load that is not accepted.')
+        load.lines.all().delete()
+        for product, variant, qty in parsed:
+            FieldLoadLine.objects.create(
+                load=load,
+                product=product,
+                variant=variant,
+                quantity_taken=qty,
+            )
+        load.status = FieldLoad.STATUS_AWAITING
+        load.review_note = ''
+        load.reviewed_by = None
+        load.reviewed_at = None
+        load.save(update_fields=['status', 'review_note', 'reviewed_by', 'reviewed_at'])
+    return load
+
+
 def add_line(*, load_id: int, product_id: int, quantity, user, variant_id=None) -> FieldLoad:
     """
     Add more shop stock to an open load.

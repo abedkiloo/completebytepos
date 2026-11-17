@@ -951,6 +951,7 @@ export const fieldLoadsAPI = {
   create: (data) => api.post('/agents/field-loads/', data),
   approveIssue: (id) => api.post(`/agents/field-loads/${id}/approve-issue/`, {}),
   declineIssue: (id, data) => api.post(`/agents/field-loads/${id}/decline-issue/`, data || {}),
+  reviseIssue: (id, data) => api.post(`/agents/field-loads/${id}/revise-issue/`, data),
   get: (id) => api.get(`/agents/field-loads/${id}/`),
   addLine: (id, data) => api.post(`/agents/field-loads/${id}/lines/`, data),
   sell: (id, data) => api.post(`/agents/field-loads/${id}/sell/`, data),

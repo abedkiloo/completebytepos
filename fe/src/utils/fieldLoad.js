@@ -60,6 +60,26 @@ export function saleTotal(unitPrice, quantity) {
 }
 
 /**
+ * Whether one load belongs on the selected tab.
+ *
+ * `awaiting` is the approval queue: a written load, a return count, or a
+ * load sent back. Shortage stays on its own tab.
+ *
+ * @param {object|null} load Serialized load. Null matches nothing.
+ * @param {string} filter `all`, `open`, `awaiting`, `shortage`, or `accepted`.
+ * @returns {boolean} True when the load should appear on that tab.
+ */
+export function loadMatchesFilter(load, filter) {
+  if (!load) return false;
+  if (!filter || filter === 'all') return true;
+  const status = displayStatus(load);
+  if (filter === 'awaiting') {
+    return status === 'awaiting_issue' || status === 'pending_review' || status === 'issue_rejected';
+  }
+  return status === filter;
+}
+
+/**
  * Counts for the operations tiles, from the loads this user can see.
  *
  * @param {Array<object>} loads At most 100 serialized loads.

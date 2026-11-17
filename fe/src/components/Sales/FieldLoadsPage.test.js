@@ -15,6 +15,7 @@ jest.mock('../../services/api', () => ({
     reject: jest.fn(),
     approveIssue: jest.fn(),
     declineIssue: jest.fn(),
+    reviseIssue: jest.fn(),
   },
   customersAPI: { list: jest.fn() },
   productsAPI: { search: jest.fn() },
@@ -80,6 +81,8 @@ describe('FieldLoadsPage', () => {
     render(<FieldLoadsPage />);
     expect((await screen.findAllByText('Asha')).length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: 'Submit for approval' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Approve reconciliation' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /Asha/ }));
     await userEvent.click(screen.getByRole('button', { name: 'Approve reconciliation' }));
     await waitFor(() => expect(fieldLoadsAPI.accept).toHaveBeenCalledWith(7, {}));
   });
@@ -102,7 +105,12 @@ describe('FieldLoadsPage', () => {
       data: { ...pending, status: 'open', display_status: 'open', can_confirm_issue: false },
     });
     render(<FieldLoadsPage />);
-    expect(await screen.findByRole('button', { name: 'Approve quantities' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Asha/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Approve quantities' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Find product')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /Asha/ }));
+    expect(screen.queryByRole('button', { name: 'Create new field load' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Find product')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Approve quantities' }));
     await waitFor(() => expect(fieldLoadsAPI.approveIssue).toHaveBeenCalledWith(7));
   });
@@ -128,11 +136,13 @@ describe('FieldLoadsPage', () => {
     });
     fieldLoadsAPI.agents.mockResolvedValue({ data: { results: [{ id: 2, name: 'Asha' }] } });
     render(<FieldLoadsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: /Asha/ }));
     expect(await screen.findByRole('button', { name: /Legs/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Submit for approval' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create new field load' })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /Cups/ }));
     expect(screen.queryByText('Legs')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Record a field load sale' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Submit for approval' })).toBeInTheDocument();
     expect(screen.getByText(/does not create a field order/i)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Back to stock' }));
     expect(screen.getByRole('button', { name: /Legs/ })).toBeInTheDocument();
@@ -162,6 +172,8 @@ describe('FieldLoadsPage', () => {
       data: { choose_employee: false, results: [{ id: 4, name: 'Mercy Mercy' }] },
     });
     render(<FieldLoadsPage />);
+    expect(screen.queryByLabelText('Find product')).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('button', { name: 'Create new field load' }));
     expect(await screen.findByDisplayValue('Mercy Mercy')).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Sales employee' })).not.toBeInTheDocument();
   });
@@ -178,6 +190,7 @@ describe('FieldLoadsPage', () => {
       ],
     });
     render(<FieldLoadsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Create new field load' }));
     const box = await screen.findByLabelText('Find product');
     await userEvent.type(box, 'cup');
     await waitFor(() => expect(productsAPI.search).toHaveBeenCalledWith('cup', 20));
@@ -194,5 +207,78 @@ describe('FieldLoadsPage', () => {
     expect(screen.getByText('No products on this draft yet.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Remove Sofa Cup' })).not.toBeInTheDocument();
     expect(screen.queryByText('Sofa Cup')).not.toBeInTheDocument();
+  });
+
+  test('each tab shows only its loads, and an approval opens on its own', async () => {
+    const selling = {
+      ...openLoad,
+      id: 8,
+      agent_name: 'John',
+      reference: 'FL-2026-00002',
+    };
+    fieldLoadsAPI.list.mockResolvedValue({
+      data: {
+        can_issue: true,
+        can_approve: true,
+        results: [
+          { ...pending, status: 'awaiting_issue', display_status: 'awaiting_issue', can_confirm_issue: true, reference: 'FL-2026-00001' },
+          selling,
+        ],
+      },
+    });
+    render(<FieldLoadsPage />);
+    expect(await screen.findByRole('button', { name: /Asha/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /John/ })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Find product')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /^Awaiting approval$/ }));
+    expect(screen.getByRole('button', { name: /Asha/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /John/ })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Find product')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /Asha/ }));
+    expect(screen.getByRole('button', { name: 'Approve quantities' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create new field load' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Find product')).not.toBeInTheDocument();
+    expect(screen.queryByText('Available stock')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /John/ })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Back to loads' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Open$/ }));
+    expect(screen.getByRole('button', { name: /John/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Asha/ })).not.toBeInTheDocument();
+  });
+
+  test('the person who wrote a sent-back load can change it and send it again', async () => {
+    fieldLoadsAPI.list.mockResolvedValue({
+      data: {
+        can_issue: true,
+        can_approve: false,
+        results: [{
+          ...pending,
+          status: 'issue_rejected',
+          display_status: 'issue_rejected',
+          can_revise_issue: true,
+          review_note: 'Take fewer cups',
+          reference: 'FL-2026-00001',
+        }],
+      },
+    });
+    fieldLoadsAPI.reviseIssue.mockResolvedValue({
+      data: { ...pending, status: 'awaiting_issue', can_revise_issue: false },
+    });
+    render(<FieldLoadsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: /^Awaiting approval$/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Asha/ }));
+    expect(screen.getByText('Take fewer cups')).toBeInTheDocument();
+    expect(screen.getByText('Cups')).toBeInTheDocument();
+    const qty = screen.getByLabelText('Quantity of Cups');
+    await userEvent.clear(qty);
+    await userEvent.type(qty, '2');
+    await userEvent.click(screen.getByRole('button', { name: 'Send again for approval' }));
+    await waitFor(() => expect(fieldLoadsAPI.reviseIssue).toHaveBeenCalledWith(7, {
+      lines: [{ product_id: 4, quantity: 2 }],
+    }));
+    expect(screen.queryByRole('button', { name: 'Send again for approval' })).not.toBeInTheDocument();
   });
 });

@@ -18,6 +18,7 @@ from agents.field_load_service import (
     confirm_issue,
     decline_issue,
     issue_load,
+    revise_issue as revise_sent_load,
     carrier_choices,
     loads_for_user,
     review_load,
@@ -77,6 +78,11 @@ def _with_confirm(request, payload: dict) -> dict:
         user_may_approve(request.user)
         and payload.get('issued_by_id') != request.user.id
         and payload.get('status') == FieldLoad.STATUS_AWAITING
+    )
+    payload['can_revise_issue'] = bool(
+        user_may_issue(request.user)
+        and payload.get('issued_by_id') == request.user.id
+        and payload.get('status') == FieldLoad.STATUS_ISSUE_REJECTED
     )
     return payload
 
@@ -222,6 +228,29 @@ class FieldLoadViewSet(viewsets.ViewSet):
                 load_id=pk,
                 user=request.user,
                 note=request.data.get('note') or '',
+            )
+        except FieldLoadError as exc:
+            return _error(exc)
+        return Response(_with_confirm(request, serialize_load(load)))
+
+    @action(detail=True, methods=['post'], url_path='revise-issue')
+    def revise_issue(self, request, pk=None):
+        """
+        The writer replaces the products on a sent-back load and sends it again.
+
+        Args:
+            request: JSON ``lines``, 1–40 products. Quantity per line is 1–100000.
+            pk: Load primary key.
+
+        Returns:
+            Response: The load waiting for a manager again. Shop stock is unchanged.
+            403 when another person tries to change it.
+        """
+        try:
+            load = revise_sent_load(
+                load_id=pk,
+                lines=request.data.get('lines') or [],
+                user=request.user,
             )
         except FieldLoadError as exc:
             return _error(exc)

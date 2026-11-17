@@ -321,6 +321,17 @@ class FieldLoadModuleTests(SuperAdminAPITestCase):
         opened = self.client.get('/api/agents/field-loads/')
         self.assertEqual(opened.status_code, status.HTTP_200_OK)
 
+    def test_revise_is_forbidden_while_the_feature_is_off(self):
+        _enable(False)
+        response = self.client.post(
+            '/api/agents/field-loads/1/revise-issue/',
+            {'lines': [{'product_id': 1, 'quantity': 1}]},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertNotIn('0718123456', response.content.decode())
+        _enable(True)
+
 
 class FieldLoadSecurityTests(SuperAdminAPITestCase):
     """Anonymous denied, agents see only their load, sales cannot accept."""
@@ -1163,3 +1174,124 @@ class FieldLoadMakerCheckerTests(SuperAdminAPITestCase):
         self.assertIn('themselves', denied.data['error'])
         self.assertNotIn('0718123456', denied.content.decode())
         self.assertFalse(FieldLoad.objects.filter(agent=self.agent).exists())
+
+    def test_the_writer_can_fix_a_sent_back_load_and_send_it_again(self):
+        sales = APIClient()
+        sales.force_authenticate(user=self.sales)
+        written = self._write(sales, qty=6)
+        declined = self.client.post(
+            f"/api/agents/field-loads/{written.data['id']}/decline-issue/",
+            {'note': 'Take fewer cups'},
+            format='json',
+        )
+        self.assertEqual(declined.status_code, status.HTTP_200_OK, declined.content)
+        book = sales.get('/api/agents/field-loads/')
+        row = next(item for item in book.data['results'] if item['id'] == written.data['id'])
+        self.assertTrue(row['can_revise_issue'])
+        self.assertEqual(row['review_note'], 'Take fewer cups')
+        self.assertEqual(row['lines'][0]['product_name'], 'Check Cups')
+        revised = sales.post(
+            f"/api/agents/field-loads/{written.data['id']}/revise-issue/",
+            {'lines': [{'product_id': self.cups.id, 'quantity': 2}]},
+            format='json',
+        )
+        self.assertEqual(revised.status_code, status.HTTP_200_OK, revised.content)
+        self.assertEqual(revised.data['status'], 'awaiting_issue')
+        self.assertFalse(revised.data['can_revise_issue'])
+        self.assertEqual(revised.data['lines'][0]['quantity_taken'], 2)
+        self.assertEqual(revised.data['review_note'], '')
+        self.cups.refresh_from_db()
+        self.assertEqual(self.cups.stock_quantity, 50)
+        approved = self.client.post(
+            f"/api/agents/field-loads/{written.data['id']}/approve-issue/",
+            {},
+            format='json',
+        )
+        self.assertEqual(approved.status_code, status.HTTP_200_OK, approved.content)
+        self.cups.refresh_from_db()
+        self.assertEqual(self.cups.stock_quantity, 48)
+
+    def test_revising_empty_or_huge_lists_does_not_change_the_load(self):
+        from agents.field_load_service import FieldLoadError, revise_issue
+        from agents.models import FieldLoad
+
+        sales = APIClient()
+        sales.force_authenticate(user=self.sales)
+        written = self._write(sales, qty=4)
+        self.client.post(
+            f"/api/agents/field-loads/{written.data['id']}/decline-issue/",
+            {'note': 'Check'},
+            format='json',
+        )
+        for _ in range(200):
+            with self.assertRaises(FieldLoadError):
+                revise_issue(load_id=written.data['id'], lines=[], user=self.sales)
+        too_many = sales.post(
+            f"/api/agents/field-loads/{written.data['id']}/revise-issue/",
+            {'lines': [{'product_id': self.cups.id, 'quantity': 1}] * 41},
+            format='json',
+        )
+        self.assertEqual(too_many.status_code, status.HTTP_400_BAD_REQUEST)
+        kept = FieldLoad.objects.get(pk=written.data['id'])
+        self.assertEqual(kept.status, 'issue_rejected')
+        self.assertEqual(kept.lines.get().quantity_taken, 4)
+        self.cups.refresh_from_db()
+        self.assertEqual(self.cups.stock_quantity, 50)
+
+    def test_someone_else_cannot_change_a_sent_back_load(self):
+        from agents.models import FieldLoad
+
+        sales = APIClient()
+        sales.force_authenticate(user=self.sales)
+        written = self._write(sales, qty=5)
+        self.client.post(
+            f"/api/agents/field-loads/{written.data['id']}/decline-issue/",
+            {'note': 'Check'},
+            format='json',
+        )
+        stranger = User.objects.create_user(username='load_check_other', password='x')
+        UserProfile.objects.create(
+            user=stranger,
+            role='cashier',
+            custom_role=Role.objects.get(name=ROLE_SALES),
+            is_active=True,
+        )
+        other = APIClient()
+        other.force_authenticate(user=stranger)
+        denied = other.post(
+            f"/api/agents/field-loads/{written.data['id']}/revise-issue/",
+            {'lines': [{'product_id': self.cups.id, 'quantity': 1}]},
+            format='json',
+        )
+        self.assertEqual(denied.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertNotIn('0718123456', denied.content.decode())
+        anonymous = APIClient()
+        hidden = anonymous.post(
+            f"/api/agents/field-loads/{written.data['id']}/revise-issue/",
+            {'lines': [{'product_id': self.cups.id, 'quantity': 1}]},
+            format='json',
+        )
+        self.assertEqual(hidden.status_code, status.HTTP_401_UNAUTHORIZED)
+        manager = self.client.post(
+            f"/api/agents/field-loads/{written.data['id']}/revise-issue/",
+            {'lines': [{'product_id': self.cups.id, 'quantity': 1}]},
+            format='json',
+        )
+        self.assertEqual(manager.status_code, status.HTTP_403_FORBIDDEN)
+        waiting = sales.post(
+            '/api/agents/field-loads/',
+            {
+                'agent_id': self.sales.id,
+                'lines': [{'product_id': self.cups.id, 'quantity': 1}],
+            },
+            format='json',
+        )
+        early = sales.post(
+            f"/api/agents/field-loads/{waiting.data['id']}/revise-issue/",
+            {'lines': [{'product_id': self.cups.id, 'quantity': 1}]},
+            format='json',
+        )
+        self.assertEqual(early.status_code, status.HTTP_400_BAD_REQUEST)
+        kept = FieldLoad.objects.get(pk=written.data['id'])
+        self.assertEqual(kept.status, 'issue_rejected')
+        self.assertEqual(kept.lines.get().quantity_taken, 5)
