@@ -24,7 +24,11 @@ from accounts.module_settings import (
     users_show_phone,
 )
 from accounts.throttles import LoginRateThrottle
-from accounts.user_write import prepare_user_write_data, apply_profile_updates
+from accounts.user_write import (
+    apply_profile_updates,
+    prepare_user_write_data,
+    username_change_audit,
+)
 from accounts.password_policy import (
     set_must_change_password,
     user_must_change_password,
@@ -483,9 +487,27 @@ class UserViewSet(viewsets.ModelViewSet):
         )
     
     def update(self, request, *args, **kwargs):
-        """Update user - admins can update any, users can update themselves"""
+        """
+        Update a user, including the login name.
+
+        Admins can update anyone when user editing is on. A person can update
+        their own account, including username, without changing role or staff
+        flags. Username is 1–150 characters and must stay unique.
+
+        Args:
+            request: DRF request. Body may include ``username``.
+            *args: Unused viewset args.
+            **kwargs: Lookup kwargs (``pk``).
+
+        Returns:
+            Response: Updated user, or 403 when the actor may not edit.
+
+        Raises:
+            ValidationError: Username blank, too long, illegal, or taken.
+        """
         user = self.get_object()
         current_user = request.user
+        previous_username = user.username
         
         from accounts.user_write import strip_privilege_escalation
 
@@ -513,7 +535,7 @@ class UserViewSet(viewsets.ModelViewSet):
                 AuditLog.ACTION_UPDATE,
                 user,
                 module='users',
-                changes={'self_service': True, 'fields': sorted(data.keys())},
+                changes=username_change_audit(previous_username, user, data, self_service=True),
             )
             return Response(UserSerializer(user).data)
 
@@ -532,7 +554,7 @@ class UserViewSet(viewsets.ModelViewSet):
                 AuditLog.ACTION_UPDATE,
                 user,
                 module='users',
-                changes={'admin_edit': True, 'fields': sorted(data.keys())},
+                changes=username_change_audit(previous_username, user, data, self_service=False),
             )
             return Response(UserSerializer(user).data)
         

@@ -38,13 +38,22 @@ describe('userFormPayload', () => {
         { ...allOptions, isEdit: true }
       );
       expect(payload.password).toBeUndefined();
-      expect(payload.username).toBeUndefined();
+      expect(payload.username).toBe('newuser');
+    });
+
+    it('includes a trimmed username on edit', () => {
+      const payload = buildUserPayload(
+        { ...baseForm, username: '  jane.wambua  ', password: '' },
+        { ...allOptions, isEdit: true }
+      );
+      expect(payload.username).toBe('jane.wambua');
+      expect(payload.password).toBeUndefined();
     });
 
     it('includes password on edit when set', () => {
       const payload = buildUserPayload(baseForm, { ...allOptions, isEdit: true });
       expect(payload.password).toBe('secret12');
-      expect(payload.username).toBeUndefined();
+      expect(payload.username).toBe('newuser');
     });
 
     it('nulls custom_role_id when empty', () => {
@@ -57,6 +66,14 @@ describe('userFormPayload', () => {
   });
 
   describe('validateUserForm', () => {
+    it('rejects a username longer than 150 characters', () => {
+      const errors = validateUserForm(
+        { ...baseForm, username: 'a'.repeat(151) },
+        allOptions
+      );
+      expect(errors.username).toMatch(/150/);
+    });
+
     it('requires username', () => {
       const errors = validateUserForm(
         { ...baseForm, username: '  ' },

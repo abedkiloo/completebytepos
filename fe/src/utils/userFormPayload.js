@@ -1,12 +1,20 @@
 /**
  * User form payload builder + client validation (mirrors admin user API).
+ *
+ * Username is sent on create and on edit. Length 1–150 after trim.
  */
 
 import { required, minLength, emailMessage, phoneMessage } from './formValidation';
 
+/**
+ * Build the user create/update body.
+ *
+ * @param {object} formData Form fields. `username` is trimmed to 1–150 characters.
+ * @param {object} options Visibility flags. `isEdit` keeps a blank password off the body.
+ * @returns {object} API payload. Always includes `username` when the form has one.
+ */
 export function buildUserPayload(formData, options) {
   const {
-    isEdit,
     showEmail,
     showFullName,
     showPhone,
@@ -15,11 +23,9 @@ export function buildUserPayload(formData, options) {
     showInlineRoles,
   } = options;
 
-  const payload = {};
-
-  if (!isEdit) {
-    payload.username = formData.username.trim();
-  }
+  const payload = {
+    username: (formData.username || '').trim(),
+  };
 
   if (formData.password) {
     payload.password = formData.password;
@@ -51,12 +57,21 @@ export function buildUserPayload(formData, options) {
   return payload;
 }
 
+/**
+ * Check the user form before it is submitted.
+ *
+ * @param {object} formData Form fields. Username is required, 1–150 after trim.
+ * @param {object} options `isEdit` skips the password when it is left blank.
+ * @returns {object} Field errors. Empty object when the form can be saved.
+ */
 export function validateUserForm(formData, options) {
   const { isEdit, showEmail, showPhone } = options;
   const errors = {};
 
-  const usernameErr = required(formData.username, 'Enter a username, e.g. jane.wambua');
+  const username = (formData.username || '').trim();
+  const usernameErr = required(username, 'Enter a username, e.g. jane.wambua');
   if (usernameErr) errors.username = usernameErr;
+  else if (username.length > 150) errors.username = 'Username must be 1–150 characters.';
 
   if (!isEdit) {
     const passwordErr = required(formData.password, 'Password is required');

@@ -15,6 +15,13 @@ import { buildUserPayload, validateUserForm } from '../../utils/userFormPayload'
 import CommitConfirm from '../Shared/CommitConfirm';
 import { userCommitRows } from '../../utils/formCommitSummary';
 
+/**
+ * Create or edit a user. The login name can be changed; it is 1–150 characters.
+ *
+ * @param {object} props
+ * @param {object|null} props.user Existing user on edit, null on create.
+ * @returns {JSX.Element}
+ */
 const UserForm = ({
   user,
   roles,
@@ -183,7 +190,8 @@ const UserForm = ({
                   name="username"
                   value={formData.username}
                   onChange={handleChange}
-                  disabled={!!user}
+                  maxLength={150}
+                  autoComplete="username"
                   aria-invalid={Boolean(errors.username)}
                 />
               </FormField>

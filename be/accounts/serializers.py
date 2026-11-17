@@ -195,6 +195,32 @@ class UserSerializer(serializers.ModelSerializer):
         raise_field_error(email_error(value))
         return (value or '').strip() if value else value
 
+    def validate_username(self, value):
+        """
+        Accept a new login name on create and on update.
+
+        Args:
+            value: Username after the request strip. String, length 1–150.
+
+        Returns:
+            str: The username to store.
+
+        Raises:
+            serializers.ValidationError: Blank, too long, illegal characters,
+                or already used by another user.
+        """
+        from accounts.user_write import normalize_username
+        from rest_framework.exceptions import ValidationError as DrfValidationError
+
+        exclude = self.instance.pk if self.instance is not None else None
+        try:
+            return normalize_username(value, exclude_user_id=exclude)
+        except DrfValidationError as exc:
+            detail = exc.detail
+            if isinstance(detail, (list, tuple)):
+                detail = detail[0]
+            raise serializers.ValidationError(str(detail)) from exc
+
     def to_representation(self, instance):
         return apply_user_representation_flags(super().to_representation(instance))
 
@@ -288,6 +314,31 @@ class UserCreateSerializer(serializers.ModelSerializer):
     def validate_email(self, value):
         raise_field_error(email_error(value))
         return (value or '').strip() if value else value
+
+    def validate_username(self, value):
+        """
+        Check a login name before the account is created.
+
+        Args:
+            value: Username string, length 1–150 after trim.
+
+        Returns:
+            str: The username to store.
+
+        Raises:
+            serializers.ValidationError: Blank, too long, illegal characters,
+                or already used.
+        """
+        from accounts.user_write import normalize_username
+        from rest_framework.exceptions import ValidationError as DrfValidationError
+
+        try:
+            return normalize_username(value)
+        except DrfValidationError as exc:
+            detail = exc.detail
+            if isinstance(detail, (list, tuple)):
+                detail = detail[0]
+            raise serializers.ValidationError(str(detail)) from exc
 
     def validate_phone_number(self, value):
         from utils.phone import validate_optional_phone

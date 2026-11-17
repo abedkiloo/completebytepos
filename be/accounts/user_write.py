@@ -1,7 +1,9 @@
 """User + profile write helpers (used by UserViewSet update)."""
 
 from django.contrib.auth.models import User
-from rest_framework.exceptions import PermissionDenied
+from django.contrib.auth.validators import UnicodeUsernameValidator
+from django.core.exceptions import ValidationError as DjangoValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from .models import UserProfile, Role
 from accounts.module_settings import (
@@ -13,6 +15,8 @@ from accounts.module_settings import (
 # may set these via the API (never self-service, never ordinary staff).
 PRIVILEGE_USER_FIELDS = ('is_staff', 'is_superuser')
 PRIVILEGE_PROFILE_ROLES = frozenset({'super_admin', 'admin'})
+USERNAME_MAX_LENGTH = 150
+_USERNAME_VALIDATOR = UnicodeUsernameValidator()
 
 
 def actor_is_super_admin(actor) -> bool:
@@ -72,6 +76,64 @@ def strip_privilege_escalation(payload: dict, profile_data: dict, *, actor) -> N
         )
 
 
+def normalize_username(value, *, exclude_user_id=None) -> str:
+    """
+    Trim and check a login name before it is saved.
+
+    Args:
+        value: Raw username. Non-strings are treated as empty.
+        exclude_user_id: User primary key to ignore when checking uniqueness.
+            None when creating. Integers only; other values are ignored.
+
+    Returns:
+        str of length 1–150. Letters, digits, and ``@ . + - _`` only.
+
+    Raises:
+        ValidationError: Blank, longer than 150 characters, illegal characters,
+            or already used by a different user. The message does not include
+            the other account's email or phone.
+    """
+    name = value.strip() if isinstance(value, str) else ''
+    if not name or len(name) > USERNAME_MAX_LENGTH:
+        raise ValidationError('Username must be 1–150 characters.')
+    try:
+        _USERNAME_VALIDATOR(name)
+    except DjangoValidationError as exc:
+        raise ValidationError('Use letters, numbers, and @ . + - _ only.') from exc
+    taken = User.objects.filter(username=name)
+    if exclude_user_id is not None:
+        taken = taken.exclude(pk=exclude_user_id)
+    if taken.exists():
+        raise ValidationError('That username is already in use.')
+    return name
+
+
+def username_change_audit(previous_username: str, user: User, data: dict, *, self_service: bool) -> dict:
+    """
+    Build the audit payload for a user update.
+
+    Args:
+        previous_username: Login name before the save. Length 0–150.
+        user: User after the save.
+        data: User fields that were written. Keys only are recorded.
+        self_service: True when the person edited their own account.
+
+    Returns:
+        dict with ``fields`` (sorted keys) and either ``self_service`` or
+        ``admin_edit``. When the login name changed, also ``previous_username``
+        and ``username``. Does not include email or phone.
+    """
+    changes = {
+        'self_service' if self_service else 'admin_edit': True,
+        'fields': sorted(data.keys()),
+    }
+    current = user.username or ''
+    if current != (previous_username or ''):
+        changes['previous_username'] = (previous_username or '')[:USERNAME_MAX_LENGTH]
+        changes['username'] = current[:USERNAME_MAX_LENGTH]
+    return changes
+
+
 def prepare_user_write_data(data):
     """
     Split request body into Django User fields and profile fields.
@@ -103,6 +165,8 @@ def prepare_user_write_data(data):
             profile_data['custom_role_id'] = raw
     if payload.get('password') in ('', None):
         payload.pop('password', None)
+    if isinstance(payload.get('username'), str):
+        payload['username'] = payload['username'].strip()
     return payload, profile_data
 
 
