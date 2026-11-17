@@ -39,7 +39,7 @@ const book = {
     today_callable: 2,
     today_not_called: 1,
     days: [
-      { weekday: 0, callable: 2, called: 1, not_called: 1 },
+      { weekday: 0, callable: 2, called: 1, not_called: 1, sub_counties: ['Starehe'] },
       { weekday: 1, callable: 0, called: 0, not_called: 0 },
       { weekday: 2, callable: 0, called: 0, not_called: 0 },
       { weekday: 3, callable: 0, called: 0, not_called: 0 },
@@ -96,6 +96,7 @@ describe('CallBookPage', () => {
   test('shows the next customer and copies the number instead of dialling', async () => {
     render(<CallBookPage />);
     expect(await screen.findByText('Not Called Shop')).toBeInTheDocument();
+    expect(screen.getByText('Monday · Starehe')).toBeInTheDocument();
     expect(screen.queryByText('Called Shop')).not.toBeInTheDocument();
     expect(screen.getByText('0718000001')).toBeInTheDocument();
     expect(document.querySelector('a[href^="tel:"]')).toBeNull();

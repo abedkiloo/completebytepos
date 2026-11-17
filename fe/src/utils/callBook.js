@@ -27,6 +27,24 @@ export function weekdayLabel(index) {
 }
 
 /**
+ * Sub-counties shown on one day's header.
+ *
+ * @param {object} day Day row from the book summary.
+ * @param {number} [limit] Names to show, 1–40. Extra names become a count.
+ * @returns {string} Comma-separated names, or an empty string.
+ */
+export function daySubCountyLabel(day, limit = 4) {
+  const names = Array.isArray(day?.sub_counties)
+    ? day.sub_counties.map((name) => String(name || '').trim()).filter(Boolean).slice(0, 40)
+    : [];
+  const cap = Math.min(40, Math.max(1, Number(limit) || 4));
+  const shown = names.slice(0, cap);
+  if (!shown.length) return '';
+  const extra = names.length - shown.length;
+  return extra > 0 ? `${shown.join(', ')} +${extra} more` : shown.join(', ');
+}
+
+/**
  * Staff-facing name for a call outcome.
  *
  * @param {string} outcome `called`, `ask_later`, `no_answer`, or `unreachable`.

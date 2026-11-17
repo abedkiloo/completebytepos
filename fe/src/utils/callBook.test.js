@@ -3,6 +3,7 @@ import {
   callCoveragePercent,
   customerCategoryLabel,
   outcomeLabel,
+  daySubCountyLabel,
   weekdayLabel,
 } from './callBook';
 
@@ -28,6 +29,14 @@ describe('call book labels', () => {
       cannot_call: 1,
     })).toBe('Called 2 of 5. 1 cannot be called.');
     expect(callBookCountLine(null)).toBe('');
+  });
+
+  test('a day header names its sub-counties once', () => {
+    expect(daySubCountyLabel({ sub_counties: ['Starehe', 'Westlands'] })).toBe('Starehe, Westlands');
+    expect(daySubCountyLabel({
+      sub_counties: ['A', 'B', 'C', 'D', 'E'],
+    }, 2)).toBe('A, B +3 more');
+    expect(daySubCountyLabel({})).toBe('');
   });
 
   test('coverage is a whole percent and categories stay short', () => {

@@ -256,6 +256,31 @@ class CallBookCorrectedTests(SuperAdminAPITestCase):
         self.assertEqual(len(book['summary']['days']), 5)
         self.assertEqual(sum(item['called'] for item in book['summary']['days']), 1)
 
+    def test_each_day_header_lists_its_sub_counties_once(self):
+        _customer('Header A', '0718111001', county='Nairobi', sub_county='Starehe', ward='Landimawe')
+        _customer('Header B', '0718111002', county='Nairobi', sub_county=' starehe ', ward='Ngara')
+        _customer('Header C', '0718111003', county='Nairobi', sub_county='Westlands', ward='Kangemi')
+        _customer('Header D', '0718111004', county='', sub_county='', ward='')
+        with patch('sales.call_book.nairobi_today', return_value=MONDAY):
+            book = build_call_book(scope='week', status='all', page_size=1000)
+        names = []
+        for item in book['summary']['days']:
+            names.extend(item['sub_counties'])
+        self.assertEqual(names.count('Starehe') + names.count('starehe'), 1)
+        self.assertIn('Westlands', names)
+        self.assertIn('No sub-county', names)
+        self.assertNotIn('0718111001', str(book['summary']['days']))
+        anonymous = APIClient().get('/api/sales/call-book/')
+        self.assertEqual(anonymous.status_code, status.HTTP_401_UNAUTHORIZED)
+        crowded = [
+            {'weekday': 0, 'called_this_week': False, 'sub_county': f'Area {index:02d}'}
+            for index in range(50)
+        ]
+        from sales.call_book import _day_counts
+        wide = _day_counts(crowded)
+        self.assertEqual(len(wide[0]['sub_counties']), 40)
+        self.assertEqual(wide[1]['sub_counties'], [])
+
     def test_saturday_can_be_read_and_cannot_be_marked(self):
         shop = _customer('Saturday Duka', '0718000012')
         with patch('sales.call_book.nairobi_today', return_value=SATURDAY):

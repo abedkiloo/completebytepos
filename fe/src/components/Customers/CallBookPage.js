@@ -10,6 +10,7 @@ import {
   WEEKDAY_LABELS,
   callCoveragePercent,
   customerCategoryLabel,
+  daySubCountyLabel,
   outcomeLabel,
   weekdayLabel,
 } from '../../utils/callBook';
@@ -141,6 +142,10 @@ export default function CallBookPage() {
           total={listed}
           markingOpen={markingOpen}
           dayLabel={weekdayLabel(day)}
+          dayPlaces={daySubCountyLabel(
+            (summary?.days || []).find((item) => item.weekday === day),
+            12,
+          )}
           onPrevious={() => setIndex((value) => Math.max(0, value - 1))}
           onSaved={() => load()}
         />
@@ -189,8 +194,13 @@ function Overview({ summary, onOpenQueue }) {
             const share = callCoveragePercent(item.called, item.callable);
             return (
               <li key={item.weekday}>
-                <div className="mb-1 flex justify-between text-sm">
-                  <span>{weekdayLabel(item.weekday)}</span>
+                <div className="mb-1 flex justify-between gap-2 text-sm">
+                  <span>
+                    <span className="block">{weekdayLabel(item.weekday)}</span>
+                    {daySubCountyLabel(item, 8) && (
+                      <span className="block text-xs text-muted-foreground">{daySubCountyLabel(item, 8)}</span>
+                    )}
+                  </span>
                   <span className="text-muted-foreground">{item.called}/{item.callable} recorded</span>
                 </div>
                 <div className="h-1.5 overflow-hidden rounded-full bg-muted">
@@ -266,12 +276,22 @@ function WeekPlan({ summary, day, rows, page, pageCount, total, onDay, onPage, o
             onClick={() => onDay(item.weekday)}
           >
             <span className="block text-xs">{weekdayLabel(item.weekday).slice(0, 3).toUpperCase()}</span>
+            {daySubCountyLabel(item, 2) && (
+              <span className="mt-1 block truncate text-[10px] leading-tight">{daySubCountyLabel(item, 2)}</span>
+            )}
             <span className="block text-xl font-semibold tabular-nums">{item.callable}</span>
             <span className="block text-xs opacity-80">Calls</span>
           </button>
         ))}
       </div>
-      <h3 className="text-sm font-medium">{weekdayLabel(day)} — call schedule</h3>
+      <h3 className="text-sm font-medium">
+        {weekdayLabel(day)} — call schedule
+        {daySubCountyLabel(days.find((item) => item.weekday === day), 12) && (
+          <span className="mt-0.5 block font-normal text-muted-foreground">
+            {daySubCountyLabel(days.find((item) => item.weekday === day), 12)}
+          </span>
+        )}
+      </h3>
       {rows.length === 0 && <p className="text-sm text-muted-foreground">No customers on this day.</p>}
       <ul className="space-y-2">
         {rows.map((row) => (
@@ -331,15 +351,17 @@ function outcomeTone(outcome) {
  * @param {number} props.total Remaining customers on the selected day.
  * @param {boolean} props.markingOpen False on Saturday and Sunday.
  * @param {string} props.dayLabel Weekday name.
+ * @param {string} [props.dayPlaces] Sub-counties on this day, or empty.
  * @param {Function} props.onPrevious Moves to the previous remaining customer.
  * @param {Function} props.onSaved Reloads after a record is saved.
  */
-function Workspace({ summary, current, position, total, markingOpen, dayLabel, onPrevious, onSaved }) {
+function Workspace({ summary, current, position, total, markingOpen, dayLabel, dayPlaces = '', onPrevious, onSaved }) {
   return (
     <section className="space-y-4 rounded-md border border-border p-3" data-testid="call-workspace">
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Customer call workspace</p>
+          <p className="text-sm font-medium">{dayLabel}{dayPlaces ? ` · ${dayPlaces}` : ''}</p>
           <p className="text-xs text-muted-foreground">
             {total ? `Current customer · ${position} of ${total}` : 'No customers left on this day'}
           </p>

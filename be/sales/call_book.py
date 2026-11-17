@@ -469,7 +469,8 @@ def _day_counts(rows: list) -> list:
 
     Returns:
         list: Five dicts, Monday first. Each has ``weekday``, ``callable``,
-        ``called``, and ``not_called``. Counts are 0–100000. No writes.
+        ``called``, ``not_called``, and ``sub_counties`` (0–40 names).
+        Counts are 0–100000. No writes.
     """
     days = []
     for index in range(WEEKDAY_COUNT):
@@ -480,8 +481,32 @@ def _day_counts(rows: list) -> list:
             'callable': len(day_rows),
             'called': called,
             'not_called': len(day_rows) - called,
+            'sub_counties': _day_sub_counties(day_rows),
         })
     return days
+
+
+def _day_sub_counties(day_rows: list) -> list:
+    """
+    Sub-counties that share one call day.
+
+    The sub-county is the top location on that day's list. Ward is not
+    included. The same sub-county is listed once.
+
+    Args:
+        day_rows: Callable customers already assigned to one weekday.
+            Each row may have ``sub_county``, 0–100 characters.
+
+    Returns:
+        list[str]: Alphabetical labels, at most 40. A blank sub-county
+        is ``No sub-county``. No writes.
+    """
+    seen = {}
+    for row in day_rows:
+        raw = str(row.get('sub_county') or '').strip()[:100]
+        label = raw or 'No sub-county'
+        seen.setdefault(label.lower(), label)
+    return sorted(seen.values(), key=str.lower)[:40]
 
 
 def _parse_follow_up(value, today: date):
