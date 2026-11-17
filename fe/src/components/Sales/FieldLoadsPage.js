@@ -425,7 +425,73 @@ function IssueForm({ onCreated }) {
 }
 
 /**
- * One load: carried stock, a field-load sale, the physical count, and approval.
+ * True when the window is at least 1024px wide.
+ *
+ * A wide window keeps the rest of the load beside the sale. A narrow window
+ * has no matchMedia result in tests and is treated as a phone.
+ *
+ * @returns {boolean} True when the sale can sit beside the stock.
+ */
+function useWideLoadLayout() {
+  const query = '(min-width: 1024px)';
+  const [wide, setWide] = useState(() => (
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia(query).matches
+      : false
+  ));
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return undefined;
+    const media = window.matchMedia(query);
+    const onChange = () => setWide(media.matches);
+    onChange();
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, []);
+
+  return wide;
+}
+
+/**
+ * One product card on a load.
+ *
+ * @param {object} props.item Serialized load line.
+ * @param {boolean} props.selected Whether this is the product being sold.
+ * @param {Function|null} props.onChoose Called with the line when it can be sold.
+ * @returns {JSX.Element} The card. A chooser is a button. A static card is a div.
+ */
+function StockCard({ item, selected, onChoose }) {
+  const available = item.available ?? (Number(item.quantity_taken) - Number(item.quantity_sold || 0));
+  const width = item.quantity_taken ? Math.min(100, Math.round((available / item.quantity_taken) * 100)) : 0;
+  const className = `w-full rounded-xl border p-3 text-left text-sm ${selected ? 'border-primary ring-2 ring-primary' : 'border-border'}`;
+  const body = (
+    <>
+      <div className="flex items-start justify-between gap-2">
+        <p className="font-medium">{item.product_name}</p>
+        <p className="text-muted-foreground">Sold {item.quantity_sold}</p>
+      </div>
+      <p className="text-muted-foreground">Taken {item.quantity_taken}</p>
+      <p className="font-medium text-success">Available: {available}</p>
+      {item.unit_price && <p className="text-right text-muted-foreground">{formatCurrency(item.unit_price)}/unit</p>}
+      <div className="mt-2 h-1.5 rounded-full bg-secondary">
+        <div className="h-1.5 rounded-full bg-success" style={{ width: `${width}%` }} />
+      </div>
+    </>
+  );
+  if (!onChoose) return <div className={className}>{body}</div>;
+  return (
+    <button type="button" className={className} aria-pressed={selected} onClick={() => onChoose(item)}>
+      {body}
+    </button>
+  );
+}
+
+/**
+ * One load: the bag of stock, then one product's sale, then the count.
+ *
+ * Choosing a product clears the other products on a narrow screen. On a
+ * window at least 1024px wide those products stay in a column beside the
+ * sale. The return count is the whole bag and stays a separate step.
  *
  * @param {object} props.load Serialized load.
  * @param {boolean} props.canApprove Whether this user may accept the count.
@@ -438,9 +504,12 @@ function LoadDetail({ load, canApprove, onChange }) {
   const [customerId, setCustomerId] = useState('');
   const [customers, setCustomers] = useState([]);
   const [productId, setProductId] = useState(load.lines[0]?.product_id || '');
+  const [focusId, setFocusId] = useState(null);
+  const [counting, setCounting] = useState(false);
   const [payment, setPayment] = useState('cash');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const wide = useWideLoadLayout();
   const shown = displayStatus(load);
   const short = shortageUnits(load.lines);
 
@@ -451,6 +520,8 @@ function LoadDetail({ load, canApprove, onChange }) {
     });
     setReturns(next);
     setProductId(load.lines[0]?.product_id || '');
+    setFocusId(null);
+    setCounting(false);
   }, [load]);
 
   useEffect(() => {
@@ -461,7 +532,9 @@ function LoadDetail({ load, canApprove, onChange }) {
     return undefined;
   }, [load.status]);
 
-  const line = load.lines.find((item) => String(item.product_id) === String(productId)) || load.lines[0];
+  const focused = load.lines.find((item) => item.id === focusId) || null;
+  const line = focused || load.lines.find((item) => String(item.product_id) === String(productId)) || load.lines[0];
+  const linesOnScreen = focused && !wide ? [focused] : load.lines;
   const total = saleTotal(line?.unit_price, saleQty);
   const taken = load.units_taken ?? load.lines.reduce((sum, item) => sum + Number(item.quantity_taken || 0), 0);
   const sold = load.units_sold ?? load.lines.reduce((sum, item) => sum + Number(item.quantity_sold || 0), 0);
@@ -484,6 +557,21 @@ function LoadDetail({ load, canApprove, onChange }) {
     } finally {
       setBusy(false);
     }
+  };
+
+  /**
+   * Focus one product for a sale and set the other products aside.
+   *
+   * @param {object} item Load line. `id` and `product_id` are positive integers.
+   * @returns {void} Does nothing when the load is not open or nothing is left.
+   */
+  const chooseLine = (item) => {
+    const available = item.available ?? (Number(item.quantity_taken) - Number(item.quantity_sold || 0));
+    if (load.status !== 'open' || available <= 0) return;
+    setCounting(false);
+    setFocusId(item.id);
+    setProductId(item.product_id);
+    setSaleQty('1');
   };
 
   return (
@@ -509,31 +597,35 @@ function LoadDetail({ load, canApprove, onChange }) {
         </div>
       </div>
 
-      <div className="space-y-2">
-        <h3 className="text-sm font-semibold">Available stock</h3>
-        {load.lines.map((item) => {
-          const available = item.available ?? (Number(item.quantity_taken) - Number(item.quantity_sold || 0));
-          const width = item.quantity_taken ? Math.min(100, Math.round((available / item.quantity_taken) * 100)) : 0;
-          return (
-            <div key={item.id} className="rounded-xl border border-border p-3 text-sm">
-              <div className="flex items-start justify-between gap-2">
-                <p className="font-medium">{item.product_name}</p>
-                <p className="text-muted-foreground">Sold {item.quantity_sold}</p>
-              </div>
-              <p className="text-muted-foreground">Taken {item.quantity_taken}</p>
-              <p className="font-medium text-success">Available: {available}</p>
-              {item.unit_price && <p className="text-right text-muted-foreground">{formatCurrency(item.unit_price)}/unit</p>}
-              <div className="mt-2 h-1.5 rounded-full bg-secondary">
-                <div className="h-1.5 rounded-full bg-success" style={{ width: `${width}%` }} />
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      {!counting && (
+        <div className={wide && focused ? 'grid grid-cols-2 items-start gap-4' : 'space-y-3'}>
+          <div className="space-y-2">
+            {focused && (
+              <Button type="button" variant="ghost" onClick={() => setFocusId(null)}>
+                Back to stock
+              </Button>
+            )}
+            <h3 className="text-sm font-semibold">{focused && !wide ? line.product_name : 'Available stock'}</h3>
+            {linesOnScreen.map((item) => {
+              const available = item.available ?? (Number(item.quantity_taken) - Number(item.quantity_sold || 0));
+              const canChoose = load.status === 'open' && available > 0 && !(focused && !wide);
+              return (
+                <StockCard
+                  key={item.id}
+                  item={item}
+                  selected={item.id === focusId}
+                  onChoose={canChoose ? chooseLine : null}
+                />
+              );
+            })}
+            {load.status === 'open' && !focused && (
+              <p className="text-sm text-muted-foreground">Choose a product to record a sale.</p>
+            )}
+          </div>
 
-      {load.status === 'open' && (
+      {focused && load.status === 'open' && (
         <div className="space-y-3 rounded-xl border border-border p-3">
-          <h3 className="text-base font-semibold">New field load sale</h3>
+          <h3 className="text-base font-semibold">Sell {line.product_name}</h3>
           <p className="text-sm text-muted-foreground">
             This sells stock already on the load. It does not create a field order and it does not take the units off the shelf again.
           </p>
@@ -548,19 +640,6 @@ function LoadDetail({ load, canApprove, onChange }) {
               <option value="">Walk-in, fully paid</option>
               {customers.map((customer) => (
                 <option key={customer.id} value={customer.id}>{customer.name}</option>
-              ))}
-            </select>
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-muted-foreground">Product from open load</span>
-            <select
-              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-              aria-label="Product to sell"
-              value={productId}
-              onChange={(event) => setProductId(event.target.value)}
-            >
-              {load.lines.map((item) => (
-                <option key={item.id} value={item.product_id}>{item.product_name}</option>
               ))}
             </select>
           </label>
@@ -631,12 +710,23 @@ function LoadDetail({ load, canApprove, onChange }) {
           </Button>
         </div>
       )}
+        </div>
+      )}
 
-      {load.status === 'open' && (
+      {load.status === 'open' && !focused && !counting && (
+        <Button type="button" variant="outline" onClick={() => setCounting(true)}>
+          Return to shop
+        </Button>
+      )}
+
+      {load.status === 'open' && counting && (
         <div className="space-y-3">
+          <Button type="button" variant="ghost" onClick={() => setCounting(false)}>
+            Back to stock
+          </Button>
           <h3 className="text-base font-semibold">Physical stock count</h3>
           <p className="text-sm text-muted-foreground">
-            Enter what the shop physically receives. Missing = taken − sold − returned, for each product.
+            Count the whole bag. Missing = taken − sold − returned, for each product.
           </p>
           {load.lines.map((item) => {
             const missing = missingUnits(item.quantity_taken, item.quantity_sold, returns[item.id]);

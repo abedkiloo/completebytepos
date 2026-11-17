@@ -73,14 +73,35 @@ describe('FieldLoadsPage', () => {
   });
 
   test('recording a sale posts the product, quantity, customer, and amount', async () => {
+    const withLegs = {
+      ...openLoad,
+      lines: [
+        ...openLoad.lines,
+        {
+          id: 2,
+          product_id: 5,
+          product_name: 'Legs',
+          quantity_taken: 10,
+          quantity_sold: 0,
+          quantity_returned: null,
+          quantity_missing: null,
+        },
+      ],
+    };
     fieldLoadsAPI.list.mockResolvedValue({
-      data: { can_issue: true, can_approve: false, results: [openLoad] },
+      data: { can_issue: true, can_approve: false, results: [withLegs] },
     });
     fieldLoadsAPI.agents.mockResolvedValue({ data: { results: [{ id: 2, name: 'Asha' }] } });
     render(<FieldLoadsPage />);
-    expect(await screen.findByRole('button', { name: 'Record a field load sale' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Legs/ })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /Cups/ }));
+    expect(screen.queryByText('Legs')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Record a field load sale' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Confirm and issue load' })).toBeInTheDocument();
     expect(screen.getByText(/does not create a field order/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Back to stock' }));
+    expect(screen.getByRole('button', { name: /Legs/ })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /Cups/ }));
     expect(await screen.findByRole('option', { name: 'Field Duka' })).toBeInTheDocument();
     await userEvent.selectOptions(screen.getByLabelText('Customer'), '3');
     await userEvent.clear(screen.getByLabelText('Amount received'));
