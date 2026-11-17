@@ -143,5 +143,9 @@ describe('FieldLoadsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Add to load' }));
     expect(screen.getByText('Total product quantities')).toBeInTheDocument();
     expect(screen.getByText('40')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Remove Sofa Cup' }));
+    expect(screen.getByText('No products on this draft yet.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove Sofa Cup' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Sofa Cup')).not.toBeInTheDocument();
   });
 });

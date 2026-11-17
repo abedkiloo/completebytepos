@@ -253,6 +253,16 @@ function IssueForm({ onCreated }) {
   };
 
   /**
+   * Drop one draft line before the load is issued.
+   *
+   * @param {number} productId Product id on the draft, a positive integer.
+   * @returns {void} Shop stock is unchanged.
+   */
+  const removeLine = (productId) => {
+    setLines((prev) => prev.filter((line) => line.product_id !== productId));
+  };
+
+  /**
    * Issue the chosen lines.
    *
    * @returns {Promise<void>}
@@ -374,6 +384,9 @@ function IssueForm({ onCreated }) {
             <Button type="button" className="w-full" onClick={addPicked}>
               Add to load
             </Button>
+            <Button type="button" variant="ghost" className="w-full" onClick={() => setPicked(null)}>
+              Choose a different product
+            </Button>
           </div>
         )}
       </div>
@@ -389,6 +402,7 @@ function IssueForm({ onCreated }) {
               <tr className="text-left text-muted-foreground">
                 <th className="py-1 font-medium">Product</th>
                 <th className="py-1 text-right font-medium">Quantity</th>
+                <th className="py-1 text-right font-medium"> </th>
               </tr>
             </thead>
             <tbody>
@@ -409,6 +423,17 @@ function IssueForm({ onCreated }) {
                         )));
                       }}
                     />
+                  </td>
+                  <td className="py-2 text-right">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="text-destructive"
+                      aria-label={`Remove ${line.name}`}
+                      onClick={() => removeLine(line.product_id)}
+                    >
+                      Remove
+                    </Button>
                   </td>
                 </tr>
               ))}
