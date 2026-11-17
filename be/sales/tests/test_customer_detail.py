@@ -1,9 +1,11 @@
 """Customer lifetime detail + debt trail API."""
 
 from decimal import Decimal
+from datetime import date
 
 from django.core.cache import cache
 from rest_framework import status
+from rest_framework.test import APIClient
 
 from sales.customer_detail import (
     balance_before_from_txn,
@@ -11,8 +13,8 @@ from sales.customer_detail import (
     get_customer_detail,
     serialize_ledger_entry,
 )
-from sales.models import Customer, CustomerWalletTransaction, Sale
-from settings.models import ModuleSetting
+from sales.models import Customer, CustomerCall, CustomerWalletTransaction, Sale
+from settings.models import ModuleFeature, ModuleSetting, ModuleSettings
 from utils.tests.api_test_base import ManagerAPITestCase, SalesAPITestCase
 
 
@@ -321,3 +323,98 @@ class CustomerDetailSalesPersonaTests(SalesAPITestCase):
         self.assertEqual(response.data['customer']['name'], 'Sales View Cust')
         self.assertEqual(response.data['orders'], [])
         self.assertEqual(response.data['ledger'], [])
+
+
+class CustomerCallHistoryTests(ManagerAPITestCase):
+    """Call history on the customer detail screen."""
+
+    def setUp(self):
+        super().setUp()
+        _seed_customer_settings()
+        self.customer = Customer.objects.create(
+            name='Called Duka',
+            phone='0712000001',
+            county='Nairobi',
+            typical_goods=['Sofa legs'],
+            buyer_segment='active',
+            engagement_tier='buyer',
+            is_active=True,
+        )
+        self.other = Customer.objects.create(
+            name='Other Duka',
+            phone='0799000111',
+            is_active=True,
+        )
+
+    def _call(self, customer, outcome, note, week=date(2026, 11, 16)):
+        return CustomerCall.objects.create(
+            customer=customer,
+            called_by=self.manager_user,
+            week_start=week,
+            outcome=outcome,
+            request_summary=note,
+        )
+
+    def test_newest_calls_are_listed_without_another_customers_phone(self):
+        self._call(self.customer, 'no_answer', 'No response')
+        latest = self._call(self.customer, 'called', 'Discussed sofa legs')
+        self._call(self.other, 'called', 'Do not show this shop')
+        response = self.client.get(f'/api/sales/customers/{self.customer.id}/detail/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        body = response.content.decode()
+        self.assertNotIn('0799000111', body)
+        self.assertNotIn('Do not show this shop', body)
+        calls = response.data['calls']
+        self.assertEqual(response.data['calls_count'], 2)
+        self.assertTrue(response.data['calls_enabled'])
+        self.assertEqual(calls[0]['id'], latest.id)
+        self.assertEqual(calls[0]['outcome_label'], 'Called')
+        self.assertEqual(calls[0]['request_summary'], 'Discussed sofa legs')
+        self.assertNotIn('phone', calls[0])
+
+    def test_feature_off_hides_the_history(self):
+        self._call(self.customer, 'called', 'Spoke')
+        module, _ = ModuleSettings.objects.get_or_create(
+            module_name='customers',
+            defaults={'is_enabled': True, 'description': 'customers'},
+        )
+        feature, _ = ModuleFeature.objects.get_or_create(
+            module=module,
+            feature_key='call_book',
+            defaults={'feature_name': 'Weekly call book', 'is_enabled': True},
+        )
+        feature.is_enabled = False
+        feature.save(update_fields=['is_enabled'])
+        try:
+            response = self.client.get(f'/api/sales/customers/{self.customer.id}/detail/')
+        finally:
+            feature.is_enabled = True
+            feature.save(update_fields=['is_enabled'])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data['calls_enabled'])
+        self.assertEqual(response.data['calls'], [])
+        self.assertEqual(response.data['calls_count'], 0)
+        self.assertNotIn('Spoke', response.content.decode())
+
+    def test_anonymous_detail_does_not_return_the_phone(self):
+        client = APIClient()
+        response = client.get(f'/api/sales/customers/{self.customer.id}/detail/')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertNotIn('0712000001', response.content.decode())
+
+    def test_more_than_fifty_calls_keep_the_newest_page(self):
+        CustomerCall.objects.bulk_create([
+            CustomerCall(
+                customer=self.customer,
+                called_by=self.manager_user,
+                week_start=date(2026, 11, 16),
+                outcome='called',
+                request_summary=f'Note {index:02d}',
+            )
+            for index in range(60)
+        ])
+        payload = get_customer_detail(customer_id=self.customer.id)
+        self.assertEqual(payload['calls_count'], 60)
+        self.assertEqual(len(payload['calls']), 50)
+        self.assertNotIn('0712000001', str(payload['calls']))
+

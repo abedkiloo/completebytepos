@@ -234,6 +234,9 @@ describe('CustomerDetailPage', () => {
     expect(screen.getByText(/Wallet debt/i)).toBeInTheDocument();
     expect(screen.getByText(/Lifetime sales/i)).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /Edit/i }).length).toBeGreaterThan(0);
+    expect(screen.getByText('Customer information')).toBeInTheDocument();
+    expect(screen.getAllByText('0712345678').length).toBeGreaterThan(0);
+    expect(screen.getByText('No calls recorded yet.')).toBeInTheDocument();
   });
 
   it('opens the edit form from the customer profile', async () => {
@@ -266,5 +269,26 @@ describe('CustomerDetailPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /Debt & payments/i }));
     expect(await screen.findByTestId('debt-repayment-row-2')).toHaveClass('bg-muted/60');
     expect(screen.queryByTestId('clear-debt-repayment-2')).not.toBeInTheDocument();
+  });
+
+  it('shows three calls and reveals the rest', async () => {
+    customersAPI.detail.mockResolvedValue({
+      data: {
+        ...DETAIL,
+        calls_enabled: true,
+        calls_count: 4,
+        calls: [
+          { id: 1, called_on: '16 November', outcome_label: 'Called', called_by: 'Mercy', request_summary: 'Discussed sofa legs' },
+          { id: 2, called_on: '9 November', outcome_label: 'No answer', called_by: 'Brian', request_summary: 'No response' },
+          { id: 3, called_on: '2 November', outcome_label: 'Called', called_by: 'Mercy', request_summary: 'Asked about product availability' },
+          { id: 4, called_on: '1 October', outcome_label: 'Call later', called_by: 'Mercy', request_summary: 'Older note' },
+        ],
+      },
+    });
+    render(<CustomerDetailPage />);
+    expect(await screen.findByText(/Discussed sofa legs/)).toBeInTheDocument();
+    expect(screen.queryByText(/Older note/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /View complete call history/i }));
+    expect(screen.getByText(/Older note/)).toBeInTheDocument();
   });
 });

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
+  Clock,
   Mail,
   MapPin,
   Pencil,
@@ -83,6 +84,127 @@ const TABS = [
   { id: 'orders', label: 'Orders' },
   { id: 'ledger', label: 'Debt & payments' },
 ];
+
+/**
+ * Relationship label for the customer information table.
+ *
+ * @param {object|null} customer Profile row.
+ * @returns {string} At most 20 characters. Empty when the customer is missing.
+ */
+function customerTypeLabel(customer) {
+  if (!customer) return '';
+  if (customer.engagement_tier === 'prospect') return 'Registered only';
+  if (customer.buyer_segment === 'dormant') return 'Dormant';
+  if (customer.buyer_segment === 'at_risk') return 'Cooling off';
+  if (customer.buyer_segment === 'new') return 'New buyer';
+  if (customer.buyer_segment === 'champion') return 'Champion';
+  return 'Existing';
+}
+
+/**
+ * Place line for the information table.
+ *
+ * @param {object} customer Profile row.
+ * @returns {string} Ward, sub-county, and county, else the city. Empty when none are stored.
+ */
+function customerPlace(customer) {
+  const parts = [customer.ward, customer.sub_county, customer.county].filter(Boolean);
+  if (parts.length) return parts.join(', ');
+  return customer.city || '';
+}
+
+/**
+ * Phone, type, location, goods, and last purchase.
+ *
+ * @param {object} props.customer Profile from the detail API.
+ */
+function CustomerFacts({ customer }) {
+  const goods = (customer.typical_goods || []).filter(Boolean);
+  const place = customerPlace(customer);
+  const lastPurchase = customer.last_purchased_at
+    ? new Date(customer.last_purchased_at).toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'Africa/Nairobi',
+    })
+    : '';
+  const rows = [
+    ['Phone', customer.phone || 'No number'],
+    ['Customer type', customerTypeLabel(customer)],
+    ['Location', place || 'Not recorded'],
+    ['Products of interest', goods.length ? goods.join(', ') : 'None recorded'],
+    ['Last purchase', lastPurchase || 'No purchase yet'],
+  ];
+  return (
+    <section className="rounded-md border border-border" data-testid="customer-facts">
+      <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+        <h2 className="text-base font-semibold">Customer information</h2>
+        <Badge variant={customer.is_active ? 'success' : 'outline'}>
+          {customer.is_active ? 'Active' : 'Inactive'}
+        </Badge>
+      </div>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-muted-foreground">
+            <th className="px-3 py-2 font-medium">Field</th>
+            <th className="px-3 py-2 font-medium">Information</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([field, value]) => (
+            <tr key={field} className="border-t border-border">
+              <td className="px-3 py-2 text-muted-foreground">{field}</td>
+              <td className="px-3 py-2">{value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+/**
+ * Recorded calls, newest first. The first three stay visible.
+ *
+ * @param {Array} props.calls Up to 50 call rows. No phone numbers.
+ * @param {number} props.count Total recorded calls, 0 or more.
+ */
+function CallHistory({ calls, count }) {
+  const [showAll, setShowAll] = useState(false);
+  const shown = showAll ? calls : calls.slice(0, 3);
+  return (
+    <section className="rounded-md border border-border p-3" data-testid="customer-call-history">
+      <h2 className="text-base font-semibold">Call history</h2>
+      {shown.length === 0 && (
+        <p className="mt-2 text-sm text-muted-foreground">No calls recorded yet.</p>
+      )}
+      <ol className="mt-2 space-y-3">
+        {shown.map((call, index) => (
+          <li key={call.id || index} className="text-sm">
+            <p className="font-medium">
+              {index + 1} {call.called_on || 'Call'} – {call.outcome_label || 'Called'}
+            </p>
+            <p className="text-muted-foreground">
+              {[call.called_by, call.request_summary].filter(Boolean).join(' · ')}
+            </p>
+          </li>
+        ))}
+      </ol>
+      {count > calls.length && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Showing the latest {calls.length} of {count}.
+        </p>
+      )}
+      {calls.length > 3 && !showAll && (
+        <Button type="button" variant="outline" className="mt-3 w-full" onClick={() => setShowAll(true)}>
+          <Clock className="mr-1 h-4 w-4" />
+          View complete call history
+        </Button>
+      )}
+    </section>
+  );
+}
 
 export default function CustomerDetailPage() {
   const { customerId } = useParams();
@@ -424,6 +546,14 @@ export default function CustomerDetailPage() {
           subtext={`Incurred ${formatCurrency(standing?.total_debt_incurred || 0)}`}
         />
       </section>
+
+      <CustomerFacts customer={customer} />
+      {payload?.calls_enabled !== false && (
+        <CallHistory
+          calls={payload?.calls || []}
+          count={payload?.calls_count || 0}
+        />
+      )}
 
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
         <div className="space-y-4">

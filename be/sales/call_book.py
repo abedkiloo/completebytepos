@@ -267,7 +267,32 @@ def _display_name(user) -> str:
     return (getattr(user, 'username', '') or 'Staff')[:150]
 
 
-def build_call_book(*, today: date | None = None, scope: str = 'today', status: str = 'all', page: int = 1, page_size: int = PAGE_SIZE_DEFAULT, viewer_id: int | None = None) -> dict:
+def _weekday_filter(weekday) -> int | None:
+    """
+    Keep a weekday query only when it is Monday–Friday.
+
+    Args:
+        weekday: Requested day. None, blank, or a non-integer means no filter.
+            Integers outside 0–4 are ignored.
+
+    Returns:
+        int | None: 0–4, or None when the page should include every day.
+
+    Raises:
+        None.
+    """
+    if weekday is None or weekday == '':
+        return None
+    try:
+        day = int(weekday)
+    except (TypeError, ValueError):
+        return None
+    if day < 0 or day > 4:
+        return None
+    return day
+
+
+def build_call_book(*, today: date | None = None, scope: str = 'today', status: str = 'all', page: int = 1, page_size: int = PAGE_SIZE_DEFAULT, viewer_id: int | None = None, weekday: int | None = None) -> dict:
     """
     Build the shared book for one week.
 
@@ -279,6 +304,9 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
         page: 1-based page. Values below 1 are treated as 1.
         page_size: 1–1000. Out of range is clamped.
         viewer_id: User id used to flag holds that belong to the viewer.
+        weekday: Optional 0–4 (Monday–Friday). Limits the page to that day.
+            A customer whose call-later time has been reached stays on the
+            page even when their own day is different. Outside 0–4 is ignored.
 
     Returns:
         dict: ``summary`` counts plus ``results`` for this page. Customers
@@ -399,6 +427,12 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
         scoped = [row for row in scoped if not row['called_this_week'] or row['call_later_due']]
     elif status == 'called':
         scoped = [row for row in scoped if row['called_this_week']]
+    day_filter = _weekday_filter(weekday)
+    if day_filter is not None:
+        scoped = [
+            row for row in scoped
+            if row['weekday'] == day_filter or row['call_later_due']
+        ]
     total = len(scoped)
     start = (page - 1) * page_size
     page_rows = scoped[start:start + page_size]

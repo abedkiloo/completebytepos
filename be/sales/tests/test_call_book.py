@@ -176,6 +176,60 @@ class CallBookCorrectedTests(SuperAdminAPITestCase):
         self.assertEqual(again['previous_summary'], 'Wants No 10 zippers')
         self.assertEqual(nxt['summary']['not_called'], 1)
 
+    def test_a_recorded_call_leaves_the_paged_day_list(self):
+        shops = Customer.objects.bulk_create([
+            Customer(
+                name=f'Page Shop {index:02d}',
+                customer_code=f'CBP-{index:06d}',
+                phone=f'0738{index:06d}',
+                county=DEFAULT_COUNTY,
+                sub_county=DEFAULT_SUB_COUNTY,
+                ward=DEFAULT_WARD,
+                is_active=True,
+            )
+            for index in range(12)
+        ])
+        done = shops[0]
+        with patch('sales.call_book.nairobi_today', return_value=MONDAY):
+            marked = self.client.post(
+                f'/api/sales/call-book/{done.id}/mark/',
+                {'outcome': 'called', 'request_summary': 'Spoke'},
+                format='json',
+            )
+            self.assertEqual(marked.status_code, status.HTTP_200_OK)
+            self.assertNotIn(done.phone, marked.content.decode())
+            located = self.client.get(
+                '/api/sales/call-book/', {'scope': 'week', 'page_size': 50},
+            ).json()
+            day = next(
+                row['weekday'] for row in located['results'] if row['customer_id'] == done.id
+            )
+            first = self.client.get('/api/sales/call-book/', {
+                'scope': 'week',
+                'status': 'not_called',
+                'weekday': day,
+                'page': 1,
+                'page_size': 10,
+            })
+            second = self.client.get('/api/sales/call-book/', {
+                'scope': 'week',
+                'status': 'not_called',
+                'weekday': day,
+                'page': 2,
+                'page_size': 10,
+            })
+        self.assertEqual(first.status_code, status.HTTP_200_OK)
+        self.assertEqual(second.status_code, status.HTTP_200_OK)
+        page_one = first.json()
+        page_two = second.json()
+        shown = [row['customer_id'] for row in page_one['results'] + page_two['results']]
+        self.assertNotIn(done.id, shown)
+        self.assertNotIn(done.phone, first.content.decode())
+        self.assertEqual(len(page_one['results']), 10)
+        self.assertGreaterEqual(page_one['count'], 11)
+        self.assertEqual(page_one['page_size'], 10)
+        self.assertGreaterEqual(len(page_two['results']), 1)
+
     def test_unreachable_and_a_follow_up_count_without_echoing_the_number(self):
         shop = _customer('Silent Duka', '0718000019')
         with patch('sales.call_book.nairobi_today', return_value=MONDAY):
@@ -288,7 +342,7 @@ class CallBookModuleTests(SuperAdminAPITestCase):
         self.assertEqual(denied.status_code, status.HTTP_403_FORBIDDEN)
         self.assertNotIn('phone', denied.content.decode().lower())
         _enable_call_book(True)
-        opened = self.client.get('/api/sales/call-book/')
+        opened = self.client.get('/api/sales/call-book/', {'weekday': 0, 'page': 1, 'page_size': 10})
         self.assertEqual(opened.status_code, status.HTTP_200_OK)
         self.assertIn('not_called', opened.json()['summary'])
 
@@ -312,6 +366,23 @@ class CallBookSecurityTests(SalesAPITestCase):
         )
         self.assertEqual(mark.status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertNotIn('0718999888', mark.content.decode())
+
+    def test_a_bad_weekday_does_not_echo_the_phone(self):
+        shop = _customer('Hidden Day', '0718000777')
+        with patch('sales.call_book.nairobi_today', return_value=MONDAY):
+            marked = self.client.post(
+                f'/api/sales/call-book/{shop.id}/mark/',
+                {'outcome': 'called', 'request_summary': 'Spoke'},
+                format='json',
+            )
+            listed = self.client.get('/api/sales/call-book/', {
+                'status': 'not_called', 'weekday': 'nope', 'page_size': 10,
+            })
+        self.assertEqual(marked.status_code, status.HTTP_200_OK)
+        self.assertEqual(listed.status_code, status.HTTP_200_OK)
+        self.assertNotIn(shop.phone, marked.content.decode())
+        self.assertNotIn(shop.phone, listed.content.decode())
+        self.assertNotIn(shop.id, [row['customer_id'] for row in listed.json()['results']])
 
     def test_sales_can_mark_and_cannot_edit_the_plan(self):
         shop = _customer('Shared Shop', '0718000041')

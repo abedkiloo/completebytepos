@@ -4,6 +4,7 @@ import { customersAPI, fieldLoadsAPI, productsAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { displayStatus, loadBuckets, missingUnits, saleTotal, shortageUnits, statusLabel } from '../../utils/fieldLoad';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { PageHeader, PageShell } from '../page';
@@ -168,6 +169,10 @@ function StatusBadge({ status }) {
 /**
  * Issue a new load. Shop stock drops when the server accepts it.
  *
+ * Product search uses the same lookup as the till: name, SKU, or barcode,
+ * and the matches update as the text settles. The reference is assigned
+ * when the load is issued.
+ *
  * @param {Function} props.onCreated Receives the created load.
  */
 function IssueForm({ onCreated }) {
@@ -175,8 +180,12 @@ function IssueForm({ onCreated }) {
   const [agentId, setAgentId] = useState('');
   const [query, setQuery] = useState('');
   const [products, setProducts] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [picked, setPicked] = useState(null);
+  const [takeQty, setTakeQty] = useState('1');
   const [lines, setLines] = useState([]);
   const [saving, setSaving] = useState(false);
+  const debouncedQuery = useDebouncedValue(query, 280);
 
   useEffect(() => {
     fieldLoadsAPI.agents().then(({ data }) => {
@@ -185,16 +194,58 @@ function IssueForm({ onCreated }) {
     }).catch(() => setAgents([]));
   }, []);
 
+  useEffect(() => {
+    const term = debouncedQuery.trim();
+    if (!term) {
+      setProducts([]);
+      setSearching(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setSearching(true);
+    productsAPI.search(term, 20).then(({ data }) => {
+      if (cancelled) return;
+      const rows = Array.isArray(data) ? data : (data.results || []);
+      setProducts(rows.slice(0, 20));
+    }).catch(() => {
+      if (!cancelled) setProducts([]);
+    }).finally(() => {
+      if (!cancelled) setSearching(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedQuery]);
+
   /**
-   * Search products by the typed name, up to 8 matches.
+   * Put the selected product on the draft, or add to its quantity.
    *
-   * @returns {Promise<void>}
+   * Quantity is a whole number from 1 to the available stock, and at most
+   * 100000. A product already on the draft keeps one row.
+   *
+   * @returns {void}
    */
-  const search = async () => {
-    if (!query.trim()) return;
-    const { data } = await productsAPI.search(query.trim(), 8);
-    const rows = Array.isArray(data) ? data : (data.results || []);
-    setProducts(rows);
+  const addPicked = () => {
+    if (!picked) return;
+    const stock = Number(picked.stock_quantity);
+    const available = Number.isFinite(stock) && stock > 0 ? Math.min(stock, 100000) : 100000;
+    const asked = Math.min(available, Math.max(1, Math.floor(Number(takeQty) || 1)));
+    setLines((prev) => {
+      const existing = prev.find((line) => line.product_id === picked.id);
+      if (!existing) {
+        return [...prev, {
+          product_id: picked.id,
+          name: picked.name,
+          quantity: String(asked),
+          stock: available,
+        }];
+      }
+      const next = Math.min(available, (Number(existing.quantity) || 0) + asked);
+      return prev.map((line) => (
+        line.product_id === picked.id ? { ...line, quantity: String(next) } : line
+      ));
+    });
+    setTakeQty('1');
   };
 
   /**
@@ -211,6 +262,8 @@ function IssueForm({ onCreated }) {
       });
       toast.success('Load issued. Shop stock has been reduced.');
       setLines([]);
+      setPicked(null);
+      setQuery('');
       onCreated(data);
     } catch (error) {
       toast.error(error?.response?.data?.error || 'Could not issue this load.');
@@ -220,10 +273,18 @@ function IssueForm({ onCreated }) {
   };
 
   const totalQty = lines.reduce((sum, line) => sum + (Number(line.quantity) || 0), 0);
+  const pickedStock = Number(picked?.stock_quantity);
 
   return (
-    <section className="space-y-3 rounded-xl border border-border bg-card p-4">
-      <h2 className="text-base font-semibold">Create new field load</h2>
+    <section className="space-y-4 rounded-xl border border-border bg-card p-4">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-base font-semibold">Create new field load</h2>
+        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">Draft</span>
+      </div>
+      <div>
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">Load reference</p>
+        <p className="text-sm font-medium">Assigned when the load is issued</p>
+      </div>
       <label className="block text-sm">
         <span className="mb-1 block text-muted-foreground">Sales employee</span>
         <select
@@ -238,64 +299,125 @@ function IssueForm({ onCreated }) {
           ))}
         </select>
       </label>
-      <div className="flex gap-2">
-        <Input aria-label="Find product" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Product name" />
-        <Button type="button" variant="outline" onClick={search}>Find</Button>
-      </div>
-      <ul className="space-y-2">
-        {products.map((product) => (
-          <li key={product.id} className="rounded-md border border-border p-2 text-sm">
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-medium">{product.name}</span>
-              {Number(product.stock_quantity) > 0 && (
+      <label className="block text-sm">
+        <span className="mb-1 block text-muted-foreground">Load date</span>
+        <Input aria-label="Load date" value={formatDate(new Date())} readOnly />
+      </label>
+
+      <div className="space-y-3 border-t border-border pt-3">
+        <h3 className="text-sm font-semibold">Add products to load</h3>
+        <Input
+          aria-label="Find product"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Name, SKU, or barcode"
+        />
+        {searching && <p className="text-xs text-muted-foreground">Searching…</p>}
+        {!searching && debouncedQuery.trim() && products.length === 0 && (
+          <p className="text-xs text-muted-foreground">No matching product.</p>
+        )}
+        {products.length > 0 && (
+          <ul className="max-h-48 space-y-1 overflow-auto rounded-md border border-border p-1">
+            {products.map((product) => (
+              <li key={product.id}>
+                <button
+                  type="button"
+                  className={picked?.id === product.id
+                    ? 'w-full rounded-md bg-accent px-2 py-1.5 text-left text-sm'
+                    : 'w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent'}
+                  onClick={() => {
+                    setPicked(product);
+                    setTakeQty('1');
+                  }}
+                >
+                  <span className="block font-medium">{product.name}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {product.sku ? `SKU: ${product.sku} · ` : ''}Available: {product.stock_quantity ?? 0}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {picked && (
+          <div className="space-y-2 rounded-md border border-border p-3 text-sm">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="font-semibold">{picked.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {picked.sku ? `SKU: ${picked.sku} · ` : ''}Available: {picked.stock_quantity ?? 0} pieces
+                </p>
+              </div>
+              {pickedStock > 0 && (
                 <span className="rounded-full bg-success/15 px-2 py-0.5 text-xs text-success">In stock</span>
               )}
             </div>
-            <p className="text-muted-foreground">
-              {product.sku ? `${product.sku} · ` : ''}Available: {product.stock_quantity ?? 0}
-            </p>
-            <button
-              type="button"
-              className="text-primary"
-              onClick={() => setLines((prev) => (
-                prev.some((line) => line.product_id === product.id)
-                  ? prev
-                  : [...prev, { product_id: product.id, name: product.name, quantity: 1 }]
-              ))}
-            >
-              Add to load
-            </button>
-          </li>
-        ))}
-      </ul>
-      {lines.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-sm font-semibold">Current load items</h3>
-          {lines.map((line, index) => (
-            <label key={line.product_id} className="flex items-center gap-2 text-sm">
-              <span className="min-w-0 flex-1">{line.name}</span>
+            <label className="flex items-center justify-between gap-2">
+              <span>Quantity to take</span>
               <Input
                 type="number"
                 min={1}
-                aria-label={`Quantity of ${line.name}`}
-                value={line.quantity}
-                onChange={(event) => {
-                  const quantity = event.target.value;
-                  setLines((prev) => prev.map((row, rowIndex) => (
-                    rowIndex === index ? { ...row, quantity } : row
-                  )));
-                }}
+                max={pickedStock > 0 ? pickedStock : 100000}
+                className="h-9 w-24"
+                aria-label={`Quantity of ${picked.name}`}
+                value={takeQty}
+                onChange={(event) => setTakeQty(event.target.value)}
               />
             </label>
-          ))}
-          <p className="text-sm text-muted-foreground">Total product quantities {totalQty}</p>
-        </div>
-      )}
-      <div className="rounded-xl bg-success/10 p-3 text-sm">
-        <p className="font-medium text-success">Stock movement</p>
-        <p>When the load is issued, these quantities leave shop stock and sit on this agent&apos;s open load.</p>
+            <Button type="button" variant="outline" className="w-full" onClick={addPicked}>
+              + Add to load
+            </Button>
+          </div>
+        )}
       </div>
-      <Button type="button" variant="success" onClick={save} disabled={saving || !agentId || lines.length === 0}>
+
+      <div className="space-y-2 border-t border-border pt-3">
+        <h3 className="text-sm font-semibold">Current load items</h3>
+        {lines.length === 0 && (
+          <p className="text-sm text-muted-foreground">No products on this draft yet.</p>
+        )}
+        {lines.length > 0 && (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-muted-foreground">
+                <th className="py-1 font-medium">Product</th>
+                <th className="py-1 text-right font-medium">Quantity</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lines.map((line, index) => (
+                <tr key={line.product_id} className="border-t border-border">
+                  <td className="py-2">{line.name}</td>
+                  <td className="py-2 text-right">
+                    <Input
+                      type="number"
+                      min={1}
+                      className="ml-auto h-8 w-20"
+                      aria-label={`Quantity of ${line.name}`}
+                      value={line.quantity}
+                      onChange={(event) => {
+                        const quantity = event.target.value;
+                        setLines((prev) => prev.map((row, rowIndex) => (
+                          rowIndex === index ? { ...row, quantity } : row
+                        )));
+                      }}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <div>
+          <p className="text-sm font-semibold">Total product quantities</p>
+          <p className="text-lg font-semibold tabular-nums">{totalQty}</p>
+        </div>
+      </div>
+      <div className="rounded-xl bg-success/10 p-3 text-sm">
+        <p className="font-medium text-success">Stock movement confirmation</p>
+        <p>When the load is issued, the quantities above leave shop stock and sit on this agent&apos;s open load.</p>
+      </div>
+      <Button type="button" variant="success" className="w-full" onClick={save} disabled={saving || !agentId || lines.length === 0}>
         {saving ? 'Issuing…' : 'Confirm and issue load'}
       </Button>
     </section>

@@ -22,7 +22,11 @@ jest.mock('../../utils/toast', () => ({
   toast: { success: jest.fn(), error: jest.fn() },
 }));
 
-const { fieldLoadsAPI, customersAPI } = require('../../services/api');
+jest.mock('../../hooks/useDebouncedValue', () => ({
+  useDebouncedValue: (value) => value,
+}));
+
+const { fieldLoadsAPI, customersAPI, productsAPI } = require('../../services/api');
 
 const pending = {
   id: 7,
@@ -92,5 +96,26 @@ describe('FieldLoadsPage', () => {
       notes: '',
     }));
     expect(screen.queryByRole('button', { name: 'Approve reconciliation' })).not.toBeInTheDocument();
+  });
+
+  test('product search updates as the name is typed and the chosen quantity is added', async () => {
+    fieldLoadsAPI.list.mockResolvedValue({
+      data: { can_issue: true, can_approve: false, results: [] },
+    });
+    fieldLoadsAPI.agents.mockResolvedValue({ data: { results: [{ id: 2, name: 'Asha' }] } });
+    productsAPI.search.mockResolvedValue({
+      data: [{ id: 9, name: 'Sofa Cup', sku: 'CUP-GOLD-01', stock_quantity: 120 }],
+    });
+    render(<FieldLoadsPage />);
+    const box = await screen.findByLabelText('Find product');
+    await userEvent.type(box, 'cup');
+    await waitFor(() => expect(productsAPI.search).toHaveBeenCalledWith('cup', 20));
+    await userEvent.click(await screen.findByRole('button', { name: /Sofa Cup/ }));
+    expect(screen.getByText(/Available: 120 pieces/)).toBeInTheDocument();
+    await userEvent.clear(screen.getByLabelText('Quantity of Sofa Cup'));
+    await userEvent.type(screen.getByLabelText('Quantity of Sofa Cup'), '40');
+    await userEvent.click(screen.getByRole('button', { name: '+ Add to load' }));
+    expect(screen.getByText('Total product quantities')).toBeInTheDocument();
+    expect(screen.getByText('40')).toBeInTheDocument();
   });
 });

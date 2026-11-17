@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Clock, Copy, PhoneOff, X } from 'lucide-react';
 
 import { customersAPI } from '../../services/api';
+import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { toast } from '../../utils/toast';
 import { isManagerOrAdminFromStorage } from '../../utils/roleAccess';
 import {
@@ -39,6 +40,8 @@ export default function CallBookPage() {
   const [loading, setLoading] = useState(true);
   const [plan, setPlan] = useState(null);
   const [index, setIndex] = useState(0);
+  const [page, setPage] = useState(1);
+  const bootDay = useRef(true);
   const canEditPlan = isManagerOrAdminFromStorage();
 
   const load = useCallback(async () => {
@@ -46,17 +49,26 @@ export default function CallBookPage() {
     try {
       const { data } = await customersAPI.callBook({
         scope: 'week',
-        status: 'all',
-        page_size: 1000,
+        status: 'not_called',
+        page,
+        page_size: DEFAULT_PAGE_SIZE,
+        weekday: day,
       });
       setBook(data);
-      setDay(data?.summary?.is_call_day ? data.summary.weekday : 0);
+      if (bootDay.current) {
+        bootDay.current = false;
+        const nextDay = data?.summary?.is_call_day ? data.summary.weekday : 0;
+        if (nextDay !== day) setDay(nextDay);
+      }
+      if ((data?.results || []).length === 0 && page > 1) {
+        setPage((value) => Math.max(1, value - 1));
+      }
     } catch (error) {
       toast.error(error?.response?.data?.error || 'Could not open the call centre.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [day, page]);
 
   useEffect(() => {
     load();
@@ -78,14 +90,13 @@ export default function CallBookPage() {
   const summary = book?.summary;
   const markingOpen = Boolean(summary?.is_call_day);
   const results = book?.results || [];
-  const queue = useMemo(
-    () => results.filter((row) => row.call_later_due || (row.weekday === day && !row.called_this_week)),
-    [results, day],
+  const remaining = useMemo(
+    () => results.filter((row) => row.call_later_due || !row.called_this_week),
+    [results],
   );
-  const dayRows = useMemo(
-    () => results.filter((row) => row.weekday === day),
-    [results, day],
-  );
+  const queue = remaining;
+  const listed = Number.isFinite(Number(book?.count)) ? Number(book.count) : queue.length;
+  const pageCount = Math.max(1, Math.ceil(listed / DEFAULT_PAGE_SIZE));
   const current = queue[Math.min(index, Math.max(queue.length - 1, 0))] || null;
 
   return (
@@ -108,14 +119,15 @@ export default function CallBookPage() {
         <WeekPlan
           summary={summary}
           day={day}
-          rows={dayRows}
-          onDay={(next) => { setDay(next); setIndex(0); }}
-          onOpen={(weekday) => { setDay(weekday); setIndex(0); setView('queue'); }}
+          rows={queue}
+          page={page}
+          pageCount={pageCount}
+          total={listed}
+          onDay={(next) => { setDay(next); setPage(1); setIndex(0); }}
+          onPage={(next) => { setPage(next); setIndex(0); }}
+          onOpen={(weekday) => { setDay(weekday); setPage(1); setIndex(0); setView('queue'); }}
           onSelect={(customerId) => {
-            const next = results.filter((row) => (
-              row.call_later_due || (row.weekday === day && !row.called_this_week)
-            ));
-            const at = next.findIndex((row) => row.customer_id === customerId);
+            const at = queue.findIndex((row) => row.customer_id === customerId);
             setIndex(at >= 0 ? at : 0);
             setView('queue');
           }}
@@ -125,15 +137,12 @@ export default function CallBookPage() {
         <Workspace
           summary={summary}
           current={current}
-          position={queue.length ? Math.min(index, queue.length - 1) + 1 : 0}
-          total={queue.length}
+          position={queue.length ? (page - 1) * DEFAULT_PAGE_SIZE + Math.min(index, queue.length - 1) + 1 : 0}
+          total={listed}
           markingOpen={markingOpen}
           dayLabel={weekdayLabel(day)}
           onPrevious={() => setIndex((value) => Math.max(0, value - 1))}
-          onSaved={() => {
-            setIndex(0);
-            load();
-          }}
+          onSaved={() => load()}
         />
       )}
       {canEditPlan && plan && view === 'week' && (
@@ -220,12 +229,16 @@ function Stat({ label, value, hint, tone = 'text-foreground' }) {
  *
  * @param {object} props.summary Week summary.
  * @param {number} props.day Selected weekday, 0–4.
- * @param {Array} props.rows Customers on that day, at most 200.
- * @param {Function} props.onDay Selects a weekday.
+ * @param {Array} props.rows Customers still to call on this page, at most 10.
+ * @param {number} props.page Current page, 1 or more.
+ * @param {number} props.pageCount Pages for this day.
+ * @param {number} props.total Customers still to call on this day.
+ * @param {Function} props.onDay Selects a weekday and returns to page 1.
+ * @param {Function} props.onPage Selects a page, 1 through pageCount.
  * @param {Function} props.onOpen Opens that day's queue.
  * @param {Function} props.onSelect Opens the call form for one customer id.
  */
-function WeekPlan({ summary, day, rows, onDay, onOpen, onSelect }) {
+function WeekPlan({ summary, day, rows, page, pageCount, total, onDay, onPage, onOpen, onSelect }) {
   const days = summary.days || WEEKDAY_LABELS.map((label, weekday) => ({
     weekday,
     callable: 0,
@@ -279,6 +292,19 @@ function WeekPlan({ summary, day, rows, onDay, onOpen, onSelect }) {
           </li>
         ))}
       </ul>
+      {total > 0 && (
+        <div className="flex items-center justify-between gap-2">
+          <Button type="button" variant="outline" disabled={page <= 1} onClick={() => onPage(page - 1)}>
+            Previous page
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            Page {page} of {pageCount} · {total} still to call
+          </span>
+          <Button type="button" variant="outline" disabled={page >= pageCount} onClick={() => onPage(page + 1)}>
+            Next page
+          </Button>
+        </div>
+      )}
       <Button type="button" className="w-full" variant="outline" onClick={() => onOpen(day)}>
         Open this day's queue
       </Button>

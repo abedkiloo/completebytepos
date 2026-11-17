@@ -191,4 +191,42 @@ describe('CallBookPage', () => {
     expect(screen.getByTestId('call-book-counts')).toHaveTextContent('Scheduled this week');
     expect(screen.getByTestId('call-book-counts')).toHaveTextContent('2');
   });
+
+  test('drops a customer from the list after the call is recorded', async () => {
+    let loads = 0;
+    customersAPI.callBook.mockImplementation(() => {
+      loads += 1;
+      if (loads === 1) return Promise.resolve({ data: book });
+      return Promise.resolve({ data: { ...book, count: 0, results: [] } });
+    });
+    render(<CallBookPage />);
+    await screen.findByText('Not Called Shop');
+    await userEvent.click(screen.getByRole('button', { name: 'Save record' }));
+    expect(await screen.findByText(/already has a result/)).toBeInTheDocument();
+    expect(screen.queryByText('Not Called Shop')).not.toBeInTheDocument();
+  });
+
+  test('pages the day list ten at a time', async () => {
+    customersAPI.callBook.mockImplementation((params) => Promise.resolve({
+      data: {
+        ...book,
+        count: 25,
+        results: params.page === 2
+          ? [{ ...book.results[0], customer_id: 50, name: 'Page Two Shop', called_this_week: false }]
+          : [book.results[0]],
+      },
+    }));
+    render(<CallBookPage />);
+    await screen.findByText('Not Called Shop');
+    await userEvent.click(screen.getByRole('tab', { name: 'Weekly schedule' }));
+    expect(screen.getByText(/25 still to call/)).toBeInTheDocument();
+    expect(screen.queryByText('Called Shop')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Next page' }));
+    expect(await screen.findByText('Page Two Shop')).toBeInTheDocument();
+    expect(customersAPI.callBook).toHaveBeenLastCalledWith(expect.objectContaining({
+      status: 'not_called',
+      page: 2,
+      page_size: 10,
+    }));
+  });
 });

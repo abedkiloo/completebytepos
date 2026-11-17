@@ -38,6 +38,29 @@ class _CallBookFeature(RequireModuleFeature):
 
 _PERM = RequirePerm('customers', 'call_book')
 
+
+def _query_weekday(raw):
+    """
+    Read the optional weekday query.
+
+    Args:
+        raw: Query value. Blank means every day. A number is passed through
+            and clamped by the book builder to 0–4.
+
+    Returns:
+        int | None: Parsed day, or None when the query is blank or not a number.
+
+    Raises:
+        None.
+    """
+    if raw is None or str(raw).strip() == '':
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
 _STATUS = {
     'ok': status.HTTP_200_OK,
     'weekend': status.HTTP_400_BAD_REQUEST,
@@ -63,7 +86,8 @@ class CallBookView(APIView):
 
         Args:
             request: Query ``scope`` (today|week), ``status``
-            (not_called|called|all), ``page`` (1+), ``page_size`` (1–1000).
+              (not_called|called|all), ``page`` (1+), ``page_size`` (1–1000),
+            and optional ``weekday`` (0–4).
 
         Returns:
             Response: Summary counts and one page of rows. Weekend requests
@@ -88,6 +112,7 @@ class CallBookView(APIView):
             page=page,
             page_size=page_size,
             viewer_id=request.user.id,
+            weekday=_query_weekday(request.query_params.get('weekday')),
         )
         return Response(payload)
 

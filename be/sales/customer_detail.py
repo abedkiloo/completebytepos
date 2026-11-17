@@ -1,4 +1,4 @@
-"""Lifetime customer profile: standing, orders, and debt/payment trail."""
+"""Lifetime customer profile: standing, orders, debt trail, and call history."""
 
 from __future__ import annotations
 
@@ -14,7 +14,9 @@ from sales.daily_sales import (
     serialize_daily_order,
 )
 from sales.debt_management import debt_amount_from_balance
-from sales.models import Customer, CustomerWalletTransaction, Sale
+from django.utils import timezone
+
+from sales.models import Customer, CustomerCall, CustomerWalletTransaction, Sale
 from utils.list_ordering import mapped_ordering
 
 
@@ -249,6 +251,80 @@ def _paginate(queryset, page: int, page_size: int) -> Tuple[List[Any], Dict[str,
     }
 
 
+CALL_HISTORY_LIMIT = 50
+
+_OUTCOME_LABELS = {
+    CustomerCall.OUTCOME_CALLED: 'Called',
+    CustomerCall.OUTCOME_ASK_LATER: 'Call later',
+    CustomerCall.OUTCOME_NO_ANSWER: 'No answer',
+    CustomerCall.OUTCOME_UNREACHABLE: 'Unreachable',
+}
+
+
+def _caller_name(user) -> str:
+    """
+    Staff name shown on a call history row.
+
+    Args:
+        user: The user who recorded the call, or None.
+
+    Returns:
+        str: Full name, else username, else "Staff". Length 1–150.
+        No phone number.
+
+    Raises:
+        None.
+    """
+    if user is None:
+        return 'Staff'
+    full = (user.get_full_name() or '').strip()
+    if full:
+        return full[:150]
+    return (getattr(user, 'username', '') or 'Staff')[:150]
+
+
+def _call_history(customer_id: int) -> tuple[list, int, bool]:
+    """
+    Latest phone attempts for one customer.
+
+    Args:
+        customer_id: Customer primary key, a positive integer.
+
+    Returns:
+        tuple: Rows (0–50, newest first), the total count (0–100000), and
+        whether the call book feature is on. Each row has the date, outcome,
+        note, and staff name. It does not include a phone number. One query
+        for the rows and one for the count. No writes. When the feature is
+        off, the rows and count are empty.
+
+    Raises:
+        None.
+    """
+    from settings.module_features import is_module_feature_enabled
+
+    if not is_module_feature_enabled('customers', 'call_book'):
+        return [], 0, False
+    queryset = (
+        CustomerCall.objects.filter(customer_id=customer_id)
+        .select_related('called_by')
+        .order_by('-called_at', '-id')
+    )
+    total = queryset.count()
+    rows = []
+    for call in queryset[:CALL_HISTORY_LIMIT]:
+        when = timezone.localtime(call.called_at) if call.called_at else None
+        rows.append({
+            'id': call.id,
+            'called_at': call.called_at.isoformat() if call.called_at else '',
+            'called_on': f'{when.day} {when.strftime("%B")}' if when else '',
+            'outcome': call.outcome,
+            'outcome_label': _OUTCOME_LABELS.get(call.outcome, 'Called'),
+            'request_summary': call.request_summary or '',
+            'called_by': _caller_name(call.called_by),
+        })
+    return rows, total, True
+
+
 def get_customer_detail(
     *,
     customer_id: int,
@@ -260,7 +336,29 @@ def get_customer_detail(
     ledger_ordering: str | None = None,
     base_sales_queryset=None,
 ) -> Dict[str, Any]:
-    """Compose lifetime customer profile for the detail screen."""
+    """
+    Compose the customer profile for the detail screen.
+
+    Args:
+        customer_id: Customer primary key. Unknown ids raise LookupError.
+        orders_page: Orders page, 1 or more. Below 1 becomes 1.
+        orders_page_size: 1–100 orders. Out of range is clamped.
+        ledger_page: Ledger page, 1 or more.
+        ledger_page_size: 1–100 ledger rows.
+        orders_ordering: Optional sort key. Unknown keys use the default.
+        ledger_ordering: Optional sort key. Unknown keys use the default.
+        base_sales_queryset: Optional sale scope. None uses every completed
+            sale for this customer.
+
+    Returns:
+        dict: Profile, standing, one page of orders, one page of the ledger,
+        and up to 50 call-history rows. ``calls_count`` is the full number
+        of recorded calls. ``calls_enabled`` is false when the call book
+        feature is off, and then ``calls`` is empty.
+
+    Raises:
+        LookupError: The customer does not exist.
+    """
     try:
         customer = Customer.objects.get(pk=customer_id)
     except Customer.DoesNotExist as exc:
@@ -306,6 +404,7 @@ def get_customer_detail(
     )
     ledger_rows, ledger_pagination = _paginate(ledger_qs, ledger_page, ledger_page_size)
     ledger = [serialize_ledger_entry(txn) for txn in ledger_rows]
+    calls, calls_count, calls_enabled = _call_history(customer.id)
 
     return {
         'customer': _serialize_customer_profile(customer),
@@ -314,4 +413,7 @@ def get_customer_detail(
         'orders_pagination': orders_pagination,
         'ledger': ledger,
         'ledger_pagination': ledger_pagination,
+        'calls': calls,
+        'calls_count': calls_count,
+        'calls_enabled': calls_enabled,
     }
