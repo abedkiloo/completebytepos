@@ -1,9 +1,10 @@
 """
 Field loads: stock an agent carries, sells from that load, and returns.
 
-Issuing a line removes that quantity from shop stock. The person the load
-is written for is an active sales employee from the staff roster. A
-field-load sale does not remove stock again, and it is not a field order.
+A sales person writes the quantities. Shop stock leaves only when a
+different manager approves that load. The person the load is written for
+is an active sales employee from the staff roster. A field-load sale does
+not remove stock again, and it is not a field order.
 Accepting the return puts ``quantity_returned`` back on the shelf.
 Missing units stay out: ``taken - sold - returned``.
 
@@ -531,29 +532,80 @@ def list_field_agents():
     return result
 
 
+def carrier_choices(user) -> dict:
+    """
+    Who a load can be written for.
+
+    A sales person writes only for themselves. A manager chooses any active
+    sales employee.
+
+    Args:
+        user: Authenticated user who may issue loads.
+
+    Returns:
+        dict: ``choose_employee`` and ``results``. Results hold at most 200
+        rows of ``id`` and ``name`` (1–150 characters). No phone numbers.
+        No writes.
+
+    Raises:
+        None.
+    """
+    if user_may_approve(user):
+        return {'choose_employee': True, 'results': list_field_agents()}
+    return {'choose_employee': False, 'results': [_self_carrier(user)]}
+
+
+def _self_carrier(user) -> dict:
+    """
+    The signed-in person as the only carrier of their own load.
+
+    Args:
+        user: The sales person writing the load.
+
+    Returns:
+        dict: ``id`` is their login id. ``name`` is the employee name, else
+        the account name, else the username. Length 1–150. No phone number.
+    """
+    from employees.models import Employee
+
+    employee = Employee.objects.filter(user=user, status='active').first()
+    if employee is not None:
+        name = f'{employee.first_name} {employee.last_name}'.strip()[:150]
+    else:
+        name = _display_name(user)
+    if not name:
+        name = (getattr(user, 'username', '') or 'Sales employee')[:150]
+    return {'id': user.id, 'name': name}
+
+
 def issue_load(*, agent_id: int, lines: list, user) -> FieldLoad:
     """
-    Open a load and remove the issued quantities from the shop.
+    Write a load for a manager to approve. Shop stock does not move yet.
 
     Args:
         agent_id: Active user who will carry the stock.
         lines: 1–40 dicts with ``product_id``, optional ``variant_id``, and
             ``quantity`` 1–100000. The same product cannot appear twice.
-        user: Staff member with issue rights.
+        user: Staff member with issue rights. A sales person can write the
+            load only for themselves. A manager may choose the carrier.
+            The writer cannot approve the load.
 
     Returns:
-        FieldLoad: The new open load.
+        FieldLoad: The new load in ``awaiting_issue``.
 
     Raises:
         FieldLoadError: ``forbidden``, ``bad_agent``, ``open_load``,
         ``bad_lines``, ``bad_qty``, ``bad_product``, or ``no_stock``.
 
     Side effects:
-        Inserts the load and lines. Creates one negative stock movement
-        per line. Rolls back if any line fails.
+        Inserts the load and lines. Does not change shop stock.
     """
     if not user_may_issue(user):
         raise FieldLoadError('forbidden', 'You cannot issue a field load.')
+    if not user_may_approve(user):
+        if agent_id not in (None, '', user.pk) and str(agent_id) != str(user.pk):
+            raise FieldLoadError('bad_agent', 'A sales person writes a load only for themselves.')
+        agent_id = user.pk
     agent = User.objects.filter(pk=agent_id, is_active=True).first()
     if agent is None:
         raise FieldLoadError('bad_agent', 'Choose an active staff member.')
@@ -572,9 +624,16 @@ def issue_load(*, agent_id: int, lines: list, user) -> FieldLoad:
         if key in seen:
             raise FieldLoadError('bad_lines', f'{product.name} is already on this load.')
         seen.add(key)
+        on_hand = int(product.stock_quantity or 0)
+        if on_hand < qty:
+            raise FieldLoadError('no_stock', f'{product.name} does not have enough stock in the shop.')
         parsed.append((product, variant, qty))
     with transaction.atomic():
-        load = FieldLoad.objects.create(agent=agent, issued_by=user, status=FieldLoad.STATUS_OPEN)
+        load = FieldLoad.objects.create(
+            agent=agent,
+            issued_by=user,
+            status=FieldLoad.STATUS_AWAITING,
+        )
         for product, variant, qty in parsed:
             FieldLoadLine.objects.create(
                 load=load,
@@ -582,13 +641,89 @@ def issue_load(*, agent_id: int, lines: list, user) -> FieldLoad:
                 variant=variant,
                 quantity_taken=qty,
             )
+    return load
+
+
+def confirm_issue(*, load_id: int, user) -> FieldLoad:
+    """
+    A manager approves the written quantities and the stock leaves the shop.
+
+    Args:
+        load_id: Load in ``awaiting_issue``.
+        user: User with approve rights. Must not be the person who wrote it.
+
+    Returns:
+        FieldLoad: Status ``open``.
+
+    Raises:
+        FieldLoadError: ``forbidden`` when the user cannot approve or wrote
+        the load, ``not_found``, ``not_pending``, ``no_stock``, or ``bad_product``.
+
+    Side effects:
+        One negative stock movement per line. Sets ``issue_approved_by``
+        and ``issue_approved_at``. Rolls back if any line cannot leave.
+    """
+    if not user_may_approve(user):
+        raise FieldLoadError('forbidden', 'Only a manager can approve a load.')
+    with transaction.atomic():
+        load = FieldLoad.objects.select_for_update().filter(pk=load_id).first()
+        if load is None:
+            raise FieldLoadError('not_found', 'Load not found.')
+        if load.status != FieldLoad.STATUS_AWAITING:
+            raise FieldLoadError('not_pending', 'This load is not waiting for a manager.')
+        if load.issued_by_id == getattr(user, 'id', None):
+            raise FieldLoadError('forbidden', 'The person who wrote the load cannot approve it.')
+        for line in load.lines.select_related('product', 'variant'):
             _stock_move(
-                product=product,
-                variant=variant,
-                quantity=-qty,
+                product=line.product,
+                variant=line.variant,
+                quantity=-line.quantity_taken,
                 user=user,
                 note=f'Field load {load.pk} issued',
             )
+        load.status = FieldLoad.STATUS_OPEN
+        load.issue_approved_by = user
+        load.issue_approved_at = timezone.now()
+        load.save(update_fields=['status', 'issue_approved_by', 'issue_approved_at'])
+    return load
+
+
+def decline_issue(*, load_id: int, user, note: str = '') -> FieldLoad:
+    """
+    Send a written load back to the sales person. Shop stock does not move.
+
+    Args:
+        load_id: Load in ``awaiting_issue``.
+        user: User with approve rights, and not the person who wrote it.
+        note: Optional note, 0–500 characters.
+
+    Returns:
+        FieldLoad: Status ``issue_rejected``. The agent can be given another load.
+
+    Raises:
+        FieldLoadError: ``forbidden``, ``not_found``, ``not_pending``, ``bad_note``.
+
+    Side effects:
+        Stores the note and reviewer. No stock movement.
+    """
+    if not user_may_approve(user):
+        raise FieldLoadError('forbidden', 'Only a manager can send a load back.')
+    text = (note or '').strip()
+    if len(text) > NOTE_MAX:
+        raise FieldLoadError('bad_note', 'The note must be 500 characters or fewer.')
+    with transaction.atomic():
+        load = FieldLoad.objects.select_for_update().filter(pk=load_id).first()
+        if load is None:
+            raise FieldLoadError('not_found', 'Load not found.')
+        if load.status != FieldLoad.STATUS_AWAITING:
+            raise FieldLoadError('not_pending', 'This load is not waiting for a manager.')
+        if load.issued_by_id == getattr(user, 'id', None):
+            raise FieldLoadError('forbidden', 'The person who wrote the load cannot send it back.')
+        load.status = FieldLoad.STATUS_ISSUE_REJECTED
+        load.review_note = text
+        load.reviewed_by = user
+        load.reviewed_at = timezone.now()
+        load.save(update_fields=['status', 'review_note', 'reviewed_by', 'reviewed_at'])
     return load
 
 

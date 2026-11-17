@@ -11,6 +11,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from accounts.models import Role, UserProfile
 from accounts.role_definitions import (
     ROLE_FIELD_AGENT,
+    ROLE_MANAGER,
     ROLE_SALES,
     ensure_permissions,
     sync_default_roles,
@@ -70,6 +71,49 @@ def _product(name, sku, stock):
     )
 
 
+def _approve_creates(test):
+    """
+    Open loads that this test's admin writes, using a different manager.
+
+    Existing flow tests sell from an open load. Writing a load no longer
+    moves stock, so this wrapper approves each successful create.
+
+    Args:
+        test: A ``SuperAdminAPITestCase`` whose ``client.post`` writes loads.
+
+    Returns:
+        None. Replaces ``test.client.post``.
+    """
+    approver = User.objects.create_user(
+        username=f'load_mgr_{User.objects.count()}',
+        password='x',
+    )
+    UserProfile.objects.create(
+        user=approver,
+        role='manager',
+        custom_role=Role.objects.get(name=ROLE_MANAGER),
+        is_active=True,
+    )
+    approver_client = APIClient()
+    approver_client.force_authenticate(user=approver)
+    original = test.client.post
+
+    def post(path, data=None, **kwargs):
+        response = original(path, data, **kwargs)
+        normalized = str(path).split('?')[0].rstrip('/')
+        if response.status_code == 201 and normalized.endswith('/field-loads'):
+            confirmed = approver_client.post(
+                f"/api/agents/field-loads/{response.data['id']}/approve-issue/",
+                {},
+                format='json',
+            )
+            if confirmed.status_code == 200:
+                response.data = confirmed.data
+        return response
+
+    test.client.post = post
+
+
 class FieldLoadUnitTests(SimpleTestCase):
     """Quantity bounds reject fractions and huge numbers."""
 
@@ -115,6 +159,7 @@ class FieldLoadFlowTests(SuperAdminAPITestCase):
             is_active=True,
         )
         self.customer = Customer.objects.create(name='Field Duka', phone='0718111222')
+        _approve_creates(self)
 
     def _issue(self, qty=40):
         return self.client.post(
@@ -303,6 +348,7 @@ class FieldLoadSecurityTests(SuperAdminAPITestCase):
             custom_role=Role.objects.get(name=ROLE_SALES),
             is_active=True,
         )
+        _approve_creates(self)
 
     def _client(self, user):
         client = APIClient()
@@ -343,12 +389,15 @@ class FieldLoadSecurityTests(SuperAdminAPITestCase):
         issued = sales.post(
             '/api/agents/field-loads/',
             {
-                'agent_id': self.agent.id,
+                'agent_id': self.sales.id,
                 'lines': [{'product_id': self.cups.id, 'quantity': 2}],
             },
             format='json',
         )
         self.assertEqual(issued.status_code, status.HTTP_201_CREATED, issued.content)
+        self.assertEqual(issued.data['status'], 'awaiting_issue')
+        self.cups.refresh_from_db()
+        self.assertEqual(self.cups.stock_quantity, 30)
         line_id = issued.data['lines'][0]['id']
         sales.post(
             f"/api/agents/field-loads/{issued.data['id']}/return/",
@@ -358,7 +407,8 @@ class FieldLoadSecurityTests(SuperAdminAPITestCase):
         accepted = sales.post(f"/api/agents/field-loads/{issued.data['id']}/accept/", {}, format='json')
         self.assertEqual(accepted.status_code, status.HTTP_403_FORBIDDEN)
         self.cups.refresh_from_db()
-        self.assertEqual(self.cups.stock_quantity, 28)
+        self.assertEqual(self.cups.stock_quantity, 30)
+        self.assertNotIn(self.cups.sku, accepted.content.decode())
 
     def test_another_agent_cannot_sell_this_load(self):
         issued = self.client.post(
@@ -448,6 +498,7 @@ class FieldLoadCorrectedTests(SuperAdminAPITestCase):
             is_active=True,
         )
         self.customer = Customer.objects.create(name='Origin Duka', phone='0718000111')
+        _approve_creates(self)
 
     def test_load_sale_is_not_a_field_order_and_missing_uses_the_formula(self):
         from sales.models import Sale
@@ -571,6 +622,7 @@ class FieldLoadCoverageTests(SuperAdminAPITestCase):
             is_active=True,
         )
         self.customer = Customer.objects.create(name='Cover Duka', phone='0718999000')
+        _approve_creates(self)
 
     def _issue(self, qty=10, agent=None, lines=None):
         return self.client.post(
@@ -690,8 +742,11 @@ class FieldLoadCoverageTests(SuperAdminAPITestCase):
                 {'agent_id': self.agent.id, 'lines': [{'product_id': self.cups.id, 'quantity': 1}]},
                 format='json',
             )
-        self.assertEqual(blocked_stock.status_code, 400)
+        self.assertEqual(blocked_stock.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(blocked_stock.data['status'], 'awaiting_issue')
         self.assertNotIn(self.customer.phone, blocked_stock.content.decode())
+        from agents.models import FieldLoad
+        FieldLoad.objects.filter(pk=blocked_stock.data['id']).update(status='issue_rejected')
 
         short = _product('Short', 'FL-SHORT', 1)
         self.assertEqual(
@@ -963,3 +1018,148 @@ class FieldLoadCoverageTests(SuperAdminAPITestCase):
         self.assertGreaterEqual(book.data['summary']['accepted'], 1)
         self.assertGreaterEqual(book.data['summary']['shortage'], 1)
         self.assertIn(open_load.data['id'], [row['id'] for row in book.data['results']])
+
+
+class FieldLoadMakerCheckerTests(SuperAdminAPITestCase):
+    """A sales person writes the quantities. A different manager approves them."""
+
+    def setUp(self):
+        super().setUp()
+        _enable(True)
+        ensure_permissions()
+        sync_default_roles()
+        self.cups = _product('Check Cups', 'FL-CHECK', 50)
+        self.agent = User.objects.create_user(username='load_check_agent', password='x')
+        UserProfile.objects.create(
+            user=self.agent,
+            role='field_agent',
+            custom_role=Role.objects.get(name=ROLE_FIELD_AGENT),
+            is_active=True,
+        )
+        self.sales = User.objects.create_user(username='load_check_sales', password='x')
+        UserProfile.objects.create(
+            user=self.sales,
+            role='cashier',
+            custom_role=Role.objects.get(name=ROLE_SALES),
+            is_active=True,
+        )
+
+    def _write(self, client, qty=10, agent_id=None):
+        """
+        Write a load as ``client``.
+
+        A sales client writes for themselves. The admin client writes for
+        the field agent unless ``agent_id`` is set.
+
+        Args:
+            client: DRF client.
+            qty: Units, 1–100000.
+            agent_id: Carrier login id, or None for the default above.
+
+        Returns:
+            Response.
+        """
+        if agent_id is None:
+            agent_id = self.agent.id if client is self.client else self.sales.id
+        return client.post(
+            '/api/agents/field-loads/',
+            {
+                'agent_id': agent_id,
+                'lines': [{'product_id': self.cups.id, 'quantity': qty}],
+            },
+            format='json',
+        )
+
+    def test_stock_stays_until_a_different_manager_approves(self):
+        sales = APIClient()
+        sales.force_authenticate(user=self.sales)
+        written = self._write(sales)
+        self.assertEqual(written.status_code, status.HTTP_201_CREATED, written.content)
+        self.assertEqual(written.data['status'], 'awaiting_issue')
+        self.assertFalse(written.data['can_confirm_issue'])
+        self.cups.refresh_from_db()
+        self.assertEqual(self.cups.stock_quantity, 50)
+        own = sales.post(
+            f"/api/agents/field-loads/{written.data['id']}/approve-issue/",
+            {},
+            format='json',
+        )
+        self.assertEqual(own.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertNotIn('0718123456', own.content.decode())
+        self.cups.refresh_from_db()
+        self.assertEqual(self.cups.stock_quantity, 50)
+        approved = self.client.post(
+            f"/api/agents/field-loads/{written.data['id']}/approve-issue/",
+            {},
+            format='json',
+        )
+        self.assertEqual(approved.status_code, status.HTTP_200_OK, approved.content)
+        self.assertEqual(approved.data['status'], 'open')
+        self.cups.refresh_from_db()
+        self.assertEqual(self.cups.stock_quantity, 40)
+
+    def test_the_writer_cannot_approve_their_own_load(self):
+        written = self._write(self.client, qty=4)
+        denied = self.client.post(
+            f"/api/agents/field-loads/{written.data['id']}/approve-issue/",
+            {},
+            format='json',
+        )
+        self.assertEqual(denied.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn('cannot approve', denied.data['error'])
+        self.cups.refresh_from_db()
+        self.assertEqual(self.cups.stock_quantity, 50)
+
+    def test_sending_the_quantities_back_does_not_move_stock(self):
+        sales = APIClient()
+        sales.force_authenticate(user=self.sales)
+        written = self._write(sales, qty=6)
+        declined = self.client.post(
+            f"/api/agents/field-loads/{written.data['id']}/decline-issue/",
+            {'note': 'Check the quantities'},
+            format='json',
+        )
+        self.assertEqual(declined.status_code, status.HTTP_200_OK, declined.content)
+        self.assertEqual(declined.data['status'], 'issue_rejected')
+        self.cups.refresh_from_db()
+        self.assertEqual(self.cups.stock_quantity, 50)
+        again = self._write(sales, qty=3)
+        self.assertEqual(again.status_code, status.HTTP_201_CREATED, again.content)
+
+    def test_a_blocked_approval_does_not_move_stock_or_echo_a_phone(self):
+        from unittest.mock import patch
+
+        from django.core.exceptions import ValidationError
+        from inventory.services import StockMovementService
+
+        sales = APIClient()
+        sales.force_authenticate(user=self.sales)
+        written = self._write(sales, qty=2)
+        with patch.object(StockMovementService, 'adjust_stock', side_effect=ValidationError('closed for count')):
+            blocked = self.client.post(
+                f"/api/agents/field-loads/{written.data['id']}/approve-issue/",
+                {},
+                format='json',
+            )
+        self.assertEqual(blocked.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertNotIn('0718123456', blocked.content.decode())
+        self.cups.refresh_from_db()
+        self.assertEqual(self.cups.stock_quantity, 50)
+
+    def test_a_sales_person_cannot_write_a_load_for_someone_else(self):
+        from agents.models import FieldLoad
+
+        sales = APIClient()
+        sales.force_authenticate(user=self.sales)
+        roster = sales.get('/api/agents/field-loads/agents/')
+        self.assertEqual(roster.status_code, status.HTTP_200_OK)
+        self.assertFalse(roster.data['choose_employee'])
+        self.assertEqual(
+            roster.data['results'],
+            [{'id': self.sales.id, 'name': 'load_check_sales'}],
+        )
+        denied = self._write(sales, agent_id=self.agent.id)
+        self.assertEqual(denied.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('themselves', denied.data['error'])
+        self.assertNotIn('0718123456', denied.content.decode())
+        self.assertFalse(FieldLoad.objects.filter(agent=self.agent).exists())

@@ -71,7 +71,9 @@ export function loadBuckets(loads) {
     const status = displayStatus(load);
     if (status === 'open') buckets.active += 1;
     else if (status === 'shortage') buckets.shortage += 1;
-    else if (status === 'pending_review') buckets.awaitingApproval += 1;
+    else if (status === 'pending_review' || status === 'awaiting_issue' || status === 'issue_rejected') {
+      buckets.awaitingApproval += 1;
+    }
     else if (status === 'accepted') buckets.accepted += 1;
   });
   return buckets;
@@ -87,6 +89,8 @@ export function statusLabel(status) {
   if (status === 'open') return 'Selling in field';
   if (status === 'shortage') return 'Shortage';
   if (status === 'accepted') return 'Accepted';
-  if (status === 'pending_review') return 'Awaiting approval';
+  if (status === 'pending_review') return 'Return to check';
+  if (status === 'awaiting_issue') return 'Waiting for manager';
+  if (status === 'issue_rejected') return 'Sent back';
   return 'Open';
 }

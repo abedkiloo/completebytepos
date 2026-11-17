@@ -1,10 +1,10 @@
 # Field loads
 
-Feature: **sales → field_load** (`Field loads`).
+Feature: **sales → field_load** (`Field loads`). It is on by default. Turn it off under Module settings → Sales → Field loads to hide the screen on the web and the phone and to reject the API.
 
 A field load is the stock a field agent carries out of the shop. It is separate from a field order, which is a customer order packed for delivery.
 
-Issuing the load removes those units from shop stock. A sale recorded on the load does not remove them again. When the agent returns, each product must balance: taken = sold + returned + missing. A manager accepts the count, and only then do the returned units go back on the shelf. Sending the count back does not move stock, and the agent cannot be issued a second load while the first is still open or waiting.
+A sales person writes the load for themselves. A manager chooses which sales employee carries it. Shop stock leaves only when a different manager approves those quantities. Sending the written load back does not move stock. A sale recorded on an approved load does not remove shop stock again. When the agent returns, each product must balance: taken = sold + returned + missing. A manager accepts the count, and only then do the returned units go back on the shelf. Sending the count back does not move stock, and the agent cannot be issued a second load while the first is still open or waiting.
 
 The load shows the money those sales should have brought in, as cash, M-Pesa, or customer credit. A field-load sale is paid in full by cash or M-Pesa, or it is put on the customer's credit. There is no split payment. The manager’s OK is about the goods. Unpaid amounts stay on the customer.
 

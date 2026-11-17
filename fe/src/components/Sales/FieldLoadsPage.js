@@ -8,6 +8,7 @@ import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { PageHeader, PageShell } from '../page';
+import { isFeatureEnabled } from '../../utils/moduleSettings';
 
 const FILTERS = [
   { id: 'all', label: 'All' },
@@ -25,6 +26,7 @@ const FILTERS = [
  * load and does not create a field order.
  */
 export default function FieldLoadsPage() {
+  const loadsOn = isFeatureEnabled('sales', 'field_load');
   const [book, setBook] = useState({ can_issue: false, can_approve: false, results: [] });
   const [selectedId, setSelectedId] = useState(null);
   const [filter, setFilter] = useState('all');
@@ -49,8 +51,8 @@ export default function FieldLoadsPage() {
   }, []);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (loadsOn) load();
+  }, [load, loadsOn]);
 
   const results = book.results || [];
   const buckets = useMemo(() => loadBuckets(results), [results]);
@@ -70,6 +72,18 @@ export default function FieldLoadsPage() {
     }));
     setSelectedId(next.id);
   };
+
+  if (!loadsOn) {
+    return (
+      <PageShell>
+        <PageHeader
+          eyebrow="Sales"
+          title="Field operations"
+          description="Field loads are turned off. Turn them on under Module settings, Sales, Field loads."
+        />
+      </PageShell>
+    );
+  }
 
   return (
     <PageShell>
@@ -167,7 +181,7 @@ function StatusBadge({ status }) {
 }
 
 /**
- * Issue a new load. Shop stock drops when the server accepts it.
+ * A sales person writes a new load. Shop stock leaves when a manager approves it.
  *
  * Product search uses the same lookup as the till: name, SKU, or barcode,
  * and the matches update as the text settles. Choosing a product closes
@@ -179,6 +193,9 @@ function StatusBadge({ status }) {
 function IssueForm({ onCreated }) {
   const [agents, setAgents] = useState([]);
   const [agentId, setAgentId] = useState('');
+  const [chooseEmployee, setChooseEmployee] = useState(false);
+  const [carrierReady, setCarrierReady] = useState(false);
+  const [lockedName, setLockedName] = useState('');
   const [query, setQuery] = useState('');
   const [products, setProducts] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -190,9 +207,19 @@ function IssueForm({ onCreated }) {
 
   useEffect(() => {
     fieldLoadsAPI.agents().then(({ data }) => {
-      const rows = data.results || [];
-      setAgents(Array.isArray(rows) ? rows : []);
-    }).catch(() => setAgents([]));
+      const rows = Array.isArray(data.results) ? data.results : [];
+      setAgents(rows);
+      const choose = data.choose_employee !== false;
+      setChooseEmployee(choose);
+      if (!choose && rows[0]) {
+        setAgentId(String(rows[0].id));
+        setLockedName(rows[0].name || '');
+      }
+      setCarrierReady(true);
+    }).catch(() => {
+      setAgents([]);
+      setCarrierReady(true);
+    });
   }, []);
 
   useEffect(() => {
@@ -274,7 +301,7 @@ function IssueForm({ onCreated }) {
         agent_id: Number(agentId),
         lines: lines.map((line) => ({ product_id: line.product_id, quantity: Number(line.quantity) })),
       });
-      toast.success('Load issued. Shop stock has been reduced.');
+      toast.success('Load sent to the manager. Shop stock has not moved yet.');
       setLines([]);
       setPicked(null);
       setQuery('');
@@ -301,17 +328,23 @@ function IssueForm({ onCreated }) {
       </div>
       <label className="block text-sm">
         <span className="mb-1 block text-muted-foreground">Sales employee</span>
-        <select
-          className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-          aria-label="Sales employee"
-          value={agentId}
-          onChange={(event) => setAgentId(event.target.value)}
-        >
-          <option value="">Choose</option>
-          {agents.map((agent) => (
-            <option key={agent.id} value={agent.id}>{agent.name}</option>
-          ))}
-        </select>
+        {!carrierReady ? (
+          <Input aria-label="Sales employee" value="" readOnly />
+        ) : chooseEmployee ? (
+          <select
+            className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+            aria-label="Sales employee"
+            value={agentId}
+            onChange={(event) => setAgentId(event.target.value)}
+          >
+            <option value="">Choose</option>
+            {agents.map((agent) => (
+              <option key={agent.id} value={agent.id}>{agent.name}</option>
+            ))}
+          </select>
+        ) : (
+          <Input aria-label="Sales employee" value={lockedName} readOnly />
+        )}
       </label>
       <label className="block text-sm">
         <span className="mb-1 block text-muted-foreground">Load date</span>
@@ -447,10 +480,10 @@ function IssueForm({ onCreated }) {
       </div>
       <div className="rounded-xl bg-success/10 p-3 text-sm">
         <p className="font-medium text-success">Stock movement confirmation</p>
-        <p>When the load is issued, the quantities above leave shop stock and sit on this agent&apos;s open load.</p>
+        <p>A manager confirms these quantities. Shop stock leaves only after that approval.</p>
       </div>
       <Button type="button" variant="success" className="w-full" onClick={save} disabled={saving || !agentId || lines.length === 0}>
-        {saving ? 'Issuing…' : 'Confirm and issue load'}
+        {saving ? 'Sending…' : 'Submit for approval'}
       </Button>
     </section>
   );
@@ -628,6 +661,53 @@ function LoadDetail({ load, canApprove, onChange }) {
           </div>
         </div>
       </div>
+
+      {load.status === 'awaiting_issue' && (
+        <div className="space-y-3 rounded-xl border border-border p-3">
+          <h3 className="text-base font-semibold">Quantities to approve</h3>
+          <p className="text-sm text-muted-foreground">
+            {load.issued_by ? `${load.issued_by} wrote this load. ` : ''}
+            Shop stock stays on the shelf until a manager approves it.
+          </p>
+          <ul className="space-y-1 text-sm">
+            {load.lines.map((item) => (
+              <li key={item.id} className="flex justify-between gap-2">
+                <span>{item.product_name}</span>
+                <span>{item.quantity_taken}</span>
+              </li>
+            ))}
+          </ul>
+          {load.can_confirm_issue && (
+            <div className="space-y-2">
+              <Button
+                type="button"
+                variant="success"
+                disabled={busy}
+                onClick={() => run(
+                  () => fieldLoadsAPI.approveIssue(load.id),
+                  'Load approved. Those quantities have left the shop.',
+                )}
+              >
+                Approve quantities
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() => run(
+                  () => fieldLoadsAPI.declineIssue(load.id, { note: 'Check the quantities' }),
+                  'Sent back to the sales person.',
+                )}
+              >
+                Send back
+              </Button>
+            </div>
+          )}
+          {!load.can_confirm_issue && (
+            <p className="text-sm">Waiting for a manager.</p>
+          )}
+        </div>
+      )}
 
       {!counting && (
         <div className={wide && focused ? 'grid grid-cols-2 items-start gap-4' : 'space-y-3'}>

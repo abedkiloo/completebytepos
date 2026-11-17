@@ -137,7 +137,9 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
             _f(
                 'field_load',
                 'Field loads',
-                'Stock a field agent carries out, sells from, and accounts for on return.',
+                'Selectable sales feature, on by default. A sales person writes the '
+                'products they are taking. A manager approves before shop stock leaves. '
+                'Turn off to hide Field loads on the web and the phone.',
                 11,
             ),
         ],
@@ -515,7 +517,7 @@ PRESETS: dict[str, dict[str, Any]] = {
         },
         'features': {
             # No retail POS, normal sale, or barcode module in the starter pack.
-            'sales': ['billing_pos', 'receipt_printing', 'sales_history', 'daily_sales'],
+            'sales': ['billing_pos', 'receipt_printing', 'sales_history', 'daily_sales', 'field_load'],
             'products': ['bulk_operations', 'csv_import_export'],
             'customers': [
                 'customer_management',

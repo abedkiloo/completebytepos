@@ -15,8 +15,10 @@ from accounts.permissions import RequirePerm
 from agents.field_load_service import (
     FieldLoadError,
     add_line,
+    confirm_issue,
+    decline_issue,
     issue_load,
-    list_field_agents,
+    carrier_choices,
     loads_for_user,
     review_load,
     sell_from_load,
@@ -60,6 +62,25 @@ class _FieldLoadFeature(RequireModuleFeature):
         super().__init__('sales', 'field_load')
 
 
+def _with_confirm(request, payload: dict) -> dict:
+    """
+    Mark whether this user may approve the written quantities.
+
+    Args:
+        request: Authenticated request. The user must not be the writer.
+        payload: One serialized load.
+
+    Returns:
+        dict: The same payload plus ``can_confirm_issue``. No writes.
+    """
+    payload['can_confirm_issue'] = bool(
+        user_may_approve(request.user)
+        and payload.get('issued_by_id') != request.user.id
+        and payload.get('status') == FieldLoad.STATUS_AWAITING
+    )
+    return payload
+
+
 def _error(exc: FieldLoadError) -> Response:
     """
     Turn a field-load failure into a response without extra identifiers.
@@ -99,7 +120,7 @@ class FieldLoadViewSet(viewsets.ViewSet):
                 summary['active'] += 1
             elif shown == 'shortage':
                 summary['shortage'] += 1
-            elif shown == 'pending_review':
+            elif shown in ('pending_review', 'awaiting_issue', 'issue_rejected'):
                 summary['awaiting_approval'] += 1
             elif shown == 'accepted':
                 summary['accepted'] += 1
@@ -107,7 +128,7 @@ class FieldLoadViewSet(viewsets.ViewSet):
             'can_issue': user_may_issue(request.user),
             'can_approve': user_may_approve(request.user),
             'summary': summary,
-            'results': rows,
+            'results': [_with_confirm(request, row) for row in rows],
         })
 
     @action(detail=False, methods=['get'], url_path='agents')
@@ -128,7 +149,7 @@ class FieldLoadViewSet(viewsets.ViewSet):
                 {'error': 'You cannot issue a field load.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        return Response({'results': list_field_agents()})
+        return Response(carrier_choices(request.user))
 
     def create(self, request):
         """
@@ -148,7 +169,7 @@ class FieldLoadViewSet(viewsets.ViewSet):
             )
         except FieldLoadError as exc:
             return _error(exc)
-        return Response(serialize_load(load), status=status.HTTP_201_CREATED)
+        return Response(_with_confirm(request, serialize_load(load)), status=status.HTTP_201_CREATED)
 
     def retrieve(self, request, pk=None):
         """
@@ -164,7 +185,47 @@ class FieldLoadViewSet(viewsets.ViewSet):
         load = loads_for_user(request.user).filter(pk=pk).first()
         if load is None:
             return Response({'error': 'Load not found.'}, status=status.HTTP_404_NOT_FOUND)
-        return Response(serialize_load(load))
+        return Response(_with_confirm(request, serialize_load(load)))
+
+    @action(detail=True, methods=['post'], url_path='approve-issue')
+    def approve_issue(self, request, pk=None):
+        """
+        Approve the written quantities. Shop stock leaves on this call.
+
+        Args:
+            request: Manager who did not write the load.
+            pk: Load primary key.
+
+        Returns:
+            Response: The open load, or 403 when the writer tries to approve it.
+        """
+        try:
+            load = confirm_issue(load_id=pk, user=request.user)
+        except FieldLoadError as exc:
+            return _error(exc)
+        return Response(_with_confirm(request, serialize_load(load)))
+
+    @action(detail=True, methods=['post'], url_path='decline-issue')
+    def decline_issue(self, request, pk=None):
+        """
+        Send the written quantities back. Shop stock does not move.
+
+        Args:
+            request: Optional JSON ``note``, 0–500 characters.
+            pk: Load primary key.
+
+        Returns:
+            Response: The load marked sent back.
+        """
+        try:
+            load = decline_issue(
+                load_id=pk,
+                user=request.user,
+                note=request.data.get('note') or '',
+            )
+        except FieldLoadError as exc:
+            return _error(exc)
+        return Response(_with_confirm(request, serialize_load(load)))
 
     @action(detail=True, methods=['post'], url_path='lines')
     def lines(self, request, pk=None):

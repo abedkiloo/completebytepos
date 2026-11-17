@@ -16,6 +16,12 @@ class ModuleRegistryTests(TestCase):
         starter = resolve_preset('retail_starter')
         self.assertTrue(starter['modules']['sales'])
         self.assertIn('billing_pos', starter['features']['sales'])
+        self.assertIn('field_load', starter['features']['sales'])
+        field_load = next(
+            feature for feature in MODULE_BY_NAME['sales']['features']
+            if feature['key'] == 'field_load'
+        )
+        self.assertTrue(field_load['enabled_by_default'])
         self.assertNotIn('pos', starter['features']['sales'])
         self.assertNotIn('normal_sale', starter['features']['sales'])
         self.assertTrue(starter['modules']['invoicing'])
@@ -25,6 +31,7 @@ class ModuleRegistryTests(TestCase):
         self.assertTrue(full['modules']['reports'])
         self.assertTrue(full['modules']['sales'])
         self.assertIn('pos', full['features']['sales'])
+        self.assertIn('field_load', full['features']['sales'])
 
     def test_build_response_has_catalog_and_meta(self):
         data = build_modules_response()

@@ -13,6 +13,8 @@ jest.mock('../../services/api', () => ({
     returnCount: jest.fn(),
     accept: jest.fn(),
     reject: jest.fn(),
+    approveIssue: jest.fn(),
+    declineIssue: jest.fn(),
   },
   customersAPI: { list: jest.fn() },
   productsAPI: { search: jest.fn() },
@@ -56,6 +58,7 @@ const openLoad = {
 
 describe('FieldLoadsPage', () => {
   beforeEach(() => {
+    localStorage.removeItem('enabled_modules');
     fieldLoadsAPI.list.mockResolvedValue({
       data: { can_issue: false, can_approve: true, results: [pending] },
     });
@@ -64,12 +67,44 @@ describe('FieldLoadsPage', () => {
     customersAPI.list.mockResolvedValue({ data: { results: [{ id: 3, name: 'Field Duka' }] } });
   });
 
+  test('turning the field loads feature off hides the screen', () => {
+    localStorage.setItem('enabled_modules', JSON.stringify({
+      sales: { is_enabled: true, features: { field_load: { is_enabled: false } } },
+    }));
+    render(<FieldLoadsPage />);
+    expect(screen.getByText(/Field loads are turned off/)).toBeInTheDocument();
+    expect(screen.queryByText('Create new field load')).not.toBeInTheDocument();
+  });
+
   test('a manager can accept a counted load and an agent does not see issue controls', async () => {
     render(<FieldLoadsPage />);
     expect((await screen.findAllByText('Asha')).length).toBeGreaterThan(0);
-    expect(screen.queryByRole('button', { name: 'Confirm and issue load' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Submit for approval' })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Approve reconciliation' }));
     await waitFor(() => expect(fieldLoadsAPI.accept).toHaveBeenCalledWith(7, {}));
+  });
+
+  test('a manager approves the quantities a sales person wrote', async () => {
+    fieldLoadsAPI.list.mockResolvedValue({
+      data: {
+        can_issue: false,
+        can_approve: true,
+        results: [{
+          ...pending,
+          status: 'awaiting_issue',
+          display_status: 'awaiting_issue',
+          can_confirm_issue: true,
+          issued_by: 'Asha',
+        }],
+      },
+    });
+    fieldLoadsAPI.approveIssue.mockResolvedValue({
+      data: { ...pending, status: 'open', display_status: 'open', can_confirm_issue: false },
+    });
+    render(<FieldLoadsPage />);
+    expect(await screen.findByRole('button', { name: 'Approve quantities' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Approve quantities' }));
+    await waitFor(() => expect(fieldLoadsAPI.approveIssue).toHaveBeenCalledWith(7));
   });
 
   test('recording a sale posts the product, quantity, customer, and amount', async () => {
@@ -97,7 +132,7 @@ describe('FieldLoadsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: /Cups/ }));
     expect(screen.queryByText('Legs')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Record a field load sale' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Confirm and issue load' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Submit for approval' })).toBeInTheDocument();
     expect(screen.getByText(/does not create a field order/i)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Back to stock' }));
     expect(screen.getByRole('button', { name: /Legs/ })).toBeInTheDocument();
@@ -117,6 +152,18 @@ describe('FieldLoadsPage', () => {
       notes: '',
     }));
     expect(screen.queryByRole('button', { name: 'Approve reconciliation' })).not.toBeInTheDocument();
+  });
+
+  test('a sales person sees their own name and cannot pick someone else', async () => {
+    fieldLoadsAPI.list.mockResolvedValue({
+      data: { can_issue: true, can_approve: false, results: [] },
+    });
+    fieldLoadsAPI.agents.mockResolvedValue({
+      data: { choose_employee: false, results: [{ id: 4, name: 'Mercy Mercy' }] },
+    });
+    render(<FieldLoadsPage />);
+    expect(await screen.findByDisplayValue('Mercy Mercy')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Sales employee' })).not.toBeInTheDocument();
   });
 
   test('product search updates as the name is typed and the chosen quantity is added', async () => {
