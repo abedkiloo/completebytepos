@@ -4,6 +4,7 @@ import { Calculator, Calendar, Receipt, RotateCcw, ShoppingCart, Clock } from 'l
 import { salesAPI } from '../../services/api';
 import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
+import { getTodayDateString } from '../../utils/debtManagement';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { toast } from '../../utils/toast';
@@ -96,6 +97,8 @@ const Sales = () => {
     search: '',
     cashier_id: '',
   });
+  const todayKey = getTodayDateString();
+  const todaySelected = filters.date_from === todayKey && filters.date_to === todayKey;
   const [searchInput, setSearchInput] = useState('');
   const debouncedSearch = useDebouncedValue(searchInput, 300);
   const [pagination, setPagination] = useState({
@@ -526,26 +529,22 @@ const Sales = () => {
               onChange={handleFilterChange}
             />
           </FilterField>
-          {historyTab === 'voided' || historyTab === 'cancelled' ? (
-            <FilterField label=" ">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  const today = new Date();
-                  const y = today.getFullYear();
-                  const m = String(today.getMonth() + 1).padStart(2, '0');
-                  const d = String(today.getDate()).padStart(2, '0');
-                  const key = `${y}-${m}-${d}`;
-                  setFilters((prev) => ({ ...prev, date_from: key, date_to: key }));
-                  setPagination((prev) => ({ ...prev, page: 1 }));
-                }}
-              >
-                {historyTab === 'voided' ? 'Voided today' : 'Cancelled today'}
-              </Button>
-            </FilterField>
-          ) : null}
+          <div className="flex items-end self-end pb-0.5">
+            <Button
+              type="button"
+              size="sm"
+              variant={todaySelected ? 'default' : 'outline'}
+              data-testid="sales-history-today"
+              aria-pressed={todaySelected}
+              onClick={() => {
+                const day = getTodayDateString();
+                setFilters((prev) => ({ ...prev, date_from: day, date_to: day }));
+                setPagination((prev) => ({ ...prev, page: 1 }));
+              }}
+            >
+              Today
+            </Button>
+          </div>
           <FilterField label="Payment">
             <SearchableSelect
               name="payment_method"

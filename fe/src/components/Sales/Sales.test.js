@@ -135,6 +135,47 @@ describe('Sales history export', () => {
     });
   });
 
+  it('Today limits completed sales to the current day', async () => {
+    render(<Sales />);
+    await waitFor(() => expect(screen.getByText('S-100')).toBeInTheDocument());
+    salesAPI.list.mockClear();
+
+    fireEvent.click(screen.getByTestId('sales-history-today'));
+
+    const today = new Date();
+    const day = [
+      today.getFullYear(),
+      String(today.getMonth() + 1).padStart(2, '0'),
+      String(today.getDate()).padStart(2, '0'),
+    ].join('-');
+    await waitFor(() => {
+      expect(salesAPI.list).toHaveBeenCalledWith(
+        expect.objectContaining({
+          date_from: day,
+          date_to: day,
+          status: 'completed',
+          page: 1,
+        })
+      );
+    });
+    expect(screen.getByTestId('sales-history-today')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('Today still filters after switching to voided sales', async () => {
+    render(<Sales />);
+    await waitFor(() => expect(screen.getByText('S-100')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Voided' }));
+    salesAPI.list.mockClear();
+    fireEvent.click(screen.getByTestId('sales-history-today'));
+
+    await waitFor(() => {
+      const params = salesAPI.list.mock.calls.at(-1)[0];
+      expect(params.status).toBe('voided');
+      expect(params.date_from).toBe(params.date_to);
+      expect(params.date_from).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+  });
+
   it('hides Show total from staff who only see their own sales', async () => {
     render(<Sales />);
     await waitFor(() => expect(screen.getByText('S-100')).toBeInTheDocument());

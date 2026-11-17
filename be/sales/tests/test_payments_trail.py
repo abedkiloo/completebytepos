@@ -147,3 +147,91 @@ class PaymentsTrailTests(ManagerAPITestCase):
             {'date_from': today, 'date_to': today},
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertNotIn('0700111222', response.content.decode())
+
+    def test_a_method_card_filters_each_payment_type(self):
+        CustomerService().record_wallet_payment(
+            self.customer,
+            Decimal('80.00'),
+            payment_method='cash',
+            user=self.manager_user,
+        )
+        CustomerService().record_wallet_payment(
+            self.customer,
+            Decimal('40.00'),
+            payment_method='mpesa',
+            reference='QHXCARD01',
+            user=self.manager_user,
+        )
+        today = timezone.localdate().isoformat()
+        window = {'date_from': today, 'date_to': today, 'user': self.manager_user}
+
+        cash = list_payments_trail(kind='debt_settlement', payment_method='cash', **window)
+        self.assertGreaterEqual(cash['count'], 1)
+        self.assertTrue(all(row['payment_method'] == 'cash' for row in cash['results']))
+
+        mpesa = list_payments_trail(kind='all', payment_method='mpesa', **window)
+        self.assertTrue(mpesa['results'])
+        self.assertTrue(all(row['payment_method'] == 'mpesa' for row in mpesa['results']))
+
+        for kind in ('all', 'debt_settlement', 'invoice_payment', 'sale_payment'):
+            listed = list_payments_trail(kind=kind, payment_method='cash', **window)
+            self.assertTrue(all(row['payment_method'] == 'cash' for row in listed['results']))
+
+        junk = list_payments_trail(payment_method='0700111222', **window)
+        self.assertEqual(junk['count'], 0)
+        self.assertEqual(junk['results'], [])
+
+        for index in range(30):
+            CustomerService().record_wallet_payment(
+                self.customer,
+                Decimal('1.00'),
+                payment_method='cash',
+                reference=f'CASH{index:02d}',
+                user=self.manager_user,
+            )
+        many = list_payments_trail(
+            kind='debt_settlement',
+            payment_method='cash',
+            page_size=100,
+            **window,
+        )
+        self.assertGreaterEqual(many['count'], 30)
+        self.assertTrue(all(row['payment_method'] == 'cash' for row in many['results']))
+
+        response = self.client.get(
+            '/api/sales/customers/payments-trail/',
+            {
+                'kind': 'debt_settlement',
+                'payment_method': 'mpesa',
+                'date_from': today,
+                'date_to': today,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertTrue(response.data['results'])
+        self.assertTrue(all(row['payment_method'] == 'mpesa' for row in response.data['results']))
+
+        sales_user = User.objects.create_user(username='trail_card_sales', password='sales123')
+        UserProfile.objects.create(
+            user=sales_user,
+            role='cashier',
+            custom_role=Role.objects.get(name=ROLE_SALES),
+            is_active=True,
+        )
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {RefreshToken.for_user(sales_user).access_token}'
+        )
+        denied = self.client.get(
+            '/api/sales/customers/payments-trail/',
+            {'payment_method': 'cash', 'date_from': today, 'date_to': today},
+        )
+        self.assertEqual(denied.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertNotIn(self.customer.phone, denied.content.decode())
+
+        self.client.credentials()
+        anonymous = self.client.get(
+            '/api/sales/customers/payments-trail/',
+            {'payment_method': 'cash'},
+        )
+        self.assertEqual(anonymous.status_code, status.HTTP_401_UNAUTHORIZED)

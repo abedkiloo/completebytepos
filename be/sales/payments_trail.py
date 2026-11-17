@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Sequence
 
 from django.db.models import (
@@ -109,6 +110,48 @@ def _normalize_mpesa_destination_filter(raw) -> str:
     return ''
 
 
+def _normalize_method_filter(raw) -> str:
+    """
+    Payment-method key chosen from a totals card.
+
+    Args:
+        raw: Query text. Blank or ``all`` means every method.
+
+    Returns:
+        str: Lowercase key, 0–32 characters, letters, digits, and underscore.
+        Blank when the value is missing or not a method key. No writes.
+    """
+    value = (raw or '').strip().lower()[:32]
+    if not value or value == 'all':
+        return ''
+    if not all(ch.isalnum() or ch == '_' for ch in value):
+        return ''
+    return value
+
+
+def _index_method(row: Dict[str, Any]) -> str:
+    """
+    Method key used by the totals cards.
+
+    Args:
+        row: Index row with ``kind`` and ``payment_method``. Debt rows may
+            also carry ``notes`` so a legacy note still matches M-Pesa or cash.
+
+    Returns:
+        str: Lowercase method, or ``other`` when the row has none. Length 1–32.
+    """
+    if row.get('kind') == KIND_DEBT_SETTLEMENT:
+        method = resolve_settlement_payment_method(
+            SimpleNamespace(
+                payment_method=row.get('payment_method') or '',
+                notes=row.get('notes') or '',
+            )
+        )
+    else:
+        method = (row.get('payment_method') or '').strip().lower()
+    return (method or 'other')[:32]
+
+
 def _collect_index_rows(
     *,
     kinds: Sequence[str],
@@ -117,6 +160,7 @@ def _collect_index_rows(
     term: str,
     visible_ids,
     mpesa_destination: str = '',
+    payment_method: str = '',
 ) -> List[Dict[str, Any]]:
     index_rows: List[Dict[str, Any]] = []
     if KIND_DEBT_SETTLEMENT in kinds:
@@ -143,6 +187,9 @@ def _collect_index_rows(
         ),
         reverse=True,
     )
+    method = _normalize_method_filter(payment_method)
+    if method:
+        index_rows = [row for row in index_rows if _index_method(row) == method]
     return index_rows
 
 
@@ -153,6 +200,7 @@ def list_payments_trail(
     date_to=None,
     search: Optional[str] = None,
     mpesa_destination: Optional[str] = None,
+    payment_method: Optional[str] = None,
     page: int = 1,
     page_size: int = 20,
     user=None,
@@ -161,9 +209,27 @@ def list_payments_trail(
     Paginated money-in trail with balancing fields and paid-towards targets.
 
     Designed for operator accountability — not a live dashboard cache.
+    A method key limits the page to that card (cash, M-Pesa, and the rest).
+    The summary endpoint ignores this key so every card stays visible.
 
     Args:
+        kind: Trail type, or blank / ``all`` for every type.
+        date_from: Inclusive start day, YYYY-MM-DD, or blank.
+        date_to: Inclusive end day, YYYY-MM-DD, or blank.
+        search: Optional customer, payer, sale, invoice, or code text.
         mpesa_destination: Optional ``till`` / ``bank`` filter for debt settlements.
+        payment_method: Optional method key, 0–32 characters. Blank keeps
+            every method. A key that is not letters, digits, or underscore
+            matches nothing.
+        page: Page number, at least 1.
+        page_size: Rows per page, 1–100.
+        user: Request user for which customers are visible.
+
+    Returns:
+        Dict with ``count``, ``page``, ``page_size``, and ``results``.
+
+    Raises:
+        ValueError: A date is not YYYY-MM-DD.
     """
     page = max(1, int(page or 1))
     page_size = min(100, max(1, int(page_size or 20)))
@@ -179,6 +245,7 @@ def list_payments_trail(
         term=term,
         visible_ids=visible_ids,
         mpesa_destination=dest,
+        payment_method=payment_method or '',
     )
     count = len(index_rows)
     start_idx = (page - 1) * page_size
@@ -200,6 +267,7 @@ def build_payments_trail_export(
     date_to=None,
     search: Optional[str] = None,
     mpesa_destination: Optional[str] = None,
+    payment_method: Optional[str] = None,
     user=None,
     limit: Optional[int] = None,
 ) -> Dict[str, Any]:
@@ -212,6 +280,8 @@ def build_payments_trail_export(
         date_to: Inclusive end day (YYYY-MM-DD).
         search: Optional customer / reference / payer search.
         mpesa_destination: Optional ``till`` / ``bank`` filter for settlements.
+        payment_method: Optional method key, same rules as the list. Blank
+            keeps every method.
         user: Request user for debtor visibility.
         limit: Max rows to hydrate (1–PAYMENTS_TRAIL_EXPORT_LIMIT).
 
@@ -234,6 +304,7 @@ def build_payments_trail_export(
         term=term,
         visible_ids=visible_ids,
         mpesa_destination=dest,
+        payment_method=payment_method or '',
     )
     count = len(index_rows)
     truncated = count > limit
@@ -353,8 +424,12 @@ def _settlement_index(
             'kind': KIND_DEBT_SETTLEMENT,
             'source_id': row['id'],
             'occurred_at': row['effective_at'],
+            'payment_method': row.get('payment_method') or '',
+            'notes': row.get('notes') or '',
         }
-        for row in qs.order_by('-effective_at', '-id').values('id', 'effective_at')[:5000]
+        for row in qs.order_by('-effective_at', '-id').values(
+            'id', 'effective_at', 'payment_method', 'notes'
+        )[:5000]
     ]
 
 
@@ -379,8 +454,11 @@ def _invoice_index(day_from, day_to, term, visible_ids) -> List[Dict[str, Any]]:
             'kind': KIND_INVOICE_PAYMENT,
             'source_id': row['id'],
             'occurred_at': row['created_at'],
+            'payment_method': row.get('payment_method') or '',
         }
-        for row in qs.order_by('-created_at', '-id').values('id', 'created_at')[:5000]
+        for row in qs.order_by('-created_at', '-id').values(
+            'id', 'created_at', 'payment_method'
+        )[:5000]
     ]
 
 
@@ -430,9 +508,10 @@ def _sale_tender_index(day_from, day_to, term, visible_ids) -> List[Dict[str, An
             'source_id': row['id'],
             'occurred_at': row['occurred_at'] or row['created_at'],
             'tender_amount': row['tender'],
+            'payment_method': row.get('payment_method') or '',
         }
         for row in qs.order_by('-occurred_at', '-id').values(
-            'id', 'occurred_at', 'created_at', 'tender'
+            'id', 'occurred_at', 'created_at', 'tender', 'payment_method'
         )[:5000]
     ]
 

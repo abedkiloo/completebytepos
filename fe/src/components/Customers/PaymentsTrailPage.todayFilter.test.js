@@ -221,6 +221,61 @@ describe('PaymentsTrailPage today filter', () => {
     });
   });
 
+  it('integration: each type tab can open the cash or M-Pesa card', async () => {
+    customersAPI.paymentsTrailSummary.mockResolvedValue({
+      data: {
+        total_amount: '165200.00',
+        included_count: 18,
+        date_from: '2026-11-17',
+        date_to: '2026-11-17',
+        by_method: [
+          { payment_method: 'cash', payment_method_label: 'Cash', count: 7, total: '8000.00' },
+          { payment_method: 'mpesa', payment_method_label: 'M-PESA', count: 11, total: '157200.00' },
+        ],
+      },
+    });
+    render(<PaymentsTrailPage />);
+    await waitFor(() => expect(customersAPI.paymentsTrail).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole('button', { name: /show total/i }));
+    expect(await screen.findByTestId('payments-trail-method-cash')).toBeInTheDocument();
+    expect(screen.getByTestId('payments-trail-method-mpesa')).toBeInTheDocument();
+    expect(screen.getByTestId('payments-trail-total')).toHaveAttribute('aria-pressed', 'true');
+
+    customersAPI.paymentsTrail.mockClear();
+    customersAPI.paymentsTrailSummary.mockClear();
+    fireEvent.click(screen.getByTestId('payments-trail-method-cash'));
+    await waitFor(() => {
+      expect(customersAPI.paymentsTrail).toHaveBeenCalledWith(
+        expect.objectContaining({ payment_method: 'cash' })
+      );
+    });
+    expect(customersAPI.paymentsTrailSummary).not.toHaveBeenCalled();
+    expect(screen.getByTestId('payments-trail-method-cash')).toHaveAttribute('aria-pressed', 'true');
+
+    for (const tab of ['debt_settlement', 'invoice_payment', 'sale_payment', 'all']) {
+      customersAPI.paymentsTrail.mockClear();
+      fireEvent.click(screen.getByTestId(`payments-trail-tab-${tab}`));
+      await waitFor(() => {
+        const params = customersAPI.paymentsTrail.mock.calls.at(-1)[0];
+        expect(params.payment_method).toBe('cash');
+        if (tab === 'all') {
+          expect(params.kind).toBeUndefined();
+        } else {
+          expect(params.kind).toBe(tab);
+        }
+      });
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: /show total/i }));
+    expect(await screen.findByTestId('payments-trail-total')).toBeInTheDocument();
+    customersAPI.paymentsTrail.mockClear();
+    fireEvent.click(screen.getByTestId('payments-trail-total'));
+    await waitFor(() => expect(customersAPI.paymentsTrail).toHaveBeenCalled());
+    const cleared = customersAPI.paymentsTrail.mock.calls.at(-1)[0];
+    expect(cleared.payment_method).toBeUndefined();
+  });
+
   it('security: without payments_trail permission, Today filter is not shown and API is not called', async () => {
     denyTrailAccess();
     render(<PaymentsTrailPage />);

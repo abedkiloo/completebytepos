@@ -1683,7 +1683,12 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         permission_classes=[IsAuthenticated, RequirePerm('debt_management', 'payments_trail')],
     )
     def payments_trail(self, request):
-        """Store-wide money-in trail with paid-towards targets and debt balancing."""
+        """
+        Store-wide money-in trail with paid-towards targets and debt balancing.
+
+        ``payment_method`` limits the page to one totals card. It is a method
+        key of 0–32 letters, digits, or underscores. Blank returns every method.
+        """
         from sales.customer_module_settings import customers_show_wallet_balance
         from sales.payments_trail import list_payments_trail
 
@@ -1704,6 +1709,7 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 date_to=request.query_params.get('date_to'),
                 search=request.query_params.get('search'),
                 mpesa_destination=request.query_params.get('mpesa_destination'),
+                payment_method=request.query_params.get('payment_method'),
                 page=page,
                 page_size=page_size,
                 user=request.user,
@@ -1745,7 +1751,12 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         permission_classes=[IsAuthenticated, RequirePerm('debt_management', 'payments_trail')],
     )
     def payments_trail_export(self, request):
-        """Excel download of Payments trail money-in for the current filters."""
+        """
+        Excel download of Payments trail money-in for the current filters.
+
+        ``payment_method`` uses the same key as the list, so a clicked card
+        downloads only those payments.
+        """
         from sales.customer_module_settings import customers_show_wallet_balance
         from sales.module_settings import sales_payments_trail_export_enabled
         from sales.payments_trail import build_payments_trail_export
@@ -1770,6 +1781,7 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 date_to=request.query_params.get('date_to'),
                 search=request.query_params.get('search'),
                 mpesa_destination=request.query_params.get('mpesa_destination'),
+                payment_method=request.query_params.get('payment_method'),
                 user=request.user,
             )
         except ValueError as exc:

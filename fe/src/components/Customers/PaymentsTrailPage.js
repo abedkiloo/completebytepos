@@ -71,6 +71,7 @@ export default function PaymentsTrailPage() {
   const allowed = hasPermission(permissions, 'debt_management', 'payments_trail');
   const canExport = allowed && isModuleFeatureEnabled('sales', 'payments_trail_export', true);
   const [kind, setKind] = useState('all');
+  const [method, setMethod] = useState('');
   const [mpesaDestination, setMpesaDestination] = useState('');
   const [dateFrom, setDateFrom] = useState(defaultDateFrom);
   const [dateTo, setDateTo] = useState(getTodayDateString);
@@ -132,9 +133,21 @@ export default function PaymentsTrailPage() {
       params.mpesa_destination = mpesaDestination;
       if (!params.kind) params.kind = 'debt_settlement';
     }
+    if (method) params.payment_method = method;
     if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
     return params;
-  }, [kind, mpesaDestination, dateFrom, dateTo, debouncedSearch]);
+  }, [kind, method, mpesaDestination, dateFrom, dateTo, debouncedSearch]);
+
+  /**
+   * Totals ignore the clicked card so every method stays on screen.
+   *
+   * @returns {object} The same dates, type, till/bank, and search as the list.
+   */
+  const summaryFilterParams = useCallback(() => {
+    const params = trailFilterParams();
+    delete params.payment_method;
+    return params;
+  }, [trailFilterParams]);
 
   const handleExportExcel = async () => {
     if (!canExport || exportBusy) return;
@@ -153,7 +166,7 @@ export default function PaymentsTrailPage() {
     if (!allowed || totalBusy) return;
     setTotalBusy(true);
     try {
-      const res = await customersAPI.paymentsTrailSummary(trailFilterParams());
+      const res = await customersAPI.paymentsTrailSummary(summaryFilterParams());
       setRangeTotal(res.data || null);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Could not calculate total');
@@ -198,6 +211,10 @@ export default function PaymentsTrailPage() {
     setRangeTotal(null);
   }, [kind, mpesaDestination, dateFrom, dateTo, debouncedSearch]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [method]);
+
   if (!allowed) {
     return (
       <PageShell>
@@ -235,15 +252,23 @@ export default function PaymentsTrailPage() {
         ) : null}
       </PageHeader>
 
+      <div className="flex flex-wrap gap-2">
+        {KIND_OPTIONS.map((tab) => (
+          <Button
+            key={tab.id}
+            type="button"
+            size="sm"
+            variant={kind === tab.id ? 'default' : 'outline'}
+            aria-pressed={kind === tab.id}
+            data-testid={`payments-trail-tab-${tab.id}`}
+            onClick={() => setKind(tab.id)}
+          >
+            {tab.name}
+          </Button>
+        ))}
+      </div>
+
       <FilterBar>
-        <FilterField label="Type">
-          <SearchableSelect
-            value={kind}
-            onChange={(e) => setKind(e.target.value || 'all')}
-            options={KIND_OPTIONS}
-            placeholder="Payment type"
-          />
-        </FilterField>
         <FilterField label="M-Pesa via">
           <SearchableSelect
             value={mpesaDestination}
@@ -336,8 +361,11 @@ export default function PaymentsTrailPage() {
               rangeTotal.date_from && rangeTotal.date_to
                 ? ` · ${rangeTotal.date_from} → ${rangeTotal.date_to}`
                 : ''
-            }`}
+            } · tap to see every payment`}
             tone="success"
+            onClick={() => setMethod('')}
+            pressed={method === ''}
+            testId="payments-trail-total"
           />
           {(rangeTotal.by_method || []).map((row) => (
             <SummaryCard
@@ -345,7 +373,12 @@ export default function PaymentsTrailPage() {
               icon={Calculator}
               label={row.payment_method_label || row.payment_method}
               value={formatCurrency(row.total)}
-              subtext={`${row.count} payment${Number(row.count) === 1 ? '' : 's'}`}
+              subtext={`${row.count} payment${Number(row.count) === 1 ? '' : 's'} · tap to view`}
+              onClick={() => setMethod((current) => (
+                current === row.payment_method ? '' : row.payment_method
+              ))}
+              pressed={method === row.payment_method}
+              testId={`payments-trail-method-${row.payment_method}`}
             />
           ))}
         </div>
