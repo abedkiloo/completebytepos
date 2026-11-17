@@ -1291,7 +1291,10 @@ class SaleCreateSerializer(serializers.Serializer):
 
         from sales.payment_reference import validate_sale_mpesa_destination
         from sales.sale_payment_method import normalize_sale_payment_method
-        from sales.sale_payment_receipt import require_sale_payment_receipt_image
+        from sales.sale_payment_receipt import (
+            require_sale_payment_receipt_image,
+            terminal_mpesa_screenshot_optional,
+        )
 
         attrs['payment_method'] = normalize_sale_payment_method(
             payment_method=payment_method,
@@ -1324,6 +1327,7 @@ class SaleCreateSerializer(serializers.Serializer):
                 receipt,
                 payment_method=payment_method,
                 amount_paid=amount_paid,
+                optional=terminal_mpesa_screenshot_optional(request),
             )
         except DjangoValidationError as exc:
             raise serializers.ValidationError(

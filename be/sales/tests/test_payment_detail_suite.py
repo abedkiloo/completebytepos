@@ -91,6 +91,34 @@ class PaymentDetailUnitTests(SimpleTestCase):
                 optional=False,
             )
 
+    def test_phone_sale_skips_screenshot_unless_the_seller_is_sales_personnel(self):
+        from types import SimpleNamespace
+
+        from sales.sale_payment_receipt import terminal_mpesa_screenshot_optional
+
+        class Request:
+            def __init__(self, user, surface):
+                self.user = user
+                self.data = {'pos_surface': surface}
+
+        manager = SimpleNamespace(
+            is_authenticated=True,
+            profile=SimpleNamespace(
+                role='manager',
+                custom_role=SimpleNamespace(name='Manager'),
+            ),
+        )
+        sales = SimpleNamespace(
+            is_authenticated=True,
+            profile=SimpleNamespace(
+                role='cashier',
+                custom_role=SimpleNamespace(name='Sales Personnel'),
+            ),
+        )
+        self.assertTrue(terminal_mpesa_screenshot_optional(Request(manager, 'mobile')))
+        self.assertFalse(terminal_mpesa_screenshot_optional(Request(sales, 'mobile')))
+        self.assertFalse(terminal_mpesa_screenshot_optional(Request(manager, 'shop')))
+
 
 class PaymentDetailCorrectedFunctionalityTests(SimpleTestCase):
     """Corrected-functionality regressions for the payment UX fixes."""

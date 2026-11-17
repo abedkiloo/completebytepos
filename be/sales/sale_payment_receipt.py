@@ -43,11 +43,11 @@ def terminal_mpesa_screenshot_optional(request) -> bool:
     Terminal POS may skip the M-Pesa screenshot. A sales person may not.
 
     Args:
-        request: DRF request or None. ``pos_surface`` must be the string
-            ``terminal`` (max 16 characters). Any other value stays required.
+        request: DRF request or None. ``pos_surface`` must be ``terminal``
+            or ``mobile`` (max 16 characters). Any other value stays required.
 
     Returns:
-        bool: True only for a terminal checkout by someone who is not
+        bool: True for a terminal or phone checkout by someone who is not
         Sales Personnel. No writes.
 
     Raises:
@@ -57,7 +57,7 @@ def terminal_mpesa_screenshot_optional(request) -> bool:
         return False
     data = getattr(request, 'data', None) or {}
     surface = str(data.get('pos_surface') or '').strip().lower()[:16]
-    if surface != 'terminal':
+    if surface not in ('terminal', 'mobile'):
         return False
     return not actor_is_sales_personnel(getattr(request, 'user', None))
 
