@@ -170,8 +170,9 @@ function StatusBadge({ status }) {
  * Issue a new load. Shop stock drops when the server accepts it.
  *
  * Product search uses the same lookup as the till: name, SKU, or barcode,
- * and the matches update as the text settles. The reference is assigned
- * when the load is issued.
+ * and the matches update as the text settles. Choosing a product closes
+ * the list and shows the quantity in that same place. The reference is
+ * assigned when the load is issued.
  *
  * @param {Function} props.onCreated Receives the created load.
  */
@@ -246,6 +247,9 @@ function IssueForm({ onCreated }) {
       ));
     });
     setTakeQty('1');
+    setPicked(null);
+    setQuery('');
+    setProducts([]);
   };
 
   /**
@@ -309,25 +313,28 @@ function IssueForm({ onCreated }) {
         <Input
           aria-label="Find product"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Name, SKU, or barcode"
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setPicked(null);
+          }}
+          placeholder="Type a name, then choose the product"
         />
-        {searching && <p className="text-xs text-muted-foreground">Searching…</p>}
-        {!searching && debouncedQuery.trim() && products.length === 0 && (
+        {searching && !picked && <p className="text-xs text-muted-foreground">Searching…</p>}
+        {!picked && !searching && debouncedQuery.trim() && products.length === 0 && (
           <p className="text-xs text-muted-foreground">No matching product.</p>
         )}
-        {products.length > 0 && (
+        {!picked && products.length > 0 && (
           <ul className="max-h-48 space-y-1 overflow-auto rounded-md border border-border p-1">
             {products.map((product) => (
               <li key={product.id}>
                 <button
                   type="button"
-                  className={picked?.id === product.id
-                    ? 'w-full rounded-md bg-accent px-2 py-1.5 text-left text-sm'
-                    : 'w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent'}
+                  className="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent"
                   onClick={() => {
                     setPicked(product);
                     setTakeQty('1');
+                    setQuery('');
+                    setProducts([]);
                   }}
                 >
                   <span className="block font-medium">{product.name}</span>
@@ -340,10 +347,10 @@ function IssueForm({ onCreated }) {
           </ul>
         )}
         {picked && (
-          <div className="space-y-2 rounded-md border border-border p-3 text-sm">
+          <div className="space-y-3 rounded-md border border-primary p-3 text-sm">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <p className="font-semibold">{picked.name}</p>
+                <p className="text-base font-semibold">{picked.name}</p>
                 <p className="text-xs text-muted-foreground">
                   {picked.sku ? `SKU: ${picked.sku} · ` : ''}Available: {picked.stock_quantity ?? 0} pieces
                 </p>
@@ -353,19 +360,19 @@ function IssueForm({ onCreated }) {
               )}
             </div>
             <label className="flex items-center justify-between gap-2">
-              <span>Quantity to take</span>
+              <span className="font-medium">How many to take</span>
               <Input
                 type="number"
                 min={1}
                 max={pickedStock > 0 ? pickedStock : 100000}
-                className="h-9 w-24"
+                className="h-11 w-24 text-base"
                 aria-label={`Quantity of ${picked.name}`}
                 value={takeQty}
                 onChange={(event) => setTakeQty(event.target.value)}
               />
             </label>
-            <Button type="button" variant="outline" className="w-full" onClick={addPicked}>
-              + Add to load
+            <Button type="button" className="w-full" onClick={addPicked}>
+              Add to load
             </Button>
           </div>
         )}
