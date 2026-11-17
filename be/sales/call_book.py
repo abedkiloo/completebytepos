@@ -19,6 +19,7 @@ import zlib
 from datetime import date, datetime, time, timedelta
 
 from django.db import transaction
+from django.db.models import Max
 from django.utils import timezone
 
 from sales.call_day_algorithm import assign_sub_county_weekdays
@@ -319,13 +320,17 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
     this_week = {}
     for call in week_calls:
         this_week[call.customer_id] = call
-    previous = {}
-    older = (
+    latest_prior = (
         CustomerCall.objects.filter(week_start__lt=monday)
-        .order_by('called_at')
+        .values('customer_id')
+        .annotate(latest_id=Max('id'))
     )
-    for call in older:
-        previous[call.customer_id] = call
+    previous = {
+        call.customer_id: call
+        for call in CustomerCall.objects.filter(
+            id__in=[row['latest_id'] for row in latest_prior],
+        )
+    }
     now = timezone.now()
     holds = {
         hold.customer_id: hold

@@ -231,6 +231,38 @@ class FieldLoadFlowTests(SuperAdminAPITestCase):
         self.cups.refresh_from_db()
         self.assertEqual(self.cups.stock_quantity, 75)
 
+    def test_three_loads_are_read_together(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from agents.field_load_service import serialize_loads
+        from agents.models import FieldLoad
+
+        ids = []
+        for index in range(3):
+            agent = User.objects.create_user(username=f'batch_agent_{index}', password='x')
+            issued = self.client.post(
+                '/api/agents/field-loads/',
+                {
+                    'agent_id': agent.id,
+                    'lines': [{'product_id': self.cups.id, 'quantity': 1}],
+                },
+                format='json',
+            )
+            self.assertEqual(issued.status_code, status.HTTP_201_CREATED, issued.content)
+            ids.append(issued.data['id'])
+        loads = list(
+            FieldLoad.objects.filter(id__in=ids).select_related(
+                'agent', 'issued_by', 'reviewed_by', 'issue_approved_by',
+            )
+        )
+        with CaptureQueriesContext(connection) as captured:
+            rows = serialize_loads(loads)
+        self.assertEqual(serialize_loads([]), [])
+        self.assertEqual(len(rows), 3)
+        self.assertLessEqual(len(captured), 4)
+        self.assertNotIn(self.customer.phone, str(rows))
+
 
 class FieldLoadModuleTests(SuperAdminAPITestCase):
     """The package toggle closes the API."""

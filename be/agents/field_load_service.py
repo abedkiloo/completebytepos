@@ -99,7 +99,9 @@ def loads_for_user(user):
     Returns:
         QuerySet of ``FieldLoad``. No writes.
     """
-    qs = FieldLoad.objects.select_related('agent', 'issued_by', 'reviewed_by')
+    qs = FieldLoad.objects.select_related(
+        'agent', 'issued_by', 'reviewed_by', 'issue_approved_by',
+    )
     if user_may_issue(user) or user_may_approve(user):
         return qs
     return qs.filter(agent=user)
@@ -183,30 +185,104 @@ def serialize_load(load: FieldLoad) -> dict:
     Full load for the screen, including money from its sales.
 
     Args:
-        load: Load with lines and product names available.
+        load: One load. Lines, sales, and customer names are read here.
 
     Returns:
-        dict: Status, people, line counts, and ``money`` (expected and
-        collected, 2 decimal strings). No writes.
-    """
-    from sales.models import Sale
+        dict: Status, people, line counts, and ``money``. No writes.
 
-    sold = _sold_map(load)
+    Raises:
+        None.
+    """
+    rows = serialize_loads([load])
+    return rows[0]
+
+
+def serialize_loads(loads) -> list:
+    """
+    Serialize many loads with one read for lines, one for units sold, and
+    one for the sales.
+
+    Args:
+        loads: Field loads, at most 100. Each may already include the agent,
+            issuer, reviewer, and issue approver.
+
+    Returns:
+        list[dict]: Same shape as ``serialize_load``, in the given order.
+        An empty input returns an empty list. No writes.
+
+    Raises:
+        None.
+    """
+    from collections import defaultdict
+
+    from sales.models import Sale, SaleItem
+
+    load_list = list(loads)[:100]
+    if not load_list:
+        return []
+    ids = [load.id for load in load_list]
+    lines_by_load = defaultdict(list)
+    for line in FieldLoadLine.objects.filter(load_id__in=ids).select_related('product'):
+        lines_by_load[line.load_id].append(line)
+    sold = {}
+    sold_rows = (
+        SaleItem.objects.filter(
+            sale__field_load_sale__load_id__in=ids,
+            sale__status='completed',
+        )
+        .exclude(sale__refund_status='refunded')
+        .values('sale__field_load_sale__load_id', 'product_id', 'variant_id')
+        .annotate(qty=Sum('quantity'))
+    )
+    for row in sold_rows:
+        sold[(row['sale__field_load_sale__load_id'], row['product_id'], row['variant_id'])] = int(row['qty'] or 0)
+    sales_by_load = defaultdict(list)
+    sales = (
+        Sale.objects.filter(field_load_sale__load_id__in=ids, status='completed')
+        .exclude(refund_status='refunded')
+        .select_related('customer', 'field_load_sale')
+        .order_by('id')
+    )
+    for sale in sales:
+        sales_by_load[sale.field_load_sale.load_id].append(sale)
+    return [
+        _serialize_ready(
+            load,
+            lines_by_load[load.id],
+            sold,
+            sales_by_load[load.id],
+        )
+        for load in load_list
+    ]
+
+
+def _serialize_ready(load, line_rows, sold, sales) -> dict:
+    """
+    Build one load payload from rows already loaded.
+
+    Args:
+        load: The load. People on it are already loaded.
+        line_rows: That load's lines, each with its product. 0–40.
+        sold: Map of ``(load id, product id, variant id)`` to units sold.
+        sales: Completed sales for this load, customer already loaded. 0–500.
+
+    Returns:
+        dict: The screen payload. No writes.
+
+    Raises:
+        None.
+    """
     lines = []
-    for line in load.lines.select_related('product'):
-        key = (line.product_id, line.variant_id)
+    for line in line_rows:
+        key = (load.id, line.product_id, line.variant_id)
         lines.append(_line_numbers(line, sold.get(key, 0)))
-    sales = Sale.objects.filter(
-        field_load_sale__load=load,
-        status='completed',
-    ).exclude(refund_status='refunded')
     expected = Decimal('0.00')
     collected = Decimal('0.00')
     cash = Decimal('0.00')
     mpesa = Decimal('0.00')
     credit = Decimal('0.00')
     sale_rows = []
-    for sale in sales.order_by('id'):
+    for sale in sales:
         total = Decimal(sale.total or 0)
         paid = Decimal(sale.amount_paid or 0)
         expected += total
@@ -228,7 +304,7 @@ def serialize_load(load: FieldLoad) -> dict:
             'total': f'{total.quantize(Decimal("0.01")):.2f}',
             'amount_paid': f'{paid.quantize(Decimal("0.01")):.2f}',
             'payment_method': sale.payment_method,
-            'customer_name': getattr(sale.customer, 'name', '') if sale.customer_id else '',
+            'customer_name': sale.customer.name if sale.customer_id and sale.customer else '',
             'origin': 'field_load',
         })
     shortage = sum(

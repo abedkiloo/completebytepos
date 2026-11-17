@@ -67,6 +67,27 @@ class CustomerSearchTests(SuperAdminAPITestCase):
         ids = [row['id'] for row in response.data['results']]
         self.assertIn(self.john.id, ids)
 
+    def test_search_by_ward_and_sub_county(self):
+        placed = Customer.objects.create(
+            name='Belt Shop',
+            phone='0700666001',
+            county='Nairobi',
+            sub_county='Roysambu',
+            ward='Custom Belt',
+            city='Gikomba',
+            is_active=True,
+        )
+        by_ward = self.client.get(
+            '/api/sales/customers/', {'search': 'Custom Belt', 'is_active': 'true'},
+        )
+        by_sub = self.client.get(
+            '/api/sales/customers/', {'search': 'Roysambu', 'is_active': 'true'},
+        )
+        self.assertEqual(by_ward.status_code, status.HTTP_200_OK)
+        self.assertEqual(by_sub.status_code, status.HTTP_200_OK)
+        self.assertIn(placed.id, [row['id'] for row in by_ward.data['results']])
+        self.assertIn(placed.id, [row['id'] for row in by_sub.data['results']])
+
     def test_inactive_customers_are_hidden_when_requested(self):
         response = self.client.get(
             '/api/sales/customers/', {'search': 'Inactive', 'is_active': 'true'}

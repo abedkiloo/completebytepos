@@ -21,6 +21,7 @@ from agents.field_load_service import (
     review_load,
     sell_from_load,
     serialize_load,
+    serialize_loads,
     submit_return,
     user_may_approve,
     user_may_issue,
@@ -88,7 +89,9 @@ class FieldLoadViewSet(viewsets.ViewSet):
             Response: ``can_issue``, ``can_approve``, and up to 100 loads.
             Agents see their own. Issuers and approvers see all.
         """
-        rows = [serialize_load(load) for load in loads_for_user(request.user).order_by('-issued_at')[:100]]
+        rows = serialize_loads(
+            loads_for_user(request.user).order_by('-issued_at')[:100]
+        )
         summary = {'active': 0, 'awaiting_approval': 0, 'shortage': 0, 'accepted': 0}
         for row in rows:
             shown = row['display_status']

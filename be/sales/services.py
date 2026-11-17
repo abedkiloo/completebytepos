@@ -2047,7 +2047,7 @@ class CustomerService(BaseService):
         self, query: str, limit: int = 50, *, user=None
     ) -> List[Customer]:
         """
-        Search customers by name, email, phone, or customer code.
+        Search customers by name, place, email, phone, or customer code.
 
         Args:
             query: Free-text search (stripped). Empty → [].
@@ -2056,6 +2056,9 @@ class CustomerService(BaseService):
 
         Returns:
             List of active ``Customer`` rows (may be empty on error or no match).
+
+        Raises:
+            None. A lookup error returns an empty list.
         """
         try:
             if not query or not query.strip():
@@ -2075,7 +2078,12 @@ class CustomerService(BaseService):
                 Q(name__icontains=query) |
                 Q(email__icontains=query) |
                 Q(phone__icontains=query) |
-                Q(customer_code__icontains=query)
+                Q(customer_code__icontains=query) |
+                Q(county__icontains=query) |
+                Q(sub_county__icontains=query) |
+                Q(ward__icontains=query) |
+                Q(city__icontains=query) |
+                Q(address__icontains=query)
             ).filter(is_active=True)[:limit]
 
             return list(queryset)

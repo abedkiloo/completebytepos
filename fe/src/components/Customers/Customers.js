@@ -544,7 +544,7 @@ const Customers = () => {
             type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by name, phone, email or code…"
+            placeholder="Search by name, phone, place, or code…"
             className="h-10 pl-9"
           />
           {searchQuery && (

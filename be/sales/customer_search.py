@@ -1,4 +1,9 @@
-"""Customer lookup for POS and past-sale entry — duka, owner, contact, code, email, or phone."""
+"""Customer lookup for POS, the directory, and the field.
+
+A search matches the duka name, owner, contact, code, email, tax id, phone,
+or the place already stored on the customer (county, sub-county, ward, city,
+or address). Phone digits match both 07… and 2547… forms.
+"""
 
 from __future__ import annotations
 
@@ -32,8 +37,22 @@ def _phone_digits_expression():
 
 
 def apply_customer_search(queryset, search: str | None):
-    """Filter by duka name, owner, contact person, code, email, tax id, or phone."""
-    term = (search or '').strip()
+    """
+    Keep customers whose name or place matches the typed text.
+
+    Args:
+        queryset: Customer rows already limited by who may see them.
+        search: Free text, 0–100 characters after trimming. Blank returns
+            the queryset unchanged.
+
+    Returns:
+        QuerySet: Same rows, filtered. A phone of at least 3 digits also
+        matches the 07 and 254 forms. No writes.
+
+    Raises:
+        None.
+    """
+    term = (search or '').strip()[:100]
     if not term:
         return queryset
 
@@ -45,6 +64,11 @@ def apply_customer_search(queryset, search: str | None):
         | Q(email__icontains=term)
         | Q(phone__icontains=term)
         | Q(tax_id__icontains=term)
+        | Q(county__icontains=term)
+        | Q(sub_county__icontains=term)
+        | Q(ward__icontains=term)
+        | Q(city__icontains=term)
+        | Q(address__icontains=term)
     )
 
     digits = _digits_only(term)
