@@ -186,7 +186,7 @@ export default function FieldLoadsPage() {
           onBack={() => setView('list')}
           onCreated={(next) => {
             replace(next);
-            showList('awaiting');
+            showList(next?.status === 'open' ? 'open' : 'awaiting');
           }}
         />
       )}
@@ -243,7 +243,8 @@ function StatusBadge({ status }) {
 }
 
 /**
- * A sales person writes a new load. Shop stock leaves when a manager approves it.
+ * A sales person writes a new load for themselves. A manager chooses
+ * themselves or another person, and that load opens immediately.
  *
  * Product search uses the same lookup as the till: name, SKU, or barcode,
  * and the matches update as the text settles. Choosing a product closes
@@ -364,7 +365,9 @@ function IssueForm({ onCreated, onBack }) {
         agent_id: Number(agentId),
         lines: lines.map((line) => ({ product_id: line.product_id, quantity: Number(line.quantity) })),
       });
-      toast.success('Load sent to the manager. Shop stock has not moved yet.');
+      toast.success(chooseEmployee
+        ? 'Load issued. These pieces have left the shop.'
+        : 'Load sent to the manager. Shop stock has not moved yet.');
       setLines([]);
       setPicked(null);
       setQuery('');
@@ -391,21 +394,28 @@ function IssueForm({ onCreated, onBack }) {
         <p className="text-sm font-medium">Assigned when the load is issued</p>
       </div>
       <label className="block text-sm">
-        <span className="mb-1 block text-muted-foreground">Sales employee</span>
+        <span className="mb-1 block text-muted-foreground">
+          {chooseEmployee ? 'Person carrying this load' : 'Sales employee'}
+        </span>
         {!carrierReady ? (
           <Input aria-label="Sales employee" value="" readOnly />
         ) : chooseEmployee ? (
-          <select
-            className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-            aria-label="Sales employee"
-            value={agentId}
-            onChange={(event) => setAgentId(event.target.value)}
-          >
-            <option value="">Choose</option>
-            {agents.map((agent) => (
-              <option key={agent.id} value={agent.id}>{agent.name}</option>
-            ))}
-          </select>
+          <>
+            <select
+              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+              aria-label="Person carrying this load"
+              value={agentId}
+              onChange={(event) => setAgentId(event.target.value)}
+            >
+              <option value="">Choose</option>
+              {agents.map((agent) => (
+                <option key={agent.id} value={agent.id}>{agent.name}</option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Choose yourself or another person. This load is ready to sell and does not wait for approval.
+            </p>
+          </>
         ) : (
           <Input aria-label="Sales employee" value={lockedName} readOnly />
         )}
@@ -544,10 +554,14 @@ function IssueForm({ onCreated, onBack }) {
       </div>
       <div className="rounded-xl bg-success/10 p-3 text-sm">
         <p className="font-medium text-success">Stock movement confirmation</p>
-        <p>A manager confirms these quantities. Shop stock leaves only after that approval.</p>
+        <p>
+          {chooseEmployee
+            ? 'Shop stock leaves as soon as you issue this load. No second approval.'
+            : 'A manager confirms these quantities. Shop stock leaves only after that approval.'}
+        </p>
       </div>
       <Button type="button" variant="success" className="w-full" onClick={save} disabled={saving || !agentId || lines.length === 0}>
-        {saving ? 'Sending…' : 'Submit for approval'}
+        {saving ? 'Sending…' : (chooseEmployee ? 'Issue load' : 'Submit for approval')}
       </Button>
     </section>
   );

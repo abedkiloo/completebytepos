@@ -1,9 +1,11 @@
 """
 Field loads: stock an agent carries, sells from that load, and returns.
 
-A sales person writes the quantities. Shop stock leaves only when a
-different manager approves that load. The person the load is written for
-is an active sales employee from the staff roster. A field-load sale does
+A sales person writes the quantities for themselves. Shop stock leaves
+only when a different manager approves that load. A manager writes a load
+for themselves or for another person, and that load is open at once: shop
+stock leaves in the same step and nobody else has to approve it. The other
+people on the list are active sales employees. A field-load sale does
 not remove stock again, and it is not a field order.
 Accepting the return puts ``quantity_returned`` back on the shelf.
 Missing units stay out: ``taken - sold - returned``.
@@ -536,8 +538,9 @@ def carrier_choices(user) -> dict:
     """
     Who a load can be written for.
 
-    A sales person writes only for themselves. A manager chooses any active
-    sales employee.
+    A sales person writes only for themselves. A manager chooses themselves
+    or any active sales employee. The manager is first, even when they are
+    not in the sales department.
 
     Args:
         user: Authenticated user who may issue loads.
@@ -551,7 +554,11 @@ def carrier_choices(user) -> dict:
         None.
     """
     if user_may_approve(user):
-        return {'choose_employee': True, 'results': list_field_agents()}
+        others = [row for row in list_field_agents() if row['id'] != user.pk]
+        return {
+            'choose_employee': True,
+            'results': [_self_carrier(user), *others][:200],
+        }
     return {'choose_employee': False, 'results': [_self_carrier(user)]}
 
 
@@ -580,25 +587,33 @@ def _self_carrier(user) -> dict:
 
 def issue_load(*, agent_id: int, lines: list, user) -> FieldLoad:
     """
-    Write a load for a manager to approve. Shop stock does not move yet.
+    Write a field load.
+
+    A sales person writes it for themselves and it waits for a different
+    manager. A manager writes it for themselves or for someone else, and
+    the stock leaves the shop in this same step.
 
     Args:
-        agent_id: Active user who will carry the stock.
+        agent_id: Active user who will carry the stock. A sales person may
+            pass only their own id. A manager may pass their own id or
+            another active user's id.
         lines: 1–40 dicts with ``product_id``, optional ``variant_id``, and
             ``quantity`` 1–100000. The same product cannot appear twice.
-        user: Staff member with issue rights. A sales person can write the
-            load only for themselves. A manager may choose the carrier.
-            The writer cannot approve the load.
+        user: Staff member with issue rights.
 
     Returns:
-        FieldLoad: The new load in ``awaiting_issue``.
+        FieldLoad: ``open`` when ``user`` may approve, otherwise
+        ``awaiting_issue``.
 
     Raises:
         FieldLoadError: ``forbidden``, ``bad_agent``, ``open_load``,
         ``bad_lines``, ``bad_qty``, ``bad_product``, or ``no_stock``.
 
     Side effects:
-        Inserts the load and lines. Does not change shop stock.
+        Inserts the load and lines. When the writer may approve, one
+        negative stock movement is written per line and
+        ``issue_approved_by`` is that writer. A failed movement rolls the
+        load back. A sales person's load does not change shop stock.
     """
     if not user_may_issue(user):
         raise FieldLoadError('forbidden', 'You cannot issue a field load.')
@@ -628,11 +643,14 @@ def issue_load(*, agent_id: int, lines: list, user) -> FieldLoad:
         if on_hand < qty:
             raise FieldLoadError('no_stock', f'{product.name} does not have enough stock in the shop.')
         parsed.append((product, variant, qty))
+    direct = user_may_approve(user)
     with transaction.atomic():
         load = FieldLoad.objects.create(
             agent=agent,
             issued_by=user,
-            status=FieldLoad.STATUS_AWAITING,
+            status=FieldLoad.STATUS_OPEN if direct else FieldLoad.STATUS_AWAITING,
+            issue_approved_by=user if direct else None,
+            issue_approved_at=timezone.now() if direct else None,
         )
         for product, variant, qty in parsed:
             FieldLoadLine.objects.create(
@@ -641,6 +659,14 @@ def issue_load(*, agent_id: int, lines: list, user) -> FieldLoad:
                 variant=variant,
                 quantity_taken=qty,
             )
+            if direct:
+                _stock_move(
+                    product=product,
+                    variant=variant,
+                    quantity=-qty,
+                    user=user,
+                    note=f'Field load {load.pk} issued',
+                )
     return load
 
 

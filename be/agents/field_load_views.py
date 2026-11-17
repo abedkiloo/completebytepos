@@ -161,6 +161,9 @@ class FieldLoadViewSet(viewsets.ViewSet):
         """
         Issue a new load.
 
+        A manager's load is returned already open. A sales person's load
+        is returned waiting for a different manager.
+
         Args:
             request: JSON ``agent_id`` and ``lines`` (1–40).
 

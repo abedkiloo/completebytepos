@@ -180,6 +180,30 @@ describe('FieldLoadsPage', () => {
     expect(screen.queryByRole('combobox', { name: 'Sales employee' })).not.toBeInTheDocument();
   });
 
+  test('a manager chooses themselves or someone else and issues without approval', async () => {
+    fieldLoadsAPI.list.mockResolvedValue({
+      data: { can_issue: true, can_approve: true, results: [] },
+    });
+    fieldLoadsAPI.agents.mockResolvedValue({
+      data: {
+        choose_employee: true,
+        results: [
+          { id: 1, name: 'Asha Manager' },
+          { id: 4, name: 'Mercy Mercy' },
+        ],
+      },
+    });
+    render(<FieldLoadsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Create new field load' }));
+    const people = await screen.findByRole('combobox', { name: 'Person carrying this load' });
+    expect(screen.getByRole('option', { name: 'Asha Manager' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Mercy Mercy' })).toBeInTheDocument();
+    expect(screen.getByText(/does not wait for approval/)).toBeInTheDocument();
+    await userEvent.selectOptions(people, '1');
+    expect(screen.getByRole('button', { name: 'Issue load' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Submit for approval' })).not.toBeInTheDocument();
+  });
+
   test('product search updates as the name is typed and the chosen quantity is added', async () => {
     fieldLoadsAPI.list.mockResolvedValue({
       data: { can_issue: true, can_approve: false, results: [] },
