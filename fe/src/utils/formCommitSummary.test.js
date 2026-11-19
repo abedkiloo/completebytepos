@@ -74,6 +74,8 @@ describe('formCommitSummary', () => {
       .toBe('Update supplier');
     expect(productCommitRows()[1].value).toBe('0');
     expect(productCommitRows({ name: 'Tee', has_variants: true }, { isEdit: true })[1].value).toBe('With variants');
+    expect(productCommitRows({ name: 'Nail', selling_price: 10, mrp: 12, sku: 'N1', cost: 4, stock_quantity: 6 }).find((r) => r.label === 'MRP').value).toBe('12');
+    expect(productCommitRows({ name: 'Nail', selling_price: 10, mrp: 12, sku: 'N1', cost: 4, stock_quantity: 6 }).find((r) => r.label === 'SKU').value).toBe('N1');
     expect(productCommitRows({ name: 'Nail', selling_price: 10 })[1].value).toBe('10');
     expect(productCommitRows({ price: 8 })[1].value).toBe('8');
     expect(categoryCommitRows()[0].label).toBe('Category');

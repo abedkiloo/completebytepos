@@ -116,11 +116,21 @@ export function supplierCommitRows(form = {}, { isEdit = false } = {}) {
 }
 
 export function productCommitRows(form = {}, { isEdit = false } = {}) {
+  const selling = String(form.selling_price || form.price || '0');
+  const cost = form.cost === '' || form.cost == null ? '' : String(form.cost);
   return compactCommitRows([
     { label: 'Product', value: form.name || '—', emphasis: true },
     form.has_variants
       ? { label: 'Type', value: 'With variants' }
-      : { label: 'Price', value: String(form.selling_price || form.price || '0') },
+      : { label: 'Selling price', value: selling },
+    !form.has_variants && form.mrp !== '' && form.mrp != null
+      ? { label: 'MRP', value: String(form.mrp) }
+      : null,
+    form.sku ? { label: 'SKU', value: String(form.sku) } : null,
+    form.barcode ? { label: 'Barcode', value: String(form.barcode) } : null,
+    cost ? { label: 'Cost', value: cost } : null,
+    { label: 'Opening stock', value: String(form.stock_quantity ?? 0) },
+    form.unit ? { label: 'Unit', value: String(form.unit) } : null,
     { label: 'Action', value: isEdit ? 'Update product' : 'Create product' },
   ]);
 }

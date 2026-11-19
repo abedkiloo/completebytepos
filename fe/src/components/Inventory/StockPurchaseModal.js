@@ -202,13 +202,21 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
         { label: 'Product', value: selectedProduct?.name || `Product #${pendingPayload.product_id}` },
         { label: 'Quantity', value: `+${pendingPayload.quantity}`, tone: 'success', emphasis: true },
         {
-          label: 'Price',
+          label: 'Price choice',
+          value: pendingPayload.price_mode === 'old' ? 'Old price' : 'New price',
+        },
+        {
+          label: 'Selling price',
           value: pendingPayload.price_mode === 'old'
-            ? `Old price (${formatCurrency(catalogSell)})`
+            ? formatCurrency(catalogSell)
             : pendingPayload.unit_sell_price
-              ? `New price ${formatCurrency(pendingPayload.unit_sell_price)}`
+              ? formatCurrency(pendingPayload.unit_sell_price)
               : 'New sale price has not been set',
         },
+        pendingPayload.unit_mrp
+          ? { label: 'MRP', value: formatCurrency(pendingPayload.unit_mrp) }
+          : null,
+        pendingPayload.notes ? { label: 'Notes', value: pendingPayload.notes } : null,
         pendingPayload.reference ? { label: 'Reference', value: pendingPayload.reference } : null,
       ].filter(Boolean)
     : [];
