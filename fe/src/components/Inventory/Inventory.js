@@ -10,6 +10,7 @@ import {
 import { inventoryAPI } from '../../services/api';
 import { formatCurrency, formatNumber, formatDateTime } from '../../utils/formatters';
 import { isFeatureEnabledInAny } from '../../utils/moduleSettings';
+import { PERSONA, getPersonaFromStorage } from '../../utils/roleAccess';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import {
   inventoryShowStockMovements,
@@ -24,6 +25,7 @@ import {
 } from '../../utils/inventoryDisplay';
 import SearchableSelect from '../Shared/SearchableSelect';
 import StockAdjustmentModal from './StockAdjustmentModal';
+import CorrectCountModal from './CorrectCountModal';
 import StockPurchaseModal from './StockPurchaseModal';
 import StockHistoryModal from './StockHistoryModal';
 import StockTransferModal from './StockTransferModal';
@@ -77,6 +79,9 @@ const Inventory = () => {
   const [loading, setLoading] = useState(true);
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
+  const [showCountModal, setShowCountModal] = useState(false);
+  const persona = getPersonaFromStorage();
+  const canCorrectCount = persona === PERSONA.MANAGER || persona === PERSONA.SUPER_ADMIN;
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [showBulkAdjustModal, setShowBulkAdjustModal] = useState(false);
@@ -277,6 +282,11 @@ const Inventory = () => {
             <Button onClick={handlePurchase}>
               <Plus className="h-4 w-4" />
               Record purchase
+            </Button>
+          )}
+          {canCorrectCount && (
+            <Button variant="outline" onClick={() => setShowCountModal(true)}>
+              Correct the count
             </Button>
           )}
           {canAdjust && (
@@ -586,6 +596,15 @@ const Inventory = () => {
         />
       )}
 
+      {showCountModal && canCorrectCount && (
+        <CorrectCountModal
+          onClose={() => setShowCountModal(false)}
+          onSave={() => {
+            setShowCountModal(false);
+            loadData();
+          }}
+        />
+      )}
       {showPurchaseModal && canPurchase && (
         <StockPurchaseModal
           product={selectedProduct}

@@ -220,3 +220,84 @@ class PurchasePriceApiTests(TestCase):
         }, format='json')
         self.assertEqual(blocked.status_code, 403)
         SettingsService.set('inventory', 'enable_stock_purchases', True)
+
+
+class ExistingStockTests(TestCase):
+    """A delivery adds on top. A count correction leaves the price alone."""
+
+    def setUp(self):
+        disable_maker_checker()
+        self.user = User.objects.create_superuser(username='stock_admin', password='x', email='s@example.com')
+        self.staff = User.objects.create_user(username='stock_staff', password='x')
+        cat = Category.objects.create(name='Shelf Cat', is_active=True)
+        self.product = Product.objects.create(
+            name='Nails',
+            sku='NAIL-SHELF-1',
+            category=cat,
+            price=Decimal('50.00'),
+            mrp=Decimal('70.00'),
+            cost=Decimal('20.00'),
+            stock_quantity=0,
+            track_stock=True,
+            is_active=True,
+        )
+        self.inv = StockMovementService()
+        self.client = APIClient()
+
+    def test_a_delivery_adds_on_top_of_stock_already_there(self):
+        self.inv.purchase_stock(
+            product_id=self.product.id, variant_id=None, quantity=6,
+            user=self.user, price_mode='old',
+        )
+        self.inv.purchase_stock(
+            product_id=self.product.id, variant_id=None, quantity=4,
+            user=self.user, price_mode='new', unit_sell_price=Decimal('80.00'),
+        )
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 10)
+        self.assertEqual(self.product.price, Decimal('50.00'))
+        self.assertEqual(self.product.mrp, Decimal('70.00'))
+        newest = StockLayer.objects.filter(product=self.product).order_by('-id').first()
+        self.assertEqual(newest.unit_sell_price, Decimal('80.00'))
+
+    def test_correcting_the_count_does_not_change_price_or_mrp(self):
+        self.inv.purchase_stock(
+            product_id=self.product.id, variant_id=None, quantity=6,
+            user=self.user, price_mode='old',
+        )
+        self.inv.set_on_hand_count(product_id=self.product.id, quantity=9, user=self.user)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 9)
+        self.assertEqual(self.product.price, Decimal('50.00'))
+        self.assertEqual(self.product.mrp, Decimal('70.00'))
+        self.inv.set_on_hand_count(product_id=self.product.id, quantity=4, user=self.user)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 4)
+        self.assertEqual(self.product.mrp, Decimal('70.00'))
+
+    def test_only_a_manager_or_super_admin_can_correct_the_count(self):
+        from inventory.access import may_correct_on_hand
+        self.assertFalse(may_correct_on_hand(self.staff))
+        self.assertTrue(may_correct_on_hand(self.user))
+        self.inv.purchase_stock(
+            product_id=self.product.id, variant_id=None, quantity=6,
+            user=self.user, price_mode='old',
+        )
+        self.client.force_authenticate(self.staff)
+        denied = self.client.post('/api/inventory/set-on-hand/', {
+            'product_id': self.product.id, 'quantity': 3,
+        }, format='json')
+        self.assertEqual(denied.status_code, 403)
+        self.assertNotIn('0718', str(denied.data))
+        anon = APIClient().post('/api/inventory/set-on-hand/', {
+            'product_id': self.product.id, 'quantity': 3,
+        }, format='json')
+        self.assertEqual(anon.status_code, 401)
+        self.client.force_authenticate(self.user)
+        saved = self.client.post('/api/inventory/set-on-hand/', {
+            'product_id': self.product.id, 'quantity': 3,
+        }, format='json')
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(saved.data['stock_quantity'], 3)
+        self.assertTrue(saved.data['price_unchanged'])
+        self.assertTrue(saved.data['mrp_unchanged'])

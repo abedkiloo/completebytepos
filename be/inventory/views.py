@@ -53,6 +53,7 @@ INVENTORY_PERMS = RequirePermPerAction('inventory', {
     'set_sale_price': 'create',
     'set_layer_cost': 'update',
     'pending_prices': 'view',
+    'set_on_hand': 'update',
     'transfer': 'create',
     'undo': 'update',
     'bulk_adjust': 'create',
@@ -289,6 +290,64 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 item['unit_cost'] = str(row.unit_cost)
             payload.append(item)
         return Response(payload)
+
+    @action(detail=False, methods=['post'], url_path='set-on-hand')
+    def set_on_hand(self, request):
+        """
+        Set the shelf count for one product.
+
+        Args:
+            request: Body ``product_id`` and ``quantity`` (0–1000000).
+                Caller must be a manager or Super Admin.
+
+        Returns:
+            200 with the product id, the previous count, and the new count.
+            Selling price and MRP are not changed.
+
+        Raises:
+            403: The caller is not a manager or Super Admin.
+            400: The count is out of range.
+        """
+        from inventory.access import may_correct_on_hand
+
+        if not may_correct_on_hand(request.user):
+            return Response(
+                {'error': 'Only a manager or Super Admin can correct the count.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            product_id = int(request.data.get('product_id') or 0)
+            quantity = int(request.data.get('quantity'))
+        except (TypeError, ValueError):
+            return Response(
+                {'error': 'Enter the count that is on the shelf.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        product = Product.objects.filter(pk=product_id).only('id', 'stock_quantity', 'price', 'mrp').first()
+        if product is None:
+            return Response({'error': 'Product not found'}, status=status.HTTP_400_BAD_REQUEST)
+        before = int(product.stock_quantity or 0)
+        price_before = product.price
+        mrp_before = product.mrp
+        try:
+            self.stock_service.set_on_hand_count(
+                product_id=product_id,
+                quantity=quantity,
+                notes=(request.data.get('notes') or '')[:500],
+                user=request.user,
+                branch=get_current_branch(request),
+                request=request,
+            )
+        except ValidationError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        product.refresh_from_db(fields=['stock_quantity', 'price', 'mrp'])
+        return Response({
+            'product_id': product.id,
+            'previous': before,
+            'stock_quantity': product.stock_quantity,
+            'price_unchanged': product.price == price_before,
+            'mrp_unchanged': product.mrp == mrp_before,
+        })
 
     @action(detail=False, methods=['post'], url_path='set-sale-price')
     def set_sale_price(self, request):

@@ -612,6 +612,7 @@ export const inventoryAPI = {
   pendingPrices: (productId) => api.get('/inventory/pending-prices/', { params: { product_id: productId } }),
   setSalePrice: (data) => api.post('/inventory/set-sale-price/', data),
   setLayerCost: (data) => api.post('/inventory/set-layer-cost/', data),
+  setOnHand: (data) => api.post('/inventory/set-on-hand/', data),
   transfer: (data) => api.post('/inventory/transfer/', data),
   undo: (id) => api.post(`/inventory/${id}/undo/`),
   bulkAdjust: (data) => api.post('/inventory/bulk_adjust/', data),

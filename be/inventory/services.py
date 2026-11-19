@@ -357,7 +357,53 @@ class StockMovementService(BaseService):
             stock_after=_on_hand(product, variant),
         )
         return movement
-    
+
+    @transaction.atomic
+    def set_on_hand_count(self, product_id: int, quantity: int, notes: str = '',
+                          user=None, branch: Optional[Branch] = None, request=None) -> StockMovement | None:
+        """
+        Set how many pieces of a product are on the shelf.
+
+        Args:
+            product_id: Product id, 1–2^31-1. The product must track stock.
+            quantity: The count now on the shelf, 0–1000000.
+            notes: Optional note, 0–500 characters.
+            user: Manager or Super Admin. Stored on the movement.
+            branch: Optional branch.
+            request: Optional HTTP request for the audit row.
+
+        Returns:
+            The adjustment movement, or None when the count is already correct.
+            Selling price and MRP of the pieces that remain are left as they are.
+            Pieces added to reach the count use the product's current price.
+
+        Raises:
+            ValidationError: Unknown product, variants, count out of range, or
+                the extra pieces have no cost on the product yet.
+        """
+        if quantity < 0 or quantity > 1000000:
+            raise ValidationError('Enter a count from 0 to 1000000.')
+        product = Product.objects.filter(pk=product_id).first()
+        if product is None:
+            raise ValidationError('Product not found')
+        if product.has_variants:
+            raise ValidationError('Correct each size and colour on its own.')
+        current = int(product.stock_quantity or 0)
+        delta = int(quantity) - current
+        if delta == 0:
+            return None
+        note = (notes or '').strip()[:500] or f'Count set to {quantity}'
+        return self.adjust_stock(
+            product_id=product_id,
+            variant_id=None,
+            quantity=delta,
+            notes=note,
+            user=user,
+            branch=branch,
+            use_catalog_cost=delta > 0,
+            request=request,
+        )
+
     @transaction.atomic
     def purchase_stock(self, product_id: int, variant_id: Optional[int],
                       quantity: int, unit_cost: Decimal = None, notes: str = '',

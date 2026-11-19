@@ -73,3 +73,26 @@ def movement_cost_visible() -> bool:
 def product_stock_history_feature_allowed() -> bool:
     """Module config: product stock ledger enabled and movements feature on."""
     return inventory_show_product_stock_history() and stock_movements_allowed()
+
+
+def may_correct_on_hand(user) -> bool:
+    """
+    True when this person may set the count of stock already on the shelf.
+
+    Args:
+        user: Signed-in user. Anonymous is refused.
+
+    Returns:
+        bool. Super Admin and Manager only. A sales person is refused.
+    """
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+    if getattr(user, 'is_superuser', False):
+        return True
+    profile = getattr(user, 'profile', None)
+    if profile is None:
+        return False
+    if getattr(profile, 'role', '') in ('manager', 'super_admin'):
+        return True
+    role = getattr(profile, 'custom_role', None)
+    return bool(role and role.name in ('Manager', 'Super Admin'))

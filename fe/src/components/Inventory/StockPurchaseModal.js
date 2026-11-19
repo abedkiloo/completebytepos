@@ -78,7 +78,6 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
         track_stock: 'true',
         is_active: 'true',
         page_size: 1000,
-        needs_restock: 'true',
       };
       const response = await productsAPI.list(params);
       const productsData = response.data.results || response.data || [];
@@ -252,6 +251,7 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
             <div className="product-info-box">
               <h3>{product.name}</h3>
               <p>SKU: {product.sku} | Current Stock: {product.stock_quantity}</p>
+              <p>The new pieces are added on top. Pieces already on the shelf stay.</p>
               {product.new_sale_price_unset ? (
                 <p className="text-sm text-amber-700">New sale price has not been set</p>
               ) : null}
