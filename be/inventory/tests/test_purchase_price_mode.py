@@ -707,3 +707,132 @@ class VariantStockingTests(TestCase):
         self.large.refresh_from_db()
         self.assertEqual(self.large.cost, Decimal('20.00'))
         self.assertEqual(self.large.price, Decimal('150.00'))
+
+    def test_a_new_size_with_no_stock_can_be_purchased(self):
+        small_size = Size.objects.create(name='Small', code='S-NEW', is_active=True)
+        small = ProductVariant.objects.create(
+            product=self.product, size=small_size, sku='CLOTH-S-NEW',
+            price=Decimal('90.00'), cost=Decimal('20.00'),
+            stock_quantity=0, is_active=True,
+        )
+        self.client.force_authenticate(self.user)
+        saved = self.client.post('/api/inventory/purchase/', {
+            'product_id': self.product.id, 'variant_id': small.id,
+            'quantity': 5, 'price_mode': 'new', 'unit_sell_price': '110.00',
+        }, format='json')
+        self.assertEqual(saved.status_code, 201, saved.data)
+        small.refresh_from_db()
+        self.medium.refresh_from_db()
+        self.assertEqual(small.stock_quantity, 5)
+        self.assertEqual(self.medium.stock_quantity, 10)
+        layer = StockLayer.objects.filter(variant=small).get()
+        self.assertEqual(layer.unit_sell_price, Decimal('110.00'))
+        self.assertEqual(layer.unit_cost, Decimal('20.00'))
+        self.assertFalse(layer.sale_price_pending)
+        sale = SaleService().create_sale(
+            {'sale_type': 'pos', 'payment_method': 'cash', 'amount_paid': Decimal('550.00')},
+            [{'product_id': self.product.id, 'variant_id': small.id, 'quantity': 5}],
+            self.user,
+        )
+        charged = sum((item.subtotal for item in sale.items.all()), Decimal('0'))
+        self.assertEqual(charged, Decimal('550.00'))
+        self.assertNotIn('0718', str(saved.data))
+
+    def test_the_variant_list_includes_a_new_empty_size(self):
+        from utils.pagination import StandardResultsSetPagination
+
+        configured = int(StandardResultsSetPagination.page_size or 10)
+        extra = configured if configured < 200 else 1
+        newest = None
+        for index in range(extra):
+            last = index == extra - 1
+            size = Size.objects.create(
+                name='ZZ Empty' if last else f'A{index:02d}',
+                code=f'Z{index}' if last else f'A{index}',
+                is_active=True,
+            )
+            newest = ProductVariant.objects.create(
+                product=self.product, size=size, sku=f'CLOTH-N{index}',
+                price=Decimal('40.00'), cost=Decimal('20.00'),
+                stock_quantity=0, is_active=True,
+            )
+        self.client.force_authenticate(self.user)
+        first_page = self.client.get('/api/products/variants/', {'product': self.product.id})
+        self.assertEqual(first_page.status_code, 200, first_page.data)
+        first_ids = [row['id'] for row in first_page.data['results']]
+        full = self.client.get('/api/products/variants/', {
+            'product': self.product.id, 'page_size': 200,
+        })
+        self.assertEqual(full.status_code, 200, full.data)
+        ids = [row['id'] for row in full.data['results']]
+        self.assertIn(newest.id, ids)
+        if len(first_ids) < full.data['count']:
+            self.assertNotIn(newest.id, first_ids)
+
+    def test_purchases_off_blocks_a_new_empty_size(self):
+        small_size = Size.objects.create(name='Tiny', code='T-NEW', is_active=True)
+        small = ProductVariant.objects.create(
+            product=self.product, size=small_size, sku='CLOTH-T-NEW',
+            price=Decimal('90.00'), cost=Decimal('20.00'),
+            stock_quantity=0, is_active=True,
+        )
+        self.client.force_authenticate(self.user)
+        SettingsService.set('inventory', 'enable_stock_purchases', False)
+        blocked = self.client.post('/api/inventory/purchase/', {
+            'product_id': self.product.id, 'variant_id': small.id,
+            'quantity': 1, 'price_mode': 'old',
+        }, format='json')
+        self.assertEqual(blocked.status_code, 403)
+        self.assertNotIn('0718', str(blocked.data))
+        small.refresh_from_db()
+        self.assertEqual(small.stock_quantity, 0)
+        SettingsService.set('inventory', 'enable_stock_purchases', True)
+        allowed = self.client.post('/api/inventory/purchase/', {
+            'product_id': self.product.id, 'variant_id': small.id,
+            'quantity': 1, 'price_mode': 'old',
+        }, format='json')
+        self.assertEqual(allowed.status_code, 201, allowed.data)
+        small.refresh_from_db()
+        self.assertEqual(small.stock_quantity, 1)
+
+    def test_staff_cannot_purchase_a_new_empty_size(self):
+        small_size = Size.objects.create(name='Mini', code='M-NEW', is_active=True)
+        small = ProductVariant.objects.create(
+            product=self.product, size=small_size, sku='CLOTH-M-NEW',
+            price=Decimal('90.00'), cost=Decimal('20.00'),
+            stock_quantity=0, is_active=True,
+        )
+        self.client.force_authenticate(self.staff)
+        denied = self.client.post('/api/inventory/purchase/', {
+            'product_id': self.product.id, 'variant_id': small.id,
+            'quantity': 3, 'price_mode': 'new', 'unit_sell_price': '110.00',
+        }, format='json')
+        self.assertEqual(denied.status_code, 403)
+        self.assertNotIn('0718', str(denied.data))
+        anon = APIClient().post('/api/inventory/purchase/', {
+            'product_id': self.product.id, 'variant_id': small.id, 'quantity': 3,
+        }, format='json')
+        self.assertEqual(anon.status_code, 401)
+        small.refresh_from_db()
+        self.assertEqual(small.stock_quantity, 0)
+
+    def test_stress_two_hundred_pieces_start_an_empty_size(self):
+        small_size = Size.objects.create(name='Bulk', code='B-NEW', is_active=True)
+        small = ProductVariant.objects.create(
+            product=self.product, size=small_size, sku='CLOTH-B-NEW',
+            price=Decimal('90.00'), cost=Decimal('20.00'),
+            stock_quantity=0, is_active=True,
+        )
+        self.inv.purchase_stock(
+            product_id=self.product.id, variant_id=small.id, quantity=200,
+            user=self.user, price_mode='new', unit_sell_price=Decimal('110.00'),
+        )
+        small.refresh_from_db()
+        self.medium.refresh_from_db()
+        self.large.refresh_from_db()
+        self.assertEqual(small.stock_quantity, 200)
+        self.assertEqual(self.medium.stock_quantity, 10)
+        self.assertEqual(self.large.stock_quantity, 4)
+        layer = StockLayer.objects.filter(variant=small).get()
+        self.assertEqual(layer.qty_remaining, 200)
+        self.assertEqual(layer.unit_sell_price, Decimal('110.00'))

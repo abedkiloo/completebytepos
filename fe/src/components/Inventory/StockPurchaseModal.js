@@ -117,15 +117,33 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
       return;
     }
     let cancelled = false;
+    const preferredId = selectedProduct.initial_variant_id;
+    const seed = Array.isArray(selectedProduct.variants) ? selectedProduct.variants : [];
     variantsAPI.getByProduct(productId).then((response) => {
       if (cancelled) return;
       const rows = response.data.results || response.data || [];
-      setVariants(Array.isArray(rows) ? rows.filter((row) => row.is_active !== false) : []);
+      const listed = Array.isArray(rows) ? rows.filter((row) => row.is_active !== false) : [];
+      const seen = new Set(listed.map((row) => Number(row.id)));
+      seed.forEach((row) => {
+        if (row?.id && row.is_active !== false && !seen.has(Number(row.id))) {
+          listed.push(row);
+        }
+      });
+      setVariants(listed);
+      setVariantId((current) => {
+        if (current && listed.some((row) => String(row.id) === String(current))) return current;
+        if (preferredId && listed.some((row) => Number(row.id) === Number(preferredId))) {
+          return String(preferredId);
+        }
+        return '';
+      });
     }).catch(() => {
-      if (!cancelled) setVariants([]);
+      if (cancelled) return;
+      setVariants(seed.filter((row) => row?.id && row.is_active !== false));
+      if (preferredId) setVariantId(String(preferredId));
     });
     return () => { cancelled = true; };
-  }, [selectedProduct?.id, selectedProduct?.has_variants]);
+  }, [selectedProduct?.id, selectedProduct?.has_variants, selectedProduct?.initial_variant_id, selectedProduct?.variants]);
 
   useEffect(() => {
     const productId = formData.product_id || product?.id;
@@ -234,6 +252,12 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
           ? { label: 'Size and colour', value: variantDisplayLabel(selectedVariant) }
           : null,
         { label: 'Quantity', value: `+${pendingPayload.quantity}`, tone: 'success', emphasis: true },
+        selectedVariant
+          ? {
+              label: 'On the shelf now',
+              value: String(Number(selectedVariant.stock_quantity ?? 0)),
+            }
+          : null,
         {
           label: 'Price choice',
           value: pendingPayload.price_mode === 'old' ? 'Old price' : 'New price',
@@ -283,8 +307,9 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
 
           {selectedProduct?.has_variants ? (
             <div className="form-group">
-              <label>Size and colour *</label>
+              <label htmlFor="purchase-variant">Size and colour *</label>
               <select
+                id="purchase-variant"
                 value={variantId}
                 onChange={(event) => setVariantId(event.target.value)}
               >
@@ -525,7 +550,11 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
         }
       }}
       title="Confirm stock purchase?"
-      description="Review the purchase details, then confirm to add stock."
+      description={
+        selectedVariant && Number(selectedVariant.stock_quantity ?? 0) <= 0
+          ? 'This size has no stock yet. Confirm to record these pieces as its first stock.'
+          : 'Review the purchase details, then confirm to add stock.'
+      }
       rows={commitRows}
       submitting={loading}
       confirmText={makerCheckerOn ? 'Submit for approval' : 'Confirm & record purchase'}

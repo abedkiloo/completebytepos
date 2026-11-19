@@ -415,7 +415,15 @@ export const variantsAPI = {
   create: (data) => api.post('/products/variants/', data),
   update: (id, data) => api.patch(`/products/variants/${id}/`, data),
   delete: (id, data) => api.delete(`/products/variants/${id}/`, { data: data || {} }),
-  getByProduct: (productId) => api.get(`/products/variants/?product=${productId}`),
+  /**
+   * Active and inactive sizes for one product.
+   * `page_size` is 200, the API cap, so a newly added size is not dropped
+   * by the default page of 10.
+   * @param {number} productId Product id, 1–2^31-1.
+   * @returns {Promise} Variant rows, at most 200.
+   */
+  getByProduct: (productId) =>
+    api.get(`/products/variants/?product=${productId}&page_size=200`),
 };
 
 export const salesAPI = {
