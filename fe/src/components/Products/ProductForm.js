@@ -84,6 +84,13 @@ const ProductForm = ({
     fieldAccessProp ?? defaultFieldAccess(catalogOnly, financialFieldsLocked);
   const showPricingFields = fieldAccess.pricing;
   const showCostField = fieldAccess.cost && showCost;
+  let signedInSuper = false;
+  try {
+    signedInSuper = Boolean(JSON.parse(localStorage.getItem('user') || '{}').is_superuser);
+  } catch {
+    signedInSuper = false;
+  }
+  const canEditVariantCost = showCostField && signedInSuper;
   const showStockFields = fieldAccess.stock;
   const makerCheckerFinancialLocked =
     !fieldAccess.pricing && !fieldAccess.cost && !fieldAccess.stock;
@@ -593,7 +600,7 @@ const ProductForm = ({
         const numericError = variantDraftNumericValidationMessage(draft, {
           label,
           canEditMrp: showMrp && showPricingFields,
-          canEditCost: showCostField,
+          canEditCost: canEditVariantCost,
           allowStockInput: showStockFields && !product,
         });
         if (numericError) {
@@ -603,8 +610,8 @@ const ProductForm = ({
         const financialError = variantFinancialValidationMessage(draft, {
           label,
           canEditMrp: showMrp && showPricingFields,
-          canEditCost: showCostField,
-          requireCost: showCostField,
+          canEditCost: canEditVariantCost,
+          requireCost: canEditVariantCost,
         });
         if (financialError) {
           toast.warning(financialError);
@@ -1026,7 +1033,7 @@ const ProductForm = ({
                 canEditPrice={showPricingFields}
                 canEditMrp={showMrp && showPricingFields}
                 canEditStock={showStockFields && !product}
-                canEditCost={showCostField}
+                canEditCost={canEditVariantCost}
                 defaultLowStockThreshold={formData.low_stock_threshold}
                 onDraftsChange={handleVariantDraftsChange}
                 onCombinationKeysChange={handleVariantCombinationKeysChange}

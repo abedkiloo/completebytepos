@@ -269,7 +269,7 @@ function ProductTile({ product, onClick, respectStockLimits = true }) {
           {product.name}
         </span>
         {product.new_sale_price_unset ? (
-          <span className="text-xs text-amber-700">New sale price has not been set</span>
+          <span className="text-xs text-amber-700">You can sell the pieces that already have a price. New sale price has not been set</span>
         ) : null}
         <span className="mt-auto text-base font-semibold text-foreground">
           {formatCurrency(product.price)}

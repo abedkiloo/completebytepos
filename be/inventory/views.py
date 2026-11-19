@@ -134,6 +134,9 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         notes = serializer.validated_data.get('notes', '')
         unit_cost = serializer.validated_data.get('unit_cost')
         use_catalog_cost = bool(serializer.validated_data.get('use_catalog_cost'))
+        if not request.user.is_superuser:
+            unit_cost = None
+            use_catalog_cost = True
         
         current_branch = get_current_branch(request)
         reason = request.data.get('reason') or notes or 'Stock adjustment'
@@ -257,11 +260,13 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         Deliveries of one product that are still in stock.
 
         Args:
-            request: Query ``product_id``, 1–2^31-1.
+            request: Query ``product_id``, 1–2^31-1. Optional ``variant_id``
+                for one size and colour. A variant product without it returns none.
 
         Returns:
-            Up to 20 layers. ``sale_price_pending`` is true when the selling price is unset.
-            ``unit_cost`` is included only for a superuser.
+            Up to 20 layers for that product or size. ``sale_price_pending`` is
+            true when the selling price is unset. ``unit_cost`` is included
+            only for a superuser.
         """
         if not stock_purchases_allowed():
             return self._feature_disabled_response('Stock purchases')
@@ -273,15 +278,25 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             product_id = 0
         if product_id <= 0:
             return Response([])
+        try:
+            variant_id = int(request.query_params.get('variant_id') or 0)
+        except (TypeError, ValueError):
+            variant_id = 0
+        if variant_id <= 0 and Product.objects.filter(pk=product_id, has_variants=True).exists():
+            return Response([])
         rows = StockLayer.objects.filter(
             product_id=product_id,
             qty_remaining__gt=0,
-        ).order_by('-id')[:20]
+        )
+        if variant_id > 0:
+            rows = rows.filter(variant_id=variant_id)
+        rows = rows.order_by('-id')[:20]
         show_cost = bool(request.user.is_superuser)
         payload = []
         for row in rows:
             item = {
                 'layer_id': row.id,
+                'variant_id': row.variant_id,
                 'quantity': row.qty_remaining,
                 'unit_sell_price': str(row.unit_sell_price),
                 'sale_price_pending': row.sale_price_pending,
@@ -297,7 +312,8 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         Set the shelf count for one product.
 
         Args:
-            request: Body ``product_id`` and ``quantity`` (0–1000000).
+            request: Body ``product_id``, ``quantity`` (0–1000000), and
+                ``variant_id`` when the product has sizes and colours.
                 Caller must be a manager or Super Admin.
 
         Returns:
@@ -318,17 +334,24 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         try:
             product_id = int(request.data.get('product_id') or 0)
             quantity = int(request.data.get('quantity'))
+            raw_variant = request.data.get('variant_id')
+            variant_id = int(raw_variant) if raw_variant not in (None, '', 0) else None
         except (TypeError, ValueError):
             return Response(
                 {'error': 'Enter the count that is on the shelf.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        product = Product.objects.filter(pk=product_id).only('id', 'stock_quantity', 'price', 'mrp').first()
+        product = Product.objects.filter(pk=product_id).only(
+            'id', 'stock_quantity', 'price', 'mrp', 'has_variants',
+        ).first()
         if product is None:
             return Response({'error': 'Product not found'}, status=status.HTTP_400_BAD_REQUEST)
-        before = int(product.stock_quantity or 0)
-        price_before = product.price
-        mrp_before = product.mrp
+        variant = None
+        if variant_id:
+            variant = ProductVariant.objects.filter(pk=variant_id, product_id=product.id).first()
+        before = int((variant.stock_quantity if variant else product.stock_quantity) or 0)
+        price_before = variant.price if variant and variant.price is not None else product.price
+        mrp_before = variant.mrp if variant and variant.mrp is not None else product.mrp
         try:
             self.stock_service.set_on_hand_count(
                 product_id=product_id,
@@ -337,22 +360,33 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 user=request.user,
                 branch=get_current_branch(request),
                 request=request,
+                variant_id=variant_id,
             )
         except ValidationError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        product.refresh_from_db(fields=['stock_quantity', 'price', 'mrp'])
+        if variant is not None:
+            variant.refresh_from_db(fields=['stock_quantity', 'price', 'mrp'])
+            stock_now = variant.stock_quantity
+            price_now = variant.price if variant.price is not None else product.price
+            mrp_now = variant.mrp if variant.mrp is not None else product.mrp
+        else:
+            product.refresh_from_db(fields=['stock_quantity', 'price', 'mrp'])
+            stock_now = product.stock_quantity
+            price_now = product.price
+            mrp_now = product.mrp
         return Response({
             'product_id': product.id,
+            'variant_id': variant_id,
             'previous': before,
-            'stock_quantity': product.stock_quantity,
-            'price_unchanged': product.price == price_before,
-            'mrp_unchanged': product.mrp == mrp_before,
+            'stock_quantity': stock_now,
+            'price_unchanged': price_now == price_before,
+            'mrp_unchanged': mrp_now == mrp_before,
         })
 
     @action(detail=False, methods=['post'], url_path='set-sale-price')
     def set_sale_price(self, request):
         """
-        Set the selling price on a delivery that is waiting for a new price.
+        Set or change the selling price on pieces of one delivery still in stock.
 
         Args:
             request: Body ``layer_id``, ``unit_sell_price``, optional ``unit_mrp``.

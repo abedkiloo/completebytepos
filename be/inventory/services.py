@@ -288,22 +288,28 @@ class StockMovementService(BaseService):
             layers_enabled,
         )
 
-        # Positive intake: resolve new-vs-catalog cost. Negative: stamp movement
-        # with catalog/FIFO cost for write-off valuation (layer drain below).
+        # A posted cost is a Super Admin choice, including on a size and colour.
+        # Everyone else keeps the cost already on that product or variant.
+        sets_cost = bool(getattr(user, 'is_superuser', False))
         if quantity > 0:
-            unit_cost = resolve_intake_unit_cost(
-                product=product,
-                variant=variant,
-                unit_cost=unit_cost,
-                use_catalog_cost=use_catalog_cost,
-            )
+            if user is not None and not sets_cost:
+                unit_cost = catalog_unit_cost(product, variant)
+            else:
+                unit_cost = resolve_intake_unit_cost(
+                    product=product,
+                    variant=variant,
+                    unit_cost=unit_cost,
+                    use_catalog_cost=use_catalog_cost,
+                )
             if layers_enabled():
                 ensure_opening_layer_if_needed(
                     product_id=product.id,
                     variant_id=variant.id if variant else None,
                 )
         else:
-            if unit_cost is None or unit_cost == '':
+            if user is not None and not sets_cost:
+                unit_cost = catalog_unit_cost(product, variant)
+            elif unit_cost is None or unit_cost == '':
                 unit_cost = catalog_unit_cost(product, variant)
             else:
                 unit_cost = Decimal(str(unit_cost))
@@ -360,9 +366,10 @@ class StockMovementService(BaseService):
 
     @transaction.atomic
     def set_on_hand_count(self, product_id: int, quantity: int, notes: str = '',
-                          user=None, branch: Optional[Branch] = None, request=None) -> StockMovement | None:
+                          user=None, branch: Optional[Branch] = None, request=None,
+                          variant_id: Optional[int] = None) -> StockMovement | None:
         """
-        Set how many pieces of a product are on the shelf.
+        Set how many pieces of a product, or one size and colour, are on the shelf.
 
         Args:
             product_id: Product id, 1–2^31-1. The product must track stock.
@@ -371,6 +378,8 @@ class StockMovementService(BaseService):
             user: Manager or Super Admin. Stored on the movement.
             branch: Optional branch.
             request: Optional HTTP request for the audit row.
+            variant_id: Size and colour id when the product has variants.
+                Required for those products. 1–2^31-1.
 
         Returns:
             The adjustment movement, or None when the count is already correct.
@@ -386,16 +395,27 @@ class StockMovementService(BaseService):
         product = Product.objects.filter(pk=product_id).first()
         if product is None:
             raise ValidationError('Product not found')
-        if product.has_variants:
-            raise ValidationError('Correct each size and colour on its own.')
-        current = int(product.stock_quantity or 0)
+        variant = None
+        if variant_id:
+            variant = ProductVariant.objects.filter(pk=variant_id, product=product).first()
+            if variant is None:
+                raise ValidationError('That size and colour was not found.')
+        elif product.has_variants:
+            raise ValidationError('Choose a size and colour.')
+        current = int((variant.stock_quantity if variant else product.stock_quantity) or 0)
         delta = int(quantity) - current
         if delta == 0:
             return None
         note = (notes or '').strip()[:500] or f'Count set to {quantity}'
+        from inventory.stock_layers import ensure_opening_layer_if_needed, layers_enabled
+        if layers_enabled():
+            ensure_opening_layer_if_needed(
+                product_id=product.id,
+                variant_id=variant.id if variant else None,
+            )
         return self.adjust_stock(
             product_id=product_id,
-            variant_id=None,
+            variant_id=variant.id if variant else None,
             quantity=delta,
             notes=note,
             user=user,
@@ -414,12 +434,31 @@ class StockMovementService(BaseService):
                       price_mode: Optional[str] = None,
                       unit_mrp: Optional[Decimal] = None) -> StockMovement:
         """
-        Record a stock purchase (add stock).
+        Record a stock purchase on a product or one size and colour.
 
-        When stock layers are enabled, creates a FIFO layer with this intake's
-        cost + selling price and syncs catalog price/cost from the oldest open
-        layer (WAC blending is skipped). Cost may be a new batch cost or the
-        existing catalog cost (``use_catalog_cost``).
+        Args:
+            product_id: Product id, 1–2^31-1.
+            variant_id: Size and colour id. Required when the product has
+                variants. None records a product that has no sizes.
+            quantity: Pieces added, at least 1.
+            unit_cost: Ignored when ``price_mode`` is new or old.
+            notes: Optional note.
+            user: Person recording the delivery.
+            branch: Optional branch.
+            reference: Optional reference, may be empty.
+            unit_sell_price: Selling price for a new-price delivery.
+            use_catalog_cost: Used only when ``price_mode`` is omitted.
+            request: Optional HTTP request for the audit row.
+            price_mode: ``new`` or ``old``. Empty keeps the older cost path.
+            unit_mrp: Optional MRP for a new-price delivery.
+
+        Returns:
+            The purchase movement. New pieces are added on top of that size.
+            Old price uses that size's current selling price.
+
+        Raises:
+            ValidationError: Unknown product, missing size and colour, or
+                quantity below 1.
         """
         if quantity <= 0:
             raise ValidationError('Purchase quantity must be positive')
@@ -435,7 +474,9 @@ class StockMovementService(BaseService):
                 variant = ProductVariant.objects.get(id=variant_id, product=product)
             except ProductVariant.DoesNotExist:
                 raise ValidationError('Variant not found for this product')
-        
+        if product.has_variants and variant is None:
+            raise ValidationError('Choose a size and colour.')
+
         # Track-stock guard.
         if not variant and not product.track_stock:
             raise ValidationError('Product does not track stock')

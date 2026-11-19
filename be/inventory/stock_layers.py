@@ -358,15 +358,16 @@ def create_layer_for_purchase(
 
 def set_delivery_sale_price(*, layer_id: int, unit_sell_price, unit_mrp=None) -> StockLayer:
     """
-    Set the selling price on a delivery that was entered as new price.
+    Set or change the selling price on pieces of one delivery still in stock.
 
     Args:
         layer_id: StockLayer id, 1–2^31-1.
         unit_sell_price: Selling price greater than 0 and at most 99999999.99.
-        unit_mrp: Optional MRP in the same range. Empty leaves the stored MRP.
+        unit_mrp: Optional MRP, 0–99999999.99. Empty leaves the stored MRP.
 
     Returns:
-        The updated layer. Remaining pieces can be sold at this price.
+        The updated layer. Pieces still in stock sell at this price.
+        A sale already completed keeps the price it was made with.
 
     Raises:
         ValidationError: Missing layer, price not above 0, or nothing left.
@@ -432,6 +433,81 @@ def set_delivery_cost(*, layer_id: int, unit_cost) -> StockLayer:
     return layer
 
 
+def _sale_price_stop_error(taken: int, stop: str):
+    """
+    Tell the seller why the rest of the quantity cannot be added.
+
+    Args:
+        taken: Pieces that can be sold, 0–the quantity asked for.
+        stop: ``pending`` when the next pieces have no price, or ``higher``
+            when those pieces cost more than the pieces already being sold.
+
+    Returns:
+        Django ValidationError. A taken count of 0 keeps the short sentence
+        ``New sale price has not been set.``
+    """
+    from django.core.exceptions import ValidationError
+
+    if stop == 'higher':
+        return ValidationError(
+            f'You can only sell {taken}. The next pieces are at a higher price.'
+        )
+    if taken <= 0:
+        return ValidationError('New sale price has not been set.')
+    return ValidationError(
+        f'You can sell {taken}. New sale price has not been set.'
+    )
+
+
+def _fifo_price_plan(layers, quantity: int) -> tuple[list[dict], int, str]:
+    """
+    Walk open layers from oldest to newest and price a sale.
+
+    Args:
+        layers: Open layers, oldest first. Each has qty_remaining of 0 or more.
+        quantity: Pieces asked for, 1–1000000.
+
+    Returns:
+        A plan of ``{layer, quantity, unit_cost, unit_sell_price}``, how many
+        pieces were not placed, and a stop of ``''``, ``pending``, or ``higher``.
+        A later cheaper delivery in the same sale is charged at the older,
+        higher price. A later higher price is not taken.
+
+    Raises:
+        Nothing. The caller raises when the stop leaves pieces unplaced.
+    """
+    remaining = int(quantity or 0)
+    plan: list[dict] = []
+    opening = None
+    stop = ''
+    for layer in layers:
+        if remaining <= 0:
+            break
+        take = min(remaining, int(layer.qty_remaining or 0))
+        if take <= 0:
+            continue
+        if layer.sale_price_pending:
+            stop = 'pending'
+            break
+        price = Decimal(str(layer.unit_sell_price or 0))
+        if opening is None:
+            opening = price
+            charge = price
+        elif price > opening:
+            stop = 'higher'
+            break
+        else:
+            charge = opening if price < opening else price
+        plan.append({
+            'layer': layer,
+            'quantity': take,
+            'unit_cost': Decimal(str(layer.unit_cost or 0)),
+            'unit_sell_price': charge,
+        })
+        remaining -= take
+    return plan, remaining, stop
+
+
 def plan_fifo_allocations(
     *,
     product_id: int,
@@ -441,9 +517,20 @@ def plan_fifo_allocations(
     """
     Plan FIFO drain without mutating.
 
-    Returns list of {layer, quantity, unit_cost, unit_sell_price}.
-    When layers are disabled or no layers exist, returns a single synthetic
-    allocation using catalog cost/price (layer=None).
+    Args:
+        product_id: Product id, 1–2^31-1.
+        variant_id: Optional variant id. None uses the product layers.
+        quantity: Pieces asked for. 0 or less returns an empty plan.
+
+    Returns:
+        List of ``{layer, quantity, unit_cost, unit_sell_price}``.
+        Pieces that already have a price can be sold before a new price is set.
+        A cheaper new price in the same sale is charged at the older price.
+        When layers are off, one catalog row is returned.
+
+    Raises:
+        ValidationError: The quantity would take pieces with no price, or
+            pieces at a higher price than the ones already being sold.
     """
     qty = int(quantity or 0)
     if qty <= 0:
@@ -460,25 +547,9 @@ def plan_fifo_allocations(
     if not layers:
         return _catalog_fallback(product_id, variant_id, qty)
 
-    remaining = qty
-    plan: list[dict] = []
-    for layer in layers:
-        if remaining <= 0:
-            break
-        take = min(remaining, int(layer.qty_remaining))
-        if take <= 0:
-            continue
-        if layer.sale_price_pending:
-            from django.core.exceptions import ValidationError
-
-            raise ValidationError('New sale price has not been set.')
-        plan.append({
-            'layer': layer,
-            'quantity': take,
-            'unit_cost': Decimal(str(layer.unit_cost)),
-            'unit_sell_price': Decimal(str(layer.unit_sell_price)),
-        })
-        remaining -= take
+    plan, remaining, stop = _fifo_price_plan(layers, qty)
+    if stop and remaining > 0:
+        raise _sale_price_stop_error(qty - remaining, stop)
 
     if remaining > 0:
         if plan:
@@ -528,8 +599,19 @@ def apply_fifo_sale_drain(
     quantity: int,
 ) -> list[dict]:
     """
-    Decrement open layers FIFO. Returns applied allocation dicts
-    (same shape as plan_fifo_allocations, with refreshed layer refs).
+    Decrement open layers FIFO using the same price rule as a sale plan.
+
+    Args:
+        product_id: Product id, 1–2^31-1.
+        variant_id: Optional variant id. None uses the product layers.
+        quantity: Pieces to remove, 0–1000000. 0 returns an empty list.
+
+    Returns:
+        Applied rows of ``{layer, quantity, unit_cost, unit_sell_price}``.
+        Pieces with no price, and pieces at a higher price, are left in stock.
+
+    Raises:
+        Nothing. A quantity of 0 does not write.
     """
     qty = int(quantity or 0)
     if qty <= 0 or not layers_enabled():
@@ -547,27 +629,16 @@ def apply_fifo_sale_drain(
             open_layers_qs(product_id=product_id, variant_id=variant_id).select_for_update()
         )
 
-    remaining = qty
-    applied: list[dict] = []
-    for layer in layers:
-        if remaining <= 0:
-            break
-        take = min(remaining, int(layer.qty_remaining))
-        if take <= 0:
-            continue
+    applied, remaining, stop = _fifo_price_plan(layers, qty)
+    for chunk in applied:
+        layer = chunk['layer']
+        take = int(chunk['quantity'])
         StockLayer.objects.filter(pk=layer.pk).update(
             qty_remaining=F('qty_remaining') - take
         )
         layer.qty_remaining = int(layer.qty_remaining) - take
-        applied.append({
-            'layer': layer,
-            'quantity': take,
-            'unit_cost': Decimal(str(layer.unit_cost)),
-            'unit_sell_price': Decimal(str(layer.unit_sell_price)),
-        })
-        remaining -= take
 
-    if remaining > 0:
+    if remaining > 0 and not stop:
         applied.extend(_catalog_fallback(product_id, variant_id, remaining))
 
     sync_catalog_from_oldest_layer(product_id=product_id, variant_id=variant_id)

@@ -330,7 +330,7 @@ export default function BillingPOSPage() {
                           <span className="min-w-0 flex-1">
                             <span className="block font-medium">{p.name}</span>
                             {p.new_sale_price_unset ? (
-                              <span className="block text-xs text-amber-700">New sale price has not been set</span>
+                              <span className="block text-xs text-amber-700">You can sell the pieces that already have a price. New sale price has not been set</span>
                             ) : null}
                           </span>
                           <span className="flex shrink-0 flex-col items-end gap-0.5">

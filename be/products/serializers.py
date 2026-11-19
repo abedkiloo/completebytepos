@@ -230,6 +230,18 @@ class ProductVariantSerializer(serializers.ModelSerializer):
         return self.instance.sku or 'variant'
 
     def validate(self, data):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None) if request is not None else None
+        if (
+            user is not None
+            and getattr(user, 'is_authenticated', False)
+            and not getattr(user, 'is_superuser', False)
+        ):
+            if self.instance is not None:
+                data.pop('cost', None)
+            else:
+                parent = data.get('product') or self.context.get('parent_product')
+                data['cost'] = getattr(parent, 'cost', None) or Decimal('0')
         price = data.get('price')
         if price is None and self.instance is not None:
             price = self.instance.price

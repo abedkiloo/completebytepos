@@ -33,6 +33,12 @@ const catalogCostOf = (row) => {
 };
 
 const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
+  let isSuperAdmin = false;
+  try {
+    isSuperAdmin = Boolean(JSON.parse(localStorage.getItem('user') || '{}').is_superuser);
+  } catch {
+    isSuperAdmin = false;
+  }
   const [formData, setFormData] = useState({
     product_id: product?.id || '',
     quantity: 0,
@@ -211,6 +217,9 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
   };
 
   const resolveIntakeCostFields = () => {
+    if (!isSuperAdmin) {
+      return { use_catalog_cost: true, unit_cost: undefined };
+    }
     const useCatalog = costMode === 'catalog' && hasCatalogCost;
     if (useCatalog) {
       return { use_catalog_cost: true, unit_cost: undefined };
@@ -477,7 +486,7 @@ const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
               ) : null
             )}
 
-            {hasPositiveIntake ? (
+            {hasPositiveIntake && isSuperAdmin ? (
               <div className="form-group">
                 <label>Cost for stock being added *</label>
                 {!hasCatalogCost ? (

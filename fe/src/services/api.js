@@ -609,7 +609,12 @@ export const inventoryAPI = {
   get: (id) => api.get(`/inventory/${id}/`),
   adjust: (data) => api.post('/inventory/adjust/', data),
   purchase: (data) => api.post('/inventory/purchase/', data),
-  pendingPrices: (productId) => api.get('/inventory/pending-prices/', { params: { product_id: productId } }),
+  pendingPrices: (productId, variantId) => api.get('/inventory/pending-prices/', {
+    params: {
+      product_id: productId,
+      ...(variantId ? { variant_id: variantId } : {}),
+    },
+  }),
   setSalePrice: (data) => api.post('/inventory/set-sale-price/', data),
   setLayerCost: (data) => api.post('/inventory/set-layer-cost/', data),
   setOnHand: (data) => api.post('/inventory/set-on-hand/', data),

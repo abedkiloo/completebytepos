@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { inventoryAPI, productsAPI } from '../../services/api';
+import { inventoryAPI, productsAPI, variantsAPI } from '../../services/api';
+import { variantDisplayLabel } from '../../utils/variantCombinations';
 import { formatCurrency } from '../../utils/formatters';
 import SearchableSelect from '../Shared/SearchableSelect';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
@@ -43,6 +44,8 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
   const [changeReason, setChangeReason] = useState('');
   const [pendingPayload, setPendingPayload] = useState(null);
   const [showCommitConfirm, setShowCommitConfirm] = useState(false);
+  const [variants, setVariants] = useState([]);
+  const [variantId, setVariantId] = useState('');
   const { settings: storeSettings } = useStoreSettings();
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
 
@@ -52,7 +55,10 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
       products.find((p) => Number(p.id) === Number(formData.product_id)),
     [product, products, formData.product_id]
   );
-  const catalogSell = Number(selectedProduct?.selling_price ?? selectedProduct?.price ?? 0);
+  const selectedVariant = variants.find((row) => Number(row.id) === Number(variantId));
+  const catalogSell = Number(
+    selectedVariant?.price ?? selectedProduct?.selling_price ?? selectedProduct?.price ?? 0
+  );
 
   useEffect(() => {
     if (!product) {
@@ -101,22 +107,40 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
       unit_mrp: '',
     }));
     setPriceMode('new');
+    setVariantId('');
   };
 
   useEffect(() => {
+    const productId = selectedProduct?.id;
+    if (!productId || !selectedProduct?.has_variants) {
+      setVariants([]);
+      return;
+    }
+    let cancelled = false;
+    variantsAPI.getByProduct(productId).then((response) => {
+      if (cancelled) return;
+      const rows = response.data.results || response.data || [];
+      setVariants(Array.isArray(rows) ? rows.filter((row) => row.is_active !== false) : []);
+    }).catch(() => {
+      if (!cancelled) setVariants([]);
+    });
+    return () => { cancelled = true; };
+  }, [selectedProduct?.id, selectedProduct?.has_variants]);
+
+  useEffect(() => {
     const productId = formData.product_id || product?.id;
-    if (!productId) {
+    if (!productId || (selectedProduct?.has_variants && !variantId)) {
       setDeliveries([]);
       return;
     }
     let cancelled = false;
-    inventoryAPI.pendingPrices(productId).then((res) => {
+    inventoryAPI.pendingPrices(productId, variantId || undefined).then((res) => {
       if (!cancelled) setDeliveries(Array.isArray(res.data) ? res.data : []);
     }).catch(() => {
       if (!cancelled) setDeliveries([]);
     });
     return () => { cancelled = true; };
-  }, [formData.product_id, product?.id]);
+  }, [formData.product_id, product?.id, selectedProduct?.has_variants, variantId]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -146,6 +170,10 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
       setError('Select a product.');
       return;
     }
+    if (selectedProduct?.has_variants && !variantId) {
+      setError('Choose a size and colour.');
+      return;
+    }
 
     const payload = {
       product_id: formData.product_id || product?.id,
@@ -159,6 +187,9 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
     }
     if (priceMode === 'new' && formData.unit_mrp !== '') {
       payload.unit_mrp = formData.unit_mrp;
+    }
+    if (variantId) {
+      payload.variant_id = Number(variantId);
     }
 
     if (makerCheckerOn) {
@@ -199,6 +230,9 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
   const commitRows = pendingPayload
     ? [
         { label: 'Product', value: selectedProduct?.name || `Product #${pendingPayload.product_id}` },
+        selectedVariant
+          ? { label: 'Size and colour', value: variantDisplayLabel(selectedVariant) }
+          : null,
         { label: 'Quantity', value: `+${pendingPayload.quantity}`, tone: 'success', emphasis: true },
         {
           label: 'Price choice',
@@ -246,6 +280,24 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
               />
             </div>
           )}
+
+          {selectedProduct?.has_variants ? (
+            <div className="form-group">
+              <label>Size and colour *</label>
+              <select
+                value={variantId}
+                onChange={(event) => setVariantId(event.target.value)}
+              >
+                <option value="">Choose a size and colour</option>
+                {variants.map((row) => (
+                  <option key={row.id} value={row.id}>
+                    {variantDisplayLabel(row)} — Stock: {row.stock_quantity ?? 0}
+                  </option>
+                ))}
+              </select>
+              <small>The new pieces are added to this size and colour only.</small>
+            </div>
+          ) : null}
 
           {product && (
             <div className="product-info-box">
@@ -336,12 +388,17 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
             </small>
           </div>
 
-          {deliveries.some((row) => row.sale_price_pending) ? (
+          {deliveries.length > 0 ? (
             <div className="form-group">
-              <p className="text-sm text-amber-700">New sale price has not been set</p>
-              {deliveries.filter((row) => row.sale_price_pending).map((row) => (
+              <label>Selling price for pieces still in stock</label>
+              {deliveries.map((row) => (
                 <div key={row.layer_id} className="mt-2 flex flex-wrap items-center gap-2">
-                  <span className="text-sm">{row.quantity} pieces</span>
+                  <span className="text-sm">
+                    {row.quantity} pieces
+                    {row.sale_price_pending
+                      ? ' · New sale price has not been set'
+                      : ` · now ${formatCurrency(row.unit_sell_price)}`}
+                  </span>
                   <input
                     type="number"
                     className="w-32"
@@ -356,22 +413,26 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
                     className="btn btn-secondary"
                     onClick={async () => {
                       try {
-                        await inventoryAPI.setSalePrice({
+                        const saved = await inventoryAPI.setSalePrice({
                           layer_id: row.layer_id,
                           unit_sell_price: priceDrafts[row.layer_id],
                         });
                         setDeliveries((prev) => prev.map((item) => (
                           item.layer_id === row.layer_id
-                            ? { ...item, sale_price_pending: false }
+                            ? {
+                              ...item,
+                              sale_price_pending: false,
+                              unit_sell_price: saved.data.unit_sell_price,
+                            }
                             : item
                         )));
-                        toast.success('Selling price saved. These pieces can be sold.');
+                        toast.success('Selling price updated for the pieces still in stock.');
                       } catch (err) {
                         setError(err.response?.data?.error || 'Could not save the selling price.');
                       }
                     }}
                   >
-                    Save price
+                    {row.sale_price_pending ? 'Save price' : 'Update price'}
                   </button>
                 </div>
               ))}
