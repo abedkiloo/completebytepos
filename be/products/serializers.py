@@ -232,10 +232,12 @@ class ProductVariantSerializer(serializers.ModelSerializer):
     def validate(self, data):
         request = self.context.get('request')
         user = getattr(request, 'user', None) if request is not None else None
+        from products.catalog_access import user_is_super_admin
+
         if (
             user is not None
             and getattr(user, 'is_authenticated', False)
-            and not getattr(user, 'is_superuser', False)
+            and not user_is_super_admin(user)
         ):
             if self.instance is not None:
                 data.pop('cost', None)
@@ -946,6 +948,17 @@ class ProductSerializer(serializers.ModelSerializer):
         from products.module_settings import products_show_cost_price, products_show_mrp
         from products.status_rules import strip_product_status_from_write_data
 
+        from products.catalog_access import user_is_super_admin
+
+        sets_cost = user is None or user_is_super_admin(user)
+        if user is not None and not sets_cost:
+            data.pop('cost', None)
+            if self.instance is None:
+                data['cost'] = Decimal('0')
+            for row in getattr(self, '_variant_combinations', None) or []:
+                if isinstance(row, dict):
+                    row.pop('cost', None)
+
         show_cost = products_show_cost_price()
         if not show_cost:
             data.pop('cost', None)
@@ -959,7 +972,7 @@ class ProductSerializer(serializers.ModelSerializer):
 
         # Cost > 0 is required for tracked goods when the cost field is in play.
         # Catalog-only personas (no cost edit) and hidden cost settings are exempt.
-        if show_cost and not catalog_skip:
+        if show_cost and not catalog_skip and sets_cost:
             track_stock = data.get('track_stock')
             if track_stock is None and self.instance is not None:
                 track_stock = self.instance.track_stock

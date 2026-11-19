@@ -21,6 +21,7 @@ import { moneyMessage, required } from '../../utils/formValidation';
 import { formBannerMessage } from '../../utils/formFeedback';
 import FormBanner from '../form/FormBanner';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
+import { getPersonaFromStorage, PERSONA } from '../../utils/roleAccess';
 import { useProductUnits } from '../../hooks/useProductUnits';
 import ChangeReasonField from '../Approvals/ChangeReasonField';
 import ProductVariantsPanel from './ProductVariantsPanel';
@@ -84,12 +85,7 @@ const ProductForm = ({
     fieldAccessProp ?? defaultFieldAccess(catalogOnly, financialFieldsLocked);
   const showPricingFields = fieldAccess.pricing;
   const showCostField = fieldAccess.cost && showCost;
-  let signedInSuper = false;
-  try {
-    signedInSuper = Boolean(JSON.parse(localStorage.getItem('user') || '{}').is_superuser);
-  } catch {
-    signedInSuper = false;
-  }
+  const signedInSuper = getPersonaFromStorage() === PERSONA.SUPER_ADMIN;
   const canEditVariantCost = showCostField && signedInSuper;
   const showStockFields = fieldAccess.stock;
   const makerCheckerFinancialLocked =
@@ -512,7 +508,7 @@ const ProductForm = ({
       }
 
       if (
-        showCostField &&
+        canEditVariantCost &&
         parseFloat(formData.selling_price) < parseFloat(formData.cost || 0)
       ) {
         const selling = parseFloat(formData.selling_price) || 0;
@@ -521,7 +517,7 @@ const ProductForm = ({
       }
     }
 
-    if (showCostField && !formData.has_variants) {
+    if (canEditVariantCost && !formData.has_variants) {
       const costErr = moneyMessage(formData.cost, {
         allowZero: false,
         required: true,
@@ -1021,7 +1017,7 @@ const ProductForm = ({
                 Build variants one at a time — pick a size and color, click{' '}
                 <strong>Add variant</strong>, then enter
                 {showMrp && showPricingFields ? ' MRP,' : ''} price
-                {showCostField ? ', cost' : ''}
+                {canEditVariantCost ? ', cost' : ''}
                 {showStockFields && !product ? ', and opening stock' : ''}{' '}
                 for that row
                 {showStockFields && !product
@@ -1081,7 +1077,7 @@ const ProductForm = ({
           </div>
           )}
 
-          {showCostField && !formData.has_variants && (
+          {canEditVariantCost && !formData.has_variants && (
           <div className="form-row">
             <div className="form-group">
               <label className="inline-flex flex-wrap items-center gap-2">

@@ -889,14 +889,16 @@ class MakerCheckerVariantTests(ManagerAPITestCase):
             {'cost': '55.00', 'reason': 'Supplier increase'},
             format='json',
         )
-        self.assertEqual(resp.status_code, status.HTTP_202_ACCEPTED, resp.data)
+        self.assertIn(resp.status_code, (status.HTTP_200_OK, status.HTTP_202_ACCEPTED), resp.data)
         self.variant.refresh_from_db()
         self.assertEqual(self.variant.cost, Decimal('40'))
         pending = PendingChange.objects.filter(
             entity_type='products.ProductVariant',
             action_type=ACTION_PRODUCT_PRICE,
-        ).latest('id')
-        self.assertEqual(pending.proposed_values.get('cost'), '55.00')
+            proposed_values__cost='55.00',
+        )
+        self.assertFalse(pending.exists())
+        self.assertNotIn('0718', str(resp.data))
 
     def test_variant_stock_pending_caps_sellable(self):
         self.client.patch(

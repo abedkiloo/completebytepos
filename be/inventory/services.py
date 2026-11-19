@@ -290,7 +290,9 @@ class StockMovementService(BaseService):
 
         # A posted cost is a Super Admin choice, including on a size and colour.
         # Everyone else keeps the cost already on that product or variant.
-        sets_cost = bool(getattr(user, 'is_superuser', False))
+        from products.catalog_access import user_is_super_admin
+
+        sets_cost = user is None or user_is_super_admin(user)
         if quantity > 0:
             if user is not None and not sets_cost:
                 unit_cost = catalog_unit_cost(product, variant)

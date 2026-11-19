@@ -44,6 +44,25 @@ def products_manager_may_edit_cost() -> bool:
     return _products_flag('allow_manager_edit_cost', False)
 
 
+def user_is_super_admin(user) -> bool:
+    """
+    True when this person is a Super Admin.
+
+    Args:
+        user: Signed-in user. None and anonymous are False.
+
+    Returns:
+        bool. A Django superuser, the super_admin role, or the Super Admin
+        custom role. A manager and a sales person are False.
+
+    Raises:
+        None.
+    """
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+    return resolve_user_role(user) == 'super_admin'
+
+
 def resolve_user_role(user) -> str:
     if not user or not getattr(user, 'is_authenticated', False):
         return 'anonymous'
@@ -91,17 +110,20 @@ def user_may_edit_product_pricing(user) -> bool:
 
 
 def user_may_edit_product_cost(user) -> bool:
-    role = resolve_user_role(user)
-    if role == 'super_admin':
-        return True
-    if role == 'manager':
-        return products_manager_may_edit_cost()
-    if role == 'sales':
-        return (
-            products_sales_catalog_access_enabled()
-            and products_sales_may_edit_cost()
-        )
-    return False
+    """
+    True only for a Super Admin.
+
+    Args:
+        user: Signed-in user. A manager stays False even when the old
+            manager-cost setting is on.
+
+    Returns:
+        bool.
+
+    Raises:
+        None.
+    """
+    return user_is_super_admin(user)
 
 
 def user_may_edit_product_stock(user) -> bool:

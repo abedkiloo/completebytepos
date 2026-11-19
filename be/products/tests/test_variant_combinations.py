@@ -334,6 +334,92 @@ class VariantProductCreateAPITests(TestCase):
         self.assertTrue(all(row.cost == Decimal('60.00') for row in rows))
         self.assertEqual(sum(row.stock_quantity for row in rows), sum(range(1, 21)))
 
+    def test_a_manager_cost_on_a_new_size_is_ignored(self):
+        import json
+        from django.contrib.auth.models import User
+        from accounts.models import Role, UserProfile
+        from accounts.role_definitions import ROLE_MANAGER, sync_default_roles
+
+        from accounts.models import Permission
+
+        sync_default_roles()
+        manager = User.objects.create_user('cloth_mgr', 'm@t.com', 'x')
+        role = Role.objects.get(name=ROLE_MANAGER)
+        perm, _ = Permission.objects.get_or_create(
+            module='products',
+            action='create',
+            defaults={'name': 'products.create', 'description': 'Create products'},
+        )
+        role.permissions.add(perm)
+        UserProfile.objects.create(
+            user=manager,
+            role='manager',
+            custom_role=role,
+        )
+        self.client.force_authenticate(manager)
+        response = self.client.post(
+            '/api/products/',
+            {
+                'name': 'Manager cloth',
+                'category': self.category.id,
+                'cost': '999.00',
+                'has_variants': True,
+                'track_stock': True,
+                'variant_combinations': json.dumps([{
+                    'size': self.size.id,
+                    'color': self.colors[0].id,
+                    'price': '200.00',
+                    'cost': '80.00',
+                    'stock_quantity': 4,
+                }]),
+            },
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertNotIn('0718', str(response.data))
+        variant = ProductVariant.objects.get(product_id=response.data['id'])
+        variant.product.refresh_from_db()
+        self.assertEqual(variant.price, Decimal('200.00'))
+        self.assertEqual(variant.stock_quantity, 4)
+        self.assertEqual(variant.cost, Decimal('0'))
+        self.assertEqual(variant.product.cost, Decimal('0'))
+
+    def test_a_super_admin_role_saves_the_size_cost(self):
+        import json
+        from django.contrib.auth.models import User
+        from accounts.models import Role, UserProfile
+        from accounts.role_definitions import ROLE_SUPER_ADMIN, sync_default_roles
+
+        sync_default_roles()
+        admin = User.objects.create_user('cloth_role_admin', 'a@t.com', 'x')
+        UserProfile.objects.create(
+            user=admin,
+            role='super_admin',
+            custom_role=Role.objects.get(name=ROLE_SUPER_ADMIN),
+        )
+        self.client.force_authenticate(admin)
+        response = self.client.post(
+            '/api/products/',
+            {
+                'name': 'Admin cloth',
+                'category': self.category.id,
+                'has_variants': True,
+                'track_stock': True,
+                'variant_combinations': json.dumps([{
+                    'size': self.size.id,
+                    'color': self.colors[0].id,
+                    'price': '200.00',
+                    'cost': '80.00',
+                    'stock_quantity': 3,
+                }]),
+            },
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        variant = ProductVariant.objects.get(product_id=response.data['id'])
+        self.assertEqual(variant.cost, Decimal('80.00'))
+        self.assertEqual(variant.stock_quantity, 3)
+
     def test_failed_variant_sync_does_not_leave_orphan_product(self):
         import json
         from unittest.mock import patch

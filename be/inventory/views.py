@@ -134,7 +134,9 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         notes = serializer.validated_data.get('notes', '')
         unit_cost = serializer.validated_data.get('unit_cost')
         use_catalog_cost = bool(serializer.validated_data.get('use_catalog_cost'))
-        if not request.user.is_superuser:
+        from products.catalog_access import user_is_super_admin
+
+        if not user_is_super_admin(request.user):
             unit_cost = None
             use_catalog_cost = True
         
@@ -291,7 +293,9 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         if variant_id > 0:
             rows = rows.filter(variant_id=variant_id)
         rows = rows.order_by('-id')[:20]
-        show_cost = bool(request.user.is_superuser)
+        from products.catalog_access import user_is_super_admin
+
+        show_cost = user_is_super_admin(request.user)
         payload = []
         for row in rows:
             item = {
@@ -432,7 +436,9 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         """
         if not stock_purchases_allowed():
             return self._feature_disabled_response('Stock purchases')
-        if not request.user.is_superuser:
+        from products.catalog_access import user_is_super_admin
+
+        if not user_is_super_admin(request.user):
             return Response(
                 {'error': 'Only a Super Admin can set the cost.'},
                 status=status.HTTP_403_FORBIDDEN,

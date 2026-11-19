@@ -112,11 +112,11 @@ class CatalogAccessTests(TestCase):
         _seed_products_access_settings(allow_sales_edit_pricing=True)
         self.assertTrue(user_may_edit_product_pricing(self.sales))
 
-    def test_manager_may_edit_cost_when_module_flag_on(self):
+    def test_manager_cannot_edit_cost_even_when_the_old_flag_is_on(self):
         _seed_products_access_settings(allow_manager_edit_cost=True)
-        self.assertTrue(user_may_edit_product_cost(self.manager))
+        self.assertFalse(user_may_edit_product_cost(self.manager))
 
-    def test_manager_cost_kept_when_pricing_disabled_but_cost_enabled(self):
+    def test_manager_cost_is_stripped_even_when_the_old_flag_is_on(self):
         _seed_products_access_settings(
             allow_manager_edit_pricing=False,
             allow_manager_edit_cost=True,
@@ -125,8 +125,7 @@ class CatalogAccessTests(TestCase):
         strip_product_fields_by_access(
             data, user=self.manager, instance=self.product, is_create=False
         )
-        self.assertIn('cost', data)
-        self.assertEqual(data['cost'], Decimal('88'))
+        self.assertNotIn('cost', data)
         self.assertNotIn('price', data)
 
     def test_sales_catalog_access_disabled_when_store_flag_off(self):

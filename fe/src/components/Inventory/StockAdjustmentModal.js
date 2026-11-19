@@ -24,6 +24,7 @@ import { STOCK_ADJUST_HINT } from '../../utils/productDisplay';
 import CommitConfirm from '../Shared/CommitConfirm';
 import CenterScreenLoader from '../Shared/CenterScreenLoader';
 import { formatSignedQty } from '../../utils/commitConfirm';
+import { getPersonaFromStorage, PERSONA } from '../../utils/roleAccess';
 
 const catalogCostOf = (row) => {
   const raw = row?.cost;
@@ -33,12 +34,7 @@ const catalogCostOf = (row) => {
 };
 
 const StockAdjustmentModal = ({ product, onClose, onSave, nested = false }) => {
-  let isSuperAdmin = false;
-  try {
-    isSuperAdmin = Boolean(JSON.parse(localStorage.getItem('user') || '{}').is_superuser);
-  } catch {
-    isSuperAdmin = false;
-  }
+  const isSuperAdmin = getPersonaFromStorage() === PERSONA.SUPER_ADMIN;
   const [formData, setFormData] = useState({
     product_id: product?.id || '',
     quantity: 0,

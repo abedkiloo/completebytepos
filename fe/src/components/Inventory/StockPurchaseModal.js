@@ -13,6 +13,7 @@ import {
   stockReasonValidationMessage,
 } from '../../utils/makerChecker';
 import CommitConfirm from '../Shared/CommitConfirm';
+import { getPersonaFromStorage, PERSONA } from '../../utils/roleAccess';
 
 const StockPurchaseModal = ({ product, onClose, onSave }) => {
   const defaultQuantity = (product?.reorder_quantity != null && product.reorder_quantity > 0)
@@ -31,13 +32,7 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
   const [deliveries, setDeliveries] = useState([]);
   const [priceDrafts, setPriceDrafts] = useState({});
   const [costDrafts, setCostDrafts] = useState({});
-  const isSuperAdmin = (() => {
-    try {
-      return Boolean(JSON.parse(localStorage.getItem('user') || '{}').is_superuser);
-    } catch (err) {
-      return false;
-    }
-  })();
+  const isSuperAdmin = getPersonaFromStorage() === PERSONA.SUPER_ADMIN;
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
