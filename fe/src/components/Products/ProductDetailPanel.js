@@ -175,14 +175,28 @@ export default function ProductDetailPanel({
             <>
               <div className="flex gap-4">
                 {imageSrc ? (
-                  <ProductImageThumb
-                    src={imageSrc}
-                    alt={product.name}
-                    title={product.name}
-                    subtitle={product.sku || undefined}
-                    meta={product.category_name || product.category?.name || undefined}
-                    size="lg"
-                  />
+                  <div>
+                    <ProductImageThumb
+                      src={imageSrc}
+                      alt={product.name}
+                      title={product.name}
+                      subtitle={product.sku || undefined}
+                      meta={product.category_name || product.category?.name || undefined}
+                      size="lg"
+                    />
+                    {Array.isArray(product.photos) && product.photos.length > 1 && (
+                      <div className="mt-2 flex gap-1">
+                        {product.photos.map((photo) => (
+                          <img
+                            key={photo.slot}
+                            src={resolveMediaUrl(photo.url)}
+                            alt={photo.is_featured ? 'Featured view' : `View ${photo.slot}`}
+                            className={`h-10 w-10 rounded object-cover ${photo.is_featured ? 'ring-2 ring-primary' : ''}`}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 ) : null}
                 <div className="min-w-0 flex-1">
                   <h3 className="text-lg font-semibold leading-tight">{product.name}</h3>

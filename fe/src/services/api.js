@@ -945,6 +945,14 @@ export const permissionsAPI = {
 
 /** Field / visit orders — admin pack board under Sales. */
 /** Stock a field agent carries out, sells from, and accounts for on return. */
+export const leaveAPI = {
+  list: () => api.get('/employees/leave-requests/'),
+  create: (data) => api.post('/employees/leave-requests/', data),
+  decide: (id, data) => api.post(`/employees/leave-requests/${id}/decide/`, data),
+  allowance: () => api.get('/employees/leave-allowance/'),
+  saveAllowance: (data) => api.patch('/employees/leave-allowance/', data),
+};
+
 export const fieldLoadsAPI = {
   list: () => api.get('/agents/field-loads/'),
   agents: () => api.get('/agents/field-loads/agents/'),

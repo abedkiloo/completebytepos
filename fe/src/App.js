@@ -54,6 +54,7 @@ const DebtManagement = lazy(() => import('./components/Customers/DebtManagementP
 const PaymentsTrail = lazy(() => import('./components/Customers/PaymentsTrailPage'));
 const Suppliers = lazy(() => import('./components/Suppliers/Suppliers'));
 const Employees = lazy(() => import('./components/Employees/Employees'));
+const LeavePage = lazy(() => import('./components/Employees/LeavePage'));
 const DailyNotes = lazy(() => import('./components/DailyNotes/DailyNotes'));
 const AppraisalsPage = lazy(() => import('./components/Appraisals/AppraisalsPage'));
 const PayrollPage = lazy(() => import('./components/Payroll/PayrollPage'));
@@ -219,6 +220,7 @@ function App() {
                 <Route path="/customers/:customerId" element={<CustomerDetail />} />
                 <Route path="/suppliers" element={<Suppliers />} />
                 <Route path="/employees" element={<Employees />} />
+                <Route path="/employees/leave" element={<LeavePage />} />
                 <Route path="/appraisals" element={<AppraisalsPage />} />
                 <Route path="/payroll" element={<PayrollPage />} />
                 <Route path="/daily-notes" element={<DailyNotes />} />

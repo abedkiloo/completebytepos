@@ -301,6 +301,7 @@ const UserForm = ({
                     options={[
                       { id: 'cashier', name: 'Cashier' },
                       { id: 'manager', name: 'Manager' },
+                      { id: 'director', name: 'Director' },
                       { id: 'admin', name: 'Admin' },
                       { id: 'super_admin', name: 'Super Admin' },
                     ]}

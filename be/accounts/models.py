@@ -131,6 +131,7 @@ class UserProfile(models.Model):
     ROLE_CHOICES = [
         ('super_admin', 'Super Admin'),
         ('admin', 'Admin'),
+        ('director', 'Director'),
         ('manager', 'Manager'),
         ('cashier', 'Cashier'),
     ]
@@ -146,6 +147,11 @@ class UserProfile(models.Model):
         help_text='Custom role with specific permissions'
     )
     phone_number = models.CharField(max_length=20, blank=True)
+    monthly_leave_days = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text='Days off allowed each month for this person. Empty uses the shop number. 0–31.',
+    )
     is_active = models.BooleanField(default=True, help_text='User account status')
     must_change_password = models.BooleanField(
         default=False,
@@ -203,11 +209,20 @@ class UserProfile(models.Model):
         
         if self.role == 'manager':
             # Managers can view and manage most things except users/roles/settings
+            if module == 'employees' and action in ('view', 'leave_request', 'leave_approve'):
+                return True
             if module in ['users', 'roles', 'settings', 'modules']:
                 return False
             return action in ['view', 'create', 'update', 'export', 'import']
-        
+
+        if self.role == 'director':
+            return module == 'employees' and action in (
+                'view', 'leave_request', 'leave_approve',
+            )
+
         if self.role == 'cashier':
+            if module == 'employees' and action == 'leave_request':
+                return True
             # Cashiers have limited permissions
             allowed_modules = ['products', 'categories', 'sales', 'pos', 'barcodes']
             if module not in allowed_modules:
@@ -241,8 +256,11 @@ class UserProfile(models.Model):
         if self.role == 'manager':
             return module not in ['users', 'roles', 'settings', 'modules']
         
+        if self.role == 'director':
+            return module == 'employees'
+
         if self.role == 'cashier':
-            return module in ['products', 'categories', 'sales', 'pos', 'barcodes']
+            return module in ['products', 'categories', 'sales', 'pos', 'barcodes', 'employees']
         
         return False
 

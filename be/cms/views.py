@@ -74,6 +74,7 @@ class PublicProductViewSet(_PublicReadOnly):
         qs = (
             Product.objects.filter(is_active=True)
             .select_related('category', 'subcategory')
+            .prefetch_related('photos')
             .annotate(
                 image_rank=Case(
                     When(Q(image__isnull=True) | Q(image=''), then=Value(1)),

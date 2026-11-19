@@ -186,13 +186,14 @@ class PublicProductSerializer(serializers.ModelSerializer):
     category = serializers.SerializerMethodField()
     subcategory = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
     in_stock = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
         fields = [
             'id', 'name', 'sku', 'category', 'subcategory', 'description',
-            'image_url', 'unit', 'has_variants', 'in_stock',
+            'image_url', 'images', 'unit', 'has_variants', 'in_stock',
         ]
 
     def to_representation(self, instance):
@@ -212,7 +213,23 @@ class PublicProductSerializer(serializers.ModelSerializer):
         return {'id': obj.subcategory_id, 'name': obj.subcategory.name}
 
     def get_image_url(self, obj):
-        return _image_url(self, obj.image)
+        from products.gallery import featured_image_url
+
+        return featured_image_url(obj, self.context.get('request'))
+
+    def get_images(self, obj):
+        """
+        Public views of the product. Cost and stock counts are not included.
+
+        Args:
+            obj: Active product.
+
+        Returns:
+            list: 0–4 dicts with slot, url, and is_featured.
+        """
+        from products.gallery import photo_rows
+
+        return photo_rows(obj, self.context.get('request'))
 
     def get_in_stock(self, obj):
         if not obj.track_stock:

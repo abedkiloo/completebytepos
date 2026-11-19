@@ -350,6 +350,7 @@ describe('ProductForm integration', () => {
       has_variants: false,
       price: '50',
       selling_price: '50',
+      cost: '20',
       stock_quantity: 12,
       is_active: true,
       track_stock: true,
@@ -377,6 +378,9 @@ describe('ProductForm integration', () => {
     const body = productsAPI.update.mock.calls[0][1];
     expect(body).toBeInstanceOf(FormData);
     expect(body.get('image')).toBe(file);
+    expect(body.get('featured_slot')).toBe('1');
+    expect(screen.getByTestId('product-image-2')).toBeInTheDocument();
+    expect(screen.getByTestId('product-image-4')).toBeInTheDocument();
   });
 
   test('blocks save when variants enabled but no combinations', async () => {

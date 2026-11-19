@@ -12,6 +12,14 @@ def _non_negative_stock_constraint(name: str):
         return CheckConstraint(check=q, name=name)
 
 
+def _check(name: str, q: Q):
+    """Build a CheckConstraint for this Django version."""
+    try:
+        return CheckConstraint(condition=q, name=name)
+    except TypeError:
+        return CheckConstraint(check=q, name=name)
+
+
 class Size(models.Model):
     """Product sizes (e.g., S, M, L, XL, etc.)"""
     name = models.CharField(max_length=50, unique=True)
@@ -172,6 +180,10 @@ class Product(models.Model):
         help_text='Unit code — must match an active UnitOfMeasure.code',
     )
     image = models.ImageField(upload_to='products/', blank=True, null=True)
+    featured_slot = models.PositiveSmallIntegerField(
+        default=1,
+        help_text='Which saved view is the featured photo. 1–4. Slot 1 when empty.',
+    )
     description = models.TextField(blank=True)
     supplier = models.ForeignKey(
         'suppliers.Supplier',
@@ -274,6 +286,39 @@ class Product(models.Model):
                 raise ValueError("Subcategory must be a child of the main category")
         
         super().save(*args, **kwargs)
+
+
+class ProductPhoto(models.Model):
+    """
+    One view of a product. A product has at most four views.
+
+    Slot 1–4. Exactly one slot is the featured photo, stored on
+    ``Product.featured_slot`` and copied onto ``Product.image`` so older
+    screens keep working. Each file is a JPEG of at most 1.5 MiB.
+    """
+
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='photos',
+    )
+    slot = models.PositiveSmallIntegerField(
+        help_text='View number, 1–4. One row per slot.',
+    )
+    image = models.ImageField(upload_to='products/views/')
+
+    class Meta:
+        ordering = ['slot']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['product', 'slot'],
+                name='uniq_product_photo_slot',
+            ),
+            _check('product_photo_slot_range', Q(slot__gte=1, slot__lte=4)),
+        ]
+
+    def __str__(self):
+        return f'{self.product_id} view {self.slot}'
 
 
 class ProductVariant(models.Model):

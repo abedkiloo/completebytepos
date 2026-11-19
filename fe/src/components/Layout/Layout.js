@@ -203,6 +203,7 @@ export const NAV_SECTIONS = [
     module: 'employees',
     items: [
       { to: '/employees', label: 'Employees', icon: UserCog, feature: ['employees', 'employee_management'], permission: ['employees', 'view'] },
+      { to: '/employees/leave', label: 'Leave', icon: Calendar, feature: ['employees', 'leave_requests'], permission: ['employees', 'leave_request'] },
       {
         to: '/payroll',
         label: 'Payroll',

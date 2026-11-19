@@ -472,6 +472,7 @@ class ProductSerializer(serializers.ModelSerializer):
     needs_reorder = serializers.BooleanField(read_only=True)
     cost_missing = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()
+    photos = serializers.SerializerMethodField()
     supplier_name_display = serializers.SerializerMethodField()
     supplier_detail = serializers.SerializerMethodField()
     selling_price = serializers.DecimalField(
@@ -494,7 +495,7 @@ class ProductSerializer(serializers.ModelSerializer):
             'has_variants', 'available_sizes', 'available_sizes_detail',
             'available_colors', 'available_colors_detail', 'variant_combinations', 'variants',
             'mrp', 'price', 'selling_price', 'cost', 'stock_quantity', 'low_stock_threshold', 'reorder_quantity',
-            'unit', 'image', 'image_url', 'description', 
+            'unit', 'image', 'image_url', 'photos', 'featured_slot', 'description', 
             'supplier', 'supplier_name', 'supplier_name_display', 'supplier_detail', 'supplier_contact',
             'tax_rate', 'is_taxable', 'track_stock', 'is_low_stock', 'needs_reorder', 'cost_missing',
             'profit_margin', 'profit_amount', 'total_value', 'is_active',
@@ -658,10 +659,23 @@ class ProductSerializer(serializers.ModelSerializer):
         return None
     
     def get_image_url(self, obj):
-        if obj.image:
-            from config.media_urls import absolute_media_url
-            return absolute_media_url(self.context.get('request'), obj.image.url)
-        return None
+        from products.gallery import featured_image_url
+
+        return featured_image_url(obj, self.context.get('request'))
+
+    def get_photos(self, obj):
+        """
+        Up to four product views.
+
+        Args:
+            obj: Product.
+
+        Returns:
+            list: 0–4 dicts with slot, url, and is_featured. No writes.
+        """
+        from products.gallery import photo_rows
+
+        return photo_rows(obj, self.context.get('request'))
 
     def get_cost_missing(self, obj):
         """True when tracked stock has catalog cost 0/null (product or any active variant)."""
@@ -976,6 +990,14 @@ class ProductSerializer(serializers.ModelSerializer):
                             })
 
         data = _apply_product_financial_defaults(data, instance=self.instance)
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        from products.gallery import validate_product_photo_uploads
+
+        try:
+            validate_product_photo_uploads(request)
+        except DjangoValidationError as exc:
+            detail = getattr(exc, 'message_dict', None) or {'photos': exc.messages}
+            raise serializers.ValidationError(detail)
         return strip_product_status_from_write_data(data)
 
     def to_representation(self, instance):
@@ -1118,6 +1140,7 @@ class ProductSerializer(serializers.ModelSerializer):
         if available_colors:
             product.available_colors.set(available_colors)
         
+        self._save_photos(product)
         return product
     
     def update(self, instance, validated_data):
@@ -1255,7 +1278,25 @@ class ProductSerializer(serializers.ModelSerializer):
 
             sync_product_stock_from_variants(instance)
 
+        self._save_photos(instance)
         return instance
+
+    def _save_photos(self, product):
+        """
+        Store extra views from the current request.
+
+        Args:
+            product: Product just created or updated.
+
+        Returns:
+            None. Writes photo rows when the request includes them.
+
+        Raises:
+            ValidationError: A view is over 2 MiB or is not an image.
+        """
+        from products.gallery import apply_product_photos
+
+        apply_product_photos(product, self.context.get('request'))
 
 
 class ProductListSerializer(serializers.ModelSerializer):

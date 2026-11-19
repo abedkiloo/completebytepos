@@ -1,7 +1,16 @@
 from django.db import models
+from django.db.models import Q
 from django.conf import settings
 from django.core.validators import EmailValidator, MinValueValidator
 from decimal import Decimal
+
+
+def _check(name, q):
+    """Build a CheckConstraint for Django 4 or 5."""
+    try:
+        return models.CheckConstraint(condition=q, name=name)
+    except TypeError:
+        return models.CheckConstraint(check=q, name=name)
 
 
 class Employee(models.Model):
@@ -129,3 +138,62 @@ class Employee(models.Model):
     def is_active(self):
         """True only when ``status == 'active'`` (not on_leave / inactive / terminated)."""
         return self.status == 'active'
+
+
+class LeaveRequest(models.Model):
+    """
+    One calendar day off, either leave or sick.
+
+    A staff request waits for a manager. A manager request waits for a
+    director. The person who asked cannot decide their own day.
+    """
+
+    KIND_LEAVE = 'leave'
+    KIND_SICK = 'sick'
+    KIND_CHOICES = [
+        (KIND_LEAVE, 'Day off'),
+        (KIND_SICK, 'Sick day'),
+    ]
+    STATUS_PENDING = 'pending'
+    STATUS_APPROVED = 'approved'
+    STATUS_REJECTED = 'rejected'
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_APPROVED, 'Approved'),
+        (STATUS_REJECTED, 'Rejected'),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='leave_requests',
+    )
+    kind = models.CharField(max_length=8, choices=KIND_CHOICES)
+    day = models.DateField()
+    note = models.CharField(max_length=300, blank=True)
+    status = models.CharField(
+        max_length=12,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+        db_index=True,
+    )
+    decision_note = models.CharField(max_length=300, blank=True)
+    decided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='leave_decisions',
+    )
+    decided_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        constraints = [
+            _check('leave_request_kind', Q(kind__in=['leave', 'sick'])),
+            _check('leave_request_status', Q(status__in=['pending', 'approved', 'rejected'])),
+        ]
+
+    def __str__(self):
+        return f'{self.user_id} {self.kind} {self.day}'

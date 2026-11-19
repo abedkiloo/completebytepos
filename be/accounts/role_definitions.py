@@ -15,6 +15,7 @@ ROLE_FIELD_AGENT = 'Field Sales'  # was Field Agent
 ROLE_DISPATCHER = 'Dispatcher'
 ROLE_DELIVERY_AGENT = 'Delivery Driver'  # was Delivery Agent
 ROLE_PAYROLL_ADMIN = 'Payroll Admin'
+ROLE_DIRECTOR = 'Director'
 
 # Legacy names kept for migrations / existing DB rows; not created on fresh install.
 LEGACY_ROLE_NAMES = ('Admin', 'Administrator', 'Cashier')
@@ -45,6 +46,8 @@ PERMISSIONS_DATA = [
     ('employees', 'delete', 'Delete employees'),
     ('employees', 'export', 'Export employees'),
     ('employees', 'manage', 'Manage employees'),
+    ('employees', 'leave_request', 'Request a day off or a sick day'),
+    ('employees', 'leave_approve', 'Approve or reject a day off or a sick day'),
     ('appraisals', 'view', 'View own target delivery'),
     ('appraisals', 'view_all', 'View team target delivery'),
     ('appraisals', 'manage', 'Configure target delivery template and pay bands'),
@@ -548,6 +551,41 @@ def grant_call_book_to_all_roles():
     return granted
 
 
+def grant_leave_to_roles():
+    """
+    Let every active role ask for a day off, and let managers decide.
+
+    Directors receive ``leave_approve`` as well, because a manager’s
+    request is decided by a director. Additive. Does not change payroll
+    or employee edit rights.
+
+    Returns:
+        int: Roles that gained at least one leave permission. Range 0–10_000.
+    """
+    request_perm = Permission.objects.filter(
+        module='employees', action='leave_request',
+    ).first()
+    approve_perm = Permission.objects.filter(
+        module='employees', action='leave_approve',
+    ).first()
+    if request_perm is None:
+        return 0
+    granted = 0
+    approvers = {ROLE_MANAGER, ROLE_SUPER_ADMIN, ROLE_DIRECTOR}
+    for role in Role.objects.filter(is_active=True):
+        changed = False
+        if not role.permissions.filter(pk=request_perm.pk).exists():
+            role.permissions.add(request_perm)
+            changed = True
+        if approve_perm is not None and role.name in approvers:
+            if not role.permissions.filter(pk=approve_perm.pk).exists():
+                role.permissions.add(approve_perm)
+                changed = True
+        if changed:
+            granted += 1
+    return granted
+
+
 def grant_field_load_to_roles():
     """
     Give field loads to the roles that carry or check stock.
@@ -739,6 +777,26 @@ def sync_default_roles(created_by=None):
             )
         )
 
+    director, director_created = Role.objects.update_or_create(
+        name=ROLE_DIRECTOR,
+        defaults={
+            'description': (
+                'Directors approve a manager’s day off or sick day and '
+                'receive the result of every leave decision.'
+            ),
+            'is_system_role': True,
+            'is_active': True,
+            'created_by': created_by,
+        },
+    )
+    if director_created:
+        director.permissions.set(
+            Permission.objects.filter(
+                module='employees',
+                action__in=['view', 'leave_request', 'leave_approve'],
+            )
+        )
+
     # Deactivate legacy duplicate roles so the UI shows a clean trio.
     Role.objects.filter(name__in=LEGACY_ROLE_NAMES).update(is_active=False)
     grant_daily_notes_to_sales_roles()
@@ -746,6 +804,7 @@ def sync_default_roles(created_by=None):
     grant_payroll_view_own_to_all_roles()
     grant_call_book_to_all_roles()
     grant_field_load_to_roles()
+    grant_leave_to_roles()
 
     return {
         ROLE_SUPER_ADMIN: super_admin,
@@ -755,6 +814,7 @@ def sync_default_roles(created_by=None):
         ROLE_DISPATCHER: dispatcher,
         ROLE_DELIVERY_AGENT: delivery_agent,
         ROLE_PAYROLL_ADMIN: payroll_admin,
+        ROLE_DIRECTOR: director,
     }
 
 

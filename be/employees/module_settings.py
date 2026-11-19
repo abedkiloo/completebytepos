@@ -51,6 +51,22 @@ def employees_enable_statistics() -> bool:
     return _enabled('enable_employee_statistics', True)
 
 
+def employees_monthly_leave_days() -> int:
+    """
+    Shop-wide day-off allowance for one calendar month.
+
+    Returns:
+        int: 0–31. Missing or unreadable values become 1. A person-level
+        number on the profile replaces this. No writes.
+    """
+    raw = SettingsService.get(MODULE, 'monthly_leave_days', default=1)
+    try:
+        days = int(raw)
+    except (TypeError, ValueError):
+        days = 1
+    return max(0, min(31, days))
+
+
 def apply_employee_representation_flags(data: dict) -> dict:
     if not employees_show_employee_id():
         data.pop('employee_id', None)

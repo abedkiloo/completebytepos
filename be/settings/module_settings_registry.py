@@ -500,6 +500,16 @@ MODULE_SETTING_DEFINITIONS: dict[str, list[dict[str, Any]]] = {
             True,
             7,
         ),
+        _setting(
+            'monthly_leave_days',
+            'Days off each month',
+            'How many day-off requests each person may have in one calendar month. '
+            '0 to 31. A person can be given a different number on the Leave page. '
+            'Sick days are not counted.',
+            1,
+            8,
+            impact='high',
+        ),
     ],
     'appraisals': [
         _setting(

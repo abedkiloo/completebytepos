@@ -17,6 +17,7 @@ export const ROUTE_MODULE_MAP = {
   '/inventory/checkpoints': 'inventory',
   '/inventory': 'inventory',
   '/suppliers': 'suppliers',
+  '/employees/leave': 'employees',
   '/employees': 'employees',
   '/appraisals': 'appraisals',
   '/payroll': 'payroll',
@@ -109,6 +110,7 @@ export const ROUTE_PERMISSION_GATES = [
     module: 'sales',
     action: 'daily_sales',
   },
+  { prefix: '/employees/leave', module: 'employees', action: 'leave_request' },
   { prefix: '/sales/field-loads', module: 'agents', action: 'field_load' },
   { prefix: '/sales/field', module: 'dispatch', action: 'view' },
 ];

@@ -134,6 +134,13 @@ const ProductForm = ({
   });
   const [image, setImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const [views, setViews] = useState(() => [1, 2, 3, 4].map((slot) => ({
+    slot,
+    file: null,
+    preview: '',
+    clear: false,
+  })));
+  const [featuredSlot, setFeaturedSlot] = useState(1);
   const [loading, setLoading] = useState(false);
   const [showCommitConfirm, setShowCommitConfirm] = useState(false);
   const [errors, setErrors] = useState({});
@@ -335,6 +342,16 @@ const ProductForm = ({
         track_stock: product.track_stock !== undefined ? product.track_stock : true,
         is_active: product.is_active !== undefined ? product.is_active : true,
       }));
+      const saved = Array.isArray(product.photos) ? product.photos : [];
+      const featured = saved.find((row) => row.is_featured);
+      setFeaturedSlot(Number(featured?.slot || product.featured_slot || 1));
+      setViews([1, 2, 3, 4].map((slot) => {
+        const row = saved.find((item) => Number(item.slot) === slot);
+        const preview = row?.url
+          ? resolveMediaUrl(row.url)
+          : (slot === 1 && product.image_url ? resolveMediaUrl(product.image_url) : '');
+        return { slot, file: null, preview: preview || '', clear: false };
+      }));
       if (product.image_url) {
         setImagePreview(resolveMediaUrl(product.image_url));
       }
@@ -453,18 +470,6 @@ const ProductForm = ({
       }
     };
     loadSuppliers();
-  };
-
-  const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setImage(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
   };
 
   const validate = () => {
@@ -718,6 +723,14 @@ const ProductForm = ({
       if (image) {
         submitData.append('image', image);
       }
+      views.forEach((view) => {
+        if (view.slot > 1 && view.file) {
+          submitData.append(`photo_${view.slot}`, view.file);
+        }
+      });
+      const cleared = views.filter((view) => view.clear).map((view) => view.slot);
+      if (cleared.length) submitData.append('clear_photos', cleared.join(','));
+      submitData.append('featured_slot', String(featuredSlot));
 
       if (payload.has_variants && variantCombinationKeys.length) {
         submitData.append(
@@ -1211,24 +1224,78 @@ const ProductForm = ({
 
           <div className="form-row">
             <div className="form-group">
-              <label htmlFor="product-image">
-                {product ? 'Product image' : 'Image'}
-              </label>
-              <input
-                id="product-image"
-                type="file"
-                accept="image/*"
-                onChange={handleImageChange}
-                data-testid="product-image-input"
-              />
-              {imagePreview && (
-                <img src={imagePreview} alt="Preview" className="image-preview" />
-              )}
-              {product ? (
-                <small className="form-text">
-                  Choose a file to add or replace the picture for this product.
-                </small>
-              ) : null}
+              <label>Product photos</label>
+              <p className="form-text">
+                One featured photo and up to three other views. Each file must be 2 MB or smaller.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {views.map((view) => (
+                  <div key={view.slot} className="rounded-md border border-border p-2">
+                    <label className="mb-1 flex items-center gap-2 text-sm">
+                      <input
+                        type="radio"
+                        name="featured_slot"
+                        checked={featuredSlot === view.slot}
+                        onChange={() => setFeaturedSlot(view.slot)}
+                        aria-label={`Feature view ${view.slot}`}
+                      />
+                      {view.slot === featuredSlot ? 'Featured view' : `View ${view.slot}`}
+                    </label>
+                    <input
+                      id={view.slot === 1 ? 'product-image' : `product-image-${view.slot}`}
+                      type="file"
+                      accept="image/*"
+                      data-testid={view.slot === 1 ? 'product-image-input' : `product-image-${view.slot}`}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (!file) return;
+                        if (file.size > 2 * 1024 * 1024) {
+                          toast.error('Each photo must be 2 MB or smaller.');
+                          event.target.value = '';
+                          return;
+                        }
+                        if (view.slot === 1) setImage(file);
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setViews((prev) => prev.map((row) => (
+                            row.slot === view.slot
+                              ? { ...row, file, preview: reader.result, clear: false }
+                              : row
+                          )));
+                          if (view.slot === 1) setImagePreview(reader.result);
+                        };
+                        reader.readAsDataURL(file);
+                      }}
+                    />
+                    {(view.preview || (view.slot === 1 && imagePreview)) && !view.clear && (
+                      <img
+                        src={view.preview || imagePreview}
+                        alt={`View ${view.slot}`}
+                        className="image-preview mt-2"
+                      />
+                    )}
+                    {(view.preview || view.file) && (
+                      <button
+                        type="button"
+                        className="mt-1 text-xs text-destructive"
+                        onClick={() => {
+                          if (view.slot === 1) {
+                            setImage(null);
+                            setImagePreview(null);
+                          }
+                          setViews((prev) => prev.map((row) => (
+                            row.slot === view.slot
+                              ? { ...row, file: null, preview: '', clear: true }
+                              : row
+                          )));
+                        }}
+                      >
+                        Remove view {view.slot}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 

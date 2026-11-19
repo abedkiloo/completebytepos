@@ -413,6 +413,14 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
         'features': [
             _f('employee_management', 'Employee records', '', 1),
             _f('employee_reports', 'Reports', '', 2, enabled=False),
+            _f(
+                'leave_requests',
+                'Leave requests',
+                'One-day leave and sick day. A manager decides for staff. '
+                'Directors decide for a manager. The result is sent to the '
+                'employee and the directors.',
+                3,
+            ),
         ],
     },
     {
