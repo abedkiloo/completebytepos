@@ -29,6 +29,7 @@ import {
   periodToDateFilters,
 } from '../../utils/reportPeriods';
 import { rejectionReturnedMessage } from '../../utils/approvalReturn';
+import { readExpenseNotes } from '../../utils/approvalDecisions';
 import HelpHint from '../Shared/HelpHint';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -656,17 +657,7 @@ const Expenses = () => {
         }}
       >
         <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Expense notes</DialogTitle>
-            <DialogDescription>
-              {notesExpense
-                ? `${notesExpense.expense_number || 'Expense'} · ${notesExpense.description || ''}`
-                : 'Full notes for this expense.'}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="reminder-banner max-h-[50vh] overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed">
-            {String(notesExpense?.notes || '').trim() || 'No notes.'}
-          </div>
+          <ExpenseNotesBody expense={notesExpense} />
           <DialogFooter>
             <Button type="button" onClick={() => setNotesExpense(null)}>
               Close
@@ -677,5 +668,48 @@ const Expenses = () => {
       </PageShell>
   );
 };
+
+/**
+ * Notes dialog body. A rejection is stated first, in plain words.
+ *
+ * @param {object|null} props.expense Expense whose notes are open.
+ * @returns {JSX.Element}
+ */
+function ExpenseNotesBody({ expense }) {
+  const note = readExpenseNotes(expense || {});
+  const empty = !note.rejected && note.submitted.length === 0 && note.other.length === 0;
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>{note.rejected ? 'Expense rejected' : 'Expense notes'}</DialogTitle>
+        <DialogDescription>
+          {expense
+            ? `${expense.expense_number || 'Expense'} · ${expense.description || ''}`
+            : 'Full notes for this expense.'}
+        </DialogDescription>
+      </DialogHeader>
+      {note.rejected && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm">
+          <p className="font-semibold text-destructive">
+            {note.checker ? `Rejected by ${note.checker}` : 'Rejected'}
+          </p>
+          <p className="mt-1">{note.reason || 'Sent back to the person who entered it.'}</p>
+        </div>
+      )}
+      {note.submitted.length > 0 && (
+        <div className="text-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Submitted as</p>
+          <p className="mt-1 whitespace-pre-wrap">{note.submitted.join('\n')}</p>
+        </div>
+      )}
+      {note.other.length > 0 && (
+        <p className="max-h-[40vh] overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed">
+          {note.other.join('\n')}
+        </p>
+      )}
+      {empty && <p className="text-sm text-muted-foreground">No notes.</p>}
+    </>
+  );
+}
 
 export default Expenses;

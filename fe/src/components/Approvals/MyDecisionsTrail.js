@@ -96,12 +96,16 @@ export default function MyDecisionsTrail({
     if (madeBy) params.made_by = madeBy;
     if (checkedBy) params.checked_by = checkedBy;
 
-    const loadExpenses =
-      includeExpenses && statusFilter !== DECISION_STATUS_REJECTED;
+    const expenseStatuses = [];
+    if (includeExpenses) {
+      if (statusFilter === DECISION_STATUS_REJECTED) expenseStatuses.push('rejected');
+      else if (statusFilter === DECISION_STATUS_APPROVED) expenseStatuses.push('approved');
+      else expenseStatuses.push('approved', 'rejected');
+    }
     const tasks = [pendingChangesAPI.myDecisions(params)];
-    if (loadExpenses) {
+    expenseStatuses.forEach((expenseStatus) => {
       const expenseParams = {
-        status: 'approved',
+        status: expenseStatus,
         show_all: 'true',
         page,
         page_size: pageSize,
@@ -109,9 +113,9 @@ export default function MyDecisionsTrail({
       if (dateFrom) expenseParams.date_from = dateFrom;
       if (dateTo) expenseParams.date_to = dateTo;
       if (madeBy) expenseParams.created_by = madeBy;
-      if (checkedBy) expenseParams.approved_by = checkedBy;
+      if (expenseStatus === 'approved' && checkedBy) expenseParams.approved_by = checkedBy;
       tasks.push(expensesAPI.list(expenseParams));
-    }
+    });
 
     const results = await Promise.allSettled(tasks);
     const decisions = [];
@@ -127,14 +131,15 @@ export default function MyDecisionsTrail({
       decisions.push(...list.map(formatMyDecisionRow));
     }
 
-    if (results[1]?.status === 'fulfilled') {
-      const data = results[1].value.data;
+    results.slice(1).forEach((result) => {
+      if (result?.status !== 'fulfilled') return;
+      const data = result.value.data;
       const expenses = data?.results || (Array.isArray(data) ? data : []);
-      expenseCount = Number(data?.count ?? expenses.length) || 0;
+      expenseCount += Number(data?.count ?? expenses.length) || 0;
       if (Array.isArray(expenses)) {
         decisions.push(...expenses.map(formatExpenseDecisionRow));
       }
-    }
+    });
 
     if (results.every((r) => r.status === 'rejected')) {
       toast.error('Could not load approval history');
@@ -147,7 +152,7 @@ export default function MyDecisionsTrail({
         return tb - ta;
       });
       setRows(decisions);
-      setTotalCount(decisionCount + (loadExpenses ? expenseCount : 0));
+      setTotalCount(decisionCount + expenseCount);
     }
     setLoading(false);
   }, [

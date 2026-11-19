@@ -115,6 +115,37 @@ describe('MyDecisionsTrail', () => {
     expect(pendingChangesAPI.myDecisions).toHaveBeenCalledWith(
       expect.objectContaining({ page: 1, page_size: expect.any(Number), scope: 'all' })
     );
+    expect(expensesAPI.list).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'approved', show_all: 'true' })
+    );
+    expect(expensesAPI.list).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'rejected', show_all: 'true' })
+    );
+  });
+
+  it('shows a rejected expense as Rejected', async () => {
+    expensesAPI.list.mockImplementation(async (params) => {
+      if (params.status !== 'rejected') return { data: { count: 0, results: [] } };
+      return {
+        data: {
+          count: 1,
+          results: [{
+            id: 8,
+            status: 'rejected',
+            description: 'From mpesa to bank =325',
+            created_by_name: 'lawrence',
+            notes: '[Maker-checker] Daily expenses\n[Rejected by admin] Redo this',
+          }],
+        },
+      };
+    });
+    render(<MyDecisionsTrail includeExpenses />);
+    const title = await screen.findByText('From mpesa to bank =325');
+    const row = title.closest('[data-testid="my-decision-row"]');
+    expect(row).toHaveTextContent('Rejected');
+    expect(row).not.toHaveTextContent('Approved');
+    expect(row).toHaveTextContent('Decided by admin');
+    expect(row).toHaveTextContent('Redo this');
   });
 
   it('opens detail dialog with requester reason and reject comment', async () => {

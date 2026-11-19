@@ -4,6 +4,7 @@ import {
   decisionStatusLabel,
   formatExpenseDecisionRow,
   formatMyDecisionRow,
+  readExpenseNotes,
 } from './approvalDecisions';
 
 describe('approvalDecisions', () => {
@@ -57,6 +58,7 @@ describe('approvalDecisions', () => {
   it('formats approved expense decisions', () => {
     const row = formatExpenseDecisionRow({
       id: 3,
+      status: 'approved',
       description: 'Office rent',
       expense_number: 'EXP-3',
       created_by_name: 'accountant',
@@ -68,5 +70,33 @@ describe('approvalDecisions', () => {
     expect(row.title).toBe('Office rent');
     expect(row.decidedAt).toBe('2026-10-06T12:00:00Z');
     expect(row.comment).toBe('October invoice');
+  });
+
+  it('formats a rejected expense as rejected, with the checker and the reason', () => {
+    const row = formatExpenseDecisionRow({
+      id: 8,
+      status: 'rejected',
+      description: 'From mpesa to bank =325',
+      created_by_name: 'lawrence',
+      notes: '[Maker-checker] Daily expenses\n[Rejected by admin] Redo this',
+    });
+    expect(row.status).toBe('rejected');
+    expect(row.statusLabel).toBe('Rejected');
+    expect(row.decidedBy).toBe('admin');
+    expect(row.commentLabel).toBe('Checker comment');
+    expect(row.comment).toBe('Redo this');
+    expect(row.checkerComment).toBe('Redo this');
+  });
+
+  it('turns bracket notes into a clear rejection', () => {
+    const note = readExpenseNotes({
+      status: 'rejected',
+      notes: '[Maker-checker] Daily expenses\n[Rejected by admin] Redo this',
+    });
+    expect(note.rejected).toBe(true);
+    expect(note.checker).toBe('admin');
+    expect(note.reason).toBe('Redo this');
+    expect(note.submitted).toEqual(['Daily expenses']);
+    expect(note.other).toEqual([]);
   });
 });
