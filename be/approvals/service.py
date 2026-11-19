@@ -546,6 +546,17 @@ def _apply_single_change(change: PendingChange, checker, request) -> PendingChan
 
 
 def _notify_change_rejected(change: PendingChange, checker, reason: str) -> None:
+    """
+    Tell the person who submitted a change that it was sent back.
+
+    Args:
+        change: Pending row. A past-sale row uses entity id ``new`` until it exists.
+        checker: User who rejected it.
+        reason: Checker note, 1–500 characters.
+
+    Returns:
+        None. A missing sale does not stop the notice.
+    """
     from daily_notes.approval_notice import SOURCE_PENDING_CHANGE, notify_approval_rejected
 
     sale = None
@@ -553,7 +564,12 @@ def _notify_change_rejected(change: PendingChange, checker, reason: str) -> None
     if change.action_type in (ACTION_SALE_COMPLETE, ACTION_SALE_BACKFILL):
         from sales.models import Sale
 
-        sale = Sale.objects.filter(pk=change.entity_id).first()
+        raw_id = str(change.entity_id or '').strip()
+        sale = (
+            Sale.objects.filter(pk=int(raw_id)).first()
+            if raw_id.isdigit()
+            else None
+        )
         # Sticky return notice goes to the person who keyed the till sale —
         # prefer cashier, then served_by, then the PendingChange maker.
         if sale is not None:

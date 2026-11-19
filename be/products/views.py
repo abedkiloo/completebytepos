@@ -430,6 +430,10 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                     filters[param] = value
         
         qs = self.product_service.build_queryset(filters)
+        if getattr(self, 'action', None) == 'list':
+            from inventory.stock_layers import annotate_sale_price_pending
+
+            qs = annotate_sale_price_pending(qs)
         # Detail only: prefetch open layers so stock_layers is not an N+1.
         if getattr(self, 'action', None) in ('retrieve', 'partial_update', 'update'):
             from inventory.stock_layers import open_layers_prefetch

@@ -426,3 +426,64 @@ class ExpensePermissionsTestCase(SalesAPITestCase):
             format='json',
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_sales_cannot_mark_an_expense_to_redo(self):
+        expense = Expense.objects.create(
+            category=ExpenseCategory.objects.create(name='Redo deny'),
+            description='Taxi',
+            amount=Decimal('20.00'),
+            payment_method='cash',
+            expense_date=timezone.now().date(),
+            status='pending',
+            created_by=self.sales_user,
+        )
+        response = self.client.post(
+            f'/api/expenses/{expense.id}/redo/',
+            {'needs_redo': True},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertNotIn('0718', str(response.data))
+        expense.refresh_from_db()
+        self.assertFalse(expense.needs_redo)
+
+
+class ExpenseRedoTests(SuperAdminAPITestCase):
+    def test_admin_can_mark_and_clear_redo(self):
+        expense = Expense.objects.create(
+            category=ExpenseCategory.objects.create(name='Redo yes'),
+            description='Lunch',
+            amount=Decimal('30.00'),
+            payment_method='cash',
+            expense_date=timezone.now().date(),
+            status='rejected',
+            created_by=self.admin,
+        )
+        marked = self.client.post(
+            f'/api/expenses/{expense.id}/redo/',
+            {'needs_redo': True},
+            format='json',
+        )
+        self.assertEqual(marked.status_code, status.HTTP_200_OK, marked.data)
+        self.assertTrue(marked.data['needs_redo'])
+        cleared = self.client.post(
+            f'/api/expenses/{expense.id}/redo/',
+            {'needs_redo': False},
+            format='json',
+        )
+        self.assertEqual(cleared.status_code, status.HTTP_200_OK)
+        expense.refresh_from_db()
+        self.assertFalse(expense.needs_redo)
+
+    def test_redo_rejects_a_blank_choice(self):
+        expense = Expense.objects.create(
+            category=ExpenseCategory.objects.create(name='Redo blank'),
+            description='Tea',
+            amount=Decimal('10.00'),
+            payment_method='cash',
+            expense_date=timezone.now().date(),
+            status='pending',
+            created_by=self.admin,
+        )
+        response = self.client.post(f'/api/expenses/{expense.id}/redo/', {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)

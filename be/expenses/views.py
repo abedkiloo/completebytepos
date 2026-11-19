@@ -75,6 +75,7 @@ EXPENSES_PERMS = RequirePermPerAction('expenses', {
     'statistics': 'view',
     'approve': 'approve',
     'reject': 'approve',
+    'redo': 'approve',
     # update / partial_update / resubmit use CanUpdateExpense via get_permissions
 })
 
@@ -243,6 +244,38 @@ class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 return Response(payload, status=status.HTTP_400_BAD_REQUEST)
             detail = getattr(e, 'detail', None) or str(e)
             return Response({'error': detail}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    def redo(self, request, pk=None):
+        """
+        Admin sets whether this expense must be entered again.
+
+        Args:
+            request: Body ``needs_redo`` true or false.
+            pk: Expense id, 1–2^31-1.
+
+        Returns:
+            The expense row. ``needs_redo`` is the saved flag.
+
+        Raises:
+            400: ``needs_redo`` was not true or false.
+        """
+        expense = self.get_object()
+        raw = request.data.get('needs_redo')
+        if isinstance(raw, bool):
+            flag = raw
+        elif str(raw).strip().lower() in ('1', 'true', 'yes'):
+            flag = True
+        elif str(raw).strip().lower() in ('0', 'false', 'no'):
+            flag = False
+        else:
+            return Response(
+                {'error': 'Choose whether this expense needs to be redone.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        expense.needs_redo = flag
+        expense.save(update_fields=['needs_redo', 'updated_at'])
+        return Response(self.get_serializer(expense).data)
 
     @action(detail=True, methods=['post'])
     def resubmit(self, request, pk=None):

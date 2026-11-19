@@ -1326,8 +1326,31 @@ class ProductListSerializer(serializers.ModelSerializer):
             'has_variants', 'variants_count',
             'available_sizes_detail', 'available_colors_detail',
             'mrp', 'price', 'selling_price', 'cost', 'stock_quantity', 'unit', 'track_stock',
-            'is_low_stock', 'has_out_of_stock', 'cost_missing', 'is_active', 'image_url'
+            'is_low_stock', 'has_out_of_stock', 'cost_missing', 'is_active', 'image_url',
+            'new_sale_price_unset',
         ]
+    new_sale_price_unset = serializers.SerializerMethodField()
+
+    def get_new_sale_price_unset(self, obj):
+        """
+        True when a delivery of this product cannot be sold yet.
+
+        Args:
+            obj: Product row. Uses the list annotation when present.
+
+        Returns:
+            bool.
+        """
+        flag = getattr(obj, 'new_sale_price_unset', None)
+        if isinstance(flag, bool):
+            return flag
+        from inventory.models import StockLayer
+
+        return StockLayer.objects.filter(
+            product_id=obj.pk,
+            qty_remaining__gt=0,
+            sale_price_pending=True,
+        ).exists()
     
     def get_is_low_stock(self, obj):
         from products.stock_alerts import product_has_low_stock
@@ -1407,8 +1430,28 @@ class ProductSearchSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'sku', 'barcode', 'category_name', 'has_variants',
             'mrp', 'price', 'selling_price', 'stock_quantity', 'is_active', 'unit',
+            'new_sale_price_unset',
         ]
-    
+    new_sale_price_unset = serializers.SerializerMethodField()
+
+    def get_new_sale_price_unset(self, obj):
+        """
+        True when a delivery of this product is waiting for a selling price.
+
+        Args:
+            obj: Product row, 1–2^31-1.
+
+        Returns:
+            bool. True means those pieces cannot be sold yet.
+        """
+        from inventory.models import StockLayer
+
+        return StockLayer.objects.filter(
+            product_id=obj.pk,
+            qty_remaining__gt=0,
+            sale_price_pending=True,
+        ).exists()
+
     def get_category_name(self, obj):
         return obj.category.name if obj.category else None
 

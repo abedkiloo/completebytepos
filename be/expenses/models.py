@@ -111,6 +111,10 @@ class Expense(models.Model):
         related_name='expenses_approved'
     )
     notes = models.TextField(blank=True)
+    needs_redo = models.BooleanField(
+        default=False,
+        help_text='Admin mark: this expense must be entered again.',
+    )
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 

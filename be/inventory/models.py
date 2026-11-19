@@ -287,6 +287,18 @@ class StockLayer(models.Model):
         decimal_places=2,
         validators=[MinValueValidator(0)],
     )
+    unit_mrp = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+        help_text='MRP for this delivery. Empty keeps the product MRP.',
+    )
+    sale_price_pending = models.BooleanField(
+        default=False,
+        help_text='True when this delivery was marked new price and the selling price is not set yet.',
+    )
     received_at = models.DateTimeField(db_index=True)
     source_movement = models.ForeignKey(
         StockMovement,

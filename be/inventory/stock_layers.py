@@ -224,6 +224,28 @@ def bulk_ensure_opening_layers() -> int:
     return len(to_create)
 
 
+def annotate_sale_price_pending(queryset):
+    """
+    Mark products that have stock waiting for a selling price.
+
+    Args:
+        queryset: Product queryset. At most the page being listed.
+
+    Returns:
+        The same queryset with ``new_sale_price_unset`` as a boolean.
+    """
+    from django.db.models import Exists, OuterRef
+
+    if not layers_enabled():
+        return queryset
+    pending = StockLayer.objects.filter(
+        product_id=OuterRef('pk'),
+        qty_remaining__gt=0,
+        sale_price_pending=True,
+    )
+    return queryset.annotate(new_sale_price_unset=Exists(pending))
+
+
 def open_layers_qs(*, product_id: int, variant_id: Optional[int] = None):
     qs = StockLayer.objects.filter(
         product_id=product_id,
@@ -245,6 +267,17 @@ def sync_catalog_from_oldest_layer(*, product_id: int, variant_id: Optional[int]
     layer = oldest_open_layer(product_id=product_id, variant_id=variant_id)
     if layer is None:
         return
+    if layer.sale_price_pending:
+        priced = open_layers_qs(
+            product_id=product_id, variant_id=variant_id,
+        ).filter(sale_price_pending=False).first()
+        if priced is None:
+            if variant_id:
+                ProductVariant.objects.filter(pk=variant_id).update(cost=layer.unit_cost)
+            else:
+                Product.objects.filter(pk=product_id).update(cost=layer.unit_cost)
+            return
+        layer = priced
     if variant_id:
         ProductVariant.objects.filter(pk=variant_id).update(
             cost=layer.unit_cost,
@@ -260,6 +293,16 @@ def sync_catalog_from_oldest_layer(*, product_id: int, variant_id: Optional[int]
                 .order_by('received_at', 'id')
                 .first()
             )
+            if any_layer and any_layer.sale_price_pending:
+                any_layer = (
+                    StockLayer.objects.filter(
+                        product_id=product_id,
+                        qty_remaining__gt=0,
+                        sale_price_pending=False,
+                    )
+                    .order_by('received_at', 'id')
+                    .first()
+                )
             if any_layer:
                 Product.objects.filter(pk=product_id).update(
                     price=any_layer.unit_sell_price,
@@ -276,8 +319,21 @@ def create_layer_for_purchase(
     *,
     movement: StockMovement,
     unit_sell_price: Decimal,
+    unit_mrp: Decimal | None = None,
+    sale_price_pending: bool = False,
 ) -> StockLayer:
-    """Create a layer after a purchase movement (qty already applied to stock)."""
+    """
+    Create a layer after a purchase movement.
+
+    Args:
+        movement: Purchase movement. Quantity is already on hand.
+        unit_sell_price: Selling price for this delivery, 0 when still unset.
+        unit_mrp: Optional MRP for this delivery, 0–99999999.99.
+        sale_price_pending: True when a new selling price has not been set.
+
+    Returns:
+        StockLayer. The pieces cannot be sold while ``sale_price_pending``.
+    """
     qty = abs(int(movement.quantity or 0))
     cost = Decimal(str(movement.unit_cost or 0))
     sell = Decimal(str(unit_sell_price or 0))
@@ -288,12 +344,90 @@ def create_layer_for_purchase(
         qty_remaining=qty,
         unit_cost=cost,
         unit_sell_price=sell,
+        unit_mrp=unit_mrp,
+        sale_price_pending=bool(sale_price_pending),
         received_at=movement.created_at or timezone.now(),
         source_movement=movement,
     )
     sync_catalog_from_oldest_layer(
         product_id=movement.product_id,
         variant_id=movement.variant_id,
+    )
+    return layer
+
+
+def set_delivery_sale_price(*, layer_id: int, unit_sell_price, unit_mrp=None) -> StockLayer:
+    """
+    Set the selling price on a delivery that was entered as new price.
+
+    Args:
+        layer_id: StockLayer id, 1–2^31-1.
+        unit_sell_price: Selling price greater than 0 and at most 99999999.99.
+        unit_mrp: Optional MRP in the same range. Empty leaves the stored MRP.
+
+    Returns:
+        The updated layer. Remaining pieces can be sold at this price.
+
+    Raises:
+        ValidationError: Missing layer, price not above 0, or nothing left.
+    """
+    from django.core.exceptions import ValidationError
+
+    layer = StockLayer.objects.filter(pk=layer_id).first()
+    if layer is None or int(layer.qty_remaining or 0) <= 0:
+        raise ValidationError('That delivery is not in stock.')
+    sell = Decimal(str(unit_sell_price or 0))
+    if sell <= 0 or sell > Decimal('99999999.99'):
+        raise ValidationError('Enter a selling price greater than 0.')
+    layer.unit_sell_price = sell
+    layer.sale_price_pending = False
+    fields = ['unit_sell_price', 'sale_price_pending']
+    if unit_mrp not in (None, ''):
+        mrp = Decimal(str(unit_mrp))
+        if mrp < 0 or mrp > Decimal('99999999.99'):
+            raise ValidationError('Enter an MRP of 0 or more.')
+        layer.unit_mrp = mrp
+        fields.append('unit_mrp')
+    layer.save(update_fields=fields)
+    sync_catalog_from_oldest_layer(
+        product_id=layer.product_id,
+        variant_id=layer.variant_id,
+    )
+    return layer
+
+
+def set_delivery_cost(*, layer_id: int, unit_cost) -> StockLayer:
+    """
+    Save a Super Admin cost on the pieces of one delivery that are still in stock.
+
+    Args:
+        layer_id: StockLayer id.
+        unit_cost: Cost greater than 0 and at most 99999999.99.
+
+    Returns:
+        The updated layer. Completed sales keep the cost they were made with.
+
+    Raises:
+        ValidationError: Missing layer or cost not above 0.
+    """
+    from django.core.exceptions import ValidationError
+
+    layer = StockLayer.objects.filter(pk=layer_id).select_related('source_movement').first()
+    if layer is None:
+        raise ValidationError('That delivery was not found.')
+    cost = Decimal(str(unit_cost or 0))
+    if cost <= 0 or cost > Decimal('99999999.99'):
+        raise ValidationError('Enter a cost greater than 0.')
+    layer.unit_cost = cost
+    layer.save(update_fields=['unit_cost'])
+    movement = layer.source_movement
+    if movement is not None:
+        movement.unit_cost = cost
+        movement.total_cost = cost * abs(int(movement.quantity or 0))
+        movement.save(update_fields=['unit_cost', 'total_cost'])
+    sync_catalog_from_oldest_layer(
+        product_id=layer.product_id,
+        variant_id=layer.variant_id,
     )
     return layer
 
@@ -334,6 +468,10 @@ def plan_fifo_allocations(
         take = min(remaining, int(layer.qty_remaining))
         if take <= 0:
             continue
+        if layer.sale_price_pending:
+            from django.core.exceptions import ValidationError
+
+            raise ValidationError('New sale price has not been set.')
         plan.append({
             'layer': layer,
             'quantity': take,

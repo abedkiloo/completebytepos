@@ -186,6 +186,8 @@ def _apply_stock_movement(change: PendingChange) -> None:
             reference=payload.get('reference', ''),
             unit_sell_price=unit_sell_price,
             use_catalog_cost=use_catalog_cost,
+            price_mode=payload.get('price_mode') or None,
+            unit_mrp=payload.get('unit_mrp'),
         )
     elif change.action_type == ACTION_STOCK_TRANSFER:
         from settings.models import Branch as BranchModel

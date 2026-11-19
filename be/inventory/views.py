@@ -50,6 +50,9 @@ INVENTORY_PERMS = RequirePermPerAction('inventory', {
     'destroy': 'delete',
     'adjust': 'create',
     'purchase': 'create',
+    'set_sale_price': 'create',
+    'set_layer_cost': 'update',
+    'pending_prices': 'view',
     'transfer': 'create',
     'undo': 'update',
     'bulk_adjust': 'create',
@@ -189,6 +192,8 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         unit_cost = serializer.validated_data.get('unit_cost')
         use_catalog_cost = bool(serializer.validated_data.get('use_catalog_cost'))
         unit_sell_price = serializer.validated_data.get('unit_sell_price')
+        unit_mrp = serializer.validated_data.get('unit_mrp')
+        price_mode = serializer.validated_data.get('price_mode') or 'new'
         reference = serializer.validated_data.get('reference', '')
         notes = serializer.validated_data.get('notes', '')
         
@@ -211,6 +216,8 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 'unit_sell_price': (
                     str(unit_sell_price) if unit_sell_price is not None else None
                 ),
+                'unit_mrp': str(unit_mrp) if unit_mrp is not None else None,
+                'price_mode': price_mode,
                 'branch_id': current_branch.id if current_branch else None,
                 'reference': reference,
             },
@@ -232,6 +239,8 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 unit_sell_price=unit_sell_price,
                 use_catalog_cost=use_catalog_cost,
                 request=request,
+                price_mode=price_mode,
+                unit_mrp=unit_mrp,
             )
             response_serializer = self.get_serializer(movement)
             return Response(response_serializer.data, status=status.HTTP_201_CREATED)
@@ -240,6 +249,114 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+    @action(detail=False, methods=['get'], url_path='pending-prices')
+    def pending_prices(self, request):
+        """
+        Deliveries of one product that are still in stock.
+
+        Args:
+            request: Query ``product_id``, 1–2^31-1.
+
+        Returns:
+            Up to 20 layers. ``sale_price_pending`` is true when the selling price is unset.
+            ``unit_cost`` is included only for a superuser.
+        """
+        if not stock_purchases_allowed():
+            return self._feature_disabled_response('Stock purchases')
+        from inventory.models import StockLayer
+
+        try:
+            product_id = int(request.query_params.get('product_id') or 0)
+        except (TypeError, ValueError):
+            product_id = 0
+        if product_id <= 0:
+            return Response([])
+        rows = StockLayer.objects.filter(
+            product_id=product_id,
+            qty_remaining__gt=0,
+        ).order_by('-id')[:20]
+        show_cost = bool(request.user.is_superuser)
+        payload = []
+        for row in rows:
+            item = {
+                'layer_id': row.id,
+                'quantity': row.qty_remaining,
+                'unit_sell_price': str(row.unit_sell_price),
+                'sale_price_pending': row.sale_price_pending,
+            }
+            if show_cost:
+                item['unit_cost'] = str(row.unit_cost)
+            payload.append(item)
+        return Response(payload)
+
+    @action(detail=False, methods=['post'], url_path='set-sale-price')
+    def set_sale_price(self, request):
+        """
+        Set the selling price on a delivery that is waiting for a new price.
+
+        Args:
+            request: Body ``layer_id``, ``unit_sell_price``, optional ``unit_mrp``.
+
+        Returns:
+            200 with the layer id and the new selling price.
+
+        Raises:
+            400: The delivery is missing or the price is not above 0.
+        """
+        if not stock_purchases_allowed():
+            return self._feature_disabled_response('Stock purchases')
+        from inventory.stock_layers import set_delivery_sale_price
+
+        try:
+            layer = set_delivery_sale_price(
+                layer_id=int(request.data.get('layer_id') or 0),
+                unit_sell_price=request.data.get('unit_sell_price'),
+                unit_mrp=request.data.get('unit_mrp'),
+            )
+        except (ValidationError, TypeError, ValueError) as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'layer_id': layer.id,
+            'unit_sell_price': str(layer.unit_sell_price),
+            'sale_price_pending': layer.sale_price_pending,
+        })
+
+    @action(detail=False, methods=['post'], url_path='set-layer-cost')
+    def set_layer_cost(self, request):
+        """
+        Super Admin sets the cost on pieces of one delivery that are still in stock.
+
+        Args:
+            request: Body ``layer_id`` and ``unit_cost``. Caller must be a superuser.
+
+        Returns:
+            200 with the layer id and the new cost.
+
+        Raises:
+            403: The caller is not a superuser.
+            400: The cost is not above 0.
+        """
+        if not stock_purchases_allowed():
+            return self._feature_disabled_response('Stock purchases')
+        if not request.user.is_superuser:
+            return Response(
+                {'error': 'Only a Super Admin can set the cost.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        from inventory.stock_layers import set_delivery_cost
+
+        try:
+            layer = set_delivery_cost(
+                layer_id=int(request.data.get('layer_id') or 0),
+                unit_cost=request.data.get('unit_cost'),
+            )
+        except (ValidationError, TypeError, ValueError) as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'layer_id': layer.id,
+            'unit_cost': str(layer.unit_cost),
+        })
 
     @transaction.atomic
     @action(detail=False, methods=['post'])

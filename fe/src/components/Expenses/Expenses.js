@@ -11,6 +11,7 @@ import { toast } from '../../utils/toast';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { formatOccurredDate } from '../../utils/localDate';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
+import { hasPermission as userHasPermission } from '../../utils/roleAccess';
 import {
   canApproveFinancialRecord,
   canEditExpense,
@@ -105,6 +106,13 @@ const Expenses = () => {
   const { settings: storeSettings } = useStoreSettings();
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
   const permissions = getPermissionsFromStorage();
+  let signedInSuper = false;
+  try {
+    signedInSuper = Boolean(JSON.parse(localStorage.getItem('user') || '{}').is_superuser);
+  } catch (err) {
+    signedInSuper = false;
+  }
+  const canMarkRedo = userHasPermission(permissions, 'expenses', 'approve') || signedInSuper;
 
   useEffect(() => {
     loadCategories();
@@ -263,6 +271,16 @@ const Expenses = () => {
       );
     } finally {
       setConfirmDelete(null);
+    }
+  };
+
+  const handleRedo = async (expense) => {
+    try {
+      await expensesAPI.redo(expense.id, { needs_redo: !expense.needs_redo });
+      toast.success(expense.needs_redo ? 'This expense does not need to be redone.' : 'This expense needs to be redone.');
+      loadExpenses();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Could not update the redo mark.');
     }
   };
 
@@ -598,6 +616,16 @@ const Expenses = () => {
                             </Button>
                             <HelpHint actionKey="reject_change" />
                           </>
+                        )}
+                        {canMarkRedo && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRedo(expense)}
+                          title={expense.needs_redo ? 'Does not need to be redone' : 'Needs to be redone'}
+                        >
+                          {expense.needs_redo ? 'Undo redo' : 'Redo'}
+                        </Button>
                         )}
                         {canEditExpense(expense, storeSettings, permissions) && (
                         <Button

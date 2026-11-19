@@ -142,7 +142,20 @@ class StockPurchaseSerializer(serializers.Serializer):
         max_digits=10,
         decimal_places=2,
         required=False,
-        help_text='Selling price for this delivery (FIFO stock layer).',
+        help_text='Selling price for this delivery when new price is chosen.',
+    )
+    unit_mrp = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+        help_text='MRP for this delivery when new price is chosen.',
+    )
+    price_mode = serializers.ChoiceField(
+        choices=(('new', 'New price'), ('old', 'Old price')),
+        required=False,
+        default='new',
+        help_text='New price until a selling price is set. Old price keeps the current selling price.',
     )
     reference = serializers.CharField(required=False, allow_blank=True)
     notes = serializers.CharField(required=False, allow_blank=True)

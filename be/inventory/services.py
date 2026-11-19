@@ -364,7 +364,9 @@ class StockMovementService(BaseService):
                       user=None, branch: Optional[Branch] = None,
                       reference: str = '',
                       unit_sell_price: Optional[Decimal] = None,
-                      use_catalog_cost: bool = False, request=None) -> StockMovement:
+                      use_catalog_cost: bool = False, request=None,
+                      price_mode: Optional[str] = None,
+                      unit_mrp: Optional[Decimal] = None) -> StockMovement:
         """
         Record a stock purchase (add stock).
 
@@ -392,13 +394,32 @@ class StockMovementService(BaseService):
         if not variant and not product.track_stock:
             raise ValidationError('Product does not track stock')
 
-        unit_cost = resolve_intake_unit_cost(
-            product=product,
-            variant=variant,
-            unit_cost=unit_cost,
-            use_catalog_cost=use_catalog_cost,
-        )
+        mode = (price_mode or '').strip().lower()
+        if mode and mode not in ('new', 'old'):
+            raise ValidationError('Choose new price or old price.')
+        if mode in ('new', 'old'):
+            # Cost is decided later by a Super Admin. This delivery uses the cost already on the product.
+            unit_cost = catalog_unit_cost(product, variant)
+        else:
+            unit_cost = resolve_intake_unit_cost(
+                product=product,
+                variant=variant,
+                unit_cost=unit_cost,
+                use_catalog_cost=use_catalog_cost,
+            )
         total_cost = unit_cost * quantity
+        sale_price_pending = False
+        if mode == 'old':
+            if variant is not None and variant.price is not None:
+                unit_sell_price = variant.price
+            else:
+                unit_sell_price = product.price
+        elif mode == 'new':
+            if unit_sell_price in (None, '') or Decimal(str(unit_sell_price)) <= 0:
+                unit_sell_price = Decimal('0')
+                sale_price_pending = True
+            else:
+                unit_sell_price = Decimal(str(unit_sell_price))
 
         from inventory.stock_layers import (
             create_layer_for_purchase,
@@ -441,6 +462,8 @@ class StockMovementService(BaseService):
             create_layer_for_purchase(
                 movement=movement,
                 unit_sell_price=Decimal(str(unit_sell_price or 0)),
+                unit_mrp=Decimal(str(unit_mrp)) if unit_mrp not in (None, '') else None,
+                sale_price_pending=sale_price_pending,
             )
 
         if variant is not None:

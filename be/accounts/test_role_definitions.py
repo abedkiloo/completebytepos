@@ -3,6 +3,7 @@ from django.test import TestCase
 from accounts.models import Permission, Role
 from accounts.role_definitions import (
     ROLE_DELIVERY_AGENT,
+    ROLE_DIRECTOR,
     ROLE_DISPATCHER,
     ROLE_FIELD_AGENT,
     ROLE_MANAGER,
@@ -20,13 +21,14 @@ class RoleDefinitionsTestCase(TestCase):
         self.assertGreaterEqual(created, 1)
         self.assertTrue(Permission.objects.filter(module='pos', action='view').exists())
 
-    def test_sync_default_roles_seven_active_roles(self):
+    def test_sync_default_roles_includes_director(self):
         ensure_permissions()
         roles = sync_default_roles()
         self.assertEqual(
             set(roles.keys()),
             {
                 ROLE_SUPER_ADMIN,
+                ROLE_DIRECTOR,
                 ROLE_MANAGER,
                 ROLE_SALES,
                 ROLE_FIELD_AGENT,

@@ -13,28 +13,30 @@ import {
 } from '../../utils/makerChecker';
 import CommitConfirm from '../Shared/CommitConfirm';
 
-const catalogCostOf = (prod) => {
-  const raw = prod?.cost;
-  if (raw === null || raw === undefined || raw === '') return 0;
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : 0;
-};
-
 const StockPurchaseModal = ({ product, onClose, onSave }) => {
   const defaultQuantity = (product?.reorder_quantity != null && product.reorder_quantity > 0)
     ? product.reorder_quantity
     : 1;
-  const initialCatalog = catalogCostOf(product);
   const [formData, setFormData] = useState({
     product_id: product?.id || '',
     quantity: defaultQuantity,
-    unit_cost: initialCatalog > 0 ? initialCatalog : '',
-    unit_sell_price: product?.selling_price ?? product?.price ?? '',
+    unit_sell_price: '',
+    unit_mrp: '',
     reference: '',
     notes: '',
   });
-  /** 'catalog' = keep existing cost for this batch; 'new' = enter a new batch cost */
-  const [costMode, setCostMode] = useState(initialCatalog > 0 ? 'catalog' : 'new');
+  /** New price until the person clicks Old price. */
+  const [priceMode, setPriceMode] = useState('new');
+  const [deliveries, setDeliveries] = useState([]);
+  const [priceDrafts, setPriceDrafts] = useState({});
+  const [costDrafts, setCostDrafts] = useState({});
+  const isSuperAdmin = (() => {
+    try {
+      return Boolean(JSON.parse(localStorage.getItem('user') || '{}').is_superuser);
+    } catch (err) {
+      return false;
+    }
+  })();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -50,8 +52,7 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
       products.find((p) => Number(p.id) === Number(formData.product_id)),
     [product, products, formData.product_id]
   );
-  const catalogCost = catalogCostOf(selectedProduct);
-  const hasCatalogCost = catalogCost > 0;
+  const catalogSell = Number(selectedProduct?.selling_price ?? selectedProduct?.price ?? 0);
 
   useEffect(() => {
     if (!product) {
@@ -60,15 +61,14 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
       const qty = (product.reorder_quantity != null && product.reorder_quantity > 0)
         ? product.reorder_quantity
         : 1;
-      const cost = catalogCostOf(product);
       setFormData((prev) => ({
         ...prev,
         product_id: product.id,
         quantity: qty,
-        unit_cost: cost > 0 ? cost : '',
-        unit_sell_price: product.selling_price ?? product.price ?? '',
+        unit_sell_price: '',
+        unit_mrp: '',
       }));
-      setCostMode(cost > 0 ? 'catalog' : 'new');
+      setPriceMode('new');
     }
   }, [product]);
 
@@ -90,21 +90,34 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
 
   const productOptions = products.map((prod) => ({
     id: prod.id,
-    name: `${prod.name}${prod.sku ? ` (${prod.sku})` : ''} - Stock: ${prod.stock_quantity ?? 0}${prod.low_stock_threshold != null ? ` / threshold ${prod.low_stock_threshold}` : ''}${prod.cost_missing ? ' · cost missing' : ''}`,
+    name: `${prod.name}${prod.sku ? ` (${prod.sku})` : ''} - Stock: ${prod.stock_quantity ?? 0}${prod.new_sale_price_unset ? ' · New sale price has not been set' : ''}`,
   }));
 
   const handleProductChange = (e) => {
     const productId = e.target.value;
-    const next = products.find((p) => Number(p.id) === Number(productId));
-    const cost = catalogCostOf(next);
     setFormData((prev) => ({
       ...prev,
       product_id: productId ? parseInt(productId, 10) : '',
-      unit_cost: cost > 0 ? cost : '',
-      unit_sell_price: next?.selling_price ?? next?.price ?? prev.unit_sell_price,
+      unit_sell_price: '',
+      unit_mrp: '',
     }));
-    setCostMode(cost > 0 ? 'catalog' : 'new');
+    setPriceMode('new');
   };
+
+  useEffect(() => {
+    const productId = formData.product_id || product?.id;
+    if (!productId) {
+      setDeliveries([]);
+      return;
+    }
+    let cancelled = false;
+    inventoryAPI.pendingPrices(productId).then((res) => {
+      if (!cancelled) setDeliveries(Array.isArray(res.data) ? res.data : []);
+    }).catch(() => {
+      if (!cancelled) setDeliveries([]);
+    });
+    return () => { cancelled = true; };
+  }, [formData.product_id, product?.id]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -114,17 +127,14 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
         ? (value === '' ? '' : (parseInt(value, 10) || 0))
         : name === 'product_id'
         ? (value ? parseInt(value, 10) : '')
-        : name === 'unit_cost' || name === 'unit_sell_price'
+        : name === 'unit_sell_price' || name === 'unit_mrp'
         ? value
         : value,
     }));
   };
 
   const quantityNum = Number(formData.quantity);
-  const effectiveUnitCost =
-    costMode === 'catalog' && hasCatalogCost
-      ? catalogCost
-      : Number(formData.unit_cost);
+  const newPriceMissing = priceMode === 'new' && String(formData.unit_sell_price).trim() === '';
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -138,31 +148,18 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
       return;
     }
 
-    const useCatalog = costMode === 'catalog' && hasCatalogCost;
-    if (!useCatalog) {
-      const costNum = Number(formData.unit_cost);
-      if (!Number.isFinite(costNum) || costNum <= 0) {
-        setError(
-          hasCatalogCost
-            ? 'Enter a unit cost greater than zero for this new batch.'
-            : 'Cost is missing on this product. Enter the unit cost for this stock before recording.'
-        );
-        return;
-      }
-    }
-
     const payload = {
       product_id: formData.product_id || product?.id,
       quantity: quantityNum,
-      unit_sell_price: formData.unit_sell_price === '' ? undefined : formData.unit_sell_price,
+      price_mode: priceMode,
       reference: formData.reference,
       notes: formData.notes,
     };
-    if (useCatalog) {
-      payload.use_catalog_cost = true;
-    } else {
-      payload.unit_cost = Number(formData.unit_cost);
-      payload.use_catalog_cost = false;
+    if (priceMode === 'new' && formData.unit_sell_price !== '') {
+      payload.unit_sell_price = formData.unit_sell_price;
+    }
+    if (priceMode === 'new' && formData.unit_mrp !== '') {
+      payload.unit_mrp = formData.unit_mrp;
     }
 
     if (makerCheckerOn) {
@@ -200,23 +197,18 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
     }
   };
 
-  const totalCost =
-    (quantityNum >= 0 ? quantityNum : 0) *
-    (Number.isFinite(effectiveUnitCost) ? effectiveUnitCost : 0);
   const commitRows = pendingPayload
     ? [
         { label: 'Product', value: selectedProduct?.name || `Product #${pendingPayload.product_id}` },
         { label: 'Quantity', value: `+${pendingPayload.quantity}`, tone: 'success', emphasis: true },
         {
-          label: 'Unit cost',
-          value: pendingPayload.use_catalog_cost
-            ? `${formatCurrency(catalogCost)} (existing)`
-            : formatCurrency(pendingPayload.unit_cost),
+          label: 'Price',
+          value: pendingPayload.price_mode === 'old'
+            ? `Old price (${formatCurrency(catalogSell)})`
+            : pendingPayload.unit_sell_price
+              ? `New price ${formatCurrency(pendingPayload.unit_sell_price)}`
+              : 'New sale price has not been set',
         },
-        pendingPayload.unit_sell_price
-          ? { label: 'Selling price (this batch)', value: formatCurrency(pendingPayload.unit_sell_price) }
-          : null,
-        totalCost > 0 ? { label: 'Total cost', value: formatCurrency(totalCost), emphasis: true } : null,
         pendingPayload.reference ? { label: 'Reference', value: pendingPayload.reference } : null,
       ].filter(Boolean)
     : [];
@@ -252,10 +244,8 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
             <div className="product-info-box">
               <h3>{product.name}</h3>
               <p>SKU: {product.sku} | Current Stock: {product.stock_quantity}</p>
-              {catalogCostOf(product) <= 0 ? (
-                <p className="text-sm text-amber-700">
-                  Cost is zero — enter the cost for this delivery so reports and COGS stay correct.
-                </p>
+              {product.new_sale_price_unset ? (
+                <p className="text-sm text-amber-700">New sale price has not been set</p>
               ) : null}
             </div>
           )}
@@ -276,74 +266,146 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
           </div>
 
           <div className="form-group">
-            <label>Cost for this batch *</label>
+            <label>Price for this delivery</label>
             <div className="mt-1 space-y-2">
-              <label className={`flex items-start gap-2 text-sm ${!hasCatalogCost ? 'opacity-50' : ''}`}>
+              <label className="flex items-start gap-2 text-sm">
                 <input
                   type="radio"
-                  name="cost_mode"
-                  checked={costMode === 'catalog'}
-                  disabled={!hasCatalogCost}
-                  onChange={() => setCostMode('catalog')}
+                  name="price_mode"
+                  checked={priceMode === 'new'}
+                  onChange={() => setPriceMode('new')}
                 />
-                <span>
-                  Keep existing cost
-                  {hasCatalogCost ? (
-                    <span className="text-muted-foreground"> ({formatCurrency(catalogCost)})</span>
-                  ) : (
-                    <span className="text-muted-foreground"> — none on file</span>
-                  )}
-                </span>
+                <span>New price</span>
               </label>
               <label className="flex items-start gap-2 text-sm">
                 <input
                   type="radio"
-                  name="cost_mode"
-                  checked={costMode === 'new'}
-                  onChange={() => setCostMode('new')}
+                  name="price_mode"
+                  checked={priceMode === 'old'}
+                  onChange={() => setPriceMode('old')}
                 />
-                <span>New cost for this delivery (supplier / period change)</span>
+                <span>
+                  Old price
+                  {catalogSell > 0 ? (
+                    <span className="text-muted-foreground"> ({formatCurrency(catalogSell)})</span>
+                  ) : null}
+                </span>
               </label>
             </div>
-            {costMode === 'new' ? (
-              <input
-                type="number"
-                name="unit_cost"
-                className="mt-2"
-                value={formData.unit_cost}
-                onChange={handleChange}
-                step="0.01"
-                min="0.01"
-                required
-                placeholder="Unit cost (KES)"
-              />
-            ) : null}
+            {priceMode === 'new' ? (
+              <>
+                <input
+                  type="number"
+                  name="unit_sell_price"
+                  className="mt-2"
+                  value={formData.unit_sell_price}
+                  onChange={handleChange}
+                  step="0.01"
+                  min="0.01"
+                  placeholder="New selling price (KES)"
+                />
+                <input
+                  type="number"
+                  name="unit_mrp"
+                  className="mt-2"
+                  value={formData.unit_mrp}
+                  onChange={handleChange}
+                  step="0.01"
+                  min="0"
+                  placeholder="New MRP (optional)"
+                />
+                {newPriceMissing ? (
+                  <p className="mt-2 text-sm text-amber-700" data-testid="new-price-unset">
+                    New sale price has not been set
+                  </p>
+                ) : null}
+              </>
+            ) : (
+              <small>These pieces keep the current selling price and can be sold now.</small>
+            )}
             <small>
-              Each delivery can have its own cost. FIFO layers keep older stock at its original cost until sold.
+              Pieces already on the shelf keep their price. Cost is set later by a Super Admin.
             </small>
           </div>
 
-          <div className="form-group">
-            <label>Selling price for this batch (KES)</label>
-            <input
-              type="number"
-              name="unit_sell_price"
-              value={formData.unit_sell_price}
-              onChange={handleChange}
-              step="0.01"
-              min="0"
-              placeholder="Price while this stock remains"
-            />
-            <small>
-              Old units keep their price until sold. New price applies after this batch is next in line.
-            </small>
-          </div>
-
-          {totalCost > 0 && (
-            <div className="total-cost-display">
-              <strong>Total Cost: {formatCurrency(totalCost)}</strong>
+          {deliveries.some((row) => row.sale_price_pending) ? (
+            <div className="form-group">
+              <p className="text-sm text-amber-700">New sale price has not been set</p>
+              {deliveries.filter((row) => row.sale_price_pending).map((row) => (
+                <div key={row.layer_id} className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="text-sm">{row.quantity} pieces</span>
+                  <input
+                    type="number"
+                    className="w-32"
+                    min="0.01"
+                    step="0.01"
+                    placeholder="Selling price"
+                    value={priceDrafts[row.layer_id] || ''}
+                    onChange={(e) => setPriceDrafts((prev) => ({ ...prev, [row.layer_id]: e.target.value }))}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={async () => {
+                      try {
+                        await inventoryAPI.setSalePrice({
+                          layer_id: row.layer_id,
+                          unit_sell_price: priceDrafts[row.layer_id],
+                        });
+                        setDeliveries((prev) => prev.map((item) => (
+                          item.layer_id === row.layer_id
+                            ? { ...item, sale_price_pending: false }
+                            : item
+                        )));
+                        toast.success('Selling price saved. These pieces can be sold.');
+                      } catch (err) {
+                        setError(err.response?.data?.error || 'Could not save the selling price.');
+                      }
+                    }}
+                  >
+                    Save price
+                  </button>
+                </div>
+              ))}
             </div>
-          )}
+          ) : null}
+
+          {isSuperAdmin && deliveries.length > 0 ? (
+            <div className="form-group">
+              <label>Cost for pieces still in stock</label>
+              {deliveries.map((row) => (
+                <div key={`cost-${row.layer_id}`} className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="text-sm">{row.quantity} pieces</span>
+                  <input
+                    type="number"
+                    className="w-32"
+                    min="0.01"
+                    step="0.01"
+                    placeholder={row.unit_cost ? `Current ${row.unit_cost}` : 'Cost'}
+                    value={costDrafts[row.layer_id] || ''}
+                    onChange={(e) => setCostDrafts((prev) => ({ ...prev, [row.layer_id]: e.target.value }))}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={async () => {
+                      try {
+                        await inventoryAPI.setLayerCost({
+                          layer_id: row.layer_id,
+                          unit_cost: costDrafts[row.layer_id],
+                        });
+                        toast.success('Cost saved for the pieces still in stock.');
+                      } catch (err) {
+                        setError(err.response?.data?.error || 'Could not save the cost.');
+                      }
+                    }}
+                  >
+                    Save cost
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
 
           <div className="form-group">
             <label>Reference (PO Number, Invoice, etc.)</label>
