@@ -128,10 +128,29 @@ export function unionSizeColorIdsFromKeys(keys = []) {
   };
 }
 
-export function combinationsPayloadFromKeys(keys = []) {
+/**
+ * Size and colour rows for product save, including the amounts typed on each row.
+ * @param {string[]} keys Combination keys. Empty returns [].
+ * @param {Record<string, object>} [draftsByKey] Price, cost, MRP, and opening stock
+ *   keyed by combination. Missing amounts are omitted. Cost and price are KES
+ *   strings. Stock is a whole number 0–1000000.
+ * @returns {Array<object>} At most one row per key.
+ */
+export function combinationsPayloadFromKeys(keys = [], draftsByKey = {}) {
   return keys.map((key) => {
     const { sizeId, colorId } = parseCombinationKey(key);
-    return { size: sizeId, color: colorId };
+    const draft = draftsByKey[key] || {};
+    const row = { size: sizeId, color: colorId };
+    const copy = (field, source = field) => {
+      const text = String(draft[source] ?? '').trim();
+      if (text !== '') row[field] = text;
+    };
+    copy('price');
+    copy('mrp');
+    copy('cost');
+    copy('stock_quantity');
+    copy('low_stock_threshold');
+    return row;
   });
 }
 

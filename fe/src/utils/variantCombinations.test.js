@@ -74,6 +74,11 @@ describe('variantCombinations', () => {
 
   test('combinationsPayloadFromKeys builds API payload', () => {
     expect(combinationsPayloadFromKeys(['1-10'])).toEqual([{ size: 1, color: 10 }]);
+    expect(combinationsPayloadFromKeys(['1-10'], {
+      '1-10': { price: '200', cost: '80', stock_quantity: '4', mrp: '' },
+    })).toEqual([{
+      size: 1, color: 10, price: '200', cost: '80', stock_quantity: '4',
+    }]);
   });
 
   test('variantCombinationKey normalizes nested size/color objects', () => {

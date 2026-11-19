@@ -742,7 +742,9 @@ const ProductForm = ({
       if (payload.has_variants && variantCombinationKeys.length) {
         submitData.append(
           'variant_combinations',
-          JSON.stringify(combinationsPayloadFromKeys(variantCombinationKeys))
+          JSON.stringify(
+            combinationsPayloadFromKeys(variantCombinationKeys, variantDraftsRef.current)
+          )
         );
       }
 

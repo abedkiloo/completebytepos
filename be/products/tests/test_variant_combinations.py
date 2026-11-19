@@ -111,6 +111,28 @@ class VariantCombinationsTests(TestCase):
         self.assertEqual(len(skus), 2)
         self.assertTrue(all(sku.startswith('SHIRT-X-14-GOL') for sku in skus))
 
+    def test_sync_stores_cost_price_and_opening_stock_on_a_new_size(self):
+        self.product.cost = Decimal('0')
+        self.product.price = Decimal('0')
+        self.product.save(update_fields=['cost', 'price'])
+        sync_product_variant_combinations(
+            self.product,
+            [{
+                'size': self.size_l.id,
+                'color': self.color_white.id,
+                'price': Decimal('200.00'),
+                'cost': Decimal('80.00'),
+                'stock_quantity': 4,
+            }],
+        )
+        variant = ProductVariant.objects.get(product=self.product)
+        self.product.refresh_from_db()
+        self.assertEqual(variant.price, Decimal('200.00'))
+        self.assertEqual(variant.cost, Decimal('80.00'))
+        self.assertEqual(variant.stock_quantity, 4)
+        self.assertEqual(self.product.stock_quantity, 4)
+        self.assertEqual(self.product.cost, Decimal('80.00'))
+
 
 class VariantProductCreateAPITests(TestCase):
     def setUp(self):
@@ -166,6 +188,151 @@ class VariantProductCreateAPITests(TestCase):
             ProductVariant.objects.filter(product=product).values_list('sku', flat=True)
         )
         self.assertEqual(len(skus), len(set(skus)))
+
+    def test_create_saves_cost_and_stock_on_each_new_size(self):
+        import json
+
+        response = self.client.post(
+            '/api/products/',
+            {
+                'name': 'New cloth',
+                'category': self.category.id,
+                'has_variants': True,
+                'track_stock': True,
+                'variant_combinations': json.dumps([{
+                    'size': self.size.id,
+                    'color': self.colors[0].id,
+                    'price': '200.00',
+                    'cost': '80.00',
+                    'stock_quantity': 4,
+                }]),
+            },
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertNotIn('0718', str(response.data))
+        variant = ProductVariant.objects.get(product_id=response.data['id'])
+        variant.product.refresh_from_db()
+        self.assertEqual(variant.cost, Decimal('80.00'))
+        self.assertEqual(variant.price, Decimal('200.00'))
+        self.assertEqual(variant.stock_quantity, 4)
+        self.assertEqual(variant.product.stock_quantity, 4)
+
+    def test_create_without_a_size_cost_is_refused(self):
+        import json
+
+        response = self.client.post(
+            '/api/products/',
+            {
+                'name': 'Cloth missing cost',
+                'category': self.category.id,
+                'has_variants': True,
+                'track_stock': True,
+                'variant_combinations': json.dumps([{
+                    'size': self.size.id,
+                    'color': self.colors[0].id,
+                    'price': '200.00',
+                    'stock_quantity': 4,
+                }]),
+            },
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertIn('cost', str(response.data).lower())
+        self.assertNotIn('0718', str(response.data))
+        self.assertFalse(Product.objects.filter(name='Cloth missing cost').exists())
+
+    def test_staff_and_anonymous_cannot_create_a_variant_product(self):
+        import json
+        from django.contrib.auth.models import User
+        from rest_framework.test import APIClient
+
+        body = {
+            'name': 'Hidden cloth',
+            'category': self.category.id,
+            'has_variants': True,
+            'track_stock': True,
+            'variant_combinations': json.dumps([{
+                'size': self.size.id,
+                'color': self.colors[0].id,
+                'price': '200.00',
+                'cost': '80.00',
+                'stock_quantity': 1,
+            }]),
+        }
+        staff = User.objects.create_user('cloth_staff', 's@t.com', 'x')
+        self.client.force_authenticate(staff)
+        denied = self.client.post('/api/products/', body, format='multipart')
+        self.assertEqual(denied.status_code, 403)
+        self.assertNotIn('0718', str(denied.data))
+        anon = APIClient().post('/api/products/', body, format='multipart')
+        self.assertEqual(anon.status_code, 401)
+        self.assertFalse(Product.objects.filter(name='Hidden cloth').exists())
+
+    def test_variants_off_does_not_keep_the_new_sizes(self):
+        import json
+        from settings.test_utils import disable_product_variants, enable_product_variants
+
+        disable_product_variants()
+        try:
+            response = self.client.post(
+                '/api/products/',
+                {
+                    'name': 'Plain cloth',
+                    'category': self.category.id,
+                    'price': '50',
+                    'cost': '20',
+                    'has_variants': True,
+                    'track_stock': True,
+                    'variant_combinations': json.dumps([{
+                        'size': self.size.id,
+                        'color': self.colors[0].id,
+                        'cost': '20',
+                        'stock_quantity': 2,
+                    }]),
+                },
+                format='multipart',
+            )
+        finally:
+            enable_product_variants()
+        self.assertIn(response.status_code, (200, 201), response.data)
+        product = Product.objects.get(name='Plain cloth')
+        self.assertFalse(product.has_variants)
+        self.assertFalse(ProductVariant.objects.filter(product=product).exists())
+
+    def test_stress_twenty_sizes_keep_their_own_cost_and_stock(self):
+        import json
+
+        sizes = [
+            Size.objects.create(name=f'Stress {index}', code=f'ST{index}', is_active=True)
+            for index in range(20)
+        ]
+        combinations = [
+            {
+                'size': size.id,
+                'color': self.colors[0].id,
+                'price': '150.00',
+                'cost': '60.00',
+                'stock_quantity': index + 1,
+            }
+            for index, size in enumerate(sizes)
+        ]
+        response = self.client.post(
+            '/api/products/',
+            {
+                'name': 'Stress cloth',
+                'category': self.category.id,
+                'has_variants': True,
+                'track_stock': True,
+                'variant_combinations': json.dumps(combinations),
+            },
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        rows = list(ProductVariant.objects.filter(product_id=response.data['id']))
+        self.assertEqual(len(rows), 20)
+        self.assertTrue(all(row.cost == Decimal('60.00') for row in rows))
+        self.assertEqual(sum(row.stock_quantity for row in rows), sum(range(1, 21)))
 
     def test_failed_variant_sync_does_not_leave_orphan_product(self):
         import json

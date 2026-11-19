@@ -983,6 +983,11 @@ class ProductSerializer(serializers.ModelSerializer):
                     # nested variant row already carries a positive cost.
                     variants_payload = data.get('variants') or []
                     if not variants_payload:
+                        variants_payload = [
+                            row for row in (getattr(self, '_variant_combinations', None) or [])
+                            if isinstance(row, dict)
+                        ]
+                    if not variants_payload:
                         raise serializers.ValidationError({
                             'cost': (
                                 'Cost is required and must be greater than zero '
