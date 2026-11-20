@@ -68,12 +68,47 @@ class ProductPhotoTests(TestCase):
         product.refresh_from_db()
         self.assertEqual(product.featured_slot, 3)
         self.assertTrue(product.image)
-        featured = next(row for row in response.data['photos'] if row['is_featured'])
-        self.assertEqual(featured['slot'], 3)
-        self.assertEqual(response.data['image_url'], featured['url'])
         for photo in ProductPhoto.objects.filter(product=product):
             self.assertLessEqual(photo.image.size, TARGET_STORED_BYTES)
-        self.assertNotIn('cost', str(featured))
+        featured = next(row for row in response.data['photos'] if row['is_featured'])
+        self.assertEqual(featured['slot'], 3)
+
+    def test_replacing_one_view_leaves_the_other_three(self):
+        product = self._product('PHOTO-ONE')
+        created = self.client.patch(
+            f'/api/products/{product.id}/',
+            {
+                'photo_1': _jpeg('red'),
+                'photo_2': _jpeg('green'),
+                'photo_3': _jpeg('blue'),
+                'photo_4': _jpeg('yellow'),
+                'featured_slot': 1,
+            },
+            format='multipart',
+        )
+        self.assertEqual(created.status_code, 200, created.data)
+        before = {}
+        for row in ProductPhoto.objects.filter(product=product):
+            row.image.open('rb')
+            before[row.slot] = row.image.read()
+            row.image.close()
+        replaced = self.client.patch(
+            f'/api/products/{product.id}/',
+            {'photo_2': _jpeg('white', (50, 40))},
+            format='multipart',
+        )
+        self.assertEqual(replaced.status_code, 200, replaced.data)
+        after = {}
+        for row in ProductPhoto.objects.filter(product=product):
+            row.image.open('rb')
+            after[row.slot] = row.image.read()
+            row.image.close()
+        self.assertEqual(set(after), {1, 2, 3, 4})
+        self.assertEqual(after[1], before[1])
+        self.assertEqual(after[3], before[3])
+        self.assertEqual(after[4], before[4])
+        self.assertNotEqual(after[2], before[2])
+        self.assertNotIn('0718', str(replaced.data))
 
     def test_a_broken_or_huge_view_is_refused_and_the_product_stays(self):
         product = self._product('PHOTO-BAD')

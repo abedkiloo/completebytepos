@@ -379,8 +379,47 @@ describe('ProductForm integration', () => {
     expect(body).toBeInstanceOf(FormData);
     expect(body.get('image')).toBe(file);
     expect(body.get('featured_slot')).toBe('1');
+    expect(body.get('photo_2')).toBeNull();
+    expect(body.get('clear_photos')).toBeNull();
     expect(screen.getByTestId('product-image-2')).toBeInTheDocument();
     expect(screen.getByTestId('product-image-4')).toBeInTheDocument();
+  });
+
+  test('editing one photo does not upload the other saved photos', async () => {
+    const product = {
+      id: 8,
+      name: 'PVC Gold',
+      category: 13,
+      has_variants: false,
+      price: '1900',
+      selling_price: '1900',
+      cost: '1100',
+      mrp: '2000',
+      is_active: true,
+      track_stock: true,
+      featured_slot: 1,
+      photos: [1, 2, 3, 4].map((slot) => ({
+        slot,
+        url: `/media/products/view-${slot}.jpg`,
+        is_featured: slot === 1,
+      })),
+    };
+    render(
+      <ProductForm product={product} categories={categories} onClose={jest.fn()} onSave={jest.fn()} />
+    );
+    const replacement = new File(['new'], 'view-2.png', { type: 'image/png' });
+    fireEvent.change(screen.getByTestId('product-image-2'), {
+      target: { files: [replacement] },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /update/i }));
+    fireEvent.click(await screen.findByTestId('commit-confirm-ok'));
+    await waitFor(() => expect(productsAPI.update).toHaveBeenCalled());
+    const body = productsAPI.update.mock.calls[0][1];
+    expect(body.get('photo_2')).toBe(replacement);
+    expect(body.get('image')).toBeNull();
+    expect(body.get('photo_3')).toBeNull();
+    expect(body.get('photo_4')).toBeNull();
+    expect(body.get('clear_photos')).toBeNull();
   });
 
   test('blocks save when variants enabled but no combinations', async () => {

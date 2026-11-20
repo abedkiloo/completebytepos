@@ -348,15 +348,24 @@ const ProductForm = ({
       const saved = Array.isArray(product.photos) ? product.photos : [];
       const featured = saved.find((row) => row.is_featured);
       setFeaturedSlot(Number(featured?.slot || product.featured_slot || 1));
+      setImage(null);
       setViews([1, 2, 3, 4].map((slot) => {
         const row = saved.find((item) => Number(item.slot) === slot);
         const preview = row?.url
           ? resolveMediaUrl(row.url)
           : (slot === 1 && product.image_url ? resolveMediaUrl(product.image_url) : '');
-        return { slot, file: null, preview: preview || '', clear: false };
+        return {
+          slot,
+          file: null,
+          preview: preview || '',
+          clear: false,
+          saved: Boolean(preview),
+        };
       }));
       if (product.image_url) {
         setImagePreview(resolveMediaUrl(product.image_url));
+      } else {
+        setImagePreview(null);
       }
       setPendingApproval(product.pending_approval || null);
     }
@@ -723,17 +732,24 @@ const ProductForm = ({
         }
       });
       
-      if (image) {
-        submitData.append('image', image);
-      }
       views.forEach((view) => {
-        if (view.slot > 1 && view.file) {
-          submitData.append(`photo_${view.slot}`, view.file);
-        }
+        if (!view.file) return;
+        if (view.slot === 1) submitData.append('image', view.file);
+        else submitData.append(`photo_${view.slot}`, view.file);
       });
-      const cleared = views.filter((view) => view.clear).map((view) => view.slot);
+      const cleared = views
+        .filter((view) => view.clear && view.saved)
+        .map((view) => view.slot);
       if (cleared.length) submitData.append('clear_photos', cleared.join(','));
-      submitData.append('featured_slot', String(featuredSlot));
+      const photosTouched = views.some((view) => view.file || (view.clear && view.saved));
+      const savedFeatured = Number(
+        (Array.isArray(product?.photos) ? product.photos : []).find((row) => row.is_featured)?.slot
+        || product?.featured_slot
+        || 1
+      );
+      if (!product || photosTouched || featuredSlot !== savedFeatured) {
+        submitData.append('featured_slot', String(featuredSlot));
+      }
 
       if (payload.has_variants && variantCombinationKeys.length) {
         submitData.append(
@@ -1105,6 +1121,10 @@ const ProductForm = ({
           </div>
           )}
 
+          {product && showStockFields ? (
+            <p className="form-text">The count stays as it is here. Change it from Stock.</p>
+          ) : null}
+
           {showStockFields && !product && (
           <div className="form-row">
             {formData.has_variants ? null : (
@@ -1260,11 +1280,16 @@ const ProductForm = ({
                           return;
                         }
                         if (view.slot === 1) setImage(file);
+                        setViews((prev) => prev.map((row) => (
+                          row.slot === view.slot
+                            ? { ...row, file, clear: false }
+                            : row
+                        )));
                         const reader = new FileReader();
                         reader.onloadend = () => {
                           setViews((prev) => prev.map((row) => (
                             row.slot === view.slot
-                              ? { ...row, file, preview: reader.result, clear: false }
+                              ? { ...row, preview: reader.result }
                               : row
                           )));
                           if (view.slot === 1) setImagePreview(reader.result);

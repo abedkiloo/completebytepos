@@ -34,6 +34,13 @@ class MediaUrlsTests(SimpleTestCase):
         self.assertEqual(url, '/media/products/x.jpg')
 
 
+class UploadSizeTests(SimpleTestCase):
+    def test_one_save_can_carry_four_product_photos(self):
+        four_photos = 4 * 2 * 1024 * 1024
+        self.assertGreaterEqual(settings.DATA_UPLOAD_MAX_MEMORY_SIZE, four_photos)
+        self.assertGreaterEqual(settings.FILE_UPLOAD_MAX_MEMORY_SIZE, 2 * 1024 * 1024)
+
+
 class ServeMediaUrlTests(SimpleTestCase):
     @override_settings(DEBUG=False, SERVE_MEDIA=True, MEDIA_URL='/media/')
     def test_debug_off_still_registers_media_route(self):

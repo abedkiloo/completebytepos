@@ -225,10 +225,8 @@ class MakerCheckerProductTests(ManagerAPITestCase):
         )
         self.assertEqual(resp.status_code, status.HTTP_202_ACCEPTED, resp.data)
         pending = PendingChange.objects.filter(status=PendingChange.STATUS_PENDING)
-        self.assertEqual(pending.count(), 2)
-        batch_ids = {p.batch_id for p in pending if p.batch_id}
-        self.assertEqual(len(batch_ids), 1)
-        self.assertTrue(batch_ids.pop())
+        self.assertEqual(pending.count(), 1)
+        self.assertEqual(pending.get().action_type, ACTION_PRODUCT_PRICE)
         self.product.refresh_from_db()
         self.assertEqual(self.product.price, Decimal('100'))
         self.assertEqual(self.product.stock_quantity, 50)
@@ -1043,7 +1041,13 @@ class MakerCheckerVariantTests(ManagerAPITestCase):
         self.assertEqual(self.variant.stock_quantity, 25)
         self.assertEqual(
             approved_sellable_stock_quantity(self.product, self.variant),
-            5,
+            25,
+        )
+        self.assertFalse(
+            PendingChange.objects.filter(
+                entity_type='products.ProductVariant',
+                proposed_values__stock_quantity=5,
+            ).exists()
         )
 
     def test_variant_inventory_adjust_pending_shows_variant_stock_and_applies_on_approve(self):

@@ -201,6 +201,10 @@ try:
 except ImportError:
     pass
 
+# Four catalog photos, each up to 2 MiB, travel in one save.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024
+FILE_UPLOAD_MAX_MEMORY_SIZE = 3 * 1024 * 1024
+
 MEDIA_URL = env_str('MEDIA_URL', '/media/')
 # Avoid Docker /app paths during manage.py test / pytest (local .env often sets MEDIA_ROOT=/app/media).
 _argv0 = Path(sys.argv[0]).name if sys.argv else ''

@@ -42,7 +42,6 @@ import { resolveMediaUrl } from '../../utils/mediaUrl';
 import { ProductImageThumb } from '../Shared/ProductImageLightbox';
 import ProductForm from './ProductForm';
 import ProductDetailPanel from './ProductDetailPanel';
-import StockCountModal from '../Inventory/StockCountModal';
 import { STOCK_ON_HAND_LABEL, VARIANT_PARENT_STOCK_MASK } from '../../utils/productDisplay';
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import { toast } from '../../utils/toast';
@@ -111,7 +110,6 @@ const Products = () => {
   const catalogOnly = fieldAccess.catalogOnly;
   const financialFieldsLocked =
     !fieldAccess.pricing && !fieldAccess.cost && !fieldAccess.stock;
-  const canSetStock = !catalogOnly && fieldAccess.stock;
   const showStatus = showProductStatus(productModuleSettings, storeSettings);
   const showCost = showProductCostPrice(productModuleSettings);
   const showMrp = showProductMrp(productModuleSettings);
@@ -171,7 +169,6 @@ const Products = () => {
   const [confirmDelete, setConfirmDelete] = useState(null); // product id
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [stockCountContext, setStockCountContext] = useState(null);
   const [viewTarget, setViewTarget] = useState(null); // { productId, variantId? }
 
   // --- CSV import file input ---
@@ -563,9 +560,7 @@ const Products = () => {
           description={
             catalogOnly
               ? 'Add products or import a list. Your manager will set prices before items go on sale.'
-              : canSetStock
-                ? `Manage your catalog. Click a stock quantity to set ${STOCK_ON_HAND_LABEL.toLowerCase()}; use Stock → Stock adjustment to add or remove units.`
-                : 'Add, edit, and bulk-manage your catalog.'
+              : 'Add and edit the catalog. Change the count from Stock.'
           }
         >
           <div className="flex flex-wrap items-center gap-2">
@@ -771,11 +766,6 @@ const Products = () => {
                         onView={() => openView(product)}
                         onEdit={() => openEdit(product)}
                         onDelete={canDeleteProducts ? () => setConfirmDelete(product.id) : undefined}
-                        onSetStock={
-                          canSetStock && product.track_stock
-                            ? () => setStockCountContext({ product, variant: null })
-                            : undefined
-                        }
                         catalogOnly={catalogOnly}
                         showProductStatus={showStatus}
                         bulkEnabled={bulkEnabled}
@@ -806,11 +796,6 @@ const Products = () => {
                           }}
                           onView={(variantRow) => openView(product, variantRow)}
                           onEdit={() => openEdit(product)}
-                          onSetStock={
-                            canSetStock && product.track_stock
-                              ? (variantRow) => setStockCountContext({ product, variant: variantRow })
-                              : undefined
-                          }
                         />
                       )}
                     </React.Fragment>
@@ -823,19 +808,6 @@ const Products = () => {
         </ListPaginationRail>
 
       {/* --- Form modal (legacy, untouched) --- */}
-      {stockCountContext && (
-        <StockCountModal
-          product={stockCountContext.product}
-          variant={stockCountContext.variant}
-          onClose={() => setStockCountContext(null)}
-          onSave={() => {
-            setStockCountContext(null);
-            loadProducts();
-            loadStatistics();
-          }}
-        />
-      )}
-
       {viewTarget ? (
         <ProductDetailPanel
           productId={viewTarget.productId}
@@ -846,17 +818,6 @@ const Products = () => {
           canViewStockHistory={canViewStockHistory}
           showMovementCost={showMovementCost}
           onClose={() => setViewTarget(null)}
-          onSetStock={
-            canSetStock
-              ? (fullProduct, variantRow = null) => {
-                  setViewTarget(null);
-                  setStockCountContext({
-                    product: fullProduct,
-                    variant: variantRow || null,
-                  });
-                }
-              : undefined
-          }
           onEdit={(fullProduct) => {
             setViewTarget(null);
             openEdit(fullProduct);

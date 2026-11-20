@@ -190,6 +190,9 @@ class ProductVariantViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             validated,
             submitted_keys=submitted_keys,
         )
+        from products.catalog_access import drop_on_hand_from_catalog_edit
+
+        drop_on_hand_from_catalog_edit(validated, sensitive, serializer.validated_data)
         _initial, change_sensitive = split_initial_vs_change_sensitive(instance, sensitive)
         try:
             pending = queue_variant_sensitive_update(request, instance, change_sensitive)
@@ -526,6 +529,7 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         # sensitive changes similarly to the dedicated variant endpoints.
         variant_pending_map = {}
         pending_changes = []
+        variant_list = []
         if 'variants' in serializer.initial_data or 'variants' in validated:
             from approvals.variant_integration import (
                 split_variant_payload,
@@ -534,6 +538,10 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             from products.models import ProductVariant
             # Use validated list if available (contains parsed ints etc.)
             variant_list = validated.get('variants') or serializer.validated_data.get('variants') or []
+            from products.catalog_access import drop_on_hand_from_catalog_edit
+
+            for raw_v in variant_list:
+                drop_on_hand_from_catalog_edit(raw_v)
             for raw_v in variant_list:
                 # raw_v may be a dict representing variant data
                 vid = raw_v.get('id') if isinstance(raw_v, dict) else None
@@ -571,6 +579,9 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         for k in (submitted_keys & set(_PSF)):
             if k not in sensitive and k in serializer.initial_data:
                 sensitive[k] = serializer.initial_data.get(k)
+        from products.catalog_access import drop_on_hand_from_catalog_edit
+
+        drop_on_hand_from_catalog_edit(sensitive, serializer.validated_data)
         _initial, change_sensitive = split_initial_vs_change_sensitive(instance, sensitive)
 
         product_pending = None
@@ -595,7 +606,9 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 {'reason': 'A reason is required for price, stock, or status changes.'}
             )
 
-        if serializer.validated_data:
+        from products.gallery import request_changes_photos
+
+        if serializer.validated_data or request_changes_photos(request):
             self.perform_update(serializer)
         elif not pending_changes:
             return Response(self.get_serializer(instance).data)
@@ -620,7 +633,9 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         from accounts.models import AuditLog
         from utils.audit_events import log_product_write
 
-        if not serializer.validated_data:
+        from products.gallery import request_changes_photos
+
+        if not serializer.validated_data and not request_changes_photos(self.request):
             return serializer.instance
 
         instance = serializer.instance
@@ -656,7 +671,9 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             ):
                 from products.variant_combinations import sync_product_variant_combinations
 
-                sync_product_variant_combinations(product, combinations)
+                sync_product_variant_combinations(
+                    product, combinations, apply_opening_stock=False,
+                )
             elif (
                 is_product_variants_enabled()
                 and product.has_variants

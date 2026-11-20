@@ -169,6 +169,29 @@ def _prepare(uploaded, slot: int):
     )
 
 
+def request_changes_photos(request) -> bool:
+    """
+    Whether this save includes a new view or a removed view.
+
+    Args:
+        request: DRF request. May have no files.
+
+    Returns:
+        True when ``image`` or ``photo_1``–``photo_4`` is uploaded, or
+        ``clear_photos`` names a slot. A text-only edit returns False.
+
+    Raises:
+        None.
+    """
+    if request is None:
+        return False
+    files = getattr(request, 'FILES', None) or {}
+    if any(files.get(name) for name in ('image', 'photo_1', 'photo_2', 'photo_3', 'photo_4')):
+        return True
+    data = getattr(request, 'data', None) or {}
+    return bool(str(data.get('clear_photos') or '').strip())
+
+
 def validate_product_photo_uploads(request) -> None:
     """
     Check view uploads before the product row is saved.

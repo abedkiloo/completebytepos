@@ -10,5 +10,6 @@ describe('frontend nginx media proxy', () => {
     expect(conf).toMatch(/open_file_cache off;/);
     expect(conf).toMatch(/location @media_django/);
     expect(conf).toMatch(/proxy_pass http:\/\/\$django_upstream/);
+    expect(conf).toMatch(/client_max_body_size 12m;/);
   });
 });

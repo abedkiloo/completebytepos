@@ -1176,6 +1176,7 @@ class ProductSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         """Update product instance, handling ManyToMany fields separately"""
         validated_data.pop('variant_combinations', None)
+        validated_data.pop('stock_quantity', None)
         # Extract nested variants payload if provided
         variants_payload = validated_data.pop('variants', None)
         # Extract ManyToMany fields
@@ -1273,6 +1274,8 @@ class ProductSerializer(serializers.ModelSerializer):
 
             with transaction.atomic():
                 for v in variants_payload:
+                    if isinstance(v, dict):
+                        v.pop('stock_quantity', None)
                     vid = v.get('id') if isinstance(v, dict) else None
                     if vid:
                         try:

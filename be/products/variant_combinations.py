@@ -188,17 +188,23 @@ def _apply_new_variant_amounts(variant: ProductVariant, combo: Dict[str, Any]) -
 def sync_product_variant_combinations(
     product: Product,
     combinations: Sequence[Dict[str, Any]],
+    *,
+    apply_opening_stock: bool = True,
 ) -> List[ProductVariant]:
     """
     Create, keep, or remove variant rows so they match ``combinations`` exactly.
 
-    A new row stores the price, cost, MRP, and opening stock sent with that
-    size and colour. Rows that already exist keep the amounts they have.
+    A new row stores the price, cost, and MRP sent with that size and colour.
+    Opening stock is stored only when ``apply_opening_stock`` is true, which
+    is the first time the product is created. An edit leaves the count for
+    the stock screens. Rows that already exist keep the amounts they have.
 
     Args:
         product: Parent product. Must have variants turned on.
         combinations: Rows from ``normalize_variant_combinations``. Empty
             removes every variant. A few hundred rows is the practical limit.
+        apply_opening_stock: When true, a new size stores its opening count,
+            0–1000000. When false, a new size starts at 0.
 
     Returns:
         The variant rows created in this call. Kept rows are not included.
@@ -235,7 +241,10 @@ def sync_product_variant_combinations(
         size = Size.objects.filter(pk=size_id).first() if size_id else None
         color = Color.objects.filter(pk=color_id).first() if color_id else None
         variant = service._create_variant(product, size, color)
-        _apply_new_variant_amounts(variant, by_pair.get((size_id, color_id), {}))
+        combo = dict(by_pair.get((size_id, color_id), {}))
+        if not apply_opening_stock:
+            combo.pop('stock_quantity', None)
+        _apply_new_variant_amounts(variant, combo)
         created.append(variant)
 
     if product.track_stock:

@@ -225,7 +225,7 @@ class ProductAPITestCase(TransactionTestCase):
         self.test_product.refresh_from_db()
         self.assertEqual(self.test_product.name, 'Updated Product')
         self.assertEqual(self.test_product.price, Decimal('120.00'))
-        self.assertEqual(self.test_product.stock_quantity, 150)
+        self.assertEqual(self.test_product.stock_quantity, 100)
     
     def test_delete_product(self):
         """Test deleting a product"""
@@ -1030,7 +1030,7 @@ class ProductAPITestCase(TransactionTestCase):
         
         variant.refresh_from_db()
         self.assertEqual(variant.price, Decimal('120.00'))
-        self.assertEqual(variant.stock_quantity, 15)
+        self.assertEqual(variant.stock_quantity, 10)
     
     def test_delete_product_variant(self):
         """Test deleting a product variant"""

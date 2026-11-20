@@ -407,7 +407,7 @@ class SerializerHelperGapTests(_CacheCleanupMixin, TestCase):
             ],
         })
         variant.refresh_from_db()
-        self.assertEqual(variant.stock_quantity, 9)
+        self.assertEqual(variant.stock_quantity, 7)
 
         with patch(
             'products.stock_utils.sync_product_cost_from_variants',

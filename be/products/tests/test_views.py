@@ -262,7 +262,7 @@ class ProductViewSetTestCase(APITestCase):
         self.test_product.refresh_from_db()
         self.assertEqual(self.test_product.name, 'Updated Product')
         self.assertEqual(self.test_product.price, Decimal('120.00'))
-        self.assertEqual(self.test_product.stock_quantity, 150)
+        self.assertEqual(self.test_product.stock_quantity, 100)
     
     def test_partial_update_product(self):
         """Test partial update (PATCH)"""
@@ -303,23 +303,66 @@ class ProductViewSetTestCase(APITestCase):
         self.assertEqual(self.test_product.price, original_price)
 
     def test_patch_stock_quantity_only(self):
-        """Stock count modal sends a JSON PATCH with stock_quantity only."""
+        """A product edit cannot change the pieces on the shelf."""
         disable_maker_checker()
         token = self.get_auth_token(self.superuser)
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
 
         response = self.client.patch(
             f'/api/products/{self.test_product.id}/',
-            {'stock_quantity': 42},
+            {'description': 'Pine finish', 'stock_quantity': 42},
             format='json',
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         self.test_product.refresh_from_db()
-        self.assertEqual(self.test_product.stock_quantity, 42)
+        self.assertEqual(self.test_product.description, 'Pine finish')
+        self.assertEqual(self.test_product.stock_quantity, 100)
+        self.assertNotIn('0718', str(response.data))
+
+        huge = self.client.patch(
+            f'/api/products/{self.test_product.id}/',
+            {'stock_quantity': 1000000},
+            format='json',
+        )
+        self.assertEqual(huge.status_code, status.HTTP_200_OK)
+        self.test_product.refresh_from_db()
+        self.assertEqual(self.test_product.stock_quantity, 100)
+
+        anonymous = APIClient()
+        anon = anonymous.patch(
+            f'/api/products/{self.test_product.id}/',
+            {'description': 'Hidden', 'stock_quantity': 1},
+            format='json',
+        )
+        self.assertEqual(anon.status_code, status.HTTP_401_UNAUTHORIZED)
+        clerk = User.objects.create_user('stock_clerk', password='x')
+        clerk_client = APIClient()
+        clerk_client.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {RefreshToken.for_user(clerk).access_token}'
+        )
+        denied = clerk_client.patch(
+            f'/api/products/{self.test_product.id}/',
+            {'description': 'Not allowed', 'stock_quantity': 3},
+            format='json',
+        )
+        self.assertEqual(denied.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertNotIn('0718', str(denied.data))
+        self.test_product.refresh_from_db()
+        self.assertEqual(self.test_product.stock_quantity, 100)
+        self.assertEqual(self.test_product.description, 'Pine finish')
+
+        counted = self.client.post(
+            '/api/inventory/set-on-hand/',
+            {'product_id': self.test_product.id, 'quantity': 80},
+            format='json',
+        )
+        self.assertEqual(counted.status_code, status.HTTP_200_OK, counted.data)
+        self.test_product.refresh_from_db()
+        self.assertEqual(self.test_product.stock_quantity, 80)
 
     def test_patch_stock_quantity_queues_when_maker_checker_enabled(self):
-        """Stock on hand with maker-checker queues approval instead of 500."""
+        """A stock number on a product edit is ignored, even when approval is on."""
         enable_maker_checker()
         token = self.get_auth_token(self.superuser)
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
@@ -329,10 +372,10 @@ class ProductViewSetTestCase(APITestCase):
             {'stock_quantity': 99, 'reason': 'Physical count'},
             format='json',
         )
-        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         self.test_product.refresh_from_db()
-        self.assertNotEqual(self.test_product.stock_quantity, 99)
+        self.assertEqual(self.test_product.stock_quantity, 100)
 
     def test_patch_variant_product_skips_parent_price_cost_validation(self):
         """Parent price/cost on variant products are derived; edits must not block saves."""
@@ -1124,9 +1167,9 @@ class ProductVariantViewSetTestCase(APITestCase):
 
         variant.refresh_from_db()
         self.assertEqual(variant.price, Decimal('100.00'))
-        self.assertEqual(variant.stock_quantity, 25)
+        self.assertEqual(variant.stock_quantity, 10)
         self.product.refresh_from_db()
-        self.assertEqual(self.product.stock_quantity, 25)
+        self.assertEqual(self.product.stock_quantity, 10)
 
     def test_patch_variant_price_below_cost_names_variant(self):
         """PATCH with price below cost returns a variant-specific error."""
@@ -1217,7 +1260,7 @@ class ProductVariantViewSetTestCase(APITestCase):
 
         variant.refresh_from_db()
         self.assertEqual(variant.price, Decimal('125.00'))
-        self.assertEqual(variant.stock_quantity, 15)
+        self.assertEqual(variant.stock_quantity, 10)
         self.assertEqual(variant.product_id, self.product.id)
 
     def test_filter_variants_by_product(self):

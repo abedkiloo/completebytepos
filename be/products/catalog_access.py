@@ -148,6 +148,27 @@ def user_may_edit_any_product_financial_field(user) -> bool:
     )
 
 
+def drop_on_hand_from_catalog_edit(*maps) -> None:
+    """
+    Remove the on-hand count from a product or size edit.
+
+    Args:
+        maps: Write payloads. Each is a dict of at most a few dozen fields.
+            Only ``stock_quantity`` is removed. Description, price, and the
+            other fields stay.
+
+    Returns:
+        None. The pieces on the shelf are unchanged. A stock purchase or a
+        stock count still changes that number.
+
+    Raises:
+        None.
+    """
+    for item in maps:
+        if isinstance(item, dict):
+            item.pop('stock_quantity', None)
+
+
 def strip_product_fields_by_access(
     data: dict,
     *,
