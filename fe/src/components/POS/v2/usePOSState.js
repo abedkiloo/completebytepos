@@ -606,6 +606,7 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
 
   const lastPickerAddRef = useRef({ stamp: '', at: 0 });
   const lastScanRef = useRef({ code: '', at: 0 });
+  const saleSubmitLockRef = useRef(false);
 
   const addProductToCart = useCallback((product) => {
     const key = cartItemKey(product);
@@ -981,8 +982,9 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
 
   const submitSale = useCallback(
     async ({ allowPartial = false, excessChoice = 'change' } = {}) => {
-      if (submitting) return;
+      if (submitting || saleSubmitLockRef.current) return;
       const wasCorrection = Boolean(returnedSaleNotice);
+      saleSubmitLockRef.current = true;
       setSubmitting(true);
       try {
         const payload = buildSalePayload({
@@ -1108,6 +1110,7 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
           'Sale failed: ' + (err.response?.data?.error || err.message || 'unknown error')
         );
       } finally {
+        saleSubmitLockRef.current = false;
         setSubmitting(false);
       }
     },

@@ -119,6 +119,11 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
 
   const syncTimerRef = useRef(null);
   const skipNextSyncRef = useRef(false);
+  /** Serialises draft saves so sync and checkout cannot insert the same lines. */
+  const holdingWriteChainRef = useRef(Promise.resolve());
+  const holdingIdRef = useRef(null);
+  const confirmLockRef = useRef(false);
+  holdingIdRef.current = holdingId;
   /** Load active holding once per Terminal session — not on every customer search. */
   const holdingCheckedRef = useRef(false);
   /** After Continue / Start new, never re-open the recovery prompt this session. */
@@ -519,25 +524,47 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
     ]
   );
 
+  /**
+   * Run draft writes one at a time.
+   *
+   * The 600ms sync and Checkout both save the same cart. If they run together,
+   * each insert stays and 28 becomes 56.
+   *
+   * @param {() => Promise<*>} task
+   * @returns {Promise<*>}
+   */
+  const enqueueHoldingWrite = useCallback((task) => {
+    const run = holdingWriteChainRef.current.then(task, task);
+    holdingWriteChainRef.current = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }, []);
+
   const syncHolding = useCallback(async () => {
     if (skipNextSyncRef.current) {
       skipNextSyncRef.current = false;
       return;
     }
+    const payload = buildHoldingPayload();
     setSyncingHolding(true);
     try {
-      const res = await salesAPI.saveHolding(buildHoldingPayload());
-      setHoldingId(res.data.id);
-      setHoldingNumber(res.data.sale_number);
+      await enqueueHoldingWrite(async () => {
+        const res = await salesAPI.saveHolding(payload);
+        holdingIdRef.current = res.data.id;
+        setHoldingId(res.data.id);
+        setHoldingNumber(res.data.sale_number);
+      });
     } catch (err) {
       toast.error(formatApiError(err, 'Could not save draft invoice'));
     } finally {
       setSyncingHolding(false);
     }
-  }, [buildHoldingPayload]);
+  }, [buildHoldingPayload, enqueueHoldingWrite]);
 
   useEffect(() => {
-    if (loadingHolding || cartRecovery || submitting) return;
+    if (loadingHolding || cartRecovery || submitting || showSaleCommitConfirm) return;
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     syncTimerRef.current = setTimeout(() => {
       if (cart.length === 0 && !holdingId) return;
@@ -546,7 +573,7 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
     return () => {
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     };
-  }, [cart, selectedCustomer, taxAmount, discountAmount, loadingHolding, holdingId, cartRecovery, submitting, syncHolding]);
+  }, [cart, selectedCustomer, taxAmount, discountAmount, loadingHolding, holdingId, cartRecovery, submitting, showSaleCommitConfirm, syncHolding]);
 
   const addToCart = useCallback((product, variant = null) => {
     if (validateStock && isProductOutOfStock(product)) {
@@ -680,24 +707,30 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
       return;
     }
 
-    let id = holdingId;
-    if (!id) {
-      try {
-        const res = await salesAPI.saveHolding(buildHoldingPayload());
-        id = res.data.id;
-        setHoldingId(id);
-        setHoldingNumber(res.data.sale_number);
-      } catch (err) {
-        toast.error(formatApiError(err, 'Could not create draft invoice'));
-        return;
-      }
-    } else {
-      try {
-        await salesAPI.saveHolding(buildHoldingPayload());
-      } catch (err) {
-        toast.error(formatApiError(err, 'Could not update draft invoice'));
-        return;
-      }
+    if (syncTimerRef.current) {
+      clearTimeout(syncTimerRef.current);
+      syncTimerRef.current = null;
+    }
+    const creating = !holdingId && !holdingIdRef.current;
+    let id = holdingId || holdingIdRef.current;
+    try {
+      const saved = await enqueueHoldingWrite(async () => {
+        const payload = buildHoldingPayload();
+        if (!payload.holding_id && holdingIdRef.current) {
+          payload.holding_id = holdingIdRef.current;
+        }
+        return salesAPI.saveHolding(payload);
+      });
+      id = saved.data.id;
+      holdingIdRef.current = id;
+      setHoldingId(id);
+      setHoldingNumber(saved.data.sale_number);
+    } catch (err) {
+      toast.error(formatApiError(
+        err,
+        creating ? 'Could not create draft invoice' : 'Could not update draft invoice',
+      ));
+      return;
     }
 
     const paymentRef = String(overrides.paymentReference ?? paymentReference ?? '').trim();
@@ -818,6 +851,7 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
     cart,
     holdingId,
     buildHoldingPayload,
+    enqueueHoldingWrite,
     amountPaid,
     paymentReference,
     mpesaDestination,
@@ -833,7 +867,8 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
   ]);
 
   const confirmCheckout = useCallback(async () => {
-    if (submitting || !pendingCheckout) return;
+    if (submitting || confirmLockRef.current || !pendingCheckout) return;
+    confirmLockRef.current = true;
     const {
       holdingId: id,
       paid,
@@ -911,6 +946,7 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
         setHoldingNumber('');
       }
     } finally {
+      confirmLockRef.current = false;
       setSubmitting(false);
     }
   }, [submitting, pendingCheckout, returnedSaleNotice]);

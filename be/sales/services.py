@@ -563,6 +563,34 @@ class SaleService(BaseService):
         """Holdings the user may resume — cashier or served_by (returned corrections)."""
         return Q(cashier=user) | Q(served_by=user)
 
+    def _lock_open_holding(self, holding, user):
+        """Lock one open draft so two saves cannot insert the same lines.
+
+        The draft sync and checkout can both replace lines at once. Without
+        this lock each insert survives, and the next save adds the quantities
+        (28 and 28 become one line of 56).
+
+        Args:
+            holding: Sale already loaded for this cashier. ``pk`` is 1–2^31-1.
+                None returns None.
+            user: Cashier or served-by user allowed to edit the draft.
+
+        Returns:
+            The locked Sale while its status is still ``holding`` for this
+            user. None when the row was completed, missing, or belongs to
+            someone else (0 rows).
+
+        Raises:
+            Nothing. The caller opens a new draft when this returns None.
+        """
+        if holding is None or not getattr(holding, 'pk', None):
+            return None
+        return (
+            self.model.objects.select_for_update()
+            .filter(self._user_holdings_q(user), pk=holding.pk, status='holding')
+            .first()
+        )
+
     def get_active_holding(self, user, branch: Optional[Branch] = None) -> Optional[Sale]:
         """Return the user's open holding invoice for this branch, if any.
 
@@ -632,6 +660,11 @@ class SaleService(BaseService):
         """
         Create or update a holding (draft) sale. Does NOT move stock or post
         accounting entries — those happen in ``complete_holding_sale``.
+
+        The open draft row is locked for the whole replace. Two overlapping
+        saves (draft sync and checkout) therefore cannot both insert the same
+        quantity. Each line quantity is 1–1_000_000. An empty item list clears
+        the draft lines.
         """
         from accounts.sensitive_edits import clamp_holding_financial_adjustments
         from sales.sale_completion_approval import sale_needs_salesperson_action
@@ -658,6 +691,8 @@ class SaleService(BaseService):
         if not holding:
             holding = self.get_active_holding(user, branch)
 
+        if holding:
+            holding = self._lock_open_holding(holding, user)
         if holding:
             correcting = sale_needs_salesperson_action(holding)
             holding.items.all().delete()
@@ -733,9 +768,19 @@ class SaleService(BaseService):
         request=None,
         confirm_unchanged: bool = False,
     ) -> Sale:
-        """Finalise a holding sale: stock, journal entry, status=completed."""
-        if holding.status != 'holding':
+        """Finalise a holding sale: stock, journal entry, status=completed.
+
+        Locks the sale row first so a draft save cannot insert a second copy
+        of the lines while checkout reads them. Line quantities stay 1–1_000_000.
+        """
+        locked = (
+            self.model.objects.select_for_update()
+            .filter(pk=holding.pk)
+            .first()
+        )
+        if locked is None or locked.status != 'holding':
             raise ValidationError('This sale is not a holding invoice.')
+        holding = locked
 
         from sales.sale_payment_method import normalize_sale_payment_method
 

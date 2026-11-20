@@ -187,6 +187,54 @@ describe('useBillingPOSState checkout — payment on account', () => {
     );
   });
 
+  it('checkout waits for the in-flight draft save and still sends 28', async () => {
+    let releaseFirst;
+    const firstSave = new Promise((resolve) => {
+      releaseFirst = resolve;
+    });
+    let calls = 0;
+    salesAPI.saveHolding.mockImplementation((payload) => {
+      calls += 1;
+      if (calls === 1) {
+        return firstSave.then(() => ({
+          data: { id: 55, sale_number: 'HOLD-055' },
+        }));
+      }
+      return Promise.resolve({
+        data: { id: 55, sale_number: 'HOLD-055', echoed: payload },
+      });
+    });
+
+    const { result } = await bootHook();
+    act(() => {
+      result.current.addToCart(PRODUCT);
+      result.current.setQty('9', 28);
+    });
+
+    await waitFor(
+      () => expect(salesAPI.saveHolding).toHaveBeenCalledTimes(1),
+      { timeout: 2000 },
+    );
+
+    let checkoutDone;
+    act(() => {
+      checkoutDone = result.current.checkout();
+    });
+    expect(salesAPI.saveHolding).toHaveBeenCalledTimes(1);
+
+    releaseFirst();
+    await act(async () => {
+      await checkoutDone;
+    });
+
+    expect(salesAPI.saveHolding).toHaveBeenCalledTimes(2);
+    const checkoutPayload = salesAPI.saveHolding.mock.calls[1][0];
+    expect(checkoutPayload.items).toEqual([
+      expect.objectContaining({ product_id: 9, quantity: 28 }),
+    ]);
+    expect(checkoutPayload.holding_id).toBe(55);
+  });
+
   it('prompts for customer when enabling payment on account for walk-in', async () => {
     const { result } = await bootHook();
 
