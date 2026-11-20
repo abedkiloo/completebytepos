@@ -354,10 +354,20 @@ class UserCreateSerializer(serializers.ModelSerializer):
             actor_is_super_admin,
         )
 
+        from accounts.user_write import custom_role_name
+
         role = attrs.get('role')
         if role in PRIVILEGE_PROFILE_ROLES and not actor_is_super_admin(actor):
             raise serializers.ValidationError({
                 'role': 'Only a super admin can assign admin or super admin roles.',
+            })
+        posted_role = attrs.get('custom_role_id')
+        if (
+            custom_role_name(posted_role) == 'Super Admin'
+            and not actor_is_super_admin(actor)
+        ):
+            raise serializers.ValidationError({
+                'custom_role_id': 'Only a super admin can assign the Super Admin role.',
             })
         if not actor_is_super_admin(actor):
             # Managers must not create staff Django users via the API.

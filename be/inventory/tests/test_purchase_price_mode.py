@@ -309,6 +309,18 @@ class PurchasePriceApiTests(TestCase):
         }, format='json')
         self.assertEqual(anon.status_code, 401)
 
+    def test_a_huge_delivery_quantity_is_refused(self):
+        self.client.force_authenticate(self.admin)
+        huge = self.client.post('/api/inventory/purchase/', {
+            'product_id': self.product.id,
+            'quantity': 1000001,
+            'price_mode': 'old',
+        }, format='json')
+        self.assertEqual(huge.status_code, 400, huge.data)
+        self.assertNotIn('0718', str(huge.data))
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 0)
+
     def test_super_admin_sets_cost_and_purchases_off_blocks_the_price(self):
         self.client.force_authenticate(self.admin)
         self.client.post('/api/inventory/purchase/', {

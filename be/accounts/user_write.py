@@ -15,6 +15,7 @@ from accounts.module_settings import (
 # may set these via the API (never self-service, never ordinary staff).
 PRIVILEGE_USER_FIELDS = ('is_staff', 'is_superuser')
 PRIVILEGE_PROFILE_ROLES = frozenset({'super_admin', 'admin'})
+PRIVILEGED_CUSTOM_ROLE_NAMES = frozenset({'Super Admin'})
 USERNAME_MAX_LENGTH = 150
 _USERNAME_VALIDATOR = UnicodeUsernameValidator()
 
@@ -35,6 +36,31 @@ def actor_is_super_admin(actor) -> bool:
         return True
     profile = getattr(actor, 'profile', None)
     return bool(profile and getattr(profile, 'is_super_admin', False))
+
+
+def custom_role_name(raw) -> str | None:
+    """
+    Resolve a posted custom-role id to its name.
+
+    Args:
+        raw: Role instance, primary key, or empty. Ids are 1–2^31-1.
+
+    Returns:
+        The role name, or None when the id is empty or unknown.
+
+    Raises:
+        None.
+    """
+    if raw in (None, ''):
+        return None
+    if hasattr(raw, 'name'):
+        return getattr(raw, 'name', None)
+    try:
+        role_id = int(raw)
+    except (TypeError, ValueError):
+        return None
+    role = Role.objects.filter(pk=role_id).only('name').first()
+    return role.name if role else None
 
 
 def strip_privilege_escalation(payload: dict, profile_data: dict, *, actor) -> None:
@@ -73,6 +99,13 @@ def strip_privilege_escalation(payload: dict, profile_data: dict, *, actor) -> N
     if role in PRIVILEGE_PROFILE_ROLES:
         raise PermissionDenied(
             'Only a super admin can assign admin or super admin roles.'
+        )
+    custom_name = custom_role_name(
+        profile_data.get('custom_role_id', profile_data.get('custom_role'))
+    )
+    if custom_name in PRIVILEGED_CUSTOM_ROLE_NAMES:
+        raise PermissionDenied(
+            'Only a super admin can assign the Super Admin role.'
         )
 
 

@@ -205,28 +205,65 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         
         current_branch = get_current_branch(request)
         reason = request.data.get('reason') or notes or 'Stock purchase'
+        raw_rejected = request.data.get('rejected_change_id')
+        try:
+            rejected_change_id = int(raw_rejected) if raw_rejected not in (None, '', 0) else None
+        except (TypeError, ValueError):
+            rejected_change_id = None
 
         from approvals.inventory_integration import try_pending_stock_response
         from approvals.registry import ACTION_STOCK_PURCHASE
 
+        apply_payload = {
+            'product_id': product_id,
+            'variant_id': variant_id,
+            'quantity': quantity,
+            'notes': notes,
+            'unit_cost': str(unit_cost) if unit_cost is not None else None,
+            'use_catalog_cost': use_catalog_cost,
+            'unit_sell_price': (
+                str(unit_sell_price) if unit_sell_price is not None else None
+            ),
+            'unit_mrp': str(unit_mrp) if unit_mrp is not None else None,
+            'price_mode': price_mode,
+            'branch_id': current_branch.id if current_branch else None,
+            'reference': reference,
+        }
+        if rejected_change_id:
+            from approvals.models import PendingChange
+            from approvals.serializers import PendingChangeSerializer
+            from approvals.service import correct_rejected_stock_purchase
+
+            change = PendingChange.objects.filter(pk=rejected_change_id).first()
+            if change is None:
+                return Response(
+                    {'error': 'That returned purchase was not found.'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            try:
+                updated = correct_rejected_stock_purchase(
+                    change, request.user, apply_payload, reason,
+                )
+            except ValidationError as exc:
+                if getattr(exc, 'message_dict', None):
+                    return Response(exc.message_dict, status=status.HTTP_400_BAD_REQUEST)
+                messages = getattr(exc, 'messages', None) or [str(exc)]
+                return Response(
+                    {'error': messages[0]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            return Response(
+                {
+                    'message': 'Correction sent for approval, not yet in stock.',
+                    'pending_change': PendingChangeSerializer(updated).data,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+
         pending_response = try_pending_stock_response(
             request,
             action_type=ACTION_STOCK_PURCHASE,
-            apply_payload={
-                'product_id': product_id,
-                'variant_id': variant_id,
-                'quantity': quantity,
-                'notes': notes,
-                'unit_cost': str(unit_cost) if unit_cost is not None else None,
-                'use_catalog_cost': use_catalog_cost,
-                'unit_sell_price': (
-                    str(unit_sell_price) if unit_sell_price is not None else None
-                ),
-                'unit_mrp': str(unit_mrp) if unit_mrp is not None else None,
-                'price_mode': price_mode,
-                'branch_id': current_branch.id if current_branch else None,
-                'reference': reference,
-            },
+            apply_payload=apply_payload,
             reason=reason,
         )
         if pending_response is not None:

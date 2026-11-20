@@ -73,3 +73,27 @@ class UserProfileUpdateAPITests(TransactionTestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.target.profile.refresh_from_db()
         self.assertEqual(self.target.profile.phone_number, '254700000001')
+
+    def test_an_admin_cannot_grant_the_super_admin_role(self):
+        from accounts.role_definitions import ROLE_SUPER_ADMIN
+
+        admin = User.objects.create_user('store_admin', 'store@test.com', 'admin123')
+        UserProfile.objects.create(user=admin, role='admin', is_active=True)
+        privileged = Role.objects.create(name=ROLE_SUPER_ADMIN, description='Top')
+        token = str(RefreshToken.for_user(admin).access_token)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+        response = self.client.patch(
+            f'/api/accounts/users/{self.target.id}/',
+            {'custom_role_id': privileged.id},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN, response.data)
+        self.assertNotIn('0718', str(response.data))
+        self.target.profile.refresh_from_db()
+        self.assertIsNone(self.target.profile.custom_role_id)
+        anon = APIClient().patch(
+            f'/api/accounts/users/{self.target.id}/',
+            {'custom_role_id': privileged.id},
+            format='json',
+        )
+        self.assertEqual(anon.status_code, status.HTTP_401_UNAUTHORIZED)

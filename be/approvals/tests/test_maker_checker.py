@@ -11,7 +11,7 @@ from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.models import AuditLog, Role, UserProfile
-from accounts.role_definitions import ROLE_SUPER_ADMIN, sync_default_roles
+from accounts.role_definitions import ROLE_MANAGER, ROLE_SUPER_ADMIN, sync_default_roles
 from approvals.models import PendingChange
 from approvals.registry import (
     ACTION_CATEGORY_DEACTIVATE,
@@ -515,6 +515,139 @@ class MakerCheckerStockTests(ManagerAPITestCase):
         self.assertEqual(approve.status_code, status.HTTP_200_OK, approve.data)
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock_quantity, 24)
+
+    def test_maker_sees_rejection_reason_and_can_correct_the_purchase(self):
+        sync_default_roles()
+        checker = User.objects.create_user('chk_return', password='x', is_staff=True)
+        UserProfile.objects.create(
+            user=checker,
+            role='super_admin',
+            custom_role=Role.objects.get(name=ROLE_SUPER_ADMIN),
+            is_active=True,
+        )
+        other = User.objects.create_user('other_clerk', password='x')
+        UserProfile.objects.create(
+            user=other,
+            role='manager',
+            custom_role=Role.objects.get(name=ROLE_MANAGER),
+            is_active=True,
+        )
+        queued = self.client.post(
+            '/api/inventory/purchase/',
+            {
+                'product_id': self.product.id,
+                'quantity': 4,
+                'notes': 'first try',
+                'reason': 'Supplier delivery',
+            },
+            format='json',
+        )
+        self.assertEqual(queued.status_code, status.HTTP_202_ACCEPTED, queued.data)
+        pending = PendingChange.objects.get(action_type=ACTION_STOCK_PURCHASE)
+        checker_client = self.client.__class__()
+        checker_client.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {RefreshToken.for_user(checker).access_token}'
+        )
+        rejected = checker_client.post(
+            f'/api/approvals/pending-changes/{pending.id}/reject/',
+            {'rejection_reason': 'Wrong quantity'},
+            format='json',
+        )
+        self.assertEqual(rejected.status_code, status.HTTP_200_OK, rejected.data)
+
+        mine = self.client.get(
+            '/api/approvals/pending-changes/my-submissions/',
+            {'status': 'rejected', 'action_type': ACTION_STOCK_PURCHASE},
+        )
+        self.assertEqual(mine.status_code, status.HTTP_200_OK, mine.data)
+        self.assertEqual(mine.data[0]['rejection_reason'], 'Wrong quantity')
+        self.assertNotIn('0718', str(mine.data))
+
+        other_client = self.client.__class__()
+        other_client.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {RefreshToken.for_user(other).access_token}'
+        )
+        stolen = other_client.post(
+            '/api/inventory/purchase/',
+            {
+                'product_id': self.product.id,
+                'quantity': 9,
+                'reason': 'Not my purchase',
+                'rejected_change_id': pending.id,
+            },
+            format='json',
+        )
+        self.assertEqual(stolen.status_code, status.HTTP_400_BAD_REQUEST, stolen.data)
+        self.assertNotIn('0718', str(stolen.data))
+        pending.refresh_from_db()
+        self.assertEqual(pending.status, PendingChange.STATUS_REJECTED)
+
+        anonymous = self.client.__class__()
+        anon = anonymous.post(
+            '/api/inventory/purchase/',
+            {
+                'product_id': self.product.id,
+                'quantity': 9,
+                'reason': 'No login',
+                'rejected_change_id': pending.id,
+            },
+            format='json',
+        )
+        self.assertEqual(anon.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        huge = self.client.post(
+            '/api/inventory/purchase/',
+            {
+                'product_id': self.product.id,
+                'quantity': 1000001,
+                'reason': 'Too many pieces',
+                'rejected_change_id': pending.id,
+            },
+            format='json',
+        )
+        self.assertEqual(huge.status_code, status.HTTP_400_BAD_REQUEST, huge.data)
+
+        corrected = self.client.post(
+            '/api/inventory/purchase/',
+            {
+                'product_id': self.product.id,
+                'quantity': 9,
+                'price_mode': 'new',
+                'unit_sell_price': '15.00',
+                'reason': 'Corrected the quantity',
+                'rejected_change_id': pending.id,
+            },
+            format='json',
+        )
+        self.assertEqual(corrected.status_code, status.HTTP_202_ACCEPTED, corrected.data)
+        pending.refresh_from_db()
+        self.product.refresh_from_db()
+        self.assertEqual(pending.status, PendingChange.STATUS_PENDING)
+        self.assertEqual(pending.rejection_reason, '')
+        self.assertEqual(pending.apply_payload['quantity'], 9)
+        self.assertEqual(pending.apply_payload['unit_sell_price'], '15.00')
+        self.assertEqual(self.product.stock_quantity, 20)
+        self.assertEqual(PendingChange.objects.filter(action_type=ACTION_STOCK_PURCHASE).count(), 1)
+
+        from settings.settings_service import SettingsService
+
+        SettingsService.set('inventory', 'enable_stock_purchases', False)
+        try:
+            blocked = self.client.post(
+                '/api/inventory/purchase/',
+                {
+                    'product_id': self.product.id,
+                    'quantity': 2,
+                    'reason': 'Purchases are off',
+                    'rejected_change_id': pending.id,
+                },
+                format='json',
+            )
+            self.assertEqual(blocked.status_code, status.HTTP_403_FORBIDDEN, blocked.data)
+            self.product.refresh_from_db()
+            self.assertEqual(self.product.stock_quantity, 20)
+        finally:
+            SettingsService.set('inventory', 'enable_stock_purchases', True)
 
 
 class MakerCheckerTransferTests(ManagerAPITestCase):

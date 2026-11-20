@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { inventoryAPI, productsAPI, variantsAPI } from '../../services/api';
+import { inventoryAPI, pendingChangesAPI, productsAPI, variantsAPI } from '../../services/api';
 import { variantDisplayLabel } from '../../utils/variantCombinations';
 import { formatCurrency } from '../../utils/formatters';
 import SearchableSelect from '../Shared/SearchableSelect';
@@ -41,6 +41,9 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
   const [showCommitConfirm, setShowCommitConfirm] = useState(false);
   const [variants, setVariants] = useState([]);
   const [variantId, setVariantId] = useState('');
+  const [returnedPurchases, setReturnedPurchases] = useState([]);
+  const [correctingId, setCorrectingId] = useState(null);
+  const [returnedReason, setReturnedReason] = useState('');
   const { settings: storeSettings } = useStoreSettings();
   const makerCheckerOn = isMakerCheckerEnabled(storeSettings);
 
@@ -140,6 +143,50 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
     return () => { cancelled = true; };
   }, [selectedProduct?.id, selectedProduct?.has_variants, selectedProduct?.initial_variant_id, selectedProduct?.variants]);
 
+  const loadReturnedPurchases = () => {
+    if (!makerCheckerOn) {
+      setReturnedPurchases([]);
+      return;
+    }
+    pendingChangesAPI.mySubmissions({
+      status: 'rejected',
+      action_type: 'stock_purchase',
+      limit: 20,
+    }).then((response) => {
+      const rows = Array.isArray(response.data) ? response.data : response.data?.results || [];
+      const mine = rows.filter((row) => row.status === 'rejected');
+      const lockedId = product?.id;
+      setReturnedPurchases(
+        lockedId
+          ? mine.filter((row) => Number(row.apply_payload?.product_id) === Number(lockedId))
+          : mine
+      );
+    }).catch(() => setReturnedPurchases([]));
+  };
+
+  useEffect(() => {
+    loadReturnedPurchases();
+  }, [makerCheckerOn, product?.id]);
+
+  const startCorrection = (row) => {
+    const payload = row.apply_payload || {};
+    const productId = payload.product_id || '';
+    setCorrectingId(row.id);
+    setReturnedReason(row.rejection_reason || 'Sent back for correction.');
+    setPriceMode(payload.price_mode === 'old' ? 'old' : 'new');
+    setVariantId(payload.variant_id ? String(payload.variant_id) : '');
+    setChangeReason('');
+    setFormData((prev) => ({
+      ...prev,
+      product_id: productId ? Number(productId) : prev.product_id,
+      quantity: payload.quantity || 1,
+      unit_sell_price: payload.unit_sell_price || '',
+      unit_mrp: payload.unit_mrp || '',
+      reference: payload.reference || '',
+      notes: payload.notes || '',
+    }));
+  };
+
   useEffect(() => {
     const productId = formData.product_id || product?.id;
     if (!productId || (selectedProduct?.has_variants && !variantId)) {
@@ -204,6 +251,9 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
     if (variantId) {
       payload.variant_id = Number(variantId);
     }
+    if (correctingId) {
+      payload.rejected_change_id = correctingId;
+    }
 
     if (makerCheckerOn) {
       const reasonError = stockReasonValidationMessage(changeReason);
@@ -231,6 +281,9 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
       }
       setShowCommitConfirm(false);
       setPendingPayload(null);
+      setCorrectingId(null);
+      setReturnedReason('');
+      loadReturnedPurchases();
       onSave();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to record purchase');
@@ -285,6 +338,34 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
         <div className="slide-in-panel-body">
           <form onSubmit={handleSubmit} className="stock-form">
           {error && <div className="error-message">{error}</div>}
+
+          {returnedReason ? (
+            <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm" data-testid="returned-purchase-reason">
+              <p className="font-medium">Sent back for correction</p>
+              <p className="mt-1">{returnedReason}</p>
+            </div>
+          ) : null}
+
+          {!correctingId && returnedPurchases.length > 0 ? (
+            <div className="mb-3 space-y-2 rounded-md border border-destructive/30 p-3" data-testid="returned-purchases">
+              <p className="font-medium">Purchases sent back</p>
+              {returnedPurchases.map((row) => (
+                <div key={row.id} className="flex flex-wrap items-start justify-between gap-2 text-sm">
+                  <div>
+                    <p>{row.entity_repr || 'Stock purchase'}</p>
+                    <p>{row.rejection_reason || 'Sent back for correction.'}</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => startCorrection(row)}
+                  >
+                    Correct
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
 
           {!product && (
             <div className="form-group">
@@ -529,9 +610,11 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
           <button type="submit" onClick={handleSubmit} disabled={loading} className="btn btn-primary">
             {loading
               ? 'Submitting…'
-              : makerCheckerOn
-                ? 'Submit for approval'
-                : 'Record Purchase'}
+              : correctingId
+                ? 'Send correction'
+                : makerCheckerOn
+                  ? 'Submit for approval'
+                  : 'Record Purchase'}
           </button>
         </div>
       </div>

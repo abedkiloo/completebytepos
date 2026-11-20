@@ -962,6 +962,86 @@ def route_stock_movement(
 
 
 @transaction.atomic
+def correct_rejected_stock_purchase(
+    change: PendingChange,
+    maker,
+    apply_payload: dict,
+    reason: str = '',
+) -> PendingChange:
+    """
+    Replace a rejected stock purchase with the corrected entry and send it back.
+
+    Args:
+        change: The rejected purchase. Other action types are refused.
+        maker: The person who first keyed it in. Another person is refused.
+        apply_payload: The corrected purchase. ``quantity`` is 1–1000000.
+            Cost stays whatever was already stored unless this person is a
+            Super Admin and a new cost is included.
+        reason: Why the correction was made, 5–2000 characters.
+
+    Returns:
+        The same row, waiting for approval again. Stock on the shelf is
+        unchanged. The previous rejection reason is cleared.
+
+    Raises:
+        ValidationError: The row is not a rejected purchase this person keyed,
+            the product or size is missing, or the reason is too short.
+    """
+    from django.core.exceptions import ValidationError
+    from products.catalog_access import user_is_super_admin
+    from products.models import Product, ProductVariant
+
+    from approvals.reason_rules import normalize_stock_reason
+    from approvals.registry import ACTION_STOCK_PURCHASE
+
+    if change is None or change.action_type != ACTION_STOCK_PURCHASE:
+        raise ValidationError('That returned purchase was not found.')
+    if change.status != PendingChange.STATUS_REJECTED:
+        raise ValidationError('Only a purchase that was sent back can be corrected.')
+    if change.made_by_id and change.made_by_id != getattr(maker, 'id', None):
+        if not getattr(maker, 'is_superuser', False):
+            raise ValidationError('You can only correct a purchase you keyed in.')
+
+    note = normalize_stock_reason(reason)
+    product_id = apply_payload.get('product_id')
+    try:
+        product = Product.objects.get(pk=int(product_id))
+    except (Product.DoesNotExist, TypeError, ValueError):
+        raise ValidationError('Product not found')
+    variant_id = apply_payload.get('variant_id') or None
+    variant = None
+    if variant_id:
+        variant = ProductVariant.objects.filter(pk=variant_id, product=product).first()
+        if variant is None:
+            raise ValidationError('Choose a size and colour.')
+    elif product.has_variants:
+        raise ValidationError('Choose a size and colour.')
+
+    quantity = int(apply_payload.get('quantity') or 0)
+    if quantity < 1 or quantity > 1000000:
+        raise ValidationError('Quantity must be from 1 to 1000000.')
+
+    payload = dict(apply_payload)
+    if not user_is_super_admin(maker):
+        payload.pop('unit_cost', None)
+        payload['use_catalog_cost'] = True
+    on_hand = variant.stock_quantity if variant is not None else product.stock_quantity
+    change.entity_type = 'products.ProductVariant' if variant is not None else 'products.Product'
+    change.entity_id = str(variant.pk if variant is not None else product.pk)
+    change.entity_repr = str(variant if variant is not None else product)[:255]
+    change.original_values = {'stock_quantity': int(on_hand or 0)}
+    change.proposed_values = {'stock_quantity': int(on_hand or 0) + quantity}
+    change.apply_payload = payload
+    change.reason = note
+    change.status = PendingChange.STATUS_PENDING
+    change.checked_by = None
+    change.checked_at = None
+    change.rejection_reason = ''
+    change.save()
+    return change
+
+
+@transaction.atomic
 def route_bulk_stock_adjustments(
     request,
     *,

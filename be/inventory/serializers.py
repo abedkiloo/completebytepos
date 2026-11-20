@@ -105,7 +105,7 @@ class StockAdjustmentSerializer(serializers.Serializer):
     """Serializer for stock adjustments"""
     product_id = serializers.IntegerField()
     variant_id = serializers.IntegerField(required=False, allow_null=True)
-    quantity = serializers.IntegerField()
+    quantity = serializers.IntegerField(min_value=-1000000, max_value=1000000)
     unit_cost = serializers.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -125,7 +125,7 @@ class StockPurchaseSerializer(serializers.Serializer):
     """Serializer for stock purchases"""
     product_id = serializers.IntegerField()
     variant_id = serializers.IntegerField(required=False, allow_null=True)
-    quantity = serializers.IntegerField(min_value=1)
+    quantity = serializers.IntegerField(min_value=1, max_value=1000000)
     unit_cost = serializers.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -164,7 +164,7 @@ class StockPurchaseSerializer(serializers.Serializer):
 class StockTransferSerializer(serializers.Serializer):
     """Serializer for stock transfers between branches"""
     product_id = serializers.IntegerField()
-    quantity = serializers.IntegerField(min_value=1)
+    quantity = serializers.IntegerField(min_value=1, max_value=1000000)
     to_branch_id = serializers.IntegerField(required=True)
     reference = serializers.CharField(required=False, allow_blank=True)
     notes = serializers.CharField(required=False, allow_blank=True)
