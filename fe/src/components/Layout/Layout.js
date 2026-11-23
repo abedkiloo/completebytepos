@@ -299,7 +299,17 @@ export const NAV_SECTIONS = [
     module: 'accounting',
     items: [
       { to: '/accounting', label: 'Accounting', icon: Calculator, permission: ['accounting', 'view'] },
-      { to: '/expenses', label: 'Expenses', icon: TrendingDown, module: 'expenses', permission: ['expenses', 'view'] },
+      {
+        to: '/expenses',
+        label: 'Expenses',
+        icon: TrendingDown,
+        module: 'expenses',
+        permission: ['expenses', 'view'],
+        anyPermission: [
+          ['expenses', 'view'],
+          ['expenses', 'claim'],
+        ],
+      },
       { to: '/expenses/categories', label: 'Expense Categories', icon: FolderTree, module: 'expenses', permission: ['expenses', 'view'] },
       { to: '/income', label: 'Income', icon: TrendingUp, module: 'income', permission: ['income', 'view'] },
     ],

@@ -152,6 +152,8 @@ PERMISSIONS_DATA = [
     ),
     ('expenses', 'delete', 'Delete expenses'),
     ('expenses', 'approve', 'Approve expenses'),
+    ('expenses', 'claim', 'Claim money you spent'),
+    ('expenses', 'claim_approve', 'Approve or return an employee expense claim'),
     ('expenses', 'export', 'Export expenses'),
     ('income', 'view', 'View income'),
     ('income', 'create', 'Create income'),
@@ -551,6 +553,39 @@ def grant_call_book_to_all_roles():
     return granted
 
 
+def grant_expense_claims_to_roles():
+    """
+    Let staff claim money they spent, and let a manager decide.
+
+    Every active role may file a claim. Manager, Director, and Super
+    Admin may decide one. Additive. Does not grant expense view, create,
+    or the admin expense approval.
+
+    Returns:
+        int: Roles that gained at least one claim permission. Range 0–10_000.
+    """
+    claim_perm = Permission.objects.filter(module='expenses', action='claim').first()
+    decide_perm = Permission.objects.filter(
+        module='expenses', action='claim_approve',
+    ).first()
+    if claim_perm is None:
+        return 0
+    granted = 0
+    deciders = {ROLE_MANAGER, ROLE_SUPER_ADMIN, ROLE_DIRECTOR}
+    for role in Role.objects.filter(is_active=True):
+        changed = False
+        if not role.permissions.filter(pk=claim_perm.pk).exists():
+            role.permissions.add(claim_perm)
+            changed = True
+        if decide_perm is not None and role.name in deciders:
+            if not role.permissions.filter(pk=decide_perm.pk).exists():
+                role.permissions.add(decide_perm)
+                changed = True
+        if changed:
+            granted += 1
+    return granted
+
+
 def grant_leave_to_roles():
     """
     Let every active role ask for a day off, and let managers decide.
@@ -805,6 +840,7 @@ def sync_default_roles(created_by=None):
     grant_call_book_to_all_roles()
     grant_field_load_to_roles()
     grant_leave_to_roles()
+    grant_expense_claims_to_roles()
 
     return {
         ROLE_SUPER_ADMIN: super_admin,

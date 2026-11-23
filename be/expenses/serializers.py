@@ -52,11 +52,11 @@ class ExpenseSerializer(serializers.ModelSerializer):
             'amount', 'description', 'payment_method', 'status',
             'vendor', 'receipt_number', 'image', 'image_url', 'expense_date',
             'created_by', 'created_by_name', 'approved_by', 'approved_by_name',
-            'notes', 'needs_redo', 'created_at', 'updated_at'
+            'notes', 'needs_redo', 'is_claim', 'created_at', 'updated_at'
         ]
         read_only_fields = [
             'expense_number', 'status', 'approved_by', 'created_at', 'updated_at',
-            'image_url', 'needs_redo',
+            'image_url', 'needs_redo', 'is_claim',
         ]
 
     def get_category_include_in_trading_profit(self, obj):
@@ -143,7 +143,7 @@ class ExpenseListSerializer(serializers.ModelSerializer):
             'id', 'expense_number', 'category_name',
             'category_include_in_trading_profit',
             'amount', 'description', 'payment_method', 'status',
-            'vendor', 'expense_date', 'image_url', 'notes', 'needs_redo',
+            'vendor', 'expense_date', 'image_url', 'notes', 'needs_redo', 'is_claim',
             'created_by', 'created_by_name', 'created_at'
         ]
 

@@ -142,6 +142,13 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
                 12,
             ),
             _f(
+                'transfer_sale_staff',
+                'Move a sale to another salesperson',
+                'An admin can move one completed sale from one salesperson to another. '
+                'The customer, the amount, and the stock stay. Commission follows the new person.',
+                13,
+            ),
+            _f(
                 'field_load',
                 'Field loads',
                 'Selectable sales feature, on by default. A sales person writes the '
@@ -315,7 +322,15 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
         'description': 'Track money going out.',
         'default_enabled': False,
         'sort_order': 10,
-        'features': [],
+        'features': [
+            _f(
+                'employee_claims',
+                'Employee expense claims',
+                'A staff member claims money they spent. It appears in Expenses. '
+                'A manager approves a staff claim. A director approves a manager’s claim.',
+                1,
+            ),
+        ],
     },
     {
         'module_name': 'income',
@@ -552,6 +567,7 @@ PRESETS: dict[str, dict[str, Any]] = {
                 'daily_sales',
                 'field_load',
                 'transfer_sale_customer',
+                'transfer_sale_staff',
             ],
             'products': ['bulk_operations', 'csv_import_export'],
             'customers': [
@@ -613,6 +629,7 @@ PRESETS: dict[str, dict[str, Any]] = {
             'reports': True,
         },
         'features': {
+            'expenses': ['employee_claims'],
             'accounting': [
                 'chart_of_accounts',
                 'journal_entries',

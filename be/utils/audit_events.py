@@ -234,6 +234,47 @@ def log_debt_settlement_transferred(
     )
 
 
+def log_sale_staff_transferred(request, *, sale, from_staff, to_staff, reason: str = ''):
+    """
+    Audit moving one completed sale onto another salesperson.
+
+    Args:
+        request: Actor request-like object.
+        sale: Sale after the move.
+        from_staff: Previous salesperson, or None. Name only.
+        to_staff: Salesperson who now has the sale.
+        reason: Optional note, truncated to 200 characters.
+
+    Returns:
+        None.
+
+    Side effects:
+        Appends one ``AuditLog`` with action ``sale_staff_transferred``.
+        Does not include a phone number.
+    """
+    changes = {
+        'lifecycle': 'staff_transferred',
+        'sale_id': getattr(sale, 'id', None),
+        'sale_number': (getattr(sale, 'sale_number', '') or '')[:50],
+        'from_staff_id': getattr(from_staff, 'id', None),
+        'from_staff_name': ((from_staff.get_full_name() if from_staff else '') or getattr(from_staff, 'username', '') or 'Staff')[:80],
+        'to_staff_id': getattr(to_staff, 'id', None),
+        'to_staff_name': ((to_staff.get_full_name() if to_staff else '') or getattr(to_staff, 'username', '') or 'Staff')[:80],
+        'reason': (reason or '')[:200],
+    }
+    label = (
+        f"Salesperson moved · {changes['from_staff_name']} → {changes['to_staff_name']}"
+    )
+    log_domain_event(
+        request,
+        'sale_staff_transferred',
+        sale if isinstance(sale, Model) else None,
+        module='sales',
+        changes=changes,
+        object_repr=label[:255],
+    )
+
+
 def log_sale_customer_transferred(
     request,
     *,

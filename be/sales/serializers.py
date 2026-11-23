@@ -376,6 +376,21 @@ class TransferDebtSettlementCustomerSerializer(serializers.Serializer):
     )
 
 
+class TransferSaleStaffSerializer(serializers.Serializer):
+    """Move one completed sale onto another salesperson.
+
+    ``user_id`` is that person, 1–2^31-1. ``reason`` is optional, 0–200
+    characters. Only an admin may send this.
+    """
+
+    user_id = serializers.IntegerField(min_value=1, max_value=2_147_483_647)
+    reason = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=200,
+    )
+
+
 class TransferSaleCustomerSerializer(serializers.Serializer):
     """Move one completed sale onto the customer it was for.
 

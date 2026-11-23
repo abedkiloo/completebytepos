@@ -14,7 +14,9 @@ from .serializers import (
 )
 from .services import ExpenseCategoryService, ExpenseService
 from utils.list_ordering import NameSavedOrderingFilter
-from accounts.permissions import RequireModuleEnabled, RequirePermPerAction, IsSuperAdmin
+from accounts.permissions import RequireModuleEnabled, RequirePerm, RequirePermPerAction, IsSuperAdmin
+from expenses.claims import decide_claim as decide_expense_claim, file_claim, may_decide_claim
+from settings.feature_permissions import RequireModuleFeature
 from utils.audit_events import log_approval_event
 from utils.audit_helpers import audited_perform_create, audited_perform_update
 from approvals.financial_workflow import finalize_financial_create, prepare_financial_update
@@ -23,6 +25,20 @@ from settings.utils import get_current_branch, get_current_tenant, is_branch_sup
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+class _ExpenseClaimFeature(RequireModuleFeature):
+    """Gate employee claims on the expenses.employee_claims package toggle."""
+
+    def __init__(self):
+        """
+        Bind this permission to employee expense claims.
+
+        Returns:
+            None.
+        """
+        super().__init__('expenses', 'employee_claims')
+        self.message = 'Employee expense claims are turned off.'
 
 
 def _user_has_expenses_perm(user, action: str) -> bool:
@@ -34,11 +50,38 @@ def _user_has_expenses_perm(user, action: str) -> bool:
     return bool(profile and profile.has_permission('expenses', action))
 
 
+class CanReadExpenses(permissions.BasePermission):
+    """
+    Open the expenses list.
+
+    ``expenses.view`` sees the shop book. ``expenses.claim`` sees only the
+    signed-in person's own claims. The queryset applies that limit.
+    """
+
+    message = 'You do not have permission to view expenses.'
+
+    def has_permission(self, request, view):
+        """
+        Allow a viewer or someone who can file a claim.
+
+        Args:
+            request: Authenticated request.
+            view: Expense viewset.
+
+        Returns:
+            bool. No writes.
+        """
+        return _user_has_expenses_perm(request.user, 'view') or _user_has_expenses_perm(
+            request.user, 'claim'
+        )
+
+
 class CanUpdateExpense(permissions.BasePermission):
     """
     expenses.update — edit any non-voided expense (admin default, grantable).
 
     Creators with expenses.create may still edit their own pending/rejected rows.
+    An employee with expenses.claim may edit their own pending or rejected claim.
     """
 
     message = 'You do not have permission to edit this expense.'
@@ -46,14 +89,22 @@ class CanUpdateExpense(permissions.BasePermission):
     def has_permission(self, request, view):
         if _user_has_expenses_perm(request.user, 'update'):
             return True
-        return _user_has_expenses_perm(request.user, 'create')
+        if _user_has_expenses_perm(request.user, 'create'):
+            return True
+        return _user_has_expenses_perm(request.user, 'claim')
 
     def has_object_permission(self, request, view, obj):
         if _user_has_expenses_perm(request.user, 'update'):
             return getattr(obj, 'status', None) != 'voided'
         if getattr(obj, 'status', None) not in ('pending', 'rejected'):
             return False
-        return obj.created_by_id == getattr(request.user, 'id', None)
+        if obj.created_by_id != getattr(request.user, 'id', None):
+            return False
+        if _user_has_expenses_perm(request.user, 'create'):
+            return True
+        return bool(getattr(obj, 'is_claim', False)) and _user_has_expenses_perm(
+            request.user, 'claim'
+        )
 
 
 EXPENSE_CATEGORY_PERMS = RequirePermPerAction('expenses', {
@@ -158,7 +209,33 @@ class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         self.expense_service = ExpenseService()
 
     def get_permissions(self):
-        if getattr(self, 'action', None) in ('update', 'partial_update', 'resubmit'):
+        """
+        Choose the permission class for this action.
+
+        Returns:
+            list: List and retrieve allow view or claim. Filing a claim
+            needs ``expenses.claim``. Deciding one needs
+            ``expenses.claim_approve``. Both claim actions need the
+            expenses module and the employee_claims feature.
+        """
+        action = getattr(self, 'action', None)
+        if action in ('list', 'retrieve'):
+            return [IsAuthenticated(), CanReadExpenses()]
+        if action == 'claim':
+            return [
+                IsAuthenticated(),
+                RequireModuleEnabled('expenses')(),
+                _ExpenseClaimFeature(),
+                RequirePerm('expenses', 'claim')(),
+            ]
+        if action == 'decide_claim':
+            return [
+                IsAuthenticated(),
+                RequireModuleEnabled('expenses')(),
+                _ExpenseClaimFeature(),
+                RequirePerm('expenses', 'claim_approve')(),
+            ]
+        if action in ('update', 'partial_update', 'resubmit'):
             return [
                 IsAuthenticated(),
                 RequireModuleEnabled('expenses')(),
@@ -172,7 +249,13 @@ class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         return ExpenseSerializer
 
     def get_queryset(self):
-        """Get queryset using service layer - all query logic moved to service"""
+        """
+        Expenses this person may see.
+
+        ``expenses.view`` sees the shop book. A claimant without that
+        permission sees their own claims. Someone who can decide claims
+        also sees up to 100 pending claims they are allowed to decide.
+        """
         filters = {}
         query_params = self.request.query_params
         
@@ -192,7 +275,20 @@ class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             if param in query_params:
                 filters[param] = query_params.get(param)
         
-        return self.expense_service.build_queryset(filters, request=self.request)
+        queryset = self.expense_service.build_queryset(filters, request=self.request)
+        user = self.request.user
+        if _user_has_expenses_perm(user, 'view'):
+            return queryset
+        own_ids = queryset.filter(is_claim=True, created_by=user).values('pk')
+        waiting_ids = []
+        if _user_has_expenses_perm(user, 'claim_approve'):
+            waiting = (
+                queryset.filter(is_claim=True, status='pending')
+                .exclude(created_by=user)
+                .select_related('created_by', 'created_by__profile', 'created_by__profile__custom_role')[:100]
+            )
+            waiting_ids = [row.pk for row in waiting if may_decide_claim(user, row)]
+        return queryset.filter(Q(pk__in=own_ids) | Q(pk__in=waiting_ids or [0]))
 
     def perform_create(self, serializer):
         branch = None
@@ -214,6 +310,71 @@ class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             allow_finalized=allow_finalized,
         )
         audited_perform_update(self, serializer)
+
+    @action(detail=False, methods=['post'], url_path='claims')
+    def claim(self, request):
+        """
+        File one expense claim for the signed-in employee.
+
+        Args:
+            request: Amount, description, and optional date, category,
+                payment method, notes, and receipt photo. The date is today
+                back through 30 days. Amount is 0.01–99999999.99.
+
+        Returns:
+            Response 201 with the pending claim. It appears in Expenses.
+
+        Raises:
+            ValidationError: A field is outside the claim bounds.
+        """
+        branch = None
+        if is_branch_support_enabled():
+            branch = get_current_branch(request)
+        try:
+            expense = file_claim(
+                request.user,
+                request.data,
+                image=request.FILES.get('image'),
+                branch=branch,
+            )
+        except ValidationError as e:
+            detail = getattr(e, 'detail', None) or str(e)
+            return Response({'error': detail}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(expense).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='decide-claim')
+    def decide_claim(self, request, pk=None):
+        """
+        Approve or return one employee claim.
+
+        Args:
+            request: ``decision`` is ``approved`` or ``rejected``. A return
+                needs ``rejection_reason`` of 1–300 characters.
+            pk: Expense id, a positive integer.
+
+        Returns:
+            Response 200 with the updated expense.
+
+        Raises:
+            PermissionDenied: The caller cannot decide this claim.
+            ValidationError: It is not a pending claim, or the reason is missing.
+        """
+        from rest_framework.exceptions import PermissionDenied
+
+        expense = self.get_object()
+        try:
+            decided = decide_expense_claim(
+                request.user,
+                expense,
+                request.data.get('decision'),
+                request.data.get('rejection_reason') or request.data.get('reason') or '',
+            )
+        except PermissionDenied as e:
+            return Response({'error': str(e.detail)}, status=status.HTTP_403_FORBIDDEN)
+        except ValidationError as e:
+            detail = getattr(e, 'detail', None) or str(e)
+            return Response({'error': detail}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(decided).data)
 
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):

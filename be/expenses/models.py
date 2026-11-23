@@ -115,6 +115,11 @@ class Expense(models.Model):
         default=False,
         help_text='Admin mark: this expense must be entered again.',
     )
+    is_claim = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text='True when an employee claimed this spend and a manager must decide it.',
+    )
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 

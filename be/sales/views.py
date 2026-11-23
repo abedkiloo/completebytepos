@@ -21,6 +21,7 @@ from .serializers import (
     CorrectDebtSettlementAmountSerializer,
     TransferDebtSettlementCustomerSerializer,
     TransferSaleCustomerSerializer,
+    TransferSaleStaffSerializer,
     ReceiveWalletPaymentSerializer,
 )
 from .refunds import SaleRefundService
@@ -154,6 +155,8 @@ SALES_PERMS = RequirePermPerAction('sales', {
     'daily': 'daily_sales',
     'daily_customer': 'daily_sales',
     'sellers': 'view',
+    'staff': 'view',
+    'transfer_staff': 'view',
     'complete': 'approve',
     'reject_complete': 'approve',
     'correct_date': 'approve',
@@ -1198,6 +1201,105 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 'from_wallet_balance': str(source.wallet_balance) if source else None,
                 'to_wallet_balance': str(target.wallet_balance),
                 'sms_sent': bool(result['sms_sent']),
+            }
+        )
+
+    @action(detail=False, methods=['get'], url_path='staff')
+    def staff(self, request):
+        """
+        Names an admin can move a sale to.
+
+        Args:
+            request: Optional ``q``, 0–80 characters.
+
+        Returns:
+            Up to 20 ``{id, display_name}`` rows. No phone numbers.
+        """
+        from sales.module_settings import sales_transfer_sale_staff_enabled
+        from sales.sale_staff_transfer import staff_choices, user_may_move_sale_staff
+
+        if not sales_transfer_sale_staff_enabled():
+            return Response(
+                {'error': 'Moving a sale to another salesperson is turned off.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if not user_may_move_sale_staff(request.user):
+            return Response(
+                {'error': 'Only an admin can move a sale to another salesperson.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return Response(staff_choices(request.query_params.get('q') or ''))
+
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='transfer-staff',
+    )
+    def transfer_staff(self, request, pk=None):
+        """
+        Move one completed sale onto another salesperson.
+
+        Args:
+            request: ``user_id`` (required) and optional ``reason``, 0–200
+                characters.
+            pk: Sale id, a positive integer.
+
+        Returns:
+            The sale number and the old and new names. No phone numbers.
+
+        The customer, amount, stock, and payments stay. A locked pay for
+        that month refuses the move.
+        """
+        from django.core.exceptions import PermissionDenied
+        from sales.module_settings import sales_transfer_sale_staff_enabled
+        from sales.sale_staff_transfer import _staff_name, transfer_sale_staff
+
+        if not sales_transfer_sale_staff_enabled():
+            return Response(
+                {'error': 'Moving a sale to another salesperson is turned off.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        serializer = TransferSaleStaffSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        sale = self.get_object()
+        try:
+            result = transfer_sale_staff(
+                sale_id=sale.pk,
+                target_user_id=data['user_id'],
+                user=request.user,
+                reason=data.get('reason', ''),
+            )
+        except PermissionDenied as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        except ValidationError as exc:
+            return Response(
+                {'error': validation_error_message(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        moved = result['sale']
+        previous = result['from_staff']
+        target = result['to_staff']
+        try:
+            from utils.audit_events import log_sale_staff_transferred
+
+            log_sale_staff_transferred(
+                request,
+                sale=moved,
+                from_staff=previous,
+                to_staff=target,
+                reason=data.get('reason', ''),
+            )
+        except Exception:
+            pass
+        return Response(
+            {
+                'sale_id': moved.id,
+                'sale_number': moved.sale_number,
+                'from_staff_id': previous.id if previous else None,
+                'to_staff_id': target.id,
+                'from_staff_name': _staff_name(previous),
+                'to_staff_name': _staff_name(target),
             }
         )
 

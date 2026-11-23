@@ -237,7 +237,8 @@ class ExpenseService(BaseService):
         Approve a pending expense and attempt to post its journal.
 
         Args:
-            expense: Must be ``pending`` (not already approved).
+            expense: Must be ``pending`` (not already approved) and not an
+                employee claim. Claims are decided by a manager.
             approved_by: Admin checker; must not be the maker; past-dated
                 rows require admin past-date override.
 
@@ -246,7 +247,8 @@ class ExpenseService(BaseService):
 
         Raises:
             PermissionDenied: Non-admin checker.
-            ValidationError: Wrong status or maker/checker / past-date rules.
+            ValidationError: The row is an employee claim, or the status or
+                maker/checker / past-date rules fail.
 
         Side effects:
             Completes rejection notices; best-effort
@@ -258,6 +260,10 @@ class ExpenseService(BaseService):
             validate_past_dated_checker,
         )
 
+        if getattr(expense, 'is_claim', False):
+            raise ValidationError(
+                'A manager decides an employee claim. Use the claim decision.'
+            )
         require_expense_admin(approved_by)
         validate_checker_not_maker(approved_by, expense.created_by_id)
         validate_past_dated_checker(approved_by, expense.expense_date, expense.created_at)

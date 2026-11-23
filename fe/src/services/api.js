@@ -459,6 +459,17 @@ export const salesAPI = {
    * @param {{ customer_id: number, send_sms?: boolean, reason?: string }} data
    */
   transferCustomer: (id, data) => api.post(`/sales/${id}/transfer-customer/`, data),
+  /**
+   * Active staff names for moving a sale. At most 20. No phone numbers.
+   * @param {string} [q] Name, 0–80 characters.
+   */
+  staffChoices: (q = '') => api.get('/sales/staff/', { params: q ? { q } : {} }),
+  /**
+   * Move one completed sale to another salesperson. Admin only.
+   * @param {number} id Sale id, 1–2^31-1.
+   * @param {{ user_id: number, reason?: string }} data
+   */
+  transferStaff: (id, data) => api.post(`/sales/${id}/transfer-staff/`, data),
   backfill: (data, photoFile) => {
     if (photoFile) {
       const body = new FormData();
@@ -764,6 +775,8 @@ export const expensesAPI = {
   void: (id, data) => api.post(`/expenses/${id}/void/`, data),
   approve: (id) => api.post(`/expenses/${id}/approve/`),
   reject: (id, data) => api.post(`/expenses/${id}/reject/`, data),
+  claim: (data) => api.post('/expenses/claims/', data),
+  decideClaim: (id, data) => api.post(`/expenses/${id}/decide-claim/`, data),
   redo: (id, data) => api.post(`/expenses/${id}/redo/`, data),
   resubmit: (id) => api.post(`/expenses/${id}/resubmit/`),
   statistics: (params) => api.get('/expenses/statistics/', { params }),

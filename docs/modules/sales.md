@@ -37,6 +37,10 @@ POS/billing domain: customers (duka identity, wallet/debt), holdings → approva
 - Customer list location filters: `county`, `sub_county`, `ward`, and
   `location_status=valid|invalid` (blank or not in `kenya_admin_units.json`).
   List payload includes `location_valid` / `location_issue` for cleanup UI.
+- An admin can move one completed sale to another salesperson
+  (`sales.transfer_sale_staff`). Customer, amount, stock, and payments stay.
+  `cashier` and `served_by` both become the new person, so commission and
+  sales-by-person follow them. A locked payslip for that month blocks the move.
 - Late/backfill sales: customer SMS is **off by default**; pass
   `notify_customer=true` on `/api/sales/backfill/` (Record past sale toggle)
   to opt in. Live POS completions still SMS by default.

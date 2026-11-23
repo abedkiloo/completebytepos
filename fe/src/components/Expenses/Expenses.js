@@ -15,9 +15,11 @@ import { hasPermission as userHasPermission } from '../../utils/roleAccess';
 import {
   canApproveFinancialRecord,
   canEditExpense,
+  getCurrentUserId,
   getPermissionsFromStorage,
   isMakerCheckerEnabled,
 } from '../../utils/makerChecker';
+import { isModuleFeatureEnabled } from '../../utils/moduleFeatures';
 import {
   buildExpenseFilterParams,
   buildExpenseListParams,
@@ -113,6 +115,19 @@ const Expenses = () => {
     signedInSuper = false;
   }
   const canMarkRedo = userHasPermission(permissions, 'expenses', 'approve') || signedInSuper;
+  const canViewExpenses = userHasPermission(permissions, 'expenses', 'view') || signedInSuper;
+  const canCreateExpense = userHasPermission(permissions, 'expenses', 'create') || signedInSuper;
+  const canClaim = (userHasPermission(permissions, 'expenses', 'claim') || signedInSuper)
+    && isModuleFeatureEnabled('expenses', 'employee_claims', true);
+  const canDecideClaim = userHasPermission(permissions, 'expenses', 'claim_approve') || signedInSuper;
+  const [showClaim, setShowClaim] = useState(false);
+  const [claimSaving, setClaimSaving] = useState(false);
+  const [claimForm, setClaimForm] = useState({
+    amount: '',
+    description: '',
+    expense_date: '',
+    payment_method: 'cash',
+  });
 
   useEffect(() => {
     loadCategories();
@@ -146,6 +161,7 @@ const Expenses = () => {
   }, [searchParams]);
 
   const loadCategories = async () => {
+    if (!canViewExpenses) return;
     try {
       const response = await expensesAPI.categories.list({
         is_active: 'true',
@@ -173,10 +189,12 @@ const Expenses = () => {
 
       const [listRes, statsOutcome] = await Promise.all([
         expensesAPI.list(params),
-        expensesAPI.statistics(statsParams).then(
-          (res) => ({ ok: true, res }),
-          (err) => ({ ok: false, err })
-        ),
+        canViewExpenses
+          ? expensesAPI.statistics(statsParams).then(
+            (res) => ({ ok: true, res }),
+            (err) => ({ ok: false, err })
+          )
+          : Promise.resolve({ ok: false, skipped: true }),
       ]);
       const data = listRes.data;
 
@@ -196,7 +214,7 @@ const Expenses = () => {
           expense_count: Number(statsOutcome.res.data.expense_count) || 0,
           posted_total: Number(statsOutcome.res.data.posted_total) || 0,
         });
-      } else {
+      } else if (!statsOutcome.skipped) {
         setTotalsError('Could not load expense totals for this filter.');
       }
     } catch (error) {
@@ -205,7 +223,7 @@ const Expenses = () => {
     } finally {
       setLoading(false);
     }
-  }, [filters, pagination.page, pagination.page_size, ordering]);
+  }, [filters, pagination.page, pagination.page_size, ordering, canViewExpenses]);
 
   useEffect(() => {
     loadExpenses();
@@ -238,6 +256,57 @@ const Expenses = () => {
   const handleAdd = () => {
     setEditingExpense(null);
     setShowForm(true);
+  };
+
+  const openClaim = () => {
+    const today = new Date();
+    const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    setClaimForm({
+      amount: '',
+      description: '',
+      expense_date: iso,
+      payment_method: 'cash',
+    });
+    setShowClaim(true);
+  };
+
+  const submitClaim = async () => {
+    setClaimSaving(true);
+    try {
+      await expensesAPI.claim({
+        amount: claimForm.amount,
+        description: claimForm.description.trim(),
+        expense_date: claimForm.expense_date,
+        payment_method: claimForm.payment_method,
+      });
+      setShowClaim(false);
+      toast.success('Claim sent. It is in Expenses until a manager decides it.');
+      loadExpenses();
+    } catch (error) {
+      const data = error.response?.data;
+      const message = data?.error?.description || data?.error?.amount || data?.error || data?.detail || error.message;
+      toast.error(typeof message === 'string' ? message : 'Could not send this claim.');
+    } finally {
+      setClaimSaving(false);
+    }
+  };
+
+  const handleDecideClaim = async (expense, decision) => {
+    let reason = '';
+    if (decision === 'rejected') {
+      reason = window.prompt('Why are you returning this claim?') || '';
+      if (!reason.trim()) return;
+    }
+    try {
+      await expensesAPI.decideClaim(expense.id, {
+        decision,
+        rejection_reason: reason.trim(),
+      });
+      toast.success(decision === 'approved' ? 'Claim approved.' : 'Claim returned.');
+      loadExpenses();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Could not decide this claim.');
+    }
   };
 
   const handleEdit = (expense) => {
@@ -344,19 +413,30 @@ const Expenses = () => {
               : 'Track spending, approvals, and payments. Each expense stores the date it occurred.'
           }
         >
-          <Button variant="outline" onClick={() => loadCategories()}>
-            <RefreshCw className="h-4 w-4" />
-            Refresh categories
-          </Button>
-          <Link to="/expenses/categories">
-            <Button type="button" variant="outline">
-              Manage categories
+          {canViewExpenses && (
+            <Button variant="outline" onClick={() => loadCategories()}>
+              <RefreshCw className="h-4 w-4" />
+              Refresh categories
             </Button>
-          </Link>
-          <Button onClick={handleAdd}>
-            <Plus className="h-4 w-4" />
-            Add expense
-          </Button>
+          )}
+          {canViewExpenses && (
+            <Link to="/expenses/categories">
+              <Button type="button" variant="outline">
+                Manage categories
+              </Button>
+            </Link>
+          )}
+          {canClaim && (
+            <Button type="button" data-testid="expense-claim" onClick={openClaim}>
+              Claim
+            </Button>
+          )}
+          {canCreateExpense && (
+            <Button onClick={handleAdd}>
+              <Plus className="h-4 w-4" />
+              Add expense
+            </Button>
+          )}
         </PageHeader>
 
         {categories.length === 0 && (
@@ -501,10 +581,12 @@ const Expenses = () => {
         ) : expenses.length === 0 ? (
           <EmptyState
             icon={TrendingDown}
-            title="No expenses found"
-            description="Adjust filters or record your first expense, including the date it occurred. The total above still reflects this date range."
-            actionLabel="Add expense"
-            onAction={handleAdd}
+            title={canViewExpenses ? 'No expenses found' : 'No claims yet'}
+            description={canViewExpenses
+              ? 'Adjust filters or record your first expense, including the date it occurred. The total above still reflects this date range.'
+              : 'Claim money you spent. It appears here until a manager decides it.'}
+            actionLabel={canClaim ? 'Claim' : 'Add expense'}
+            onAction={canClaim && !canCreateExpense ? openClaim : handleAdd}
           />
         ) : (
           <ListPaginationRail
@@ -564,6 +646,9 @@ const Expenses = () => {
                     </DataTableCell>
                     <DataTableCell>
                       <StatusBadge status={expense.status} />
+                      {expense.is_claim ? (
+                        <div className="mt-1 text-xs text-muted-foreground">Claim</div>
+                      ) : null}
                     </DataTableCell>
                     <DataTableCell className="text-xs text-muted-foreground whitespace-nowrap">
                       {expense.category_include_in_trading_profit === false
@@ -590,7 +675,29 @@ const Expenses = () => {
                     </DataTableCell>
                     <DataTableCell align="right">
                       <div className="flex justify-end gap-1">
-                        {expense.status === 'pending' &&
+                        {expense.status === 'pending' && expense.is_claim && canDecideClaim
+                          && Number(expense.created_by) !== Number(getCurrentUserId()) && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              data-testid={`claim-approve-${expense.id}`}
+                              onClick={() => handleDecideClaim(expense, 'approved')}
+                              title="Approve claim"
+                            >
+                              <Check className="h-4 w-4 text-success" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDecideClaim(expense, 'rejected')}
+                              title="Return claim"
+                            >
+                              <X className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </>
+                        )}
+                        {expense.status === 'pending' && !expense.is_claim &&
                           canApproveFinancialRecord(
                             expense,
                             storeSettings,
@@ -637,7 +744,7 @@ const Expenses = () => {
                           <Pencil className="h-4 w-4" />
                         </Button>
                         )}
-                        {expense.status !== 'voided' && (
+                        {canViewExpenses && expense.status !== 'voided' && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -656,6 +763,44 @@ const Expenses = () => {
             </DataTable>
           </ListPaginationRail>
         )}
+
+        <Dialog open={showClaim} onOpenChange={setShowClaim}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Claim money you spent</DialogTitle>
+              <DialogDescription>
+                This appears in Expenses. A manager approves it. You cannot approve your own claim.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-3">
+              <Input
+                data-testid="expense-claim-amount"
+                inputMode="decimal"
+                placeholder="Amount"
+                value={claimForm.amount}
+                onChange={(event) => setClaimForm((prev) => ({ ...prev, amount: event.target.value }))}
+              />
+              <Input
+                data-testid="expense-claim-description"
+                placeholder="What was this for?"
+                value={claimForm.description}
+                onChange={(event) => setClaimForm((prev) => ({ ...prev, description: event.target.value }))}
+              />
+              <Input
+                type="date"
+                data-testid="expense-claim-date"
+                value={claimForm.expense_date}
+                onChange={(event) => setClaimForm((prev) => ({ ...prev, expense_date: event.target.value }))}
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setShowClaim(false)}>Cancel</Button>
+              <Button type="button" data-testid="expense-claim-send" disabled={claimSaving} onClick={submitClaim}>
+                Send claim
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {showForm && (
           <ExpenseForm

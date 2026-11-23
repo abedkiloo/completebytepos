@@ -61,6 +61,8 @@ class Permission(models.Model):
         ('correct', 'Correct'),
         ('profit', 'Trading profit'),
         ('history', 'History'),
+        ('claim', 'Claim'),
+        ('claim_approve', 'Approve a claim'),
     ]
 
     module = models.CharField(max_length=50, choices=MODULE_CHOICES)
@@ -211,17 +213,23 @@ class UserProfile(models.Model):
             # Managers can view and manage most things except users/roles/settings
             if module == 'employees' and action in ('view', 'leave_request', 'leave_approve'):
                 return True
+            if module == 'expenses' and action in ('claim', 'claim_approve'):
+                return True
             if module in ['users', 'roles', 'settings', 'modules']:
                 return False
             return action in ['view', 'create', 'update', 'export', 'import']
 
         if self.role == 'director':
+            if module == 'expenses' and action in ('claim', 'claim_approve'):
+                return True
             return module == 'employees' and action in (
                 'view', 'leave_request', 'leave_approve',
             )
 
         if self.role == 'cashier':
             if module == 'employees' and action == 'leave_request':
+                return True
+            if module == 'expenses' and action == 'claim':
                 return True
             # Cashiers have limited permissions
             allowed_modules = ['products', 'categories', 'sales', 'pos', 'barcodes']
