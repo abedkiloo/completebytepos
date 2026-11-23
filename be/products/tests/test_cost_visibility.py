@@ -3,6 +3,7 @@
 from decimal import Decimal
 
 from django.contrib.auth.models import AnonymousUser, User
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -14,6 +15,7 @@ from accounts.role_definitions import (
     ensure_permissions,
     sync_default_roles,
 )
+from inventory.models import StockLayer
 from products.cost_access import redact_cost_fields, user_is_management, user_may_see_cost
 from products.models import Product
 
@@ -153,3 +155,29 @@ class CostVisibilityTests(APITestCase):
         self.assertGreaterEqual(len(rows), 40)
         self.assertNotIn('77.77', str(response.data))
         self.assertTrue(all(row.get('price') == '10.00' for row in rows[:40]))
+
+    def test_delivery_layers_follow_the_same_cost_rule(self):
+        StockLayer.objects.create(
+            product=self.product,
+            qty_received=2,
+            qty_remaining=2,
+            unit_cost=HIDDEN_COST,
+            unit_sell_price=Decimal('200.00'),
+            received_at=timezone.now(),
+        )
+        self._auth(self.manager)
+        hidden = self.client.get(
+            '/api/inventory/pending-prices/',
+            {'product_id': self.product.id},
+        )
+        self.assertEqual(hidden.status_code, status.HTTP_200_OK, hidden.data)
+        self.assertTrue(hidden.data)
+        self.assertNotIn('unit_cost', hidden.data[0])
+        self.assertNotIn('77.77', str(hidden.data))
+        self._auth(self.admin)
+        shown = self.client.get(
+            '/api/inventory/pending-prices/',
+            {'product_id': self.product.id},
+        )
+        self.assertEqual(shown.status_code, status.HTTP_200_OK, shown.data)
+        self.assertEqual(shown.data[0]['unit_cost'], '77.77')

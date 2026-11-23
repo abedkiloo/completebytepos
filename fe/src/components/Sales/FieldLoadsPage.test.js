@@ -137,26 +137,25 @@ describe('FieldLoadsPage', () => {
     fieldLoadsAPI.agents.mockResolvedValue({ data: { results: [{ id: 2, name: 'Asha' }] } });
     render(<FieldLoadsPage />);
     await userEvent.click(await screen.findByRole('button', { name: /Asha/ }));
-    expect((await screen.findAllByRole('button', { name: /Sell/ })).length).toBeGreaterThan(0);
-    expect(screen.getByText('Tap Sell on a product. Those pieces are already on this load.')).toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: /Legs/ })).toBeInTheDocument();
+    expect(screen.getByText(/every product in this sale/i)).toBeInTheDocument();
+    expect(screen.getByText('Legs')).toBeInTheDocument();
+    expect(screen.getByText('Cups')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Submit for approval' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Create new field load' })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: /Cups/ }));
-    expect(screen.queryByText('Legs')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Record a field load sale' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Record a field load sale' })).toBeDisabled();
     expect(screen.getByText(/does not create a field order/i)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Back to stock' }));
-    expect(screen.getByRole('button', { name: /Legs/ })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: /Cups/ }));
+    await userEvent.type(screen.getByLabelText('Quantity of Cups'), '1');
+    await userEvent.type(screen.getByLabelText('Quantity of Legs'), '2');
     expect(await screen.findByRole('option', { name: 'Field Duka' })).toBeInTheDocument();
     await userEvent.selectOptions(screen.getByLabelText('Customer'), '3');
     await userEvent.clear(screen.getByLabelText('Amount received'));
     await userEvent.type(screen.getByLabelText('Amount received'), '50');
     await userEvent.click(screen.getByRole('button', { name: 'Record a field load sale' }));
     await waitFor(() => expect(fieldLoadsAPI.sell).toHaveBeenCalledWith(7, {
-      product_id: 4,
-      quantity: 1,
+      lines: [
+        { product_id: 4, quantity: 1 },
+        { product_id: 5, quantity: 2 },
+      ],
       customer_id: 3,
       amount_paid: '50',
       payment_method: 'cash',

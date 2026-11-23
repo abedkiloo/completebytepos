@@ -3,6 +3,7 @@ import {
   formatDebtTrail,
   formatSettlementMeta,
   isCorrectionLedgerNote,
+  debtPaymentCanBeMoved,
   isDebtRepaymentRow,
   ledgerSourceLabel,
   standingLabel,
@@ -38,6 +39,17 @@ describe('customerDetail helpers', () => {
     expect(ledgerSourceLabel('other', 'Manual tweak')).toBe('Adjustment');
     expect(isCorrectionLedgerNote('[CLEARED] bad payment')).toBe(true);
     expect(isDebtRepaymentRow({ source_type: 'debt_settlement' })).toBe(true);
+    expect(debtPaymentCanBeMoved({ source_type: 'debt_settlement' })).toBe(true);
+    expect(
+      debtPaymentCanBeMoved({
+        source_type: 'debt_settlement',
+        transaction_type: 'debit',
+      })
+    ).toBe(false);
+    expect(debtPaymentCanBeMoved({ source_type: 'debt', transaction_type: 'debit' })).toBe(
+      false
+    );
+    expect(debtPaymentCanBeMoved(null)).toBe(false);
     expect(isDebtRepaymentRow({ source_type: 'debt' })).toBe(false);
     expect(standingLabel('debt')).toBe('Has debt');
     expect(standingLabel('credit')).toBe('Has credit');

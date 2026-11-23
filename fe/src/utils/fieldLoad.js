@@ -60,6 +60,22 @@ export function saleTotal(unitPrice, quantity) {
 }
 
 /**
+ * Preview total for one field-load sale that contains several products.
+ *
+ * @param {Array<{unitPrice: number|string, quantity: number|string}>|null} rows
+ *   At most 40 rows are counted. A blank or zero quantity is left out.
+ * @returns {number} Catalog total, 2 decimal places. 0 for an empty list.
+ */
+export function saleBasketTotal(rows) {
+  if (!Array.isArray(rows)) return 0;
+  return rows.slice(0, 40).reduce((sum, row) => {
+    const qty = Number(row?.quantity);
+    if (!Number.isFinite(qty) || qty <= 0) return sum;
+    return Math.round((sum + saleTotal(row.unitPrice, qty)) * 100) / 100;
+  }, 0);
+}
+
+/**
  * Whether one load belongs on the selected tab.
  *
  * `awaiting` is the approval queue: a written load, a return count, or a

@@ -1,6 +1,8 @@
 import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { customersAPI, salesAPI } from '../../services/api';
+import { userHasAdminSaleOverride } from '../../utils/saleCompletionApproval';
+import { hasPermission } from '../../utils/roleAccess';
 
 const mockNavigate = jest.fn();
 
@@ -46,7 +48,7 @@ jest.mock('../../services/api', () => ({
 }));
 
 jest.mock('../../utils/saleCompletionApproval', () => ({
-  userHasAdminSaleOverride: () => true,
+  userHasAdminSaleOverride: jest.fn(() => true),
 }));
 
 jest.mock('../../utils/roleAccess', () => ({
@@ -58,7 +60,7 @@ jest.mock('../../utils/roleAccess', () => ({
       { module: 'debt_management', action: 'update', name: 'debt_management.update' },
     ],
   }),
-  hasPermission: () => true,
+  hasPermission: jest.fn(() => true),
   isManagerOrAdminFromStorage: () => true,
 }));
 
@@ -99,6 +101,11 @@ jest.mock('../../utils/saleRefund', () => ({
 }));
 
 jest.mock('./ReceiveWalletPaymentDialog', () => () => null);
+jest.mock('./TransferCollectionCustomerDialog', () => ({
+  __esModule: true,
+  default: ({ open, collection }) =>
+    open ? <div data-testid="move-payment-dialog">{collection?.id}</div> : null,
+}));
 jest.mock('../Sales/SaleDetailDialog', () => () => null);
 jest.mock('../Sales/RefundSaleDialog', () => () => null);
 jest.mock('../Sales/SaleRollbackDialog', () => () => null);
@@ -220,6 +227,8 @@ const DETAIL = {
 describe('CustomerDetailPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    userHasAdminSaleOverride.mockReturnValue(true);
+    hasPermission.mockReturnValue(true);
     mockSearchParams = new URLSearchParams();
     customersAPI.detail.mockResolvedValue({ data: DETAIL });
     customersAPI.get.mockResolvedValue({ data: DETAIL.customer });
@@ -269,6 +278,27 @@ describe('CustomerDetailPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /Debt & payments/i }));
     expect(await screen.findByTestId('debt-repayment-row-2')).toHaveClass('bg-muted/60');
     expect(screen.queryByTestId('clear-debt-repayment-2')).not.toBeInTheDocument();
+    expect(screen.getByTestId('move-debt-payment-2')).toBeInTheDocument();
+  });
+
+  it('opens the move dialog for an admin debt payment', async () => {
+    render(<CustomerDetailPage />);
+    await screen.findByRole('heading', { name: 'Jane Doe' });
+    fireEvent.click(screen.getByRole('button', { name: /Debt & payments/i }));
+    fireEvent.click(await screen.findByTestId('move-debt-payment-2'));
+    expect(screen.getByTestId('move-payment-dialog')).toHaveTextContent('2');
+  });
+
+  it('hides the move control from someone who is not an admin', async () => {
+    userHasAdminSaleOverride.mockReturnValue(false);
+    hasPermission.mockImplementation((_perms, module, action) => {
+      if (module === 'debt_management' && action === 'correct') return false;
+      return true;
+    });
+    render(<CustomerDetailPage />);
+    await screen.findByRole('heading', { name: 'Jane Doe' });
+    fireEvent.click(screen.getByRole('button', { name: /Debt & payments/i }));
+    expect(screen.queryByTestId('move-debt-payment-2')).not.toBeInTheDocument();
   });
 
   it('shows three calls and reveals the rest', async () => {

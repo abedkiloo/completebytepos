@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { customersAPI, fieldLoadsAPI, productsAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import { formatCurrency, formatDate } from '../../utils/formatters';
-import { displayStatus, loadBuckets, loadMatchesFilter, missingUnits, saleTotal, shortageUnits, statusLabel } from '../../utils/fieldLoad';
+import { displayStatus, loadBuckets, loadMatchesFilter, missingUnits, saleBasketTotal, shortageUnits, statusLabel } from '../../utils/fieldLoad';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -568,34 +568,6 @@ function IssueForm({ onCreated, onBack }) {
 }
 
 /**
- * True when the window is at least 1024px wide.
- *
- * A wide window keeps the rest of the load beside the sale. A narrow window
- * has no matchMedia result in tests and is treated as a phone.
- *
- * @returns {boolean} True when the sale can sit beside the stock.
- */
-function useWideLoadLayout() {
-  const query = '(min-width: 1024px)';
-  const [wide, setWide] = useState(() => (
-    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-      ? window.matchMedia(query).matches
-      : false
-  ));
-
-  useEffect(() => {
-    if (typeof window.matchMedia !== 'function') return undefined;
-    const media = window.matchMedia(query);
-    const onChange = () => setWide(media.matches);
-    onChange();
-    media.addEventListener('change', onChange);
-    return () => media.removeEventListener('change', onChange);
-  }, []);
-
-  return wide;
-}
-
-/**
  * One product card on a load.
  *
  * @param {object} props.item Serialized load line.
@@ -842,11 +814,11 @@ function ReviseSentLoad({ load, onChange, onBack }) {
 }
 
 /**
- * One load: the bag of stock, then one product's sale, then the count.
+ * One load: the bag of stock, one sale of many products, then the count.
  *
- * Choosing a product clears the other products on a narrow screen. On a
- * window at least 1024px wide those products stay in a column beside the
- * sale. The return count is the whole bag and stays a separate step.
+ * Each product that is still on the load has its own quantity. Blank means
+ * that product is not in this sale. One payment covers every quantity. The
+ * return count is the whole bag and stays a separate step.
  *
  * @param {object} props.load Serialized load.
  * @param {boolean} props.canApprove Whether this user may accept the count.
@@ -855,17 +827,14 @@ function ReviseSentLoad({ load, onChange, onBack }) {
  */
 function LoadDetail({ load, canApprove, onChange, onBack }) {
   const [returns, setReturns] = useState({});
-  const [saleQty, setSaleQty] = useState('1');
+  const [saleQtys, setSaleQtys] = useState({});
   const [paid, setPaid] = useState('');
   const [customerId, setCustomerId] = useState('');
   const [customers, setCustomers] = useState([]);
-  const [productId, setProductId] = useState(load.lines[0]?.product_id || '');
-  const [focusId, setFocusId] = useState(null);
   const [counting, setCounting] = useState(false);
   const [payment, setPayment] = useState('cash');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
-  const wide = useWideLoadLayout();
   const shown = displayStatus(load);
   const short = shortageUnits(load.lines);
 
@@ -875,8 +844,7 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
       next[line.id] = line.quantity_returned ?? '';
     });
     setReturns(next);
-    setProductId(load.lines[0]?.product_id || '');
-    setFocusId(null);
+    setSaleQtys({});
     setCounting(false);
   }, [load]);
 
@@ -888,10 +856,17 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
     return undefined;
   }, [load.status]);
 
-  const focused = load.lines.find((item) => item.id === focusId) || null;
-  const line = focused || load.lines.find((item) => String(item.product_id) === String(productId)) || load.lines[0];
-  const linesOnScreen = focused && !wide ? [focused] : load.lines;
-  const total = saleTotal(line?.unit_price, saleQty);
+  const saleRows = load.lines.map((item) => {
+    const available = item.available ?? (Number(item.quantity_taken) - Number(item.quantity_sold || 0));
+    const typed = Number(saleQtys[item.id]);
+    const quantity = Number.isFinite(typed) && typed > 0 ? Math.min(Math.floor(typed), available) : 0;
+    return { item, available, quantity };
+  });
+  const chosen = saleRows.filter((row) => row.quantity > 0);
+  const total = saleBasketTotal(chosen.map((row) => ({
+    unitPrice: row.item.unit_price,
+    quantity: row.quantity,
+  })));
   const taken = load.units_taken ?? load.lines.reduce((sum, item) => sum + Number(item.quantity_taken || 0), 0);
   const sold = load.units_sold ?? load.lines.reduce((sum, item) => sum + Number(item.quantity_sold || 0), 0);
 
@@ -915,21 +890,6 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
     } finally {
       setBusy(false);
     }
-  };
-
-  /**
-   * Focus one product for a sale and set the other products aside.
-   *
-   * @param {object} item Load line. `id` and `product_id` are positive integers.
-   * @returns {void} Does nothing when the load is not open or nothing is left.
-   */
-  const chooseLine = (item) => {
-    const available = item.available ?? (Number(item.quantity_taken) - Number(item.quantity_sold || 0));
-    if (load.status !== 'open' || available <= 0) return;
-    setCounting(false);
-    setFocusId(item.id);
-    setProductId(item.product_id);
-    setSaleQty('1');
   };
 
   return (
@@ -1006,34 +966,34 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
       )}
 
       {load.status === 'open' && !counting && (
-        <div className={wide && focused ? 'grid grid-cols-2 items-start gap-4' : 'space-y-3'}>
-          <div className="space-y-2">
-            {focused && (
-              <Button type="button" variant="ghost" onClick={() => setFocusId(null)}>
-                Back to stock
-              </Button>
-            )}
-            <h3 className="text-sm font-semibold">{focused && !wide ? line.product_name : 'Sell from this load'}</h3>
-            {!focused && (
-              <p className="text-sm text-muted-foreground">Tap Sell on a product. Those pieces are already on this load.</p>
-            )}
-            {linesOnScreen.map((item) => {
-              const available = item.available ?? (Number(item.quantity_taken) - Number(item.quantity_sold || 0));
-              const canChoose = load.status === 'open' && available > 0 && !(focused && !wide);
-              return (
-                <StockCard
-                  key={item.id}
-                  item={item}
-                  selected={item.id === focusId}
-                  onChoose={canChoose ? chooseLine : null}
-                />
-              );
-            })}
-          </div>
-
-      {focused && load.status === 'open' && (
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold">Sell from this load</h3>
+          <p className="text-sm text-muted-foreground">
+            Enter a quantity for every product in this sale. Leave the others blank. These pieces are already on the load.
+          </p>
+          {saleRows.map((row) => (
+            <div key={row.item.id} className="space-y-2">
+              <StockCard item={row.item} selected={row.quantity > 0} />
+              {row.available > 0 ? (
+                <label className="block text-sm">
+                  <span className="mb-1 block text-muted-foreground">Quantity of {row.item.product_name}</span>
+                  <Input
+                    aria-label={`Quantity of ${row.item.product_name}`}
+                    type="number"
+                    min={0}
+                    max={row.available}
+                    value={saleQtys[row.item.id] ?? ''}
+                    onChange={(event) => setSaleQtys((prev) => ({
+                      ...prev,
+                      [row.item.id]: event.target.value,
+                    }))}
+                  />
+                </label>
+              ) : null}
+            </div>
+          ))}
         <div className="space-y-3 rounded-xl border border-border p-3">
-          <h3 className="text-base font-semibold">Sell {line.product_name}</h3>
+          <h3 className="text-base font-semibold">One sale</h3>
           <p className="text-sm text-muted-foreground">
             This sells stock already on the load. It does not create a field order and it does not take the units off the shelf again.
           </p>
@@ -1051,16 +1011,6 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
               ))}
             </select>
           </label>
-          <div className="grid grid-cols-2 gap-2">
-            <label className="text-sm">
-              <span className="mb-1 block text-muted-foreground">Quantity</span>
-              <Input aria-label="Sale quantity" type="number" min={1} value={saleQty} onChange={(event) => setSaleQty(event.target.value)} />
-            </label>
-            <div className="text-sm">
-              <span className="mb-1 block text-muted-foreground">Unit price</span>
-              <p className="flex h-9 items-center rounded-md border border-input px-2">{formatCurrency(line?.unit_price || 0)}</p>
-            </div>
-          </div>
           <div>
             <p className="text-xs uppercase text-muted-foreground">Sale total</p>
             <p className="text-xl font-semibold">{formatCurrency(total)}</p>
@@ -1100,11 +1050,14 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
           <Button
             type="button"
             variant="success"
-            disabled={busy}
+            disabled={busy || chosen.length === 0}
             onClick={() => run(
               () => fieldLoadsAPI.sell(load.id, {
-                product_id: Number(productId),
-                quantity: Number(saleQty),
+                lines: chosen.map((row) => ({
+                  product_id: row.item.product_id,
+                  ...(row.item.variant_id ? { variant_id: row.item.variant_id } : {}),
+                  quantity: row.quantity,
+                })),
                 customer_id: customerId ? Number(customerId) : null,
                 amount_paid: payment === 'credit' ? 0 : (paid || 0),
                 payment_method: payment,
@@ -1117,11 +1070,10 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
             Record a field load sale
           </Button>
         </div>
-      )}
         </div>
       )}
 
-      {load.status === 'open' && !focused && !counting && (
+      {load.status === 'open' && !counting && (
         <Button type="button" variant="outline" onClick={() => setCounting(true)}>
           Return to shop
         </Button>

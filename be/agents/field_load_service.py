@@ -872,35 +872,96 @@ def add_line(*, load_id: int, product_id: int, quantity, user, variant_id=None) 
     return load
 
 
+def _sale_requests(product_id, variant_id, quantity, lines) -> list:
+    """
+    Turn one product, or a list of products, into sale lines.
+
+    Args:
+        product_id: Legacy single product. Used only when ``lines`` is None.
+        variant_id: Legacy variant. None or blank means the product itself.
+        quantity: Legacy whole units, 1–100000.
+        lines: None uses the legacy fields. A list holds 1–40 dicts, each
+            with ``product_id``, ``quantity``, and optional ``variant_id``.
+
+    Returns:
+        list: Dicts with ``product_id``, ``variant_id`` (or None), and
+        ``quantity``. The same product is not repeated.
+
+    Raises:
+        FieldLoadError: ``bad_lines`` or ``bad_qty``.
+    """
+    raw = lines
+    if raw is None:
+        if product_id in (None, ''):
+            raise FieldLoadError('bad_lines', 'Choose at least one product.')
+        raw = [{
+            'product_id': product_id,
+            'variant_id': variant_id,
+            'quantity': quantity,
+        }]
+    if not isinstance(raw, list) or not raw:
+        raise FieldLoadError('bad_lines', 'Choose at least one product.')
+    if len(raw) > MAX_LINES:
+        raise FieldLoadError('bad_lines', 'A sale can have at most 40 products.')
+    parsed = []
+    seen = set()
+    for row in raw:
+        if not isinstance(row, dict):
+            raise FieldLoadError('bad_lines', 'Each product needs a quantity.')
+        try:
+            pid = int(row.get('product_id'))
+        except (TypeError, ValueError):
+            raise FieldLoadError('bad_lines', 'Each product needs a quantity.')
+        vid = row.get('variant_id')
+        if vid in (None, '', 0, '0'):
+            vid = None
+        else:
+            try:
+                vid = int(vid)
+            except (TypeError, ValueError):
+                raise FieldLoadError('bad_lines', 'Each product needs a quantity.')
+        qty = _parse_qty(row.get('quantity'), allow_zero=False)
+        key = (pid, vid)
+        if key in seen:
+            raise FieldLoadError('bad_lines', 'Each product can appear once on a sale.')
+        seen.add(key)
+        parsed.append({'product_id': pid, 'variant_id': vid, 'quantity': qty})
+    return parsed
+
+
 def sell_from_load(
     *,
     load_id: int,
     user,
     customer_id,
-    product_id,
-    quantity,
+    product_id=None,
+    quantity=None,
     amount_paid,
     variant_id=None,
+    lines=None,
     payment_method='cash',
     tender='cash',
     notes='',
     client_channel='web',
 ) -> FieldLoad:
     """
-    Record a field-load sale that consumes units already on the load.
+    Record one field-load sale for one or many products already on the load.
 
     This is not a field order. A field order is packed for a customer and
     removes shop stock. This sale only reduces what the agent is carrying.
+    Several products share one customer, one payment, and one sale.
 
     Args:
         load_id: Open load.
         user: The agent on the load, or someone who may issue loads.
         customer_id: Customer primary key. Required when the sale is not
             fully paid so the remainder can sit on their wallet.
-        product_id: A product that is on the load.
-        quantity: Whole units, 1 up to the unsold remainder.
-        amount_paid: Money received now, 0 up to the line total.
-        variant_id: Optional variant, matching the load line.
+        product_id: Legacy single product. Ignored when ``lines`` is a list.
+        quantity: Legacy whole units, 1 up to that product's unsold remainder.
+        amount_paid: Money received now, 0 up to the sale total.
+        variant_id: Legacy variant, matching the load line.
+        lines: 1–40 products. Each dict has ``product_id``, ``quantity``,
+            and optional ``variant_id``. None keeps the single-product body.
         payment_method: ``cash``, ``mpesa``, or ``credit``.
         tender: Ignored. Kept so older clients can still send it.
         notes: Optional staff note, 0–500 characters. No phone numbers.
@@ -911,15 +972,15 @@ def sell_from_load(
 
     Raises:
         FieldLoadError: ``forbidden``, ``not_found``, ``not_open``,
-        ``bad_product``, ``over_sold``, ``bad_money``, ``bad_customer``,
-        ``bad_note``.
+        ``bad_lines``, ``bad_product``, ``over_sold``, ``bad_money``,
+        ``bad_customer``, ``bad_note``.
 
     Side effects:
         Creates one completed sale with ``entry_source='field_load'`` and one
         ``FieldLoadSale``. Does not change shop stock. Posts customer debt
-        for any unpaid remainder.
+        for any unpaid remainder of the whole sale.
     """
-    qty = _parse_qty(quantity, allow_zero=False)
+    requests = _sale_requests(product_id, variant_id, quantity, lines)
     try:
         paid = Decimal(str(amount_paid if amount_paid is not None else 0)).quantize(Decimal('0.01'))
     except Exception:
@@ -936,20 +997,31 @@ def sell_from_load(
             raise FieldLoadError('not_found', 'Load not found.')
         if load.status != FieldLoad.STATUS_OPEN:
             raise FieldLoadError('not_open', 'Sales can be recorded only while the load is out.')
-        line = load.lines.select_related('product').filter(
-            product_id=product_id,
-            variant_id=variant_id,
-        ).first()
-        if line is None:
-            raise FieldLoadError('bad_product', 'That product is not on this load.')
-        sold = _sold_map(load).get((line.product_id, line.variant_id), 0)
-        remaining = line.quantity_taken - sold
-        if qty > remaining:
-            raise FieldLoadError('over_sold', f'Only {remaining} left on this load.')
-        unit_price = Decimal(str(line.product.price or 0)).quantize(Decimal('0.01'))
-        if unit_price < 0:
-            unit_price = Decimal('0.00')
-        total = (unit_price * qty).quantize(Decimal('0.01'))
+        sold = _sold_map(load)
+        built = []
+        for req in requests:
+            line = load.lines.select_related('product', 'variant').filter(
+                product_id=req['product_id'],
+                variant_id=req['variant_id'],
+            ).first()
+            if line is None:
+                raise FieldLoadError('bad_product', 'That product is not on this load.')
+            remaining = line.quantity_taken - sold.get((line.product_id, line.variant_id), 0)
+            if req['quantity'] > remaining:
+                name = (line.product.name or 'This product')[:80]
+                raise FieldLoadError('over_sold', f'Only {remaining} left of {name}.')
+            unit_price = Decimal(str(line.product.price or 0)).quantize(Decimal('0.01'))
+            if unit_price < 0:
+                unit_price = Decimal('0.00')
+            subtotal = (unit_price * req['quantity']).quantize(Decimal('0.01'))
+            built.append({
+                'product': line.product,
+                'variant': line.variant,
+                'quantity': req['quantity'],
+                'unit_price': unit_price,
+                'subtotal': subtotal,
+            })
+        total = sum((row['subtotal'] for row in built), Decimal('0.00')).quantize(Decimal('0.01'))
         if paid > total:
             raise FieldLoadError('bad_money', 'Amount paid cannot be more than the sale.')
         customer = None
@@ -973,9 +1045,7 @@ def sell_from_load(
         channel = client_channel if client_channel in ('web', 'mobile') else 'web'
         _create_load_sale(
             load=load,
-            line=line,
-            quantity=qty,
-            unit_price=unit_price,
+            items=built,
             total=total,
             paid=stored_paid,
             customer=customer,
@@ -1051,9 +1121,7 @@ def _can_touch(load: FieldLoad, user) -> bool:
 def _create_load_sale(
     *,
     load,
-    line,
-    quantity,
-    unit_price,
+    items,
     total,
     paid,
     customer,
@@ -1063,14 +1131,13 @@ def _create_load_sale(
     client_channel,
 ):
     """
-    Insert the field-load sale and link it without moving stock.
+    Insert one field-load sale for every product and link it without moving stock.
 
     Args:
         load: Open load.
-        line: Product line being sold.
-        quantity: Positive int.
-        unit_price: Catalog unit price, 2 dp, zero or more.
-        total: ``unit_price * quantity``.
+        items: 1–40 dicts with product, variant, quantity (1–100000),
+            unit_price, and subtotal. Prices are the catalog prices.
+        total: Sum of the line subtotals, 2 dp, zero or more.
         paid: Amount received, 0 through ``total``.
         customer: Customer or None when fully paid.
         user: Acting user stored on the sale as a fallback.
@@ -1079,7 +1146,8 @@ def _create_load_sale(
         client_channel: ``web`` or ``mobile``.
 
     Returns:
-        None. Side effects: sale, sale item, journal, optional debt, link.
+        None. Side effects: one sale, one item per product, journal,
+        optional debt, and one load link.
 
     Raises:
         FieldLoadError: ``bad_product`` when sale creation fails.
@@ -1089,6 +1157,17 @@ def _create_load_sale(
     from sales.services import SaleService
 
     service = SaleService()
+    validated = [
+        {
+            'product': row['product'],
+            'variant': row['variant'],
+            'quantity': row['quantity'],
+            'unit_price': row['unit_price'],
+            'unit_cost': sellable_unit_cost(row['product'], row['variant']),
+            'subtotal': row['subtotal'],
+        }
+        for row in items
+    ]
     try:
         sale = service.create_sale(
             {
@@ -1104,14 +1183,7 @@ def _create_load_sale(
             },
             [],
             user=load.agent or user,
-            validated_items=[{
-                'product': line.product,
-                'variant': line.variant,
-                'quantity': quantity,
-                'unit_price': unit_price,
-                'unit_cost': sellable_unit_cost(line.product, line.variant),
-                'subtotal': total,
-            }],
+            validated_items=validated,
             complete=False,
         )
     except ValidationError as exc:

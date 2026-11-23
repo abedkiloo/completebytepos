@@ -25,6 +25,7 @@ import { saleCancellationPendingToastMessage } from '../../utils/makerChecker';
 import {
   formatDebtTrail,
   formatSettlementMeta,
+  debtPaymentCanBeMoved,
   isDebtRepaymentRow,
   ledgerSourceLabel,
   standingLabel,
@@ -34,6 +35,7 @@ import { formatPurchaseCount } from '../../utils/customerIntelligence';
 import { CustomerClassificationBadges } from './ClassificationBadge';
 import ReceiptImageLink from '../Shared/ReceiptImageLink';
 import PaymentDetailDialog from './PaymentDetailDialog';
+import TransferCollectionCustomerDialog from './TransferCollectionCustomerDialog';
 import { customerCommitRows } from '../../utils/formCommitSummary';
 import {
   EMPTY_CUSTOMER_FORM,
@@ -51,6 +53,7 @@ import {
   customersShowTaxId,
 } from '../../utils/customerDisplay';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
+import { isModuleFeatureEnabled } from '../../utils/moduleFeatures';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import CommitConfirm from '../Shared/CommitConfirm';
 import CenterScreenLoader from '../Shared/CenterScreenLoader';
@@ -206,6 +209,13 @@ function CallHistory({ calls, count }) {
   );
 }
 
+/**
+ * One customer's profile, orders, and debt ledger.
+ *
+ * An admin can move a posted debt payment from the Debt & payments tab onto
+ * another active customer. The payment amount moves. Sales stay unless the
+ * admin also ticks that box in the dialog. No phone numbers are shown there.
+ */
 export default function CustomerDetailPage() {
   const { customerId } = useParams();
   const navigate = useNavigate();
@@ -228,6 +238,7 @@ export default function CustomerDetailPage() {
   const [rollbackSale, setRollbackSale] = useState(null);
   const [rollbackSubmitting, setRollbackSubmitting] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
+  const [movingPayment, setMovingPayment] = useState(null);
   const [editOpen, setEditOpen] = useState(false);
   const [formData, setFormData] = useState(EMPTY_CUSTOMER_FORM);
   const [formErrors, setFormErrors] = useState({});
@@ -251,6 +262,9 @@ export default function CustomerDetailPage() {
   const canRollback = userCanRollbackSales(permissions);
   const canUnvoid = userCanUnvoidSales(permissions, { isAdmin });
   const canReturnForCorrection = isAdmin;
+  const canMoveDebtPayment =
+    (isAdmin || hasPermission(permissions, 'debt_management', 'correct')) &&
+    isModuleFeatureEnabled('customers', 'transfer_customer_on_collection', true);
 
   const load = useCallback(async () => {
     if (!customerId) return;
@@ -306,6 +320,16 @@ export default function CustomerDetailPage() {
     } catch (err) {
       toast.error(err.response?.data?.error || err.message);
     }
+  };
+
+  const openMovePayment = (entry) => {
+    if (!debtPaymentCanBeMoved(entry)) return;
+    setMovingPayment({
+      ...entry,
+      kind: 'debt_settlement',
+      customer_id: customer?.id || Number(customerId),
+      customer_name: customer?.name || '',
+    });
   };
 
   const openPayment = async (entry) => {
@@ -675,6 +699,7 @@ export default function CustomerDetailPage() {
                   <DataTableBody>
                     {ledger.map((entry) => {
                       const isRepayment = isDebtRepaymentRow(entry);
+                      const canMoveRow = canMoveDebtPayment && debtPaymentCanBeMoved(entry);
                       return (
                       <DataTableRow
                         key={entry.id}
@@ -706,6 +731,18 @@ export default function CustomerDetailPage() {
                           {isRepayment ? (
                             <div className="space-y-1">
                               <div>{formatSettlementMeta(entry) || '—'}</div>
+                              {canMoveRow ? (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  data-testid={`move-debt-payment-${entry.id}`}
+                                  aria-label="Move this payment to another customer"
+                                  onClick={() => openMovePayment(entry)}
+                                >
+                                  Move
+                                </Button>
+                              ) : null}
                               {entry.receipt_image_url ? (
                                 <ReceiptImageLink
                                   url={entry.receipt_image_url}
@@ -827,9 +864,25 @@ export default function CustomerDetailPage() {
         payment={selectedPayment}
         open={paymentDetailOpen}
         loading={paymentDetailLoading}
+        canTransfer={canMoveDebtPayment && debtPaymentCanBeMoved(selectedPayment)}
+        onTransfer={() => {
+          if (selectedPayment) setMovingPayment(selectedPayment);
+          setPaymentDetailOpen(false);
+        }}
         onOpenChange={(open) => {
           setPaymentDetailOpen(open);
           if (!open) setSelectedPayment(null);
+        }}
+      />
+      <TransferCollectionCustomerDialog
+        open={Boolean(movingPayment)}
+        collection={movingPayment}
+        onOpenChange={(open) => {
+          if (!open) setMovingPayment(null);
+        }}
+        onSaved={() => {
+          setMovingPayment(null);
+          load();
         }}
       />
       <SaleDetailDialog

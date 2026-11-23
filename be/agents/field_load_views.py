@@ -286,15 +286,18 @@ class FieldLoadViewSet(viewsets.ViewSet):
     @action(detail=True, methods=['post'], url_path='sell')
     def sell(self, request, pk=None):
         """
-        Sell units that are already on the load.
+        Sell one or many products that are already on the load, as one sale.
 
         Args:
-            request: JSON ``product_id``, ``quantity``, ``amount_paid``,
-                optional ``customer_id`` and ``variant_id``.
+            request: JSON ``lines`` of 1–40 ``product_id``, ``quantity``, and
+                optional ``variant_id``. A body with only ``product_id`` and
+                ``quantity`` still records that one product. ``amount_paid``
+                is for the whole sale. Optional ``customer_id``.
             pk: Load primary key.
 
         Returns:
-            Response: Updated load including the new sale's money.
+            Response: Updated load including the new sale's money. Shop stock
+            is not taken again.
         """
         try:
             load = sell_from_load(
@@ -304,6 +307,7 @@ class FieldLoadViewSet(viewsets.ViewSet):
                 product_id=request.data.get('product_id'),
                 variant_id=request.data.get('variant_id'),
                 quantity=request.data.get('quantity'),
+                lines=request.data.get('lines'),
                 amount_paid=request.data.get('amount_paid', 0),
                 payment_method=request.data.get('payment_method') or 'cash',
                 tender=request.data.get('tender') or 'cash',

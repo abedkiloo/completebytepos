@@ -1,4 +1,4 @@
-import { displayStatus, loadBuckets, loadMatchesFilter, missingUnits, saleTotal, statusLabel } from './fieldLoad';
+import { displayStatus, loadBuckets, loadMatchesFilter, missingUnits, saleBasketTotal, saleTotal, statusLabel } from './fieldLoad';
 
 describe('field load math', () => {
   test('missing is taken minus sold minus returned, and blank means not counted', () => {
@@ -17,6 +17,12 @@ describe('field load math', () => {
     expect(statusLabel('shortage')).toBe('Shortage');
     expect(saleTotal('150', 5)).toBe(750);
     expect(saleTotal('nope', 1)).toBe(0);
+    expect(saleBasketTotal([
+      { unitPrice: '50', quantity: 2 },
+      { unitPrice: '50', quantity: 0 },
+      { unitPrice: '30', quantity: 1 },
+    ])).toBe(130);
+    expect(saleBasketTotal(null)).toBe(0);
   });
 
   test('tiles count each display status once across 300 loads', () => {

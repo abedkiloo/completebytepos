@@ -65,6 +65,20 @@ export function isDebtRepaymentRow(entry) {
   return Boolean(entry && entry.source_type === 'debt_settlement');
 }
 
+/**
+ * A posted debt repayment that an admin can move onto another customer.
+ *
+ * @param {object|null} entry Ledger row. Needs `source_type`. `transaction_type`
+ *   is `credit` or `debit`. Missing type is treated as a credit.
+ * @returns {boolean} True only for a credit debt payment. Sale debt, refunds,
+ *   and debit reversals are false.
+ */
+export function debtPaymentCanBeMoved(entry) {
+  if (!isDebtRepaymentRow(entry)) return false;
+  const kind = String(entry.transaction_type || 'credit').trim().toLowerCase();
+  return kind === 'credit';
+}
+
 export function standingLabel(standing) {
   if (standing === 'debt') return 'Has debt';
   if (standing === 'credit') return 'Has credit';

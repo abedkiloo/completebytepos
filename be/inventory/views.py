@@ -305,7 +305,7 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         Returns:
             Up to 20 layers for that product or size. ``sale_price_pending`` is
             true when the selling price is unset. ``unit_cost`` is included
-            only for a superuser.
+            only when this person may see cost of goods.
         """
         if not stock_purchases_allowed():
             return self._feature_disabled_response('Stock purchases')
@@ -330,9 +330,9 @@ class StockMovementViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         if variant_id > 0:
             rows = rows.filter(variant_id=variant_id)
         rows = rows.order_by('-id')[:20]
-        from products.catalog_access import user_is_super_admin
+        from products.cost_access import user_may_see_cost
 
-        show_cost = user_is_super_admin(request.user)
+        show_cost = user_may_see_cost(request.user)
         payload = []
         for row in rows:
             item = {

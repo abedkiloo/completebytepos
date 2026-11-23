@@ -18,7 +18,7 @@ from accounts.role_definitions import (
 )
 from agents.field_load_service import FieldLoadError, _parse_qty
 from products.models import Product
-from sales.models import Customer
+from sales.models import Customer, Sale
 from settings.models import ModuleFeature, ModuleSettings
 from utils.tests.api_test_base import SuperAdminAPITestCase
 
@@ -216,6 +216,90 @@ class FieldLoadFlowTests(SuperAdminAPITestCase):
         self.cups.refresh_from_db()
         self.assertEqual(self.cups.stock_quantity, 80)
         self.assertEqual(accepted.data['status'], 'accepted')
+
+    def test_one_sale_sells_several_products_and_leaves_shop_stock(self):
+        legs = _product('Legs', 'FL-LEGS', 30)
+        issued = self.client.post(
+            '/api/agents/field-loads/',
+            {
+                'agent_id': self.agent.id,
+                'lines': [
+                    {'product_id': self.cups.id, 'quantity': 10},
+                    {'product_id': legs.id, 'quantity': 4},
+                ],
+            },
+            format='json',
+        )
+        self.assertEqual(issued.status_code, status.HTTP_201_CREATED, issued.content)
+        load_id = issued.data['id']
+        token = RefreshToken.for_user(self.agent)
+        agent_client = APIClient()
+        agent_client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+        sold = agent_client.post(
+            f'/api/agents/field-loads/{load_id}/sell/',
+            {
+                'lines': [
+                    {'product_id': self.cups.id, 'quantity': 2},
+                    {'product_id': legs.id, 'quantity': 1},
+                ],
+                'customer_id': self.customer.id,
+                'amount_paid': '100.00',
+                'payment_method': 'cash',
+            },
+            format='json',
+        )
+        self.assertEqual(sold.status_code, status.HTTP_200_OK, sold.content)
+        self.assertNotIn('0718111222', str(sold.data))
+        by_name = {row['product_name']: row['quantity_sold'] for row in sold.data['lines']}
+        self.assertEqual(by_name['Cups'], 2)
+        self.assertEqual(by_name['Legs'], 1)
+        self.assertEqual(sold.data['money']['collected'], '100.00')
+        sale = Sale.objects.get(field_load_sale__load_id=load_id)
+        self.assertEqual(sale.items.count(), 2)
+        self.assertEqual(sale.total, Decimal('150.00'))
+        self.assertEqual(sale.amount_paid, Decimal('100.00'))
+        self.cups.refresh_from_db()
+        legs.refresh_from_db()
+        self.assertEqual(self.cups.stock_quantity, 90)
+        self.assertEqual(legs.stock_quantity, 26)
+        too_many = [{'product_id': self.cups.id, 'quantity': 1} for _ in range(41)]
+        huge = agent_client.post(
+            f'/api/agents/field-loads/{load_id}/sell/',
+            {'lines': too_many, 'amount_paid': '50', 'customer_id': self.customer.id},
+            format='json',
+        )
+        self.assertEqual(huge.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertNotIn('0718111222', str(huge.data))
+        self.assertEqual(Sale.objects.filter(field_load_sale__load_id=load_id).count(), 1)
+        duplicate = agent_client.post(
+            f'/api/agents/field-loads/{load_id}/sell/',
+            {
+                'lines': [
+                    {'product_id': self.cups.id, 'quantity': 1},
+                    {'product_id': self.cups.id, 'quantity': 1},
+                ],
+                'amount_paid': '50',
+                'customer_id': self.customer.id,
+            },
+            format='json',
+        )
+        self.assertEqual(duplicate.status_code, status.HTTP_400_BAD_REQUEST)
+        over = agent_client.post(
+            f'/api/agents/field-loads/{load_id}/sell/',
+            {
+                'lines': [
+                    {'product_id': self.cups.id, 'quantity': 9},
+                    {'product_id': legs.id, 'quantity': 1},
+                ],
+                'amount_paid': '500',
+                'customer_id': self.customer.id,
+            },
+            format='json',
+        )
+        self.assertEqual(over.status_code, status.HTTP_400_BAD_REQUEST)
+        self.cups.refresh_from_db()
+        self.assertEqual(self.cups.stock_quantity, 90)
+        self.assertEqual(Sale.objects.filter(field_load_sale__load_id=load_id).count(), 1)
 
     def test_send_back_does_not_restock_and_blocks_a_second_load(self):
         issued = self._issue(10)
