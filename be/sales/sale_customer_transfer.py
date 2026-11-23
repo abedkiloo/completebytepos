@@ -35,21 +35,29 @@ def _release_settlements_on_sale(sale: Sale) -> list[tuple[CustomerWalletTransac
         sale: Completed sale whose ``amount_paid`` may include settlements.
 
     Returns:
-        Pairs of (settlement credit, amount freed), 0–50 rows, each amount
-        from 0.01 to the sale total.
+        Pairs of (settlement credit, amount freed). One pair per allocation
+        on the sale, 0–200. Each amount is 0.01 up to that allocation, and
+        the total freed is never more than ``amount_paid``.
+
+    Raises:
+        ValidationError: More than 200 repayment chunks are on this one sale.
     """
     rows = list(
         DebtSettlementAllocation.objects.filter(sale=sale)
         .select_related('wallet_transaction')
-        .order_by('id')[:50]
+        .order_by('id')
     )
+    if len(rows) > 200:
+        raise ValidationError('This sale has too many repayments to move at once.')
     if not rows:
         return []
     paid = _money(sale.amount_paid)
     freed: list[tuple[CustomerWalletTransaction, Decimal]] = []
     for alloc in rows:
-        chunk = _money(alloc.amount)
-        paid = max(Decimal('0.00'), paid - chunk)
+        chunk = min(_money(alloc.amount), paid)
+        if chunk <= 0:
+            continue
+        paid = (paid - chunk).quantize(Decimal('0.01'))
         freed.append((alloc.wallet_transaction, chunk))
     DebtSettlementAllocation.objects.filter(pk__in=[row.pk for row in rows]).delete()
     sale.amount_paid = paid
@@ -163,6 +171,9 @@ def transfer_sale_customer(
     Invoice.objects.filter(sale=sale).update(
         customer_id=target.pk,
         customer_name=(target.name or '')[:200],
+        customer_email=(getattr(target, 'email', None) or '')[:254],
+        customer_phone=(getattr(target, 'phone', None) or '')[:20],
+        customer_address=(getattr(target, 'address', None) or '')[:2000],
     )
 
     if old is not None:

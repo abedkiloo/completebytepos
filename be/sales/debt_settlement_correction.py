@@ -12,6 +12,7 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Sum
 
 from sales.models import Customer, CustomerWalletTransaction, DebtSettlementAllocation, Sale
 from sales.sale_debt_sync import (
@@ -147,9 +148,10 @@ def transfer_debt_settlement_customer(
     Move a posted debt repayment from the wrong customer to the right one.
 
     The credit leaves the original wallet. When ``move_sales`` is false, the
-    sales that were marked paid go back to unpaid and the money is applied to
-    the target customer's open debt. When true, those sales (and their debt
-    rows) move with the repayment and stay paid.
+    sales that were marked paid go back to unpaid and the whole payment is
+    applied to the target customer's open debt. When true, those sales stay
+    paid and move with the repayment; any amount above what those sales
+    owed is applied to the target customer's other open debt.
 
     Args:
         txn_id: Primary key of a credit ``debt_settlement`` row, 1–2^31-1.
@@ -251,8 +253,16 @@ def transfer_debt_settlement_customer(
 
     rebuild_customer_wallet_from_active_ledger(old.pk)
     rebuild_customer_wallet_from_active_ledger(target.pk)
-    if not move_sales:
-        apply_settlement_to_underpaid_sales(target, txn.amount, wallet_txn=txn)
+    # Money already sitting on a sale that moved with this payment stays there.
+    # Whatever is left pays the target customer's other open debt.
+    still_allocated = _money(
+        DebtSettlementAllocation.objects.filter(wallet_transaction=txn).aggregate(
+            total=Sum('amount')
+        )['total']
+    )
+    remainder = _money(txn.amount) - still_allocated
+    if remainder > 0:
+        apply_settlement_to_underpaid_sales(target, remainder, wallet_txn=txn)
 
     txn.refresh_from_db()
     old.refresh_from_db()
